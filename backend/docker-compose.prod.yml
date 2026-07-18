@@ -1,0 +1,264 @@
+services:
+  postgres:
+    container_name: averqel-postgres
+    image: ankane/pgvector:latest
+    restart: always
+    stop_grace_period: 30s
+    environment:
+      POSTGRES_USER: ${AVERQEL_POSTGRES_USER:?set AVERQEL_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AVERQEL_POSTGRES_PASSWORD:?set AVERQEL_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${AVERQEL_POSTGRES_DB:-knowledge}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AVERQEL_POSTGRES_USER} -d ${AVERQEL_POSTGRES_DB:-knowledge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    container_name: averqel-redis
+    image: redis:7-alpine
+    restart: always
+    stop_grace_period: 30s
+    command: redis-server --requirepass ${AVERQEL_REDIS_PASSWORD:?set AVERQEL_REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${AVERQEL_REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    container_name: averqel-minio
+    image: minio/minio:latest
+    restart: always
+    stop_grace_period: 30s
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${AVERQEL_MINIO_ROOT_USER:?set AVERQEL_MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${AVERQEL_MINIO_ROOT_PASSWORD:?set AVERQEL_MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  inference:
+    container_name: averqel-inference
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: always
+    init: true
+    stop_grace_period: 30s
+    command: ["./scripts/start_inference.sh"]
+    env_file:
+      - ${AVERQEL_ENV_FILE:-.env.vps}
+    environment:
+      AKS_LOCAL_MODELS_ROOT: /app/models
+      AKS_LOCAL_INFERENCE_BASE_URL: http://inference:1011
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - ./models:/app/models:ro
+      - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
+    expose:
+      - "1011"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1011/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  api:
+    container_name: averqel-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    init: true
+    stop_grace_period: 30s
+    env_file:
+      - ${AVERQEL_ENV_FILE:-.env.vps}
+    environment:
+      AKS_ENV: ${AKS_ENV:-production}
+      AKS_DATABASE_URL: postgresql+psycopg://${AVERQEL_POSTGRES_USER}:${AVERQEL_POSTGRES_PASSWORD}@postgres:5432/${AVERQEL_POSTGRES_DB:-knowledge}
+      AKS_REDIS_URL: redis://:${AVERQEL_REDIS_PASSWORD}@redis:6379/0
+      AKS_MINIO_ENDPOINT: minio:9000
+      AKS_MINIO_ACCESS_KEY: ${AKS_MINIO_ACCESS_KEY:?set AKS_MINIO_ACCESS_KEY}
+      AKS_MINIO_SECRET_KEY: ${AKS_MINIO_SECRET_KEY:?set AKS_MINIO_SECRET_KEY}
+      AKS_MINIO_SECURE: ${AKS_MINIO_SECURE:-false}
+      AKS_MINIO_VERIFY_SSL: ${AKS_MINIO_VERIFY_SSL:-false}
+      AKS_CORS_ORIGINS: ${AKS_CORS_ORIGINS:?set AKS_CORS_ORIGINS}
+      AKS_JWT_SECRET: ${AKS_JWT_SECRET:?set AKS_JWT_SECRET}
+      AKS_REFRESH_TOKEN_HASH_SECRET: ${AKS_REFRESH_TOKEN_HASH_SECRET:?set AKS_REFRESH_TOKEN_HASH_SECRET}
+      AKS_REFRESH_COOKIE_SECURE: ${AKS_REFRESH_COOKIE_SECURE:-true}
+      AKS_ADMIN_BREAK_GLASS_ENABLED: ${AKS_ADMIN_BREAK_GLASS_ENABLED:-false}
+      AKS_PROVIDER_SECRET_BACKEND: ${AKS_PROVIDER_SECRET_BACKEND:-env_keyring}
+      AKS_PROVIDER_SECRET_ACTIVE_KID: ${AKS_PROVIDER_SECRET_ACTIVE_KID:-}
+      AKS_PROVIDER_SECRET_KEYRING_JSON: ${AKS_PROVIDER_SECRET_KEYRING_JSON:-}
+      AKS_PROVIDER_SECRET_AWS_KMS_KEY_ID: ${AKS_PROVIDER_SECRET_AWS_KMS_KEY_ID:-}
+      AKS_PROVIDER_SECRET_AWS_KMS_REGION: ${AKS_PROVIDER_SECRET_AWS_KMS_REGION:-}
+      AKS_PROVIDER_SECRET_AWS_KMS_ENDPOINT_URL: ${AKS_PROVIDER_SECRET_AWS_KMS_ENDPOINT_URL:-}
+      AKS_PROVIDER_SECRET_AUDIT_READS: ${AKS_PROVIDER_SECRET_AUDIT_READS:-true}
+      AKS_TOTP_SECRET_ACTIVE_KID: ${AKS_TOTP_SECRET_ACTIVE_KID:-}
+      AKS_TOTP_SECRET_KEYRING_JSON: ${AKS_TOTP_SECRET_KEYRING_JSON:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      inference:
+        condition: service_healthy
+    volumes:
+      - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
+    expose:
+      - "1000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    container_name: averqel-frontend
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PROXY_TARGET: http://api:1000
+    restart: always
+    init: true
+    stop_grace_period: 20s
+    environment:
+      NEXT_PROXY_TARGET: http://api:1000
+    depends_on:
+      api:
+        condition: service_started
+    expose:
+      - "1030"
+
+  worker:
+    container_name: averqel-worker
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: always
+    init: true
+    stop_grace_period: 30s
+    env_file:
+      - ${AVERQEL_ENV_FILE:-.env.vps}
+    environment:
+      AKS_ENV: ${AKS_ENV:-production}
+      AKS_DATABASE_URL: postgresql+psycopg://${AVERQEL_POSTGRES_USER}:${AVERQEL_POSTGRES_PASSWORD}@postgres:5432/${AVERQEL_POSTGRES_DB:-knowledge}
+      AKS_REDIS_URL: redis://:${AVERQEL_REDIS_PASSWORD}@redis:6379/0
+      AKS_MINIO_ENDPOINT: minio:9000
+      AKS_MINIO_ACCESS_KEY: ${AKS_MINIO_ACCESS_KEY:?set AKS_MINIO_ACCESS_KEY}
+      AKS_MINIO_SECRET_KEY: ${AKS_MINIO_SECRET_KEY:?set AKS_MINIO_SECRET_KEY}
+      AKS_MINIO_SECURE: ${AKS_MINIO_SECURE:-false}
+      AKS_MINIO_VERIFY_SSL: ${AKS_MINIO_VERIFY_SSL:-false}
+      AKS_JWT_SECRET: ${AKS_JWT_SECRET:?set AKS_JWT_SECRET}
+      AKS_REFRESH_TOKEN_HASH_SECRET: ${AKS_REFRESH_TOKEN_HASH_SECRET:?set AKS_REFRESH_TOKEN_HASH_SECRET}
+      AKS_ADMIN_BREAK_GLASS_ENABLED: ${AKS_ADMIN_BREAK_GLASS_ENABLED:-false}
+      AKS_PROVIDER_SECRET_BACKEND: ${AKS_PROVIDER_SECRET_BACKEND:-env_keyring}
+      AKS_PROVIDER_SECRET_ACTIVE_KID: ${AKS_PROVIDER_SECRET_ACTIVE_KID:-}
+      AKS_PROVIDER_SECRET_KEYRING_JSON: ${AKS_PROVIDER_SECRET_KEYRING_JSON:-}
+      AKS_PROVIDER_SECRET_AWS_KMS_KEY_ID: ${AKS_PROVIDER_SECRET_AWS_KMS_KEY_ID:-}
+      AKS_PROVIDER_SECRET_AWS_KMS_REGION: ${AKS_PROVIDER_SECRET_AWS_KMS_REGION:-}
+      AKS_PROVIDER_SECRET_AWS_KMS_ENDPOINT_URL: ${AKS_PROVIDER_SECRET_AWS_KMS_ENDPOINT_URL:-}
+      AKS_PROVIDER_SECRET_AUDIT_READS: ${AKS_PROVIDER_SECRET_AUDIT_READS:-true}
+      AKS_TOTP_SECRET_ACTIVE_KID: ${AKS_TOTP_SECRET_ACTIVE_KID:-}
+      AKS_TOTP_SECRET_KEYRING_JSON: ${AKS_TOTP_SECRET_KEYRING_JSON:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      inference:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
+
+  scheduler:
+    container_name: averqel-scheduler
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: always
+    init: true
+    stop_grace_period: 30s
+    command: ["./scripts/start_scheduler.sh"]
+    env_file:
+      - ${AVERQEL_ENV_FILE:-.env.vps}
+    environment:
+      AKS_ENV: ${AKS_ENV:-production}
+      AKS_DATABASE_URL: postgresql+psycopg://${AVERQEL_POSTGRES_USER}:${AVERQEL_POSTGRES_PASSWORD}@postgres:5432/${AVERQEL_POSTGRES_DB:-knowledge}
+      AKS_REDIS_URL: redis://:${AVERQEL_REDIS_PASSWORD}@redis:6379/0
+      AKS_MINIO_ENDPOINT: minio:9000
+      AKS_MINIO_ACCESS_KEY: ${AKS_MINIO_ACCESS_KEY:?set AKS_MINIO_ACCESS_KEY}
+      AKS_MINIO_SECRET_KEY: ${AKS_MINIO_SECRET_KEY:?set AKS_MINIO_SECRET_KEY}
+      AKS_MINIO_SECURE: ${AKS_MINIO_SECURE:-false}
+      AKS_MINIO_VERIFY_SSL: ${AKS_MINIO_VERIFY_SSL:-false}
+      AKS_JWT_SECRET: ${AKS_JWT_SECRET:?set AKS_JWT_SECRET}
+      AKS_REFRESH_TOKEN_HASH_SECRET: ${AKS_REFRESH_TOKEN_HASH_SECRET:?set AKS_REFRESH_TOKEN_HASH_SECRET}
+      AKS_CELERY_BEAT_SCHEDULE_FILE: /runtime/backend/cache/celerybeat-schedule
+      AKS_ADMIN_BREAK_GLASS_ENABLED: ${AKS_ADMIN_BREAK_GLASS_ENABLED:-false}
+      AKS_PROVIDER_SECRET_BACKEND: ${AKS_PROVIDER_SECRET_BACKEND:-env_keyring}
+      AKS_PROVIDER_SECRET_ACTIVE_KID: ${AKS_PROVIDER_SECRET_ACTIVE_KID:-}
+      AKS_PROVIDER_SECRET_KEYRING_JSON: ${AKS_PROVIDER_SECRET_KEYRING_JSON:-}
+      AKS_PROVIDER_SECRET_AWS_KMS_KEY_ID: ${AKS_PROVIDER_SECRET_AWS_KMS_KEY_ID:-}
+      AKS_PROVIDER_SECRET_AWS_KMS_REGION: ${AKS_PROVIDER_SECRET_AWS_KMS_REGION:-}
+      AKS_PROVIDER_SECRET_AWS_KMS_ENDPOINT_URL: ${AKS_PROVIDER_SECRET_AWS_KMS_ENDPOINT_URL:-}
+      AKS_PROVIDER_SECRET_AUDIT_READS: ${AKS_PROVIDER_SECRET_AUDIT_READS:-true}
+      AKS_TOTP_SECRET_ACTIVE_KID: ${AKS_TOTP_SECRET_ACTIVE_KID:-}
+      AKS_TOTP_SECRET_KEYRING_JSON: ${AKS_TOTP_SECRET_KEYRING_JSON:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      inference:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
+
+  caddy:
+    container_name: averqel-caddy
+    image: caddy:2-alpine
+    restart: always
+    stop_grace_period: 20s
+    depends_on:
+      frontend:
+        condition: service_started
+      api:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      AVERQEL_DOMAIN: ${AVERQEL_DOMAIN:?set AVERQEL_DOMAIN}
+    volumes:
+      - ${AVERQEL_CADDYFILE:-./ops/caddy/Caddyfile}:/etc/caddy/Caddyfile:ro
+      - ${AVERQEL_TLS_CERTS_DIR:-../runtime/backend/certs}:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  caddy_data:
+  caddy_config:

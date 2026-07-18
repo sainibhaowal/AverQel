@@ -1,0 +1,802 @@
+/**
+ * Complete CSS Animation Library for AI Status System
+ * All animations for every AI state with smooth transitions
+ */
+
+/* ============================================================================
+   CORE ANIMATIONS
+   ============================================================================ */
+
+/* Pulse Animation - For idle, processing, waiting states */
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+/* Bounce Animation - For thinking, computing, creating states */
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* Spin Animation - For searching, analyzing, recovering states */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Float Animation - For browsing, simulating states */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0) translateX(0);
+  }
+  25% {
+    transform: translateY(-5px) translateX(3px);
+  }
+  50% {
+    transform: translateY(0) translateX(0);
+  }
+  75% {
+    transform: translateY(-3px) translateX(-3px);
+  }
+}
+
+/* Slide Animation - For reading, formatting states */
+@keyframes slide {
+  0%,
+  100% {
+    transform: translateX(-5px);
+  }
+  50% {
+    transform: translateX(5px);
+  }
+}
+
+/* Scan Animation - For scanning, analyzing states */
+@keyframes scan {
+  0%,
+  100% {
+    transform: translateX(-10px);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateX(10px);
+    opacity: 1;
+  }
+}
+
+/* Typing Animation - For writing, streaming states */
+@keyframes typing {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* Sparkle Animation - For generating, success states */
+@keyframes sparkle {
+  0% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3) rotate(180deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1) rotate(360deg);
+    opacity: 1;
+  }
+}
+
+/* Expand Animation - For creating, uploading states */
+@keyframes expand {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+/* Blink Animation - For compiling, processing states */
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Flash Animation - For running, executing states */
+@keyframes flash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.5;
+  }
+}
+
+/* Count Animation - For calculating, computing states */
+@keyframes count {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* Bubble Animation - For simulating, analyzing states */
+@keyframes bubble {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-3px) scale(1.05);
+  }
+}
+
+/* Fade Animation - For rendering, processing states */
+@keyframes fade {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Flow Animation - For transmitting, receiving states */
+@keyframes flow {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translateX(5px);
+    opacity: 1;
+  }
+}
+
+/* Wave Animation - For streaming, processing states */
+@keyframes wave {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+/* Shake Animation - For error, cancelled states */
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-3px);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+/* Success Animation - For completed, success states */
+@keyframes success {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Freeze Animation - For paused states */
+@keyframes freeze {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Progress Animation - For downloading, uploading states */
+@keyframes progress {
+  0%,
+  100% {
+    transform: scaleX(0.8);
+  }
+  50% {
+    transform: scaleX(1);
+  }
+}
+
+/* ============================================================================
+   STATUS-SPECIFIC ANIMATIONS
+   ============================================================================ */
+
+/* Idle State */
+.status-idle {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Thinking State */
+.status-thinking {
+  animation: bounce 1s ease-in-out infinite;
+}
+
+/* Analyzing State */
+.status-analyzing {
+  animation: spin 1.5s linear infinite;
+}
+
+/* Processing State */
+.status-processing {
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
+/* Computing State */
+.status-computing {
+  animation: bounce 1.2s ease-in-out infinite;
+}
+
+/* Searching State */
+.status-searching {
+  animation: spin 1s linear infinite;
+}
+
+/* Browsing State */
+.status-browsing {
+  animation: float 2s ease-in-out infinite;
+}
+
+/* Reading State */
+.status-reading {
+  animation: slide 1.5s ease-in-out infinite;
+}
+
+/* Scanning State */
+.status-scanning {
+  animation: scan 0.8s ease-in-out infinite;
+}
+
+/* Fetching State */
+.status-fetching {
+  animation: bounce 0.6s ease-in-out infinite;
+}
+
+/* Downloading State */
+.status-downloading {
+  animation: progress 0.5s ease-in-out infinite;
+}
+
+/* Uploading State */
+.status-uploading {
+  animation: progress 0.5s ease-in-out infinite;
+}
+
+/* Writing State */
+.status-writing {
+  animation: typing 0.1s ease-in-out infinite;
+}
+
+/* Generating State */
+.status-generating {
+  animation: sparkle 0.8s ease-in-out infinite;
+}
+
+/* Creating State */
+.status-creating {
+  animation: expand 0.6s ease-in-out infinite;
+}
+
+/* Editing State */
+.status-editing {
+  animation: pulse 0.9s ease-in-out infinite;
+}
+
+/* Formatting State */
+.status-formatting {
+  animation: slide 0.7s ease-in-out infinite;
+}
+
+/* Compiling State */
+.status-compiling {
+  animation: blink 0.4s ease-in-out infinite;
+}
+
+/* Executing State */
+.status-executing {
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
+/* Running State */
+.status-running {
+  animation: flash 0.5s ease-in-out infinite;
+}
+
+/* Calculating State */
+.status-calculating {
+  animation: count 0.3s ease-in-out infinite;
+}
+
+/* Simulating State */
+.status-simulating {
+  animation: bubble 1.2s ease-in-out infinite;
+}
+
+/* Rendering State */
+.status-rendering {
+  animation: fade 1s ease-in-out infinite;
+}
+
+/* Transmitting State */
+.status-transmitting {
+  animation: flow 0.6s ease-in-out infinite;
+}
+
+/* Receiving State */
+.status-receiving {
+  animation: flow 0.6s ease-in-out infinite;
+}
+
+/* Streaming State */
+.status-streaming {
+  animation: wave 0.2s ease-in-out infinite;
+}
+
+/* Connecting State */
+.status-connecting {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* Disconnecting State */
+.status-disconnecting {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* Error State */
+.status-error {
+  animation: shake 0.5s ease-in-out infinite;
+}
+
+/* Recovering State */
+.status-recovering {
+  animation: spin 1s linear infinite;
+}
+
+/* Retrying State */
+.status-retrying {
+  animation: bounce 0.8s ease-in-out infinite;
+}
+
+/* Waiting State */
+.status-waiting {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Paused State */
+.status-paused {
+  animation: freeze 0s ease-in-out infinite;
+}
+
+/* Completed State */
+.status-completed {
+  animation: success 1s ease-in-out;
+}
+
+/* Success State */
+.status-success {
+  animation: bounce 0.8s ease-in-out;
+}
+
+/* Cancelled State */
+.status-cancelled {
+  animation: shake 0.5s ease-in-out;
+}
+
+/* Timeout State */
+.status-timeout {
+  animation: spin 2s linear infinite;
+}
+
+/* ============================================================================
+   BASE STYLES
+   ============================================================================ */
+
+.ai-status-indicator {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ai-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-status-text {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.ai-status-progress {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ai-status-progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ============================================================================
+   COLOR THEMES
+   ============================================================================ */
+
+/* Purple Theme - Thinking, Browsing, Generating */
+.ai-status-purple {
+  color: #8b5cf6;
+  border-color: rgba(139, 92, 246, 0.4);
+  background-color: rgba(139, 92, 246, 0.1);
+}
+
+/* Blue Theme - Analyzing, Fetching, Receiving */
+.ai-status-blue {
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.4);
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* Green Theme - Processing, Downloading, Completed */
+.ai-status-green {
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.4);
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+/* Orange Theme - Computing, Uploading, Timeout */
+.ai-status-orange {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+/* Red Theme - Error, Cancelled, Disconnecting */
+.ai-status-red {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Teal Theme - Reading, Transmitting */
+.ai-status-teal {
+  color: #14b8a6;
+  border-color: rgba(20, 184, 166, 0.4);
+  background-color: rgba(20, 184, 166, 0.1);
+}
+
+/* Pink Theme - Scanning, Rendering */
+.ai-status-pink {
+  color: #ec4899;
+  border-color: rgba(236, 72, 153, 0.4);
+  background-color: rgba(236, 72, 153, 0.1);
+}
+
+/* Indigo Theme - Searching, Retrying */
+.ai-status-indigo {
+  color: #6366f1;
+  border-color: rgba(99, 102, 241, 0.4);
+  background-color: rgba(99, 102, 241, 0.1);
+}
+
+/* Gray Theme - Idle, Waiting, Paused */
+.ai-status-gray {
+  color: #6b7280;
+  border-color: rgba(107, 114, 128, 0.4);
+  background-color: rgba(107, 114, 128, 0.1);
+}
+
+/* ============================================================================
+   SIZE VARIANTS
+   ============================================================================ */
+
+.ai-status-small {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.ai-status-small .ai-status-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.ai-status-medium {
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+.ai-status-medium .ai-status-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.ai-status-large {
+  padding: 16px 20px;
+  font-size: 16px;
+}
+
+.ai-status-large .ai-status-icon {
+  width: 24px;
+  height: 24px;
+}
+
+/* ============================================================================
+   POSITION VARIANTS
+   ============================================================================ */
+
+.ai-status-top-left {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 9999;
+}
+
+.ai-status-top-right {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+}
+
+.ai-status-bottom-left {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 9999;
+}
+
+.ai-status-bottom-right {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 9999;
+}
+
+.ai-status-center {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+}
+
+/* ============================================================================
+   TRANSITION EFFECTS
+   ============================================================================ */
+
+.ai-status-enter {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+.ai-status-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.ai-status-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ai-status-exit-active {
+  opacity: 0;
+  transform: translateY(-20px);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+/* ============================================================================
+   ACCESSIBILITY
+   ============================================================================ */
+
+.ai-status-indicator[aria-live="polite"] {
+  /* Screen reader support */
+}
+
+.ai-status-indicator:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.ai-status-indicator[role="status"] {
+  /* Semantic role for assistive technologies */
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .status-idle,
+  .status-thinking,
+  .status-analyzing,
+  .status-processing,
+  .status-computing,
+  .status-searching,
+  .status-browsing,
+  .status-reading,
+  .status-scanning,
+  .status-fetching,
+  .status-downloading,
+  .status-uploading,
+  .status-writing,
+  .status-generating,
+  .status-creating,
+  .status-editing,
+  .status-formatting,
+  .status-compiling,
+  .status-executing,
+  .status-running,
+  .status-calculating,
+  .status-simulating,
+  .status-rendering,
+  .status-transmitting,
+  .status-receiving,
+  .status-streaming,
+  .status-connecting,
+  .status-disconnecting,
+  .status-error,
+  .status-recovering,
+  .status-retrying,
+  .status-waiting,
+  .status-completed,
+  .status-success,
+  .status-cancelled,
+  .status-timeout {
+    animation: none;
+  }
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .ai-status-indicator {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .ai-status-indicator .ai-status-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .ai-status-progress {
+    width: 60px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .ai-status-indicator {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+
+  .ai-status-indicator .ai-status-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .ai-status-progress {
+    width: 40px !important;
+  }
+}
+
+/* ============================================================================
+   UTILITY CLASSES
+   ============================================================================ */
+
+.ai-status-hidden {
+  display: none !important;
+}
+
+.ai-status-visible {
+  display: flex !important;
+}
+
+.ai-status-flex {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ai-status-inline-flex {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-status-rounded {
+  border-radius: 12px;
+}
+
+.ai-status-pill {
+  border-radius: 9999px;
+}
+
+.ai-status-glass {
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.ai-status-shadow {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.ai-status-border {
+  border: 1px solid;
+}
+
+.ai-status-no-border {
+  border: none !important;
+}

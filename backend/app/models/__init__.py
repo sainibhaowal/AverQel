@@ -1,0 +1,102 @@
+from app.models.auth.api_key import ApiKey
+from app.models.auth.refresh_token import RefreshToken
+from app.models.auth.revoked_access_token import RevokedAccessToken
+from app.models.auth.role import Role
+from app.models.auth.tenant import Tenant
+from app.models.auth.user import User
+from app.models.auth.user_role import UserRole
+from app.models.deepspace.agent_activity import AgentActivity
+from app.models.deepspace.agent_audit import AgentAuditLog
+from app.models.deepspace.agent_memory import AgentMemory
+from app.models.deepspace.agent_runtime_preference import AgentRuntimePreference
+from app.models.deepspace.mission_snapshot import DeepSpaceMissionSnapshot
+from app.models.deepspace.agent_todo import AgentTodo
+from app.models.documents.chunk_embedding import ChunkEmbedding
+from app.models.documents.collection import (
+    CollectionChatMessage,
+    CollectionDocument,
+    CollectionPermission,
+    DocumentCollection,
+    UserPresence,
+)
+from app.models.documents.collection_notification import CollectionNotification
+from app.models.documents.data_deletion import DataDeletion
+from app.models.documents.document import Document
+from app.models.documents.document_chunk import DocumentChunk
+from app.models.ingestion.ingestion_job import IngestionJob
+from app.models.integrations.connector import Connector, ConnectorStatus
+from app.models.integrations.connector_secret import ConnectorSecret
+from app.models.integrations.integration import Integration
+from app.models.integrations.mcp_server import MCPEvent, MCPOAuthToken, MCPServer
+from app.models.providers.provider_assignment import ProviderAssignment
+from app.models.providers.provider_config import ProviderConfig
+from app.models.providers.provider_health_check import ProviderHealthCheck
+from app.models.providers.provider_model_cache import ProviderModelCache
+from app.models.providers.provider_secret import ProviderSecret
+from app.models.providers.provider_usage_record import ProviderUsageRecord
+from app.models.query.comment import Comment
+from app.models.query.conversation import Conversation
+from app.models.query.feedback import Feedback
+from app.models.query.message import Message
+from app.models.query.message_version import MessageVersion
+from app.models.query.pinned_finding import PinnedFinding
+from app.models.query.query import Query
+from app.models.query.query_citation import QueryCitation
+from app.models.system.audit_log import AuditLog
+from app.models.system.break_glass_grant import BreakGlassGrant
+from app.models.system.idempotency_key import IdempotencyKey
+from app.models.system.support_ticket import SupportTicket
+from app.models.system.usage_record import UsageRecord
+
+__all__ = [
+    "Tenant",
+    "User",
+    "Role",
+    "UserRole",
+    "RefreshToken",
+    "RevokedAccessToken",
+    "ApiKey",
+    "Document",
+    "DocumentCollection",
+    "CollectionPermission",
+    "CollectionDocument",
+    "CollectionChatMessage",
+    "UserPresence",
+    "CollectionNotification",
+    "IngestionJob",
+    "Query",
+    "QueryCitation",
+    "ProviderConfig",
+    "ProviderSecret",
+    "ProviderModelCache",
+    "ProviderAssignment",
+    "ProviderHealthCheck",
+    "ProviderUsageRecord",
+    "DocumentChunk",
+    "ChunkEmbedding",
+    "IdempotencyKey",
+    "AuditLog",
+    "BreakGlassGrant",
+    "DataDeletion",
+    "DeepSpaceMissionSnapshot",
+    "Conversation",
+    "Message",
+    "MessageVersion",
+    "Feedback",
+    "PinnedFinding",
+    "Comment",
+    "UsageRecord",
+    "SupportTicket",
+    "Integration",
+    "Connector",
+    "ConnectorStatus",
+    "ConnectorSecret",
+    "AgentActivity",
+    "AgentAuditLog",
+    "AgentMemory",
+    "AgentTodo",
+    "AgentRuntimePreference",
+    "MCPServer",
+    "MCPEvent",
+    "MCPOAuthToken",
+]

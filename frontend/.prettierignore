@@ -1,0 +1,9 @@
+.next
+node_modules
+public/static
+dist
+build
+.vercel
+package-lock.json
+pnpm-lock.yaml
+test-results

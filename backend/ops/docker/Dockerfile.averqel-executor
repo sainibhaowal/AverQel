@@ -1,0 +1,21 @@
+# Zevaris Restricted Executor Sandbox
+FROM python:3.11-slim
+
+# Set security boundaries
+RUN groupadd -r averqel && useradd -r -g averqel averqel
+
+# Install basic tools for subagents
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+RUN chown averqel:averqel /workspace
+
+# Switch to non-root user
+USER averqel
+
+# No entrypoint needed, bash -c will be used by ShellManager
+CMD ["bash"]

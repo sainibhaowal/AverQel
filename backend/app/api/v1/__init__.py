@@ -1,0 +1,31 @@
+from app.api.v1 import (
+    admin,
+    analytics,
+    auth,
+    client_storage,
+    collections,
+    documents,
+    health,
+    intelligence,
+    metrics,
+    providers,
+    queries,
+    support,
+    workspace,
+)
+
+__all__ = [
+    "admin",
+    "auth",
+    "collections",
+    "client_storage",
+    "documents",
+    "health",
+    "metrics",
+    "providers",
+    "queries",
+    "intelligence",
+    "workspace",
+    "analytics",
+    "support",
+]

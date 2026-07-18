@@ -1,0 +1,100 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+cache-dir = ".cache/ruff"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/services/deepspace/execution/agent_executor.py" = ["B007", "B025", "E722", "F821", "F841"]
+"app/services/deepspace/execution/agent_tools.py" = ["E712", "F841"]
+"app/services/deepspace/orchestration/deepspace_service.py" = ["E712", "F841"]
+"app/services/deepspace/subagents/subagent_manager.py" = ["B904"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "-q -n auto --dist=loadgroup"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+cache_dir = ".cache/pytest"
+markers = [
+    "unit_no_db: tests that can run without the database bootstrap",
+    "xdist_group(name): assign a test to a named xdist loadgroup",
+]
+filterwarnings = [
+    "ignore:Unverified HTTPS request is being made to host 'localhost'.*:urllib3.exceptions.InsecureRequestWarning",
+]
+
+[tool.coverage.run]
+data_file = ".coverage"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+cache_dir = ".cache/mypy"
+exclude = '(^alembic/versions/|^scripts/)'
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "app.services.providers.lmstudio_provider",
+    "app.worker.celery_app",
+    "app.worker.tasks_ingestion",
+    "app.worker.tasks_maintenance",
+    "app.services.system.storage_service",
+    "app.services.system.cache_service",
+    "app.services.system.rate_limit_service",
+    "app.services.providers.provider_models_service",
+    "app.services.documents.pdf_render_service",
+    "app.services.documents.deletion_service",
+    "app.services.ingestion.ingestion_service",
+    "app.services.ingestion.ocr_service",
+    "app.services.ingestion.extractors.xlsx_extractor",
+    "app.services.query.answer_service",
+    "app.repositories.providers.provider_secrets",
+    "app.repositories.providers.provider_configs",
+    "app.repositories.providers.provider_assignments",
+    "app.models.documents.chunk_embedding",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    # DeepSpace typing is being hardened incrementally. Keep the dynamic
+    # LLM/tooling modules quarantined, but do not hide typed registry/policy
+    # modules behind a package-wide wildcard.
+    "app.services.deepspace.execution.agent_executor",
+    "app.services.deepspace.execution.agent_tools",
+    "app.services.deepspace.orchestration.deepspace_service",
+    "app.services.deepspace.integrations.export_service",
+    "app.services.deepspace.memory.memory_service",
+    "app.services.deepspace.planning.mission_planner",
+    "app.services.deepspace.workspace.shell_manager",
+    "app.services.deepspace.subagents.subagent_manager",
+    "app.models.deepspace.*",
+    "app.api.v1.deepspace_chats",
+    "app.api.v1.deepspace_export",
+    "app.worker.tasks_connectors",
+    "app.worker.tasks_proactive",
+    "app.worker.tasks_deepspace",
+]
+ignore_errors = true

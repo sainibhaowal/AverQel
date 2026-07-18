@@ -1,0 +1,30 @@
+# Prometheus alert rules for the Full Autonomy continuation worker.
+# Load this file from the Prometheus rule_files configuration.
+groups:
+  - name: deepspace-continuation
+    interval: 30s
+    rules:
+      - alert: DeepSpaceContinuationFailures
+        expr: increase(aks_deepspace_continuation_events_total{status="failed"}[10m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: deepspace
+        annotations:
+          summary: DeepSpace Full Autonomy continuation failed
+          description: One or more automatic mission continuations failed in the last 10 minutes.
+
+      - alert: DeepSpaceContinuationFailureRateHigh
+        expr: |
+          (
+            increase(aks_deepspace_continuation_events_total{status="failed"}[15m])
+            /
+            clamp_min(increase(aks_deepspace_continuation_events_total[15m]), 1)
+          ) > 0.25
+        for: 5m
+        labels:
+          severity: critical
+          service: deepspace
+        annotations:
+          summary: DeepSpace continuation failure rate is high
+          description: More than 25% of continuation attempts failed during the last 15 minutes.

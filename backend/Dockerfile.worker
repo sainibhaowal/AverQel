@@ -1,0 +1,4 @@
+FROM backend-worker-base:latest
+WORKDIR /app
+COPY . .
+CMD ["./scripts/start_worker.sh"]

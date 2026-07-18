@@ -1,0 +1,865 @@
+"use client";
+
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  FolderOpen,
+  Plus,
+  FileText,
+  RefreshCcw,
+  ListChecks,
+  X,
+  Trash2,
+  Database,
+  Upload,
+  Eye,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { fetchWithAuth, getApiBaseUrl } from "@/lib/api";
+import UploadModal from "@/app/components/dashboard/documents/UploadModal";
+import DocumentInspector from "@/app/components/dashboard/documents/DocumentInspector";
+import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import EmptyState from "@/app/components/ui/EmptyState";
+import { useHotkeys } from "@/app/hooks/useHotkeys";
+import { readApiErrorMessage } from "@/app/lib/api/documents";
+
+interface Document {
+  document_id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  status: string;
+  processing_progress: number;
+  quarantined: boolean;
+  information_yield: number | null;
+  created_at: string;
+  extraction_method?: string | null;
+  extraction_coverage_score?: number | null;
+  extraction_ocr_used?: boolean;
+  extraction_vision_used?: boolean;
+  extraction_warnings?: string[];
+}
+
+interface SupportedFormat {
+  extension: string;
+  category: string;
+  extraction_method: string;
+  needs_conversion: boolean;
+}
+
+interface SupportedFormatsResponse {
+  total_formats: number;
+  legacy_conversion_enabled: boolean;
+  items: SupportedFormat[];
+}
+
+export default function DocumentsPage() {
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [showFormats, setShowFormats] = useState(false);
+  const [supportedFormats, setSupportedFormats] = useState<SupportedFormatsResponse | null>(null);
+  const [inspectorTarget, setInspectorTarget] = useState<{ id: string; name: string } | null>(null);
+  const [rawViewerTarget, setRawViewerTarget] = useState<{ id: string; name: string } | null>(null);
+  const [rawFileUrl, setRawFileUrl] = useState<string | null>(null);
+  const [rawTextContent, setRawTextContent] = useState<string | null>(null);
+  const [isRawLoading, setIsRawLoading] = useState(false);
+  const [viewerMode, setViewerMode] = useState<"raw" | "text">("raw");
+  const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const fetchDocuments = async () => {
+    setLoading(true);
+    try {
+      const res = (await fetchWithAuth("/documents")) as Response;
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data.items);
+        setError(null);
+      } else {
+        setDocuments([]);
+        setError(
+          res.status === 401
+            ? "Session expired. Redirecting to login..."
+            : "Failed to load documents.",
+        );
+      }
+    } catch (error) {
+      console.error("Failed to fetch documents", error);
+      setDocuments([]);
+      setError("Failed to load documents.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  // Real-time updates via SSE
+  useEffect(() => {
+    const token = localStorage.getItem("averqel_token");
+    if (!token) return;
+
+    // Construct SSE URL using the same logic as fetchWithAuth
+    const streamUrl = `${getApiBaseUrl().replace(/\/+$/, "")}/documents/events/stream?token=${token}`;
+
+    const eventSource = new EventSource(streamUrl);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const update = JSON.parse(event.data);
+        setDocuments((prev) =>
+          prev.map((doc) => {
+            if (doc.document_id === update.document_id) {
+              return {
+                ...doc,
+                status: update.status,
+                processing_progress: update.progress,
+              };
+            }
+            return doc;
+          }),
+        );
+      } catch (err) {
+        console.error("SSE parse error:", err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("SSE connection error:", err);
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
+  }, []);
+
+  useEffect(() => {
+    const fetchSupportedFormats = async () => {
+      try {
+        const response = (await fetchWithAuth("/documents/supported-formats")) as Response;
+        if (!response.ok) return;
+        const data = (await response.json()) as SupportedFormatsResponse;
+        setSupportedFormats(data);
+      } catch (error) {
+        console.error("Failed to load supported format list", error);
+      }
+    };
+    fetchSupportedFormats();
+  }, []);
+
+  const openRawViewer = async (id: string, name: string) => {
+    setRawViewerTarget({ id, name });
+    setIsRawLoading(true);
+    setRawTextContent(null);
+    setRawFileUrl(null);
+    setViewerMode("raw"); // Default to raw PDF
+    try {
+      // Fetch both for seamless switching
+      const [downloadRes, fullTextRes] = await Promise.all([
+        fetchWithAuth(`/documents/${id}/download`),
+        fetchWithAuth(`/documents/${id}/full-text`),
+      ]);
+
+      if (downloadRes.ok) {
+        const contentType = downloadRes.headers.get("content-type") || "";
+        if (contentType.includes("pdf")) {
+          const blob = await (downloadRes as Response).blob();
+          setRawFileUrl(URL.createObjectURL(blob));
+        }
+      }
+
+      if (fullTextRes.ok) {
+        const data = await (fullTextRes as Response).json();
+        setRawTextContent(data.content);
+        // If PDF failed, default to text mode
+        if (!downloadRes.ok) setViewerMode("text");
+      }
+    } catch (err) {
+      console.error("Error loading raw document", err);
+    } finally {
+      setIsRawLoading(false);
+    }
+  };
+
+  const saveToNotes = async (mode: "full" | "selection" = "full", customText?: string) => {
+    if (!rawViewerTarget) return;
+    setIsRawLoading(true);
+    try {
+      let finalContent = "";
+      let titlePrefix = "Research";
+
+      if (customText) {
+        finalContent = `<p>${customText.replace(/\n/g, "<br/>")}</p>`;
+        titlePrefix = "Highlight";
+      } else if (mode === "selection") {
+        try {
+          const text = await navigator.clipboard.readText();
+          if (!text) throw new Error("Clipboard empty");
+          finalContent = `<p>${text.replace(/\n/g, "<br/>")}</p>`;
+          titlePrefix = "Insight";
+        } catch {
+          // Fallback if clipboard fails (rare on modern browsers)
+          if (selection?.text) {
+            finalContent = `<p>${selection.text.replace(/\n/g, "<br/>")}</p>`;
+            titlePrefix = "Highlight";
+          } else {
+            alert("Please Copy (Ctrl+C) text from the PDF first!");
+            setIsRawLoading(false);
+            return;
+          }
+        }
+      } else {
+        // Use pre-fetched text if available
+        if (rawTextContent) {
+          finalContent = rawTextContent;
+        } else {
+          const res = await fetchWithAuth(`/documents/${rawViewerTarget.id}/full-text`);
+          if (!res.ok) throw new Error("Failed to fetch source text");
+          const data = await (res as Response).json();
+          finalContent = data.content;
+        }
+      }
+
+      // Create note in DeepSpace (Correct endpoint is /deepspace/chats)
+      const noteRes = await fetchWithAuth("/deepspace/chats", {
+        method: "POST",
+        body: JSON.stringify({
+          title: `${titlePrefix}: ${rawViewerTarget.name}`,
+          content_html: finalContent,
+          source_document_id: rawViewerTarget.id,
+          tags: [
+            "research",
+            customText ? "highlight" : mode === "selection" ? "selection" : "full-document",
+          ],
+        }),
+      });
+
+      if (noteRes.ok) {
+        setDocuments((prev) =>
+          prev.map((d) => (d.document_id === rawViewerTarget.id ? { ...d, has_notes: true } : d)),
+        );
+        setSelection(null);
+      } else {
+        throw new Error("Failed to save note");
+      }
+    } catch (err) {
+      console.error("Failed to save note", err);
+    } finally {
+      setIsRawLoading(false);
+    }
+  };
+
+  const handleTextSelection = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      setSelection(null);
+      return;
+    }
+
+    const text = sel.toString().trim();
+    if (!text || text.length < 3) {
+      setSelection(null);
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+
+    setSelection({
+      text,
+      x: rect.left + rect.width / 2,
+      y: rect.top - 12,
+    });
+  };
+
+  const closeRawViewer = () => {
+    if (rawFileUrl) URL.revokeObjectURL(rawFileUrl);
+    setRawViewerTarget(null);
+    setRawFileUrl(null);
+  };
+
+  const deleteDocument = async (id: string, filename: string) => {
+    if (!confirm(`Are you sure you want to delete "${filename}"?`)) return;
+    try {
+      const res = (await fetchWithAuth(`/documents/${id}`, { method: "DELETE" })) as Response;
+      if (res.ok) {
+        setDocuments((prev) => prev.filter((d) => d.document_id !== id));
+      } else {
+        alert(await readApiErrorMessage(res, "Failed to delete document."));
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Error deleting document.");
+    }
+  };
+
+  const reingestDocument = async (id: string, filename: string) => {
+    if (
+      !confirm(
+        `Are you sure you want to re-ingest "${filename}"? This will restart extraction from scratch.`,
+      )
+    )
+      return;
+    try {
+      const res = (await fetchWithAuth(`/documents/${id}/reingest`, {
+        method: "POST",
+      })) as Response;
+      if (res.ok) {
+        fetchDocuments(); // refresh state
+      } else {
+        alert("Failed to reingest document.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error reingesting document.");
+    }
+  };
+
+  useHotkeys([
+    {
+      combo: { key: "u", ctrlOrCmd: true },
+      handler: (e) => {
+        e.preventDefault();
+        setIsUploadOpen(true);
+      },
+    },
+  ]);
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  const statusColors: Record<string, string> = {
+    queued: "!text-primary !bg-primary/5 !border-primary/20",
+    downloading: "!text-warning !bg-warning/5 !border-warning/20",
+    parsing: "!text-accent !bg-accent/5 !border-accent/20",
+    chunking: "!text-primary !bg-primary/10 !border-primary/20",
+    embedding: "!text-primary !bg-primary/15 !border-primary/30",
+    completed: "!text-emerald-500 !bg-emerald-500/5 !border-emerald-500/20",
+    indexed: "!text-emerald-500 !bg-emerald-500/5 !border-emerald-500/20",
+    failed: "!text-danger !bg-danger/5 !border-danger/20",
+    dead_lettered: "!text-foreground/40 !bg-foreground/5 !border-foreground/10",
+  };
+
+  return (
+    <div className="space-y-10">
+      <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+        <DashboardSectionHeader
+          title="Documents"
+          subtitle="Neural Intelligence Node Matrix"
+          icon={FileText}
+          accentClassName="bg-blue-500 text-blue-500"
+          accentGlowClassName="shadow-[0_0_20px_rgba(59,130,246,0.4)]"
+          actions={
+            <>
+              <button
+                onClick={() => setShowFormats(true)}
+                className="theme-pill hover-yellow border-accent/10 h-12 px-6 transition-all"
+              >
+                <ListChecks size={18} className="stroke-[2.5]" />
+                <span className="font-bold">Protocol Matrix</span>
+              </button>
+              <button
+                onClick={fetchDocuments}
+                disabled={loading}
+                className="bg-foreground/5 text-foreground/40 hover:text-primary hover:bg-primary/10 border-glass-border flex h-12 w-12 items-center justify-center rounded-2xl border transition-all hover:scale-105 disabled:opacity-50"
+              >
+                <RefreshCcw size={20} className={`stroke-[2.5] ${loading ? "animate-spin" : ""}`} />
+              </button>
+              <button
+                onClick={() => setIsUploadOpen(true)}
+                className="bg-primary text-primary-foreground shadow-primary/20 flex h-12 items-center gap-3 rounded-2xl px-8 text-sm font-black tracking-widest uppercase shadow-xl transition-all hover:scale-[1.03] hover:brightness-110 active:scale-95"
+              >
+                <Upload size={18} className="stroke-[2.5]" />
+                Ingest Source
+              </button>
+            </>
+          }
+        />
+      </motion.div>
+
+      {loading ? (
+        <div className="theme-panel divide-glass-border divide-y">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex animate-pulse items-center gap-6 p-6">
+              <div className="bg-foreground/5 h-10 w-10 rounded-xl" />
+              <div className="flex-1 space-y-2">
+                <div className="bg-foreground/5 h-4 w-1/4 rounded" />
+                <div className="bg-foreground/5 h-3 w-1/6 rounded" />
+              </div>
+              <div className="bg-foreground/5 h-6 w-20 rounded-full" />
+            </div>
+          ))}
+        </div>
+      ) : error ? (
+        <EmptyState
+          icon={<FolderOpen size={28} />}
+          title="Documents unavailable"
+          description={error}
+        />
+      ) : documents.length > 0 ? (
+        <div className="theme-panel overflow-hidden">
+          {/* Desktop Table View */}
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-left">
+              <thead className="text-foreground/40 border-glass-border border-b text-[10px] font-black tracking-[0.2em] uppercase">
+                <tr>
+                  <th className="px-6 py-5">Source Node</th>
+                  <th className="px-6 py-5">Status Pipeline</th>
+                  <th className="px-6 py-5">Intelligence Yield</th>
+                  <th className="px-6 py-5 text-right">Size</th>
+                  <th className="px-6 py-5 text-right">Indexed At</th>
+                  <th className="px-6 py-5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-glass-border divide-y">
+                {documents.map((doc) => (
+                  <tr
+                    key={doc.document_id}
+                    className="group hover:bg-primary/[0.02] transition-colors"
+                  >
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-4">
+                        <div className="bg-primary/5 text-primary border-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border">
+                          <FileText size={18} className="stroke-[2.5]" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-foreground truncate text-sm leading-tight font-bold">
+                            {doc.filename}
+                          </p>
+                          <p className="text-foreground/35 mt-1 text-[10px] font-bold tracking-widest uppercase">
+                            {doc.content_type.split("/")[1] || "DOC"}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-3">
+                        {doc.quarantined ? (
+                          <span className="theme-pill !bg-danger/10 !border-danger/20 !text-danger">
+                            Quarantined
+                          </span>
+                        ) : (
+                          <span
+                            className={`theme-pill border px-2.5 py-1 text-[10px] font-black tracking-widest uppercase shadow-sm ${statusColors[doc.status] || "!text-foreground/40 !bg-foreground/5 !border-foreground/10"}`}
+                          >
+                            {doc.status}
+                          </span>
+                        )}
+                        <span className="text-foreground/30 hidden text-[11px] font-bold tabular-nums sm:inline">
+                          {doc.processing_progress}%
+                        </span>
+                      </div>
+                      <p className="text-foreground/35 mt-2 text-[10px] font-bold tracking-[0.18em] uppercase">
+                        {doc.status === "indexed"
+                          ? "Pipeline complete"
+                          : `${doc.status} in progress`}
+                      </p>
+                      {(doc.processing_progress > 0 ||
+                        doc.status === "queued" ||
+                        doc.status === "downloading") && (
+                        <div className="bg-foreground/5 mt-3 h-1.5 w-full max-w-[100px] overflow-hidden rounded-full">
+                          <div
+                            className="bg-primary h-full rounded-full shadow-[0_0_10px_rgba(var(--primary),0.3)] transition-all duration-700"
+                            style={{ width: `${doc.processing_progress}%` }}
+                          />
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="theme-pill !bg-primary/5 !border-primary/20 !text-primary/70">
+                          {Math.round((doc.extraction_coverage_score ?? 0) * 100)}%
+                        </span>
+                        {doc.extraction_ocr_used && (
+                          <span className="theme-pill !bg-warning/10 !border-warning/20 !text-warning">
+                            OCR
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-foreground/40 px-6 py-5 text-right font-mono text-[11px] font-bold">
+                      {formatBytes(doc.size_bytes)}
+                    </td>
+                    <td className="text-foreground/40 px-6 py-5 text-right text-[11px] font-bold">
+                      {new Date(doc.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      <div className="flex items-center justify-end gap-2 opacity-40 transition-opacity group-hover:opacity-100">
+                        <button
+                          onClick={() => openRawViewer(doc.document_id, doc.filename)}
+                          className="text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl p-2.5 transition-all"
+                          title="View Raw Document"
+                        >
+                          <Eye size={17} className="stroke-[2.5]" />
+                        </button>
+                        <button
+                          onClick={() =>
+                            setInspectorTarget({ id: doc.document_id, name: doc.filename })
+                          }
+                          className="text-foreground/40 hover:text-primary hover:bg-primary/10 rounded-xl p-2.5 transition-all"
+                          title="Inspect Metadata"
+                        >
+                          <Database size={17} className="stroke-[2.5]" />
+                        </button>
+                        {(doc.status === "failed" || doc.status === "dead_lettered") && (
+                          <button
+                            onClick={() => reingestDocument(doc.document_id, doc.filename)}
+                            className="text-foreground/40 rounded-xl p-2.5 transition-all hover:bg-emerald-500/10 hover:text-emerald-500"
+                            title="Retry Vectorization"
+                          >
+                            <RefreshCcw size={17} className="stroke-[2.5]" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => deleteDocument(doc.document_id, doc.filename)}
+                          className="text-foreground/40 hover:text-danger hover:bg-danger/10 rounded-xl p-2.5 transition-all"
+                          title="Permanent Delete"
+                        >
+                          <Trash2 size={17} className="stroke-[2.5]" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="divide-glass-border space-y-4 divide-y md:hidden">
+            {documents.map((doc) => (
+              <div key={doc.document_id} className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="bg-primary/5 text-primary border-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border">
+                      <FileText size={18} className="stroke-[2.5]" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-foreground truncate text-sm leading-tight font-bold">
+                        {doc.filename}
+                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-foreground/35 text-[10px] font-bold tracking-widest uppercase">
+                          {doc.content_type.split("/")[1] || "DOC"}
+                        </span>
+                        <span className="text-foreground/20 text-[10px]">•</span>
+                        <span className="text-foreground/35 text-[10px] font-bold">
+                          {formatBytes(doc.size_bytes)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openRawViewer(doc.document_id, doc.filename)}
+                      className="text-foreground/40 bg-foreground/5 flex h-9 w-9 items-center justify-center rounded-lg"
+                    >
+                      <Eye size={15} />
+                    </button>
+                    <button
+                      onClick={() => deleteDocument(doc.document_id, doc.filename)}
+                      className="text-foreground/40 bg-danger/5 flex h-9 w-9 items-center justify-center rounded-lg"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {doc.quarantined ? (
+                    <span className="theme-pill !bg-danger/10 !border-danger/20 !text-danger text-[10px]">
+                      Quarantined
+                    </span>
+                  ) : (
+                    <span
+                      className={`theme-pill border px-2.5 py-1 text-[9px] font-black tracking-widest uppercase ${statusColors[doc.status] || "!text-foreground/40 !bg-foreground/5 !border-foreground/10"}`}
+                    >
+                      {doc.status}
+                    </span>
+                  )}
+                  <span className="theme-pill !bg-primary/5 !border-primary/20 !text-primary/70 text-[10px]">
+                    Yield: {Math.round((doc.extraction_coverage_score ?? 0) * 100)}%
+                  </span>
+                  <span className="text-foreground/40 ml-auto text-[10px] font-bold">
+                    {new Date(doc.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <EmptyState
+            icon={<FolderOpen size={48} className="text-primary opacity-20" />}
+            title="Knowledge Base Empty"
+            description="Start building your intelligence engine by uploading your first PDF, TXT, or Markdown file."
+            action={
+              <button
+                onClick={() => setIsUploadOpen(true)}
+                className="bg-primary text-primary-foreground shadow-primary/20 mt-4 flex h-10 items-center gap-2 rounded-xl px-6 text-sm font-bold shadow-lg transition hover:scale-105 active:scale-95"
+              >
+                <Plus size={16} className="stroke-[3]" />
+                <span>Upload Document</span>
+              </button>
+            }
+          />
+        </motion.div>
+      )}
+
+      <UploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onSuccess={fetchDocuments}
+      />
+
+      <DocumentInspector
+        isOpen={!!inspectorTarget}
+        documentId={inspectorTarget?.id ?? null}
+        documentName={inspectorTarget?.name ?? ""}
+        onClose={() => setInspectorTarget(null)}
+        onDeleted={() => {
+          setDocuments((prev) => prev.filter((d) => d.document_id !== inspectorTarget?.id));
+          setInspectorTarget(null);
+        }}
+      />
+
+      {/* Raw Document Viewer Drawer */}
+      {mounted && typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {rawViewerTarget && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={closeRawViewer}
+                className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+              />
+              <motion.div
+                ref={drawerRef}
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                onMouseUp={handleTextSelection}
+                transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                className="border-glass-border/30 bg-surface-0 !fixed !top-0 !right-0 !bottom-0 !left-auto !z-[70] !m-0 flex !h-[100svh] w-full flex-col overflow-hidden !rounded-none border-l shadow-[-20px_0_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl sm:max-w-[75vw] xl:max-w-[50vw]"
+              >
+                <AnimatePresence>
+                  {selection && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                      style={{
+                        position: "fixed",
+                        left: selection.x,
+                        top: selection.y,
+                        transform: "translateX(-50%) translateY(-100%)",
+                        zIndex: 100,
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <button
+                        onClick={() => saveToNotes("selection", selection.text)}
+                        className="bg-primary shadow-primary/20 flex items-center gap-2 rounded-full px-4 py-2 text-[10px] font-black tracking-widest text-white uppercase shadow-xl ring-4 ring-black/50 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+                      >
+                        <Plus size={14} className="stroke-[3]" />
+                        <span>Add to Note</span>
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="border-glass-border/60 bg-surface-0/40 flex items-center justify-between border-b px-6 py-5 backdrop-blur-xl">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-primary shadow-primary/20 flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-lg">
+                      <Eye size={22} className="stroke-[2.5]" />
+                    </div>
+                    <div>
+                      <h3 className="text-foreground text-base font-black tracking-tight">
+                        {rawViewerTarget.name}
+                      </h3>
+                      <div className="mt-1 flex items-center gap-1">
+                        <button
+                          onClick={() => setViewerMode("raw")}
+                          className={`rounded-md px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-all ${viewerMode === "raw" ? "bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
+                        >
+                          Source File
+                        </button>
+                        <button
+                          onClick={() => setViewerMode("text")}
+                          className={`rounded-md px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-all ${viewerMode === "text" ? "bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
+                        >
+                          Intelligence View
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="bg-foreground/5 flex items-center rounded-xl p-1 backdrop-blur-sm">
+                      <button
+                        onClick={() => saveToNotes("selection")}
+                        disabled={isRawLoading}
+                        className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
+                        title="Copy text from PDF first, then click here"
+                      >
+                        <Plus size={14} className="stroke-[2.5]" />
+                        <span>Paste Selection</span>
+                      </button>
+                      <div className="bg-foreground/10 mx-1 h-4 w-px" />
+                      <button
+                        onClick={() => saveToNotes("full")}
+                        disabled={isRawLoading}
+                        className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
+                      >
+                        {isRawLoading ? (
+                          <RefreshCcw size={14} className="animate-spin" />
+                        ) : (
+                          <Database size={14} className="stroke-[2.5]" />
+                        )}
+                        <span>Save Full Doc</span>
+                      </button>
+                    </div>
+                    <button
+                      onClick={closeRawViewer}
+                      className="bg-foreground/5 text-foreground/40 hover:text-danger hover:bg-danger/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
+                    >
+                      <X size={22} className="stroke-[2.5]" />
+                    </button>
+                  </div>
+                </div>
+                <div className="relative flex-1 overflow-hidden bg-white/5">
+                  {isRawLoading ? (
+                    <div className="flex h-full flex-col items-center justify-center gap-4">
+                      <div className="bg-primary h-1 w-32 overflow-hidden rounded-full opacity-20">
+                        <motion.div
+                          initial={{ x: "-100%" }}
+                          animate={{ x: "100%" }}
+                          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                          className="bg-primary h-full w-full"
+                        />
+                      </div>
+                      <p className="text-foreground/30 text-[10px] font-bold tracking-widest uppercase">
+                        Fetching Secure Asset...
+                      </p>
+                    </div>
+                  ) : viewerMode === "raw" && rawFileUrl ? (
+                    <iframe
+                      src={rawFileUrl}
+                      className="h-full w-full border-none"
+                      title="Original Document"
+                    />
+                  ) : rawTextContent ? (
+                    <div className="bg-surface-0 h-full overflow-y-auto px-12 py-16">
+                      <div className="mx-auto max-w-3xl">
+                        <div
+                          className="prose prose-invert prose-slate selection:bg-primary/40 max-w-none selection:text-white"
+                          dangerouslySetInnerHTML={{ __html: rawTextContent }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <p className="text-foreground/30 text-xs font-bold tracking-widest uppercase">
+                        No Intelligence View Available
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {mounted && typeof document !== "undefined" && showFormats && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="bg-black/60 absolute inset-0 backdrop-blur-sm"
+            onClick={() => setShowFormats(false)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-surface-0 border-glass-border relative max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-3xl border p-8 shadow-2xl"
+          >
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h3 className="text-foreground text-2xl font-extrabold tracking-tight">
+                  Supported Formats
+                </h3>
+                <p className="text-foreground/40 mt-1 text-sm font-medium">
+                  Native pipeline coverage coverage currently available.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowFormats(false)}
+                className="bg-foreground/5 text-foreground/40 hover:text-foreground hover:bg-foreground/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
+              >
+                <X size={20} className="stroke-[2.5]" />
+              </button>
+            </div>
+
+            <div className="border-glass-border bg-foreground/[0.01] max-h-[60vh] overflow-y-auto rounded-2xl border shadow-inner">
+              <table className="w-full border-collapse text-left">
+                <thead className="bg-surface-0/80 border-glass-border sticky top-0 z-10 border-b backdrop-blur-sm">
+                  <tr className="text-foreground/40 text-[10px] font-bold tracking-[0.2em] uppercase">
+                    <th className="px-5 py-4">Extension</th>
+                    <th className="px-5 py-4">Category</th>
+                    <th className="px-5 py-4">Method</th>
+                    <th className="px-5 py-4 text-right">Mode</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-glass-border divide-y">
+                  {(supportedFormats?.items ?? []).map((item) => (
+                    <tr
+                      key={`${item.extension}-${item.extraction_method}`}
+                      className="hover-yellow transition-colors"
+                    >
+                      <td className="text-primary px-5 py-4 font-mono text-[13px] font-bold">
+                        {item.extension}
+                      </td>
+                      <td className="text-foreground/60 px-5 py-4 text-[13px] font-medium">
+                        {item.category}
+                      </td>
+                      <td className="text-foreground/30 px-5 py-4 font-mono text-[11px] italic">
+                        {item.extraction_method}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <span
+                          className={`theme-pill ${
+                            item.needs_conversion
+                              ? "!text-warning !bg-warning/10 !border-warning/20"
+                              : "!text-primary !bg-primary/10 !border-primary/20"
+                          }`}
+                        >
+                          {item.needs_conversion ? "conversion" : "native"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "framer-motion": "^12.40.0",
+    "mermaid": "^11.14.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-markdown": "^10.1.0",
+    "ws": "^8.21.0"
+  }
+}

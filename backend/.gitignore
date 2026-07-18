@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.env
+.env.localprod
+.env.vps
+.coverage
+htmlcov/
+# Runtime Waste
+models/
+Runtime/
+/.cache/
+/.local/

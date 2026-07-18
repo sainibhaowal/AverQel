@@ -1,0 +1,69 @@
+{
+  servers :443 {
+    protocols h1
+  }
+  servers :80 {
+    protocols h1
+  }
+}
+
+{$AVERQEL_DOMAIN} {
+  encode zstd gzip
+
+  header {
+    X-Frame-Options SAMEORIGIN
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    Alt-Svc "clear"
+  }
+
+  @streaming path /api/v1/queries/stream /api/v1/chats/*/stream /api/v1/deepspace/chats/stream /api/v1/deepspace/chats/*/stream /api/v1/documents/events/stream
+
+  handle @streaming {
+    reverse_proxy api:1000 {
+      flush_interval -1
+      transport http {
+        versions 1.1
+        compression off
+        max_conns_per_host 200
+      }
+      lb_policy least_conn
+      lb_try_duration 5s
+      lb_try_interval 250ms
+      fail_duration 10s
+      max_fails 2
+      unhealthy_status 5xx
+    }
+  }
+
+  @metrics path /api/v1/metrics
+  respond @metrics 403
+
+  handle /api/* {
+    reverse_proxy api:1000 {
+      transport http {
+        max_conns_per_host 200
+      }
+      lb_policy least_conn
+      lb_try_duration 5s
+      lb_try_interval 250ms
+      fail_duration 10s
+      max_fails 2
+      unhealthy_status 5xx
+    }
+  }
+
+  handle {
+    reverse_proxy frontend:1030 {
+      transport http {
+        max_conns_per_host 200
+      }
+      lb_policy least_conn
+      lb_try_duration 5s
+      lb_try_interval 250ms
+      fail_duration 10s
+      max_fails 2
+      unhealthy_status 5xx
+    }
+  }
+}
