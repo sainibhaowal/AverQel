@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import {
   fetchWithAuth,
   getAccessTokenExpiry,
+  getRequestTenantId,
   invalidateAuthSession,
   refreshAccessToken,
   resetAuthSessionState,
@@ -64,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (storedToken && shouldRefreshAccessToken(storedToken)) {
-        const refreshedToken = await refreshAccessToken(localStorage.getItem("averqel_tenant_id"));
+        const refreshedToken = await refreshAccessToken(getRequestTenantId(storedToken));
         if (!refreshedToken) {
           clearClientSession();
           if (!cancelled) {

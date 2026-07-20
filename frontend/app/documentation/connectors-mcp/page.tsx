@@ -10,7 +10,7 @@ export default function ConnectorsMcpDocsPage() {
         items={[
           {
             title: "Connector Sources",
-            body: "The MCP marketplace shows only curated official vendor endpoints. Community package IDs and unverified registry listings are intentionally excluded.",
+            body: "The MCP marketplace syncs registry metadata and lets each workspace connect approved remote MCP applications.",
           },
           {
             title: "OAuth + Secret Safety",
@@ -22,7 +22,7 @@ export default function ConnectorsMcpDocsPage() {
           },
           {
             title: "Native MCP Runtime",
-            body: "Installed servers support Streamable HTTP, SSE, and stdio, with reconnect workers, list-change notifications, prompts/resources/templates, and an Inspector view.",
+            body: "Installed servers support Streamable HTTP and SSE fallback, with reconnect workers, list-change notifications, prompts/resources/templates, and an Inspector view.",
           },
         ]}
       />

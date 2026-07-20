@@ -14,7 +14,7 @@ from app.repositories.mcp_events import MCPEventsRepository
 
 
 class MCPServerOAuthService:
-    """Generic MCP OAuth broker for official server endpoints."""
+    """Generic MCP OAuth broker for tenant-owned remote endpoints."""
 
     def __init__(self, db: Any, settings: Settings) -> None:
         self.db = db
@@ -126,15 +126,32 @@ class MCPServerOAuthService:
             code=code, code_verifier=pending["code_verifier"],
             redirect_uri=str(OAuthClientMetadata.model_validate(pending["client_metadata"]).redirect_uris[0]),
         )
-        encrypted = ConnectorSecretCrypto(self.settings).encrypt(
-            json.dumps(token.model_dump(mode="json", exclude_none=True)),
+        token_payload = token.model_dump(mode="json", exclude_none=True)
+        crypto = ConnectorSecretCrypto(self.settings)
+        existing_credentials: dict[str, Any] = {}
+        existing_record = self.db.query(MCPOAuthToken).filter(MCPOAuthToken.server_id == server.id).one_or_none()
+        if existing_record is not None:
+            try:
+                existing_credentials = json.loads(crypto.decrypt(
+                    ciphertext=existing_record.secret_ciphertext,
+                    nonce=existing_record.secret_nonce,
+                    kid=existing_record.secret_kid,
+                    aad=str(server.tenant_id).encode(),
+                ).decode("utf-8"))
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError("Unable to read existing MCP credentials") from exc
+        if not isinstance(existing_credentials, dict):
+            existing_credentials = {}
+        existing_credentials.update(token_payload)
+        encrypted = crypto.encrypt(
+            json.dumps(existing_credentials, separators=(",", ":")),
             aad=str(server.tenant_id).encode(),
         )
         expires_at = None
         token_expires_in = getattr(token, "expires_in", None)
         if token_expires_in is not None:
             expires_at = datetime.now(UTC) + timedelta(seconds=int(token_expires_in))
-        record = self.db.query(MCPOAuthToken).filter(MCPOAuthToken.server_id == server.id).one_or_none()
+        record = existing_record
         if record is None:
             record = MCPOAuthToken(tenant_id=server.tenant_id, server_id=server.id, secret_ciphertext=encrypted.ciphertext, secret_nonce=encrypted.nonce, secret_kid=encrypted.kid, expires_at=expires_at)
             self.db.add(record)

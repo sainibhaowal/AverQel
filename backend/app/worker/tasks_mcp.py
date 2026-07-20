@@ -2,27 +2,23 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import anyio
 import logging
 import uuid
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal, set_db_tenant_context
 from app.models.integrations.mcp_server import MCPServer
 from app.repositories.mcp_events import MCPEventsRepository
-from app.services.integrations.mcp_runtime import MCPCatalog, MCPRuntimeError, build_mcp_server_runtime
-from app.services.integrations.mcp_registry_sync import sync_registry
+from app.services.integrations.mcp_runtime import MCPCatalog, MCPRuntimeError, build_mcp_runtime, build_mcp_server_runtime
+from app.services.integrations.mcp_endpoint_security import validate_remote_endpoint
 from app.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
-
-@celery_app.task(name="mcp.sync_registry")
-def sync_marketplace_registry() -> dict[str, int]:
-    with SessionLocal() as db:
-        return {"synced": sync_registry(db)}
-
 
 @celery_app.task(name="mcp.refresh_server_catalog")
 def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
@@ -30,6 +26,12 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
     with SessionLocal() as db:
         tenant_uuid = uuid.UUID(tenant_id)
         set_db_tenant_context(db, tenant_uuid)
+        locked = db.execute(
+            text("SELECT pg_try_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"mcp-catalog:{server_id}"},
+        ).scalar()
+        if not locked:
+            return {"status": "already_running", "server_id": server_id}
         server = db.execute(
             select(MCPServer).where(MCPServer.id == uuid.UUID(server_id), MCPServer.tenant_id == tenant_uuid)
         ).scalar_one_or_none()
@@ -72,6 +74,8 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                 "mcp_prompts_cache": catalog["prompts"],
                 "mcp_resources_cache": catalog["resources"],
                 "mcp_resource_templates_cache": catalog["resource_templates"],
+                "mcp_catalog_tool_count": len(catalog["tools"]),
+                "mcp_catalog_last_sync_at": datetime.now(UTC).isoformat(),
                 "catalog_revision": int(server.config.get("catalog_revision", 0)) + 1,
             }
             server.status = "connected"
@@ -105,6 +109,9 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
 @celery_app.task(name="mcp.refresh_enabled_servers")
 def refresh_enabled_servers() -> dict[str, int]:
     with SessionLocal() as db:
+        # The scheduler is the trusted coordinator; child tasks re-enter the
+        # tenant context before touching tenant-owned records.
+        db.execute(text("SELECT set_config('app.tenant_id', 'bypass', true)"))
         servers = db.execute(select(MCPServer).where(MCPServer.enabled.is_(True))).scalars().all()
         for server in servers:
             monitor_server_lifecycle.delay(str(server.id), str(server.tenant_id))

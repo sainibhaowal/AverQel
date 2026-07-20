@@ -56,10 +56,6 @@ celery_app.conf.update(
             "task": "mcp.refresh_enabled_servers",
             "schedule": crontab(minute="*/2"),
         },
-        "mcp-sync-registry": {
-            "task": "mcp.sync_registry",
-            "schedule": crontab(hour="*/6", minute=10),
-        },
         **(
             {}
             if settings.deepspace_proactive_daemon_enabled

@@ -23,7 +23,6 @@ from app.models.integrations.connector import Connector, ConnectorStatus
 from app.models.integrations.connector_secret import ConnectorSecret
 from app.models.integrations.integration import Integration
 from app.services.security.connector_secret_crypto import ConnectorSecretCrypto
-from app.services.integrations.mcp_registry import get_official_vendor
 
 try:  # pragma: no cover - optional runtime dependency
     from mcp.client.auth.utils import (
@@ -493,24 +492,7 @@ class ConnectorOAuthService:
         ui_metadata = (
             integration.ui_metadata if isinstance(integration.ui_metadata, dict) else {}
         )
-        # Existing connector rows may predate declarative MCP metadata.  Resolve
-        # only against AverQel's curated official-vendor catalog as a migration
-        # compatibility path; no community registry or provider OAuth map is used.
-        official = get_official_vendor(integration.slug)
         auth_mode = str(ui_metadata.get("auth_mode") or "").strip().lower()
-        if official and auth_mode in {"", "mcp"} and not str(ui_metadata.get("mcp_server_url") or "").strip():
-            return MCPProfile(
-                slug=integration.slug,
-                server_url=str(official.get("server_url") or "").strip(),
-                tools=tuple(
-                    item for item in (official.get("mcp_tools") or [])
-                    if isinstance(item, str) and item.strip()
-                ),
-                default_scopes=tuple(
-                    item for item in (official.get("mcp_scopes") or [])
-                    if isinstance(item, str) and item.strip()
-                ),
-            ) if official.get("server_url") else None
         server_url = str(ui_metadata.get("mcp_server_url") or "").strip()
         tools = tuple(
             str(tool).strip()
@@ -537,18 +519,14 @@ class ConnectorOAuthService:
         self, integration: Integration
     ) -> ConnectorOAuthClientConfig | None:
         ui_metadata = integration.ui_metadata if isinstance(integration.ui_metadata, dict) else {}
-        official = get_official_vendor(integration.slug)
         provider_key = str(
             ui_metadata.get("oauth_provider_key")
-            or (official or {}).get("oauth_provider_key")
             or integration.slug
         ).strip()
         if not provider_key:
             return None
         provider_label = str(
-            ui_metadata.get("oauth_provider_label")
-            or (official or {}).get("vendor")
-            or integration.name
+            ui_metadata.get("oauth_provider_label") or integration.name
         )
 
         client_id_attr = f"connector_{provider_key}_oauth_client_id"

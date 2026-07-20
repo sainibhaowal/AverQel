@@ -12,7 +12,6 @@ from sqlalchemy import select
 
 from app.db.session import get_session_factory
 from app.models.integrations.integration import Integration
-from app.services.integrations.mcp_registry import get_official_vendor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -111,33 +110,6 @@ def seed_integrations() -> None:
     factory = get_session_factory()
     with factory() as session:
         for int_data in INTEGRATIONS:
-            # MCP connection details are owned by the curated official catalog,
-            # never by this legacy seed list.  Keep display metadata, but remove
-            # stale endpoint/tool/OAuth values so the native runtime discovers
-            # the live server capabilities after installation.
-            official = get_official_vendor(str(int_data["slug"]))
-            if official is not None:
-                display = dict(int_data.get("ui_metadata") or {})
-                for key in (
-                    "mcp_server_url",
-                    "mcp_tools",
-                    "mcp_scopes",
-                    "oauth_provider_key",
-                    "oauth_provider_label",
-                ):
-                    display.pop(key, None)
-                display.update(
-                    {
-                        "auth_mode": "mcp",
-                        "mcp_server_url": official.get("server_url"),
-                        "mcp_transport": official.get("transport"),
-                        "mcp_oauth_mode": official.get("oauth"),
-                        "oauth_provider_key": official.get("oauth_provider_key"),
-                        "oauth_provider_label": official.get("vendor"),
-                        "official": True,
-                    }
-                )
-                int_data = {**int_data, "ui_metadata": display}
             # Check if exists
             result = session.execute(
                 select(Integration).where(Integration.slug == int_data["slug"])

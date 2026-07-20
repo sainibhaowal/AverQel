@@ -40,6 +40,7 @@ PERMISSIONS_BY_ROLE: Final[dict[str, frozenset[str]]] = {
             "admin:support:write",
             "admin:feedback:read",
             "admin:feedback:write",
+            "mcp:catalog:manage",
         }
     ),
     "editor": frozenset(
@@ -87,6 +88,7 @@ PERMISSIONS_BY_ROLE: Final[dict[str, frozenset[str]]] = {
 
 PERMISSIONS_BY_ROLE["super_admin"] = PERMISSIONS_BY_ROLE["admin"]
 PERMISSIONS_BY_ROLE["reader"] = PERMISSIONS_BY_ROLE["user"]
+PERMISSIONS_BY_ROLE["member"] = PERMISSIONS_BY_ROLE["user"]
 
 AUTH_CONTEXT_DEPENDENCY = Depends(get_auth_context)
 

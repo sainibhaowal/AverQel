@@ -4,8 +4,6 @@ import hashlib
 import json
 import logging
 import re
-import time
-from enum import StrEnum
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -33,7 +31,6 @@ try:  # pragma: no cover - optional runtime dependency
     from mcp.client.auth.oauth2 import OAuthClientProvider, TokenStorage
     from mcp.client.session import ClientSession
     from mcp.client.sse import sse_client
-    from mcp.client.stdio import StdioServerParameters, stdio_client
     from mcp.client.streamable_http import streamable_http_client
     from mcp.shared._httpx_utils import create_mcp_http_client
     from mcp.shared.auth import (
@@ -51,8 +48,6 @@ except ImportError:  # pragma: no cover - graceful fallback when MCP is unavaila
     ClientSession = Any  # type: ignore[assignment,misc]
     streamable_http_client = None  # type: ignore[assignment]
     sse_client = None  # type: ignore[assignment]
-    stdio_client = None  # type: ignore[assignment]
-    StdioServerParameters = Any  # type: ignore[assignment,misc]
     create_mcp_http_client = None  # type: ignore[assignment]
     OAuthClientInformationFull = Any  # type: ignore[assignment,misc]
     OAuthClientMetadata = Any  # type: ignore[assignment,misc]
@@ -62,39 +57,6 @@ except ImportError:  # pragma: no cover - graceful fallback when MCP is unavaila
     MCP_SDK_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-
-
-class MCPConnectionStatus(StrEnum):
-    """Stable lifecycle states exposed to the UI and audit stream."""
-
-    DISABLED = "disabled"
-    CONNECTING = "connecting"
-    CONNECTED = "connected"
-    NEEDS_AUTH = "needs_auth"
-    FAILED = "failed"
-    DISCONNECTED = "disconnected"
-
-
-@dataclass(slots=True, frozen=True)
-class MCPServerConfig:
-    """Generic server definition; connector-specific code is not required."""
-
-    name: str
-    transport: str
-    url: str | None = None
-    command: str | None = None
-    args: tuple[str, ...] = ()
-    env: dict[str, str] | None = None
-    enabled: bool = True
-    timeout_seconds: float = 30.0
-
-    def __post_init__(self) -> None:
-        if self.transport not in {"streamable_http", "sse", "stdio"}:
-            raise ValueError("transport must be streamable_http, sse, or stdio")
-        if self.transport in {"streamable_http", "sse"} and not self.url:
-            raise ValueError("remote MCP transports require url")
-        if self.transport == "stdio" and not self.command:
-            raise ValueError("stdio MCP transport requires command")
 
 
 @dataclass(slots=True)
@@ -162,51 +124,6 @@ class MCPCatalog:
         self._replace_named("resource_templates", server, templates)
 
 
-@dataclass(slots=True)
-class MCPConnectionRecord:
-    config: MCPServerConfig
-    status: MCPConnectionStatus = MCPConnectionStatus.DISCONNECTED
-    error: str | None = None
-    last_connected_at: float | None = None
-    last_event_at: float | None = None
-    reconnect_attempts: int = 0
-    catalog: MCPCatalog = field(default_factory=MCPCatalog)
-
-
-class MCPConnectionRegistry:
-    """Process-local lifecycle registry; durable state belongs in the database."""
-
-    def __init__(self) -> None:
-        self._records: dict[str, MCPConnectionRecord] = {}
-        self._listeners: list[Any] = []
-
-    def add_listener(self, listener: Any) -> None:
-        self._listeners.append(listener)
-
-    def register(self, config: MCPServerConfig) -> MCPConnectionRecord:
-        record = MCPConnectionRecord(config=config)
-        self._records[config.name] = record
-        return record
-
-    def get(self, name: str) -> MCPConnectionRecord | None:
-        return self._records.get(name)
-
-    def all(self) -> tuple[MCPConnectionRecord, ...]:
-        return tuple(self._records.values())
-
-    async def set_status(self, name: str, status: MCPConnectionStatus, error: str | None = None) -> None:
-        record = self._records[name]
-        record.status = status
-        record.error = error
-        record.last_event_at = time.time()
-        if status is MCPConnectionStatus.CONNECTED:
-            record.last_connected_at = record.last_event_at
-        for listener in tuple(self._listeners):
-            result = listener(name, record)
-            if hasattr(result, "__await__"):
-                await result
-
-
 class MCPRuntimeError(RuntimeError):
     """Raised when MCP-backed connector runtime work fails."""
 
@@ -251,12 +168,10 @@ class MCPConnectorRuntime:
     timeout: float = 30.0
     transport: str = "streamable_http"
     fallback_transport: str | None = None
-    command: str | None = None
-    args: tuple[str, ...] = ()
-    env: dict[str, str] | None = None
     message_handler: Any | None = None
     notification_handler: Any | None = None
     anonymous: bool = False
+    headers: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_config(cls, config: dict[str, Any], *, on_tokens_updated: Any | None = None, message_handler: Any | None = None, notification_handler: Any | None = None) -> MCPConnectorRuntime | None:
@@ -284,39 +199,33 @@ class MCPConnectorRuntime:
                 else ""
             )
         ).strip().lower() or None
-        command = str(bundle.get("command") or config.get("mcp_command") or "").strip() or None
-        if transport not in {"streamable_http", "sse", "stdio"}:
+        if transport not in {"streamable_http", "sse"}:
             raise MCPRuntimeError(f"Unsupported MCP transport: {transport}")
         if fallback_transport == transport:
             fallback_transport = None
         if fallback_transport not in {None, "sse", "streamable_http"}:
             raise MCPRuntimeError(f"Unsupported MCP fallback transport: {fallback_transport}")
-        if transport == "stdio":
-            fallback_transport = None
-        if transport != "stdio" and not server_url:
+        if not server_url:
             return None
-        if transport == "stdio" and not command:
-            raise MCPRuntimeError("stdio MCP runtime requires a command")
 
         anonymous = str(bundle.get("oauth_mode") or config.get("oauth_mode") or "").lower() == "none"
         client_info = None
         tokens = None
         client_metadata = None
-        if transport != "stdio":
-            client_info_data = bundle.get("client_info")
-            if anonymous:
-                client_metadata = None
-            elif not isinstance(client_info_data, dict):
+        client_info_data = bundle.get("client_info")
+        if anonymous:
+            client_metadata = None
+        elif not isinstance(client_info_data, dict):
+            return None
+        else:
+            try:
+                client_info = OAuthClientInformationFull.model_validate(client_info_data)
+            except Exception as exc:  # noqa: BLE001
+                raise MCPRuntimeError(f"Invalid MCP client info bundle: {exc}") from exc
+            tokens = cls._tokens_from_bundle(bundle)
+            if tokens is None:
                 return None
-            else:
-                try:
-                    client_info = OAuthClientInformationFull.model_validate(client_info_data)
-                except Exception as exc:  # noqa: BLE001
-                    raise MCPRuntimeError(f"Invalid MCP client info bundle: {exc}") from exc
-                tokens = cls._tokens_from_bundle(bundle)
-                if tokens is None:
-                    return None
-                client_metadata = cls._client_metadata_from_client_info(client_info)
+            client_metadata = cls._client_metadata_from_client_info(client_info)
         oauth_metadata = cls._metadata_from_bundle(
             bundle.get("oauth_metadata"), OAuthMetadata
         )
@@ -328,6 +237,9 @@ class MCPConnectorRuntime:
             for tool in (bundle.get("mcp_tools") or config.get("mcp_tools") or [])
             if str(tool).strip()
         )
+        api_key = str(bundle.get("api_key") or "").strip()
+        api_key_header = str(bundle.get("api_key_header") or "").strip()
+        headers = {api_key_header: api_key} if api_key and api_key_header else {}
 
         return cls(
             server_url=server_url,
@@ -338,12 +250,10 @@ class MCPConnectorRuntime:
             declared_tools=declared_tools,
             transport=transport,
             fallback_transport=fallback_transport,
-            command=command,
-            args=tuple(str(item) for item in (bundle.get("args") or config.get("mcp_args") or [])),
-            env={str(k): str(v) for k, v in (bundle.get("env") or config.get("mcp_env") or {}).items()},
             message_handler=message_handler,
             notification_handler=notification_handler,
             anonymous=anonymous,
+            headers=headers,
         )
 
     @staticmethod
@@ -534,22 +444,9 @@ class MCPConnectorRuntime:
             from mcp.client.session import _default_message_handler
             await _default_message_handler(message)
 
-        if transport == "stdio":
-            params = StdioServerParameters(
-                command=self.command or "",
-                args=list(self.args),
-                env=self.env,
-            )
-            async with stdio_client(params) as streams:
-                read_stream, write_stream = streams
-                async with ClientSession(read_stream, write_stream, message_handler=self.message_handler or _handle_message) as session:
-                    await session.initialize()
-                    yield session
-            return
-
         if transport == "sse":
             auth = self._session_client()
-            async with create_mcp_http_client(auth=auth) as http_client:
+            async with create_mcp_http_client(headers=self.headers or None, auth=auth) as http_client:
                 async with sse_client(self.server_url, http_client=http_client) as streams:
                     read_stream, write_stream = streams
                     async with ClientSession(read_stream, write_stream, message_handler=self.message_handler or _handle_message) as session:
@@ -558,7 +455,7 @@ class MCPConnectorRuntime:
             return
 
         auth = self._session_client()
-        async with create_mcp_http_client(auth=auth) as http_client:
+        async with create_mcp_http_client(headers=self.headers or None, auth=auth) as http_client:
             async with streamable_http_client(self.server_url, http_client=http_client) as streams:
                 read_stream, write_stream, _session_id = streams
                 async with ClientSession(read_stream, write_stream, message_handler=self.message_handler or _handle_message) as session:

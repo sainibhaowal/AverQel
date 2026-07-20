@@ -56,6 +56,12 @@ class MCPRegistryEntry(Base):
     tool_count: Mapped[int] = mapped_column(nullable=False, server_default=text("0"))
     last_catalog_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     verification_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    trust_status: Mapped[str] = mapped_column(String(24), nullable=False, server_default=text("'discovered'"), index=True)
+    verification_source: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    popularity_rank: Mapped[int | None] = mapped_column(nullable=True, index=True)
+    catalog_status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'pending'"), index=True)
+    enrichment_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
 
 class MCPEvent(Base):
@@ -75,7 +81,7 @@ class MCPEvent(Base):
 
 
 class MCPOAuthToken(Base):
-    """Encrypted OAuth/token material; plaintext never enters this table."""
+    """Encrypted MCP credential material; plaintext never enters this table."""
 
     __tablename__ = "mcp_oauth_tokens"
 

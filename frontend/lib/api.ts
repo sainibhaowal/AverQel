@@ -172,6 +172,32 @@ function decodeJwtExpiry(token: string | null): number | null {
   }
 }
 
+function decodeJwtTenantId(token: string | null): string | null {
+  if (!token) {
+    return null;
+  }
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+  try {
+    const normalized = parts[1]!.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    const payload = JSON.parse(atob(padded)) as { tenant_id?: unknown };
+    return typeof payload.tenant_id === "string" && payload.tenant_id.trim()
+      ? payload.tenant_id
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getRequestTenantId(token: string | null): string | null {
+  // The signed JWT claim is authoritative. The local-storage copy is only a
+  // convenience and can survive a tenant switch or an older login session.
+  return decodeJwtTenantId(token) || localStorage.getItem("averqel_tenant_id");
+}
+
 export function getAccessTokenExpiry(token: string | null): number | null {
   return decodeJwtExpiry(token);
 }
@@ -323,7 +349,7 @@ export async function fetchWithAuth(
 ) {
   const endpointPath = normalizeEndpointPath(endpoint);
   let token = localStorage.getItem("averqel_token");
-  const tenantId = localStorage.getItem("averqel_tenant_id");
+  let tenantId = getRequestTenantId(token);
 
   if (authSessionInvalidated && !PUBLIC_AUTH_ENDPOINTS.has(endpointPath)) {
     return createUnauthorizedResponse();
@@ -335,6 +361,7 @@ export async function fetchWithAuth(
       return createUnauthorizedResponse();
     }
     token = refreshedToken;
+    tenantId = getRequestTenantId(token);
   }
 
   const headers = new Headers(options.headers);
