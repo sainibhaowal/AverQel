@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.services.deepspace.workspace.workspace_mode import WorkspaceMode
 from app.services.deepspace.workspace.workspace_policy import WorkspacePolicy
 

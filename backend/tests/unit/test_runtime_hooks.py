@@ -6,10 +6,10 @@ from uuid import uuid4
 import pytest
 
 import app.services.deepspace.missions.mission_registry as mission_registry_module
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.services.deepspace.execution.agent_executor import AgentExecutor
 from app.services.deepspace.execution.agent_tools import ToolResult
-from app.services.deepspace.runtime.runtime_hooks import RuntimeHooks
+from app.services.deepspace.deepspace_runtime.runtime_hooks import RuntimeHooks
 
 
 class _EchoSynthesisLLM:

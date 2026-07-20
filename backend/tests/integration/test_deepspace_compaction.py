@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from app.core.auth import create_access_token
+from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.repositories.query.chat import ChatRepository
 from app.services.deepspace.orchestration.deepspace_service import DeepSpaceService

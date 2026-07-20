@@ -22,7 +22,7 @@ export default function FolderPickerDialog({
   isOpen,
   onClose,
   onSelect,
-  initialPath = "/home/sephi-asi",
+  initialPath = "/home/ravi",
 }: FolderPickerDialogProps) {
   const [currentPath, setCurrentPath] = useState(initialPath);
   const [folders, setFolders] = useState<WorkspaceFolder[]>([]);
@@ -146,7 +146,7 @@ export default function FolderPickerDialog({
             onChange={(e) => setCurrentPath(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                fetchFolders(currentPath.trim() || "/home/sephi-asi");
+                fetchFolders(currentPath.trim() || "/home/ravi");
               }
             }}
             className="flex-1 bg-black/35 text-foreground border border-white/10 rounded-lg px-2.5 py-1 text-[10px] font-mono outline-none focus:border-primary/50"

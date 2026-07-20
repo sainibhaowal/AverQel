@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select, update
 
-from app.models.auth.api_key import ApiKey
+from app.auth.models.api_key import ApiKey
 from app.repositories.system.base import BaseRepository
 from app.services.system.metrics_service import observe_db_query
 

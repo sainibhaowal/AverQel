@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import select
 
 from app.db.session import set_db_tenant_context
-from app.models.auth.tenant import Tenant
+from app.auth.models.tenant import Tenant
 from app.repositories.system.base import BaseRepository
 
 

@@ -5,10 +5,10 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from app.core.auth import create_access_token
+from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.models.auth.tenant import Tenant
-from app.models.auth.user import User
+from app.auth.models.tenant import Tenant
+from app.auth.models.user import User
 from app.models.integrations.connector import Connector, ConnectorStatus
 from app.models.integrations.integration import Integration
 from app.models.system.audit_log import AuditLog

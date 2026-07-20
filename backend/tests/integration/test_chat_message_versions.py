@@ -1,15 +1,15 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.core.auth import create_access_token
+from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.core.ids import generate_uuid7_with_fallback
-from app.core.roles import canonicalize_role_name
-from app.core.security import hash_password
+from app.auth.roles import canonicalize_role_name
+from app.auth.security import hash_password
 from app.db.session import get_session_factory, set_db_tenant_context
-from app.models.auth.role import Role
-from app.models.auth.user import User
-from app.models.auth.user_role import UserRole
+from app.auth.models.role import Role
+from app.auth.models.user import User
+from app.auth.models.user_role import UserRole
 from app.repositories.query.chat import ChatRepository
 from tests.conftest import SeededUser, _generate_test_collection_code
 

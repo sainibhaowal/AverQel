@@ -2,24 +2,23 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Literal
 from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
-from app.core.rbac import require_permissions
+from app.auth.dependencies import AuthContext, get_auth_context
+from app.auth.rbac import require_permissions
 from app.db.session import get_db, set_db_tenant_context
 from app.models.integrations.mcp_server import MCPServer, MCPRegistryEntry
 from app.worker.tasks_mcp import refresh_server_catalog
 from app.services.integrations.mcp_oauth_service import MCPServerOAuthService
 from app.core.config import get_settings
 from app.services.integrations.mcp_endpoint_security import validate_remote_endpoint, MCPEndpointRejected
+from app.schemas.integrations.mcp import MCPServerRead, MCPCatalogReviewRequest
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
@@ -90,47 +89,6 @@ def _marketplace_connection_options(entry: MCPRegistryEntry) -> list[dict[str, A
             "security_schemes": remote.get("securitySchemes") or {},
         })
     return options
-
-
-class MCPServerRead(BaseModel):
-    id: uuid.UUID
-    name: str
-    transport: str
-    config: dict[str, Any]
-    enabled: bool
-    tenant_id: uuid.UUID
-    user_id: uuid.UUID
-    status: str
-    last_error: str | None
-    reconnect_attempts: int
-
-    model_config = ConfigDict(from_attributes=True)
-
-    @field_serializer("config")
-    def serialize_safe_config(self, value: dict[str, Any]) -> dict[str, Any]:
-        """Never expose OAuth material or PKCE state to browser clients."""
-        sensitive = {
-            "access_token", "refresh_token", "token", "client_secret",
-            "secret", "password", "authorization", "code", "code_verifier",
-            "oauth_pending",
-        }
-
-        def redact(item: Any, key: str = "") -> Any:
-            if key.lower() in sensitive or any(marker in key.lower() for marker in ("token", "secret", "verifier", "key")):
-                return "[REDACTED]"
-            if isinstance(item, dict):
-                return {str(k): redact(v, str(k)) for k, v in item.items()}
-            if isinstance(item, list):
-                return [redact(v, key) for v in item]
-            return item
-
-        return redact(value) if isinstance(value, dict) else {}
-
-
-class MCPCatalogReviewRequest(BaseModel):
-    status: Literal["approved", "rejected", "discovered"]
-    verification_source: str = Field(min_length=1, max_length=500)
-    popularity_rank: int | None = Field(default=None, ge=1, le=1_000_000)
 
 
 @router.get("/servers", response_model=list[MCPServerRead])

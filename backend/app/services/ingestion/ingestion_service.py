@@ -15,7 +15,7 @@ from typing import cast
 import redis
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback

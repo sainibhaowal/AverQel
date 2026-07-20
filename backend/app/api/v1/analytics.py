@@ -6,10 +6,10 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.errors import ApiError
-from app.core.rbac import require_permissions
-from app.core.tenancy import require_request_tenant_id
+from app.auth.rbac import require_permissions
+from app.auth.tenancy import require_request_tenant_id
 from app.db.session import get_db
 from app.schemas.analytics.analytics import AnalyticsDashboardResponse
 from app.services.analytics.analytics_service import AnalyticsService

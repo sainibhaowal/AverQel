@@ -542,7 +542,7 @@ def get_resolved_chat_provider():
     from sqlalchemy import select
 
     from app.db.session import SessionLocal
-    from app.models.auth.user import User
+    from app.auth.models.user import User
     from app.services.providers.registry import ProviderRegistry
     from app.services.providers.selection_service import ProviderSelectionService
 

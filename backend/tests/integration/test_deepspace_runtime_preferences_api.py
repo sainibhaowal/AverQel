@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from uuid import uuid4
 
-from app.core.auth import create_access_token
+from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from tests.conftest import SeededUser
 

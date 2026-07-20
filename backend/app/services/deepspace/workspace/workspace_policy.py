@@ -5,7 +5,7 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.services.deepspace.workspace.workspace_mode import WorkspaceMode
 from app.services.deepspace.workspace.workspace_service import WorkspaceService
 

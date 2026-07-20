@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from fastapi.testclient import TestClient
 
-from app.core.auth import create_access_token
+from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.services.providers.base import ProviderRequestError
 from app.services.providers.registry import ProviderRegistry

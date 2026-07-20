@@ -4,11 +4,11 @@ from uuid import UUID
 
 import pytest
 
-from app.core.auth import build_auth_context, create_access_token, decode_access_token
+from app.auth.dependencies import build_auth_context, create_access_token, decode_access_token
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.core.roles import canonicalize_role_name
-from app.core.security import hash_password, hash_refresh_token, verify_password
+from app.auth.roles import canonicalize_role_name
+from app.auth.security import hash_password, hash_refresh_token, verify_password
 
 
 def test_password_hash_and_verify_roundtrip() -> None:

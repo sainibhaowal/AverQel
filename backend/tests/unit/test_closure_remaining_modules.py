@@ -19,21 +19,21 @@ from app.api.v1 import documents as documents_api
 from app.api.v1 import health as health_api
 from app.api.v1 import queries as queries_api
 from app.core import ids as ids_module
-from app.core.auth import AuthContext, build_auth_context
+from app.auth.dependencies import AuthContext, build_auth_context
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError, register_exception_handlers
 from app.core.middleware import RequestContextMiddleware
-from app.core.rbac import require_permissions
-from app.core.tenancy import (
+from app.auth.rbac import require_permissions
+from app.auth.tenancy import (
     get_tenant_context,
     require_login_tenant_id,
     require_request_tenant_id,
 )
 from app.db import session as session_module
-from app.models.auth.user import User
+from app.auth.models.user import User
 from app.models.documents.data_deletion import DataDeletion
-from app.repositories.auth.roles import RolesRepository
-from app.repositories.auth.users import UsersRepository
+from app.auth.repositories.roles import RolesRepository
+from app.auth.repositories.users import UsersRepository
 from app.repositories.documents.chunks import ChunksRepository
 from app.repositories.documents.data_deletions import DataDeletionsRepository
 from app.repositories.query.queries import QueriesRepository
@@ -97,7 +97,7 @@ def test_get_tenant_context_applies_scope(monkeypatch: pytest.MonkeyPatch) -> No
         _ = db
         called["tenant"] = str(tenant_id)
 
-    monkeypatch.setattr("app.core.tenancy.apply_tenant_context", _apply)
+    monkeypatch.setattr("app.auth.tenancy.apply_tenant_context", _apply)
     auth = AuthContext(
         user_id=uuid4(),
         tenant_id=uuid4(),

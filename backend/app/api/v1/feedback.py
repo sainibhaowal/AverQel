@@ -1,38 +1,21 @@
 from __future__ import annotations
 
 import logging
-from uuid import UUID
-
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.errors import ApiError
 from app.db.session import get_db
 from app.models.query.conversation import Conversation
 from app.models.query.feedback import Feedback
 from app.models.query.message import Message
+from app.schemas.system.feedback import FeedbackCreate, FeedbackResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
-
-
-class FeedbackCreate(BaseModel):
-    message_id: UUID
-    is_helpful: bool
-    reason: str | None = None
-
-
-class FeedbackResponse(BaseModel):
-    id: UUID
-    message_id: UUID
-    is_helpful: bool
-    reason: str | None
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 @router.post("", response_model=FeedbackResponse)

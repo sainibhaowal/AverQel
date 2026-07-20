@@ -14,34 +14,34 @@ import pyotp
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, create_access_token
+from app.auth.dependencies import AuthContext, create_access_token
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.core.roles import canonicalize_role_names, is_platform_admin_email
-from app.core.security import (
+from app.auth.roles import canonicalize_role_names, is_platform_admin_email
+from app.auth.security import (
     generate_secure_token,
     hash_password,
     hash_refresh_token,
     validate_password_policy,
     verify_password,
 )
-from app.models.auth.refresh_token import RefreshToken
-from app.models.auth.revoked_access_token import RevokedAccessToken
-from app.models.auth.tenant import Tenant
-from app.models.auth.user import User
-from app.models.auth.user_role import UserRole
+from app.auth.models.refresh_token import RefreshToken
+from app.auth.models.revoked_access_token import RevokedAccessToken
+from app.auth.models.tenant import Tenant
+from app.auth.models.user import User
+from app.auth.models.user_role import UserRole
 from app.models.documents.collection import CollectionPermission
 from app.models.documents.document import Document
 from app.models.query.comment import Comment
 from app.models.query.conversation import Conversation
 from app.models.query.pinned_finding import PinnedFinding
 from app.models.query.query import Query
-from app.repositories.auth.refresh_tokens import RefreshTokensRepository
-from app.repositories.auth.revoked_access_tokens import RevokedAccessTokensRepository
-from app.repositories.auth.roles import RolesRepository
-from app.repositories.auth.tenants import TenantsRepository
-from app.repositories.auth.users import UsersRepository
+from app.auth.repositories.refresh_tokens import RefreshTokensRepository
+from app.auth.repositories.revoked_access_tokens import RevokedAccessTokensRepository
+from app.auth.repositories.roles import RolesRepository
+from app.auth.repositories.tenants import TenantsRepository
+from app.auth.repositories.users import UsersRepository
 from app.services.security.provider_secret_crypto import (
     ProviderSecretCrypto,
     ProviderSecretCryptoError,

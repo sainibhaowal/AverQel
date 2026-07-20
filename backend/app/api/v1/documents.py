@@ -21,7 +21,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.core.auth import (
+from app.auth.dependencies import (
     AuthContext,
     build_auth_context_from_jwt,
     decode_access_token,
@@ -30,8 +30,8 @@ from app.core.auth import (
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.core.rbac import require_permissions, resolve_permissions
-from app.core.tenancy import require_request_tenant_id
+from app.auth.rbac import require_permissions, resolve_permissions
+from app.auth.tenancy import require_request_tenant_id
 from app.db.session import get_db
 from app.models.documents.document import Document
 from app.models.documents.document_chunk import DocumentChunk

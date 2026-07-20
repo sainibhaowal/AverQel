@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.core.rbac import require_permissions
+from app.auth.rbac import require_permissions
 from app.db.session import get_db
 from app.repositories.query.chat import ChatRepository
 from app.schemas.query.chats import (

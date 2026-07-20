@@ -4,10 +4,10 @@ import uuid
 from datetime import datetime, timezone
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.core.security import hash_password
+from app.auth.security import hash_password
 from app.db.session import get_session_factory
-from app.models.auth.tenant import Tenant
-from app.models.auth.user import User
+from app.auth.models.tenant import Tenant
+from app.auth.models.user import User
 from app.models.providers.provider_assignment import ProviderAssignment
 from app.models.providers.provider_config import ProviderConfig
 from app.models.providers.provider_health_check import ProviderHealthCheck

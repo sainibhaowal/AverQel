@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from sqlalchemy import text
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.core.ids import generate_uuid7_with_fallback
 from app.db.session import get_session_factory, set_db_tenant_context

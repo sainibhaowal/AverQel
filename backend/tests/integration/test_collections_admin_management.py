@@ -6,9 +6,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.core.security import hash_password
+from app.auth.security import hash_password
 from app.db.session import get_session_factory, set_db_tenant_context
-from app.models.auth.user import User
+from app.auth.models.user import User
 from app.models.documents.document import Document
 from tests.conftest import SeededUser, _generate_test_collection_code
 

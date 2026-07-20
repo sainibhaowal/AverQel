@@ -10,10 +10,10 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.core.rbac import require_permissions
+from app.auth.rbac import require_permissions
 from app.db.session import get_db
 from app.models.documents.document import Document
 from app.models.integrations.connector import Connector, ConnectorStatus

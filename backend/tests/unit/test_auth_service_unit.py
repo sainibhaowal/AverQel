@@ -6,10 +6,10 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.services.auth.auth_service import AuthService
+from app.auth.services.auth_service import AuthService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
@@ -155,7 +155,7 @@ def test_login_bad_password_records_failure(
     users = _Users(user)
     svc.users = users
     monkeypatch.setattr(
-        "app.services.auth.auth_service.verify_password", lambda p, h: False
+        "app.auth.services.auth_service.verify_password", lambda p, h: False
     )
 
     with pytest.raises(ApiError) as exc:
@@ -170,7 +170,7 @@ def test_login_without_roles_raises(settings, monkeypatch: pytest.MonkeyPatch) -
     svc.users = _Users(_user())
     svc.roles = _Roles([])
     monkeypatch.setattr(
-        "app.services.auth.auth_service.verify_password", lambda p, h: True
+        "app.auth.services.auth_service.verify_password", lambda p, h: True
     )
     with pytest.raises(ApiError) as exc:
         svc.login(tenant_id=uuid4(), email="x@example.com", password="pw")

@@ -1,27 +1,54 @@
-from app.repositories.auth.refresh_tokens import RefreshTokensRepository
-from app.repositories.auth.roles import RolesRepository
-from app.repositories.auth.users import UsersRepository
-from app.repositories.documents.chunks import ChunksRepository
-from app.repositories.documents.collection_notifications import (
-    CollectionNotificationsRepository,
-)
-from app.repositories.documents.data_deletions import DataDeletionsRepository
-from app.repositories.documents.documents import DocumentsRepository
-from app.repositories.ingestion.ingestion_jobs import IngestionJobsRepository
-from app.repositories.query.queries import QueriesRepository
-from app.repositories.system.audit_logs import AuditLogsRepository
-from app.repositories.system.idempotency_keys import IdempotencyKeysRepository
+"""Repository compatibility exports.
 
-__all__ = [
-    "UsersRepository",
-    "RolesRepository",
-    "RefreshTokensRepository",
-    "DocumentsRepository",
-    "CollectionNotificationsRepository",
-    "IngestionJobsRepository",
-    "QueriesRepository",
-    "ChunksRepository",
-    "IdempotencyKeysRepository",
-    "AuditLogsRepository",
-    "DataDeletionsRepository",
-]
+Repositories are implemented in their domain packages. Lazy exports preserve
+the historical ``app.repositories`` imports without eagerly importing every
+repository and creating cross-domain circular imports.
+"""
+
+from importlib import import_module
+from typing import Any
+
+_EXPORTS = {
+    "UsersRepository": ("app.auth.repositories.users", "UsersRepository"),
+    "RolesRepository": ("app.auth.repositories.roles", "RolesRepository"),
+    "RefreshTokensRepository": (
+        "app.auth.repositories.refresh_tokens",
+        "RefreshTokensRepository",
+    ),
+    "DocumentsRepository": (
+        "app.repositories.documents.documents",
+        "DocumentsRepository",
+    ),
+    "CollectionNotificationsRepository": (
+        "app.repositories.documents.collection_notifications",
+        "CollectionNotificationsRepository",
+    ),
+    "IngestionJobsRepository": (
+        "app.repositories.ingestion.ingestion_jobs",
+        "IngestionJobsRepository",
+    ),
+    "QueriesRepository": ("app.repositories.query.queries", "QueriesRepository"),
+    "ChunksRepository": ("app.repositories.documents.chunks", "ChunksRepository"),
+    "IdempotencyKeysRepository": (
+        "app.repositories.system.idempotency_keys",
+        "IdempotencyKeysRepository",
+    ),
+    "AuditLogsRepository": (
+        "app.repositories.system.audit_logs",
+        "AuditLogsRepository",
+    ),
+    "DataDeletionsRepository": (
+        "app.repositories.documents.data_deletions",
+        "DataDeletionsRepository",
+    ),
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    try:
+        module_name, attribute_name = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(name) from exc
+    return getattr(import_module(module_name), attribute_name)

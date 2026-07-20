@@ -4,10 +4,10 @@ import uuid
 
 from sqlalchemy import select
 
-from app.core.roles import canonicalize_role_name
+from app.auth.roles import canonicalize_role_name
 from app.db.session import set_db_tenant_context
-from app.models.auth.role import Role
-from app.models.auth.user_role import UserRole
+from app.auth.models.role import Role
+from app.auth.models.user_role import UserRole
 from app.repositories.system.base import BaseRepository
 
 

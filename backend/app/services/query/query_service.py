@@ -13,7 +13,7 @@ from typing import Any, cast
 
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.core.context import get_trace_id
 from app.core.errors import ApiError

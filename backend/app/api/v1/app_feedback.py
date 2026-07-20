@@ -5,10 +5,10 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.api.v1.admin import require_platform_admin_access
-from app.core.auth import AuthContext, get_auth_context
-from app.core.rbac import require_permissions
+from app.auth.dependencies import AuthContext, get_auth_context
+from app.auth.rbac import require_permissions
 from app.db.session import get_db
-from app.models.auth.user import User
+from app.auth.models.user import User
 from app.models.system.app_feedback import AppFeedback, FeedbackCampaign
 from app.schemas.system.app_feedback import (
     AppFeedbackCreate,

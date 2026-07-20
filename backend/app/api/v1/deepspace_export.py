@@ -4,9 +4,9 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.errors import ApiError
-from app.core.rbac import require_permissions
+from app.auth.rbac import require_permissions
 from app.db.session import get_db
 from app.repositories.query.chat import ChatRepository
 from app.services.deepspace.integrations.export_service import DeepSpaceExportService

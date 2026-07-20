@@ -11,7 +11,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
@@ -20,11 +20,11 @@ from app.repositories.query.chat import ChatRepository
 from app.schemas.query.structured_response import StructuredAnswerResponse
 from app.services.deepspace.execution.agent_executor import AgentExecutor
 from app.services.deepspace.missions.mission_registry import MissionRegistry
-from app.services.deepspace.runtime.runtime_contracts import (
+from app.services.deepspace.deepspace_runtime.runtime_contracts import (
     normalize_conversation_compaction_state,
     resolve_compacted_session_messages,
 )
-from app.services.deepspace.runtime.sse_event_mapper import DeepSpaceSseEventMapper
+from app.services.deepspace.deepspace_runtime.sse_event_mapper import DeepSpaceSseEventMapper
 from app.services.integrations.connector_orchestrator import ConnectorOrchestrator
 from app.services.providers.registry import ProviderRegistry
 from app.services.providers.selection_service import ProviderSelectionService

@@ -29,7 +29,7 @@ from urllib.parse import quote, urlparse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.services.deepspace.execution.aci_tools import (
     DIRECTORY_SUMMARY_TREE,

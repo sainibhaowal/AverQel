@@ -5,9 +5,9 @@ from collections.abc import Callable
 import pyotp
 from fastapi.testclient import TestClient
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import Settings
-from app.services.auth.auth_service import AuthService
+from app.auth.services.auth_service import AuthService
 from tests.conftest import SeededUser
 
 

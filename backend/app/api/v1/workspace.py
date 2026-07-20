@@ -6,32 +6,17 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.services.deepspace.workspace.workspace_service import WorkspaceFile, WorkspaceService
+from app.schemas.workspace import FileWriteRequest, ResolveFolderRequest, WorkspaceStatusResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/workspace", tags=["workspace"])
-
-
-class WorkspaceStatusResponse(BaseModel):
-    status: str
-    message: str
-
-
-class FileWriteRequest(BaseModel):
-    path: str
-    content: str
-
-
-class ResolveFolderRequest(BaseModel):
-    name: str
-    current_path: str
 
 
 @router.post("/resolve-folder")
@@ -44,8 +29,8 @@ def resolve_folder(
     import os
     import re
 
-    # Try to find user home for 'sephi-asi' or fall back to system home
-    user_home = "/home/sephi-asi"
+    # Try to find user home for 'ravi' or fall back to system home
+    user_home = "/home/ravi"
     if not os.path.exists(user_home):
         user_home = os.path.expanduser("~")
 

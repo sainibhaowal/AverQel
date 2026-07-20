@@ -5,7 +5,7 @@ from collections.abc import Callable
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.auth import create_access_token
+from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.services.providers.types import HealthCheckResult
 from tests.conftest import SeededUser

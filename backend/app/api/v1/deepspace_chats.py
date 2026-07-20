@@ -20,10 +20,9 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import (
+from app.auth.dependencies import (
     API_KEY_PREFIX,
     AuthContext,
     build_auth_context_from_api_key,
@@ -31,9 +30,14 @@ from app.core.auth import (
     decode_access_token,
     get_auth_context,
 )
+from app.schemas.deepspace.runtime import (
+    ResolveMissionApprovalRequest,
+    UpdateExecutionModeRequest,
+    UpdateRuntimePreferencesRequest,
+)
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.core.rbac import require_permissions, resolve_permissions
+from app.auth.rbac import require_permissions, resolve_permissions
 from app.db.session import get_db, set_db_tenant_context
 from app.repositories.query.chat import ChatRepository
 from app.schemas.query.chats import (
@@ -148,7 +152,7 @@ async def _authenticate_websocket_auth_context(
         )
 
     if token.startswith(API_KEY_PREFIX):
-        from app.repositories.auth.api_keys import ApiKeysRepository
+        from app.auth.repositories.api_keys import ApiKeysRepository
 
         repo = ApiKeysRepository(db)
         key_hash = repo.hash_key(token)
@@ -377,38 +381,6 @@ async def _stream_service_over_websocket(
     except ApiError as exc:
         await _send_websocket_sse_error(websocket, code=exc.code, message=exc.message)
         return
-
-
-class UpdateExecutionModeRequest(BaseModel):
-    execution_mode: Literal["auto_review", "full_access"]
-    conversation_id: uuid.UUID | None = None
-
-
-class UpdateRuntimePreferencesRequest(BaseModel):
-    conversation_id: uuid.UUID | None = None
-    execution_mode: Literal["auto_review", "full_access"] | None = None
-    planner_mode: Literal["default", "structured"] | None = None
-    subagent_profile: (
-        Literal[
-            "default",
-            "research",
-            "analysis",
-            "writer",
-            "executor",
-            "planner",
-            "support",
-            "file",
-        ]
-        | None
-    ) = None
-    runtime_hooks_enabled: bool | None = None
-    workspace_mode_enabled: bool | None = None
-    full_autonomy_enabled: bool | None = None
-
-
-class ResolveMissionApprovalRequest(BaseModel):
-    lane_id: str
-    approved: bool = True
 
 
 def _serialize_runtime_preferences(
@@ -2381,7 +2353,7 @@ async def get_session_context(
     db: Session = Depends(get_db),
 ):
     from app.services.deepspace.execution.agent_executor import AgentExecutor
-    from app.services.deepspace.runtime.runtime_contracts import (
+    from app.services.deepspace.deepspace_runtime.runtime_contracts import (
         estimate_messages_tokens,
         normalize_conversation_compaction_state,
         resolve_compacted_session_messages,

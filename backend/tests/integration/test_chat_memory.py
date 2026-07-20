@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.db.session import get_session_factory
 from app.repositories.query.chat import ChatRepository
 from app.services.query.query_service import QueryService

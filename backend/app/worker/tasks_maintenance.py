@@ -12,7 +12,7 @@ from sqlalchemy.engine import CursorResult
 
 from app.core.config import get_settings
 from app.db.session import get_session_factory
-from app.models.auth.tenant import Tenant
+from app.auth.models.tenant import Tenant
 from app.services.documents.deletion_service import DeletionService
 from app.services.system.audit_service import AuditService
 from app.services.system.metrics_service import MAINTENANCE_JOB_EVENTS_TOTAL

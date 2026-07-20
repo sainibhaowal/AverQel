@@ -9,13 +9,13 @@ from typing import Any
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.core.roles import is_platform_admin_email
+from app.auth.roles import is_platform_admin_email
 from app.db.session import set_db_tenant_context
-from app.models.auth.refresh_token import RefreshToken
-from app.models.auth.user import User
+from app.auth.models.refresh_token import RefreshToken
+from app.auth.models.user import User
 from app.models.documents.collection import DocumentCollection
 from app.models.documents.document import Document
 from app.models.providers.provider_config import ProviderConfig
@@ -23,10 +23,10 @@ from app.models.query.comment import Comment
 from app.models.query.conversation import Conversation
 from app.models.query.pinned_finding import PinnedFinding
 from app.models.query.query import Query
-from app.repositories.auth.refresh_tokens import RefreshTokensRepository
-from app.repositories.auth.roles import RolesRepository
-from app.repositories.auth.tenants import TenantsRepository
-from app.repositories.auth.users import UsersRepository
+from app.auth.repositories.refresh_tokens import RefreshTokensRepository
+from app.auth.repositories.roles import RolesRepository
+from app.auth.repositories.tenants import TenantsRepository
+from app.auth.repositories.users import UsersRepository
 from app.services.system.audit_service import AuditService
 from app.services.system.storage_service import StorageService
 

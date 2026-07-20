@@ -4,9 +4,9 @@ import logging
 
 from fastapi import APIRouter, Depends
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.config import Settings, get_settings
-from app.schemas.auth.capabilities import (
+from app.auth.schemas.capabilities import (
     CapabilitiesResponse,
     SupportedFormat,
     SystemLimits,

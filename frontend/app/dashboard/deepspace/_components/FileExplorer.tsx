@@ -112,7 +112,7 @@ export default function FileExplorer({
         const selected = await tauri.dialog.open({
           directory: true,
           multiple: false,
-          defaultPath: currentPath || "/home/sephi-asi",
+          defaultPath: currentPath || "/home/ravi",
         });
         if (selected && typeof selected === "string") {
           fetchFiles(selected);
@@ -160,9 +160,9 @@ export default function FileExplorer({
         const rootRes = await fetchWithAuth("/workspace/root");
         if (rootRes.ok) {
           const rootData = await rootRes.json();
-          targetPath = rootData.path || "/home/sephi-asi/AverQel";
+          targetPath = rootData.path || "/home/ravi/Projects/AverQel";
         } else {
-          targetPath = "/home/sephi-asi/AverQel";
+          targetPath = "/home/ravi/Projects/AverQel";
         }
       }
     }
@@ -444,15 +444,15 @@ export default function FileExplorer({
             onChange={(e) => setTempPath(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                fetchFiles(tempPath.trim() || "/home/sephi-asi/AverQel");
+                fetchFiles(tempPath.trim() || "/home/ravi/Projects/AverQel");
               }
             }}
-            placeholder="Type host path, e.g. /home/sephi-asi"
+            placeholder="Type host path, e.g. /home/ravi"
             className="flex-1 bg-transparent text-foreground text-[10px] font-mono outline-none placeholder:text-foreground/20 min-w-0"
           />
           {tempPath !== currentPath && (
             <button
-              onClick={() => fetchFiles(tempPath.trim() || "/home/sephi-asi/AverQel")}
+              onClick={() => fetchFiles(tempPath.trim() || "/home/ravi/Projects/AverQel")}
               className="px-2 py-0.5 rounded-md bg-primary/20 hover:bg-primary/30 text-primary text-[9px] font-bold uppercase tracking-wider transition-all flex-shrink-0"
             >
               Go
@@ -598,7 +598,7 @@ export default function FileExplorer({
         onSelect={(selectedPath) => {
           fetchFiles(selectedPath);
         }}
-        initialPath={currentPath.startsWith("/") ? currentPath : "/home/sephi-asi"}
+        initialPath={currentPath.startsWith("/") ? currentPath : "/home/ravi"}
       />
 
       <input

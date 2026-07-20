@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import select
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.deepspace.agent_activity import AgentActivity

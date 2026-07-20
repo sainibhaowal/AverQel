@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
 
-from app.models.auth.revoked_access_token import RevokedAccessToken
+from app.auth.models.revoked_access_token import RevokedAccessToken
 from app.repositories.system.base import BaseRepository
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

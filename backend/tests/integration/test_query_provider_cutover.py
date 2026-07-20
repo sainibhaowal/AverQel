@@ -4,7 +4,7 @@ from typing import cast
 
 from sqlalchemy import select
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.db.session import get_session_factory
 from app.models.providers.provider_assignment import ProviderAssignment

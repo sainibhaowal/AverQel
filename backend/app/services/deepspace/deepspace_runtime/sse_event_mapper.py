@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.deepspace.runtime.runtime_events import RuntimeEvent
+from app.services.deepspace.deepspace_runtime.runtime_events import RuntimeEvent
 from app.services.query.answer_service import AnswerService, StreamEvent
 
 

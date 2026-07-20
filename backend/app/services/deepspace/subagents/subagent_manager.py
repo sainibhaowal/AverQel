@@ -5,7 +5,7 @@ from time import perf_counter
 
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.services.deepspace.execution.agent_tools import ToolResult
 from app.services.deepspace.missions.mission_registry import MissionRegistry

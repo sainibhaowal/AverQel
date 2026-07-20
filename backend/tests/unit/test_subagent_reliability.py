@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 import app.services.deepspace.subagents.subagent_registry as subagent_registry_module
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.services.deepspace.execution.agent_tools import ToolResult
 from app.services.deepspace.subagents.subagent_manager import (

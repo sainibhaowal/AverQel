@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from app.core.auth import create_access_token
+from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.models.deepspace.agent_memory import AgentMemory
 from app.services.deepspace.memory.memory_service import MemoryService

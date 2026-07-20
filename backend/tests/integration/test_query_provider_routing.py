@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.db.session import get_session_factory
 from app.models.providers.provider_assignment import ProviderAssignment

@@ -9,17 +9,17 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.core.rbac import require_permissions
-from app.core.roles import is_admin_role, is_platform_admin_email
-from app.core.tenancy import TenantContext, get_tenant_context
+from app.auth.rbac import require_permissions
+from app.auth.roles import is_admin_role, is_platform_admin_email
+from app.auth.tenancy import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.models.system.break_glass_grant import BreakGlassGrant
-from app.repositories.auth.users import UsersRepository
+from app.auth.repositories.users import UsersRepository
 from app.repositories.documents.documents import DocumentsRepository
-from app.schemas.auth.admin import (
+from app.auth.schemas.admin import (
     AdminDocumentStatusCountResponse,
     AdminDocumentSummaryListResponse,
     AdminDocumentTenantSummaryResponse,
@@ -43,7 +43,7 @@ from app.schemas.auth.admin import (
     DataDeletionRequestResponse,
     DataDeletionStatusResponse,
 )
-from app.services.auth.admin_user_service import (
+from app.auth.services.admin_user_service import (
     AdminTenantSummary,
     AdminUserService,
     AdminUserSummary,

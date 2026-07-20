@@ -8,7 +8,7 @@ from typing import Any, cast
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.db.session import get_session_factory, set_db_tenant_context
 from app.models.deepspace.agent_activity import AgentActivity

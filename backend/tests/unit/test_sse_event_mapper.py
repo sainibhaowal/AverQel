@@ -1,4 +1,4 @@
-from app.services.deepspace.runtime.sse_event_mapper import DeepSpaceSseEventMapper
+from app.services.deepspace.deepspace_runtime.sse_event_mapper import DeepSpaceSseEventMapper
 from app.services.query.answer_service import AnswerService
 
 

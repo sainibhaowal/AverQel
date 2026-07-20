@@ -8,13 +8,13 @@ from typing import cast
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.core.rbac import require_permissions
-from app.core.tenancy import get_login_tenant_id
+from app.auth.rbac import require_permissions
+from app.auth.tenancy import get_login_tenant_id
 from app.db.session import get_db
-from app.schemas.auth.auth import (
+from app.auth.schemas.auth import (
     AccountActivityItem,
     AccountActivityResponse,
     AuthUserResponse,
@@ -38,7 +38,7 @@ from app.schemas.auth.auth import (
     TotpVerifyRequest,
     UserRegisterResponse,
 )
-from app.services.auth.auth_service import AuthService
+from app.auth.services.auth_service import AuthService
 from app.services.system.audit_service import AuditService
 from app.services.system.rate_limit_service import RateLimitService
 

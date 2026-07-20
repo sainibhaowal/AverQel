@@ -3,26 +3,18 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.core.tenancy import require_request_tenant_id
+from app.auth.tenancy import require_request_tenant_id
 from app.db.session import get_db
 from app.schemas.query.queries import QueryCitationResponse, QueryRequest, QueryResponse
+from app.schemas.query.batch import BatchQueryRequest, BatchQueryResponse
 from app.services.query.query_service import QueryExecutionResult, QueryService
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
-
-
-class BatchQueryRequest(BaseModel):
-    queries: list[QueryRequest]
-
-
-class BatchQueryResponse(BaseModel):
-    results: list[QueryResponse]
 
 
 def _enforce_tenant_scope(request_tenant_id: uuid.UUID, auth: AuthContext) -> None:

@@ -13,7 +13,7 @@ from starlette.requests import Request
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.middleware import RateLimitDecision, RequestContextMiddleware
-from app.schemas.auth.auth import LoginRequest
+from app.auth.schemas.auth import LoginRequest
 from app.schemas.query.queries import QueryFilters, QueryRequest
 from app.services.ingestion.parser_service import ParserService
 from app.services.query import answer_service as answer_module

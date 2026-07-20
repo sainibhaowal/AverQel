@@ -31,7 +31,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.core.brand import APP_ASSISTANT_NAME, APP_BRAND_NAME, APP_ENGINE_NAME
 from app.core.config import Settings
 from app.repositories.query.chat import ChatRepository
@@ -45,16 +45,16 @@ from app.services.deepspace.execution.agent_tools import (
 from app.services.deepspace.execution.reliability import CircuitBreaker
 from app.services.deepspace.execution.tool_context import ToolContext
 from app.services.deepspace.missions.mission_registry import MissionRegistry
-from app.services.deepspace.runtime.runtime_context import RuntimeContext, ToolRuntimeContext
-from app.services.deepspace.runtime.runtime_contracts import (
+from app.services.deepspace.deepspace_runtime.runtime_context import RuntimeContext, ToolRuntimeContext
+from app.services.deepspace.deepspace_runtime.runtime_contracts import (
     build_conversation_compaction_state,
     estimate_messages_tokens,
 )
-from app.services.deepspace.runtime.runtime_hooks import (
+from app.services.deepspace.deepspace_runtime.runtime_hooks import (
     RuntimeHooks,
     summarize_runtime_hooks_state,
 )
-from app.services.deepspace.runtime.runtime_policy import (
+from app.services.deepspace.deepspace_runtime.runtime_policy import (
     RuntimePolicy,
     summarize_runtime_policy_state,
 )

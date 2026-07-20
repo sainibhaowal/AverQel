@@ -410,7 +410,7 @@ export default function DeepSpaceTerminal({
     const activePane = activeGroup.panes.find((p) => p.id === focusedPaneId);
     if (activePane) {
       const venvPrefix = activePane.activeVenv ? `(${activePane.activeVenv}) ` : "";
-      const echoLine = `${venvPrefix}sephi-asi@averqel:${activePane.cwd.replace("/workspace", "~")}$ ${cleanCmd}`;
+      const echoLine = `${venvPrefix}ravi@averqel:${activePane.cwd.replace("/workspace", "~")}$ ${cleanCmd}`;
       appendOutput(focusedPaneId, echoLine + "\n", "stdout");
     }
 
@@ -822,7 +822,7 @@ export default function DeepSpaceTerminal({
                   <button
                     onClick={() => {
                       if (activeFolderPath) {
-                        appendOutput(focusedPaneId, `\nRecent directories:\n- ${activeFolderPath}\n- /home/sephi-asi\n- /workspace\n`, "system");
+                        appendOutput(focusedPaneId, `\nRecent directories:\n- ${activeFolderPath}\n- /home/ravi\n- /workspace\n`, "system");
                       }
                       setShowActionMenu(false);
                     }}
@@ -1001,7 +1001,7 @@ export default function DeepSpaceTerminal({
                           {pane.activeVenv && (
                             <span className="text-amber-400 font-bold mr-1.5 bg-amber-400/10 border border-amber-400/15 px-1.5 rounded-full text-[8.5px] leading-none py-0.5">({pane.activeVenv})</span>
                           )}
-                          <span className="text-emerald-450 font-bold">sephi-asi@averqel</span>
+                          <span className="text-emerald-450 font-bold">ravi@averqel</span>
                           <span className="text-foreground/40 font-bold">:</span>
                           <span className="text-primary font-bold">{pane.cwd.replace("/workspace", "~")}</span>
                           <span className="text-foreground font-bold mr-1.5">$</span>

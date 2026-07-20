@@ -15,7 +15,7 @@ from mcp.shared.auth import (
 from sqlalchemy import select
 
 import app.services.integrations.connector_oauth_service as connector_oauth_service
-from app.core.auth import create_access_token
+from app.auth.dependencies import create_access_token
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.models.integrations.connector import Connector, ConnectorStatus

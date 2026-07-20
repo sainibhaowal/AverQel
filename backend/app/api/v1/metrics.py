@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Response
 
-from app.core.rbac import require_permissions
+from app.auth.rbac import require_permissions
 from app.schemas.system.metrics_summary import MetricsSummaryResponse
 from app.services.system.metrics_service import metrics_payload, read_metrics_summary
 

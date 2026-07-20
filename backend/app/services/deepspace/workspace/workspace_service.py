@@ -48,8 +48,8 @@ class WorkspaceService:
                     default_proj.mkdir(parents=True, exist_ok=True)
                     self.workspace_root = default_proj.resolve()
                 except Exception:
-                    if Path("/home/sephi-asi/AverQel").exists():
-                        self.workspace_root = Path("/home/sephi-asi/AverQel").resolve()
+                    if Path("/home/ravi/Projects/AverQel").exists():
+                        self.workspace_root = Path("/home/ravi/Projects/AverQel").resolve()
                     else:
                         self.workspace_root = Path(os.getcwd()).resolve()
         else:
@@ -57,7 +57,7 @@ class WorkspaceService:
             if str(resolved_parent).startswith("/app"):
                 self.base_root = resolved_parent / "Runtime" / "workspaces"
             else:
-                self.base_root = Path("/home/sephi-asi/.cache/averqel/workspaces")
+                self.base_root = Path("/home/ravi/.cache/averqel/workspaces")
             self.workspace_root = self.base_root / tenant_id / user_id
 
         # Ensure workspace exists. A read-only host cache must not prevent the
@@ -105,12 +105,12 @@ class WorkspaceService:
         import re
 
         cleaned = re.sub(
-            r"^/?home/sephi-asi/AverQel/?", "", cleaned, flags=re.IGNORECASE
+            r"^/?home/ravi/Projects/AverQel/?", "", cleaned, flags=re.IGNORECASE
         )
         cleaned = re.sub(
-            r"^/?home/sephi-asi/AverQel/?", "", cleaned, flags=re.IGNORECASE
+            r"^/?home/ravi/Projects/AverQel/?", "", cleaned, flags=re.IGNORECASE
         )
-        cleaned = re.sub(r"^/?home/sephi-asi/?", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"^/?home/ravi/?", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"^/?root/?", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"^/?users/?", "", cleaned, flags=re.IGNORECASE)
 

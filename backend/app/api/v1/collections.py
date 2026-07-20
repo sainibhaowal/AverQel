@@ -11,15 +11,15 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Response, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.errors import ApiError
-from app.core.rbac import require_permissions
-from app.core.tenancy import require_request_tenant_id
+from app.auth.rbac import require_permissions
+from app.auth.tenancy import require_request_tenant_id
 from app.db.session import get_db
 from app.models.documents.collection import DocumentCollection, UserPresence
 from app.models.documents.collection_notification import CollectionNotification
 from app.models.documents.document import Document
-from app.repositories.auth.users import UsersRepository
+from app.auth.repositories.users import UsersRepository
 from app.repositories.documents.collection_notifications import (
     CollectionNotificationsRepository,
 )
@@ -37,6 +37,8 @@ from app.schemas.documents.collection import (
     DocumentCollectionResponse,
 )
 from app.schemas.documents.documents import DocumentMetadataResponse
+from app.schemas.documents.collection_chat import CollectionChatMessage, CreateChatMessage
+from app.schemas.documents.collection_expiry import UpdateExpiryPayload
 from app.services.ingestion.extraction_quality import confidence_band
 
 logger = logging.getLogger(__name__)
@@ -1178,26 +1180,6 @@ def respond_to_collection_invitation(
 # Real-time Team Chat Endpoints
 import json  # noqa: E402
 
-from pydantic import BaseModel, ConfigDict  # noqa: E402
-
-
-class CollectionChatMessage(BaseModel):
-    id: str
-    collection_id: str
-    user_id: str
-    user_email: str
-    message: str
-    status: str = "sent"
-    is_media: bool = False
-    media_mime_type: str | None = None
-    reactions: str = "{}"
-    created_at: str
-
-class CreateChatMessage(BaseModel):
-    message: str
-    is_media: bool = False
-    media_mime_type: str | None = None
-
 class CollectionBroadcastManager:
     def __init__(self) -> None:
         self.active_connections: dict[str, set[WebSocket]] = {}
@@ -1724,7 +1706,7 @@ def get_collection_members_presence(
         user_id=auth.user_id,
     )
 
-    from app.models.auth.user import User
+    from app.auth.models.user import User
     from app.models.documents.collection import CollectionPermission
 
     query = (
@@ -1746,11 +1728,6 @@ def get_collection_members_presence(
         for r in results
     ]
 
-
-class UpdateExpiryPayload(BaseModel):
-    expiry_days: int
-
-    model_config = ConfigDict(extra="forbid")
 
 @router.put("/{collection_id}/expiry", response_model=DocumentCollectionResponse)
 async def update_collection_expiry(
@@ -1797,6 +1774,5 @@ async def update_collection_expiry(
         requester_access_role=role,
         member_count=member_count,
     )
-
 
 

@@ -3,7 +3,7 @@ import asyncio
 from sqlalchemy import select
 
 from app.db.session import get_session_factory
-from app.models.auth.tenant import Tenant
+from app.auth.models.tenant import Tenant
 from app.models.providers.provider_assignment import ProviderAssignment
 
 

@@ -1,7 +1,8 @@
+from app.auth import api as auth
+
 from app.api.v1 import (
     admin,
     analytics,
-    auth,
     client_storage,
     collections,
     documents,
@@ -15,8 +16,8 @@ from app.api.v1 import (
 )
 
 __all__ = [
-    "admin",
     "auth",
+    "admin",
     "collections",
     "client_storage",
     "documents",

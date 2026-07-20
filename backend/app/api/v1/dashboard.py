@@ -3,8 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
-from app.core.tenancy import TenantContext, get_tenant_context
+from app.auth.dependencies import AuthContext, get_auth_context
+from app.auth.tenancy import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.schemas.analytics.dashboard import (
     DashboardOverviewResponse,

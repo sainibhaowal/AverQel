@@ -16,7 +16,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      'bash ./scripts/run-with-runtime-env.sh "/home/sephi-asi/.nvm/versions/node/v22.22.0/bin/node ./node_modules/next/dist/bin/next dev --webpack -p 3103"',
+      'bash ./scripts/run-with-runtime-env.sh "/home/ravi/.nvm/versions/node/v22.22.0/bin/node ./node_modules/next/dist/bin/next dev --webpack -p 3103"',
     url: "http://127.0.0.1:3103",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

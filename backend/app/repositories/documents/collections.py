@@ -617,7 +617,7 @@ class CollectionsRepository(BaseRepository):
         collection_id: uuid.UUID,
     ) -> list[tuple[CollectionChatMessage, str, str | None]]:
         self._apply_bypass_scope()
-        from app.models.auth.user import User
+        from app.auth.models.user import User
         query = (
             select(CollectionChatMessage, User.email, User.avatar)
             .join(User, User.id == CollectionChatMessage.user_id)

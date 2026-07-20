@@ -26,7 +26,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
-from app.core.roles import canonicalize_role_name
+from app.auth.roles import canonicalize_role_name
 
 
 def _is_tcp_reachable(host: str, port: int, timeout: float = 0.5) -> bool:
@@ -291,7 +291,7 @@ import filelock  # noqa: E402
 
 from app.core.config import Settings, get_settings  # noqa: E402
 from app.core.ids import generate_uuid7_with_fallback  # noqa: E402
-from app.core.security import hash_password  # noqa: E402
+from app.auth.security import hash_password  # noqa: E402
 from app.db.session import (  # noqa: E402
     get_engine,
     get_session_factory,
@@ -299,10 +299,10 @@ from app.db.session import (  # noqa: E402
     set_db_tenant_context,
 )
 from app.main import create_app  # noqa: E402
-from app.models.auth.role import Role  # noqa: E402
-from app.models.auth.tenant import Tenant  # noqa: E402
-from app.models.auth.user import User  # noqa: E402
-from app.models.auth.user_role import UserRole  # noqa: E402
+from app.auth.models.role import Role  # noqa: E402
+from app.auth.models.tenant import Tenant  # noqa: E402
+from app.auth.models.user import User  # noqa: E402
+from app.auth.models.user_role import UserRole  # noqa: E402
 from app.services.ingestion.embedding_service import EmbeddingService  # noqa: E402
 from app.services.query.answer_service import AnswerService  # noqa: E402
 from app.services.system.rate_limit_service import (  # noqa: E402

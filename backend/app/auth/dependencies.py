@@ -17,7 +17,7 @@ from app.core.config import Settings, get_settings
 from app.core.context import set_tenant_id, set_user_id
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.core.roles import canonicalize_role_name
+from app.auth.roles import canonicalize_role_name
 from app.db.session import get_db
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
@@ -294,8 +294,8 @@ def _validate_live_user_and_tenant(
     user_id: uuid.UUID,
     tenant_id: uuid.UUID,
 ) -> tuple[UserRecord, TenantRecord]:
-    from app.repositories.auth.tenants import TenantsRepository
-    from app.repositories.auth.users import UsersRepository
+    from app.auth.repositories.tenants import TenantsRepository
+    from app.auth.repositories.users import UsersRepository
 
     user_repo = UsersRepository(db)
     tenant_repo = TenantsRepository(db)
@@ -338,7 +338,7 @@ def _load_live_role_names(
     tenant_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> frozenset[str]:
-    from app.repositories.auth.roles import RolesRepository
+    from app.auth.repositories.roles import RolesRepository
 
     role_names = RolesRepository(db).get_role_names_for_user(tenant_id, user_id)
     return frozenset(
@@ -369,7 +369,7 @@ def _check_jwt_not_revoked(*, db: Session, tenant_id: uuid.UUID, token_id: str) 
         )
 
     if not revoked:
-        from app.repositories.auth.revoked_access_tokens import (
+        from app.auth.repositories.revoked_access_tokens import (
             RevokedAccessTokensRepository,
         )
 
@@ -584,7 +584,7 @@ async def get_auth_context(
     requested_tenant_id = _parse_requested_tenant_id(x_tenant_id)
 
     if token.startswith(API_KEY_PREFIX):
-        from app.repositories.auth.api_keys import ApiKeysRepository
+        from app.auth.repositories.api_keys import ApiKeysRepository
 
         repo = ApiKeysRepository(db)
         key_hash = repo.hash_key(token)

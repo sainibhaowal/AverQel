@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.services.deepspace.orchestration.deepspace_service import DeepSpaceService
 
 

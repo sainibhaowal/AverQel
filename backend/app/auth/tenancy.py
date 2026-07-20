@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from fastapi import Depends, Header
 from sqlalchemy.orm import Session
 
-from app.core.auth import AuthContext, get_auth_context
+from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.errors import ApiError
 from app.db.session import get_db, set_db_tenant_context
 

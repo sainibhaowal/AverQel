@@ -7,7 +7,6 @@ from app.api.v1 import (
     admin,
     analytics,
     app_feedback,
-    auth,
     capabilities,
     chats,
     client_storage,
@@ -28,6 +27,7 @@ from app.api.v1 import (
     voice_routes,
     workspace,
 )
+from app.auth import api as auth
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging

@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.core.auth import AuthContext
+from app.auth.dependencies import AuthContext
 from app.models.deepspace.agent_activity import AgentActivity
 from app.models.deepspace.agent_todo import AgentTodo
 from app.models.integrations.connector import Connector
