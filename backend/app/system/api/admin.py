@@ -15,7 +15,7 @@ from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
 from app.auth.roles import is_admin_role, is_platform_admin_email
 from app.auth.tenancy import TenantContext, get_tenant_context
-from app.db.session import get_db
+from app.platform.database.session import get_db
 from app.system.models.break_glass_grant import BreakGlassGrant
 from app.auth.repositories.users import UsersRepository
 from app.documents.repositories.documents import DocumentsRepository

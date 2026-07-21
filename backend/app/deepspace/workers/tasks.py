@@ -8,7 +8,7 @@ import uuid
 
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.deepspace.missions.mission_registry import MissionRegistry
 from app.deepspace.orchestration.master_orchestrator import MasterOrchestrator
 from app.system.services.metrics_service import DEEPSPACE_CONTINUATION_EVENTS_TOTAL

@@ -221,7 +221,7 @@ class MissionRegistry:
         if self.db is None or not payload.get("tenant_id") or not payload.get("user_id"):
             return
         try:
-            from app.db.session import get_session_factory
+            from app.platform.database.session import get_session_factory
 
             session = get_session_factory()()
             try:

@@ -24,7 +24,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
-from app.db.session import get_engine
+from app.platform.database.session import get_engine
 from app.system.services.otel import configure_telemetry, instrument_sqlalchemy, telemetry_span
 
 

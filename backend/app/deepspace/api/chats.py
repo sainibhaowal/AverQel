@@ -38,7 +38,7 @@ from app.deepspace.schemas.runtime import (
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.auth.rbac import require_permissions, resolve_permissions
-from app.db.session import get_db, set_db_tenant_context
+from app.platform.database.session import get_db, set_db_tenant_context
 from app.query.repositories.chat import ChatRepository
 from app.query.schemas.chats import (
     BulkDeleteRequest,

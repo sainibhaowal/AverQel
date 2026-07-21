@@ -1,6 +1,6 @@
 import uuid
 
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.documents.repositories.chunks import ChunksRepository
 
 db = get_session_factory()()

@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.errors import ApiError
-from app.db.session import get_engine
+from app.platform.database.session import get_engine
 from app.system.schemas.common import HealthResponse
 from app.system.services.cache_service import get_redis_client
 

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.repositories.provider_assignments import (

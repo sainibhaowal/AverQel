@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from sqlalchemy import select, text
 
-from app.db.session import get_session_factory, set_db_tenant_context
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.integrations.models.connector import Connector
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration

@@ -18,7 +18,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.db.base import Base
+from app.platform.database.base import Base
 
 
 class ProviderConfig(Base):

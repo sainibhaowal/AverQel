@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.models.provider_health_check import ProviderHealthCheck

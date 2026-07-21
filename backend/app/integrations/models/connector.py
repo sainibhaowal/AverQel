@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.db.base import Base
+from app.platform.database.base import Base
 
 
 class ConnectorStatus(str, Enum):

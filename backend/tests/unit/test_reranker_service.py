@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.db.session import set_db_tenant_context
+from app.platform.database.session import set_db_tenant_context
 from app.auth.models.tenant import Tenant
 from app.documents.repositories.chunks import RetrievedChunkRow
 from app.providers.services.registry import ProviderRegistry

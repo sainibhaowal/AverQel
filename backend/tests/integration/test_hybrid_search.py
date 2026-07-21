@@ -2,7 +2,7 @@ import uuid
 
 import pytest
 
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
 from app.documents.repositories.chunks import ChunksRepository

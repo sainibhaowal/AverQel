@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 
-from app.db.session import set_db_tenant_context
+from app.platform.database.session import set_db_tenant_context
 from app.auth.models.user import User
 from app.system.repositories.base import BaseRepository
 

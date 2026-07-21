@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.providers.models.provider_config import ProviderConfig
 from app.system.models.audit_log import AuditLog
 from app.providers.repositories.provider_configs import ProviderConfigsRepository

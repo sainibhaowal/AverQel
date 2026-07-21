@@ -6,7 +6,7 @@ import httpx
 from sqlalchemy import func, select
 
 from app.core.config import get_settings
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.deepspace.subagents.subagent_registry import SubagentRegistry

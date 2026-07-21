@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
-from app.db.session import get_session_factory, set_db_tenant_context
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.deepspace.models.agent_activity import AgentActivity
 from app.documents.models.collection_notification import CollectionNotification
 from app.integrations.models.connector import Connector, ConnectorStatus

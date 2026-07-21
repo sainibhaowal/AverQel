@@ -14,7 +14,7 @@ from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
-from app.db.session import get_db
+from app.platform.database.session import get_db
 from app.documents.models.document import Document
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
@@ -79,7 +79,7 @@ def _increment_counter(breakdown: dict[str, int], key: str | None) -> None:
 
 
 def _schedule_oauth_sync(connector_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
-    from app.db.session import get_session_factory
+    from app.platform.database.session import get_session_factory
 
     with get_session_factory()() as session:
         ConnectorOrchestrator(session).sync_connector(connector_id, tenant_id)

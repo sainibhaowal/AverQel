@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 from sqlalchemy import func, select, text
 
-from app.db.session import get_session_factory, set_db_tenant_context
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk

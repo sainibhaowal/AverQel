@@ -7,7 +7,7 @@ from sqlalchemy import DateTime, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import Base
+from app.platform.database.base import Base
 
 
 class Tenant(Base):

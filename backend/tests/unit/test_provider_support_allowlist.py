@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.providers.services.provider_management_service import ProviderManagementService
 
 

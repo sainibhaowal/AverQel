@@ -11,7 +11,7 @@ from celery.exceptions import Retry  # type: ignore[import-untyped]
 from sqlalchemy import select, text
 
 from app.core.config import get_settings
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.integration import Integration
 from app.integrations.services.connector_orchestrator import ConnectorOrchestrator

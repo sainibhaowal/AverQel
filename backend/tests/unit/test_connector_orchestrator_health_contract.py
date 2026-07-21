@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import text
 
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.deepspace.models.agent_activity import AgentActivity
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
@@ -283,7 +283,7 @@ def test_sync_connector_uses_runtime_decrypted_secrets_without_persisting_them(
     )
     with get_session_factory()() as verify_session:
         verify_session.execute(text("SET ROLE aks_app"))
-        from app.db.session import set_db_tenant_context
+        from app.platform.database.session import set_db_tenant_context
 
         set_db_tenant_context(verify_session, connector.tenant_id)
         persisted = verify_session.get(Connector, connector.id)

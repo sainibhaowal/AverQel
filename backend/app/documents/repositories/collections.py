@@ -5,7 +5,7 @@ from typing import TypedDict
 
 from sqlalchemy import delete, func, select
 
-from app.db.session import set_db_tenant_context
+from app.platform.database.session import set_db_tenant_context
 from app.documents.models.collection import (
     CollectionChatMessage,
     CollectionDocument,

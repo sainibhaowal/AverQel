@@ -13,7 +13,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
 from app.auth.tenancy import get_login_tenant_id
-from app.db.session import get_db
+from app.platform.database.session import get_db
 from app.auth.schemas.auth import (
     AccountActivityItem,
     AccountActivityResponse,

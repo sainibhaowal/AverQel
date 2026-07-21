@@ -29,7 +29,7 @@ from app.auth.tenancy import (
     require_login_tenant_id,
     require_request_tenant_id,
 )
-from app.db import session as session_module
+from app.platform.database import session as session_module
 from app.auth.models.user import User
 from app.documents.models.data_deletion import DataDeletion
 from app.auth.repositories.roles import RolesRepository

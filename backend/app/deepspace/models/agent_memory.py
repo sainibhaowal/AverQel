@@ -4,7 +4,7 @@ from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text
 
 from app.core.config import get_settings
-from app.db.base import Base
+from app.platform.database.base import Base
 
 _settings = get_settings()
 

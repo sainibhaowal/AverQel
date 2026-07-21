@@ -18,7 +18,7 @@ from app.core.context import set_tenant_id, set_user_id
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.auth.roles import canonicalize_role_name
-from app.db.session import get_db
+from app.platform.database.session import get_db
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

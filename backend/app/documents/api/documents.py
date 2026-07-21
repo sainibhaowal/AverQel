@@ -32,7 +32,7 @@ from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.auth.rbac import require_permissions, resolve_permissions
 from app.auth.tenancy import require_request_tenant_id
-from app.db.session import get_db
+from app.platform.database.session import get_db
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
 from app.ingestion.models.ingestion_job import IngestionJob

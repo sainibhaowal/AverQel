@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.core.config import get_settings
-from app.db.session import get_session_factory, set_db_tenant_context
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.repositories.provider_assignments import (

@@ -351,7 +351,7 @@ app/core/errors.py
 app/core/ids.py
 app/core/logging.py
 app/core/middleware.py
-app/db/
+app/platform/database/
 app/services/security/
 app/services/system/cache_service.py
 app/services/system/otel.py

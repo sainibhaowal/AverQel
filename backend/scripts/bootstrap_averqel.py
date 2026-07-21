@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from app.core.ids import generate_uuid7_with_fallback
 from app.auth.security import hash_password
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.auth.models.role import Role
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User

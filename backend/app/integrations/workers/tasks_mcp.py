@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select, text
 
 from app.core.config import get_settings
-from app.db.session import SessionLocal, set_db_tenant_context
+from app.platform.database.session import SessionLocal, set_db_tenant_context
 from app.integrations.models.mcp_server import MCPServer
 from app.integrations.repositories.mcp_events import MCPEventsRepository
 from app.integrations.services.mcp_runtime import MCPCatalog, MCPRuntimeError, build_mcp_runtime, build_mcp_server_runtime

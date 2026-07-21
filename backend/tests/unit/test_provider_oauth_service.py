@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.core.config import get_settings
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.providers.services.provider_oauth_service import ProviderOAuthService
 
 

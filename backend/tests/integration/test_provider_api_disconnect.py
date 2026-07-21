@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.providers.repositories.provider_secrets import ProviderSecretsRepository
 from tests.conftest import SeededUser
 

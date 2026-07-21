@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.core.config import Settings
 from app.core.ids import generate_uuid7_with_fallback
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.auth.models.tenant import Tenant
 from app.providers.models.provider_config import ProviderConfig
 from app.system.models.audit_log import AuditLog

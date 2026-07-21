@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from app.core.ids import generate_uuid7_with_fallback
 from app.auth.security import hash_password
-from app.db.session import get_session_factory, set_db_tenant_context
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.auth.models.user import User
 from app.documents.models.document import Document
 from tests.conftest import SeededUser, _generate_test_collection_code

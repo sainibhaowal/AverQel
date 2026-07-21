@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.auth.dependencies import AuthContext
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.query.repositories.chat import ChatRepository
 from app.query.services.query_service import QueryService
 

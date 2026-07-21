@@ -5,7 +5,7 @@ from datetime import datetime
 
 from sqlalchemy import and_, delete, func, or_, select
 
-from app.db.session import set_db_tenant_context
+from app.platform.database.session import set_db_tenant_context
 from app.system.models.audit_log import AuditLog
 from app.system.repositories.base import BaseRepository
 

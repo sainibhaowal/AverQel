@@ -10,7 +10,7 @@ from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
 from app.auth.tenancy import require_request_tenant_id
-from app.db.session import get_db
+from app.platform.database.session import get_db
 from app.analytics.schemas.analytics import AnalyticsDashboardResponse
 from app.analytics.services.analytics_service import AnalyticsService
 

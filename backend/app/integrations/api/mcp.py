@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.rbac import require_permissions
-from app.db.session import get_db, set_db_tenant_context
+from app.platform.database.session import get_db, set_db_tenant_context
 from app.integrations.models.mcp_server import MCPServer, MCPRegistryEntry
 from app.integrations.workers.tasks_mcp import refresh_server_catalog
 from app.integrations.services.mcp_oauth_service import MCPServerOAuthService

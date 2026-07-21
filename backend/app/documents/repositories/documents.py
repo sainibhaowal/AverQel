@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import sqlalchemy as sa
 from sqlalchemy import func, select, update
 
-from app.db.session import set_db_tenant_context
+from app.platform.database.session import set_db_tenant_context
 from app.documents.models.collection import CollectionDocument, CollectionPermission
 from app.documents.models.document import Document
 from app.system.repositories.base import BaseRepository

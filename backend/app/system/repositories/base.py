@@ -4,7 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.db.session import set_db_tenant_context
+from app.platform.database.session import set_db_tenant_context
 
 
 class BaseRepository:

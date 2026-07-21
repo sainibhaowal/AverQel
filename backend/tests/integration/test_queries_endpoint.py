@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 from sqlalchemy import select, text
 
-from app.db.session import get_session_factory, set_db_tenant_context
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.query.models.query import Query
 from app.query.services.query_service import QueryService
 from app.system.services.storage_service import StorageService, StoredObject

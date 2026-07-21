@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.core.ids import generate_uuid7_with_fallback
 from app.auth.security import hash_password
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
 from app.providers.models.provider_assignment import ProviderAssignment

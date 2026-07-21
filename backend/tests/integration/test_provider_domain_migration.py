@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import inspect
 
-from app.db.session import get_engine
+from app.platform.database.session import get_engine
 
 EXPECTED_PROVIDER_TABLES = {
     "provider_configs",

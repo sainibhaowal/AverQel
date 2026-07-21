@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.core.config import get_settings
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.providers.services.provider_models_service import ProviderModelsService
 from app.providers.services.registry import ProviderRegistry
 

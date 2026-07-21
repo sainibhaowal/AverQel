@@ -13,7 +13,7 @@ from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.auth.roles import is_platform_admin_email
-from app.db.session import set_db_tenant_context
+from app.platform.database.session import set_db_tenant_context
 from app.auth.models.refresh_token import RefreshToken
 from app.auth.models.user import User
 from app.documents.models.collection import DocumentCollection

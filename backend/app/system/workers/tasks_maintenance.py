@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
 
 from app.core.config import get_settings
-from app.db.session import get_session_factory
+from app.platform.database.session import get_session_factory
 from app.auth.models.tenant import Tenant
 from app.documents.services.deletion_service import DeletionService
 from app.system.services.audit_service import AuditService

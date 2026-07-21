@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.errors import ApiError
-from app.db.session import get_db, set_db_tenant_context
+from app.platform.database.session import get_db, set_db_tenant_context
 
 
 @dataclass(slots=True, frozen=True)

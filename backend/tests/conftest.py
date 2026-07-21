@@ -292,7 +292,7 @@ import filelock  # noqa: E402
 from app.core.config import Settings, get_settings  # noqa: E402
 from app.core.ids import generate_uuid7_with_fallback  # noqa: E402
 from app.auth.security import hash_password  # noqa: E402
-from app.db.session import (  # noqa: E402
+from app.platform.database.session import (  # noqa: E402
     get_engine,
     get_session_factory,
     reset_db_state,
