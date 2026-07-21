@@ -35,7 +35,7 @@ from app.auth.tenancy import require_request_tenant_id
 from app.db.session import get_db
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.models.ingestion.ingestion_job import IngestionJob
+from app.ingestion.models.ingestion_job import IngestionJob
 from app.documents.schemas.documents import (
     DeleteBatchRequest,
     DeleteBatchResponse,
@@ -48,8 +48,8 @@ from app.documents.schemas.documents import (
     SupportedFormatEntry,
     SupportedFormatsResponse,
 )
-from app.services.ingestion.extraction_quality import confidence_band
-from app.services.ingestion.ingestion_service import IngestionService
+from app.ingestion.services.extraction_quality import confidence_band
+from app.ingestion.services.ingestion_service import IngestionService
 from app.services.system.audit_service import AuditService
 from app.services.system.rate_limit_service import RateLimitService
 from app.services.system.storage_service import StorageService

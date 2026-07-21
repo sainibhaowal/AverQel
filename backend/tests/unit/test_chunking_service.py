@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.ingestion.chunking_service import ChunkingService
+from app.ingestion.services.chunking_service import ChunkingService
 
 
 def test_chunking_generates_expected_windows() -> None:

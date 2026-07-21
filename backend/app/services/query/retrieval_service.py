@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.documents.repositories.chunks import ChunksRepository, RetrievedChunkRow
 from app.documents.repositories.documents import DocumentsRepository
-from app.services.ingestion.embedding_service import EmbeddingService
+from app.ingestion.services.embedding_service import EmbeddingService
 from app.services.query.query_classifier import QueryClassifier, QueryType
 from app.services.query.reranker_service import RerankerService
 from app.services.query.trace_service import TraceCollector

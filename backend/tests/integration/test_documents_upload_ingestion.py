@@ -250,7 +250,7 @@ def test_upload_ingestion_sanitizes_null_bytes_in_text_payload(
     monkeypatch.setattr(StorageService, "get_bytes", fake_get)
 
     # Bypass MIME signature validation; null bytes make magic sniff as octet-stream
-    from app.services.ingestion.ingestion_service import IngestionService
+    from app.ingestion.services.ingestion_service import IngestionService
 
     monkeypatch.setattr(
         IngestionService, "_validate_upload", lambda self, **kwargs: None

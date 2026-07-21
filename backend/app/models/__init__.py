@@ -23,7 +23,7 @@ from app.documents.models.collection_notification import CollectionNotification
 from app.documents.models.data_deletion import DataDeletion
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.models.ingestion.ingestion_job import IngestionJob
+from app.ingestion.models.ingestion_job import IngestionJob
 from app.models.integrations.connector import Connector, ConnectorStatus
 from app.models.integrations.connector_secret import ConnectorSecret
 from app.models.integrations.integration import Integration

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.services.ingestion.extractors.base import ExtractionRequest
-from app.services.ingestion.extractors.text_extractors import CodeTextExtractor
+from app.ingestion.services.extractors.base import ExtractionRequest
+from app.ingestion.services.extractors.text_extractors import CodeTextExtractor
 
 
 def test_code_text_extractor_decodes_source() -> None:

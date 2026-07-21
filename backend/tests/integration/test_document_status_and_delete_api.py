@@ -18,7 +18,7 @@ from app.auth.models.user_role import UserRole
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.models.ingestion.ingestion_job import IngestionJob
+from app.ingestion.models.ingestion_job import IngestionJob
 from tests.conftest import SeededUser, _generate_test_collection_code
 
 

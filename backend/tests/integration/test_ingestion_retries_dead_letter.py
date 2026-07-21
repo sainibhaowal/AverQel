@@ -10,9 +10,9 @@ from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.db.session import get_session_factory, set_db_tenant_context
 from app.documents.models.document import Document
-from app.models.ingestion.ingestion_job import IngestionJob
-from app.services.ingestion.embedding_service import EmbeddingService
-from app.services.ingestion.ingestion_service import (
+from app.ingestion.models.ingestion_job import IngestionJob
+from app.ingestion.services.embedding_service import EmbeddingService
+from app.ingestion.services.ingestion_service import (
     IngestionService,
     RetryableIngestionError,
 )

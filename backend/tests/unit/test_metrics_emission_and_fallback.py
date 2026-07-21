@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.services.ingestion.extraction_quality import fallback_reasons
-from app.services.ingestion.extractors.base import ExtractionResult
+from app.ingestion.services.extraction_quality import fallback_reasons
+from app.ingestion.services.extractors.base import ExtractionResult
 from app.services.system.metrics_service import (
     EXTRACTION_FAILURE_TOTAL,
     EXTRACTION_FALLBACK_TOTAL,

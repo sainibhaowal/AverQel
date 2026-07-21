@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.config import get_settings
-from app.services.ingestion.embedding_service import (
+from app.ingestion.services.embedding_service import (
     EmbeddingService,
     NonRetryableEmbeddingError,
 )

@@ -5,13 +5,13 @@ from dataclasses import asdict
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.documents.services.pdf_render_service import PdfRenderService
-from app.services.ingestion.extractors.base import (
+from app.ingestion.services.extractors.base import (
     BaseExtractor,
     ExtractionRequest,
     ExtractionResult,
 )
-from app.services.ingestion.ocr_service import OcrService
-from app.services.ingestion.vision_service import VisionPageInput, VisionService
+from app.ingestion.services.ocr_service import OcrService
+from app.ingestion.services.vision_service import VisionPageInput, VisionService
 
 
 class LayoutVisionExtractor(BaseExtractor):

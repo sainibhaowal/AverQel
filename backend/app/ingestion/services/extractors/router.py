@@ -7,28 +7,28 @@ from pathlib import Path
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.documents.services.pdf_render_service import PdfRenderService
-from app.services.ingestion.conversion_service import ConversionService
-from app.services.ingestion.extractors.base import (
+from app.ingestion.services.conversion_service import ConversionService
+from app.ingestion.services.extractors.base import (
     BaseExtractor,
     ExtractionRequest,
     ExtractionResult,
 )
-from app.services.ingestion.extractors.docx_extractor import DocxExtractor
-from app.services.ingestion.extractors.image_ocr_extractor import ImageOcrExtractor
-from app.services.ingestion.extractors.layout_vision_extractor import (
+from app.ingestion.services.extractors.docx_extractor import DocxExtractor
+from app.ingestion.services.extractors.image_ocr_extractor import ImageOcrExtractor
+from app.ingestion.services.extractors.layout_vision_extractor import (
     LayoutVisionExtractor,
 )
-from app.services.ingestion.extractors.pdf_extractor import PdfExtractor
-from app.services.ingestion.extractors.pptx_extractor import PptxExtractor
-from app.services.ingestion.extractors.registry import ExtractorRegistry
-from app.services.ingestion.extractors.text_extractors import (
+from app.ingestion.services.extractors.pdf_extractor import PdfExtractor
+from app.ingestion.services.extractors.pptx_extractor import PptxExtractor
+from app.ingestion.services.extractors.registry import ExtractorRegistry
+from app.ingestion.services.extractors.text_extractors import (
     CodeTextExtractor,
     MarkdownExtractor,
     PlainTextExtractor,
 )
-from app.services.ingestion.extractors.xlsx_extractor import XlsxExtractor
-from app.services.ingestion.ocr_service import OcrService
-from app.services.ingestion.vision_service import VisionService
+from app.ingestion.services.extractors.xlsx_extractor import XlsxExtractor
+from app.ingestion.services.ocr_service import OcrService
+from app.ingestion.services.vision_service import VisionService
 
 
 @dataclass(slots=True)

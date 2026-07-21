@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.ingestion.ingestion_service import RetryableIngestionError
+from app.ingestion.services.ingestion_service import RetryableIngestionError
 from app.worker import tasks_connectors, tasks_ingestion, tasks_maintenance
 
 

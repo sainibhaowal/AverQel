@@ -8,7 +8,7 @@ from typing import Any
 
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.services.ingestion.parser_service import sanitize_document_text
+from app.ingestion.services.parser_service import sanitize_document_text
 from app.services.system.metrics_service import observe_extraction_stage
 
 

@@ -11,7 +11,7 @@ from app.auth.schemas.capabilities import (
     SupportedFormat,
     SystemLimits,
 )
-from app.services.ingestion.extractors.router import ExtractorRouter
+from app.ingestion.services.extractors.router import ExtractorRouter
 
 logger = logging.getLogger(__name__)
 

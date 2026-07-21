@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.core.ids import generate_uuid7_with_fallback
 from app.models.deepspace.agent_memory import AgentMemory
 from app.models.deepspace.agent_todo import AgentTodo
-from app.services.ingestion.embedding_service import EmbeddingService
+from app.ingestion.services.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 

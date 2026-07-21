@@ -5,17 +5,17 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.services.ingestion.conversion_service import (
+from app.ingestion.services.conversion_service import (
     ConversionService,
     ConvertedArtifact,
 )
-from app.services.ingestion.extractors.base import (
+from app.ingestion.services.extractors.base import (
     BaseExtractor,
     ExtractionRequest,
     ExtractionResult,
 )
-from app.services.ingestion.extractors.registry import ExtractorRegistry
-from app.services.ingestion.extractors.router import ExtractorRouter
+from app.ingestion.services.extractors.registry import ExtractorRegistry
+from app.ingestion.services.extractors.router import ExtractorRouter
 
 
 class _FakeExtractor(BaseExtractor):
@@ -133,7 +133,7 @@ def test_conversion_service_requires_libo_binary(
 ) -> None:
     service = ConversionService(settings)
     monkeypatch.setattr(
-        "app.services.ingestion.conversion_service.shutil.which", lambda _name: None
+        "app.ingestion.services.conversion_service.shutil.which", lambda _name: None
     )
 
     with pytest.raises(ApiError) as exc_info:

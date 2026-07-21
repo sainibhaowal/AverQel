@@ -4,7 +4,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.services.ingestion.ocr_service import OcrService
+from app.ingestion.services.ocr_service import OcrService
 
 
 class _Image:

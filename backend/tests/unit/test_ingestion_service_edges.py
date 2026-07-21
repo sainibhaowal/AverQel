@@ -9,7 +9,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.services.ingestion.ingestion_service import (
+from app.ingestion.services.ingestion_service import (
     IngestionService,
     RetryableIngestionError,
     make_storage_key,
@@ -609,7 +609,7 @@ def test_compute_retry_delay_uses_backoff_and_jitter(
     service = _service(settings)
     settings.ingestion_retry_backoff_seconds = 5
     monkeypatch.setattr(
-        "app.services.ingestion.ingestion_service.secrets.randbelow", lambda n: n - 1
+        "app.ingestion.services.ingestion_service.secrets.randbelow", lambda n: n - 1
     )
     delay = service.compute_retry_delay(current_attempt=3)
     assert delay == (5 * (2**2)) + 5

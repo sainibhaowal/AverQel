@@ -4,7 +4,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.services.ingestion.embedding_service import EmbeddingService
+from app.ingestion.services.embedding_service import EmbeddingService
 
 
 def test_embedding_retryable_error_falls_back_to_local_embeddings() -> None:

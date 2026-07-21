@@ -20,7 +20,7 @@ from app.documents.repositories.collection_notifications import (
     CollectionNotificationsRepository,
 )
 from app.services.deepspace.memory.memory_service import TodoService
-from app.services.ingestion.ingestion_service import IngestionService
+from app.ingestion.services.ingestion_service import IngestionService
 from app.services.integrations.connector_service import ConnectorService
 from app.services.integrations.health_utils import (
     ConnectorHealthStatus,

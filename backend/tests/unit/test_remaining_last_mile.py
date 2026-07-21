@@ -15,7 +15,7 @@ from app.core.errors import ApiError
 from app.core.middleware import RateLimitDecision, RequestContextMiddleware
 from app.auth.schemas.auth import LoginRequest
 from app.schemas.query.queries import QueryFilters, QueryRequest
-from app.services.ingestion.parser_service import ParserService
+from app.ingestion.services.parser_service import ParserService
 from app.services.query import answer_service as answer_module
 from app.services.query.answer_service import (
     AnswerService,

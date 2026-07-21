@@ -10,11 +10,11 @@ from pytest import MonkeyPatch
 
 from app.core.config import Settings
 from app.documents.services.pdf_render_service import PdfRenderService, RenderedPdfPage
-from app.services.ingestion.extractors.base import ExtractionRequest, ExtractionResult
-from app.services.ingestion.extractors.layout_vision_extractor import (
+from app.ingestion.services.extractors.base import ExtractionRequest, ExtractionResult
+from app.ingestion.services.extractors.layout_vision_extractor import (
     LayoutVisionExtractor,
 )
-from app.services.ingestion.ocr_service import OcrPageResult, OcrService
+from app.ingestion.services.ocr_service import OcrPageResult, OcrService
 from app.services.system.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser
 

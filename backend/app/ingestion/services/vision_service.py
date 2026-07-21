@@ -7,8 +7,8 @@ from typing import Protocol
 
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.services.ingestion.ocr_service import OcrResult, OcrService
-from app.services.ingestion.parser_service import sanitize_document_text
+from app.ingestion.services.ocr_service import OcrResult, OcrService
+from app.ingestion.services.parser_service import sanitize_document_text
 from app.services.system.metrics_service import observe_extraction_stage
 
 

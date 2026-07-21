@@ -6,8 +6,8 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.services.ingestion import embedding_service as embedding_module
-from app.services.ingestion.embedding_service import (
+from app.ingestion.services import embedding_service as embedding_module
+from app.ingestion.services.embedding_service import (
     EmbeddingService,
     NonRetryableEmbeddingError,
     RetryableEmbeddingError,
@@ -139,7 +139,7 @@ def test_embed_provider_timeout_markers_and_elapsed(
 
     times = iter([0.0, 10.0])
     monkeypatch.setattr(
-        "app.services.ingestion.embedding_service.time.monotonic", lambda: next(times)
+        "app.ingestion.services.embedding_service.time.monotonic", lambda: next(times)
     )
     with pytest.raises(RetryableEmbeddingError):
         service._embed_provider_call(["normal"])
@@ -195,7 +195,7 @@ def test_sentence_transformers_error_timeout_and_dimension(
 
     times = iter([0.0, 2.0, 2.0])
     monkeypatch.setattr(
-        "app.services.ingestion.embedding_service.time.monotonic", lambda: next(times)
+        "app.ingestion.services.embedding_service.time.monotonic", lambda: next(times)
     )
     settings.embedding_timeout_seconds = 1
     vectors = service._embed_provider_call(["a"])
@@ -213,7 +213,7 @@ def test_sentence_transformers_error_timeout_and_dimension(
     )
     times = iter([0.0, 0.0, 2.0])
     monkeypatch.setattr(
-        "app.services.ingestion.embedding_service.time.monotonic", lambda: next(times)
+        "app.ingestion.services.embedding_service.time.monotonic", lambda: next(times)
     )
     vectors = service._embed_provider_call(["a"])
     assert len(vectors) == 1

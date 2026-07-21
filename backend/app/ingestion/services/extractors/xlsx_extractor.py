@@ -5,12 +5,12 @@ from io import BytesIO
 from typing import Any, cast
 
 from app.core.errors import ApiError
-from app.services.ingestion.extractors.base import (
+from app.ingestion.services.extractors.base import (
     BaseExtractor,
     ExtractionRequest,
     ExtractionResult,
 )
-from app.services.ingestion.parser_service import sanitize_document_text
+from app.ingestion.services.parser_service import sanitize_document_text
 
 
 class XlsxExtractor(BaseExtractor):

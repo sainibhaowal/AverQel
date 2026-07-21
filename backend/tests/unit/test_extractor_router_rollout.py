@@ -3,7 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from app.core.config import get_settings
-from app.services.ingestion.extractors.router import ExtractorRouter
+from app.ingestion.services.extractors.router import ExtractorRouter
 
 
 def test_vision_allowlist_allows_only_configured_tenant() -> None:

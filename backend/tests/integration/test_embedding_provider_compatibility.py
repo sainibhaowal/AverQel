@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.core.config import get_settings
-from app.services.ingestion.embedding_service import EmbeddingService
+from app.ingestion.services.embedding_service import EmbeddingService
 
 
 def test_embedding_path_uses_registry_compatibly(monkeypatch):

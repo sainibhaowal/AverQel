@@ -6,12 +6,12 @@ import pytest
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.documents.services.pdf_render_service import PdfRenderService, RenderedPdfPage
-from app.services.ingestion.extractors.base import ExtractionRequest, ExtractionResult
-from app.services.ingestion.extractors.layout_vision_extractor import (
+from app.ingestion.services.extractors.base import ExtractionRequest, ExtractionResult
+from app.ingestion.services.extractors.layout_vision_extractor import (
     LayoutVisionExtractor,
 )
-from app.services.ingestion.extractors.pdf_extractor import PdfExtractor
-from app.services.ingestion.ocr_service import OcrPageResult, OcrService
+from app.ingestion.services.extractors.pdf_extractor import PdfExtractor
+from app.ingestion.services.ocr_service import OcrPageResult, OcrService
 
 
 @dataclass
@@ -71,7 +71,7 @@ def test_pdf_extractor_uses_ocr_fallback(monkeypatch: pytest.MonkeyPatch) -> Non
     settings = get_settings()
     settings.vision_enabled = False
     monkeypatch.setattr(
-        "app.services.ingestion.extractors.pdf_extractor.PdfReader",
+        "app.ingestion.services.extractors.pdf_extractor.PdfReader",
         lambda _: _Reader([_Page("")]),
     )
 
@@ -100,7 +100,7 @@ def test_pdf_extractor_vision_fallback_applied(monkeypatch: pytest.MonkeyPatch) 
     settings.vision_enabled = True
     settings.extraction_low_coverage_threshold = 0.95
     monkeypatch.setattr(
-        "app.services.ingestion.extractors.pdf_extractor.PdfReader",
+        "app.ingestion.services.extractors.pdf_extractor.PdfReader",
         lambda _: _Reader([_Page("short")]),
     )
 
@@ -132,7 +132,7 @@ def test_pdf_extractor_handles_unparseable_pdf(monkeypatch: pytest.MonkeyPatch) 
         raise RuntimeError("broken")
 
     monkeypatch.setattr(
-        "app.services.ingestion.extractors.pdf_extractor.PdfReader", _raise
+        "app.ingestion.services.extractors.pdf_extractor.PdfReader", _raise
     )
     extractor = PdfExtractor(max_pdf_pages=10, max_text_chars=5000, settings=settings)
 

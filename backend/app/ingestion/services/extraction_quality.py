@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.ingestion.extractors.base import ExtractionResult
+from app.ingestion.services.extractors.base import ExtractionResult
 
 _KNOWN_WARNING_PREFIXES = (
     "pdf_",

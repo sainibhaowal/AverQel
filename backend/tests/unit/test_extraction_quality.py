@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from app.services.ingestion.extraction_quality import (
+from app.ingestion.services.extraction_quality import (
     confidence_band,
     fallback_reasons,
     normalize_warnings,
 )
-from app.services.ingestion.extractors.base import ExtractionResult
+from app.ingestion.services.extractors.base import ExtractionResult
 
 
 def test_normalize_warnings_dedupes_and_sorts() -> None:

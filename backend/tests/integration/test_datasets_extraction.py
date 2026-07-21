@@ -6,8 +6,8 @@ import pytest
 
 from app.core.config import Settings
 from app.documents.services.pdf_render_service import RenderedPdfPage
-from app.services.ingestion.extractors.router import ExtractorRouter
-from app.services.ingestion.ocr_service import OcrResult
+from app.ingestion.services.extractors.router import ExtractorRouter
+from app.ingestion.services.ocr_service import OcrResult
 from tests.support.datasets import ensure_test_datasets
 
 DATASET_ROOT = Path(__file__).parent.parent.parent.parent / "Docs" / "Datasets"
@@ -61,7 +61,7 @@ def test_office_documents(router: ExtractorRouter):
         assert "OFFICE-" in result.text
 
 
-@patch("app.services.ingestion.ocr_service.OcrService.extract_image_text")
+@patch("app.ingestion.services.ocr_service.OcrService.extract_image_text")
 @patch("app.documents.services.pdf_render_service.PdfRenderService.render_pdf_pages")
 def test_scanned_documents(mock_render, mock_extract, router: ExtractorRouter):
     mock_extract.return_value = OcrResult(
@@ -88,7 +88,7 @@ def test_scanned_documents(mock_render, mock_extract, router: ExtractorRouter):
         assert "SCANNED-OCR" in result.text
 
 
-@patch("app.services.ingestion.ocr_service.OcrService.extract_image_text")
+@patch("app.ingestion.services.ocr_service.OcrService.extract_image_text")
 def test_noisy_images(mock_extract, router: ExtractorRouter):
     mock_extract.return_value = OcrResult(
         text="NOISY-OCR-001", confidence=0.95, warnings=[], engine="local"

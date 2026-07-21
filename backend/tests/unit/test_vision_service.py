@@ -4,8 +4,8 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.services.ingestion.ocr_service import OcrResult
-from app.services.ingestion.vision_service import VisionPageInput, VisionService
+from app.ingestion.services.ocr_service import OcrResult
+from app.ingestion.services.vision_service import VisionPageInput, VisionService
 
 
 class _FakeOcr:

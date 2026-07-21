@@ -24,7 +24,7 @@ _EXPORTS = {
         "CollectionNotificationsRepository",
     ),
     "IngestionJobsRepository": (
-        "app.repositories.ingestion.ingestion_jobs",
+        "app.ingestion.repositories.ingestion_jobs",
         "IngestionJobsRepository",
     ),
     "QueriesRepository": ("app.repositories.query.queries", "QueriesRepository"),

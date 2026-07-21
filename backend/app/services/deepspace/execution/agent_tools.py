@@ -2936,7 +2936,7 @@ class ToolExecutor:
     async def _exec_document_convert(self, args: dict[str, Any]) -> ToolResult:
         """Convert a document into another format using the existing ingestion/export stack."""
         from app.services.deepspace.integrations.export_service import DeepSpaceExportService
-        from app.services.ingestion.extractors.router import ExtractorRouter
+        from app.ingestion.services.extractors.router import ExtractorRouter
 
         input_path_raw = str(args.get("input_path") or "").strip()
         output_format = str(args.get("output_format") or "").strip().lower()

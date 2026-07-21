@@ -20,7 +20,7 @@ from app.documents.models.collection import (
 )
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.models.ingestion.ingestion_job import IngestionJob
+from app.ingestion.models.ingestion_job import IngestionJob
 from app.providers.services.types import ProviderSelectionCandidate
 from app.services.query.answer_service import AnswerResult
 from app.services.query.query_service import QueryService

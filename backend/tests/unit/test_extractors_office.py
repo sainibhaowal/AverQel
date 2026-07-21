@@ -3,14 +3,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.core.errors import ApiError
-from app.services.ingestion.extractors.base import ExtractionRequest
-from app.services.ingestion.extractors.docx_extractor import DocxExtractor
-from app.services.ingestion.extractors.pptx_extractor import PptxExtractor
-from app.services.ingestion.extractors.xlsx_extractor import XlsxExtractor
+from app.ingestion.services.extractors.base import ExtractionRequest
+from app.ingestion.services.extractors.docx_extractor import DocxExtractor
+from app.ingestion.services.extractors.pptx_extractor import PptxExtractor
+from app.ingestion.services.extractors.xlsx_extractor import XlsxExtractor
 
 
 @patch(
-    "app.services.ingestion.extractors.docx_extractor.DocxExtractor._load_document_constructor"
+    "app.ingestion.services.extractors.docx_extractor.DocxExtractor._load_document_constructor"
 )
 def test_docx_extractor_success(mock_load):
     mock_doc = MagicMock()
@@ -36,7 +36,7 @@ def test_docx_extractor_success(mock_load):
 
 
 @patch(
-    "app.services.ingestion.extractors.docx_extractor.DocxExtractor._load_document_constructor"
+    "app.ingestion.services.extractors.docx_extractor.DocxExtractor._load_document_constructor"
 )
 def test_docx_extractor_exceeds_limit(mock_load):
     mock_doc = MagicMock()
@@ -61,7 +61,7 @@ def test_docx_extractor_exceeds_limit(mock_load):
 
 
 @patch(
-    "app.services.ingestion.extractors.pptx_extractor.PptxExtractor._load_presentation_constructor"
+    "app.ingestion.services.extractors.pptx_extractor.PptxExtractor._load_presentation_constructor"
 )
 def test_pptx_extractor_success(mock_load):
     mock_pres = MagicMock()
@@ -90,7 +90,7 @@ def test_pptx_extractor_success(mock_load):
 
 
 @patch(
-    "app.services.ingestion.extractors.xlsx_extractor.XlsxExtractor._load_workbook_loader"
+    "app.ingestion.services.extractors.xlsx_extractor.XlsxExtractor._load_workbook_loader"
 )
 def test_xlsx_extractor_success(mock_load):
     mock_wb = MagicMock()

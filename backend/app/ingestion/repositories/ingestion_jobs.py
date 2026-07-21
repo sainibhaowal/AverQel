@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
-from app.models.ingestion.ingestion_job import IngestionJob
+from app.ingestion.models.ingestion_job import IngestionJob
 from app.repositories.system.base import BaseRepository
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Protocol
 
 from app.core.config import Settings
-from app.services.ingestion.extractors.base import (
+from app.ingestion.services.extractors.base import (
     BaseExtractor,
     ExtractionRequest,
     ExtractionResult,
 )
-from app.services.ingestion.ocr_service import OcrResult, OcrService
+from app.ingestion.services.ocr_service import OcrResult, OcrService
 
 
 class OcrClient(Protocol):

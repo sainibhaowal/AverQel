@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.services.ingestion.extractors.base import BaseExtractor, ExtractionRequest
+from app.ingestion.services.extractors.base import BaseExtractor, ExtractionRequest
 
 
 @dataclass(slots=True)

@@ -22,7 +22,7 @@ from app.models.query.query_citation import QueryCitation
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.collections import CollectionsRepository
 from app.documents.repositories.documents import DocumentsRepository
-from app.repositories.ingestion.ingestion_jobs import IngestionJobsRepository
+from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
 from app.repositories.query.chat import ChatRepository
 from app.repositories.query.queries import QueriesRepository
 from app.schemas.query.structured_response import (

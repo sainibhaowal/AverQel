@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from app.core.errors import ApiError
-from app.services.ingestion import parser_service
-from app.services.ingestion.parser_service import ParserService, sanitize_document_text
+from app.ingestion.services import parser_service
+from app.ingestion.services.parser_service import ParserService, sanitize_document_text
 
 
 def test_parser_handles_text_plain() -> None:

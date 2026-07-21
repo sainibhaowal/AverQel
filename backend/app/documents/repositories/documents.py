@@ -10,7 +10,7 @@ from app.db.session import set_db_tenant_context
 from app.documents.models.collection import CollectionDocument, CollectionPermission
 from app.documents.models.document import Document
 from app.repositories.system.base import BaseRepository
-from app.services.ingestion.extractors.base import ExtractionResult
+from app.ingestion.services.extractors.base import ExtractionResult
 from app.services.system.metrics_service import observe_db_query
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

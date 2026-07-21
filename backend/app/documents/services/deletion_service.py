@@ -19,7 +19,7 @@ from app.documents.models.collection import (
 from app.documents.models.data_deletion import DataDeletion
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.models.ingestion.ingestion_job import IngestionJob
+from app.ingestion.models.ingestion_job import IngestionJob
 from app.models.query.comment import Comment
 from app.models.query.conversation import Conversation
 from app.models.query.message import Message

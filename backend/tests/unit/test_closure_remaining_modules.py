@@ -39,8 +39,8 @@ from app.documents.repositories.data_deletions import DataDeletionsRepository
 from app.repositories.query.queries import QueriesRepository
 from app.repositories.system.audit_logs import AuditLogsRepository
 from app.documents.services.deletion_service import DeletionService
-from app.services.ingestion.chunking_service import ChunkingService
-from app.services.ingestion.parser_service import ParserService
+from app.ingestion.services.chunking_service import ChunkingService
+from app.ingestion.services.parser_service import ParserService
 from app.services.security.malware_scan_service import MalwareScanService
 from app.services.system.audit_service import AuditService
 
@@ -708,7 +708,7 @@ def test_parser_chunking_malware_branches(monkeypatch: pytest.MonkeyPatch) -> No
         )
 
     monkeypatch.setattr(
-        "app.services.ingestion.parser_service.PdfReader",
+        "app.ingestion.services.parser_service.PdfReader",
         lambda _bio: (_ for _ in ()).throw(RuntimeError("pdf")),
     )
     with pytest.raises(ApiError):
@@ -721,7 +721,7 @@ def test_parser_chunking_malware_branches(monkeypatch: pytest.MonkeyPatch) -> No
             return "abcdef"
 
     monkeypatch.setattr(
-        "app.services.ingestion.parser_service.PdfReader",
+        "app.ingestion.services.parser_service.PdfReader",
         lambda _bio: SimpleNamespace(pages=[_Page(), _Page()]),
     )
     with pytest.raises(ApiError):
@@ -730,7 +730,7 @@ def test_parser_chunking_malware_branches(monkeypatch: pytest.MonkeyPatch) -> No
         )
 
     monkeypatch.setattr(
-        "app.services.ingestion.parser_service.PdfReader",
+        "app.ingestion.services.parser_service.PdfReader",
         lambda _bio: SimpleNamespace(pages=[_Page()]),
     )
     with pytest.raises(ApiError):

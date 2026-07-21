@@ -22,21 +22,21 @@ from app.core.ids import generate_uuid7_with_fallback
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.models.ingestion.ingestion_job import IngestionJob
+from app.ingestion.models.ingestion_job import IngestionJob
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.documents import DocumentsRepository
-from app.repositories.ingestion.ingestion_jobs import IngestionJobsRepository
+from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
 from app.repositories.system.idempotency_keys import IdempotencyKeysRepository
-from app.services.ingestion.chunking_service import ChunkingService
-from app.services.ingestion.embedding_service import EmbeddingService
-from app.services.ingestion.extraction_quality import (
+from app.ingestion.services.chunking_service import ChunkingService
+from app.ingestion.services.embedding_service import EmbeddingService
+from app.ingestion.services.extraction_quality import (
     confidence_band,
     fallback_reasons,
     normalize_warnings,
 )
-from app.services.ingestion.extractors.base import ExtractionResult
-from app.services.ingestion.extractors.router import ExtractorRouter
-from app.services.ingestion.parser_service import ParserService, sanitize_document_text
+from app.ingestion.services.extractors.base import ExtractionResult
+from app.ingestion.services.extractors.router import ExtractorRouter
+from app.ingestion.services.parser_service import ParserService, sanitize_document_text
 from app.services.security.malware_scan_service import MalwareScanService
 from app.services.system.idempotency_service import IdempotencyService
 from app.services.system.metrics_service import (

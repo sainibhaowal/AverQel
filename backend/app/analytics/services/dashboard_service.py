@@ -10,7 +10,7 @@ from app.documents.models.document import Document
 from app.models.system.audit_log import AuditLog
 from app.documents.repositories.collections import CollectionsRepository
 from app.documents.repositories.documents import DocumentsRepository
-from app.repositories.ingestion.ingestion_jobs import IngestionJobsRepository
+from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
 from app.providers.repositories.provider_configs import ProviderConfigsRepository
 from app.providers.repositories.provider_health_checks import (
     ProviderHealthChecksRepository,

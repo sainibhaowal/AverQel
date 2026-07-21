@@ -39,7 +39,7 @@ from app.documents.schemas.collection import (
 from app.documents.schemas.documents import DocumentMetadataResponse
 from app.documents.schemas.collection_chat import CollectionChatMessage, CreateChatMessage
 from app.documents.schemas.collection_expiry import UpdateExpiryPayload
-from app.services.ingestion.extraction_quality import confidence_band
+from app.ingestion.services.extraction_quality import confidence_band
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/collections", tags=["collections"])

@@ -8,7 +8,7 @@ from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
 from app.providers.repositories.provider_configs import ProviderConfigsRepository
-from app.services.ingestion.embedding_service import EmbeddingService
+from app.ingestion.services.embedding_service import EmbeddingService
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 
 

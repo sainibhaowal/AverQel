@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from app.core.config import get_settings
-from app.services.ingestion.extractors.base import ExtractionRequest
-from app.services.ingestion.extractors.image_ocr_extractor import ImageOcrExtractor
-from app.services.ingestion.ocr_service import OcrResult
+from app.ingestion.services.extractors.base import ExtractionRequest
+from app.ingestion.services.extractors.image_ocr_extractor import ImageOcrExtractor
+from app.ingestion.services.ocr_service import OcrResult
 
 
 class _FakeOcrService:
