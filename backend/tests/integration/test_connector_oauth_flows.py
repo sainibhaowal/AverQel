@@ -14,15 +14,15 @@ from mcp.shared.auth import (
 )
 from sqlalchemy import select
 
-import app.services.integrations.connector_oauth_service as connector_oauth_service
+import app.integrations.services.connector_oauth_service as connector_oauth_service
 from app.auth.dependencies import create_access_token
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.models.integrations.connector import Connector, ConnectorStatus
-from app.models.integrations.connector_secret import ConnectorSecret
-from app.models.integrations.integration import Integration
-from app.services.integrations.connector_oauth_service import ConnectorOAuthService
-from app.services.security.connector_secret_crypto import ConnectorSecretCrypto
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.connector_secret import ConnectorSecret
+from app.integrations.models.integration import Integration
+from app.integrations.services.connector_oauth_service import ConnectorOAuthService
+from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 
 
 def _configure_secret_backend(settings: Settings) -> None:

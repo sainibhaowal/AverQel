@@ -14,8 +14,8 @@ from app.db.session import SessionLocal
 from app.models.deepspace.agent_activity import AgentActivity
 from app.models.deepspace.agent_todo import AgentTodo
 from app.documents.models.collection_notification import CollectionNotification
-from app.models.integrations.connector import Connector, ConnectorStatus
-from app.models.integrations.integration import Integration
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.integration import Integration
 from app.documents.repositories.collection_notifications import (
     CollectionNotificationsRepository,
 )
@@ -27,7 +27,7 @@ from app.services.deepspace.proactive.proactive_triggers import (
 )
 from app.services.deepspace.proactive.trigger_runner import build_trigger_runner
 from app.services.deepspace.subagents.subagent_registry import SubagentRegistry
-from app.services.integrations.mcp_runtime import (
+from app.integrations.services.mcp_runtime import (
     build_mcp_runtime,
 )
 from app.worker.celery_app import celery_app

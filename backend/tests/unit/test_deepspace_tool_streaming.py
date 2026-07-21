@@ -178,7 +178,7 @@ async def test_sync_connector_emits_progress(monkeypatch):
             return {"status": "success", "message": "Sync completed."}
 
     monkeypatch.setattr(
-        "app.services.integrations.connector_orchestrator.ConnectorOrchestrator",
+        "app.integrations.services.connector_orchestrator.ConnectorOrchestrator",
         _FakeOrchestrator,
     )
 

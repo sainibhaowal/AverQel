@@ -15,7 +15,7 @@ from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.models.integrations.connector import ConnectorStatus
+from app.integrations.models.connector import ConnectorStatus
 from app.repositories.query.chat import ChatRepository
 from app.schemas.query.structured_response import StructuredAnswerResponse
 from app.services.deepspace.execution.agent_executor import AgentExecutor
@@ -25,7 +25,7 @@ from app.services.deepspace.deepspace_runtime.runtime_contracts import (
     resolve_compacted_session_messages,
 )
 from app.services.deepspace.deepspace_runtime.sse_event_mapper import DeepSpaceSseEventMapper
-from app.services.integrations.connector_orchestrator import ConnectorOrchestrator
+from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
 from app.providers.services.registry import ProviderRegistry
 from app.providers.services.selection_service import ProviderSelectionService
 from app.providers.services.types import (
@@ -1956,7 +1956,7 @@ class DeepSpaceService:
             query,
         )
         if urls:
-            from app.repositories.integrations import IntegrationRepository
+            from app.integrations.repositories.integrations import IntegrationRepository
 
             repo = IntegrationRepository(self.db)
             connectors = repo.get_connectors(auth.tenant_id)
@@ -1997,7 +1997,7 @@ class DeepSpaceService:
         for service in services:
             shorthand = service.split("-")[-1]
             if shorthand in q or service.replace("-", " ") in q or service in q:
-                from app.repositories.integrations import IntegrationRepository
+                from app.integrations.repositories.integrations import IntegrationRepository
 
                 repo = IntegrationRepository(self.db)
                 connectors = repo.get_connectors(auth.tenant_id)
@@ -2035,8 +2035,8 @@ class DeepSpaceService:
         from sqlalchemy import select
 
         from app.documents.models.document import Document
-        from app.models.integrations.connector import Connector
-        from app.models.integrations.integration import Integration
+        from app.integrations.models.connector import Connector
+        from app.integrations.models.integration import Integration
 
         # 1. Find all web-crawler connector IDs for this tenant
         stmt = (

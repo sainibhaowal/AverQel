@@ -3,7 +3,7 @@ import asyncio
 from sqlalchemy import select
 
 from app.db.session import get_session_factory
-from app.models.integrations.connector import Connector
+from app.integrations.models.connector import Connector
 
 
 async def check_connectors():

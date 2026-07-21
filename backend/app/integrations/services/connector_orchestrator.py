@@ -13,16 +13,16 @@ from app.core.config import get_settings
 from app.db.session import get_session_factory, set_db_tenant_context
 from app.models.deepspace.agent_activity import AgentActivity
 from app.documents.models.collection_notification import CollectionNotification
-from app.models.integrations.connector import Connector, ConnectorStatus
-from app.models.integrations.connector_secret import ConnectorSecret
-from app.models.integrations.integration import Integration
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.connector_secret import ConnectorSecret
+from app.integrations.models.integration import Integration
 from app.documents.repositories.collection_notifications import (
     CollectionNotificationsRepository,
 )
 from app.services.deepspace.memory.memory_service import TodoService
 from app.ingestion.services.ingestion_service import IngestionService
-from app.services.integrations.connector_service import ConnectorService
-from app.services.integrations.health_utils import (
+from app.integrations.services.connector_service import ConnectorService
+from app.integrations.services.health_utils import (
     ConnectorHealthStatus,
     backoff_seconds,
     build_health_report,
@@ -30,9 +30,9 @@ from app.services.integrations.health_utils import (
     future_iso,
     now_iso,
 )
-from app.services.integrations.mcp_runtime import UniversalMCPConnector
-from app.services.integrations.web.web_connector import WebConnector
-from app.services.security.connector_secret_crypto import ConnectorSecretCrypto
+from app.integrations.services.mcp_runtime import UniversalMCPConnector
+from app.integrations.services.web.web_connector import WebConnector
+from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 from app.services.system.audit_service import AuditService
 
 logger = logging.getLogger(__name__)

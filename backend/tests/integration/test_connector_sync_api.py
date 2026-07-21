@@ -9,10 +9,10 @@ from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
-from app.models.integrations.connector import Connector, ConnectorStatus
-from app.models.integrations.integration import Integration
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.integration import Integration
 from app.models.system.audit_log import AuditLog
-from app.services.integrations.connector_orchestrator import ConnectorOrchestrator
+from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
 
 
 def _auth_headers(seeded) -> dict[str, str]:

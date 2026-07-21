@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from sqlalchemy import select
 
 from app.db.session import get_session_factory
-from app.models.integrations.integration import Integration
+from app.integrations.models.integration import Integration
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

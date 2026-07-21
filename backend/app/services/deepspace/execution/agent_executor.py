@@ -856,7 +856,7 @@ class AgentExecutor:
             # DeepSpace. Legacy connector rows remain available to their own
             # sync APIs but are not injected into the agent tool registry.
             if getattr(self, "db", None) is not None:
-                from app.models.integrations.mcp_server import MCPServer
+                from app.integrations.models.mcp_server import MCPServer
                 native_servers = self.db.execute(
                     select(MCPServer).where(
                         MCPServer.tenant_id == self.auth.tenant_id,

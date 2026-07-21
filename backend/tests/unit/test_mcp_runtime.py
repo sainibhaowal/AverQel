@@ -6,8 +6,8 @@ from typing import Any
 import anyio
 import pytest
 
-from app.services.integrations import mcp_runtime
-from app.services.integrations.mcp_runtime import (
+from app.integrations.services import mcp_runtime
+from app.integrations.services.mcp_runtime import (
     MCPConnectorRuntime,
     UniversalMCPConnector,
 )
@@ -162,7 +162,7 @@ def test_universal_mcp_connector_routes_correctly(
     monkeypatch.setattr(mcp_runtime, sync_helper_name, _fake_sync)
 
     # Mock Integration and Session
-    from app.models.integrations.integration import Integration
+    from app.integrations.models.integration import Integration
 
     mock_integration = Integration(slug=slug)
     mock_session = SimpleNamespace(get=lambda _model, _id: mock_integration)
@@ -199,7 +199,7 @@ def test_universal_mcp_connector_failure_returns_error(
 
     monkeypatch.setattr(mcp_runtime, "sync_google_drive", _failing_sync)
 
-    from app.models.integrations.integration import Integration
+    from app.integrations.models.integration import Integration
 
     mock_integration = Integration(slug="google-drive")
     mock_session = SimpleNamespace(get=lambda _model, _id: mock_integration)

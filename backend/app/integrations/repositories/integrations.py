@@ -5,8 +5,8 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.integrations.connector import Connector
-from app.models.integrations.integration import Integration
+from app.integrations.models.connector import Connector
+from app.integrations.models.integration import Integration
 
 
 class IntegrationRepository:

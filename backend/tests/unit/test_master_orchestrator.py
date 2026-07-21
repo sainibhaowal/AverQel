@@ -1006,7 +1006,7 @@ async def test_master_orchestrator_connector_lane_emits_progress_and_result_meta
             }
 
     monkeypatch.setattr(
-        "app.services.integrations.connector_orchestrator.ConnectorOrchestrator",
+        "app.integrations.services.connector_orchestrator.ConnectorOrchestrator",
         _FakeConnectorOrchestrator,
     )
 
@@ -1123,7 +1123,7 @@ async def test_master_orchestrator_support_sweep_routes_through_internal_support
         _FakeDaemonRegistry,
     )
     monkeypatch.setattr(
-        "app.services.integrations.connector_orchestrator.ConnectorOrchestrator",
+        "app.integrations.services.connector_orchestrator.ConnectorOrchestrator",
         _FakeConnectorOrchestrator,
     )
 

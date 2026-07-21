@@ -12,8 +12,8 @@ from sqlalchemy import select
 from app.auth.dependencies import AuthContext
 from app.models.deepspace.agent_activity import AgentActivity
 from app.models.deepspace.agent_todo import AgentTodo
-from app.models.integrations.connector import Connector
-from app.models.integrations.integration import Integration
+from app.integrations.models.connector import Connector
+from app.integrations.models.integration import Integration
 from app.services.deepspace.proactive.proactive_triggers import (
     ProactiveTrigger,
     ProactiveTriggerRegistry,

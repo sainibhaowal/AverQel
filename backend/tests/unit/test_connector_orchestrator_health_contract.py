@@ -7,12 +7,12 @@ from sqlalchemy import text
 
 from app.db.session import get_session_factory
 from app.models.deepspace.agent_activity import AgentActivity
-from app.models.integrations.connector import Connector, ConnectorStatus
-from app.models.integrations.connector_secret import ConnectorSecret
-from app.models.integrations.integration import Integration
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.connector_secret import ConnectorSecret
+from app.integrations.models.integration import Integration
 from app.models.system.audit_log import AuditLog
-from app.services.integrations.connector_orchestrator import ConnectorOrchestrator
-from app.services.integrations.health_utils import build_health_report, future_iso
+from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
+from app.integrations.services.health_utils import build_health_report, future_iso
 
 
 def _seed_connector(
@@ -273,7 +273,7 @@ def test_sync_connector_uses_runtime_decrypted_secrets_without_persisting_them(
 
     monkeypatch.setitem(ConnectorOrchestrator._REGISTRY, slug, _SecretAwareService)
     monkeypatch.setattr(
-        "app.services.security.connector_secret_crypto.ConnectorSecretCrypto.decrypt",
+        "app.integrations.services.connector_secret_crypto.ConnectorSecretCrypto.decrypt",
         lambda self, **kwargs: b"decrypted-token",  # noqa: ARG005
     )
 

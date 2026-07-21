@@ -7,10 +7,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.config import Settings
-from app.models.integrations.mcp_server import MCPOAuthToken, MCPServer
-from app.services.integrations.connector_oauth_service import ConnectorOAuthService
-from app.services.security.connector_secret_crypto import ConnectorSecretCrypto
-from app.repositories.mcp_events import MCPEventsRepository
+from app.integrations.models.mcp_server import MCPOAuthToken, MCPServer
+from app.integrations.services.connector_oauth_service import ConnectorOAuthService
+from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
+from app.integrations.repositories.mcp_events import MCPEventsRepository
 
 
 class MCPServerOAuthService:

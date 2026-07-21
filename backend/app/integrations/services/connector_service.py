@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.integrations.connector import Connector
+from app.integrations.models.connector import Connector
 
 
 class ConnectorService(ABC):

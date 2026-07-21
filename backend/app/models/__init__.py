@@ -24,10 +24,10 @@ from app.documents.models.data_deletion import DataDeletion
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
 from app.ingestion.models.ingestion_job import IngestionJob
-from app.models.integrations.connector import Connector, ConnectorStatus
-from app.models.integrations.connector_secret import ConnectorSecret
-from app.models.integrations.integration import Integration
-from app.models.integrations.mcp_server import MCPEvent, MCPOAuthToken, MCPServer
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.connector_secret import ConnectorSecret
+from app.integrations.models.integration import Integration
+from app.integrations.models.mcp_server import MCPEvent, MCPOAuthToken, MCPServer
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.models.provider_health_check import ProviderHealthCheck

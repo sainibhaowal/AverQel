@@ -13,19 +13,19 @@ import anyio
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.models.integrations.connector import Connector
-from app.models.integrations.connector_secret import ConnectorSecret
-from app.models.integrations.mcp_server import MCPOAuthToken, MCPServer
-from app.services.integrations.config_utils import (
+from app.integrations.models.connector import Connector
+from app.integrations.models.connector_secret import ConnectorSecret
+from app.integrations.models.mcp_server import MCPOAuthToken, MCPServer
+from app.integrations.services.config_utils import (
     resolve_config_dict,
     resolve_config_value,
 )
-from app.services.integrations.connector_service import ConnectorService
-from app.services.integrations.health_utils import (
+from app.integrations.services.connector_service import ConnectorService
+from app.integrations.services.health_utils import (
     build_health_report,
     classify_health_status,
 )
-from app.services.security.connector_secret_crypto import ConnectorSecretCrypto
+from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 
 try:  # pragma: no cover - optional runtime dependency
     from mcp.client.auth.oauth2 import OAuthClientProvider, TokenStorage
@@ -733,7 +733,7 @@ def build_mcp_server_runtime(
             except (TypeError, ValueError):
                 pass
         db.add(token_record)
-        from app.repositories.mcp_events import MCPEventsRepository
+        from app.integrations.repositories.mcp_events import MCPEventsRepository
         MCPEventsRepository(db).append(
             tenant_id=server.tenant_id,
             server_id=server.id,
@@ -760,7 +760,7 @@ async def execute_mcp_server_tool(
     arguments: dict[str, Any],
 ) -> dict[str, Any]:
     """Execute a tool for a generic installed MCP server and persist its events."""
-    from app.repositories.mcp_events import MCPEventsRepository
+    from app.integrations.repositories.mcp_events import MCPEventsRepository
 
     def _redact(value: Any) -> Any:
         if isinstance(value, dict):
@@ -1154,7 +1154,7 @@ class UniversalMCPConnector(ConnectorService):
             }
 
         # Determine integration slug for routing
-        from app.models.integrations.integration import Integration
+        from app.integrations.models.integration import Integration
 
         integration = self.session.get(Integration, self.connector.integration_id)
         slug = integration.slug if integration else "unknown"
@@ -1199,7 +1199,7 @@ class UniversalMCPConnector(ConnectorService):
                 error_code="mcp_runtime_init_failed",
             )
 
-        from app.models.integrations.integration import Integration
+        from app.integrations.models.integration import Integration
 
         integration = self.session.get(Integration, self.connector.integration_id)
         slug = integration.slug if integration else "unknown"

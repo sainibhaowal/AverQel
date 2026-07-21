@@ -1,6 +1,6 @@
 """API schemas for external integrations."""
 
-from app.schemas.integrations.connectors import (
+from app.integrations.schemas.connectors import (
     ConnectorBase,
     ConnectorCreate,
     ConnectorFleetSummary,
@@ -12,7 +12,7 @@ from app.schemas.integrations.connectors import (
     IntegrationRead,
     SyncResult,
 )
-from app.schemas.integrations.mcp import MCPServerRead, MCPCatalogReviewRequest
+from app.integrations.schemas.mcp import MCPServerRead, MCPCatalogReviewRequest
 
 __all__ = [
     "ConnectorBase",

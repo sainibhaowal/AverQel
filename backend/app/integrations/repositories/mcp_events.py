@@ -4,7 +4,7 @@ import uuid
 
 from sqlalchemy import select, text
 
-from app.models.integrations.mcp_server import MCPEvent
+from app.integrations.models.mcp_server import MCPEvent
 from app.repositories.system.base import BaseRepository
 
 

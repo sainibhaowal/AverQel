@@ -14,10 +14,10 @@ celery_app = Celery(
     include=[
         "app.worker.tasks_ingestion",
         "app.worker.tasks_maintenance",
-        "app.worker.tasks_connectors",
+        "app.integrations.workers.tasks_connectors",
         "app.worker.tasks_proactive",
         "app.worker.tasks_deepspace",
-        "app.worker.tasks_mcp",
+        "app.integrations.workers.tasks_mcp",
     ],
 )
 
@@ -37,7 +37,7 @@ celery_app.conf.update(
         "maintenance.process_data_deletion": {"queue": "maintenance"},
         "maintenance.retention_cleanup": {"queue": "maintenance"},
         "maintenance.heartbeat": {"queue": "maintenance"},
-        "app.worker.tasks_connectors.*": {"queue": "maintenance"},
+        "app.integrations.workers.tasks_connectors.*": {"queue": "maintenance"},
     },
     beat_schedule={
         "maintenance-heartbeat": {
@@ -49,7 +49,7 @@ celery_app.conf.update(
             "schedule": crontab(hour=2, minute=0),
         },
         "connector-sync-all": {
-            "task": "app.worker.tasks_connectors.sync_all_connectors",
+            "task": "app.integrations.workers.tasks_connectors.sync_all_connectors",
             "schedule": crontab(minute=0),  # Every hour
         },
         "mcp-refresh-enabled-servers": {

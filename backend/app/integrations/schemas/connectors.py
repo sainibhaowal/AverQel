@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.integrations.connector import ConnectorStatus
+from app.integrations.models.connector import ConnectorStatus
 
 
 class ConnectorOAuthStatus(BaseModel):

@@ -13,15 +13,13 @@ from app.api.v1 import (
     deepspace_export,
     feedback,
     health,
-    integrations,
     intelligence,
     metrics,
-    mcp,
     queries,
     support,
-    voice_routes,
     workspace,
 )
+from app.integrations.api import integrations, mcp, voice as voice_routes
 from app.documents.api import collections, documents
 from app.analytics.api import analytics, dashboard
 from app.providers.api import providers

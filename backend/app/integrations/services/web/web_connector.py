@@ -6,8 +6,8 @@ from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from app.services.integrations.connector_service import ConnectorService
-from app.services.integrations.health_utils import (
+from app.integrations.services.connector_service import ConnectorService
+from app.integrations.services.health_utils import (
     ConnectorHealthStatus,
     build_health_report,
     classify_health_status,

@@ -5,9 +5,9 @@ from uuid import uuid4
 from sqlalchemy import select, text
 
 from app.db.session import get_session_factory, set_db_tenant_context
-from app.models.integrations.connector import Connector
-from app.models.integrations.connector_secret import ConnectorSecret
-from app.models.integrations.integration import Integration
+from app.integrations.models.connector import Connector
+from app.integrations.models.connector_secret import ConnectorSecret
+from app.integrations.models.integration import Integration
 
 
 def test_connector_rls_blocks_cross_tenant_reads(

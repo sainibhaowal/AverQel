@@ -19,10 +19,10 @@ from sqlalchemy.orm import Session
 from app.core.brand import APP_BRAND_NAME
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.models.integrations.connector import Connector, ConnectorStatus
-from app.models.integrations.connector_secret import ConnectorSecret
-from app.models.integrations.integration import Integration
-from app.services.security.connector_secret_crypto import ConnectorSecretCrypto
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.connector_secret import ConnectorSecret
+from app.integrations.models.integration import Integration
+from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 
 try:  # pragma: no cover - optional runtime dependency
     from mcp.client.auth.utils import (
@@ -419,7 +419,7 @@ class ConnectorOAuthService:
             redirect_uri=redirect_uri,
         )
 
-        from app.services.integrations.mcp_runtime import build_mcp_runtime
+        from app.integrations.services.mcp_runtime import build_mcp_runtime
 
         mcp_runtime_config = {
             "auth_mode": "mcp",

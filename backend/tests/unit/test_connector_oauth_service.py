@@ -4,9 +4,9 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-import app.services.integrations.connector_oauth_service as connector_oauth_service
-from app.models.integrations.integration import Integration
-from app.services.integrations.connector_oauth_service import ConnectorOAuthService
+import app.integrations.services.connector_oauth_service as connector_oauth_service
+from app.integrations.models.integration import Integration
+from app.integrations.services.connector_oauth_service import ConnectorOAuthService
 
 
 def _seed_integration(db_session, slug: str) -> Integration:

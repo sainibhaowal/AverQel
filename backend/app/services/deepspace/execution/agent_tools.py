@@ -54,11 +54,11 @@ from app.services.deepspace.execution.tool_contracts import (
     validate_tool_arguments,
 )
 from app.services.deepspace.workspace.coding_harness import CodingHarness
-from app.services.integrations.config_utils import (
+from app.integrations.services.config_utils import (
     resolve_config_dict,
     resolve_config_text,
 )
-from app.services.integrations.mcp_runtime import (
+from app.integrations.services.mcp_runtime import (
     build_mcp_runtime,
     render_mcp_result_text,
     serialize_mcp_result,
@@ -1155,7 +1155,7 @@ class ToolExecutor:
 
         if mcp_server_id:
             from sqlalchemy import select
-            from app.models.integrations.mcp_server import MCPServer
+            from app.integrations.models.mcp_server import MCPServer
             server = self.db.execute(
                 select(MCPServer).where(
                     MCPServer.id == uuid.UUID(str(mcp_server_id)),
@@ -1166,7 +1166,7 @@ class ToolExecutor:
             ).scalar_one_or_none()
             if server is None:
                 return ToolResult(success=False, output="MCP server not found or disabled.")
-            from app.services.integrations.mcp_runtime import execute_mcp_server_tool
+            from app.integrations.services.mcp_runtime import execute_mcp_server_tool
             result_payload = await execute_mcp_server_tool(
                 db=self.db, settings=self.settings, server=server,
                 tool_name=original_name, arguments=args,
@@ -1178,7 +1178,7 @@ class ToolExecutor:
                 data=result_payload,
             )
 
-        from app.models.integrations.connector import Connector
+        from app.integrations.models.connector import Connector
 
         connector = self.db.get(Connector, uuid.UUID(connector_id))
         if not connector:
@@ -1186,7 +1186,7 @@ class ToolExecutor:
                 success=False, output=f"Connector {connector_id} not found."
             )
 
-        from app.services.integrations.mcp_runtime import execute_mcp_tool
+        from app.integrations.services.mcp_runtime import execute_mcp_tool
 
         result_payload = await execute_mcp_tool(
             db=self.db,
@@ -1495,10 +1495,10 @@ class ToolExecutor:
     ) -> tuple[Any | None, dict[str, Any], str | None]:
         from sqlalchemy import select
 
-        from app.models.integrations.connector import Connector, ConnectorStatus
-        from app.models.integrations.connector_secret import ConnectorSecret
-        from app.models.integrations.integration import Integration
-        from app.services.security.connector_secret_crypto import ConnectorSecretCrypto
+        from app.integrations.models.connector import Connector, ConnectorStatus
+        from app.integrations.models.connector_secret import ConnectorSecret
+        from app.integrations.models.integration import Integration
+        from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 
         if connector_id:
             try:
@@ -1873,8 +1873,8 @@ class ToolExecutor:
         }
 
     async def _exec_list_connectors(self, args: dict[str, Any]) -> ToolResult:
-        from app.models.integrations.connector import Connector
-        from app.models.integrations.integration import Integration
+        from app.integrations.models.connector import Connector
+        from app.integrations.models.integration import Integration
 
         stmt = (
             select(Connector)
@@ -1928,9 +1928,9 @@ class ToolExecutor:
         background_tasks: Any = None,
         event_sink: Any = None,
     ) -> ToolResult:
-        from app.models.integrations.connector import Connector
-        from app.models.integrations.integration import Integration
-        from app.services.integrations.connector_orchestrator import (
+        from app.integrations.models.connector import Connector
+        from app.integrations.models.integration import Integration
+        from app.integrations.services.connector_orchestrator import (
             ConnectorOrchestrator,
         )
 
@@ -2028,9 +2028,9 @@ class ToolExecutor:
         background_tasks: Any = None,
         event_sink: Any = None,
     ) -> ToolResult:
-        from app.models.integrations.connector import Connector
-        from app.models.integrations.integration import Integration
-        from app.services.integrations.connector_orchestrator import (
+        from app.integrations.models.connector import Connector
+        from app.integrations.models.integration import Integration
+        from app.integrations.services.connector_orchestrator import (
             ConnectorOrchestrator,
         )
 
@@ -2352,8 +2352,8 @@ class ToolExecutor:
     async def _exec_search_ecosystem_docs(self, args: dict[str, Any]) -> ToolResult:
         """Search private ecosystem documents with strict web-crawler isolation."""
         from app.documents.models.document import Document
-        from app.models.integrations.connector import Connector
-        from app.models.integrations.integration import Integration
+        from app.integrations.models.connector import Connector
+        from app.integrations.models.integration import Integration
         from app.services.query.retrieval_service import RetrievalService
 
         query = str(args.get("query", ""))

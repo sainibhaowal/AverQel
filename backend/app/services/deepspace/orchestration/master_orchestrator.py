@@ -16,8 +16,8 @@ from sqlalchemy import select
 from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.models.deepspace.agent_activity import AgentActivity
-from app.models.integrations.connector import Connector, ConnectorStatus
-from app.models.integrations.integration import Integration
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.integration import Integration
 from app.services.deepspace.execution.agent_executor import AgentExecutor
 from app.services.deepspace.memory.memory_service import MemoryService, TodoService
 from app.services.deepspace.missions.mission_registry import MissionControl, MissionRegistry
@@ -1123,9 +1123,9 @@ class MasterOrchestrator:
                         try:
                             from sqlalchemy import select
 
-                            from app.models.integrations.connector import Connector
-                            from app.models.integrations.integration import Integration
-                            from app.services.integrations.connector_orchestrator import (
+                            from app.integrations.models.connector import Connector
+                            from app.integrations.models.integration import Integration
+                            from app.integrations.services.connector_orchestrator import (
                                 ConnectorOrchestrator,
                             )
 
@@ -2136,7 +2136,7 @@ class MasterOrchestrator:
                         }
                         rows = [row for row in rows if str(row[0].id) in wanted_ids]
 
-                    from app.services.integrations.connector_orchestrator import (
+                    from app.integrations.services.connector_orchestrator import (
                         ConnectorOrchestrator,
                     )
 
@@ -2492,7 +2492,7 @@ class MasterOrchestrator:
                     }
                     rows = [row for row in rows if str(row[0].id) in wanted_ids]
 
-                from app.services.integrations.connector_orchestrator import (
+                from app.integrations.services.connector_orchestrator import (
                     ConnectorOrchestrator,
                 )
 
