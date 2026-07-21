@@ -7,6 +7,7 @@ import os
 import secrets
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -27,6 +28,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.auth.roles import canonicalize_role_name
+
+ALEMBIC_COMMAND = [sys.executable, "-m", "alembic"]
 
 
 def _is_tcp_reachable(host: str, port: int, timeout: float = 0.5) -> bool:
@@ -713,7 +716,7 @@ def _reset_test_database_from_template() -> None:
             ).stdout
             _restore_dump_into_database(TEST_DATABASE_NAME, seed_dump)
             subprocess.run(
-                ["alembic", "upgrade", "heads"],
+                [*ALEMBIC_COMMAND, "upgrade", "heads"],
                 cwd=os.path.dirname(os.path.dirname(__file__)),
                 check=True,
                 env=os.environ.copy(),
@@ -762,7 +765,7 @@ def _bootstrap_test_database_without_clone() -> None:
 
     try:
         subprocess.run(
-            ["alembic", "upgrade", "head"],
+            [*ALEMBIC_COMMAND, "upgrade", "head"],
             cwd=os.path.dirname(os.path.dirname(__file__)),
             check=True,
             env=os.environ.copy(),

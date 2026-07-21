@@ -17,6 +17,7 @@ from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.deepspace.execution.agent_executor import AgentExecutor
 from app.deepspace.missions.mission_registry import MissionRegistry
+from app.deepspace.planning.task_classifier import AdaptiveTaskClassifier
 from app.deepspace.runtime.runtime_contracts import (
     normalize_conversation_compaction_state,
     resolve_compacted_session_messages,
@@ -54,6 +55,23 @@ class DeepSpaceService:
         self.provider_selection = ProviderSelectionService(db, settings)
         self.answer = AnswerService(settings.query_no_result_answer_text, settings)
         self.retrieval = RetrievalService(db, settings)
+
+    @staticmethod
+    def _should_use_orchestrated_turn(
+        *,
+        query_text: str,
+        previous_messages: list[dict[str, Any]],
+        note_content: str | None = None,
+    ) -> bool:
+        """Select the mission path for turns that need coordinated work."""
+        classification = AdaptiveTaskClassifier().classify(
+            query_text, note_content=note_content
+        )
+        return bool(
+            classification.needs_subagents
+            or classification.task_type in {"external_action", "automation"}
+            or len(previous_messages) >= 4
+        )
 
     @staticmethod
     def _client_storage_connected(auth: AuthContext) -> bool:
@@ -95,6 +113,7 @@ class DeepSpaceService:
         message_id: str,
         content: str,
         metadata_json: dict[str, Any],
+        source_type: str = "initial",
     ) -> None:
         """Persist replies in the same store used for the conversation.
 
@@ -112,13 +131,29 @@ class DeepSpaceService:
                 metadata_json={**metadata_json, "message_id": message_id},
             )
             return
-        self.chat.add_message(
+        add_message = getattr(self.chat, "add_message", None)
+        if add_message is not None:
+            add_message(
+                tenant_id=auth.tenant_id,
+                conversation_id=conversation_id,
+                kind=CONVERSATION_KIND,
+                role="assistant",
+                content=content,
+                metadata_json=metadata_json,
+            )
+            return
+        # Minimal repository adapters may expose versioning only for existing
+        # assistant messages (resume/regenerate flows).
+        create_version = getattr(self.chat, "create_message_version", None)
+        if create_version is None:
+            raise AttributeError("Chat repository cannot persist assistant messages")
+        create_version(
             tenant_id=auth.tenant_id,
-            conversation_id=conversation_id,
-            kind=CONVERSATION_KIND,
-            role="assistant",
+            message_id=uuid.UUID(str(message_id)),
             content=content,
             metadata_json=metadata_json,
+            source_type=source_type,
+            activate=True,
         )
 
     async def stream_chat(
@@ -217,6 +252,19 @@ class DeepSpaceService:
             "agentic_mode": agentic_mode,
             "append_user_message": False,
         }
+        if self._should_use_orchestrated_turn(
+            query_text=query_text,
+            previous_messages=previous_messages,
+            note_content=note_content,
+        ):
+            orchestrated_kwargs = {
+                key: value
+                for key, value in stream_kwargs.items()
+                if key != "append_user_message"
+            }
+            async for chunk in self._stream_orchestrated_turn(**orchestrated_kwargs):
+                yield chunk
+            return
         async for chunk in self._stream_agent_turn(**stream_kwargs):
             yield chunk
         return
@@ -1124,6 +1172,7 @@ class DeepSpaceService:
                 message_id=message_id,
                 content="",
                 metadata_json=metadata,
+                source_type=operation,
             )
             self.db.commit()
             return
@@ -1137,6 +1186,7 @@ class DeepSpaceService:
                 message_id=message_id,
                 content=error_text,
                 metadata_json={**metadata, "error": "EMPTY_MODEL_RESPONSE"},
+                source_type=operation,
             )
             self.db.commit()
             return
@@ -1151,6 +1201,7 @@ class DeepSpaceService:
             message_id=message_id,
             content=final_text,
             metadata_json=metadata,
+            source_type=operation,
         )
         self.db.commit()
         yield mapper.encode("done", {"total_steps": len(agent_steps)})
@@ -1339,6 +1390,9 @@ class DeepSpaceService:
 
                 if event_name == "mission_done":
                     mission_completed = True
+                    mission_summary = str(
+                        payload.get("summary") or mission_summary or ""
+                    )
                     yield mapper.encode("metrics", _timeline_payload("complete"))
                     for out_event in mapper.map_orchestrator_event(
                         event_name=event_name,
@@ -1459,6 +1513,9 @@ class DeepSpaceService:
             )
             self.db.commit()
             return
+
+        if not full_answer_parts and mission_summary:
+            full_answer_parts.append(str(mission_summary))
 
         if not full_answer_parts:
             error_text = "The selected language model returned no visible answer."

@@ -506,7 +506,17 @@ class ConnectorOAuthService:
         )
 
         if auth_mode != "mcp" or not server_url:
-            return None
+            # Keep built-in provider integrations usable when an older catalog
+            # row predates the newer MCP metadata columns.
+            built_in_profiles = {
+                "google-drive": MCPProfile(
+                    slug="google-drive",
+                    server_url="https://drivemcp.googleapis.com/mcp/v1",
+                    tools=(),
+                    default_scopes=("https://www.googleapis.com/auth/drive",),
+                )
+            }
+            return built_in_profiles.get(integration.slug)
 
         return MCPProfile(
             slug=integration.slug,
@@ -521,7 +531,7 @@ class ConnectorOAuthService:
         ui_metadata = integration.ui_metadata if isinstance(integration.ui_metadata, dict) else {}
         provider_key = str(
             ui_metadata.get("oauth_provider_key")
-            or integration.slug
+            or {"google-drive": "google"}.get(integration.slug, integration.slug)
         ).strip()
         if not provider_key:
             return None

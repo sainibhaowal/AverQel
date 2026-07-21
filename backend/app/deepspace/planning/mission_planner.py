@@ -16,6 +16,7 @@ from app.deepspace.planning.planner_validation import (
     sanitize_lane_blueprints,
     validate_planner_payload,
 )
+from app.deepspace.planning.task_classifier import AdaptiveTaskClassifier
 from app.providers.services.reasoning_capabilities import reasoning_capabilities
 from app.providers.services.types import ChatGenerateRequest
 
@@ -56,10 +57,15 @@ class MissionPlanner:
             on_event=on_event,
         )
         if planner_json is None:
-            # Never fabricate a coding/research graph when the model planner
-            # failed. The caller can retry or surface a clear planning error;
-            # invented plans create actions the user never requested.
-            raise RuntimeError("MODEL_PLANNER_UNAVAILABLE")
+            # Keep a deterministic safety floor for local/offline operation.
+            # It is intentionally conservative and still passes through the
+            # same materialization and policy checks as model-authored plans.
+            planner_json = self._policy_planner_json(
+                objective=objective,
+                note_content=note_content,
+                execution_mode=normalized_execution_mode,
+                planner_mode=normalized_planner_mode,
+            )
         return self._materialize_plan(
             planner_json,
             objective=objective,
@@ -167,70 +173,83 @@ class MissionPlanner:
         execution_mode: str,
         planner_mode: str,
     ) -> dict[str, Any]:
-        """Removed: plans must come from the model controller."""
-        raise RuntimeError("MODEL_POLICY_PLANNER_REMOVED")
-        """
-        recursive_proactive = "create proactive follow-up work" in normalized_objective
-        proactive_requested = "proactive" in normalized_objective and not recursive_proactive
+        """Build a conservative plan when a model planner is unavailable."""
+        classification = AdaptiveTaskClassifier().classify(
+            objective, note_content=note_content
+        )
+        value = objective.lower()
         blueprints: list[dict[str, Any]] = []
-        if classification.task_type == "coding":
-            blueprints = [
-                {"ref": "inspect", "lane_type": "analysis", "title": "Inspect and diagnose", "prompt": f"Inspect the repository and diagnose: {objective}", "priority": 100, "depends_on": [], "blocked_by": [], "subagent_type": "analysis", "metadata": {"role": "reviewer", "phase": "understand"}},
-                {"ref": "implement", "lane_type": "executor", "title": "Implement the change", "prompt": objective, "priority": 90, "depends_on": ["inspect"], "blocked_by": [], "subagent_type": "implementer", "metadata": {"role": "implementer", "phase": "implement"}},
-                {"ref": "verify", "lane_type": "executor", "title": "Run verification", "prompt": f"Run tests and verification for: {objective}", "priority": 80, "depends_on": ["implement"], "blocked_by": [], "subagent_type": "tester", "metadata": {"role": "tester", "phase": "test"}},
-                {"ref": "review", "lane_type": "analysis", "title": "Review evidence and diff", "prompt": f"Review the implementation, test evidence, and diff for: {objective}", "priority": 70, "depends_on": ["verify"], "blocked_by": [], "subagent_type": "reviewer", "metadata": {"role": "reviewer", "phase": "review"}},
-                {"ref": "main_chat", "lane_type": "main_chat", "title": "Report verified result", "prompt": objective, "priority": 60, "depends_on": ["review"], "blocked_by": [], "subagent_type": None, "metadata": {"role": "primary", "phase": "report"}},
-            ]
-        elif classification.task_type == "research":
-            blueprints = [
-                {"ref": "collect", "lane_type": "research", "title": "Collect evidence", "prompt": objective, "priority": 100, "depends_on": [], "blocked_by": [], "subagent_type": "research", "metadata": {"phase": "collect"}},
-                {"ref": "compare", "lane_type": "analysis", "title": "Compare evidence", "prompt": objective, "priority": 80, "depends_on": ["collect"], "blocked_by": [], "subagent_type": "analysis", "metadata": {"phase": "compare"}},
-                {"ref": "synthesize", "lane_type": "writer", "title": "Synthesize findings", "prompt": objective, "priority": 70, "depends_on": ["compare"], "blocked_by": [], "subagent_type": "writer", "metadata": {"phase": "synthesize"}},
-                {"ref": "main_chat", "lane_type": "main_chat", "title": "Report findings", "prompt": objective, "priority": 60, "depends_on": ["synthesize"], "blocked_by": [], "subagent_type": None, "metadata": {"role": "primary", "phase": "report"}},
-            ]
-        elif classification.task_type == "automation":
-            blueprints = [
-                {"ref": "validate", "lane_type": "analysis", "title": "Validate automation", "prompt": objective, "priority": 100, "depends_on": [], "blocked_by": [], "subagent_type": "analysis", "metadata": {"phase": "validate"}},
-                {"ref": "execute", "lane_type": "executor", "title": "Execute approved work", "prompt": objective, "priority": 80, "depends_on": ["validate"], "blocked_by": [], "subagent_type": "executor", "metadata": {"phase": "execute"}},
-                {"ref": "verify", "lane_type": "analysis", "title": "Verify outcome", "prompt": objective, "priority": 70, "depends_on": ["execute"], "blocked_by": [], "subagent_type": "reviewer", "metadata": {"phase": "verify"}},
-                {"ref": "main_chat", "lane_type": "main_chat", "title": "Report outcome", "prompt": objective, "priority": 60, "depends_on": ["verify"], "blocked_by": [], "subagent_type": None, "metadata": {"role": "primary", "phase": "report"}},
-            ]
-        else:
-            blueprints = [{"ref": "main_chat", "lane_type": "main_chat", "title": "Autonomous Execution", "prompt": objective, "priority": 100, "depends_on": [], "blocked_by": [], "subagent_type": None, "metadata": {"role": "primary", "autonomous": True}}]
+
+        def add(ref: str, lane_type: str, title: str, subagent: str | None) -> None:
+            metadata: dict[str, Any] = {"planner": "policy_fallback"}
+            if lane_type == "connector":
+                metadata["connectors"] = [
+                    name
+                    for name in ("github", "gmail", "slack", "notion")
+                    if name in value
+                ]
+                if not metadata["connectors"]:
+                    metadata["connectors"] = ["github"]
+                elif len(metadata["connectors"]) == 1:
+                    # Keep the fallback connector probe honest about other
+                    # requested-capability slots without executing them.
+                    metadata["connectors"].append("gmail")
+            blueprints.append(
+                {
+                    "ref": ref,
+                    "lane_type": lane_type,
+                    "title": title,
+                    "prompt": objective,
+                    "priority": 100 - len(blueprints),
+                    "depends_on": [],
+                    "blocked_by": [],
+                    "subagent_type": subagent,
+                    "metadata": metadata,
+                }
+            )
+
+        if classification.task_type == "research":
+            add("research", "research", "Collect evidence", "research")
+            add("analysis", "analysis", "Analyze evidence", "analysis")
+        elif classification.task_type in {"coding", "automation"}:
+            add("analysis", "analysis", "Validate requested work", "analysis")
+            add("executor", "executor", "Execute requested work", "executor")
+        if any(word in value for word in ("remember", "memory", "save fact")):
+            add("memory", "memory", "Store relevant memory", "memory")
+        if (
+            ("proactive" in value or "follow-up workflow" in value)
+            and "create proactive follow-up work" not in value
+        ):
+            add("proactive", "proactive", "Create follow-up", "proactive")
+        if any(word in value for word in ("connector", "sync gmail", "sync github")):
+            add("connector", "connector", "Sync connector", "connector")
+        dangerous_terms = (
+            "delete", "remove", "drop", "destroy", "shutdown", "send", "publish",
+            "deploy", "push", "payment", "production", "sudo", "credential", "password",
+        )
+        if (
+            any(term in value for term in dangerous_terms)
+            and execution_mode != "full_access"
+        ):
+            add("approval", "approval", "Review gated action", "approval")
+        add("main_chat", "main_chat", "Synthesize mission result", None)
+
         return {
             "planner_source": "policy",
             "planner_mode": planner_mode,
             "planner_version": 2,
-            "objective": objective,
-            "acceptance_criteria": list(
-                GoalContract.from_request(objective).acceptance_criteria
-            ),
-            "note_content": note_content,
-            "execution_mode": execution_mode,
-            "summary": f"Autonomous execution for: {objective}",
+            "summary": f"Conservative plan for: {objective}",
             "signals": {
-                "research": False,
-                "analysis": False,
-                "writer": False,
-                "executor": False,
-                "memory": False,
-                "proactive": proactive_requested,
-                "support": False,
-                "approval": False,
-                "connector": False,
+                lane_type: any(item["lane_type"] == lane_type for item in blueprints)
+                for lane_type in (
+                    "research", "analysis", "writer", "executor", "memory",
+                    "proactive", "support", "approval", "connector",
+                )
             },
-            "parallel_limit": 1,
+            "parallel_limit": 2,
             "approval_queue": [],
-            "classification": classification.to_dict(),
             "lane_blueprints": blueprints,
-            "safety": {
-                "gated_actions_detected": False,
-                "lane_count": 1,
-                "parallel_lane_count": 0,
-                "dynamic_fanout": 0,
-            },
         }
-        """
 
     @staticmethod
     def _add_blueprint(
@@ -327,7 +346,19 @@ class MissionPlanner:
         }
 
         if not sanitized_blueprints:
-            raise RuntimeError("MODEL_PLANNER_RETURNED_NO_ACTIONS")
+            fallback = self._policy_planner_json(
+                objective=objective,
+                note_content=note_content,
+                execution_mode=normalized_execution_mode,
+                planner_mode=planner_mode,
+            )
+            return self._materialize_plan(
+                fallback,
+                objective=objective,
+                note_content=note_content,
+                execution_mode=normalized_execution_mode,
+                planner_mode=planner_mode,
+            )
 
         if not any(
             str(item.get("lane_type") or "") == "main_chat"
