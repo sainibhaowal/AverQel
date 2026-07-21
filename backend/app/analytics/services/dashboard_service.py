@@ -15,7 +15,7 @@ from app.providers.repositories.provider_configs import ProviderConfigsRepositor
 from app.providers.repositories.provider_health_checks import (
     ProviderHealthChecksRepository,
 )
-from app.schemas.analytics.dashboard import (
+from app.analytics.schemas.dashboard import (
     DashboardActivityItemResponse,
     DashboardCollectionSummaryResponse,
     DashboardDocumentBreakdownResponse,

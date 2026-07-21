@@ -9,7 +9,7 @@ from app.models.documents.collection import (
     DocumentCollection,
 )
 from app.models.documents.document import Document
-from app.services.analytics.dashboard_service import DashboardService
+from app.analytics.services.dashboard_service import DashboardService
 
 
 def test_dashboard_service_get_overview(

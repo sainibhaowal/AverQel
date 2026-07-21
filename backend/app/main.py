@@ -5,13 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
     admin,
-    analytics,
     app_feedback,
     capabilities,
     chats,
     client_storage,
     collections,
-    dashboard,
     deepspace_chats,
     deepspace_export,
     documents,
@@ -26,6 +24,7 @@ from app.api.v1 import (
     voice_routes,
     workspace,
 )
+from app.analytics.api import analytics, dashboard
 from app.providers.api import providers
 from app.auth import api as auth
 from app.core.config import Settings, get_settings

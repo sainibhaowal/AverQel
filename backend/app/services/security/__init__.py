@@ -3,11 +3,6 @@ from app.services.security.provider_secret_crypto import (
     ProviderSecretCrypto,
     ProviderSecretCryptoError,
 )
-from app.services.security.provider_secret_service import (
-    MaskedProviderSecret,
-    ProviderSecretService,
-)
-
 __all__ = [
     "EncryptedProviderSecret",
     "MaskedProviderSecret",
@@ -15,3 +10,18 @@ __all__ = [
     "ProviderSecretCryptoError",
     "ProviderSecretService",
 ]
+
+
+def __getattr__(name: str):
+    """Load the provider-owned service without creating an import cycle."""
+    if name in {"MaskedProviderSecret", "ProviderSecretService"}:
+        from app.providers.services.provider_secret_service import (
+            MaskedProviderSecret,
+            ProviderSecretService,
+        )
+
+        return {
+            "MaskedProviderSecret": MaskedProviderSecret,
+            "ProviderSecretService": ProviderSecretService,
+        }[name]
+    raise AttributeError(name)

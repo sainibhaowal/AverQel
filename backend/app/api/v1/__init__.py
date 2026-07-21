@@ -2,7 +2,6 @@ from app.auth import api as auth
 
 from app.api.v1 import (
     admin,
-    analytics,
     client_storage,
     collections,
     documents,
@@ -13,6 +12,7 @@ from app.api.v1 import (
     support,
     workspace,
 )
+from app.analytics.api import analytics, dashboard
 from app.providers.api import providers
 
 __all__ = [

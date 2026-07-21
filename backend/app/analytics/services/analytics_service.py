@@ -7,7 +7,7 @@ from sqlalchemy import cast as sa_cast
 from sqlalchemy.orm import Session
 
 from app.models.query.query import Query
-from app.schemas.analytics.analytics import (
+from app.analytics.schemas.analytics import (
     AnalyticsDashboardResponse,
     ConfidenceDistribution,
     QueryVolumePoint,
