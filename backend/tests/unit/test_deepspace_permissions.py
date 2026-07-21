@@ -8,7 +8,6 @@ import pytest
 
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
-from app.deepspace.models.agent_audit import AgentAuditLog
 from app.deepspace.execution.agent_permissions import (
     PermissionLevel,
     permission_tier_number,
@@ -25,6 +24,7 @@ from app.deepspace.execution.tool_contracts import (
     ToolExecutionPolicy,
     validate_tool_arguments,
 )
+from app.deepspace.models.agent_audit import AgentAuditLog
 
 
 @pytest.mark.unit_no_db

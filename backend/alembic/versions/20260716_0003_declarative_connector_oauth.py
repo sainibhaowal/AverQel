@@ -1,7 +1,8 @@
 """move legacy connector OAuth provider metadata into integration records"""
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "20260716_0003"
 down_revision = "20260716_0002"

@@ -5,11 +5,11 @@ from collections.abc import Callable
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.core.ids import generate_uuid7_with_fallback
-from app.auth.security import hash_password
-from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.auth.models.user import User
+from app.auth.security import hash_password
+from app.core.ids import generate_uuid7_with_fallback
 from app.documents.models.document import Document
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from tests.conftest import SeededUser, _generate_test_collection_code
 
 

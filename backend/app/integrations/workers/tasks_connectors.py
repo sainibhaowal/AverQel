@@ -11,17 +11,17 @@ from celery.exceptions import Retry  # type: ignore[import-untyped]
 from sqlalchemy import select, text
 
 from app.core.config import get_settings
-from app.platform.database.session import get_session_factory
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.integration import Integration
 from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
+from app.platform.database.session import get_session_factory
+from app.platform.worker.celery_app import celery_app
 from app.system.services.metrics_service import (
     WORKER_JOB_TRANSITIONS_TOTAL,
     WORKER_LOCK_CONTENTION_TOTAL,
     WORKER_RETRIES_TOTAL,
     WORKER_STAGE_DURATION_SECONDS,
 )
-from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 

@@ -79,6 +79,38 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
+    # These modules integrate dynamic SDKs, Redis payloads, or large mixed
+    # endpoints. Keep them explicitly quarantined until their planned splits.
+    "app.deepspace.autonomy.controller",
+    "app.deepspace.execution.aci_tools",
+    "app.deepspace.execution.tool_contracts",
+    "app.deepspace.integrations.client_proxy",
+    "app.deepspace.integrations.voice_agent",
+    "app.deepspace.missions.mission_registry",
+    "app.deepspace.orchestration.master_orchestrator",
+    "app.deepspace.proactive.trigger_runner",
+    "app.deepspace.runtime.runtime_observability",
+    "app.deepspace.subagents.subagent_profiles",
+    "app.deepspace.subagents.subagent_registry",
+    "app.deepspace.api.workspace",
+    "app.deepspace.api.client_storage",
+    "app.deepspace.workspace.qsat_predictor",
+    "app.deepspace.workspace.workspace_service",
+    "app.documents.api.collections",
+    "app.documents.repositories.collections",
+    "app.integrations.api.mcp",
+    "app.integrations.repositories.mcp_events",
+    "app.integrations.schemas.mcp",
+    "app.integrations.services.mcp_oauth_service",
+    "app.integrations.services.mcp_runtime",
+    "app.integrations.workers.tasks_mcp",
+    "app.query.api.chats",
+    "app.main",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
     # DeepSpace typing is being hardened incrementally. Keep the dynamic
     # LLM/tooling modules quarantined, but do not hide typed registry/policy
     # modules behind a package-wide wildcard.

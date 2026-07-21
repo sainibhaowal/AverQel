@@ -4,8 +4,8 @@ import uuid
 
 from sqlalchemy import select
 
-from app.platform.database.session import set_db_tenant_context
 from app.auth.models.tenant import Tenant
+from app.platform.database.session import set_db_tenant_context
 from app.system.repositories.base import BaseRepository
 
 

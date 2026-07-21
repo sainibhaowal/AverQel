@@ -25,6 +25,7 @@ from app.providers.services.base import (
     ProviderCapabilityError,
     ProviderRequestError,
 )
+from app.providers.services.provider_secret_service import ProviderSecretService
 from app.providers.services.reasoning_capabilities import (
     model_supports_reasoning,
     reasoning_capabilities,
@@ -38,7 +39,6 @@ from app.providers.services.types import (
     HealthCheckResult,
     ProviderSelectionCandidate,
 )
-from app.providers.services.provider_secret_service import ProviderSecretService
 from app.system.services.audit_service import AuditService
 
 

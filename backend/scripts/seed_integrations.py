@@ -10,8 +10,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from sqlalchemy import select
 
-from app.platform.database.session import get_session_factory
 from app.integrations.models.integration import Integration
+from app.platform.database.session import get_session_factory
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -6,8 +6,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.platform.database.session import set_db_tenant_context
 from app.documents.models.collection_notification import CollectionNotification
+from app.platform.database.session import set_db_tenant_context
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
 

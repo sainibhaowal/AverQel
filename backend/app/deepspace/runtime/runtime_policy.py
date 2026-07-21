@@ -3,13 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.deepspace.policy.autonomy_policy import AutonomyPolicy
+from app.deepspace.execution.tool_contracts import ToolContract
 from app.deepspace.policy.execution_policy import (
     ExecutionDecision,
     ExecutionMode,
     ExecutionPolicy,
 )
-from app.deepspace.execution.tool_contracts import ToolContract
 from app.deepspace.workspace.workspace_mode import WorkspaceMode
 
 _MAX_RECENT_POLICY_DECISIONS = 24

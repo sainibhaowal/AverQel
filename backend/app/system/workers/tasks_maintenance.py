@@ -10,13 +10,13 @@ from celery import Task  # type: ignore[import-untyped]
 from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
 
-from app.core.config import get_settings
-from app.platform.database.session import get_session_factory
 from app.auth.models.tenant import Tenant
+from app.core.config import get_settings
 from app.documents.services.deletion_service import DeletionService
+from app.platform.database.session import get_session_factory
+from app.platform.worker.celery_app import celery_app  # type: ignore[attr-defined]
 from app.system.services.audit_service import AuditService
 from app.system.services.metrics_service import MAINTENANCE_JOB_EVENTS_TOTAL
-from app.platform.worker.celery_app import celery_app  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

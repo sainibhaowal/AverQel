@@ -8,9 +8,9 @@ import jwt
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
+from app.auth.models.user import User
 from app.core.config import Settings, get_settings
 from app.platform.database.session import get_session_factory, set_db_tenant_context
-from app.auth.models.user import User
 from tests.conftest import SeededUser
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

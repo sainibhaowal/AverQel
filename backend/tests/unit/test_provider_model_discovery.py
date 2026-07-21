@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from app.auth.models.tenant import Tenant
 from app.core.ids import generate_uuid7_with_fallback
 from app.platform.database.session import get_session_factory
-from app.auth.models.tenant import Tenant
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.services.provider_models_service import ProviderModelsService
 from app.providers.services.registry import ProviderRegistry

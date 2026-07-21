@@ -5,7 +5,6 @@ from typing import TypedDict
 
 from sqlalchemy import delete, func, select
 
-from app.platform.database.session import set_db_tenant_context
 from app.documents.models.collection import (
     CollectionChatMessage,
     CollectionDocument,
@@ -13,6 +12,7 @@ from app.documents.models.collection import (
     DocumentCollection,
 )
 from app.documents.models.document import Document
+from app.platform.database.session import set_db_tenant_context
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
 

@@ -3,14 +3,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import AuthContext, get_auth_context
-from app.auth.tenancy import TenantContext, get_tenant_context
-from app.platform.database.session import get_db
 from app.analytics.schemas.dashboard import (
     DashboardOverviewResponse,
     DashboardStatsResponse,
 )
 from app.analytics.services.dashboard_service import DashboardService
+from app.auth.dependencies import AuthContext, get_auth_context
+from app.auth.tenancy import TenantContext, get_tenant_context
+from app.platform.database.session import get_db
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 

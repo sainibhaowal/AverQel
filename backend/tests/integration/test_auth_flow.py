@@ -6,8 +6,8 @@ import pyotp
 from fastapi.testclient import TestClient
 
 from app.auth.dependencies import AuthContext
-from app.core.config import Settings
 from app.auth.services.auth_service import AuthService
+from app.core.config import Settings
 from tests.conftest import SeededUser
 
 

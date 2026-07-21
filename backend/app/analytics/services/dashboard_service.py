@@ -5,16 +5,6 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
-from app.documents.models.document import Document
-from app.system.models.audit_log import AuditLog
-from app.documents.repositories.collections import CollectionsRepository
-from app.documents.repositories.documents import DocumentsRepository
-from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
-from app.providers.repositories.provider_configs import ProviderConfigsRepository
-from app.providers.repositories.provider_health_checks import (
-    ProviderHealthChecksRepository,
-)
 from app.analytics.schemas.dashboard import (
     DashboardActivityItemResponse,
     DashboardCollectionSummaryResponse,
@@ -24,7 +14,17 @@ from app.analytics.schemas.dashboard import (
     DashboardRecentDocumentResponse,
     DashboardStatsResponse,
 )
+from app.core.config import get_settings
+from app.documents.models.document import Document
+from app.documents.repositories.collections import CollectionsRepository
+from app.documents.repositories.documents import DocumentsRepository
+from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
+from app.providers.repositories.provider_configs import ProviderConfigsRepository
+from app.providers.repositories.provider_health_checks import (
+    ProviderHealthChecksRepository,
+)
 from app.providers.services.selection_service import ProviderSelectionService
+from app.system.models.audit_log import AuditLog
 from app.system.services.metrics_service import observe_db_query
 
 _QUEUED_STATUSES = {"queued", "uploaded", "pending"}

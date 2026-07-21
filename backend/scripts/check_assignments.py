@@ -2,8 +2,8 @@ import asyncio
 
 from sqlalchemy import select
 
-from app.platform.database.session import get_session_factory
 from app.auth.models.tenant import Tenant
+from app.platform.database.session import get_session_factory
 from app.providers.models.provider_assignment import ProviderAssignment
 
 

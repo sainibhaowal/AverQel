@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
 from app.core.config import get_settings
 from app.inference.runtime import LocalInferenceRuntime
 from app.inference.schemas.inference import (
@@ -14,7 +15,6 @@ from app.inference.schemas.inference import (
     RerankRequestPayload,
     RerankResponsePayload,
 )
-
 
 settings = get_settings()
 runtime = LocalInferenceRuntime(settings)

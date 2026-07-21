@@ -9,13 +9,13 @@ from sqlalchemy import func, select, text
 
 from app.core.config import get_settings
 from app.core.ids import generate_uuid7_with_fallback
-from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.documents.models.collection import (
     CollectionDocument,
     CollectionPermission,
     DocumentCollection,
 )
 from app.documents.models.document import Document
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.query.models.comment import Comment
 from app.query.models.conversation import Conversation
 from app.query.models.message import Message

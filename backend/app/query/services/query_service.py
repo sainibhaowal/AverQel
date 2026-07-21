@@ -18,19 +18,19 @@ from app.core.config import Settings
 from app.core.context import get_trace_id
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.query.models.query_citation import QueryCitation
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.collections import CollectionsRepository
 from app.documents.repositories.documents import DocumentsRepository
 from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
+from app.providers.services.selection_service import ProviderSelectionService
+from app.providers.services.types import ProviderSelectionCandidate
+from app.query.models.query_citation import QueryCitation
 from app.query.repositories.chat import ChatRepository
 from app.query.repositories.queries import QueriesRepository
 from app.query.schemas.structured_response import (
     ReasoningTraceModel,
     StructuredAnswerResponse,
 )
-from app.providers.services.selection_service import ProviderSelectionService
-from app.providers.services.types import ProviderSelectionCandidate
 from app.query.services.answer_service import AnswerService, StreamEvent
 from app.query.services.followup_service import FollowupService
 from app.query.services.query_classifier import QueryClassifier

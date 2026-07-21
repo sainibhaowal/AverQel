@@ -10,11 +10,13 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
-from app.core.config import Settings, get_settings
-from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
 from app.auth.tenancy import require_request_tenant_id
+from app.core.config import Settings, get_settings
+from app.core.errors import ApiError
 from app.platform.database.session import get_db
+from app.providers.services.reasoning_capabilities import reasoning_capabilities
+from app.providers.services.selection_service import ProviderSelectionService
 from app.query.schemas.queries import (
     ChatCapabilitiesResponse,
     CitationFeedbackRequest,
@@ -23,8 +25,6 @@ from app.query.schemas.queries import (
     QueryRequest,
     QueryResponse,
 )
-from app.providers.services.reasoning_capabilities import reasoning_capabilities
-from app.providers.services.selection_service import ProviderSelectionService
 from app.query.services.query_service import QueryService
 from app.system.services.audit_service import AuditService
 from app.system.services.quality_service import QualityService

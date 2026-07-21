@@ -11,7 +11,6 @@ from sqlalchemy import text
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.core.ids import generate_uuid7_with_fallback
-from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.collection import (
     CollectionDocument,
@@ -21,6 +20,7 @@ from app.documents.models.collection import (
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
 from app.ingestion.models.ingestion_job import IngestionJob
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.providers.services.types import ProviderSelectionCandidate
 from app.query.services.answer_service import AnswerResult
 from app.query.services.query_service import QueryService

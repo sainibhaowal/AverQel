@@ -15,14 +15,14 @@ from sqlalchemy import select
 
 from app.auth.dependencies import AuthContext
 from app.core.config import Settings
-from app.deepspace.models.agent_activity import AgentActivity
-from app.integrations.models.connector import Connector, ConnectorStatus
-from app.integrations.models.integration import Integration
 from app.deepspace.execution.agent_executor import AgentExecutor
 from app.deepspace.memory.memory_service import MemoryService, TodoService
 from app.deepspace.missions.mission_registry import MissionControl, MissionRegistry
+from app.deepspace.models.agent_activity import AgentActivity
 from app.deepspace.planning.mission_planner import MissionPlanner
 from app.deepspace.subagents.subagent_manager import SubagentManager
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.integration import Integration
 from app.providers.services.types import ChatGenerateRequest
 from app.query.services.answer_service import StreamEvent
 from app.system.services.vitals_service import VitalsService

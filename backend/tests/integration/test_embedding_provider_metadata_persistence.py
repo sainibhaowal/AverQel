@@ -4,6 +4,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
+from app.ingestion.services.embedding_service import EmbeddingService
 from app.platform.database.session import get_session_factory
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
@@ -11,7 +12,6 @@ from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
 from app.providers.repositories.provider_configs import ProviderConfigsRepository
-from app.ingestion.services.embedding_service import EmbeddingService
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 
 

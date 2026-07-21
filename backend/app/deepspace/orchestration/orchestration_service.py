@@ -11,11 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext
 from app.core.config import Settings
-from app.deepspace.models.agent_activity import AgentActivity
 from app.deepspace.execution.agent_executor import AgentExecutor
 from app.deepspace.execution.agent_tools import ALL_TOOLS
 from app.deepspace.memory.memory_service import TodoService
 from app.deepspace.missions.mission_registry import MissionRegistry
+from app.deepspace.models.agent_activity import AgentActivity
 from app.deepspace.subagents.subagent_registry import SubagentRegistry
 from app.system.services.vitals_service import VitalsService
 

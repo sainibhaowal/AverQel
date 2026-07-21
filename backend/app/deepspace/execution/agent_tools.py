@@ -1155,6 +1155,7 @@ class ToolExecutor:
 
         if mcp_server_id:
             from sqlalchemy import select
+
             from app.integrations.models.mcp_server import MCPServer
             server = self.db.execute(
                 select(MCPServer).where(
@@ -2382,7 +2383,7 @@ class ToolExecutor:
                     Document.tenant_id == self.auth.tenant_id,
                     Document.connector_id.in_(crawler_ids),
                     Document.status == "processed",
-                    Document.is_deleted == False,
+                    Document.is_deleted.is_(False),
                 )
             )
             .scalars()
@@ -2860,7 +2861,6 @@ class ToolExecutor:
         import time
 
         directory = args.get("directory", ".")
-        pattern = args.get("pattern", "*")
         try:
             files = []
             for f in os.listdir(directory):

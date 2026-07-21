@@ -10,13 +10,13 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from sqlalchemy import select
 
-from app.core.ids import generate_uuid7_with_fallback
-from app.auth.security import hash_password
-from app.platform.database.session import get_session_factory
 from app.auth.models.role import Role
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
+from app.auth.security import hash_password
+from app.core.ids import generate_uuid7_with_fallback
+from app.platform.database.session import get_session_factory
 from scripts.seed_integrations import seed_integrations
 
 

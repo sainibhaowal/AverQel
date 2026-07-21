@@ -541,8 +541,8 @@ async def _process_incoming_audio(
 def get_resolved_chat_provider():
     from sqlalchemy import select
 
-    from app.platform.database.session import SessionLocal
     from app.auth.models.user import User
+    from app.platform.database.session import SessionLocal
     from app.providers.services.registry import ProviderRegistry
     from app.providers.services.selection_service import ProviderSelectionService
 

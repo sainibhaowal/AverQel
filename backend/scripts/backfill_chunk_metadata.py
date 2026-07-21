@@ -3,8 +3,8 @@ import logging
 
 from sqlalchemy import select
 
-from app.platform.database.session import get_session_factory
 from app.documents.models.document_chunk import DocumentChunk
+from app.platform.database.session import get_session_factory
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

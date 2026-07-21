@@ -3,8 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.deepspace.models.agent_runtime_preference import AgentRuntimePreference
 from app.deepspace.missions.mission_registry import MissionRegistry
+from app.deepspace.models.agent_runtime_preference import AgentRuntimePreference
 
 
 class _FakeRedis:

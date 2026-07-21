@@ -1,6 +1,6 @@
 """add database-backed MCP catalog trust and enrichment state"""
+
 from alembic import op
-import sqlalchemy as sa
 
 revision = "20260720_0001"
 down_revision = "20260717_0003"

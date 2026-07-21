@@ -6,8 +6,8 @@ from typing import Final
 from fastapi import Depends
 
 from app.auth.dependencies import AuthContext, get_auth_context
-from app.core.errors import ApiError
 from app.auth.roles import canonicalize_role_name
+from app.core.errors import ApiError
 
 PERMISSIONS_BY_ROLE: Final[dict[str, frozenset[str]]] = {
     "admin": frozenset(

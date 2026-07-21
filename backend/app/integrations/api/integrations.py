@@ -11,16 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
+from app.auth.rbac import require_permissions
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.auth.rbac import require_permissions
-from app.platform.database.session import get_db
 from app.documents.models.document import Document
+from app.documents.schemas.documents import DocumentMetadataResponse
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration
-from app.system.models.audit_log import AuditLog
-from app.documents.schemas.documents import DocumentMetadataResponse
 from app.integrations.schemas.connectors import (
     ConnectorCreate,
     ConnectorFleetSummary,
@@ -34,6 +32,8 @@ from app.integrations.schemas.connectors import (
 from app.integrations.services.connector_oauth_service import ConnectorOAuthService
 from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
 from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
+from app.platform.database.session import get_db
+from app.system.models.audit_log import AuditLog
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,6 @@ from dataclasses import replace
 from typing import Any
 from uuid import UUID
 
-from app.query.schemas.structured_response import sanitize_mermaid_syntax
 from app.providers.services.anthropic_provider import AnthropicProvider
 from app.providers.services.google_provider import GoogleProvider
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
@@ -16,6 +15,7 @@ from app.providers.services.types import (
     ChatGenerateRequest,
     ProviderSelectionCandidate,
 )
+from app.query.schemas.structured_response import sanitize_mermaid_syntax
 from app.query.services.answer_service import AnswerService
 
 

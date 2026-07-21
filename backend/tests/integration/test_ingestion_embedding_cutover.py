@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.core.config import Settings
-from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.documents.models.chunk_embedding import ChunkEmbedding
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.repositories.provider_assignments import (

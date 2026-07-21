@@ -4,8 +4,8 @@ import pytest
 
 from app.deepspace.execution.agent_permissions import PermissionLevel
 from app.deepspace.execution.agent_tools import ALL_TOOLS, build_dynamic_mcp_tool
-from app.deepspace.policy.execution_policy import ExecutionPolicy
 from app.deepspace.execution.tool_contracts import ToolContract, infer_tool_contract
+from app.deepspace.policy.execution_policy import ExecutionPolicy
 from app.deepspace.workspace.workspace_mode import WorkspaceMode
 
 

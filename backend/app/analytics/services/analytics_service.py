@@ -6,12 +6,12 @@ from sqlalchemy import Date, case, func, select
 from sqlalchemy import cast as sa_cast
 from sqlalchemy.orm import Session
 
-from app.query.models.query import Query
 from app.analytics.schemas.analytics import (
     AnalyticsDashboardResponse,
     ConfidenceDistribution,
     QueryVolumePoint,
 )
+from app.query.models.query import Query
 from app.system.services.metrics_service import (
     API_REQUEST_LATENCY_SECONDS,
     observe_db_query,

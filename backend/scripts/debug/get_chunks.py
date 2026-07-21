@@ -1,7 +1,7 @@
 import uuid
 
-from app.platform.database.session import get_session_factory
 from app.documents.repositories.chunks import ChunksRepository
+from app.platform.database.session import get_session_factory
 
 db = get_session_factory()()
 tenant_id = uuid.UUID("019caed9-ae3e-7335-9961-55201e1a4941")

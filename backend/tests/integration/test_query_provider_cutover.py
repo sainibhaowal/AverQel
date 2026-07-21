@@ -10,7 +10,6 @@ from app.platform.database.session import get_session_factory
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.models.provider_health_check import ProviderHealthCheck
-from app.query.models.message import Message
 from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
@@ -18,8 +17,9 @@ from app.providers.repositories.provider_configs import ProviderConfigsRepositor
 from app.providers.repositories.provider_health_checks import (
     ProviderHealthChecksRepository,
 )
-from app.query.schemas.structured_response import StructuredAnswerResponse
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
+from app.query.models.message import Message
+from app.query.schemas.structured_response import StructuredAnswerResponse
 from app.query.services.query_service import QueryService
 
 

@@ -10,23 +10,23 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext
-from app.core.config import Settings
-from app.core.errors import ApiError
-from app.auth.roles import is_platform_admin_email
-from app.platform.database.session import set_db_tenant_context
 from app.auth.models.refresh_token import RefreshToken
 from app.auth.models.user import User
+from app.auth.repositories.refresh_tokens import RefreshTokensRepository
+from app.auth.repositories.roles import RolesRepository
+from app.auth.repositories.tenants import TenantsRepository
+from app.auth.repositories.users import UsersRepository
+from app.auth.roles import is_platform_admin_email
+from app.core.config import Settings
+from app.core.errors import ApiError
 from app.documents.models.collection import DocumentCollection
 from app.documents.models.document import Document
+from app.platform.database.session import set_db_tenant_context
 from app.providers.models.provider_config import ProviderConfig
 from app.query.models.comment import Comment
 from app.query.models.conversation import Conversation
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
-from app.auth.repositories.refresh_tokens import RefreshTokensRepository
-from app.auth.repositories.roles import RolesRepository
-from app.auth.repositories.tenants import TenantsRepository
-from app.auth.repositories.users import UsersRepository
 from app.system.services.audit_service import AuditService
 from app.system.services.storage_service import StorageService
 

@@ -7,9 +7,9 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.auth.dependencies import AuthContext
+from app.auth.services.auth_service import AuthService
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.auth.services.auth_service import AuthService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

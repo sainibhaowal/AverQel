@@ -9,10 +9,10 @@ import pytest
 import app.deepspace.execution.agent_executor as agent_executor_module
 import app.deepspace.missions.mission_registry as mission_registry_module
 from app.auth.dependencies import AuthContext
-from app.query.schemas.chats import ConversationCreateRequest, ConversationUpdate
 from app.deepspace.execution.agent_executor import AgentExecutor
 from app.deepspace.execution.agent_tools import ToolExecutor, ToolResult
 from app.deepspace.orchestration.deepspace_service import DeepSpaceService
+from app.query.schemas.chats import ConversationCreateRequest, ConversationUpdate
 
 
 class _EmptyStreamLLM:

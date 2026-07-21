@@ -20,12 +20,12 @@ from app.integrations.services.config_utils import (
     resolve_config_dict,
     resolve_config_value,
 )
+from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 from app.integrations.services.connector_service import ConnectorService
 from app.integrations.services.health_utils import (
     build_health_report,
     classify_health_status,
 )
-from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 
 try:  # pragma: no cover - optional runtime dependency
     from mcp.client.auth.oauth2 import OAuthClientProvider, TokenStorage
@@ -69,7 +69,9 @@ class MCPCatalog:
 
     @staticmethod
     def namespace(server: str, name: str) -> str:
-        clean = lambda value: re.sub(r"[^a-zA-Z0-9_-]", "_", value)
+        def clean(value: str) -> str:
+            return re.sub(r"[^a-zA-Z0-9_-]", "_", value)
+
         return f"{clean(server)}_{clean(name)}"
 
     @staticmethod

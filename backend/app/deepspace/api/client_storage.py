@@ -7,11 +7,11 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.config import get_settings
-from app.platform.database.session import SessionLocal
 from app.deepspace.integrations.client_proxy import (
     STORAGE_REQUEST_PREFIX,
     client_proxy_registry,
 )
+from app.platform.database.session import SessionLocal
 
 logger = logging.getLogger(__name__)
 

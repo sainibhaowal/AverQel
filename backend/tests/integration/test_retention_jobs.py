@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select, text
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.documents.models.data_deletion import DataDeletion
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.system.models.idempotency_key import IdempotencyKey
 from app.system.workers.tasks_maintenance import retention_cleanup
 from tests.conftest import SeededUser

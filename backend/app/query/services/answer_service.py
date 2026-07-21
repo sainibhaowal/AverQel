@@ -17,6 +17,12 @@ from uuid import UUID
 
 from app.core.brand import APP_ASSISTANT_NAME, APP_BRAND_NAME, APP_ENGINE_NAME
 from app.core.config import LOCAL_LLM_PROVIDERS, Settings
+from app.providers.services import (
+    ChatGenerateRequest,
+    ProviderRegistry,
+    ProviderSelectionCandidate,
+)
+from app.providers.services.base import ProviderRequestError
 from app.query.schemas.followups import FollowupSuggestions
 from app.query.schemas.structured_response import (
     StructuredAnswerResponse,
@@ -26,12 +32,6 @@ from app.query.schemas.structured_response import (
     is_valid_mermaid_syntax,
     sanitize_mermaid_syntax,
 )
-from app.providers.services import (
-    ChatGenerateRequest,
-    ProviderRegistry,
-    ProviderSelectionCandidate,
-)
-from app.providers.services.base import ProviderRequestError
 from app.query.services.prompt_templates import PromptTemplates
 from app.query.services.query_classifier import QueryType
 from app.query.services.retrieval_service import RetrievedChunk

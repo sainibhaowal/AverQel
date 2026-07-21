@@ -289,21 +289,21 @@ if _xdist_worker is not None:
 
 import filelock  # noqa: E402
 
+from app.auth.models.role import Role  # noqa: E402
+from app.auth.models.tenant import Tenant  # noqa: E402
+from app.auth.models.user import User  # noqa: E402
+from app.auth.models.user_role import UserRole  # noqa: E402
+from app.auth.security import hash_password  # noqa: E402
 from app.core.config import Settings, get_settings  # noqa: E402
 from app.core.ids import generate_uuid7_with_fallback  # noqa: E402
-from app.auth.security import hash_password  # noqa: E402
+from app.ingestion.services.embedding_service import EmbeddingService  # noqa: E402
+from app.main import create_app  # noqa: E402
 from app.platform.database.session import (  # noqa: E402
     get_engine,
     get_session_factory,
     reset_db_state,
     set_db_tenant_context,
 )
-from app.main import create_app  # noqa: E402
-from app.auth.models.role import Role  # noqa: E402
-from app.auth.models.tenant import Tenant  # noqa: E402
-from app.auth.models.user import User  # noqa: E402
-from app.auth.models.user_role import UserRole  # noqa: E402
-from app.ingestion.services.embedding_service import EmbeddingService  # noqa: E402
 from app.query.services.answer_service import AnswerService  # noqa: E402
 from app.system.services.rate_limit_service import (  # noqa: E402
     RateLimitService,

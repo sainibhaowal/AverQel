@@ -2,8 +2,8 @@ import asyncio
 
 from sqlalchemy import select
 
-from app.platform.database.session import get_session_factory
 from app.integrations.models.connector import Connector
+from app.platform.database.session import get_session_factory
 
 
 async def check_connectors():

@@ -10,26 +10,26 @@ from sqlalchemy import select
 
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
-from app.platform.database.session import SessionLocal
-from app.deepspace.models.agent_activity import AgentActivity
-from app.deepspace.models.agent_todo import AgentTodo
-from app.documents.models.collection_notification import CollectionNotification
-from app.integrations.models.connector import Connector, ConnectorStatus
-from app.integrations.models.integration import Integration
-from app.documents.repositories.collection_notifications import (
-    CollectionNotificationsRepository,
-)
 from app.deepspace.memory.memory_service import TodoService
 from app.deepspace.missions.mission_registry import MissionRegistry
+from app.deepspace.models.agent_activity import AgentActivity
+from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.orchestration.master_orchestrator import MasterOrchestrator
 from app.deepspace.proactive.proactive_triggers import (
     ProactiveTriggerRegistry,
 )
 from app.deepspace.proactive.trigger_runner import build_trigger_runner
 from app.deepspace.subagents.subagent_registry import SubagentRegistry
+from app.documents.models.collection_notification import CollectionNotification
+from app.documents.repositories.collection_notifications import (
+    CollectionNotificationsRepository,
+)
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.integration import Integration
 from app.integrations.services.mcp_runtime import (
     build_mcp_runtime,
 )
+from app.platform.database.session import SessionLocal
 from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)

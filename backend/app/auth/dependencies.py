@@ -13,11 +13,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import ExpiredSignatureError, ImmatureSignatureError, InvalidTokenError
 from sqlalchemy.orm import Session
 
+from app.auth.roles import canonicalize_role_name
 from app.core.config import Settings, get_settings
 from app.core.context import set_tenant_id, set_user_id
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.auth.roles import canonicalize_role_name
 from app.platform.database.session import get_db
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

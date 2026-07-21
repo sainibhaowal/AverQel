@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session

@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.deepspace.models.agent_activity import AgentActivity
 from app.deepspace.memory.memory_service import TodoService
+from app.deepspace.models.agent_activity import AgentActivity
 from tests.conftest import SeededUser
 
 

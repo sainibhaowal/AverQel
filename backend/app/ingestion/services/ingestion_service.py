@@ -22,11 +22,10 @@ from app.core.ids import generate_uuid7_with_fallback
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.ingestion.models.ingestion_job import IngestionJob
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.documents import DocumentsRepository
+from app.ingestion.models.ingestion_job import IngestionJob
 from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
-from app.system.repositories.idempotency_keys import IdempotencyKeysRepository
 from app.ingestion.services.chunking_service import ChunkingService
 from app.ingestion.services.embedding_service import EmbeddingService
 from app.ingestion.services.extraction_quality import (
@@ -38,6 +37,7 @@ from app.ingestion.services.extractors.base import ExtractionResult
 from app.ingestion.services.extractors.router import ExtractorRouter
 from app.ingestion.services.parser_service import ParserService, sanitize_document_text
 from app.ingestion.services.security.malware_scan_service import MalwareScanService
+from app.system.repositories.idempotency_keys import IdempotencyKeysRepository
 from app.system.services.idempotency_service import IdempotencyService
 from app.system.services.metrics_service import (
     EXTRACTION_FAILURE_TOTAL,

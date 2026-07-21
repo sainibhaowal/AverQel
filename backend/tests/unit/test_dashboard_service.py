@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 
+from app.analytics.services.dashboard_service import DashboardService
 from app.core.ids import generate_uuid7_with_fallback
 from app.documents.models.collection import (
     CollectionDocument,
@@ -9,7 +10,6 @@ from app.documents.models.collection import (
     DocumentCollection,
 )
 from app.documents.models.document import Document
-from app.analytics.services.dashboard_service import DashboardService
 
 
 def test_dashboard_service_get_overview(

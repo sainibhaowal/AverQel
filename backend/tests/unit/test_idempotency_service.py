@@ -5,10 +5,10 @@ from uuid import UUID
 import pytest
 from sqlalchemy.orm import Session
 
+from app.auth.models.tenant import Tenant
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.platform.database.session import get_session_factory
-from app.auth.models.tenant import Tenant
 from app.system.repositories.idempotency_keys import IdempotencyKeysRepository
 from app.system.services.idempotency_service import IdempotencyService
 

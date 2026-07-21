@@ -7,7 +7,6 @@ does not touch tenant-owned servers, encrypted tokens, or audit events.
 
 from alembic import op
 
-
 revision = "20260720_0002"
 down_revision = ("20260720_0001", "20260716_0004")
 branch_labels = None

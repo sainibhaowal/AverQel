@@ -19,6 +19,7 @@ from app.documents.models.collection import (
 from app.documents.models.data_deletion import DataDeletion
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
+from app.documents.repositories.data_deletions import DataDeletionsRepository
 from app.ingestion.models.ingestion_job import IngestionJob
 from app.query.models.comment import Comment
 from app.query.models.conversation import Conversation
@@ -28,7 +29,6 @@ from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
 from app.query.models.query_citation import QueryCitation
 from app.system.models.idempotency_key import IdempotencyKey
-from app.documents.repositories.data_deletions import DataDeletionsRepository
 from app.system.services.audit_service import AuditService
 from app.system.services.metrics_service import observe_db_query
 from app.system.services.storage_service import StorageService

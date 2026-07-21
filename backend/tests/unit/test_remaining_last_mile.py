@@ -10,12 +10,12 @@ import pytest
 from pydantic import ValidationError
 from starlette.requests import Request
 
+from app.auth.schemas.auth import LoginRequest
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.middleware import RateLimitDecision, RequestContextMiddleware
-from app.auth.schemas.auth import LoginRequest
-from app.query.schemas.queries import QueryFilters, QueryRequest
 from app.ingestion.services.parser_service import ParserService
+from app.query.schemas.queries import QueryFilters, QueryRequest
 from app.query.services import answer_service as answer_module
 from app.query.services.answer_service import (
     AnswerService,

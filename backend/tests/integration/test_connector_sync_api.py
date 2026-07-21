@@ -6,13 +6,13 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from app.auth.dependencies import create_access_token
-from app.core.config import get_settings
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
+from app.core.config import get_settings
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.integration import Integration
-from app.system.models.audit_log import AuditLog
 from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
+from app.system.models.audit_log import AuditLog
 
 
 def _auth_headers(seeded) -> dict[str, str]:

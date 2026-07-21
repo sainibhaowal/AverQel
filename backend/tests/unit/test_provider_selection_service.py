@@ -3,11 +3,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from app.core.ids import generate_uuid7_with_fallback
-from app.auth.security import hash_password
-from app.platform.database.session import get_session_factory
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
+from app.auth.security import hash_password
+from app.core.ids import generate_uuid7_with_fallback
+from app.platform.database.session import get_session_factory
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.models.provider_health_check import ProviderHealthCheck

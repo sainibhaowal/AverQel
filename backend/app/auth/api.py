@@ -9,11 +9,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
-from app.core.config import Settings, get_settings
-from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
-from app.auth.tenancy import get_login_tenant_id
-from app.platform.database.session import get_db
 from app.auth.schemas.auth import (
     AccountActivityItem,
     AccountActivityResponse,
@@ -39,6 +35,10 @@ from app.auth.schemas.auth import (
     UserRegisterResponse,
 )
 from app.auth.services.auth_service import AuthService
+from app.auth.tenancy import get_login_tenant_id
+from app.core.config import Settings, get_settings
+from app.core.errors import ApiError
+from app.platform.database.session import get_db
 from app.system.services.audit_service import AuditService
 from app.system.services.rate_limit_service import RateLimitService
 

@@ -27,15 +27,13 @@ from app.auth.dependencies import (
     decode_access_token,
     get_auth_context,
 )
+from app.auth.rbac import require_permissions, resolve_permissions
+from app.auth.tenancy import require_request_tenant_id
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.auth.rbac import require_permissions, resolve_permissions
-from app.auth.tenancy import require_request_tenant_id
-from app.platform.database.session import get_db
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.ingestion.models.ingestion_job import IngestionJob
 from app.documents.schemas.documents import (
     DeleteBatchRequest,
     DeleteBatchResponse,
@@ -48,8 +46,10 @@ from app.documents.schemas.documents import (
     SupportedFormatEntry,
     SupportedFormatsResponse,
 )
+from app.ingestion.models.ingestion_job import IngestionJob
 from app.ingestion.services.extraction_quality import confidence_band
 from app.ingestion.services.ingestion_service import IngestionService
+from app.platform.database.session import get_db
 from app.system.services.audit_service import AuditService
 from app.system.services.rate_limit_service import RateLimitService
 from app.system.services.storage_service import StorageService

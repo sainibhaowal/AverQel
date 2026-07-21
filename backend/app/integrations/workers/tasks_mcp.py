@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-import anyio
 import logging
 import uuid
-from typing import Any
+from datetime import UTC, datetime
 
+import anyio
 from sqlalchemy import select, text
 
 from app.core.config import get_settings
-from app.platform.database.session import SessionLocal, set_db_tenant_context
 from app.integrations.models.mcp_server import MCPServer
 from app.integrations.repositories.mcp_events import MCPEventsRepository
-from app.integrations.services.mcp_runtime import MCPCatalog, MCPRuntimeError, build_mcp_runtime, build_mcp_server_runtime
-from app.integrations.services.mcp_endpoint_security import validate_remote_endpoint
+from app.integrations.services.mcp_runtime import (
+    MCPCatalog,
+    build_mcp_server_runtime,
+)
+from app.platform.database.session import SessionLocal, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -175,5 +176,5 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
             retry = getattr(self, "retry", None)
             if callable(retry):
                 backoff = min(300, 2 ** min(int(server.reconnect_attempts or 1), 8))
-                raise retry(exc=exc, countdown=backoff)
+                raise retry(exc=exc, countdown=backoff) from exc
             return {"status": "failed", "error": str(exc)}

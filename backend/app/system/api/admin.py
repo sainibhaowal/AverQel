@@ -10,15 +10,9 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
-from app.core.config import Settings, get_settings
-from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
-from app.auth.roles import is_admin_role, is_platform_admin_email
-from app.auth.tenancy import TenantContext, get_tenant_context
-from app.platform.database.session import get_db
-from app.system.models.break_glass_grant import BreakGlassGrant
 from app.auth.repositories.users import UsersRepository
-from app.documents.repositories.documents import DocumentsRepository
+from app.auth.roles import is_admin_role, is_platform_admin_email
 from app.auth.schemas.admin import (
     AdminDocumentStatusCountResponse,
     AdminDocumentSummaryListResponse,
@@ -48,7 +42,13 @@ from app.auth.services.admin_user_service import (
     AdminUserService,
     AdminUserSummary,
 )
+from app.auth.tenancy import TenantContext, get_tenant_context
+from app.core.config import Settings, get_settings
+from app.core.errors import ApiError
+from app.documents.repositories.documents import DocumentsRepository
 from app.documents.services.deletion_service import DeletionService
+from app.platform.database.session import get_db
+from app.system.models.break_glass_grant import BreakGlassGrant
 from app.system.services.audit_service import AuditService
 from app.system.workers.tasks_maintenance import process_data_deletion
 

@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
-from app.core.config import Settings, get_settings
-from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
 from app.auth.tenancy import require_request_tenant_id
+from app.core.config import Settings, get_settings
+from app.core.errors import ApiError
 from app.platform.database.session import get_db
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.schemas import (

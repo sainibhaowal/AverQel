@@ -20,6 +20,11 @@ from app.providers.repositories.provider_health_checks import (
     ProviderHealthChecksRepository,
 )
 from app.providers.repositories.provider_model_cache import ProviderModelCacheRepository
+from app.providers.services.provider_secret_crypto import ProviderSecretCryptoError
+from app.providers.services.provider_secret_service import (
+    MaskedProviderSecret,
+    ProviderSecretService,
+)
 from app.providers.services.registry import ProviderRegistry
 from app.providers.services.sentence_transformers_provider import (
     SentenceTransformersEmbeddingProvider,
@@ -28,11 +33,6 @@ from app.providers.services.types import (
     EmbeddingRequest,
     ProviderModelInfo,
     ProviderSelectionCandidate,
-)
-from app.providers.services.provider_secret_crypto import ProviderSecretCryptoError
-from app.providers.services.provider_secret_service import (
-    MaskedProviderSecret,
-    ProviderSecretService,
 )
 from app.system.services.audit_service import AuditService
 

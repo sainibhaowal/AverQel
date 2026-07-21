@@ -15,9 +15,16 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, create_access_token
-from app.core.config import Settings
-from app.core.errors import ApiError
-from app.core.ids import generate_uuid7_with_fallback
+from app.auth.models.refresh_token import RefreshToken
+from app.auth.models.revoked_access_token import RevokedAccessToken
+from app.auth.models.tenant import Tenant
+from app.auth.models.user import User
+from app.auth.models.user_role import UserRole
+from app.auth.repositories.refresh_tokens import RefreshTokensRepository
+from app.auth.repositories.revoked_access_tokens import RevokedAccessTokensRepository
+from app.auth.repositories.roles import RolesRepository
+from app.auth.repositories.tenants import TenantsRepository
+from app.auth.repositories.users import UsersRepository
 from app.auth.roles import canonicalize_role_names, is_platform_admin_email
 from app.auth.security import (
     generate_secure_token,
@@ -26,26 +33,19 @@ from app.auth.security import (
     validate_password_policy,
     verify_password,
 )
-from app.auth.models.refresh_token import RefreshToken
-from app.auth.models.revoked_access_token import RevokedAccessToken
-from app.auth.models.tenant import Tenant
-from app.auth.models.user import User
-from app.auth.models.user_role import UserRole
+from app.core.config import Settings
+from app.core.errors import ApiError
+from app.core.ids import generate_uuid7_with_fallback
 from app.documents.models.collection import CollectionPermission
 from app.documents.models.document import Document
-from app.query.models.comment import Comment
-from app.query.models.conversation import Conversation
-from app.query.models.pinned_finding import PinnedFinding
-from app.query.models.query import Query
-from app.auth.repositories.refresh_tokens import RefreshTokensRepository
-from app.auth.repositories.revoked_access_tokens import RevokedAccessTokensRepository
-from app.auth.repositories.roles import RolesRepository
-from app.auth.repositories.tenants import TenantsRepository
-from app.auth.repositories.users import UsersRepository
 from app.providers.services.provider_secret_crypto import (
     ProviderSecretCrypto,
     ProviderSecretCryptoError,
 )
+from app.query.models.comment import Comment
+from app.query.models.conversation import Conversation
+from app.query.models.pinned_finding import PinnedFinding
+from app.query.models.query import Query
 from app.system.services.audit_service import AuditService
 from app.system.services.storage_service import StorageService
 

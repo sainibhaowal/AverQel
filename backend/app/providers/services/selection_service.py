@@ -20,13 +20,13 @@ from app.providers.repositories.provider_health_checks import (
 )
 from app.providers.repositories.provider_model_cache import ProviderModelCacheRepository
 from app.providers.services.context_window import resolve_verified_context_window
+from app.providers.services.provider_secret_service import ProviderSecretService
 from app.providers.services.reasoning_capabilities import model_supports_reasoning
 from app.providers.services.registry import ProviderRegistry
 from app.providers.services.types import (
     ProviderSelectionCandidate,
     ProviderSelectionResult,
 )
-from app.providers.services.provider_secret_service import ProviderSecretService
 from app.system.services.audit_service import AuditService
 
 DEFAULT_PROVIDER_BASE_URLS: dict[str, str] = {

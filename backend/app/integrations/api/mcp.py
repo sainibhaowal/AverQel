@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -12,13 +12,16 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.rbac import require_permissions
-from app.platform.database.session import get_db, set_db_tenant_context
-from app.integrations.models.mcp_server import MCPServer, MCPRegistryEntry
-from app.integrations.workers.tasks_mcp import refresh_server_catalog
-from app.integrations.services.mcp_oauth_service import MCPServerOAuthService
 from app.core.config import get_settings
-from app.integrations.services.mcp_endpoint_security import validate_remote_endpoint, MCPEndpointRejected
-from app.integrations.schemas.mcp import MCPServerRead, MCPCatalogReviewRequest
+from app.integrations.models.mcp_server import MCPRegistryEntry, MCPServer
+from app.integrations.schemas.mcp import MCPCatalogReviewRequest, MCPServerRead
+from app.integrations.services.mcp_endpoint_security import (
+    MCPEndpointRejectedError,
+    validate_remote_endpoint,
+)
+from app.integrations.services.mcp_oauth_service import MCPServerOAuthService
+from app.integrations.workers.tasks_mcp import refresh_server_catalog
+from app.platform.database.session import get_db, set_db_tenant_context
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
@@ -114,7 +117,7 @@ def connect_marketplace_entry(
         raise HTTPException(status_code=409, detail="This MCP entry does not publish a remote endpoint")
     try:
         endpoint = validate_remote_endpoint(entry.remote_url)
-    except MCPEndpointRejected as exc:
+    except MCPEndpointRejectedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     auth_type = _marketplace_auth_type(entry)
     if auth_type not in {"anonymous", "oauth"}:
@@ -269,14 +272,27 @@ def marketplace(q: str | None = None, category: str | None = None, transport: st
     # Public users see only records approved by AverQel. Registry intake rows
     # remain internal until source, ownership, endpoint, and auth are checked.
     query = select(MCPRegistryEntry).where(MCPRegistryEntry.remote_url.is_not(None), MCPRegistryEntry.trust_status == "approved")
-    if q: query = query.where(MCPRegistryEntry.display_name.ilike(f"%{q}%") | MCPRegistryEntry.description.ilike(f"%{q}%"))
-    if transport: query = query.where(MCPRegistryEntry.transport == transport)
-    if official is not None: query = query.where(MCPRegistryEntry.official.is_(official))
-    if verified is not None: query = query.where(MCPRegistryEntry.verified.is_(verified))
+    if q:
+        query = query.where(
+            MCPRegistryEntry.display_name.ilike(f"%{q}%")
+            | MCPRegistryEntry.description.ilike(f"%{q}%")
+        )
+    if transport:
+        query = query.where(MCPRegistryEntry.transport == transport)
+    if official is not None:
+        query = query.where(MCPRegistryEntry.official.is_(official))
+    if verified is not None:
+        query = query.where(MCPRegistryEntry.verified.is_(verified))
     rows = session.execute(query.order_by(MCPRegistryEntry.display_name)).scalars().all()
-    if category: rows = [r for r in rows if category.lower() in [str(x).lower() for x in (r.categories or [])]]
-    if auth_type: rows = [r for r in rows if _marketplace_auth_type(r) == auth_type]
-    if trust_status: rows = [r for r in rows if r.trust_status == trust_status]
+    if category:
+        rows = [
+            r for r in rows
+            if category.lower() in [str(x).lower() for x in (r.categories or [])]
+        ]
+    if auth_type:
+        rows = [r for r in rows if _marketplace_auth_type(r) == auth_type]
+    if trust_status:
+        rows = [r for r in rows if r.trust_status == trust_status]
     if sort == "alphabetical":
         rows.sort(key=lambda row: row.display_name.casefold())
     elif sort == "popular":
@@ -285,7 +301,8 @@ def marketplace(q: str | None = None, category: str | None = None, transport: st
         rows.sort(key=lambda row: (row.last_seen_at is None, row.last_seen_at), reverse=True)
     else:
         rows.sort(key=lambda row: (row.popularity_rank is None, row.popularity_rank or 1_000_000, row.display_name.casefold()))
-    total = len(rows); rows = rows[(page - 1) * page_size: page * page_size]
+    total = len(rows)
+    rows = rows[(page - 1) * page_size : page * page_size]
     return {"items": [{"id": str(r.id), "name": r.display_name, "server_name": r.server_name, "publisher": r.publisher,
         "description": r.description, "transport": r.transport, "remote_url": r.remote_url,
         "categories": r.categories, "official": r.official, "verified": r.verified, "source": r.source,
@@ -303,12 +320,16 @@ def marketplace(q: str | None = None, category: str | None = None, transport: st
         "verification_source": r.verification_source, "popularity_rank": r.popularity_rank} for r in rows],
         "page": page, "page_size": page_size, "total": total, "pages": (total + page_size - 1) // page_size}
 
-@router.post("/catalog/{entry_id}/review", response_model=dict[str, Any])
+@router.post(
+    "/catalog/{entry_id}/review",
+    response_model=dict[str, Any],
+    dependencies=[Depends(require_permissions("mcp:catalog:manage"))],
+)
 def review_catalog_entry(
     entry_id: uuid.UUID,
     payload: MCPCatalogReviewRequest,
     session: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_permissions("mcp:catalog:manage")),
+    auth: AuthContext = Depends(get_auth_context),
 ):
     """Approve only after AverQel has verified the vendor and endpoint."""
     set_db_tenant_context(session, auth.tenant_id)
@@ -326,6 +347,7 @@ def review_catalog_entry(
 @router.get("/servers/{server_id}/inspector", response_model=dict[str, Any])
 def inspector(server_id: uuid.UUID, session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
     from collections import Counter
+
     from app.integrations.models.mcp_server import MCPEvent, MCPOAuthToken
     set_db_tenant_context(session, auth.tenant_id)
     server = session.execute(select(MCPServer).where(MCPServer.id == server_id, MCPServer.tenant_id == auth.tenant_id, MCPServer.user_id == auth.user_id)).scalar_one_or_none()

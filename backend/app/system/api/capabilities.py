@@ -5,12 +5,12 @@ import logging
 from fastapi import APIRouter, Depends
 
 from app.auth.dependencies import AuthContext, get_auth_context
-from app.core.config import Settings, get_settings
 from app.auth.schemas.capabilities import (
     CapabilitiesResponse,
     SupportedFormat,
     SystemLimits,
 )
+from app.core.config import Settings, get_settings
 from app.ingestion.services.extractors.router import ExtractorRouter
 
 logger = logging.getLogger(__name__)

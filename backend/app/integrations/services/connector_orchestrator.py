@@ -10,17 +10,17 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
-from app.platform.database.session import get_session_factory, set_db_tenant_context
+from app.deepspace.memory.memory_service import TodoService
 from app.deepspace.models.agent_activity import AgentActivity
 from app.documents.models.collection_notification import CollectionNotification
-from app.integrations.models.connector import Connector, ConnectorStatus
-from app.integrations.models.connector_secret import ConnectorSecret
-from app.integrations.models.integration import Integration
 from app.documents.repositories.collection_notifications import (
     CollectionNotificationsRepository,
 )
-from app.deepspace.memory.memory_service import TodoService
 from app.ingestion.services.ingestion_service import IngestionService
+from app.integrations.models.connector import Connector, ConnectorStatus
+from app.integrations.models.connector_secret import ConnectorSecret
+from app.integrations.models.integration import Integration
+from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 from app.integrations.services.connector_service import ConnectorService
 from app.integrations.services.health_utils import (
     ConnectorHealthStatus,
@@ -32,7 +32,7 @@ from app.integrations.services.health_utils import (
 )
 from app.integrations.services.mcp_runtime import UniversalMCPConnector
 from app.integrations.services.web.web_connector import WebConnector
-from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.system.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)

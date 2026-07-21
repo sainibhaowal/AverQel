@@ -6,12 +6,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
+from app.auth.tenancy import require_request_tenant_id
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.auth.tenancy import require_request_tenant_id
 from app.platform.database.session import get_db
-from app.query.schemas.queries import QueryCitationResponse, QueryRequest, QueryResponse
 from app.query.schemas.batch import BatchQueryRequest, BatchQueryResponse
+from app.query.schemas.queries import QueryCitationResponse, QueryRequest, QueryResponse
 from app.query.services.query_service import QueryExecutionResult, QueryService
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])

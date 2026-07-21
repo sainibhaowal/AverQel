@@ -18,30 +18,30 @@ from app.api.v1 import auth as auth_api
 from app.api.v1 import documents as documents_api
 from app.api.v1 import health as health_api
 from app.api.v1 import queries as queries_api
-from app.core import ids as ids_module
 from app.auth.dependencies import AuthContext, build_auth_context
-from app.core.config import Settings, get_settings
-from app.core.errors import ApiError, register_exception_handlers
-from app.core.middleware import RequestContextMiddleware
+from app.auth.models.user import User
 from app.auth.rbac import require_permissions
+from app.auth.repositories.roles import RolesRepository
+from app.auth.repositories.users import UsersRepository
 from app.auth.tenancy import (
     get_tenant_context,
     require_login_tenant_id,
     require_request_tenant_id,
 )
-from app.platform.database import session as session_module
-from app.auth.models.user import User
+from app.core import ids as ids_module
+from app.core.config import Settings, get_settings
+from app.core.errors import ApiError, register_exception_handlers
+from app.core.middleware import RequestContextMiddleware
 from app.documents.models.data_deletion import DataDeletion
-from app.auth.repositories.roles import RolesRepository
-from app.auth.repositories.users import UsersRepository
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.data_deletions import DataDeletionsRepository
-from app.query.repositories.queries import QueriesRepository
-from app.system.repositories.audit_logs import AuditLogsRepository
 from app.documents.services.deletion_service import DeletionService
 from app.ingestion.services.chunking_service import ChunkingService
 from app.ingestion.services.parser_service import ParserService
 from app.ingestion.services.security.malware_scan_service import MalwareScanService
+from app.platform.database import session as session_module
+from app.query.repositories.queries import QueriesRepository
+from app.system.repositories.audit_logs import AuditLogsRepository
 from app.system.services.audit_service import AuditService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

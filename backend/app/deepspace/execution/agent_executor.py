@@ -34,7 +34,6 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import AuthContext
 from app.core.brand import APP_ASSISTANT_NAME, APP_BRAND_NAME, APP_ENGINE_NAME
 from app.core.config import Settings
-from app.query.repositories.chat import ChatRepository
 from app.deepspace.autonomy import AutonomyController, GoalContract
 from app.deepspace.execution.adaptive_supervisor import AdaptiveExecutionSupervisor
 from app.deepspace.execution.agent_tools import (
@@ -66,6 +65,7 @@ from app.providers.services.reasoning_capabilities import reasoning_capabilities
 from app.providers.services.registry import ProviderRegistry
 from app.providers.services.selection_service import ProviderSelectionService
 from app.providers.services.types import ChatGenerateRequest
+from app.query.repositories.chat import ChatRepository
 from app.system.services.otel import trace_async, trace_async_generator
 
 logger = logging.getLogger(__name__)
@@ -850,6 +850,7 @@ class AgentExecutor:
             available_tools = list(ALL_TOOLS)
 
             from sqlalchemy import select
+
             from app.deepspace.execution.agent_tools import build_dynamic_mcp_tool
 
             # Native installed MCP servers are the only dynamic MCP source for
@@ -1702,7 +1703,7 @@ class AgentExecutor:
                             "tool_calls": [r[0] for r in all_results],
                         }
                     )
-                    for tc_dict, p, res, dur in all_results:
+                    for _tc_dict, p, res, dur in all_results:
                         yield AgentStepEvent(
                             type="tool_result",
                             data={

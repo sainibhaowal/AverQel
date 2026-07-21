@@ -12,14 +12,13 @@ from fastapi import APIRouter, Depends, Response, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
-from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
+from app.auth.repositories.users import UsersRepository
 from app.auth.tenancy import require_request_tenant_id
-from app.platform.database.session import get_db
+from app.core.errors import ApiError
 from app.documents.models.collection import DocumentCollection, UserPresence
 from app.documents.models.collection_notification import CollectionNotification
 from app.documents.models.document import Document
-from app.auth.repositories.users import UsersRepository
 from app.documents.repositories.collection_notifications import (
     CollectionNotificationsRepository,
 )
@@ -36,10 +35,11 @@ from app.documents.schemas.collection import (
     DocumentCollectionCreate,
     DocumentCollectionResponse,
 )
-from app.documents.schemas.documents import DocumentMetadataResponse
 from app.documents.schemas.collection_chat import CollectionChatMessage, CreateChatMessage
 from app.documents.schemas.collection_expiry import UpdateExpiryPayload
+from app.documents.schemas.documents import DocumentMetadataResponse
 from app.ingestion.services.extraction_quality import confidence_band
+from app.platform.database.session import get_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/collections", tags=["collections"])
@@ -1177,6 +1177,7 @@ def respond_to_collection_invitation(
 # Real-time Team Chat Endpoints
 import json  # noqa: E402
 
+
 class CollectionBroadcastManager:
     def __init__(self) -> None:
         self.active_connections: dict[str, set[WebSocket]] = {}
@@ -1240,8 +1241,8 @@ class CollectionBroadcastManager:
 
 broadcast_manager = CollectionBroadcastManager()
 
-from app.deepspace.api.chats import _authenticate_websocket_auth_context  # noqa: E402
 from app.core.config import Settings, get_settings  # noqa: E402
+from app.deepspace.api.chats import _authenticate_websocket_auth_context  # noqa: E402
 
 
 @router.websocket("/{collection_id}/ws")

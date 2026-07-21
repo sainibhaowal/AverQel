@@ -7,7 +7,7 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
@@ -30,14 +30,15 @@ from app.auth.dependencies import (
     decode_access_token,
     get_auth_context,
 )
+from app.auth.rbac import require_permissions, resolve_permissions
+from app.core.config import Settings, get_settings
+from app.core.errors import ApiError
+from app.deepspace.orchestration.deepspace_service import DeepSpaceService
 from app.deepspace.schemas.runtime import (
     ResolveMissionApprovalRequest,
     UpdateExecutionModeRequest,
     UpdateRuntimePreferencesRequest,
 )
-from app.core.config import Settings, get_settings
-from app.core.errors import ApiError
-from app.auth.rbac import require_permissions, resolve_permissions
 from app.platform.database.session import get_db, set_db_tenant_context
 from app.query.repositories.chat import ChatRepository
 from app.query.schemas.chats import (
@@ -61,7 +62,6 @@ from app.query.schemas.chats import (
     TodoTaskSchema,
     TodoTaskUpdateRequest,
 )
-from app.deepspace.orchestration.deepspace_service import DeepSpaceService
 from app.query.services.answer_service import AnswerService, StreamEvent
 from app.system.services.rate_limit_service import RateLimitService
 
@@ -1993,8 +1993,8 @@ async def get_task_summary(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> ProactiveTaskSummarySchema:
-    from app.deepspace.models.agent_activity import AgentActivity
     from app.deepspace.memory.memory_service import TodoService
+    from app.deepspace.models.agent_activity import AgentActivity
 
     service = TodoService(db)
     try:

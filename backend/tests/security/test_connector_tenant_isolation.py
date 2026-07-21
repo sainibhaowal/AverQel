@@ -4,10 +4,10 @@ from uuid import uuid4
 
 from sqlalchemy import select, text
 
-from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.integrations.models.connector import Connector
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 
 
 def test_connector_rls_blocks_cross_tenant_reads(

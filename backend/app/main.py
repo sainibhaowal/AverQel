@@ -3,8 +3,20 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.analytics.api import analytics, dashboard
+from app.auth import api as auth
+from app.core.config import Settings, get_settings
+from app.core.errors import register_exception_handlers
+from app.core.logging import configure_logging
+from app.core.middleware import RequestContextMiddleware
 from app.deepspace.api import chats as deepspace_chats
-from app.deepspace.api import client_storage, export as deepspace_export, workspace
+from app.deepspace.api import client_storage, workspace
+from app.deepspace.api import export as deepspace_export
+from app.documents.api import collections, documents
+from app.integrations.api import integrations, mcp
+from app.integrations.api import voice as voice_routes
+from app.platform.database.session import get_engine
+from app.providers.api import providers
 from app.query.api import chats, intelligence, queries
 from app.system.api import (
     admin,
@@ -15,16 +27,6 @@ from app.system.api import (
     metrics,
     support,
 )
-from app.integrations.api import integrations, mcp, voice as voice_routes
-from app.documents.api import collections, documents
-from app.analytics.api import analytics, dashboard
-from app.providers.api import providers
-from app.auth import api as auth
-from app.core.config import Settings, get_settings
-from app.core.errors import register_exception_handlers
-from app.core.logging import configure_logging
-from app.core.middleware import RequestContextMiddleware
-from app.platform.database.session import get_engine
 from app.system.services.otel import configure_telemetry, instrument_sqlalchemy, telemetry_span
 
 

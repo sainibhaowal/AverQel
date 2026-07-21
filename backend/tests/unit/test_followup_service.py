@@ -1,7 +1,7 @@
 from uuid import UUID
 
-from app.query.schemas.followups import FollowupSuggestions
 from app.providers.services.types import ProviderSelectionCandidate
+from app.query.schemas.followups import FollowupSuggestions
 from app.query.services.answer_service import AnswerService
 from app.query.services.followup_service import FollowupService
 

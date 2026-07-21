@@ -19,13 +19,12 @@ def upgrade() -> None:
     }
     for slug, (key, label) in values.items():
         op.execute(
-            "UPDATE integrations SET ui_metadata = jsonb_set(jsonb_set(ui_metadata, '{oauth_provider_key}', to_jsonb('%s'::text), true), '{oauth_provider_label}', to_jsonb('%s'::text), true) WHERE slug = '%s'" % (key, label, slug)
+            f"UPDATE integrations SET ui_metadata = jsonb_set(jsonb_set(ui_metadata, '{{oauth_provider_key}}', to_jsonb('{key}'::text), true), '{{oauth_provider_label}}', to_jsonb('{label}'::text), true) WHERE slug = '{slug}'"
         )
 
 
 def downgrade() -> None:
     for slug in ("google-drive", "gmail", "google-calendar", "github", "slack", "notion"):
         op.execute(
-            "UPDATE integrations SET ui_metadata = ui_metadata - 'oauth_provider_key' - 'oauth_provider_label' WHERE slug = '%s'" % slug
+            f"UPDATE integrations SET ui_metadata = ui_metadata - 'oauth_provider_key' - 'oauth_provider_label' WHERE slug = '{slug}'"
         )
-

@@ -1,10 +1,12 @@
-import sys
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from app.platform.database.session import SessionLocal
 from sqlalchemy import text
+
+from app.platform.database.session import SessionLocal
+
 
 def main():
     db = SessionLocal()

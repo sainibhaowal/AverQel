@@ -4,10 +4,10 @@ import base64
 import json
 from datetime import datetime, timezone
 
+from app.auth.models.tenant import Tenant
 from app.core.config import Settings
 from app.core.ids import generate_uuid7_with_fallback
 from app.platform.database.session import get_session_factory
-from app.auth.models.tenant import Tenant
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.services.provider_secret_crypto import ProviderSecretCrypto
 from app.providers.services.provider_secret_service import ProviderSecretService

@@ -8,7 +8,6 @@ from sqlalchemy import text
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.documents.models.document import Document
 from app.ingestion.models.ingestion_job import IngestionJob
 from app.ingestion.services.embedding_service import EmbeddingService
@@ -16,6 +15,7 @@ from app.ingestion.services.ingestion_service import (
     IngestionService,
     RetryableIngestionError,
 )
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.system.services.storage_service import StorageService
 from tests.conftest import SeededUser
 

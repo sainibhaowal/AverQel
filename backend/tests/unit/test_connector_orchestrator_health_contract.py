@@ -5,14 +5,14 @@ from uuid import uuid4
 
 from sqlalchemy import text
 
-from app.platform.database.session import get_session_factory
 from app.deepspace.models.agent_activity import AgentActivity
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration
-from app.system.models.audit_log import AuditLog
 from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
 from app.integrations.services.health_utils import build_health_report, future_iso
+from app.platform.database.session import get_session_factory
+from app.system.models.audit_log import AuditLog
 
 
 def _seed_connector(

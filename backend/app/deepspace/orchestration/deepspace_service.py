@@ -15,9 +15,6 @@ from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.integrations.models.connector import ConnectorStatus
-from app.query.repositories.chat import ChatRepository
-from app.query.schemas.structured_response import StructuredAnswerResponse
 from app.deepspace.execution.agent_executor import AgentExecutor
 from app.deepspace.missions.mission_registry import MissionRegistry
 from app.deepspace.runtime.runtime_contracts import (
@@ -25,6 +22,7 @@ from app.deepspace.runtime.runtime_contracts import (
     resolve_compacted_session_messages,
 )
 from app.deepspace.runtime.sse_event_mapper import DeepSpaceSseEventMapper
+from app.integrations.models.connector import ConnectorStatus
 from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
 from app.providers.services.registry import ProviderRegistry
 from app.providers.services.selection_service import ProviderSelectionService
@@ -33,6 +31,8 @@ from app.providers.services.types import (
     WebSearchRequest,
     WebSearchResponse,
 )
+from app.query.repositories.chat import ChatRepository
+from app.query.schemas.structured_response import StructuredAnswerResponse
 from app.query.services.answer_service import AnswerService
 from app.query.services.retrieval_service import RetrievalService
 
@@ -2058,7 +2058,7 @@ class DeepSpaceService:
             Document.tenant_id == auth.tenant_id,
             Document.connector_id.in_(crawler_connector_ids),
             Document.status == "processed",
-            Document.is_deleted == False,
+            Document.is_deleted.is_(False),
         )
         ecosystem_doc_ids = self.db.execute(doc_stmt).scalars().all()
 

@@ -7,10 +7,10 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy import and_, delete, select
 
-from app.platform.database.session import set_db_tenant_context
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
+from app.platform.database.session import set_db_tenant_context
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
 

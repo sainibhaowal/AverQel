@@ -8,9 +8,9 @@ from typing import Any
 
 from app.core.config import Settings
 from app.integrations.models.mcp_server import MCPOAuthToken, MCPServer
+from app.integrations.repositories.mcp_events import MCPEventsRepository
 from app.integrations.services.connector_oauth_service import ConnectorOAuthService
 from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
-from app.integrations.repositories.mcp_events import MCPEventsRepository
 
 
 class MCPServerOAuthService:
@@ -118,7 +118,12 @@ class MCPServerOAuthService:
                 raise ValueError("OAuth transaction has an invalid expiry") from exc
             if datetime.now(UTC) >= expires:
                 raise ValueError("OAuth transaction has expired")
-        from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthMetadata, ProtectedResourceMetadata
+        from mcp.shared.auth import (
+            OAuthClientInformationFull,
+            OAuthClientMetadata,
+            OAuthMetadata,
+            ProtectedResourceMetadata,
+        )
         token = self.helper._exchange_token(
             oauth_metadata=OAuthMetadata.model_validate(pending["oauth_metadata"]),
             client_info=OAuthClientInformationFull.model_validate(pending["client_info"]),
