@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from app import models  # noqa: F401
+from app.platform.database import model_registry  # noqa: F401
 from app.platform.database.base import Base
 
 # ============================================================
