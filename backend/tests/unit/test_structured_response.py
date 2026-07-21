@@ -1,4 +1,4 @@
-from app.schemas.query.structured_response import StructuredAnswerResponse
+from app.query.schemas.structured_response import StructuredAnswerResponse
 
 
 def test_structured_answer_response_parsing():

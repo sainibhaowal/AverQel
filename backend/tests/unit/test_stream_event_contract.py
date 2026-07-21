@@ -2,9 +2,9 @@ import asyncio
 from uuid import UUID
 
 from app.providers.services.selection_service import ProviderSelectionCandidate
-from app.services.query.answer_service import AnswerService, NonRetryableLlmError
-from app.services.query.query_classifier import QueryType
-from app.services.query.retrieval_service import RetrievedChunk
+from app.query.services.answer_service import AnswerService, NonRetryableLlmError
+from app.query.services.query_classifier import QueryType
+from app.query.services.retrieval_service import RetrievedChunk
 
 
 def _chunk(text: str, similarity: float = 0.93) -> RetrievedChunk:

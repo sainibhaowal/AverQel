@@ -9,9 +9,9 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.models.query.conversation import Conversation
-from app.models.query.message import Message
-from app.models.query.message_version import MessageVersion
+from app.query.models.conversation import Conversation
+from app.query.models.message import Message
+from app.query.models.message_version import MessageVersion
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

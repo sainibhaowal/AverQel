@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import AuthContext
 from app.core.brand import APP_ASSISTANT_NAME, APP_BRAND_NAME, APP_ENGINE_NAME
 from app.core.config import Settings
-from app.repositories.query.chat import ChatRepository
+from app.query.repositories.chat import ChatRepository
 from app.services.deepspace.autonomy import AutonomyController, GoalContract
 from app.services.deepspace.execution.adaptive_supervisor import AdaptiveExecutionSupervisor
 from app.services.deepspace.execution.agent_tools import (

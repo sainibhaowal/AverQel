@@ -8,9 +8,9 @@ from uuid import UUID
 import pytest
 
 from app.core.config import get_settings
-from app.schemas.query.structured_response import StructuredAnswerResponse
-from app.services.query.answer_service import AnswerService
-from app.services.query.retrieval_service import RetrievedChunk
+from app.query.schemas.structured_response import StructuredAnswerResponse
+from app.query.services.answer_service import AnswerService
+from app.query.services.retrieval_service import RetrievedChunk
 
 
 def test_answer_service_uses_llm_provider_when_enabled(

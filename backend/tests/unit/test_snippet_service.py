@@ -1,4 +1,4 @@
-from app.services.query.snippet_service import SnippetService
+from app.query.services.snippet_service import SnippetService
 
 
 def test_snippet_service_clean_unicode():

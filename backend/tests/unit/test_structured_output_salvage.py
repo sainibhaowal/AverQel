@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.query.answer_service import AnswerService
+from app.query.services.answer_service import AnswerService
 
 
 def test_structured_output_salvage_preserves_valid_diagram_sections() -> None:

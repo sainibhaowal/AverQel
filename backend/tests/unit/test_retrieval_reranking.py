@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.core.ids import generate_uuid7_with_fallback
 from app.documents.repositories.chunks import RetrievedChunkRow
-from app.services.query.retrieval_service import RetrievalService, RetrievedChunk
+from app.query.services.retrieval_service import RetrievalService, RetrievedChunk
 
 
 def _row(index: int, text: str, score: float) -> RetrievedChunkRow:

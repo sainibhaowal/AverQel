@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.query.structured_response import (
+from app.query.schemas.structured_response import (
     StructuredDiagramResponse,
     is_valid_mermaid_syntax,
     sanitize_mermaid_syntax,

@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.query.structured_response import (
+from app.query.schemas.structured_response import (
     ReasoningTraceModel,
     StructuredAnswerResponse,
 )

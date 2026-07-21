@@ -1,4 +1,4 @@
-from app.services.query.query_classifier import QueryClassifier, QueryType
+from app.query.services.query_classifier import QueryClassifier, QueryType
 
 
 def test_query_classifier_comparison():

@@ -5,8 +5,8 @@ from types import SimpleNamespace
 from uuid import UUID
 
 from app.core.config import get_settings
-from app.services.query.answer_service import AnswerService
-from app.services.query.retrieval_service import RetrievedChunk
+from app.query.services.answer_service import AnswerService
+from app.query.services.retrieval_service import RetrievedChunk
 
 
 def test_query_path_uses_provider_registry_compatibly(monkeypatch):

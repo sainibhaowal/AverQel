@@ -7,7 +7,7 @@ from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.models.deepspace.agent_activity import AgentActivity
 from app.services.deepspace.memory.memory_service import TodoService
-from app.services.query.answer_service import StreamEvent
+from app.query.services.answer_service import StreamEvent
 from tests.conftest import SeededUser
 
 

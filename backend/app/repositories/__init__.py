@@ -27,7 +27,7 @@ _EXPORTS = {
         "app.ingestion.repositories.ingestion_jobs",
         "IngestionJobsRepository",
     ),
-    "QueriesRepository": ("app.repositories.query.queries", "QueriesRepository"),
+    "QueriesRepository": ("app.query.repositories.queries", "QueriesRepository"),
     "ChunksRepository": ("app.documents.repositories.chunks", "ChunksRepository"),
     "IdempotencyKeysRepository": (
         "app.system.repositories.idempotency_keys",

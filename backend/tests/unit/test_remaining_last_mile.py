@@ -14,15 +14,15 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.middleware import RateLimitDecision, RequestContextMiddleware
 from app.auth.schemas.auth import LoginRequest
-from app.schemas.query.queries import QueryFilters, QueryRequest
+from app.query.schemas.queries import QueryFilters, QueryRequest
 from app.ingestion.services.parser_service import ParserService
-from app.services.query import answer_service as answer_module
-from app.services.query.answer_service import (
+from app.query.services import answer_service as answer_module
+from app.query.services.answer_service import (
     AnswerService,
     NonRetryableLlmError,
     RetryableLlmError,
 )
-from app.services.query.retrieval_service import RetrievedChunk
+from app.query.services.retrieval_service import RetrievedChunk
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

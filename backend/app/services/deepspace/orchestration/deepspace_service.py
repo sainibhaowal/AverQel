@@ -16,8 +16,8 @@ from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.integrations.models.connector import ConnectorStatus
-from app.repositories.query.chat import ChatRepository
-from app.schemas.query.structured_response import StructuredAnswerResponse
+from app.query.repositories.chat import ChatRepository
+from app.query.schemas.structured_response import StructuredAnswerResponse
 from app.services.deepspace.execution.agent_executor import AgentExecutor
 from app.services.deepspace.missions.mission_registry import MissionRegistry
 from app.services.deepspace.deepspace_runtime.runtime_contracts import (
@@ -33,8 +33,8 @@ from app.providers.services.types import (
     WebSearchRequest,
     WebSearchResponse,
 )
-from app.services.query.answer_service import AnswerService
-from app.services.query.retrieval_service import RetrievalService
+from app.query.services.answer_service import AnswerService
+from app.query.services.retrieval_service import RetrievalService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 CONVERSATION_KIND = "deepspace"

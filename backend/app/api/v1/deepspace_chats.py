@@ -39,8 +39,8 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.auth.rbac import require_permissions, resolve_permissions
 from app.db.session import get_db, set_db_tenant_context
-from app.repositories.query.chat import ChatRepository
-from app.schemas.query.chats import (
+from app.query.repositories.chat import ChatRepository
+from app.query.schemas.chats import (
     BulkDeleteRequest,
     ChatHistoryResponse,
     ConversationCreateRequest,
@@ -62,7 +62,7 @@ from app.schemas.query.chats import (
     TodoTaskUpdateRequest,
 )
 from app.services.deepspace.orchestration.deepspace_service import DeepSpaceService
-from app.services.query.answer_service import AnswerService, StreamEvent
+from app.query.services.answer_service import AnswerService, StreamEvent
 from app.system.services.rate_limit_service import RateLimitService
 
 router = APIRouter(prefix="/deepspace/chats", tags=["deepspace-chats"])
@@ -124,7 +124,7 @@ async def _send_websocket_sse_error(
     code: str,
     message: str,
 ) -> None:
-    from app.services.query.answer_service import AnswerService, StreamEvent
+    from app.query.services.answer_service import AnswerService, StreamEvent
 
     await websocket.send_text(
         AnswerService.encode_sse_event(
@@ -210,7 +210,7 @@ async def _stream_service_over_websocket(
     db: Session,
     payload: dict[str, Any],
 ) -> None:
-    from app.services.query.answer_service import AnswerService
+    from app.query.services.answer_service import AnswerService
 
     endpoint = str(payload.get("endpoint") or payload.get("path") or "").strip()
     body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
@@ -331,7 +331,7 @@ async def _stream_service_over_websocket(
         if endpoint == "/deepspace/chats/orchestrations/stream":
             from app.services.deepspace.missions.mission_registry import MissionRegistry
             from app.services.deepspace.orchestration.master_orchestrator import MasterOrchestrator
-            from app.services.query.answer_service import AnswerService
+            from app.query.services.answer_service import AnswerService
 
             objective = str(body.get("objective") or body.get("query") or "").strip()
             if not objective:

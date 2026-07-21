@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.repositories.query.chat import ChatRepository
+from app.query.repositories.chat import ChatRepository
 from app.services.deepspace.orchestration.deepspace_service import DeepSpaceService
 from tests.conftest import SeededUser
 

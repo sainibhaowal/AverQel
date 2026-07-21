@@ -1,5 +1,5 @@
 from app.services.deepspace.deepspace_runtime.sse_event_mapper import DeepSpaceSseEventMapper
-from app.services.query.answer_service import AnswerService
+from app.query.services.answer_service import AnswerService
 
 
 def test_sse_mapper_preserves_orchestration_event_contract_for_non_main_lane():

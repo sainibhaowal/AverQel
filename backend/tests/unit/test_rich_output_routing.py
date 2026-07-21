@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.services.query.answer_service import AnswerService
-from app.services.query.query_classifier import QueryType
+from app.query.services.answer_service import AnswerService
+from app.query.services.query_classifier import QueryType
 
 
 def test_emit_post_stream_events_from_structured_json() -> None:

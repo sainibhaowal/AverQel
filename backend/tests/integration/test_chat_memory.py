@@ -5,8 +5,8 @@ import pytest
 
 from app.auth.dependencies import AuthContext
 from app.db.session import get_session_factory
-from app.repositories.query.chat import ChatRepository
-from app.services.query.query_service import QueryService
+from app.query.repositories.chat import ChatRepository
+from app.query.services.query_service import QueryService
 
 
 @pytest.fixture
@@ -58,11 +58,11 @@ def test_query_service_session_awareness(db_session, settings, seed_user):
     # Mock retrieval and answer synthesis
     with (
         patch(
-            "app.services.query.retrieval_service.RetrievalService.retrieve",
+            "app.query.services.retrieval_service.RetrievalService.retrieve",
             return_value=[],
         ),
         patch(
-            "app.services.query.answer_service.AnswerService.synthesize",
+            "app.query.services.answer_service.AnswerService.synthesize",
             return_value=MagicMock(
                 answer="I remember you said hi.", confidence=0.9, citations=[], usage={}
             ),

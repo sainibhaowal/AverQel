@@ -5,8 +5,8 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.models.query.query import Query
-from app.models.query.query_citation import QueryCitation
+from app.query.models.query import Query
+from app.query.models.query_citation import QueryCitation
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
 

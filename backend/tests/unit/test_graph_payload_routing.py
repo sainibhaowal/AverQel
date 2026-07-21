@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from app.services.query.answer_service import AnswerService
-from app.services.query.query_classifier import QueryType
+from app.query.services.answer_service import AnswerService
+from app.query.services.query_classifier import QueryType
 
 
 def test_graph_payload_routing_emits_diagram_event() -> None:

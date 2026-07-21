@@ -8,9 +8,9 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import AuthContext, get_auth_context
 from app.core.errors import ApiError
 from app.db.session import get_db
-from app.models.query.conversation import Conversation
-from app.models.query.feedback import Feedback
-from app.models.query.message import Message
+from app.query.models.conversation import Conversation
+from app.query.models.feedback import Feedback
+from app.query.models.message import Message
 from app.system.schemas.feedback import FeedbackCreate, FeedbackResponse
 
 logger = logging.getLogger(__name__)

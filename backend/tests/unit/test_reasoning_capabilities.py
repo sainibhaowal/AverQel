@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Any
 from uuid import UUID
 
-from app.schemas.query.structured_response import sanitize_mermaid_syntax
+from app.query.schemas.structured_response import sanitize_mermaid_syntax
 from app.providers.services.anthropic_provider import AnthropicProvider
 from app.providers.services.google_provider import GoogleProvider
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
@@ -16,7 +16,7 @@ from app.providers.services.types import (
     ChatGenerateRequest,
     ProviderSelectionCandidate,
 )
-from app.services.query.answer_service import AnswerService
+from app.query.services.answer_service import AnswerService
 
 
 def test_reasoning_capabilities_cover_supported_providers() -> None:

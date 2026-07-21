@@ -7,13 +7,13 @@ import pytest
 
 from app.auth.dependencies import AuthContext
 from app.db.session import get_session_factory
-from app.repositories.query.chat import ChatRepository
-from app.schemas.query.followups import FollowupSuggestions
+from app.query.repositories.chat import ChatRepository
+from app.query.schemas.followups import FollowupSuggestions
 from app.providers.services.types import (
     ProviderSelectionCandidate,
     ProviderSelectionResult,
 )
-from app.services.query.query_service import QueryService
+from app.query.services.query_service import QueryService
 
 
 @pytest.fixture
@@ -96,7 +96,7 @@ async def test_stream_execute_flow(settings, seed_user):
         token_id=str(uuid.uuid4()),
         auth_type="jwt",
     )
-    from app.services.query.retrieval_service import RetrievedChunk
+    from app.query.services.retrieval_service import RetrievedChunk
 
     mock_chunk = RetrievedChunk(
         document_id=uuid.uuid4(),
@@ -113,7 +113,7 @@ async def test_stream_execute_flow(settings, seed_user):
 
         with (
             patch(
-                "app.services.query.retrieval_service.RetrievalService.retrieve",
+                "app.query.services.retrieval_service.RetrievalService.retrieve",
                 return_value=[mock_chunk],
             ),
             patch(
@@ -135,7 +135,7 @@ async def test_stream_execute_flow(settings, seed_user):
                 ),
             ),
             patch(
-                "app.services.query.answer_service.importlib.import_module",
+                "app.query.services.answer_service.importlib.import_module",
                 return_value=_fake_httpx_module(
                     [
                         'data: {"choices": [{"delta": {"content": "Hello"}}]}',
@@ -230,7 +230,7 @@ async def test_stream_execute_emits_thinking_events_when_supported(settings, see
         token_id=str(uuid.uuid4()),
         auth_type="jwt",
     )
-    from app.services.query.retrieval_service import RetrievedChunk
+    from app.query.services.retrieval_service import RetrievedChunk
 
     mock_chunk = RetrievedChunk(
         document_id=uuid.uuid4(),
@@ -246,7 +246,7 @@ async def test_stream_execute_emits_thinking_events_when_supported(settings, see
         service = QueryService(db_session, settings)
         with (
             patch(
-                "app.services.query.retrieval_service.RetrievalService.retrieve",
+                "app.query.services.retrieval_service.RetrievalService.retrieve",
                 return_value=[mock_chunk],
             ),
             patch(
@@ -268,7 +268,7 @@ async def test_stream_execute_emits_thinking_events_when_supported(settings, see
                 ),
             ),
             patch(
-                "app.services.query.answer_service.importlib.import_module",
+                "app.query.services.answer_service.importlib.import_module",
                 return_value=_fake_httpx_module(
                     [
                         'data: {"choices": [{"delta": {"reasoning_content": "Thinking..."}}]}',
@@ -323,7 +323,7 @@ async def test_stream_execute_ignores_reasoning_chunks_when_thinking_disabled(
         token_id=str(uuid.uuid4()),
         auth_type="jwt",
     )
-    from app.services.query.retrieval_service import RetrievedChunk
+    from app.query.services.retrieval_service import RetrievedChunk
 
     mock_chunk = RetrievedChunk(
         document_id=uuid.uuid4(),
@@ -340,7 +340,7 @@ async def test_stream_execute_ignores_reasoning_chunks_when_thinking_disabled(
 
         with (
             patch(
-                "app.services.query.retrieval_service.RetrievalService.retrieve",
+                "app.query.services.retrieval_service.RetrievalService.retrieve",
                 return_value=[mock_chunk],
             ),
             patch(
@@ -362,7 +362,7 @@ async def test_stream_execute_ignores_reasoning_chunks_when_thinking_disabled(
                 ),
             ),
             patch(
-                "app.services.query.answer_service.importlib.import_module",
+                "app.query.services.answer_service.importlib.import_module",
                 return_value=_fake_httpx_module(
                     [
                         'data: {"choices": [{"delta": {"reasoning_content": "Thinking..."}}]}',
@@ -419,7 +419,7 @@ async def test_stream_execute_falls_back_to_grounded_text_when_llm_usage_is_deni
         token_id=str(uuid.uuid4()),
         auth_type="jwt",
     )
-    from app.services.query.retrieval_service import RetrievedChunk
+    from app.query.services.retrieval_service import RetrievedChunk
 
     mock_chunk = RetrievedChunk(
         document_id=uuid.uuid4(),
@@ -436,7 +436,7 @@ async def test_stream_execute_falls_back_to_grounded_text_when_llm_usage_is_deni
 
         with (
             patch(
-                "app.services.query.retrieval_service.RetrievalService.retrieve",
+                "app.query.services.retrieval_service.RetrievalService.retrieve",
                 return_value=[mock_chunk],
             ),
             patch(
@@ -504,7 +504,7 @@ async def test_stream_execute_emits_diagram_event_for_structured_answer(
         token_id=str(uuid.uuid4()),
         auth_type="jwt",
     )
-    from app.services.query.retrieval_service import RetrievedChunk
+    from app.query.services.retrieval_service import RetrievedChunk
 
     mock_chunk = RetrievedChunk(
         document_id=uuid.uuid4(),
@@ -539,7 +539,7 @@ async def test_stream_execute_emits_diagram_event_for_structured_answer(
 
         with (
             patch(
-                "app.services.query.retrieval_service.RetrievalService.retrieve",
+                "app.query.services.retrieval_service.RetrievalService.retrieve",
                 return_value=[mock_chunk],
             ),
             patch(
@@ -561,13 +561,13 @@ async def test_stream_execute_emits_diagram_event_for_structured_answer(
                 ),
             ),
             patch(
-                "app.services.query.followup_service.FollowupService.generate",
+                "app.query.services.followup_service.FollowupService.generate",
                 return_value=FollowupSuggestions(
                     follow_ups=["What are the retrieval bottlenecks?"]
                 ),
             ),
             patch(
-                "app.services.query.answer_service.importlib.import_module",
+                "app.query.services.answer_service.importlib.import_module",
                 return_value=_fake_httpx_module(
                     [
                         f'data: {{"choices": [{{"delta": {{"content": {json.dumps(structured_response)} }} }}]}}',

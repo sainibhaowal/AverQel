@@ -6,7 +6,7 @@ from app.db.session import get_session_factory
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
 from app.documents.repositories.chunks import ChunksRepository
-from app.services.query.retrieval_service import RetrievalService
+from app.query.services.retrieval_service import RetrievalService
 
 
 @pytest.fixture

@@ -4,11 +4,11 @@ from uuid import uuid4
 import pytest
 
 from app.core.config import Settings
-from app.schemas.query.structured_response import StructuredAnswerResponse
-from app.services.query.answer_service import AnswerService
-from app.services.query.query_classifier import QueryClassifier, QueryType
-from app.services.query.query_service import QueryService
-from app.services.query.retrieval_service import RetrievedChunk
+from app.query.schemas.structured_response import StructuredAnswerResponse
+from app.query.services.answer_service import AnswerService
+from app.query.services.query_classifier import QueryClassifier, QueryType
+from app.query.services.query_service import QueryService
+from app.query.services.retrieval_service import RetrievedChunk
 
 
 @pytest.fixture

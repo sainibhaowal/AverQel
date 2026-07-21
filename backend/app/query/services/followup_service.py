@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from app.schemas.query.followups import FollowupSuggestions
+from app.query.schemas.followups import FollowupSuggestions
 from app.providers.services.types import ProviderSelectionCandidate
-from app.services.query.answer_service import AnswerService
+from app.query.services.answer_service import AnswerService
 
 
 class FollowupService:

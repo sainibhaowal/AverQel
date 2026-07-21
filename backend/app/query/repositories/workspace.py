@@ -4,9 +4,9 @@ import uuid
 
 from sqlalchemy import select
 
-from app.models.query.comment import Comment
-from app.models.query.pinned_finding import PinnedFinding
-from app.models.query.query import Query
+from app.query.models.comment import Comment
+from app.query.models.pinned_finding import PinnedFinding
+from app.query.models.query import Query
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
 

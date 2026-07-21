@@ -18,25 +18,25 @@ from app.core.config import Settings
 from app.core.context import get_trace_id
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.models.query.query_citation import QueryCitation
+from app.query.models.query_citation import QueryCitation
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.collections import CollectionsRepository
 from app.documents.repositories.documents import DocumentsRepository
 from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
-from app.repositories.query.chat import ChatRepository
-from app.repositories.query.queries import QueriesRepository
-from app.schemas.query.structured_response import (
+from app.query.repositories.chat import ChatRepository
+from app.query.repositories.queries import QueriesRepository
+from app.query.schemas.structured_response import (
     ReasoningTraceModel,
     StructuredAnswerResponse,
 )
 from app.providers.services.selection_service import ProviderSelectionService
 from app.providers.services.types import ProviderSelectionCandidate
-from app.services.query.answer_service import AnswerService, StreamEvent
-from app.services.query.followup_service import FollowupService
-from app.services.query.query_classifier import QueryClassifier
-from app.services.query.retrieval_service import RetrievalService, RetrievedChunk
-from app.services.query.snippet_service import SnippetService
-from app.services.query.trace_service import TraceCollector
+from app.query.services.answer_service import AnswerService, StreamEvent
+from app.query.services.followup_service import FollowupService
+from app.query.services.query_classifier import QueryClassifier
+from app.query.services.retrieval_service import RetrievalService, RetrievedChunk
+from app.query.services.snippet_service import SnippetService
+from app.query.services.trace_service import TraceCollector
 from app.system.services.billing_service import BillingService
 from app.system.services.cache_service import QueryCacheService
 from app.system.services.metrics_service import (

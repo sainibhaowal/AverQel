@@ -24,7 +24,7 @@ from app.services.deepspace.missions.mission_registry import MissionControl, Mis
 from app.services.deepspace.planning.mission_planner import MissionPlanner
 from app.services.deepspace.subagents.subagent_manager import SubagentManager
 from app.providers.services.types import ChatGenerateRequest
-from app.services.query.answer_service import StreamEvent
+from app.query.services.answer_service import StreamEvent
 from app.system.services.vitals_service import VitalsService
 
 logger = logging.getLogger(__name__)

@@ -4,14 +4,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
-    chats,
     client_storage,
     deepspace_chats,
     deepspace_export,
-    intelligence,
-    queries,
     workspace,
 )
+from app.query.api import chats, intelligence, queries
 from app.system.api import (
     admin,
     app_feedback,

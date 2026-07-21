@@ -12,9 +12,9 @@ from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
 from app.providers.repositories.provider_configs import ProviderConfigsRepository
-from app.schemas.query.structured_response import StructuredAnswerResponse
+from app.query.schemas.structured_response import StructuredAnswerResponse
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
-from app.services.query.query_service import QueryService
+from app.query.services.query_service import QueryService
 
 
 def test_query_service_uses_selected_provider_assignment(

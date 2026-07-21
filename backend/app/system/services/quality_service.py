@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.models.query.query import Query
-from app.models.query.query_citation import QueryCitation
+from app.query.models.query import Query
+from app.query.models.query_citation import QueryCitation
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

@@ -353,7 +353,7 @@ def test_cascade_delete_tasks_on_conversation_delete(
     from sqlalchemy import select
 
     from app.models.deepspace.agent_todo import AgentTodo
-    from app.repositories.query.chat import ChatRepository
+    from app.query.repositories.chat import ChatRepository
 
     seeded = seed_user(
         "Cascade Delete Tenant",

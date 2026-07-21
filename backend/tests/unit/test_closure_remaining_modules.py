@@ -36,7 +36,7 @@ from app.auth.repositories.roles import RolesRepository
 from app.auth.repositories.users import UsersRepository
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.data_deletions import DataDeletionsRepository
-from app.repositories.query.queries import QueriesRepository
+from app.query.repositories.queries import QueriesRepository
 from app.system.repositories.audit_logs import AuditLogsRepository
 from app.documents.services.deletion_service import DeletionService
 from app.ingestion.services.chunking_service import ChunkingService

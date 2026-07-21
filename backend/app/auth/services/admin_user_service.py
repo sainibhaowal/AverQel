@@ -19,10 +19,10 @@ from app.auth.models.user import User
 from app.documents.models.collection import DocumentCollection
 from app.documents.models.document import Document
 from app.providers.models.provider_config import ProviderConfig
-from app.models.query.comment import Comment
-from app.models.query.conversation import Conversation
-from app.models.query.pinned_finding import PinnedFinding
-from app.models.query.query import Query
+from app.query.models.comment import Comment
+from app.query.models.conversation import Conversation
+from app.query.models.pinned_finding import PinnedFinding
+from app.query.models.query import Query
 from app.auth.repositories.refresh_tokens import RefreshTokensRepository
 from app.auth.repositories.roles import RolesRepository
 from app.auth.repositories.tenants import TenantsRepository

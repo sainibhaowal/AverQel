@@ -10,7 +10,7 @@ from app.db.session import get_session_factory, set_db_tenant_context
 from app.auth.models.role import Role
 from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
-from app.repositories.query.chat import ChatRepository
+from app.query.repositories.chat import ChatRepository
 from tests.conftest import SeededUser, _generate_test_collection_code
 
 

@@ -2354,7 +2354,7 @@ class ToolExecutor:
         from app.documents.models.document import Document
         from app.integrations.models.connector import Connector
         from app.integrations.models.integration import Integration
-        from app.services.query.retrieval_service import RetrievalService
+        from app.query.services.retrieval_service import RetrievalService
 
         query = str(args.get("query", ""))
         top_k = int(args.get("top_k", 6))

@@ -5,8 +5,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Final, Literal
 
-from app.services.query.retrieval_service import RetrievedChunk
-from app.services.query.snippet_service import SnippetService
+from app.query.services.retrieval_service import RetrievedChunk
+from app.query.services.snippet_service import SnippetService
 
 logger = logging.getLogger(__name__)
 

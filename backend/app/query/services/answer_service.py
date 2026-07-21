@@ -17,8 +17,8 @@ from uuid import UUID
 
 from app.core.brand import APP_ASSISTANT_NAME, APP_BRAND_NAME, APP_ENGINE_NAME
 from app.core.config import LOCAL_LLM_PROVIDERS, Settings
-from app.schemas.query.followups import FollowupSuggestions
-from app.schemas.query.structured_response import (
+from app.query.schemas.followups import FollowupSuggestions
+from app.query.schemas.structured_response import (
     StructuredAnswerResponse,
     StructuredChartResponse,
     StructuredDiagramResponse,
@@ -32,10 +32,10 @@ from app.providers.services import (
     ProviderSelectionCandidate,
 )
 from app.providers.services.base import ProviderRequestError
-from app.services.query.prompt_templates import PromptTemplates
-from app.services.query.query_classifier import QueryType
-from app.services.query.retrieval_service import RetrievedChunk
-from app.services.query.snippet_service import SnippetService
+from app.query.services.prompt_templates import PromptTemplates
+from app.query.services.query_classifier import QueryType
+from app.query.services.retrieval_service import RetrievedChunk
+from app.query.services.snippet_service import SnippetService
 from app.system.services.cache_service import get_redis_client
 from app.system.services.metrics_service import (
     LLM_PROVIDER_LATENCY_SECONDS,

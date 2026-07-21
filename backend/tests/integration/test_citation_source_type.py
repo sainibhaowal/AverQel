@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from app.services.query.answer_service import AnswerResult
-from app.services.query.retrieval_service import RetrievedChunk
+from app.query.services.answer_service import AnswerResult
+from app.query.services.retrieval_service import RetrievedChunk
 
 
 def test_citation_source_type_propagation(client: TestClient, seed_user):
@@ -44,25 +44,25 @@ def test_citation_source_type_propagation(client: TestClient, seed_user):
     mock_query_row.id = uuid.uuid4()
 
     with patch(
-        "app.services.query.query_service.QueriesRepository.create_query",
+        "app.query.services.query_service.QueriesRepository.create_query",
         return_value=mock_query_row,
     ):
         with patch(
-            "app.services.query.query_service.QueriesRepository.create_citations",
+            "app.query.services.query_service.QueriesRepository.create_citations",
             return_value=None,
         ):
             with patch(
-                "app.services.query.query_service.RetrievalService.retrieve",
+                "app.query.services.query_service.RetrievalService.retrieve",
                 return_value=mock_chunks,
             ):
                 with patch(
-                    "app.services.query.query_service.RetrievalService.get_document_references",
+                    "app.query.services.query_service.RetrievalService.get_document_references",
                     return_value=[],
                 ):
                     with patch(
-                        "app.services.query.query_service.AnswerService.synthesize"
+                        "app.query.services.query_service.AnswerService.synthesize"
                     ) as mock_synth:
-                        from app.services.query.answer_service import AnswerCitation
+                        from app.query.services.answer_service import AnswerCitation
 
                         mock_synth.return_value = AnswerResult(
                             answer="Final answer",

@@ -9,7 +9,7 @@ import pytest
 import app.services.deepspace.execution.agent_executor as agent_executor_module
 import app.services.deepspace.missions.mission_registry as mission_registry_module
 from app.auth.dependencies import AuthContext
-from app.schemas.query.chats import ConversationCreateRequest, ConversationUpdate
+from app.query.schemas.chats import ConversationCreateRequest, ConversationUpdate
 from app.services.deepspace.execution.agent_executor import AgentExecutor
 from app.services.deepspace.execution.agent_tools import ToolExecutor, ToolResult
 from app.services.deepspace.orchestration.deepspace_service import DeepSpaceService

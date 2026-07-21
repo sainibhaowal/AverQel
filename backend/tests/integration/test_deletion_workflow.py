@@ -16,13 +16,13 @@ from app.documents.models.collection import (
     DocumentCollection,
 )
 from app.documents.models.document import Document
-from app.models.query.comment import Comment
-from app.models.query.conversation import Conversation
-from app.models.query.message import Message
-from app.models.query.message_version import MessageVersion
-from app.models.query.pinned_finding import PinnedFinding
-from app.models.query.query import Query
-from app.repositories.query.chat import ChatRepository
+from app.query.models.comment import Comment
+from app.query.models.conversation import Conversation
+from app.query.models.message import Message
+from app.query.models.message_version import MessageVersion
+from app.query.models.pinned_finding import PinnedFinding
+from app.query.models.query import Query
+from app.query.repositories.chat import ChatRepository
 from app.system.services.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser, _generate_test_collection_code
 

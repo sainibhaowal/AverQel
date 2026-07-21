@@ -1,9 +1,9 @@
 from uuid import UUID
 
-from app.schemas.query.followups import FollowupSuggestions
+from app.query.schemas.followups import FollowupSuggestions
 from app.providers.services.types import ProviderSelectionCandidate
-from app.services.query.answer_service import AnswerService
-from app.services.query.followup_service import FollowupService
+from app.query.services.answer_service import AnswerService
+from app.query.services.followup_service import FollowupService
 
 
 def test_followup_service_wraps_answer_service_output(monkeypatch) -> None:

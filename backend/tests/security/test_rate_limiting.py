@@ -7,7 +7,7 @@ from pytest import MonkeyPatch
 from sqlalchemy import func, select, text
 
 from app.db.session import get_session_factory, set_db_tenant_context
-from app.models.query.query import Query
+from app.query.models.query import Query
 from app.system.services.rate_limit_service import RateLimitService
 from tests.conftest import SeededUser
 

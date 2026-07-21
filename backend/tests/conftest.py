@@ -304,7 +304,7 @@ from app.auth.models.tenant import Tenant  # noqa: E402
 from app.auth.models.user import User  # noqa: E402
 from app.auth.models.user_role import UserRole  # noqa: E402
 from app.ingestion.services.embedding_service import EmbeddingService  # noqa: E402
-from app.services.query.answer_service import AnswerService  # noqa: E402
+from app.query.services.answer_service import AnswerService  # noqa: E402
 from app.system.services.rate_limit_service import (  # noqa: E402
     RateLimitService,
     _get_redis_client,

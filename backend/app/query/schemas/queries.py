@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.schemas.query.structured_response import StructuredAnswerResponse
+from app.query.schemas.structured_response import StructuredAnswerResponse
 
 
 class QueryFilters(BaseModel):

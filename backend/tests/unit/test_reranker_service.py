@@ -12,7 +12,7 @@ from app.providers.services.types import (
     RerankResponse,
     RerankResultItem,
 )
-from app.services.query.reranker_service import RerankerService
+from app.query.services.reranker_service import RerankerService
 
 
 def _chunk(index: int, text: str, score: float) -> RetrievedChunkRow:

@@ -14,9 +14,9 @@ from app.core.config import Settings
 from app.documents.repositories.chunks import ChunksRepository, RetrievedChunkRow
 from app.documents.repositories.documents import DocumentsRepository
 from app.ingestion.services.embedding_service import EmbeddingService
-from app.services.query.query_classifier import QueryClassifier, QueryType
-from app.services.query.reranker_service import RerankerService
-from app.services.query.trace_service import TraceCollector
+from app.query.services.query_classifier import QueryClassifier, QueryType
+from app.query.services.reranker_service import RerankerService
+from app.query.services.trace_service import TraceCollector
 from app.system.services.metrics_service import QUERY_PIPELINE_DURATION_SECONDS
 
 logger = logging.getLogger(__name__)

@@ -11,14 +11,14 @@ import pytest
 
 from app.core.config import get_settings
 from app.providers.services.types import ProviderSelectionCandidate
-from app.services.query.answer_service import (
+from app.query.services.answer_service import (
     AnswerService,
     LlmCircuitState,
     NonRetryableLlmError,
     RetryableLlmError,
 )
-from app.services.query.query_classifier import QueryType
-from app.services.query.retrieval_service import RetrievedChunk
+from app.query.services.query_classifier import QueryType
+from app.query.services.retrieval_service import RetrievedChunk
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
@@ -50,7 +50,7 @@ def test_synthesize_clamps_confidence_and_snippet_helpers() -> None:
     assert len(result.citations) == 3
     assert result.citations[0].snippet.endswith("...")
     assert AnswerService._estimate_tokens("") == 0
-    from app.services.query.snippet_service import SnippetService
+    from app.query.services.snippet_service import SnippetService
 
     assert SnippetService.clean("  a   b ", 10) == "a b"
 
@@ -192,7 +192,7 @@ def test_allow_llm_usage_in_memory_fallback(monkeypatch: pytest.MonkeyPatch) -> 
 
     service = AnswerService("no-result", get_settings())
     monkeypatch.setattr(
-        "app.services.query.answer_service.get_redis_client",
+        "app.query.services.answer_service.get_redis_client",
         lambda: (_ for _ in ()).throw(RuntimeError("down")),
     )
     tenant = UUID("11111111-1111-7111-8111-111111111111")
@@ -206,7 +206,7 @@ def test_allow_llm_usage_in_memory_fallback(monkeypatch: pytest.MonkeyPatch) -> 
     get_settings.cache_clear()
     service = AnswerService("no-result", get_settings())
     monkeypatch.setattr(
-        "app.services.query.answer_service.get_redis_client",
+        "app.query.services.answer_service.get_redis_client",
         lambda: (_ for _ in ()).throw(RuntimeError("down")),
     )
     assert service._allow_llm_usage(tenant_id=tenant, estimated_input_tokens=10) is True

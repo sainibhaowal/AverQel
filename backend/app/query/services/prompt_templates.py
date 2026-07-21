@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.query.query_classifier import QueryType
+from app.query.services.query_classifier import QueryType
 
 
 class PromptTemplates:

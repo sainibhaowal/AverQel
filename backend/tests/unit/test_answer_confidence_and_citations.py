@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from app.services.query.answer_service import AnswerService
-from app.services.query.retrieval_service import RetrievedChunk
+from app.query.services.answer_service import AnswerService
+from app.query.services.retrieval_service import RetrievedChunk
 
 
 def test_answer_service_returns_no_result_contract() -> None:
