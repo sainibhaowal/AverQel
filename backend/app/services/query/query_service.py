@@ -29,8 +29,8 @@ from app.schemas.query.structured_response import (
     ReasoningTraceModel,
     StructuredAnswerResponse,
 )
-from app.services.providers.selection_service import ProviderSelectionService
-from app.services.providers.types import ProviderSelectionCandidate
+from app.providers.services.selection_service import ProviderSelectionService
+from app.providers.services.types import ProviderSelectionCandidate
 from app.services.query.answer_service import AnswerService, StreamEvent
 from app.services.query.followup_service import FollowupService
 from app.services.query.query_classifier import QueryClassifier

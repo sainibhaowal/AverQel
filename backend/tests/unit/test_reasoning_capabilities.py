@@ -5,14 +5,14 @@ from typing import Any
 from uuid import UUID
 
 from app.schemas.query.structured_response import sanitize_mermaid_syntax
-from app.services.providers.anthropic_provider import AnthropicProvider
-from app.services.providers.google_provider import GoogleProvider
-from app.services.providers.openai_compatible import OpenAICompatibleProvider
-from app.services.providers.reasoning_capabilities import (
+from app.providers.services.anthropic_provider import AnthropicProvider
+from app.providers.services.google_provider import GoogleProvider
+from app.providers.services.openai_compatible import OpenAICompatibleProvider
+from app.providers.services.reasoning_capabilities import (
     model_supports_reasoning,
     resolve_reasoning_profile,
 )
-from app.services.providers.types import (
+from app.providers.services.types import (
     ChatGenerateRequest,
     ProviderSelectionCandidate,
 )

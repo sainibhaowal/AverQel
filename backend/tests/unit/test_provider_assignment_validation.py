@@ -5,8 +5,8 @@ import uuid
 import pytest
 
 from app.core.errors import ApiError
-from app.models.providers.provider_config import ProviderConfig
-from app.services.providers.provider_management_service import ProviderManagementService
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.services.provider_management_service import ProviderManagementService
 
 
 def _provider(**overrides: object) -> ProviderConfig:

@@ -23,7 +23,7 @@ from app.services.deepspace.memory.memory_service import MemoryService, TodoServ
 from app.services.deepspace.missions.mission_registry import MissionControl, MissionRegistry
 from app.services.deepspace.planning.mission_planner import MissionPlanner
 from app.services.deepspace.subagents.subagent_manager import SubagentManager
-from app.services.providers.types import ChatGenerateRequest
+from app.providers.services.types import ChatGenerateRequest
 from app.services.query.answer_service import StreamEvent
 from app.services.system.vitals_service import VitalsService
 

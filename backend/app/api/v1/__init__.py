@@ -9,11 +9,11 @@ from app.api.v1 import (
     health,
     intelligence,
     metrics,
-    providers,
     queries,
     support,
     workspace,
 )
+from app.providers.api import providers
 
 __all__ = [
     "auth",

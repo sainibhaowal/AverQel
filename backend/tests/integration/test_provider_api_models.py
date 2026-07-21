@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.services.providers.types import ProviderModelInfo
+from app.providers.services.types import ProviderModelInfo
 from tests.conftest import SeededUser
 
 
@@ -101,7 +101,7 @@ def test_provider_models_refresh_and_list(
             ]
 
     monkeypatch.setattr(
-        "app.services.providers.registry.ProviderRegistry.get_model_discovery_provider_from_config",
+        "app.providers.services.registry.ProviderRegistry.get_model_discovery_provider_from_config",
         lambda self, provider_config, api_key=None: FakeDiscovery(),
     )
 
@@ -146,7 +146,7 @@ def test_provider_model_pull_supported_only_where_allowed(
             return None
 
     monkeypatch.setattr(
-        "app.services.providers.registry.ProviderRegistry.get_install_provider_from_config",
+        "app.providers.services.registry.ProviderRegistry.get_install_provider_from_config",
         lambda self, provider_config, api_key=None: FakeInstaller(),
     )
 

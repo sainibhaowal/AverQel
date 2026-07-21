@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.providers.base import ProviderRequestError
-from app.services.providers.openai_compatible import OpenAICompatibleProvider
-from app.services.providers.types import ChatGenerateRequest, EmbeddingRequest
+from app.providers.services.base import ProviderRequestError
+from app.providers.services.openai_compatible import OpenAICompatibleProvider
+from app.providers.services.types import ChatGenerateRequest, EmbeddingRequest
 
 pytestmark = pytest.mark.unit_no_db
 
@@ -187,7 +187,7 @@ def test_openai_compatible_provider_generate_and_sync_stream(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "httpx", fake_httpx)
     monkeypatch.setattr(
-        "app.services.providers.url_resolution.os.path.exists",
+        "app.providers.services.url_resolution.os.path.exists",
         lambda path: path == "/.dockerenv",
     )
 
@@ -223,7 +223,7 @@ def test_openai_compatible_provider_embed_many_rewrites_localhost_in_docker(
 
     monkeypatch.setitem(sys.modules, "httpx", SimpleNamespace(post=_fake_post))
     monkeypatch.setattr(
-        "app.services.providers.url_resolution.os.path.exists",
+        "app.providers.services.url_resolution.os.path.exists",
         lambda path: path == "/.dockerenv",
     )
 

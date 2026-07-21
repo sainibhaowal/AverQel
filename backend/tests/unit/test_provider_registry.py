@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from app.core.config import get_settings
-from app.services.providers.anthropic_provider import AnthropicProvider
-from app.services.providers.google_provider import GoogleProvider
-from app.services.providers.lmstudio_provider import LMStudioProvider
-from app.services.providers.local_deterministic_provider import (
+from app.providers.services.anthropic_provider import AnthropicProvider
+from app.providers.services.google_provider import GoogleProvider
+from app.providers.services.lmstudio_provider import LMStudioProvider
+from app.providers.services.local_deterministic_provider import (
     LocalDeterministicEmbeddingProvider,
 )
-from app.services.providers.ollama_provider import OllamaProvider
-from app.services.providers.openai_compatible import OpenAICompatibleProvider
-from app.services.providers.opencode_zen_provider import OpenCodeZenProvider
-from app.services.providers.registry import ProviderRegistry
-from app.services.providers.sentence_transformers_provider import (
+from app.providers.services.ollama_provider import OllamaProvider
+from app.providers.services.openai_compatible import OpenAICompatibleProvider
+from app.providers.services.opencode_zen_provider import OpenCodeZenProvider
+from app.providers.services.registry import ProviderRegistry
+from app.providers.services.sentence_transformers_provider import (
     SentenceTransformersEmbeddingProvider,
 )
 
@@ -33,7 +33,7 @@ def test_provider_registry_resolves_env_backed_chat_and_embedding_providers(
     monkeypatch.setenv("AKS_LLM_API_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("AKS_EMBEDDING_PROVIDER", "sentence-transformers")
     monkeypatch.setattr(
-        "app.services.providers.url_resolution.os.path.exists",
+        "app.providers.services.url_resolution.os.path.exists",
         lambda path: path == "/.dockerenv",
     )
     get_settings.cache_clear()

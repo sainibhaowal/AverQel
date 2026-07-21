@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.db.session import get_session_factory
 from app.auth.models.tenant import Tenant
-from app.models.providers.provider_assignment import ProviderAssignment
+from app.providers.models.provider_assignment import ProviderAssignment
 
 
 async def check_assignments():

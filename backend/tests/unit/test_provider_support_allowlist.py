@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.db.session import get_session_factory
-from app.services.providers.provider_management_service import ProviderManagementService
+from app.providers.services.provider_management_service import ProviderManagementService
 
 
 def test_provider_support_catalog_keeps_account_linking_disabled_by_default() -> None:

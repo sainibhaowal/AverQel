@@ -26,9 +26,9 @@ from app.services.deepspace.deepspace_runtime.runtime_contracts import (
 )
 from app.services.deepspace.deepspace_runtime.sse_event_mapper import DeepSpaceSseEventMapper
 from app.services.integrations.connector_orchestrator import ConnectorOrchestrator
-from app.services.providers.registry import ProviderRegistry
-from app.services.providers.selection_service import ProviderSelectionService
-from app.services.providers.types import (
+from app.providers.services.registry import ProviderRegistry
+from app.providers.services.selection_service import ProviderSelectionService
+from app.providers.services.types import (
     RerankRequest,
     WebSearchRequest,
     WebSearchResponse,

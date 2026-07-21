@@ -4,9 +4,9 @@ from app.core.ids import generate_uuid7_with_fallback
 from app.db.session import set_db_tenant_context
 from app.auth.models.tenant import Tenant
 from app.repositories.documents.chunks import RetrievedChunkRow
-from app.services.providers.registry import ProviderRegistry
-from app.services.providers.selection_service import ProviderSelectionService
-from app.services.providers.types import (
+from app.providers.services.registry import ProviderRegistry
+from app.providers.services.selection_service import ProviderSelectionService
+from app.providers.services.types import (
     ProviderSelectionCandidate,
     ProviderSelectionResult,
     RerankResponse,

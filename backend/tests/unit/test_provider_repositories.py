@@ -8,22 +8,22 @@ from app.auth.security import hash_password
 from app.db.session import get_session_factory
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
-from app.models.providers.provider_assignment import ProviderAssignment
-from app.models.providers.provider_config import ProviderConfig
-from app.models.providers.provider_health_check import ProviderHealthCheck
-from app.models.providers.provider_model_cache import ProviderModelCache
-from app.models.providers.provider_secret import ProviderSecret
-from app.models.providers.provider_usage_record import ProviderUsageRecord
-from app.repositories.providers.provider_assignments import (
+from app.providers.models.provider_assignment import ProviderAssignment
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.models.provider_health_check import ProviderHealthCheck
+from app.providers.models.provider_model_cache import ProviderModelCache
+from app.providers.models.provider_secret import ProviderSecret
+from app.providers.models.provider_usage_record import ProviderUsageRecord
+from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
-from app.repositories.providers.provider_configs import ProviderConfigsRepository
-from app.repositories.providers.provider_health_checks import (
+from app.providers.repositories.provider_configs import ProviderConfigsRepository
+from app.providers.repositories.provider_health_checks import (
     ProviderHealthChecksRepository,
 )
-from app.repositories.providers.provider_model_cache import ProviderModelCacheRepository
-from app.repositories.providers.provider_secrets import ProviderSecretsRepository
-from app.repositories.providers.provider_usage_records import (
+from app.providers.repositories.provider_model_cache import ProviderModelCacheRepository
+from app.providers.repositories.provider_secrets import ProviderSecretsRepository
+from app.providers.repositories.provider_usage_records import (
     ProviderUsageRecordsRepository,
 )
 

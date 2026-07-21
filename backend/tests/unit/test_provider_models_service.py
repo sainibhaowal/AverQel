@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from app.core.config import get_settings
 from app.db.session import get_session_factory
-from app.services.providers.provider_models_service import ProviderModelsService
-from app.services.providers.registry import ProviderRegistry
+from app.providers.services.provider_models_service import ProviderModelsService
+from app.providers.services.registry import ProviderRegistry
 
 
 def test_provider_models_service_initializes() -> None:

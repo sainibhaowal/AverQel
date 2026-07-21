@@ -11,8 +11,8 @@ from app.models.system.audit_log import AuditLog
 from app.repositories.documents.collections import CollectionsRepository
 from app.repositories.documents.documents import DocumentsRepository
 from app.repositories.ingestion.ingestion_jobs import IngestionJobsRepository
-from app.repositories.providers.provider_configs import ProviderConfigsRepository
-from app.repositories.providers.provider_health_checks import (
+from app.providers.repositories.provider_configs import ProviderConfigsRepository
+from app.providers.repositories.provider_health_checks import (
     ProviderHealthChecksRepository,
 )
 from app.schemas.analytics.dashboard import (
@@ -24,7 +24,7 @@ from app.schemas.analytics.dashboard import (
     DashboardRecentDocumentResponse,
     DashboardStatsResponse,
 )
-from app.services.providers.selection_service import ProviderSelectionService
+from app.providers.services.selection_service import ProviderSelectionService
 from app.services.system.metrics_service import observe_db_query
 
 _QUEUED_STATUSES = {"queued", "uploaded", "pending"}

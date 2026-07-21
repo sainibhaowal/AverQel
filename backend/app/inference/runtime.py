@@ -5,7 +5,7 @@ from threading import Lock
 from typing import Any
 
 from app.core.config import Settings
-from app.services.providers.builtin_local_models import (
+from app.providers.services.builtin_local_models import (
     get_builtin_embedding_path,
     get_builtin_reranker_path,
 )

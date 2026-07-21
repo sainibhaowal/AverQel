@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from app.core.config import get_settings
 from app.db.session import get_session_factory
 from app.models.integrations.connector import Connector, ConnectorStatus
-from app.models.providers.provider_assignment import ProviderAssignment
+from app.providers.models.provider_assignment import ProviderAssignment
 from app.services.deepspace.subagents.subagent_registry import SubagentRegistry
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ class VitalsService:
                 vitals["llm"] = "connected"
             else:
                 # Fallback: check if any provider config supports chat
-                from app.models.providers.provider_config import ProviderConfig
+                from app.providers.models.provider_config import ProviderConfig
 
                 stmt_cfg = select(ProviderConfig).where(
                     ProviderConfig.tenant_id == tenant_id,
@@ -87,7 +87,7 @@ class VitalsService:
                 vitals["web_search"] = "available"
             else:
                 # Fallback: check if any provider config is Tavily or Perplexity
-                from app.models.providers.provider_config import ProviderConfig
+                from app.providers.models.provider_config import ProviderConfig
 
                 stmt_search_cfg = select(ProviderConfig).where(
                     ProviderConfig.tenant_id == tenant_id,

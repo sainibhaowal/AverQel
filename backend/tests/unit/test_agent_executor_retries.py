@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.services.deepspace.execution.agent_executor import AgentExecutor
-from app.services.providers.base import ProviderRequestError
-from app.services.providers.types import ChatGenerateRequest, ChatGenerateResponse
+from app.providers.services.base import ProviderRequestError
+from app.providers.services.types import ChatGenerateRequest, ChatGenerateResponse
 
 
 class MockSettings:

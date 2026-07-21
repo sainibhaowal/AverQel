@@ -16,8 +16,8 @@ from app.services.deepspace.planning.planner_validation import (
     sanitize_lane_blueprints,
     validate_planner_payload,
 )
-from app.services.providers.reasoning_capabilities import reasoning_capabilities
-from app.services.providers.types import ChatGenerateRequest
+from app.providers.services.reasoning_capabilities import reasoning_capabilities
+from app.providers.services.types import ChatGenerateRequest
 
 logger = logging.getLogger(__name__)
 

@@ -5,9 +5,9 @@ from app.auth.security import hash_password
 from app.db.session import get_session_factory, set_db_tenant_context
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
-from app.models.providers.provider_assignment import ProviderAssignment
-from app.models.providers.provider_config import ProviderConfig
-from app.services.providers.provider_management_service import ProviderManagementService
+from app.providers.models.provider_assignment import ProviderAssignment
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.services.provider_management_service import ProviderManagementService
 from tests.conftest import _generate_test_collection_code
 
 

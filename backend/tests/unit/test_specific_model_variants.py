@@ -1,6 +1,6 @@
 """Test specific model variants from the image to verify automatic detection."""
 
-from app.services.providers.reasoning_capabilities import (
+from app.providers.services.reasoning_capabilities import (
     _OPENAI_COMPATIBLE_HINTS,
     _matches_any,
     model_supports_reasoning,

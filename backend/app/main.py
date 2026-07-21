@@ -21,12 +21,12 @@ from app.api.v1 import (
     intelligence,
     metrics,
     mcp,
-    providers,
     queries,
     support,
     voice_routes,
     workspace,
 )
+from app.providers.api import providers
 from app.auth import api as auth
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers

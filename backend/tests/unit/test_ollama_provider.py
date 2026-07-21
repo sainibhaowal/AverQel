@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 
-from app.services.providers.ollama_provider import OllamaProvider
+from app.providers.services.ollama_provider import OllamaProvider
 
 
 class _FakeResponse:

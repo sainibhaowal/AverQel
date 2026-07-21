@@ -71,11 +71,11 @@ async def test_web_search_emits_progress(monkeypatch):
             )
 
     monkeypatch.setattr(
-        "app.services.providers.registry.ProviderRegistry",
+        "app.providers.services.registry.ProviderRegistry",
         _Registry,
     )
     monkeypatch.setattr(
-        "app.services.providers.selection_service.ProviderSelectionService",
+        "app.providers.services.selection_service.ProviderSelectionService",
         _SelectionService,
     )
 

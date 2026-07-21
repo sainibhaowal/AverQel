@@ -3,10 +3,10 @@ from __future__ import annotations
 from app.core.ids import generate_uuid7_with_fallback
 from app.db.session import get_session_factory
 from app.auth.models.tenant import Tenant
-from app.models.providers.provider_config import ProviderConfig
-from app.services.providers.provider_models_service import ProviderModelsService
-from app.services.providers.registry import ProviderRegistry
-from app.services.providers.types import ProviderModelInfo
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.services.provider_models_service import ProviderModelsService
+from app.providers.services.registry import ProviderRegistry
+from app.providers.services.types import ProviderModelInfo
 
 
 def test_provider_model_discovery_refreshes_chat_and_embedding_models(

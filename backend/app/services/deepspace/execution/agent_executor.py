@@ -61,11 +61,11 @@ from app.services.deepspace.deepspace_runtime.runtime_policy import (
 from app.services.deepspace.workspace.coding_harness import CodingHarness, CodingMissionContract
 from app.services.deepspace.workspace.workspace_mode import WorkspaceMode
 from app.services.deepspace.workspace.workspace_policy import WorkspacePolicy
-from app.services.providers.base import ProviderRequestError
-from app.services.providers.reasoning_capabilities import reasoning_capabilities
-from app.services.providers.registry import ProviderRegistry
-from app.services.providers.selection_service import ProviderSelectionService
-from app.services.providers.types import ChatGenerateRequest
+from app.providers.services.base import ProviderRequestError
+from app.providers.services.reasoning_capabilities import reasoning_capabilities
+from app.providers.services.registry import ProviderRegistry
+from app.providers.services.selection_service import ProviderSelectionService
+from app.providers.services.types import ChatGenerateRequest
 from app.services.system.otel import trace_async, trace_async_generator
 
 logger = logging.getLogger(__name__)

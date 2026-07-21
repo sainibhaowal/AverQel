@@ -12,7 +12,7 @@ from app.services.ingestion.embedding_service import (
     NonRetryableEmbeddingError,
     RetryableEmbeddingError,
 )
-from app.services.providers import EmbeddingResponse
+from app.providers.services import EmbeddingResponse
 from app.services.system.rate_limit_service import RateLimitService, _InMemoryRateStore
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

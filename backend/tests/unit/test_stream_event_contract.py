@@ -1,7 +1,7 @@
 import asyncio
 from uuid import UUID
 
-from app.services.providers.selection_service import ProviderSelectionCandidate
+from app.providers.services.selection_service import ProviderSelectionCandidate
 from app.services.query.answer_service import AnswerService, NonRetryableLlmError
 from app.services.query.query_classifier import QueryType
 from app.services.query.retrieval_service import RetrievedChunk

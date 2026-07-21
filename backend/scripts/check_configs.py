@@ -3,7 +3,7 @@ import asyncio
 from sqlalchemy import select
 
 from app.db.session import get_session_factory
-from app.models.providers.provider_config import ProviderConfig
+from app.providers.models.provider_config import ProviderConfig
 
 
 async def check_configs():

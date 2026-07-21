@@ -26,12 +26,12 @@ from app.schemas.query.structured_response import (
     is_valid_mermaid_syntax,
     sanitize_mermaid_syntax,
 )
-from app.services.providers import (
+from app.providers.services import (
     ChatGenerateRequest,
     ProviderRegistry,
     ProviderSelectionCandidate,
 )
-from app.services.providers.base import ProviderRequestError
+from app.providers.services.base import ProviderRequestError
 from app.services.query.prompt_templates import PromptTemplates
 from app.services.query.query_classifier import QueryType
 from app.services.query.retrieval_service import RetrievedChunk

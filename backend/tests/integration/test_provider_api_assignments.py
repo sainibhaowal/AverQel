@@ -6,9 +6,9 @@ from fastapi.testclient import TestClient
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.services.providers.base import ProviderRequestError
-from app.services.providers.registry import ProviderRegistry
-from app.services.providers.types import ProviderModelInfo
+from app.providers.services.base import ProviderRequestError
+from app.providers.services.registry import ProviderRegistry
+from app.providers.services.types import ProviderModelInfo
 from tests.conftest import SeededUser
 
 

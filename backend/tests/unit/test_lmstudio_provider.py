@@ -4,9 +4,9 @@ import asyncio
 import sys
 from types import SimpleNamespace
 
-from app.services.providers.lmstudio_provider import LMStudioProvider
-from app.services.providers.openai_compatible import OpenAICompatibleProvider
-from app.services.providers.types import ChatGenerateRequest, ChatGenerateResponse
+from app.providers.services.lmstudio_provider import LMStudioProvider
+from app.providers.services.openai_compatible import OpenAICompatibleProvider
+from app.providers.services.types import ChatGenerateRequest, ChatGenerateResponse
 
 
 class _FakeResponse:

@@ -3,18 +3,18 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.core.config import get_settings
-from app.services.providers.anthropic_provider import AnthropicProvider
-from app.services.providers.google_provider import GoogleProvider
-from app.services.providers.ollama_provider import OllamaProvider
-from app.services.providers.openai_compatible import OpenAICompatibleProvider
-from app.services.providers.registry import ProviderRegistry
-from app.services.providers.types import ProviderSelectionCandidate
+from app.providers.services.anthropic_provider import AnthropicProvider
+from app.providers.services.google_provider import GoogleProvider
+from app.providers.services.ollama_provider import OllamaProvider
+from app.providers.services.openai_compatible import OpenAICompatibleProvider
+from app.providers.services.registry import ProviderRegistry
+from app.providers.services.types import ProviderSelectionCandidate
 
 
 def test_registry_resolves_chat_provider_from_selection(monkeypatch) -> None:
     monkeypatch.setenv("AKS_LLM_PROVIDER", "disabled")
     monkeypatch.setattr(
-        "app.services.providers.url_resolution.os.path.exists",
+        "app.providers.services.url_resolution.os.path.exists",
         lambda path: path == "/.dockerenv",
     )
     get_settings.cache_clear()

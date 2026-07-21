@@ -21,7 +21,7 @@ from app.models.documents.collection import (
 from app.models.documents.document import Document
 from app.models.documents.document_chunk import DocumentChunk
 from app.models.ingestion.ingestion_job import IngestionJob
-from app.services.providers.types import ProviderSelectionCandidate
+from app.providers.services.types import ProviderSelectionCandidate
 from app.services.query.answer_service import AnswerResult
 from app.services.query.query_service import QueryService
 from tests.conftest import SeededUser, _generate_test_collection_code

@@ -197,7 +197,7 @@ async def _generate_spoken_text(prompt_text: str) -> str:
         provider, model_name = get_resolved_chat_provider()
         if not provider:
             return ""
-        from app.services.providers.types import ChatGenerateRequest
+        from app.providers.services.types import ChatGenerateRequest
         req = ChatGenerateRequest(
             model=model_name,
             messages=[
@@ -543,8 +543,8 @@ def get_resolved_chat_provider():
 
     from app.db.session import SessionLocal
     from app.auth.models.user import User
-    from app.services.providers.registry import ProviderRegistry
-    from app.services.providers.selection_service import ProviderSelectionService
+    from app.providers.services.registry import ProviderRegistry
+    from app.providers.services.selection_service import ProviderSelectionService
 
     db = SessionLocal()
     try:
@@ -588,7 +588,7 @@ def get_resolved_chat_provider():
                 return provider, candidate.model_name
 
         # If lmstudio candidate is unreachable, check other active provider configs in database
-        from app.models.providers.provider_config import ProviderConfig
+        from app.providers.models.provider_config import ProviderConfig
         stmt = select(ProviderConfig).where(
             ProviderConfig.enabled,
             ProviderConfig.supports_chat,

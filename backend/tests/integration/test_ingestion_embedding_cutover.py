@@ -9,13 +9,13 @@ from sqlalchemy import select, text
 from app.core.config import Settings
 from app.db.session import get_session_factory, set_db_tenant_context
 from app.models.documents.chunk_embedding import ChunkEmbedding
-from app.models.providers.provider_assignment import ProviderAssignment
-from app.models.providers.provider_config import ProviderConfig
-from app.repositories.providers.provider_assignments import (
+from app.providers.models.provider_assignment import ProviderAssignment
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
-from app.repositories.providers.provider_configs import ProviderConfigsRepository
-from app.services.providers.openai_compatible import OpenAICompatibleProvider
+from app.providers.repositories.provider_configs import ProviderConfigsRepository
+from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.services.system.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser
 

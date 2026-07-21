@@ -2260,9 +2260,9 @@ class ToolExecutor:
         event_sink: Any = None,
     ) -> ToolResult:
         """Execute live web search using configured providers."""
-        from app.services.providers.registry import ProviderRegistry
-        from app.services.providers.selection_service import ProviderSelectionService
-        from app.services.providers.types import WebSearchRequest
+        from app.providers.services.registry import ProviderRegistry
+        from app.providers.services.selection_service import ProviderSelectionService
+        from app.providers.services.types import WebSearchRequest
 
         query = str(args.get("query", ""))
         if not query.strip():

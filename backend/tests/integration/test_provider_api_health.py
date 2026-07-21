@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.services.providers.types import HealthCheckResult
+from app.providers.services.types import HealthCheckResult
 from tests.conftest import SeededUser
 
 
@@ -75,13 +75,13 @@ def test_provider_test_and_health_endpoints(
             return True
 
     monkeypatch.setattr(
-        "app.services.providers.registry.ProviderRegistry.get_model_discovery_provider_from_config",
+        "app.providers.services.registry.ProviderRegistry.get_model_discovery_provider_from_config",
         lambda self, provider_config, api_key=None: FakeDiscovery(),
     )
     # LM Studio health check performs a usability probe on the chat model.
     # We must mock the chat provider factory to ensure this probe succeeds.
     monkeypatch.setattr(
-        "app.services.providers.registry.ProviderRegistry.get_chat_provider_from_selection",
+        "app.providers.services.registry.ProviderRegistry.get_chat_provider_from_selection",
         lambda self, selection: FakeDiscovery(),
     )
 

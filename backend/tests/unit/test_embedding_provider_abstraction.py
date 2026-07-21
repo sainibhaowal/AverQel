@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.providers.local_deterministic_provider import (
+from app.providers.services.local_deterministic_provider import (
     LocalDeterministicEmbeddingProvider,
 )
-from app.services.providers.sentence_transformers_provider import (
+from app.providers.services.sentence_transformers_provider import (
     SentenceTransformersEmbeddingProvider,
 )
-from app.services.providers.types import EmbeddingRequest
+from app.providers.services.types import EmbeddingRequest
 
 
 def test_local_deterministic_embedding_provider_returns_expected_dimensions():

@@ -7,7 +7,7 @@ from app.services.ingestion.embedding_service import (
     EmbeddingService,
     NonRetryableEmbeddingError,
 )
-from app.services.providers.types import EmbeddingResponse
+from app.providers.services.types import EmbeddingResponse
 
 
 class _FakeEmbeddingProvider:
@@ -29,7 +29,7 @@ def test_sentence_transformers_provider_returns_vectors(
     get_settings.cache_clear()
     provider = _FakeEmbeddingProvider([[0.01] * 384, [0.02] * 384])
     monkeypatch.setattr(
-        "app.services.providers.registry.ProviderRegistry.get_embedding_provider",
+        "app.providers.services.registry.ProviderRegistry.get_embedding_provider",
         lambda self, provider_type=None: provider,
     )
 
@@ -49,7 +49,7 @@ def test_sentence_transformers_dimension_mismatch_falls_back_to_local(
     get_settings.cache_clear()
     provider = _FakeEmbeddingProvider([[0.1, 0.2, 0.3]])
     monkeypatch.setattr(
-        "app.services.providers.registry.ProviderRegistry.get_embedding_provider",
+        "app.providers.services.registry.ProviderRegistry.get_embedding_provider",
         lambda self, provider_type=None: provider,
     )
 
@@ -73,7 +73,7 @@ def test_sentence_transformers_provider_errors_fall_back_to_local(
             raise RuntimeError("local inference unavailable")
 
     monkeypatch.setattr(
-        "app.services.providers.registry.ProviderRegistry.get_embedding_provider",
+        "app.providers.services.registry.ProviderRegistry.get_embedding_provider",
         lambda self, provider_type=None: _FailingProvider(),
     )
 
@@ -107,7 +107,7 @@ def test_sentence_transformers_dimension_mismatch_becomes_non_retryable_in_provi
 
     provider = _FakeEmbeddingProvider([[0.1, 0.2, 0.3]])
     monkeypatch.setattr(
-        "app.services.providers.registry.ProviderRegistry.get_embedding_provider",
+        "app.providers.services.registry.ProviderRegistry.get_embedding_provider",
         lambda self, provider_type=None: provider,
     )
 

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from app.models.providers.provider_assignment import ProviderAssignment
-from app.models.providers.provider_config import ProviderConfig
-from app.models.providers.provider_health_check import ProviderHealthCheck
-from app.models.providers.provider_model_cache import ProviderModelCache
-from app.models.providers.provider_secret import ProviderSecret
-from app.models.providers.provider_usage_record import ProviderUsageRecord
+from app.providers.models.provider_assignment import ProviderAssignment
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.models.provider_health_check import ProviderHealthCheck
+from app.providers.models.provider_model_cache import ProviderModelCache
+from app.providers.models.provider_secret import ProviderSecret
+from app.providers.models.provider_usage_record import ProviderUsageRecord
 
 
 def test_provider_secret_schema_has_no_plaintext_column() -> None:

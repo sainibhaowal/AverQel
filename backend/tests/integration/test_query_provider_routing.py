@@ -5,14 +5,14 @@ from typing import cast
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.db.session import get_session_factory
-from app.models.providers.provider_assignment import ProviderAssignment
-from app.models.providers.provider_config import ProviderConfig
-from app.repositories.providers.provider_assignments import (
+from app.providers.models.provider_assignment import ProviderAssignment
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
-from app.repositories.providers.provider_configs import ProviderConfigsRepository
+from app.providers.repositories.provider_configs import ProviderConfigsRepository
 from app.schemas.query.structured_response import StructuredAnswerResponse
-from app.services.providers.openai_compatible import OpenAICompatibleProvider
+from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.services.query.query_service import QueryService
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.services.providers.tavily_provider import TavilyProvider
-from app.services.providers.types import WebSearchRequest
+from app.providers.services.tavily_provider import TavilyProvider
+from app.providers.services.types import WebSearchRequest
 
 
 class _FakeResponse:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.schemas.providers.models import ProviderModelPreviewRequest
+from app.providers.schemas.models import ProviderModelPreviewRequest
 
 
 def test_provider_model_preview_request_strips_invisible_characters_from_url() -> None:

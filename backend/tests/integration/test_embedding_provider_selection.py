@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from app.core.config import get_settings
 from app.db.session import get_session_factory, set_db_tenant_context
-from app.models.providers.provider_assignment import ProviderAssignment
-from app.models.providers.provider_config import ProviderConfig
-from app.repositories.providers.provider_assignments import (
+from app.providers.models.provider_assignment import ProviderAssignment
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
-from app.repositories.providers.provider_configs import ProviderConfigsRepository
+from app.providers.repositories.provider_configs import ProviderConfigsRepository
 from app.services.ingestion.embedding_service import EmbeddingService
-from app.services.providers.openai_compatible import OpenAICompatibleProvider
+from app.providers.services.openai_compatible import OpenAICompatibleProvider
 
 
 def test_embedding_service_uses_selected_provider_assignment(

@@ -28,12 +28,12 @@ from app.models.integrations.connector import Connector, ConnectorStatus
 from app.models.integrations.connector_secret import ConnectorSecret
 from app.models.integrations.integration import Integration
 from app.models.integrations.mcp_server import MCPEvent, MCPOAuthToken, MCPServer
-from app.models.providers.provider_assignment import ProviderAssignment
-from app.models.providers.provider_config import ProviderConfig
-from app.models.providers.provider_health_check import ProviderHealthCheck
-from app.models.providers.provider_model_cache import ProviderModelCache
-from app.models.providers.provider_secret import ProviderSecret
-from app.models.providers.provider_usage_record import ProviderUsageRecord
+from app.providers.models.provider_assignment import ProviderAssignment
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.models.provider_health_check import ProviderHealthCheck
+from app.providers.models.provider_model_cache import ProviderModelCache
+from app.providers.models.provider_secret import ProviderSecret
+from app.providers.models.provider_usage_record import ProviderUsageRecord
 from app.models.query.comment import Comment
 from app.models.query.conversation import Conversation
 from app.models.query.feedback import Feedback

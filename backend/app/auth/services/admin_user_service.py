@@ -18,7 +18,7 @@ from app.auth.models.refresh_token import RefreshToken
 from app.auth.models.user import User
 from app.models.documents.collection import DocumentCollection
 from app.models.documents.document import Document
-from app.models.providers.provider_config import ProviderConfig
+from app.providers.models.provider_config import ProviderConfig
 from app.models.query.comment import Comment
 from app.models.query.conversation import Conversation
 from app.models.query.pinned_finding import PinnedFinding

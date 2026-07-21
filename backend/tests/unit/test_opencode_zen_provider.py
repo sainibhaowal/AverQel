@@ -5,11 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.providers.anthropic_provider import AnthropicProvider
-from app.services.providers.google_provider import GoogleProvider
-from app.services.providers.openai_compatible import OpenAICompatibleProvider
-from app.services.providers.opencode_zen_provider import OpenCodeZenProvider
-from app.services.providers.types import ChatGenerateRequest, ChatGenerateResponse
+from app.providers.services.anthropic_provider import AnthropicProvider
+from app.providers.services.google_provider import GoogleProvider
+from app.providers.services.openai_compatible import OpenAICompatibleProvider
+from app.providers.services.opencode_zen_provider import OpenCodeZenProvider
+from app.providers.services.types import ChatGenerateRequest, ChatGenerateResponse
 
 
 class _FakeResponse:

@@ -5,13 +5,13 @@ from app.auth.security import hash_password
 from app.db.session import get_session_factory
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
-from app.models.providers.provider_assignment import ProviderAssignment
-from app.models.providers.provider_config import ProviderConfig
-from app.repositories.providers.provider_assignments import (
+from app.providers.models.provider_assignment import ProviderAssignment
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
-from app.repositories.providers.provider_configs import ProviderConfigsRepository
-from app.services.providers.selection_service import ProviderSelectionService
+from app.providers.repositories.provider_configs import ProviderConfigsRepository
+from app.providers.services.selection_service import ProviderSelectionService
 
 
 def test_provider_selection_prefers_workspace_then_tenant_then_env(settings) -> None:

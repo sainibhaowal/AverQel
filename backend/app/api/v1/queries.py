@@ -23,8 +23,8 @@ from app.schemas.query.queries import (
     QueryRequest,
     QueryResponse,
 )
-from app.services.providers.reasoning_capabilities import reasoning_capabilities
-from app.services.providers.selection_service import ProviderSelectionService
+from app.providers.services.reasoning_capabilities import reasoning_capabilities
+from app.providers.services.selection_service import ProviderSelectionService
 from app.services.query.query_service import QueryService
 from app.services.system.audit_service import AuditService
 from app.services.system.quality_service import QualityService

@@ -3,8 +3,8 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 
-from app.services.providers.anthropic_provider import AnthropicProvider
-from app.services.providers.google_provider import GoogleProvider
+from app.providers.services.anthropic_provider import AnthropicProvider
+from app.providers.services.google_provider import GoogleProvider
 
 
 class _FakeResponse:

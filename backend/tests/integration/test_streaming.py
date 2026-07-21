@@ -9,7 +9,7 @@ from app.auth.dependencies import AuthContext
 from app.db.session import get_session_factory
 from app.repositories.query.chat import ChatRepository
 from app.schemas.query.followups import FollowupSuggestions
-from app.services.providers.types import (
+from app.providers.services.types import (
     ProviderSelectionCandidate,
     ProviderSelectionResult,
 )
@@ -117,7 +117,7 @@ async def test_stream_execute_flow(settings, seed_user):
                 return_value=[mock_chunk],
             ),
             patch(
-                "app.services.providers.selection_service.ProviderSelectionService.resolve_chat",
+                "app.providers.services.selection_service.ProviderSelectionService.resolve_chat",
                 return_value=ProviderSelectionResult(
                     feature_scope="chat",
                     candidates=[
@@ -250,7 +250,7 @@ async def test_stream_execute_emits_thinking_events_when_supported(settings, see
                 return_value=[mock_chunk],
             ),
             patch(
-                "app.services.providers.selection_service.ProviderSelectionService.resolve_chat",
+                "app.providers.services.selection_service.ProviderSelectionService.resolve_chat",
                 return_value=ProviderSelectionResult(
                     feature_scope="chat",
                     candidates=[
@@ -344,7 +344,7 @@ async def test_stream_execute_ignores_reasoning_chunks_when_thinking_disabled(
                 return_value=[mock_chunk],
             ),
             patch(
-                "app.services.providers.selection_service.ProviderSelectionService.resolve_chat",
+                "app.providers.services.selection_service.ProviderSelectionService.resolve_chat",
                 return_value=ProviderSelectionResult(
                     feature_scope="chat",
                     candidates=[
@@ -440,7 +440,7 @@ async def test_stream_execute_falls_back_to_grounded_text_when_llm_usage_is_deni
                 return_value=[mock_chunk],
             ),
             patch(
-                "app.services.providers.selection_service.ProviderSelectionService.resolve_chat",
+                "app.providers.services.selection_service.ProviderSelectionService.resolve_chat",
                 return_value=ProviderSelectionResult(
                     feature_scope="chat",
                     candidates=[
@@ -543,7 +543,7 @@ async def test_stream_execute_emits_diagram_event_for_structured_answer(
                 return_value=[mock_chunk],
             ),
             patch(
-                "app.services.providers.selection_service.ProviderSelectionService.resolve_chat",
+                "app.providers.services.selection_service.ProviderSelectionService.resolve_chat",
                 return_value=ProviderSelectionResult(
                     feature_scope="chat",
                     candidates=[

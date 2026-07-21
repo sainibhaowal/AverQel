@@ -10,7 +10,7 @@ from uuid import UUID
 import pytest
 
 from app.core.config import get_settings
-from app.services.providers.types import ProviderSelectionCandidate
+from app.providers.services.types import ProviderSelectionCandidate
 from app.services.query.answer_service import (
     AnswerService,
     LlmCircuitState,

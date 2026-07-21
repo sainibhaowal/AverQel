@@ -1,6 +1,6 @@
 """Test enhanced reasoning capabilities for new model families."""
 
-from app.services.providers.reasoning_capabilities import (
+from app.providers.services.reasoning_capabilities import (
     _ENABLE_THINKING_HINTS,
     _OPENAI_COMPATIBLE_HINTS,
     _matches_any,

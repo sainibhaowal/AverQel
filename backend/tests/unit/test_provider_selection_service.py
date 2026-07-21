@@ -8,19 +8,19 @@ from app.auth.security import hash_password
 from app.db.session import get_session_factory
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
-from app.models.providers.provider_assignment import ProviderAssignment
-from app.models.providers.provider_config import ProviderConfig
-from app.models.providers.provider_health_check import ProviderHealthCheck
-from app.models.providers.provider_model_cache import ProviderModelCache
-from app.repositories.providers.provider_assignments import (
+from app.providers.models.provider_assignment import ProviderAssignment
+from app.providers.models.provider_config import ProviderConfig
+from app.providers.models.provider_health_check import ProviderHealthCheck
+from app.providers.models.provider_model_cache import ProviderModelCache
+from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
-from app.repositories.providers.provider_configs import ProviderConfigsRepository
-from app.repositories.providers.provider_health_checks import (
+from app.providers.repositories.provider_configs import ProviderConfigsRepository
+from app.providers.repositories.provider_health_checks import (
     ProviderHealthChecksRepository,
 )
-from app.services.providers.selection_service import ProviderSelectionService
-from app.services.providers.types import ProviderModelInfo
+from app.providers.services.selection_service import ProviderSelectionService
+from app.providers.services.types import ProviderModelInfo
 from tests.conftest import _generate_test_collection_code
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
