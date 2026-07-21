@@ -19,9 +19,9 @@ from app.core.context import get_trace_id
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.models.query.query_citation import QueryCitation
-from app.repositories.documents.chunks import ChunksRepository
-from app.repositories.documents.collections import CollectionsRepository
-from app.repositories.documents.documents import DocumentsRepository
+from app.documents.repositories.chunks import ChunksRepository
+from app.documents.repositories.collections import CollectionsRepository
+from app.documents.repositories.documents import DocumentsRepository
 from app.repositories.ingestion.ingestion_jobs import IngestionJobsRepository
 from app.repositories.query.chat import ChatRepository
 from app.repositories.query.queries import QueriesRepository

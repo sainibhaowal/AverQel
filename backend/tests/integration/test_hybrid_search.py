@@ -3,9 +3,9 @@ import uuid
 import pytest
 
 from app.db.session import get_session_factory
-from app.models.documents.document import Document
-from app.models.documents.document_chunk import DocumentChunk
-from app.repositories.documents.chunks import ChunksRepository
+from app.documents.models.document import Document
+from app.documents.models.document_chunk import DocumentChunk
+from app.documents.repositories.chunks import ChunksRepository
 from app.services.query.retrieval_service import RetrievalService
 
 

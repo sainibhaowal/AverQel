@@ -11,7 +11,7 @@ from app.db.session import get_session_factory, set_db_tenant_context
 from app.auth.models.role import Role
 from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
-from app.models.documents.document import Document
+from app.documents.models.document import Document
 from app.models.system.audit_log import AuditLog
 from app.models.system.break_glass_grant import BreakGlassGrant
 from tests.conftest import SeededUser, _generate_test_collection_code

@@ -19,12 +19,12 @@ from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.models.documents.chunk_embedding import ChunkEmbedding
-from app.models.documents.document import Document
-from app.models.documents.document_chunk import DocumentChunk
+from app.documents.models.chunk_embedding import ChunkEmbedding
+from app.documents.models.document import Document
+from app.documents.models.document_chunk import DocumentChunk
 from app.models.ingestion.ingestion_job import IngestionJob
-from app.repositories.documents.chunks import ChunksRepository
-from app.repositories.documents.documents import DocumentsRepository
+from app.documents.repositories.chunks import ChunksRepository
+from app.documents.repositories.documents import DocumentsRepository
 from app.repositories.ingestion.ingestion_jobs import IngestionJobsRepository
 from app.repositories.system.idempotency_keys import IdempotencyKeysRepository
 from app.services.ingestion.chunking_service import ChunkingService

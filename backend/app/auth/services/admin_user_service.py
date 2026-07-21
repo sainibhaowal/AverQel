@@ -16,8 +16,8 @@ from app.auth.roles import is_platform_admin_email
 from app.db.session import set_db_tenant_context
 from app.auth.models.refresh_token import RefreshToken
 from app.auth.models.user import User
-from app.models.documents.collection import DocumentCollection
-from app.models.documents.document import Document
+from app.documents.models.collection import DocumentCollection
+from app.documents.models.document import Document
 from app.providers.models.provider_config import ProviderConfig
 from app.models.query.comment import Comment
 from app.models.query.conversation import Conversation

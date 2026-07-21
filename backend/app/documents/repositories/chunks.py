@@ -8,9 +8,9 @@ import sqlalchemy as sa
 from sqlalchemy import and_, delete, select
 
 from app.db.session import set_db_tenant_context
-from app.models.documents.chunk_embedding import ChunkEmbedding
-from app.models.documents.document import Document
-from app.models.documents.document_chunk import DocumentChunk
+from app.documents.models.chunk_embedding import ChunkEmbedding
+from app.documents.models.document import Document
+from app.documents.models.document_chunk import DocumentChunk
 from app.repositories.system.base import BaseRepository
 from app.services.system.metrics_service import observe_db_query
 

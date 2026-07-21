@@ -31,8 +31,8 @@ from app.auth.models.revoked_access_token import RevokedAccessToken
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
-from app.models.documents.collection import CollectionPermission
-from app.models.documents.document import Document
+from app.documents.models.collection import CollectionPermission
+from app.documents.models.document import Document
 from app.models.query.comment import Comment
 from app.models.query.conversation import Conversation
 from app.models.query.pinned_finding import PinnedFinding

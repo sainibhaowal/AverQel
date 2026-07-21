@@ -13,7 +13,7 @@ from sqlalchemy.engine import CursorResult
 from app.core.config import get_settings
 from app.db.session import get_session_factory
 from app.auth.models.tenant import Tenant
-from app.services.documents.deletion_service import DeletionService
+from app.documents.services.deletion_service import DeletionService
 from app.services.system.audit_service import AuditService
 from app.services.system.metrics_service import MAINTENANCE_JOB_EVENTS_TOTAL
 from app.worker.celery_app import celery_app  # type: ignore[attr-defined]

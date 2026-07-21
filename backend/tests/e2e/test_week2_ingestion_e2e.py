@@ -8,9 +8,9 @@ from pytest import MonkeyPatch
 from sqlalchemy import func, select, text
 
 from app.db.session import get_session_factory, set_db_tenant_context
-from app.models.documents.chunk_embedding import ChunkEmbedding
-from app.models.documents.document import Document
-from app.models.documents.document_chunk import DocumentChunk
+from app.documents.models.chunk_embedding import ChunkEmbedding
+from app.documents.models.document import Document
+from app.documents.models.document_chunk import DocumentChunk
 from app.services.system.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser
 

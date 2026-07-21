@@ -9,10 +9,8 @@ from app.api.v1 import (
     capabilities,
     chats,
     client_storage,
-    collections,
     deepspace_chats,
     deepspace_export,
-    documents,
     feedback,
     health,
     integrations,
@@ -24,6 +22,7 @@ from app.api.v1 import (
     voice_routes,
     workspace,
 )
+from app.documents.api import collections, documents
 from app.analytics.api import analytics, dashboard
 from app.providers.api import providers
 from app.auth import api as auth

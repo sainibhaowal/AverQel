@@ -16,11 +16,11 @@ _EXPORTS = {
         "RefreshTokensRepository",
     ),
     "DocumentsRepository": (
-        "app.repositories.documents.documents",
+        "app.documents.repositories.documents",
         "DocumentsRepository",
     ),
     "CollectionNotificationsRepository": (
-        "app.repositories.documents.collection_notifications",
+        "app.documents.repositories.collection_notifications",
         "CollectionNotificationsRepository",
     ),
     "IngestionJobsRepository": (
@@ -28,7 +28,7 @@ _EXPORTS = {
         "IngestionJobsRepository",
     ),
     "QueriesRepository": ("app.repositories.query.queries", "QueriesRepository"),
-    "ChunksRepository": ("app.repositories.documents.chunks", "ChunksRepository"),
+    "ChunksRepository": ("app.documents.repositories.chunks", "ChunksRepository"),
     "IdempotencyKeysRepository": (
         "app.repositories.system.idempotency_keys",
         "IdempotencyKeysRepository",
@@ -38,7 +38,7 @@ _EXPORTS = {
         "AuditLogsRepository",
     ),
     "DataDeletionsRepository": (
-        "app.repositories.documents.data_deletions",
+        "app.documents.repositories.data_deletions",
         "DataDeletionsRepository",
     ),
 }

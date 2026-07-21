@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.services.documents.pdf_render_service import PdfRenderService
+from app.documents.services.pdf_render_service import PdfRenderService
 from app.services.ingestion.conversion_service import ConversionService
 from app.services.ingestion.extractors.base import (
     BaseExtractor,

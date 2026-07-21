@@ -3,8 +3,6 @@ from app.auth import api as auth
 from app.api.v1 import (
     admin,
     client_storage,
-    collections,
-    documents,
     health,
     intelligence,
     metrics,
@@ -12,6 +10,7 @@ from app.api.v1 import (
     support,
     workspace,
 )
+from app.documents.api import collections, documents
 from app.analytics.api import analytics, dashboard
 from app.providers.api import providers
 

@@ -7,8 +7,8 @@ import sqlalchemy as sa
 from sqlalchemy import func, select, update
 
 from app.db.session import set_db_tenant_context
-from app.models.documents.collection import CollectionDocument, CollectionPermission
-from app.models.documents.document import Document
+from app.documents.models.collection import CollectionDocument, CollectionPermission
+from app.documents.models.document import Document
 from app.repositories.system.base import BaseRepository
 from app.services.ingestion.extractors.base import ExtractionResult
 from app.services.system.metrics_service import observe_db_query

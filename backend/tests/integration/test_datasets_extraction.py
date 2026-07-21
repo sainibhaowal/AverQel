@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from app.core.config import Settings
-from app.services.documents.pdf_render_service import RenderedPdfPage
+from app.documents.services.pdf_render_service import RenderedPdfPage
 from app.services.ingestion.extractors.router import ExtractorRouter
 from app.services.ingestion.ocr_service import OcrResult
 from tests.support.datasets import ensure_test_datasets
@@ -62,7 +62,7 @@ def test_office_documents(router: ExtractorRouter):
 
 
 @patch("app.services.ingestion.ocr_service.OcrService.extract_image_text")
-@patch("app.services.documents.pdf_render_service.PdfRenderService.render_pdf_pages")
+@patch("app.documents.services.pdf_render_service.PdfRenderService.render_pdf_pages")
 def test_scanned_documents(mock_render, mock_extract, router: ExtractorRouter):
     mock_extract.return_value = OcrResult(
         text="SCANNED-OCR-001", confidence=0.95, warnings=[], engine="local"

@@ -31,14 +31,14 @@ from app.auth.tenancy import (
 )
 from app.db import session as session_module
 from app.auth.models.user import User
-from app.models.documents.data_deletion import DataDeletion
+from app.documents.models.data_deletion import DataDeletion
 from app.auth.repositories.roles import RolesRepository
 from app.auth.repositories.users import UsersRepository
-from app.repositories.documents.chunks import ChunksRepository
-from app.repositories.documents.data_deletions import DataDeletionsRepository
+from app.documents.repositories.chunks import ChunksRepository
+from app.documents.repositories.data_deletions import DataDeletionsRepository
 from app.repositories.query.queries import QueriesRepository
 from app.repositories.system.audit_logs import AuditLogsRepository
-from app.services.documents.deletion_service import DeletionService
+from app.documents.services.deletion_service import DeletionService
 from app.services.ingestion.chunking_service import ChunkingService
 from app.services.ingestion.parser_service import ParserService
 from app.services.security.malware_scan_service import MalwareScanService

@@ -11,8 +11,8 @@ from typing import Protocol
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.repositories.documents.chunks import ChunksRepository, RetrievedChunkRow
-from app.repositories.documents.documents import DocumentsRepository
+from app.documents.repositories.chunks import ChunksRepository, RetrievedChunkRow
+from app.documents.repositories.documents import DocumentsRepository
 from app.services.ingestion.embedding_service import EmbeddingService
 from app.services.query.query_classifier import QueryClassifier, QueryType
 from app.services.query.reranker_service import RerankerService
@@ -587,8 +587,8 @@ class RetrievalService:
         import sqlalchemy as sa
         from sqlalchemy import select
 
-        from app.models.documents.document import Document
-        from app.models.documents.document_chunk import DocumentChunk
+        from app.documents.models.document import Document
+        from app.documents.models.document_chunk import DocumentChunk
         from app.services.system.metrics_service import observe_db_query
 
         stmt = (

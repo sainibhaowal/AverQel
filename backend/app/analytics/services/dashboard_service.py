@@ -6,10 +6,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models.documents.document import Document
+from app.documents.models.document import Document
 from app.models.system.audit_log import AuditLog
-from app.repositories.documents.collections import CollectionsRepository
-from app.repositories.documents.documents import DocumentsRepository
+from app.documents.repositories.collections import CollectionsRepository
+from app.documents.repositories.documents import DocumentsRepository
 from app.repositories.ingestion.ingestion_jobs import IngestionJobsRepository
 from app.providers.repositories.provider_configs import ProviderConfigsRepository
 from app.providers.repositories.provider_health_checks import (

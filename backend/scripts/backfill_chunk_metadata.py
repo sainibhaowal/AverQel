@@ -4,7 +4,7 @@ import logging
 from sqlalchemy import select
 
 from app.db.session import get_session_factory
-from app.models.documents.document_chunk import DocumentChunk
+from app.documents.models.document_chunk import DocumentChunk
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

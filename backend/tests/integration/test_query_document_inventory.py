@@ -12,14 +12,14 @@ from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.core.ids import generate_uuid7_with_fallback
 from app.db.session import get_session_factory, set_db_tenant_context
-from app.models.documents.chunk_embedding import ChunkEmbedding
-from app.models.documents.collection import (
+from app.documents.models.chunk_embedding import ChunkEmbedding
+from app.documents.models.collection import (
     CollectionDocument,
     CollectionPermission,
     DocumentCollection,
 )
-from app.models.documents.document import Document
-from app.models.documents.document_chunk import DocumentChunk
+from app.documents.models.document import Document
+from app.documents.models.document_chunk import DocumentChunk
 from app.models.ingestion.ingestion_job import IngestionJob
 from app.providers.services.types import ProviderSelectionCandidate
 from app.services.query.answer_service import AnswerResult

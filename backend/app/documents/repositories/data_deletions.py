@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.models.documents.data_deletion import DataDeletion
+from app.documents.models.data_deletion import DataDeletion
 from app.repositories.system.base import BaseRepository
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.models.documents.collection import (
+from app.documents.models.collection import (
     CollectionDocument,
     CollectionPermission,
     DocumentCollection,
 )
-from app.models.documents.document import Document
-from app.repositories.documents.collections import CollectionsRepository
+from app.documents.models.document import Document
+from app.documents.repositories.collections import CollectionsRepository
 
 
 def test_get_collection_document_counts(

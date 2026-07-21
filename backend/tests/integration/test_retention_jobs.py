@@ -7,7 +7,7 @@ from sqlalchemy import func, select, text
 
 from app.core.ids import generate_uuid7_with_fallback
 from app.db.session import get_session_factory, set_db_tenant_context
-from app.models.documents.data_deletion import DataDeletion
+from app.documents.models.data_deletion import DataDeletion
 from app.models.system.idempotency_key import IdempotencyKey
 from app.worker.tasks_maintenance import retention_cleanup
 from tests.conftest import SeededUser

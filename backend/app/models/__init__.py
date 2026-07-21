@@ -11,18 +11,18 @@ from app.models.deepspace.agent_memory import AgentMemory
 from app.models.deepspace.agent_runtime_preference import AgentRuntimePreference
 from app.models.deepspace.mission_snapshot import DeepSpaceMissionSnapshot
 from app.models.deepspace.agent_todo import AgentTodo
-from app.models.documents.chunk_embedding import ChunkEmbedding
-from app.models.documents.collection import (
+from app.documents.models.chunk_embedding import ChunkEmbedding
+from app.documents.models.collection import (
     CollectionChatMessage,
     CollectionDocument,
     CollectionPermission,
     DocumentCollection,
     UserPresence,
 )
-from app.models.documents.collection_notification import CollectionNotification
-from app.models.documents.data_deletion import DataDeletion
-from app.models.documents.document import Document
-from app.models.documents.document_chunk import DocumentChunk
+from app.documents.models.collection_notification import CollectionNotification
+from app.documents.models.data_deletion import DataDeletion
+from app.documents.models.document import Document
+from app.documents.models.document_chunk import DocumentChunk
 from app.models.ingestion.ingestion_job import IngestionJob
 from app.models.integrations.connector import Connector, ConnectorStatus
 from app.models.integrations.connector_secret import ConnectorSecret

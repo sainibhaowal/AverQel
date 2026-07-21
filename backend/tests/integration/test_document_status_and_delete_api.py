@@ -15,9 +15,9 @@ from app.db.session import get_session_factory, set_db_tenant_context
 from app.auth.models.role import Role
 from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
-from app.models.documents.chunk_embedding import ChunkEmbedding
-from app.models.documents.document import Document
-from app.models.documents.document_chunk import DocumentChunk
+from app.documents.models.chunk_embedding import ChunkEmbedding
+from app.documents.models.document import Document
+from app.documents.models.document_chunk import DocumentChunk
 from app.models.ingestion.ingestion_job import IngestionJob
 from tests.conftest import SeededUser, _generate_test_collection_code
 

@@ -2351,7 +2351,7 @@ class ToolExecutor:
 
     async def _exec_search_ecosystem_docs(self, args: dict[str, Any]) -> ToolResult:
         """Search private ecosystem documents with strict web-crawler isolation."""
-        from app.models.documents.document import Document
+        from app.documents.models.document import Document
         from app.models.integrations.connector import Connector
         from app.models.integrations.integration import Integration
         from app.services.query.retrieval_service import RetrievalService

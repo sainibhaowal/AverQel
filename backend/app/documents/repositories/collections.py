@@ -6,13 +6,13 @@ from typing import TypedDict
 from sqlalchemy import delete, func, select
 
 from app.db.session import set_db_tenant_context
-from app.models.documents.collection import (
+from app.documents.models.collection import (
     CollectionChatMessage,
     CollectionDocument,
     CollectionPermission,
     DocumentCollection,
 )
-from app.models.documents.document import Document
+from app.documents.models.document import Document
 from app.repositories.system.base import BaseRepository
 from app.services.system.metrics_service import observe_db_query
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.repositories.documents.chunks import RetrievedChunkRow
+from app.documents.repositories.chunks import RetrievedChunkRow
 from app.services.query.retrieval_service import RetrievalService, RetrievedChunk
 
 

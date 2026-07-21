@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.db.session import set_db_tenant_context
-from app.models.documents.collection_notification import CollectionNotification
+from app.documents.models.collection_notification import CollectionNotification
 from app.repositories.system.base import BaseRepository
 from app.services.system.metrics_service import observe_db_query
 

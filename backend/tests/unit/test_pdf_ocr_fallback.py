@@ -5,7 +5,7 @@ import pytest
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
-from app.services.documents.pdf_render_service import PdfRenderService, RenderedPdfPage
+from app.documents.services.pdf_render_service import PdfRenderService, RenderedPdfPage
 from app.services.ingestion.extractors.base import ExtractionRequest, ExtractionResult
 from app.services.ingestion.extractors.layout_vision_extractor import (
     LayoutVisionExtractor,

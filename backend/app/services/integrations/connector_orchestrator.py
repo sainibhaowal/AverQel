@@ -12,11 +12,11 @@ from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.db.session import get_session_factory, set_db_tenant_context
 from app.models.deepspace.agent_activity import AgentActivity
-from app.models.documents.collection_notification import CollectionNotification
+from app.documents.models.collection_notification import CollectionNotification
 from app.models.integrations.connector import Connector, ConnectorStatus
 from app.models.integrations.connector_secret import ConnectorSecret
 from app.models.integrations.integration import Integration
-from app.repositories.documents.collection_notifications import (
+from app.documents.repositories.collection_notifications import (
     CollectionNotificationsRepository,
 )
 from app.services.deepspace.memory.memory_service import TodoService

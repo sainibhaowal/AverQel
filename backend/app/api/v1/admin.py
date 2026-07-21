@@ -18,7 +18,7 @@ from app.auth.tenancy import TenantContext, get_tenant_context
 from app.db.session import get_db
 from app.models.system.break_glass_grant import BreakGlassGrant
 from app.auth.repositories.users import UsersRepository
-from app.repositories.documents.documents import DocumentsRepository
+from app.documents.repositories.documents import DocumentsRepository
 from app.auth.schemas.admin import (
     AdminDocumentStatusCountResponse,
     AdminDocumentSummaryListResponse,
@@ -48,7 +48,7 @@ from app.auth.services.admin_user_service import (
     AdminUserService,
     AdminUserSummary,
 )
-from app.services.documents.deletion_service import DeletionService
+from app.documents.services.deletion_service import DeletionService
 from app.services.system.audit_service import AuditService
 from app.worker.tasks_maintenance import process_data_deletion
 

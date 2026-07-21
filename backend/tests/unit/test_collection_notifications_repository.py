@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.models.documents.collection_notification import CollectionNotification
-from app.repositories.documents.collection_notifications import (
+from app.documents.models.collection_notification import CollectionNotification
+from app.documents.repositories.collection_notifications import (
     CollectionNotificationsRepository,
 )
 

@@ -2034,7 +2034,7 @@ class DeepSpaceService:
 
         from sqlalchemy import select
 
-        from app.models.documents.document import Document
+        from app.documents.models.document import Document
         from app.models.integrations.connector import Connector
         from app.models.integrations.integration import Integration
 

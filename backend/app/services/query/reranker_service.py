@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.repositories.documents.chunks import RetrievedChunkRow
+from app.documents.repositories.chunks import RetrievedChunkRow
 from app.providers.services import ProviderRegistry, RerankRequest
 from app.providers.services.selection_service import ProviderSelectionService
 

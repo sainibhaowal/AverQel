@@ -10,15 +10,15 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.models.documents.chunk_embedding import ChunkEmbedding
-from app.models.documents.collection import (
+from app.documents.models.chunk_embedding import ChunkEmbedding
+from app.documents.models.collection import (
     CollectionDocument,
     CollectionPermission,
     DocumentCollection,
 )
-from app.models.documents.data_deletion import DataDeletion
-from app.models.documents.document import Document
-from app.models.documents.document_chunk import DocumentChunk
+from app.documents.models.data_deletion import DataDeletion
+from app.documents.models.document import Document
+from app.documents.models.document_chunk import DocumentChunk
 from app.models.ingestion.ingestion_job import IngestionJob
 from app.models.query.comment import Comment
 from app.models.query.conversation import Conversation
@@ -28,7 +28,7 @@ from app.models.query.pinned_finding import PinnedFinding
 from app.models.query.query import Query
 from app.models.query.query_citation import QueryCitation
 from app.models.system.idempotency_key import IdempotencyKey
-from app.repositories.documents.data_deletions import DataDeletionsRepository
+from app.documents.repositories.data_deletions import DataDeletionsRepository
 from app.services.system.audit_service import AuditService
 from app.services.system.metrics_service import observe_db_query
 from app.services.system.storage_service import StorageService

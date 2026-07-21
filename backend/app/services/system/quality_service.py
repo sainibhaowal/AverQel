@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.models.documents.document import Document
-from app.models.documents.document_chunk import DocumentChunk
+from app.documents.models.document import Document
+from app.documents.models.document_chunk import DocumentChunk
 from app.models.query.query import Query
 from app.models.query.query_citation import QueryCitation
 

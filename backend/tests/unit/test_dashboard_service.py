@@ -3,12 +3,12 @@ from __future__ import annotations
 import secrets
 
 from app.core.ids import generate_uuid7_with_fallback
-from app.models.documents.collection import (
+from app.documents.models.collection import (
     CollectionDocument,
     CollectionPermission,
     DocumentCollection,
 )
-from app.models.documents.document import Document
+from app.documents.models.document import Document
 from app.analytics.services.dashboard_service import DashboardService
 
 
@@ -24,7 +24,7 @@ def test_dashboard_service_get_overview(
     )
 
     # 1. Setup Collection
-    from app.repositories.documents.collections import CollectionsRepository
+    from app.documents.repositories.collections import CollectionsRepository
 
     repo = CollectionsRepository(db_session)
     collection = DocumentCollection(

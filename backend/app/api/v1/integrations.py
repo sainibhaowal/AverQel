@@ -15,12 +15,12 @@ from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.auth.rbac import require_permissions
 from app.db.session import get_db
-from app.models.documents.document import Document
+from app.documents.models.document import Document
 from app.models.integrations.connector import Connector, ConnectorStatus
 from app.models.integrations.connector_secret import ConnectorSecret
 from app.models.integrations.integration import Integration
 from app.models.system.audit_log import AuditLog
-from app.schemas.documents.documents import DocumentMetadataResponse
+from app.documents.schemas.documents import DocumentMetadataResponse
 from app.schemas.integrations.connectors import (
     ConnectorCreate,
     ConnectorFleetSummary,
