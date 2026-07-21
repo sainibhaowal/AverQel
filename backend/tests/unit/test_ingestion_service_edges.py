@@ -560,7 +560,7 @@ def test_enqueue_ingestion_queue_unavailable(
             _ = (args, kwargs)
             raise RuntimeError("queue down")
 
-    monkeypatch.setattr("app.worker.tasks_ingestion.process_ingestion_job", _Task)
+    monkeypatch.setattr("app.ingestion.workers.tasks.process_ingestion_job", _Task)
     with pytest.raises(ApiError) as exc:
         service._enqueue_ingestion(job_id=uuid4(), tenant_id=uuid4())
     assert exc.value.code == "INGESTION_QUEUE_UNAVAILABLE"

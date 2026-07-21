@@ -12,7 +12,8 @@ from app.deepspace.models.agent_todo import AgentTodo
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.integration import Integration
 from app.deepspace.proactive.proactive_triggers import ProactiveTriggerRegistry
-from app.worker import tasks_connectors, tasks_proactive
+from app.deepspace.workers import tasks_proactive
+from app.integrations.workers import tasks_connectors
 
 
 @dataclass

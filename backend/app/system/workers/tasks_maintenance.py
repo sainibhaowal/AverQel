@@ -16,7 +16,7 @@ from app.auth.models.tenant import Tenant
 from app.documents.services.deletion_service import DeletionService
 from app.system.services.audit_service import AuditService
 from app.system.services.metrics_service import MAINTENANCE_JOB_EVENTS_TOTAL
-from app.worker.celery_app import celery_app  # type: ignore[attr-defined]
+from app.platform.worker.celery_app import celery_app  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

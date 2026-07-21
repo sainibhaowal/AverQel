@@ -7,7 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 from app.ingestion.services.ingestion_service import RetryableIngestionError
-from app.worker import tasks_connectors, tasks_ingestion, tasks_maintenance
+from app.ingestion.workers import tasks as tasks_ingestion
+from app.integrations.workers import tasks_connectors
+from app.system.workers import tasks_maintenance
 
 
 class _DummyCounter:

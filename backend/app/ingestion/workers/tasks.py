@@ -17,7 +17,7 @@ from app.system.services.metrics_service import (
     WORKER_JOB_TRANSITIONS_TOTAL,
     WORKER_STAGE_DURATION_SECONDS,
 )
-from app.worker.celery_app import celery_app  # type: ignore[attr-defined]
+from app.platform.worker.celery_app import celery_app  # type: ignore[attr-defined]
 
 logger = logging.getLogger(__name__)
 

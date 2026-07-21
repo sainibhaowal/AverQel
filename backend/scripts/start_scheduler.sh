@@ -7,7 +7,7 @@ if [[ -z "${AKS_REDIS_URL:-}" ]]; then
 fi
 
 if [[ "${AKS_DEEPSPACE_PROACTIVE_DAEMON_ENABLED:-false}" == "true" ]]; then
-  exec python -m app.worker.proactive_daemon
+  exec python -m app.deepspace.workers.daemon
 fi
 
 SCHEDULE_FILE="${AKS_CELERY_BEAT_SCHEDULE_FILE:-/state/backend/cache/celerybeat-schedule}"
@@ -19,4 +19,4 @@ if ! mkdir -p "${SCHEDULE_DIR}" 2>/dev/null || [[ ! -w "${SCHEDULE_DIR}" ]]; the
   SCHEDULE_FILE="${SCHEDULE_DIR}/celerybeat-schedule"
 fi
 
-exec celery -A app.worker.celery_app.celery_app beat --loglevel=INFO --schedule "${SCHEDULE_FILE}"
+exec celery -A app.platform.worker.celery_app.celery_app beat --loglevel=INFO --schedule "${SCHEDULE_FILE}"

@@ -30,7 +30,7 @@ from app.deepspace.subagents.subagent_registry import SubagentRegistry
 from app.integrations.services.mcp_runtime import (
     build_mcp_runtime,
 )
-from app.worker.celery_app import celery_app
+from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 

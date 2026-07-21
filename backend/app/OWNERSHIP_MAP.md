@@ -170,7 +170,7 @@ app/models/deepspace/
 app/repositories/deepspace/
 app/schemas/deepspace/
 app/services/deepspace/
-app/worker/tasks_deepspace.py
+app/deepspace/workers/tasks.py
 ```
 
 Future owner: `app/deepspace/`.
@@ -261,7 +261,7 @@ app/models/ingestion/
 app/repositories/ingestion/
 app/services/ingestion/
 app/services/ingestion/extractors/
-app/worker/tasks_ingestion.py
+app/ingestion/workers/tasks.py
 ```
 
 Future owner: `app/ingestion/`.
@@ -284,8 +284,8 @@ app/repositories/integrations.py
 app/repositories/mcp_events.py
 app/schemas/integrations/
 app/services/integrations/
-app/worker/tasks_connectors.py
-app/worker/tasks_mcp.py
+app/integrations/workers/tasks_connectors.py
+app/integrations/workers/tasks_mcp.py
 ```
 
 Future owner: `app/integrations/`.
@@ -327,7 +327,7 @@ app/schemas/system/
 app/models/system/
 app/repositories/system/
 app/services/system/
-app/worker/tasks_maintenance.py
+app/system/workers/tasks_maintenance.py
 ```
 
 Future owner: `app/system/`.

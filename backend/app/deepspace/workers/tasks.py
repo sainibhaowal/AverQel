@@ -12,7 +12,7 @@ from app.platform.database.session import get_session_factory
 from app.deepspace.missions.mission_registry import MissionRegistry
 from app.deepspace.orchestration.master_orchestrator import MasterOrchestrator
 from app.system.services.metrics_service import DEEPSPACE_CONTINUATION_EVENTS_TOTAL
-from app.worker.celery_app import celery_app
+from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 

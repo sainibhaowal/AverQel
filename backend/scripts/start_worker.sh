@@ -26,4 +26,4 @@ for priority in high normal low; do
   done
 done
 
-exec celery -A app.worker.celery_app.celery_app worker --loglevel=INFO -Q "ingestion_heavy,ingestion_light,maintenance,${DEEPSPACE_QUEUES}" --concurrency="${AKS_WORKER_CONCURRENCY}"
+exec celery -A app.platform.worker.celery_app.celery_app worker --loglevel=INFO -Q "ingestion_heavy,ingestion_light,maintenance,${DEEPSPACE_QUEUES}" --concurrency="${AKS_WORKER_CONCURRENCY}"

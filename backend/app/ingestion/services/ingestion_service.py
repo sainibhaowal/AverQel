@@ -1192,7 +1192,7 @@ class IngestionService:
     def _enqueue_ingestion(
         self, *, job_id: uuid.UUID, tenant_id: uuid.UUID, queue: str = "ingestion_light"
     ) -> None:
-        from app.worker.tasks_ingestion import process_ingestion_job
+        from app.ingestion.workers.tasks import process_ingestion_job
 
         try:
             process_ingestion_job.apply_async(

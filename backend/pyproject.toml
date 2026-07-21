@@ -57,9 +57,9 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "app.providers.services.lmstudio_provider",
-    "app.worker.celery_app",
-    "app.worker.tasks_ingestion",
-    "app.worker.tasks_maintenance",
+    "app.platform.worker.celery_app",
+    "app.ingestion.workers.tasks",
+    "app.system.workers.tasks_maintenance",
     "app.system.services.storage_service",
     "app.system.services.cache_service",
     "app.system.services.rate_limit_service",
@@ -93,7 +93,7 @@ module = [
     "app.deepspace.models.*",
     "app.deepspace.api.chats",
     "app.deepspace.api.export",
-    "app.worker.tasks_connectors",
+    "app.integrations.workers.tasks_connectors",
     "app.deepspace.workers.tasks_proactive",
     "app.deepspace.workers.tasks",
 ]

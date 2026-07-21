@@ -16,7 +16,7 @@ from app.integrations.models.mcp_server import MCPServer
 from app.integrations.repositories.mcp_events import MCPEventsRepository
 from app.integrations.services.mcp_runtime import MCPCatalog, MCPRuntimeError, build_mcp_runtime, build_mcp_server_runtime
 from app.integrations.services.mcp_endpoint_security import validate_remote_endpoint
-from app.worker.celery_app import celery_app
+from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 

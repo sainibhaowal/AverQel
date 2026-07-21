@@ -21,7 +21,7 @@ from app.system.services.metrics_service import (
     WORKER_RETRIES_TOTAL,
     WORKER_STAGE_DURATION_SECONDS,
 )
-from app.worker.celery_app import celery_app
+from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 

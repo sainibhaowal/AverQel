@@ -12,7 +12,7 @@ celery_app = Celery(
     broker=settings.redis_url,
     backend=settings.redis_url,
     include=[
-        "app.worker.tasks_ingestion",
+        "app.ingestion.workers.tasks",
         "app.system.workers.tasks_maintenance",
         "app.integrations.workers.tasks_connectors",
         "app.deepspace.workers.tasks_proactive",
