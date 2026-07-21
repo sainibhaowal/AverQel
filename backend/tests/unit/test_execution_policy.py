@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from app.services.deepspace.policy.execution_policy import ExecutionPolicy
-from app.services.deepspace.workspace.workspace_mode import WorkspaceMode
+from app.deepspace.policy.execution_policy import ExecutionPolicy
+from app.deepspace.workspace.workspace_mode import WorkspaceMode
 
 
 def test_execution_policy_auto_review_requires_approval_for_writes() -> None:

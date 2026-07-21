@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.services.deepspace.proactive.trigger_runner import build_trigger_runner
+from app.deepspace.proactive.trigger_runner import build_trigger_runner
 
 
 class _FakeTodoService:

@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.deepspace.policy.autonomy_policy import AutonomyPolicy
+from app.deepspace.policy.autonomy_policy import AutonomyPolicy
 
 
 @pytest.mark.unit_no_db

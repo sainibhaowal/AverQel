@@ -5,12 +5,12 @@ from app.auth.models.role import Role
 from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
-from app.models.deepspace.agent_activity import AgentActivity
-from app.models.deepspace.agent_audit import AgentAuditLog
-from app.models.deepspace.agent_memory import AgentMemory
-from app.models.deepspace.agent_runtime_preference import AgentRuntimePreference
-from app.models.deepspace.mission_snapshot import DeepSpaceMissionSnapshot
-from app.models.deepspace.agent_todo import AgentTodo
+from app.deepspace.models.agent_activity import AgentActivity
+from app.deepspace.models.agent_audit import AgentAuditLog
+from app.deepspace.models.agent_memory import AgentMemory
+from app.deepspace.models.agent_runtime_preference import AgentRuntimePreference
+from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
+from app.deepspace.models.agent_todo import AgentTodo
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.collection import (
     CollectionChatMessage,

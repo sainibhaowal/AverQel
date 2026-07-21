@@ -3,8 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.models.deepspace.agent_runtime_preference import AgentRuntimePreference
-from app.services.deepspace.missions.mission_registry import MissionRegistry
+from app.deepspace.models.agent_runtime_preference import AgentRuntimePreference
+from app.deepspace.missions.mission_registry import MissionRegistry
 
 
 class _FakeRedis:
@@ -42,7 +42,7 @@ def test_execution_mode_persists_in_db_and_overrides_redis(
 ) -> None:
     fake_redis = _FakeRedis()
     monkeypatch.setattr(
-        "app.services.deepspace.missions.mission_registry.get_redis_client", lambda: fake_redis
+        "app.deepspace.missions.mission_registry.get_redis_client", lambda: fake_redis
     )
 
     tenant_id = str(uuid4())

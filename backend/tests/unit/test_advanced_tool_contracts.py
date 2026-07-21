@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.deepspace.execution.agent_permissions import PermissionLevel
-from app.services.deepspace.execution.agent_tools import ALL_TOOLS, build_dynamic_mcp_tool
-from app.services.deepspace.policy.execution_policy import ExecutionPolicy
-from app.services.deepspace.execution.tool_contracts import ToolContract, infer_tool_contract
-from app.services.deepspace.workspace.workspace_mode import WorkspaceMode
+from app.deepspace.execution.agent_permissions import PermissionLevel
+from app.deepspace.execution.agent_tools import ALL_TOOLS, build_dynamic_mcp_tool
+from app.deepspace.policy.execution_policy import ExecutionPolicy
+from app.deepspace.execution.tool_contracts import ToolContract, infer_tool_contract
+from app.deepspace.workspace.workspace_mode import WorkspaceMode
 
 
 @pytest.mark.unit_no_db

@@ -3,12 +3,8 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import (
-    client_storage,
-    deepspace_chats,
-    deepspace_export,
-    workspace,
-)
+from app.deepspace.api import chats as deepspace_chats
+from app.deepspace.api import client_storage, export as deepspace_export, workspace
 from app.query.api import chats, intelligence, queries
 from app.system.api import (
     admin,

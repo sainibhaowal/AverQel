@@ -1,9 +1,7 @@
 from app.auth import api as auth
 
-from app.api.v1 import (
-    client_storage,
-    workspace,
-)
+from app.deepspace.api import chats as deepspace_chats
+from app.deepspace.api import client_storage, export as deepspace_export, workspace
 from app.query.api import chats, intelligence, queries
 from app.system.api import admin, capabilities, feedback, health, metrics, support
 from app.documents.api import collections, documents

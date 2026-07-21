@@ -1,4 +1,4 @@
-from app.services.deepspace.autonomy import AutonomyController, GoalContract
+from app.deepspace.autonomy import AutonomyController, GoalContract
 
 
 def test_coding_goal_cannot_finish_without_artifact_and_verification() -> None:

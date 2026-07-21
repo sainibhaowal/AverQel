@@ -241,7 +241,7 @@ def connector_fleet_summary(
     attention_connectors = attention_connectors[:8]
     daemon_heartbeat = None
     try:
-        from app.services.deepspace.subagents.subagent_registry import SubagentRegistry
+        from app.deepspace.subagents.subagent_registry import SubagentRegistry
 
         daemon_heartbeat = SubagentRegistry().get_daemon_heartbeat()
     except Exception:

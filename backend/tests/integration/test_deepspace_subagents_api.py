@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.services.deepspace.subagents.subagent_registry import SubagentRegistry
+from app.deepspace.subagents.subagent_registry import SubagentRegistry
 
 
 def _auth_headers(seeded, *, roles: tuple[str, ...] = ("admin",)) -> dict[str, str]:
@@ -109,7 +109,7 @@ def test_subagent_summary_api_reports_backend_and_lane_health(
             }
 
     monkeypatch.setattr(
-        "app.services.deepspace.subagents.subagent_registry.SubagentRegistry", _SummaryRegistry
+        "app.deepspace.subagents.subagent_registry.SubagentRegistry", _SummaryRegistry
     )
 
     response = client.get("/api/v1/deepspace/chats/subagents/summary", headers=headers)

@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.deepspace.execution.reliability import CircuitBreaker, CircuitOpenError
+from app.deepspace.execution.reliability import CircuitBreaker, CircuitOpenError
 
 
 def test_circuit_opens_after_transient_failures() -> None:

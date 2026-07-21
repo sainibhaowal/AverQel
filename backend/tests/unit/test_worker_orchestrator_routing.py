@@ -7,11 +7,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.deepspace.agent_activity import AgentActivity
-from app.models.deepspace.agent_todo import AgentTodo
+from app.deepspace.models.agent_activity import AgentActivity
+from app.deepspace.models.agent_todo import AgentTodo
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.integration import Integration
-from app.services.deepspace.proactive.proactive_triggers import ProactiveTriggerRegistry
+from app.deepspace.proactive.proactive_triggers import ProactiveTriggerRegistry
 from app.worker import tasks_connectors, tasks_proactive
 
 

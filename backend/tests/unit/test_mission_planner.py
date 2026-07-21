@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.deepspace.planning.mission_planner import MissionPlanner
+from app.deepspace.planning.mission_planner import MissionPlanner
 
 
 class _FakeLLM:

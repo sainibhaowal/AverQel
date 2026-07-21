@@ -6,13 +6,13 @@ from uuid import uuid4
 
 import pytest
 
-import app.services.deepspace.execution.agent_executor as agent_executor_module
-import app.services.deepspace.missions.mission_registry as mission_registry_module
+import app.deepspace.execution.agent_executor as agent_executor_module
+import app.deepspace.missions.mission_registry as mission_registry_module
 from app.auth.dependencies import AuthContext
 from app.query.schemas.chats import ConversationCreateRequest, ConversationUpdate
-from app.services.deepspace.execution.agent_executor import AgentExecutor
-from app.services.deepspace.execution.agent_tools import ToolExecutor, ToolResult
-from app.services.deepspace.orchestration.deepspace_service import DeepSpaceService
+from app.deepspace.execution.agent_executor import AgentExecutor
+from app.deepspace.execution.agent_tools import ToolExecutor, ToolResult
+from app.deepspace.orchestration.deepspace_service import DeepSpaceService
 
 
 class _EmptyStreamLLM:
@@ -196,7 +196,7 @@ async def test_task_tool_uses_current_parent_id_for_subagent_lineage(monkeypatch
             return ToolResult(success=True, output="Sub-agent completed.")
 
     monkeypatch.setattr(
-        "app.services.deepspace.subagents.subagent_manager.SubagentManager",
+        "app.deepspace.subagents.subagent_manager.SubagentManager",
         _FakeSubagentManager,
     )
 
@@ -1075,7 +1075,7 @@ async def test_agent_executor_passes_workspace_mode_to_runtime_policy_for_code_t
             seen["workspace_mode"] = (
                 workspace_mode.summary() if workspace_mode is not None else None
             )
-            from app.services.deepspace.policy.execution_policy import ExecutionDecision
+            from app.deepspace.policy.execution_policy import ExecutionDecision
 
             return ExecutionDecision(
                 mode=mode,
@@ -1166,7 +1166,7 @@ async def test_agent_executor_keeps_workspace_mode_disabled_when_runtime_flag_is
             seen["workspace_mode"] = (
                 workspace_mode.summary() if workspace_mode is not None else None
             )
-            from app.services.deepspace.policy.execution_policy import ExecutionDecision
+            from app.deepspace.policy.execution_policy import ExecutionDecision
 
             return ExecutionDecision(
                 mode=mode,
@@ -1248,7 +1248,7 @@ async def test_deepspace_service_persists_permission_pause_without_fallback(
             )
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.deepspace_service.AgentExecutor",
+        "app.deepspace.orchestration.deepspace_service.AgentExecutor",
         _PermissionOnlyExecutor,
     )
 
@@ -1337,7 +1337,7 @@ async def test_deepspace_service_streams_and_persists_normal_assistant_reply(
             yield SimpleNamespace(type="answer_done", data={"total_steps": 1})
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.deepspace_service.AgentExecutor",
+        "app.deepspace.orchestration.deepspace_service.AgentExecutor",
         _SimpleReplyExecutor,
     )
 
@@ -1457,7 +1457,7 @@ async def test_deepspace_service_resume_streams_approved_tool_and_versions_respo
             yield SimpleNamespace(type="answer_done", data={"total_steps": 2})
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.deepspace_service.AgentExecutor",
+        "app.deepspace.orchestration.deepspace_service.AgentExecutor",
         _ResumeExecutor,
     )
 
@@ -1574,7 +1574,7 @@ async def test_deepspace_service_regenerate_uses_agentic_versioning(monkeypatch)
             yield SimpleNamespace(type="answer_done", data={"total_steps": 1})
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.deepspace_service.AgentExecutor",
+        "app.deepspace.orchestration.deepspace_service.AgentExecutor",
         _ReplyExecutor,
     )
 

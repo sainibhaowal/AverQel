@@ -1240,7 +1240,7 @@ class CollectionBroadcastManager:
 
 broadcast_manager = CollectionBroadcastManager()
 
-from app.api.v1.deepspace_chats import _authenticate_websocket_auth_context  # noqa: E402
+from app.deepspace.api.chats import _authenticate_websocket_auth_context  # noqa: E402
 from app.core.config import Settings, get_settings  # noqa: E402
 
 

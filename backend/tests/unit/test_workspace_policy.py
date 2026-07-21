@@ -4,8 +4,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.auth.dependencies import AuthContext
-from app.services.deepspace.workspace.workspace_mode import WorkspaceMode
-from app.services.deepspace.workspace.workspace_policy import WorkspacePolicy
+from app.deepspace.workspace.workspace_mode import WorkspaceMode
+from app.deepspace.workspace.workspace_policy import WorkspacePolicy
 
 
 def test_workspace_policy_enables_code_mode_for_repo_tasks() -> None:

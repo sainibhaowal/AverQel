@@ -8,8 +8,8 @@ from uuid import uuid4
 import pytest
 
 from app.auth.dependencies import AuthContext
-from app.services.deepspace.execution.agent_tools import ToolResult
-from app.services.deepspace.orchestration.master_orchestrator import MasterOrchestrator
+from app.deepspace.execution.agent_tools import ToolResult
+from app.deepspace.orchestration.master_orchestrator import MasterOrchestrator
 
 
 class _FakeRegistry:
@@ -339,21 +339,21 @@ async def test_master_orchestrator_runs_parallel_lanes_and_synthesizes(
     db_session,
 ) -> None:
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
+        "app.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
+        "app.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.SubagentManager",
+        "app.deepspace.orchestration.master_orchestrator.SubagentManager",
         _FakeSubagentManager,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
+        "app.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
         _noop_async,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
+        "app.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
         lambda *args, **kwargs: "task-1",
     )
 
@@ -420,11 +420,11 @@ async def test_master_orchestrator_stops_launching_lanes_after_cancellation(
     db_session,
 ) -> None:
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionRegistry",
+        "app.deepspace.orchestration.master_orchestrator.MissionRegistry",
         _CancellingRegistry,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
+        "app.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
     )
 
     class _FailOnSpawnSubagentManager(_FakeSubagentManager):
@@ -432,15 +432,15 @@ async def test_master_orchestrator_stops_launching_lanes_after_cancellation(
             raise AssertionError("subagent lanes should not start after cancellation")
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.SubagentManager",
+        "app.deepspace.orchestration.master_orchestrator.SubagentManager",
         _FailOnSpawnSubagentManager,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
+        "app.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
         _noop_async,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
+        "app.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
         lambda *args, **kwargs: "task-1",
     )
 
@@ -493,7 +493,7 @@ async def test_master_orchestrator_stops_launching_lanes_after_cancellation(
         }
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionPlanner.build_plan",
+        "app.deepspace.orchestration.master_orchestrator.MissionPlanner.build_plan",
         _canceling_plan,
     )
 
@@ -543,21 +543,21 @@ async def test_master_orchestrator_uses_mission_id_as_subagent_parent_when_no_co
     db_session,
 ) -> None:
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
+        "app.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
+        "app.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.SubagentManager",
+        "app.deepspace.orchestration.master_orchestrator.SubagentManager",
         _FakeSubagentManager,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
+        "app.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
         _noop_async,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
+        "app.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
         lambda *args, **kwargs: "task-1",
     )
 
@@ -602,22 +602,22 @@ async def test_master_orchestrator_uses_model_authored_planner_json(
     db_session,
 ) -> None:
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
+        "app.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.AgentExecutor",
+        "app.deepspace.orchestration.master_orchestrator.AgentExecutor",
         _PlannerJsonAgentExecutor,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.SubagentManager",
+        "app.deepspace.orchestration.master_orchestrator.SubagentManager",
         _FakeSubagentManager,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
+        "app.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
         _noop_async,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
+        "app.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
         lambda *args, **kwargs: "task-1",
     )
 
@@ -693,10 +693,10 @@ async def test_master_orchestrator_pauses_on_approval_request(
     db_session,
 ) -> None:
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
+        "app.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.SubagentManager",
+        "app.deepspace.orchestration.master_orchestrator.SubagentManager",
         _FakeSubagentManager,
     )
 
@@ -717,14 +717,14 @@ async def test_master_orchestrator_pauses_on_approval_request(
             )
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.AgentExecutor", _ApprovalAgent
+        "app.deepspace.orchestration.master_orchestrator.AgentExecutor", _ApprovalAgent
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
+        "app.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
         _noop_async,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
+        "app.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
         lambda *args, **kwargs: "task-1",
     )
 
@@ -775,11 +775,11 @@ async def test_master_orchestrator_reports_declined_approval(
             payload["status"] = "declined"
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionRegistry",
+        "app.deepspace.orchestration.master_orchestrator.MissionRegistry",
         _DecliningRegistry,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.SubagentManager",
+        "app.deepspace.orchestration.master_orchestrator.SubagentManager",
         _FakeSubagentManager,
     )
 
@@ -795,14 +795,14 @@ async def test_master_orchestrator_reports_declined_approval(
             )
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.AgentExecutor", _ApprovalAgent
+        "app.deepspace.orchestration.master_orchestrator.AgentExecutor", _ApprovalAgent
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
+        "app.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
         _noop_async,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
+        "app.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
         lambda *args, **kwargs: "task-1",
     )
 
@@ -845,7 +845,7 @@ async def test_master_orchestrator_reports_declined_approval(
         }
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionPlanner.build_plan",
+        "app.deepspace.orchestration.master_orchestrator.MissionPlanner.build_plan",
         _fake_build_plan,
     )
 
@@ -888,10 +888,10 @@ async def test_master_orchestrator_full_access_skips_approval_pause(
     db_session,
 ) -> None:
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
+        "app.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.SubagentManager",
+        "app.deepspace.orchestration.master_orchestrator.SubagentManager",
         _FakeSubagentManager,
     )
 
@@ -908,14 +908,14 @@ async def test_master_orchestrator_full_access_skips_approval_pause(
             )
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.AgentExecutor", _ApprovalAwareAgent
+        "app.deepspace.orchestration.master_orchestrator.AgentExecutor", _ApprovalAwareAgent
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
+        "app.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
         _noop_async,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
+        "app.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
         lambda *args, **kwargs: "task-1",
     )
 
@@ -958,21 +958,21 @@ async def test_master_orchestrator_connector_lane_emits_progress_and_result_meta
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
+        "app.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
+        "app.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.SubagentManager",
+        "app.deepspace.orchestration.master_orchestrator.SubagentManager",
         _FakeSubagentManager,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
+        "app.deepspace.orchestration.master_orchestrator.MemoryService.store_fact",
         _noop_async,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
+        "app.deepspace.orchestration.master_orchestrator.TodoService.upsert_task",
         lambda *args, **kwargs: "task-connector",
     )
 
@@ -1109,17 +1109,17 @@ async def test_master_orchestrator_support_sweep_routes_through_internal_support
             }
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
+        "app.deepspace.orchestration.master_orchestrator.MissionRegistry", _FakeRegistry
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
+        "app.deepspace.orchestration.master_orchestrator.AgentExecutor", _FakeAgentExecutor
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.VitalsService.get_system_vitals",
+        "app.deepspace.orchestration.master_orchestrator.VitalsService.get_system_vitals",
         _fake_vitals,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.subagents.subagent_registry.SubagentRegistry",
+        "app.deepspace.subagents.subagent_registry.SubagentRegistry",
         _FakeDaemonRegistry,
     )
     monkeypatch.setattr(

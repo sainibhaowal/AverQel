@@ -5,8 +5,8 @@ from uuid import uuid4
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.models.deepspace.agent_activity import AgentActivity
-from app.services.deepspace.memory.memory_service import TodoService
+from app.deepspace.models.agent_activity import AgentActivity
+from app.deepspace.memory.memory_service import TodoService
 from app.query.services.answer_service import StreamEvent
 from tests.conftest import SeededUser
 
@@ -104,7 +104,7 @@ def test_orchestration_endpoint_returns_unified_mission_graph(
         }
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.orchestration_service.VitalsService.get_system_vitals",
+        "app.deepspace.orchestration.orchestration_service.VitalsService.get_system_vitals",
         _fake_get_system_vitals,
     )
 
@@ -129,7 +129,7 @@ def test_orchestration_endpoint_returns_unified_mission_graph(
             return "runtime"
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.orchestration_service.AgentExecutor", _FakeExecutor
+        "app.deepspace.orchestration.orchestration_service.AgentExecutor", _FakeExecutor
     )
 
     class _FakeRegistry:
@@ -200,7 +200,7 @@ def test_orchestration_endpoint_returns_unified_mission_graph(
             }
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.orchestration_service.SubagentRegistry", _FakeRegistry
+        "app.deepspace.orchestration.orchestration_service.SubagentRegistry", _FakeRegistry
     )
 
     response = client.get("/api/v1/deepspace/chats/orchestration", headers=headers)
@@ -244,7 +244,7 @@ def test_orchestration_stream_endpoint_emits_federated_mission_events(
     headers = _auth_headers(seeded, roles=("admin",))
 
     monkeypatch.setattr(
-        "app.api.v1.deepspace_chats.RateLimitService.enforce_query_user_limit",
+        "app.deepspace.api.chats.RateLimitService.enforce_query_user_limit",
         lambda *args, **kwargs: None,
     )
 
@@ -329,7 +329,7 @@ def test_orchestration_stream_endpoint_emits_federated_mission_events(
             )
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MasterOrchestrator",
+        "app.deepspace.orchestration.master_orchestrator.MasterOrchestrator",
         _FakeOrchestrator,
     )
 
@@ -367,7 +367,7 @@ def test_orchestration_stream_endpoint_emits_error_event_on_runtime_failure(
     headers = _auth_headers(seeded, roles=("admin",))
 
     monkeypatch.setattr(
-        "app.api.v1.deepspace_chats.RateLimitService.enforce_query_user_limit",
+        "app.deepspace.api.chats.RateLimitService.enforce_query_user_limit",
         lambda *args, **kwargs: None,
     )
 
@@ -380,7 +380,7 @@ def test_orchestration_stream_endpoint_emits_error_event_on_runtime_failure(
             yield  # pragma: no cover
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MasterOrchestrator",
+        "app.deepspace.orchestration.master_orchestrator.MasterOrchestrator",
         _FailingOrchestrator,
     )
 
@@ -411,7 +411,7 @@ def test_orchestration_stream_endpoint_emits_lane_failure_contract(
     headers = _auth_headers(seeded, roles=("admin",))
 
     monkeypatch.setattr(
-        "app.api.v1.deepspace_chats.RateLimitService.enforce_query_user_limit",
+        "app.deepspace.api.chats.RateLimitService.enforce_query_user_limit",
         lambda *args, **kwargs: None,
     )
 
@@ -454,7 +454,7 @@ def test_orchestration_stream_endpoint_emits_lane_failure_contract(
             )
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MasterOrchestrator",
+        "app.deepspace.orchestration.master_orchestrator.MasterOrchestrator",
         _LaneFailureOrchestrator,
     )
 
@@ -515,7 +515,7 @@ def test_orchestration_approval_endpoint_resolves_lane(
             return payload
 
     monkeypatch.setattr(
-        "app.services.deepspace.missions.mission_registry.MissionRegistry", _FakeRegistry
+        "app.deepspace.missions.mission_registry.MissionRegistry", _FakeRegistry
     )
 
     response = client.post(
@@ -571,7 +571,7 @@ def test_orchestration_approval_endpoint_declines_lane(
             return payload
 
     monkeypatch.setattr(
-        "app.services.deepspace.missions.mission_registry.MissionRegistry", _FakeRegistry
+        "app.deepspace.missions.mission_registry.MissionRegistry", _FakeRegistry
     )
 
     response = client.post(
@@ -600,7 +600,7 @@ def test_resume_stream_endpoint_emits_approved_tool_lifecycle(
     headers = _auth_headers(seeded, roles=("admin",))
 
     monkeypatch.setattr(
-        "app.api.v1.deepspace_chats.RateLimitService.enforce_query_user_limit",
+        "app.deepspace.api.chats.RateLimitService.enforce_query_user_limit",
         lambda *args, **kwargs: None,
     )
 
@@ -628,7 +628,7 @@ def test_resume_stream_endpoint_emits_approved_tool_lifecycle(
             )
             yield 'event: done\ndata: {"completed":true}\n\n'
 
-    monkeypatch.setattr("app.api.v1.deepspace_chats.DeepSpaceService", _FakeService)
+    monkeypatch.setattr("app.deepspace.api.chats.DeepSpaceService", _FakeService)
 
     response = client.post(
         "/api/v1/deepspace/chats/resume",
@@ -717,7 +717,7 @@ def test_orchestration_endpoint_filtering_by_conversation_id(
         }
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.orchestration_service.VitalsService.get_system_vitals",
+        "app.deepspace.orchestration.orchestration_service.VitalsService.get_system_vitals",
         _fake_get_system_vitals,
     )
 
@@ -742,7 +742,7 @@ def test_orchestration_endpoint_filtering_by_conversation_id(
             return "runtime"
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.orchestration_service.AgentExecutor", _FakeExecutor
+        "app.deepspace.orchestration.orchestration_service.AgentExecutor", _FakeExecutor
     )
 
     class _FakeRegistry:
@@ -775,7 +775,7 @@ def test_orchestration_endpoint_filtering_by_conversation_id(
             return None
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.orchestration_service.SubagentRegistry", _FakeRegistry
+        "app.deepspace.orchestration.orchestration_service.SubagentRegistry", _FakeRegistry
     )
 
     response = client.get(

@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.auth.dependencies import AuthContext
-from app.services.deepspace.orchestration.deepspace_service import DeepSpaceService
+from app.deepspace.orchestration.deepspace_service import DeepSpaceService
 
 
 @pytest.mark.asyncio
@@ -55,7 +55,7 @@ async def test_deepspace_stream_injects_manual_documents_into_openchat_context(
             yield SimpleNamespace(type="answer_done", data={"total_steps": 1})
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.deepspace_service.AgentExecutor", _ContextAwareExecutor
+        "app.deepspace.orchestration.deepspace_service.AgentExecutor", _ContextAwareExecutor
     )
 
     service = DeepSpaceService.__new__(DeepSpaceService)
@@ -178,7 +178,7 @@ async def test_deepspace_stream_emits_observing_step(monkeypatch):
             yield SimpleNamespace(type="answer_done", data={"total_steps": 2})
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.deepspace_service.AgentExecutor", _ObservingExecutor
+        "app.deepspace.orchestration.deepspace_service.AgentExecutor", _ObservingExecutor
     )
 
     service = DeepSpaceService.__new__(DeepSpaceService)

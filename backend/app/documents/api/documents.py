@@ -372,7 +372,7 @@ async def upload_document(
     )
 
     payload = await file.read()
-    from app.services.deepspace.integrations.client_proxy import client_proxy_registry
+    from app.deepspace.integrations.client_proxy import client_proxy_registry
     if client_proxy_registry.is_client_connected(str(auth.tenant_id), str(auth.user_id)):
         import base64
         payload_b64 = base64.b64encode(payload).decode("utf-8")

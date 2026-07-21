@@ -5,7 +5,7 @@ from collections import deque
 
 import pytest
 
-from app.services.deepspace.workspace.shell_manager import ShellManager, ShellSession
+from app.deepspace.workspace.shell_manager import ShellManager, ShellSession
 
 
 class _FakeStream:
@@ -68,7 +68,7 @@ async def test_shell_session_uses_warm_docker_exec_and_persists_cwd(monkeypatch)
     monkeypatch.setattr(session, "_ensure_container", fake_ensure_container)
     monkeypatch.setattr(session, "_read_cwd_state", fake_read_cwd_state)
     monkeypatch.setattr(
-        "app.services.deepspace.workspace.shell_manager.asyncio.create_subprocess_exec",
+        "app.deepspace.workspace.shell_manager.asyncio.create_subprocess_exec",
         fake_create_subprocess_exec,
     )
 
@@ -115,7 +115,7 @@ async def test_shell_session_times_out_and_emits_timeout_chunk(monkeypatch):
     monkeypatch.setattr(session, "_ensure_container", fake_ensure_container)
     monkeypatch.setattr(session, "_read_cwd_state", fake_read_cwd_state)
     monkeypatch.setattr(
-        "app.services.deepspace.workspace.shell_manager.asyncio.create_subprocess_exec",
+        "app.deepspace.workspace.shell_manager.asyncio.create_subprocess_exec",
         fake_create_subprocess_exec,
     )
 

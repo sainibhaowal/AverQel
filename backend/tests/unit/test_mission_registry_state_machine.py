@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.deepspace.missions.mission_registry import MissionRegistry
+from app.deepspace.missions.mission_registry import MissionRegistry
 
 
 class _MemoryRegistry(MissionRegistry):

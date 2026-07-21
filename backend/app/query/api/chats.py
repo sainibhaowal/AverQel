@@ -85,7 +85,7 @@ async def list_conversations(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ConversationListResponse:
-    from app.services.deepspace.integrations.client_proxy import client_proxy_registry
+    from app.deepspace.integrations.client_proxy import client_proxy_registry
     if client_proxy_registry.is_storage_connected(str(auth.tenant_id), str(auth.user_id)):
         items_data = await client_proxy_registry.db_proxy_call(
             str(auth.tenant_id), str(auth.user_id),
@@ -106,7 +106,7 @@ async def list_conversations(
         offset=offset,
     )
     from app.core.config import get_settings
-    from app.services.deepspace.missions.mission_registry import MissionRegistry
+    from app.deepspace.missions.mission_registry import MissionRegistry
 
     missions = MissionRegistry(get_settings(), db=db).list_missions(
         tenant_id=str(auth.tenant_id), user_id=str(auth.user_id), limit=100
@@ -141,7 +141,7 @@ async def get_chat_history(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> ChatHistoryResponse:
-    from app.services.deepspace.integrations.client_proxy import client_proxy_registry
+    from app.deepspace.integrations.client_proxy import client_proxy_registry
     if client_proxy_registry.is_storage_connected(str(auth.tenant_id), str(auth.user_id)):
         messages_data = await client_proxy_registry.db_proxy_call(
             str(auth.tenant_id), str(auth.user_id),

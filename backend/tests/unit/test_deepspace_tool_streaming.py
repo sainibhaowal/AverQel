@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.auth.dependencies import AuthContext
-from app.services.deepspace.execution.agent_tools import ToolExecutor
+from app.deepspace.execution.agent_tools import ToolExecutor
 
 
 def _build_executor() -> ToolExecutor:

@@ -1,4 +1,4 @@
-from app.services.deepspace.workspace.coding_harness import (
+from app.deepspace.workspace.coding_harness import (
     CodingHarness,
     CodingMissionContract,
 )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.worker.tasks_proactive import run_proactive_daemon
+from app.deepspace.workers.tasks_proactive import run_proactive_daemon
 
 
 def main() -> None:

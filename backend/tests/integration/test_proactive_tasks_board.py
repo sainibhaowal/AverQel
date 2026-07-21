@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.models.deepspace.agent_activity import AgentActivity
-from app.services.deepspace.memory.memory_service import TodoService
+from app.deepspace.models.agent_activity import AgentActivity
+from app.deepspace.memory.memory_service import TodoService
 from tests.conftest import SeededUser
 
 
@@ -151,7 +151,7 @@ def test_proactive_tasks_run_now_endpoint_triggers_immediate_execution(
         called["value"] = True
 
     monkeypatch.setattr(
-        "app.worker.tasks_proactive._run_recurring_rule", _fake_run_recurring_rule
+        "app.deepspace.workers.tasks_proactive._run_recurring_rule", _fake_run_recurring_rule
     )
 
     response = client.post(
@@ -282,7 +282,7 @@ def test_delete_task_endpoint(
 ) -> None:
     from sqlalchemy import select
 
-    from app.models.deepspace.agent_todo import AgentTodo
+    from app.deepspace.models.agent_todo import AgentTodo
 
     seeded = seed_user(
         "Delete Task Tenant",
@@ -352,7 +352,7 @@ def test_cascade_delete_tasks_on_conversation_delete(
 ) -> None:
     from sqlalchemy import select
 
-    from app.models.deepspace.agent_todo import AgentTodo
+    from app.deepspace.models.agent_todo import AgentTodo
     from app.query.repositories.chat import ChatRepository
 
     seeded = seed_user(

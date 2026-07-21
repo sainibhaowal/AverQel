@@ -3,8 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.models.deepspace.agent_runtime_preference import AgentRuntimePreference
-from app.services.deepspace.missions.mission_registry import MissionRegistry
+from app.deepspace.models.agent_runtime_preference import AgentRuntimePreference
+from app.deepspace.missions.mission_registry import MissionRegistry
 
 
 class _FakeRedis:
@@ -43,7 +43,7 @@ def test_runtime_preferences_persist_in_db_and_override_redis(
 ) -> None:
     fake_redis = _FakeRedis()
     monkeypatch.setattr(
-        "app.services.deepspace.missions.mission_registry.get_redis_client",
+        "app.deepspace.missions.mission_registry.get_redis_client",
         lambda: fake_redis,
     )
 
@@ -110,7 +110,7 @@ def test_runtime_preferences_persist_in_db_and_override_redis(
 def test_runtime_preferences_fall_back_to_settings_defaults(monkeypatch) -> None:
     fake_redis = _FakeRedis()
     monkeypatch.setattr(
-        "app.services.deepspace.missions.mission_registry.get_redis_client",
+        "app.deepspace.missions.mission_registry.get_redis_client",
         lambda: fake_redis,
     )
 
@@ -151,7 +151,7 @@ def test_runtime_preferences_normalize_unknown_values_to_safe_defaults(
 ) -> None:
     fake_redis = _FakeRedis()
     monkeypatch.setattr(
-        "app.services.deepspace.missions.mission_registry.get_redis_client",
+        "app.deepspace.missions.mission_registry.get_redis_client",
         lambda: fake_redis,
     )
 
@@ -180,7 +180,7 @@ def test_runtime_preferences_normalize_unknown_values_to_safe_defaults(
 def test_runtime_preferences_return_all_defined_defaults(monkeypatch) -> None:
     fake_redis = _FakeRedis()
     monkeypatch.setattr(
-        "app.services.deepspace.missions.mission_registry.get_redis_client",
+        "app.deepspace.missions.mission_registry.get_redis_client",
         lambda: fake_redis,
     )
 

@@ -7,7 +7,7 @@ import pytest
 
 from app.auth.dependencies import AuthContext
 from app.core.config import Settings
-from app.services.deepspace.orchestration.deepspace_service import DeepSpaceService
+from app.deepspace.orchestration.deepspace_service import DeepSpaceService
 
 
 @pytest.mark.asyncio
@@ -148,11 +148,11 @@ async def test_deepspace_orchestrated_stream_emits_normalized_mission_and_lane_e
             )
 
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.deepspace_service.AgentExecutor",
+        "app.deepspace.orchestration.deepspace_service.AgentExecutor",
         _RuntimeAgentExecutor,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.orchestration.master_orchestrator.MasterOrchestrator",
+        "app.deepspace.orchestration.master_orchestrator.MasterOrchestrator",
         _FakeOrchestrator,
     )
 

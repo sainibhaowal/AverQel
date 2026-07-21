@@ -1,7 +1,7 @@
 import pytest
 
-from app.services.deepspace.execution.agent_permissions import PermissionLevel
-from app.services.deepspace.execution.tool_contracts import infer_tool_contract, redact_tool_payload
+from app.deepspace.execution.agent_permissions import PermissionLevel
+from app.deepspace.execution.tool_contracts import infer_tool_contract, redact_tool_payload
 
 
 @pytest.mark.unit_no_db

@@ -206,7 +206,7 @@ async def list_providers(
     db: Session = Depends(get_db),
 ) -> ProviderConfigListResponse:
     _enforce_tenant_scope(request_tenant_id, auth)
-    from app.services.deepspace.integrations.client_proxy import client_proxy_registry
+    from app.deepspace.integrations.client_proxy import client_proxy_registry
     if client_proxy_registry.is_client_connected(str(auth.tenant_id), str(auth.user_id)):
         items_data = await client_proxy_registry.db_proxy_call(
             str(auth.tenant_id), str(auth.user_id),
@@ -243,7 +243,7 @@ async def create_provider(
     db: Session = Depends(get_db),
 ) -> ProviderConfigResponse:
     _enforce_tenant_scope(request_tenant_id, auth)
-    from app.services.deepspace.integrations.client_proxy import client_proxy_registry
+    from app.deepspace.integrations.client_proxy import client_proxy_registry
     if client_proxy_registry.is_client_connected(str(auth.tenant_id), str(auth.user_id)):
         payload_dict = payload.model_dump()
         if "workspace_id" in payload_dict and payload_dict["workspace_id"]:

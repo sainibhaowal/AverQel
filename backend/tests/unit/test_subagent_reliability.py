@@ -7,15 +7,15 @@ from uuid import uuid4
 
 import pytest
 
-import app.services.deepspace.subagents.subagent_registry as subagent_registry_module
+import app.deepspace.subagents.subagent_registry as subagent_registry_module
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
-from app.services.deepspace.execution.agent_tools import ToolResult
-from app.services.deepspace.subagents.subagent_manager import (
+from app.deepspace.execution.agent_tools import ToolResult
+from app.deepspace.subagents.subagent_manager import (
     SubagentManager,
     _LocalSubagentRegistry,
 )
-from app.services.deepspace.subagents.subagent_registry import SubagentRegistry
+from app.deepspace.subagents.subagent_registry import SubagentRegistry
 
 
 class _BusyRegistry:
@@ -447,7 +447,7 @@ async def test_subagent_loop_times_out_and_reports_failure(monkeypatch):
     manager = _manager(registry)
     manager._subagent_timeout_seconds = lambda: 0.01  # type: ignore[method-assign]
     monkeypatch.setattr(
-        "app.services.deepspace.execution.agent_executor.AgentExecutor",
+        "app.deepspace.execution.agent_executor.AgentExecutor",
         _SlowAgentExecutor,
     )
 
@@ -469,7 +469,7 @@ async def test_subagent_loop_routes_aliases_into_canonical_profiles(monkeypatch)
     registry = _MidFlightCancelRegistry()
     manager = _manager(registry)
     monkeypatch.setattr(
-        "app.services.deepspace.execution.agent_executor.AgentExecutor",
+        "app.deepspace.execution.agent_executor.AgentExecutor",
         _ProfileAwareAgentExecutor,
     )
 
@@ -504,7 +504,7 @@ async def test_subagent_loop_normalizes_summary_when_no_final_answer(monkeypatch
     registry = _MidFlightCancelRegistry()
     manager = _manager(registry)
     monkeypatch.setattr(
-        "app.services.deepspace.execution.agent_executor.AgentExecutor",
+        "app.deepspace.execution.agent_executor.AgentExecutor",
         _SummaryOnlyAgentExecutor,
     )
 
@@ -528,11 +528,11 @@ async def test_subagent_manager_uses_preferred_profile_for_generic_requests(
     manager = _manager(registry)
     manager.settings.deepspace_subagent_profiles_rollout_enabled = True
     monkeypatch.setattr(
-        "app.services.deepspace.execution.agent_executor.AgentExecutor",
+        "app.deepspace.execution.agent_executor.AgentExecutor",
         _ProfileAwareAgentExecutor,
     )
     monkeypatch.setattr(
-        "app.services.deepspace.subagents.subagent_manager.MissionRegistry.get_subagent_profile",
+        "app.deepspace.subagents.subagent_manager.MissionRegistry.get_subagent_profile",
         lambda self, **kwargs: "planner",  # noqa: ARG005
     )
 

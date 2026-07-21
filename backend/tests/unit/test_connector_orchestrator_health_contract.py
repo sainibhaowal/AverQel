@@ -6,7 +6,7 @@ from uuid import uuid4
 from sqlalchemy import text
 
 from app.db.session import get_session_factory
-from app.models.deepspace.agent_activity import AgentActivity
+from app.deepspace.models.agent_activity import AgentActivity
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration

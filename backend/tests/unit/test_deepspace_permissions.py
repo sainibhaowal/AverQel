@@ -8,20 +8,20 @@ import pytest
 
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
-from app.models.deepspace.agent_audit import AgentAuditLog
-from app.services.deepspace.execution.agent_permissions import (
+from app.deepspace.models.agent_audit import AgentAuditLog
+from app.deepspace.execution.agent_permissions import (
     PermissionLevel,
     permission_tier_number,
 )
-from app.services.deepspace.execution.agent_tools import (
+from app.deepspace.execution.agent_tools import (
     TASK,
     TODO_WRITE,
     PermissionMode,
     ToolExecutor,
     ToolResult,
 )
-from app.services.deepspace.execution.tool_context import ToolContext
-from app.services.deepspace.execution.tool_contracts import (
+from app.deepspace.execution.tool_context import ToolContext
+from app.deepspace.execution.tool_contracts import (
     ToolExecutionPolicy,
     validate_tool_arguments,
 )
@@ -314,7 +314,7 @@ def test_tool_executor_timeout_has_failure_code(monkeypatch, db_session):
 
     executor._exec_read_file = MethodType(_slow_exec, executor)
     monkeypatch.setattr(
-        "app.services.deepspace.execution.agent_tools.build_tool_execution_policy",
+        "app.deepspace.execution.agent_tools.build_tool_execution_policy",
         lambda tool, args: ToolExecutionPolicy(
             timeout_seconds=0.001,
             retries=0,

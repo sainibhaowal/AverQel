@@ -6,8 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.models.deepspace.agent_memory import AgentMemory
-from app.services.deepspace.memory.memory_service import MemoryService
+from app.deepspace.models.agent_memory import AgentMemory
+from app.deepspace.memory.memory_service import MemoryService
 from tests.conftest import SeededUser
 
 
