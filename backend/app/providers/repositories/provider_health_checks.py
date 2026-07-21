@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 
 from app.providers.models.provider_health_check import ProviderHealthCheck
-from app.repositories.system.base import BaseRepository
+from app.system.repositories.base import BaseRepository
 
 
 class ProviderHealthChecksRepository(BaseRepository):

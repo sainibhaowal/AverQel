@@ -17,7 +17,7 @@ from pypdf import PdfWriter
 from pytest import MonkeyPatch
 
 from app.core.config import Settings
-from app.services.system.storage_service import StorageService, StoredObject
+from app.system.services.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser
 
 

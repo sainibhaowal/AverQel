@@ -37,12 +37,12 @@ from app.auth.repositories.users import UsersRepository
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.data_deletions import DataDeletionsRepository
 from app.repositories.query.queries import QueriesRepository
-from app.repositories.system.audit_logs import AuditLogsRepository
+from app.system.repositories.audit_logs import AuditLogsRepository
 from app.documents.services.deletion_service import DeletionService
 from app.ingestion.services.chunking_service import ChunkingService
 from app.ingestion.services.parser_service import ParserService
 from app.services.security.malware_scan_service import MalwareScanService
-from app.services.system.audit_service import AuditService
+from app.system.services.audit_service import AuditService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

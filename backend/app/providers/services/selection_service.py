@@ -27,7 +27,7 @@ from app.providers.services.types import (
     ProviderSelectionResult,
 )
 from app.providers.services.provider_secret_service import ProviderSecretService
-from app.services.system.audit_service import AuditService
+from app.system.services.audit_service import AuditService
 
 DEFAULT_PROVIDER_BASE_URLS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",

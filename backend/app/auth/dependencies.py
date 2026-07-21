@@ -359,7 +359,7 @@ def _check_jwt_not_revoked(*, db: Session, tenant_id: uuid.UUID, token_id: str) 
     """Check access-token revocation using Redis as a cache and the database as source of truth."""
     revoked = False
     try:
-        from app.services.system.cache_service import get_redis_client  # noqa: PLC0415
+        from app.system.services.cache_service import get_redis_client  # noqa: PLC0415
 
         rc = get_redis_client()
         revoked = bool(rc.exists(f"jwt:deny:{token_id}"))

@@ -26,7 +26,7 @@ from app.schemas.query.chats import (
     RegenerateRequest,
 )
 from app.services.query.query_service import QueryService
-from app.services.system.rate_limit_service import RateLimitService
+from app.system.services.rate_limit_service import RateLimitService
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 

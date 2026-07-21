@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.system.metrics_service import read_durable_metrics_snapshot
+from app.system.services.metrics_service import read_durable_metrics_snapshot
 
 
 def durable_observability_snapshot(*, run: Any, projection: dict[str, Any], inspection: dict[str, Any]) -> dict[str, Any]:

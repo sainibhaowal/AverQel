@@ -12,7 +12,7 @@ from app.services.security.provider_secret_crypto import (
     ProviderSecretCrypto,
     ProviderSecretCryptoError,
 )
-from app.services.system.audit_service import AuditService
+from app.system.services.audit_service import AuditService
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,8 +8,8 @@ from typing import Any
 
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.models.system.idempotency_key import IdempotencyKey
-from app.repositories.system.idempotency_keys import IdempotencyKeysRepository
+from app.system.models.idempotency_key import IdempotencyKey
+from app.system.repositories.idempotency_keys import IdempotencyKeysRepository
 
 
 @dataclass(slots=True)

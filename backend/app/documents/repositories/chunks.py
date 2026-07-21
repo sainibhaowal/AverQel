@@ -11,8 +11,8 @@ from app.db.session import set_db_tenant_context
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
-from app.repositories.system.base import BaseRepository
-from app.services.system.metrics_service import observe_db_query
+from app.system.repositories.base import BaseRepository
+from app.system.services.metrics_service import observe_db_query
 
 
 @dataclass(slots=True)

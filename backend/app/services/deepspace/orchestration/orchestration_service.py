@@ -17,7 +17,7 @@ from app.services.deepspace.execution.agent_tools import ALL_TOOLS
 from app.services.deepspace.memory.memory_service import TodoService
 from app.services.deepspace.missions.mission_registry import MissionRegistry
 from app.services.deepspace.subagents.subagent_registry import SubagentRegistry
-from app.services.system.vitals_service import VitalsService
+from app.system.services.vitals_service import VitalsService
 
 logger = logging.getLogger(__name__)
 

@@ -6,8 +6,8 @@ from datetime import datetime
 from sqlalchemy import and_, delete, func, or_, select
 
 from app.db.session import set_db_tenant_context
-from app.models.system.audit_log import AuditLog
-from app.repositories.system.base import BaseRepository
+from app.system.models.audit_log import AuditLog
+from app.system.repositories.base import BaseRepository
 
 
 class AuditLogsRepository(BaseRepository):

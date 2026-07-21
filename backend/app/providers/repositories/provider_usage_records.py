@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 
 from app.providers.models.provider_usage_record import ProviderUsageRecord
-from app.repositories.system.base import BaseRepository
+from app.system.repositories.base import BaseRepository
 
 
 class ProviderUsageRecordsRepository(BaseRepository):

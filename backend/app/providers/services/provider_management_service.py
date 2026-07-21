@@ -34,7 +34,7 @@ from app.providers.services.provider_secret_service import (
     MaskedProviderSecret,
     ProviderSecretService,
 )
-from app.services.system.audit_service import AuditService
+from app.system.services.audit_service import AuditService
 
 SUPPORTED_PROVIDER_CATALOG: dict[str, dict[str, object]] = {
     "openai": {

@@ -15,7 +15,7 @@ from app.db.session import get_session_factory
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.integration import Integration
 from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
-from app.services.system.metrics_service import (
+from app.system.services.metrics_service import (
     WORKER_JOB_TRANSITIONS_TOTAL,
     WORKER_LOCK_CONTENTION_TOTAL,
     WORKER_RETRIES_TOTAL,

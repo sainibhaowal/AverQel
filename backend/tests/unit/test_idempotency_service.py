@@ -9,8 +9,8 @@ from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.db.session import get_session_factory
 from app.auth.models.tenant import Tenant
-from app.repositories.system.idempotency_keys import IdempotencyKeysRepository
-from app.services.system.idempotency_service import IdempotencyService
+from app.system.repositories.idempotency_keys import IdempotencyKeysRepository
+from app.system.services.idempotency_service import IdempotencyService
 
 
 def _service(session: Session) -> IdempotencyService:

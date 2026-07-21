@@ -13,8 +13,8 @@ from app.documents.models.collection import (
     DocumentCollection,
 )
 from app.documents.models.document import Document
-from app.repositories.system.base import BaseRepository
-from app.services.system.metrics_service import observe_db_query
+from app.system.repositories.base import BaseRepository
+from app.system.services.metrics_service import observe_db_query
 
 
 class CollectionPermissionPayload(TypedDict):

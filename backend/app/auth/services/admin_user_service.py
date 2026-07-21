@@ -27,8 +27,8 @@ from app.auth.repositories.refresh_tokens import RefreshTokensRepository
 from app.auth.repositories.roles import RolesRepository
 from app.auth.repositories.tenants import TenantsRepository
 from app.auth.repositories.users import UsersRepository
-from app.services.system.audit_service import AuditService
-from app.services.system.storage_service import StorageService
+from app.system.services.audit_service import AuditService
+from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 

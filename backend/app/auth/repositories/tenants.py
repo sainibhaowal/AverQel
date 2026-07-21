@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.db.session import set_db_tenant_context
 from app.auth.models.tenant import Tenant
-from app.repositories.system.base import BaseRepository
+from app.system.repositories.base import BaseRepository
 
 
 class TenantsRepository(BaseRepository):

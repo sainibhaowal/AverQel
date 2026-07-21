@@ -10,7 +10,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
-from app.services.system.metrics_service import DB_CONNECTION_CHECKOUT_DURATION_SECONDS
+from app.system.services.metrics_service import DB_CONNECTION_CHECKOUT_DURATION_SECONDS
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ from collections.abc import Callable
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
-from app.services.system.rate_limit_service import RateLimitService
+from app.system.services.rate_limit_service import RateLimitService
 from tests.conftest import SeededUser
 
 

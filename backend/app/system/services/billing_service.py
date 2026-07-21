@@ -5,8 +5,8 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.system.usage_record import UsageRecord
-from app.services.system.metrics_service import observe_db_query
+from app.system.models.usage_record import UsageRecord
+from app.system.services.metrics_service import observe_db_query
 
 
 class BillingService:

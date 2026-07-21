@@ -13,7 +13,7 @@ from app.ingestion.services.embedding_service import (
     RetryableEmbeddingError,
 )
 from app.providers.services import EmbeddingResponse
-from app.services.system.rate_limit_service import RateLimitService, _InMemoryRateStore
+from app.system.services.rate_limit_service import RateLimitService, _InMemoryRateStore
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
@@ -39,7 +39,7 @@ def test_rate_store_increment_and_ttl_path(monkeypatch: pytest.MonkeyPatch) -> N
     store = _InMemoryRateStore()
     time_seq = iter([1000.0, 1001.0, 1007.5])
     monkeypatch.setattr(
-        "app.services.system.rate_limit_service.time.time", lambda: next(time_seq)
+        "app.system.services.rate_limit_service.time.time", lambda: next(time_seq)
     )
 
     count1, ttl1 = store.increment(key="k", window_seconds=5)
@@ -60,7 +60,7 @@ def test_rate_limit_service_redis_fallback(monkeypatch: pytest.MonkeyPatch) -> N
         raise RuntimeError("redis down")
 
     monkeypatch.setattr(
-        "app.services.system.rate_limit_service._get_redis_client", _boom
+        "app.system.services.rate_limit_service._get_redis_client", _boom
     )
     count, ttl = service._increment_counter(key="k", window_seconds=5)
     assert count >= 1

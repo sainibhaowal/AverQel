@@ -37,9 +37,9 @@ from app.services.query.query_classifier import QueryClassifier
 from app.services.query.retrieval_service import RetrievalService, RetrievedChunk
 from app.services.query.snippet_service import SnippetService
 from app.services.query.trace_service import TraceCollector
-from app.services.system.billing_service import BillingService
-from app.services.system.cache_service import QueryCacheService
-from app.services.system.metrics_service import (
+from app.system.services.billing_service import BillingService
+from app.system.services.cache_service import QueryCacheService
+from app.system.services.metrics_service import (
     QUERY_CACHE_EVENTS_TOTAL,
     QUERY_PIPELINE_DURATION_SECONDS,
 )

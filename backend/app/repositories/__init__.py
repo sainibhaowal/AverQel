@@ -30,11 +30,11 @@ _EXPORTS = {
     "QueriesRepository": ("app.repositories.query.queries", "QueriesRepository"),
     "ChunksRepository": ("app.documents.repositories.chunks", "ChunksRepository"),
     "IdempotencyKeysRepository": (
-        "app.repositories.system.idempotency_keys",
+        "app.system.repositories.idempotency_keys",
         "IdempotencyKeysRepository",
     ),
     "AuditLogsRepository": (
-        "app.repositories.system.audit_logs",
+        "app.system.repositories.audit_logs",
         "AuditLogsRepository",
     ),
     "DataDeletionsRepository": (

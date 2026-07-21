@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.schemas.system.errors import (
+from app.system.schemas.errors import (
     WEEK2_ERROR_CODES,
     Week2ErrorCode,
     is_week2_error_code,

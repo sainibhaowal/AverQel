@@ -36,8 +36,8 @@ from app.services.query.prompt_templates import PromptTemplates
 from app.services.query.query_classifier import QueryType
 from app.services.query.retrieval_service import RetrievedChunk
 from app.services.query.snippet_service import SnippetService
-from app.services.system.cache_service import get_redis_client
-from app.services.system.metrics_service import (
+from app.system.services.cache_service import get_redis_client
+from app.system.services.metrics_service import (
     LLM_PROVIDER_LATENCY_SECONDS,
 )
 

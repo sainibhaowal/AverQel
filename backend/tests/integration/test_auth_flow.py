@@ -105,7 +105,7 @@ def test_logout_revokes_access_token_even_if_redis_is_unavailable(
     def _boom():
         raise RuntimeError("redis unavailable")
 
-    monkeypatch.setattr("app.services.system.cache_service.get_redis_client", _boom)
+    monkeypatch.setattr("app.system.services.cache_service.get_redis_client", _boom)
 
     profile_response = client.get(
         "/api/v1/auth/profile",

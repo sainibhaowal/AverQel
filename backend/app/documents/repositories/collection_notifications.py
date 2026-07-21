@@ -8,8 +8,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.session import set_db_tenant_context
 from app.documents.models.collection_notification import CollectionNotification
-from app.repositories.system.base import BaseRepository
-from app.services.system.metrics_service import observe_db_query
+from app.system.repositories.base import BaseRepository
+from app.system.services.metrics_service import observe_db_query
 
 
 class CollectionNotificationsRepository(BaseRepository):

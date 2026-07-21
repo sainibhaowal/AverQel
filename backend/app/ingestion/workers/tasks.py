@@ -13,7 +13,7 @@ from app.ingestion.services.ingestion_service import (
     IngestionService,
     RetryableIngestionError,
 )
-from app.services.system.metrics_service import (
+from app.system.services.metrics_service import (
     WORKER_JOB_TRANSITIONS_TOTAL,
     WORKER_STAGE_DURATION_SECONDS,
 )

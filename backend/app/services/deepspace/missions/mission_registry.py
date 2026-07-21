@@ -14,7 +14,7 @@ from app.core.config import Settings, get_settings
 from app.core.ids import generate_uuid7_with_fallback
 from app.models.deepspace.agent_runtime_preference import AgentRuntimePreference
 from app.models.deepspace.mission_snapshot import DeepSpaceMissionSnapshot
-from app.services.system.cache_service import get_redis_client
+from app.system.services.cache_service import get_redis_client
 
 logger = logging.getLogger(__name__)
 

@@ -1585,7 +1585,7 @@ from fastapi import File, UploadFile  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 
 from app.core.config import get_settings  # noqa: E402
-from app.services.system.storage_service import StorageService  # noqa: E402
+from app.system.services.storage_service import StorageService  # noqa: E402
 
 
 @router.post("/{collection_id}/chats/media")

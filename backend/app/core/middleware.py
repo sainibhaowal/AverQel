@@ -12,11 +12,11 @@ from starlette.types import ASGIApp
 from app.core.config import Settings, get_settings
 from app.core.context import bind_request_context, clear_request_context
 from app.core.errors import ApiError, build_error_response
-from app.services.system.metrics_service import (
+from app.system.services.metrics_service import (
     API_REQUEST_LATENCY_SECONDS,
     API_REQUESTS_TOTAL,
 )
-from app.services.system.rate_limit_service import RateLimitDecision, RateLimitService
+from app.system.services.rate_limit_service import RateLimitDecision, RateLimitService
 
 logger = logging.getLogger(__name__)
 

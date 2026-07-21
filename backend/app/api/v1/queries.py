@@ -26,9 +26,9 @@ from app.schemas.query.queries import (
 from app.providers.services.reasoning_capabilities import reasoning_capabilities
 from app.providers.services.selection_service import ProviderSelectionService
 from app.services.query.query_service import QueryService
-from app.services.system.audit_service import AuditService
-from app.services.system.quality_service import QualityService
-from app.services.system.rate_limit_service import RateLimitService
+from app.system.services.audit_service import AuditService
+from app.system.services.quality_service import QualityService
+from app.system.services.rate_limit_service import RateLimitService
 
 logger = logging.getLogger(__name__)
 

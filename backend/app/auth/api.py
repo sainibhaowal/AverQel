@@ -39,8 +39,8 @@ from app.auth.schemas.auth import (
     UserRegisterResponse,
 )
 from app.auth.services.auth_service import AuthService
-from app.services.system.audit_service import AuditService
-from app.services.system.rate_limit_service import RateLimitService
+from app.system.services.audit_service import AuditService
+from app.system.services.rate_limit_service import RateLimitService
 
 logger = logging.getLogger(__name__)
 

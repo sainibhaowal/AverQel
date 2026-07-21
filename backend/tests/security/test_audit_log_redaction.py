@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.system.audit_service import redact_audit_details
+from app.system.services.audit_service import redact_audit_details
 
 
 def test_audit_detail_redaction_blocks_secrets_and_private_content() -> None:

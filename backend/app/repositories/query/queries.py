@@ -7,8 +7,8 @@ from sqlalchemy import select
 
 from app.models.query.query import Query
 from app.models.query.query_citation import QueryCitation
-from app.repositories.system.base import BaseRepository
-from app.services.system.metrics_service import observe_db_query
+from app.system.repositories.base import BaseRepository
+from app.system.services.metrics_service import observe_db_query
 
 
 class QueriesRepository(BaseRepository):

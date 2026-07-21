@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.ingestion.services.extraction_quality import fallback_reasons
 from app.ingestion.services.extractors.base import ExtractionResult
-from app.services.system.metrics_service import (
+from app.system.services.metrics_service import (
     EXTRACTION_FAILURE_TOTAL,
     EXTRACTION_FALLBACK_TOTAL,
     EXTRACTION_LOW_CONFIDENCE_TOTAL,

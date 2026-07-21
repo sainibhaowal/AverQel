@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.services.system.cache_service import QueryCacheService
+from app.system.services.cache_service import QueryCacheService
 
 
 class _FakeRedis:
@@ -26,7 +26,7 @@ class _FakeRedis:
 def test_query_cache_get_and_set_paths(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     fake = _FakeRedis()
     monkeypatch.setattr(
-        "app.services.system.cache_service.get_redis_client", lambda: fake
+        "app.system.services.cache_service.get_redis_client", lambda: fake
     )
 
     service = QueryCacheService()
@@ -51,7 +51,7 @@ def test_query_cache_get_and_set_paths(monkeypatch) -> None:  # type: ignore[no-
 def test_query_cache_handles_redis_errors(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     fake = _FakeRedis()
     monkeypatch.setattr(
-        "app.services.system.cache_service.get_redis_client", lambda: fake
+        "app.system.services.cache_service.get_redis_client", lambda: fake
     )
     service = QueryCacheService()
 

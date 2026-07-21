@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from app.db.session import set_db_tenant_context
 from app.auth.models.user import User
-from app.repositories.system.base import BaseRepository
+from app.system.repositories.base import BaseRepository
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

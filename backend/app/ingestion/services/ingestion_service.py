@@ -26,7 +26,7 @@ from app.ingestion.models.ingestion_job import IngestionJob
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.documents import DocumentsRepository
 from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
-from app.repositories.system.idempotency_keys import IdempotencyKeysRepository
+from app.system.repositories.idempotency_keys import IdempotencyKeysRepository
 from app.ingestion.services.chunking_service import ChunkingService
 from app.ingestion.services.embedding_service import EmbeddingService
 from app.ingestion.services.extraction_quality import (
@@ -38,8 +38,8 @@ from app.ingestion.services.extractors.base import ExtractionResult
 from app.ingestion.services.extractors.router import ExtractorRouter
 from app.ingestion.services.parser_service import ParserService, sanitize_document_text
 from app.services.security.malware_scan_service import MalwareScanService
-from app.services.system.idempotency_service import IdempotencyService
-from app.services.system.metrics_service import (
+from app.system.services.idempotency_service import IdempotencyService
+from app.system.services.metrics_service import (
     EXTRACTION_FAILURE_TOTAL,
     EXTRACTION_FALLBACK_TOTAL,
     EXTRACTION_LOW_CONFIDENCE_TOTAL,
@@ -51,7 +51,7 @@ from app.services.system.metrics_service import (
     WORKER_STAGE_DURATION_SECONDS,
     observe_extraction_stage,
 )
-from app.services.system.storage_service import StorageService, StorageServiceError
+from app.system.services.storage_service import StorageService, StorageServiceError
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

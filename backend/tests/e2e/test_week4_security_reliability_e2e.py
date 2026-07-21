@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
 from app.core.config import get_settings
-from app.services.system.storage_service import StorageService, StoredObject
+from app.system.services.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser
 
 

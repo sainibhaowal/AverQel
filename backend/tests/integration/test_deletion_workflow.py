@@ -23,7 +23,7 @@ from app.models.query.message_version import MessageVersion
 from app.models.query.pinned_finding import PinnedFinding
 from app.models.query.query import Query
 from app.repositories.query.chat import ChatRepository
-from app.services.system.storage_service import StorageService, StoredObject
+from app.system.services.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser, _generate_test_collection_code
 
 

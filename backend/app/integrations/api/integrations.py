@@ -19,7 +19,7 @@ from app.documents.models.document import Document
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration
-from app.models.system.audit_log import AuditLog
+from app.system.models.audit_log import AuditLog
 from app.documents.schemas.documents import DocumentMetadataResponse
 from app.integrations.schemas.connectors import (
     ConnectorCreate,

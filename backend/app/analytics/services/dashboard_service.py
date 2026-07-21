@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.documents.models.document import Document
-from app.models.system.audit_log import AuditLog
+from app.system.models.audit_log import AuditLog
 from app.documents.repositories.collections import CollectionsRepository
 from app.documents.repositories.documents import DocumentsRepository
 from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
@@ -25,7 +25,7 @@ from app.analytics.schemas.dashboard import (
     DashboardStatsResponse,
 )
 from app.providers.services.selection_service import ProviderSelectionService
-from app.services.system.metrics_service import observe_db_query
+from app.system.services.metrics_service import observe_db_query
 
 _QUEUED_STATUSES = {"queued", "uploaded", "pending"}
 _FAILED_STATUSES = {"failed", "dead_lettered"}

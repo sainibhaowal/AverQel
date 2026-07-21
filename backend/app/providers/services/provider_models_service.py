@@ -39,7 +39,7 @@ from app.providers.services.types import (
     ProviderSelectionCandidate,
 )
 from app.providers.services.provider_secret_service import ProviderSecretService
-from app.services.system.audit_service import AuditService
+from app.system.services.audit_service import AuditService
 
 
 def _looks_like_auth_failure(status_code: int, message: str | None) -> bool:

@@ -9,8 +9,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.core.context import get_trace_id
-from app.schemas.system.errors import is_known_error_code
-from app.services.system.metrics_service import API_ERRORS_TOTAL
+from app.system.schemas.errors import is_known_error_code
+from app.system.services.metrics_service import API_ERRORS_TOTAL
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

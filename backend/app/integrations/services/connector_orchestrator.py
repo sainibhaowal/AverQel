@@ -33,7 +33,7 @@ from app.integrations.services.health_utils import (
 from app.integrations.services.mcp_runtime import UniversalMCPConnector
 from app.integrations.services.web.web_connector import WebConnector
 from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
-from app.services.system.audit_service import AuditService
+from app.system.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 

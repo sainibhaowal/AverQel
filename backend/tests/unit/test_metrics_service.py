@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.system.metrics_service import (
+from app.system.services.metrics_service import (
     metrics_payload,
     observe_db_query,
     observe_worker_stage,

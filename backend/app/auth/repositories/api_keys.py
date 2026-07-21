@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 
 from app.auth.models.api_key import ApiKey
-from app.repositories.system.base import BaseRepository
-from app.services.system.metrics_service import observe_db_query
+from app.system.repositories.base import BaseRepository
+from app.system.services.metrics_service import observe_db_query
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

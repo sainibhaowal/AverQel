@@ -6,7 +6,7 @@ from collections.abc import Callable
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
-from app.services.system.storage_service import StorageService, StoredObject
+from app.system.services.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser
 
 

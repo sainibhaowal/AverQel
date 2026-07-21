@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.schemas.system.errors import WEEK2_ERROR_CODES
+from app.system.schemas.errors import WEEK2_ERROR_CODES
 
 
 def test_all_api_error_codes_are_registered() -> None:

@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 
 from app.auth.security import hash_refresh_token
 from app.auth.models.refresh_token import RefreshToken
-from app.repositories.system.base import BaseRepository
+from app.system.repositories.base import BaseRepository
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

@@ -14,7 +14,7 @@ from app.providers.repositories.provider_assignments import (
 )
 from app.providers.repositories.provider_configs import ProviderConfigsRepository
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
-from app.services.system.storage_service import StorageService, StoredObject
+from app.system.services.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser
 
 

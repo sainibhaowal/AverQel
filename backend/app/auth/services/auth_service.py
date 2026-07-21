@@ -46,8 +46,8 @@ from app.services.security.provider_secret_crypto import (
     ProviderSecretCrypto,
     ProviderSecretCryptoError,
 )
-from app.services.system.audit_service import AuditService
-from app.services.system.storage_service import StorageService
+from app.system.services.audit_service import AuditService
+from app.system.services.storage_service import StorageService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
@@ -825,7 +825,7 @@ class AuthService:
     def _denylist_access_token(self, token_id: str) -> None:
         """Add a JTI to the Redis denylist with TTL matching access token lifetime."""
         try:
-            from app.services.system.cache_service import (
+            from app.system.services.cache_service import (
                 get_redis_client,
             )  # noqa: PLC0415
 

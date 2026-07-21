@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select, update
 
 from app.providers.models.provider_secret import ProviderSecret
-from app.repositories.system.base import BaseRepository
+from app.system.repositories.base import BaseRepository
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

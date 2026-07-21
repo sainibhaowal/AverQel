@@ -63,7 +63,7 @@ from app.schemas.query.chats import (
 )
 from app.services.deepspace.orchestration.deepspace_service import DeepSpaceService
 from app.services.query.answer_service import AnswerService, StreamEvent
-from app.services.system.rate_limit_service import RateLimitService
+from app.system.services.rate_limit_service import RateLimitService
 
 router = APIRouter(prefix="/deepspace/chats", tags=["deepspace-chats"])
 logger = logging.getLogger(__name__)
@@ -543,7 +543,7 @@ async def get_agent_activity(
 async def get_system_vitals(
     auth: AuthContext = Depends(get_auth_context),
 ):
-    from app.services.system.vitals_service import VitalsService
+    from app.system.services.vitals_service import VitalsService
 
     return await VitalsService.get_system_vitals(auth.tenant_id)
 

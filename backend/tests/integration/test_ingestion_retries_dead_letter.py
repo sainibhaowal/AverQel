@@ -16,7 +16,7 @@ from app.ingestion.services.ingestion_service import (
     IngestionService,
     RetryableIngestionError,
 )
-from app.services.system.storage_service import StorageService
+from app.system.services.storage_service import StorageService
 from tests.conftest import SeededUser
 
 

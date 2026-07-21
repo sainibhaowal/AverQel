@@ -27,11 +27,11 @@ from app.models.query.message_version import MessageVersion
 from app.models.query.pinned_finding import PinnedFinding
 from app.models.query.query import Query
 from app.models.query.query_citation import QueryCitation
-from app.models.system.idempotency_key import IdempotencyKey
+from app.system.models.idempotency_key import IdempotencyKey
 from app.documents.repositories.data_deletions import DataDeletionsRepository
-from app.services.system.audit_service import AuditService
-from app.services.system.metrics_service import observe_db_query
-from app.services.system.storage_service import StorageService
+from app.system.services.audit_service import AuditService
+from app.system.services.metrics_service import observe_db_query
+from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 

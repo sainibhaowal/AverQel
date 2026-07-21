@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
-from app.models.system.app_feedback import AppFeedback, FeedbackCampaign
+from app.system.models.app_feedback import AppFeedback, FeedbackCampaign
 from tests.conftest import SeededUser
 
 

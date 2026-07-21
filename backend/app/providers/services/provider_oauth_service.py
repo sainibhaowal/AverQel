@@ -16,7 +16,7 @@ from app.core.config import Settings
 from app.core.errors import ApiError
 from app.providers.repositories.provider_configs import ProviderConfigsRepository
 from app.providers.services.provider_secret_service import ProviderSecretService
-from app.services.system.audit_service import AuditService
+from app.system.services.audit_service import AuditService
 
 OPENAI_OAUTH_PROVIDER_TYPE = "openai"
 STATE_MAX_AGE_SECONDS = 600

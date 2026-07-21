@@ -9,7 +9,7 @@ from sqlalchemy import func, select, text
 
 from app.db.session import get_session_factory, set_db_tenant_context
 from app.documents.models.document import Document
-from app.services.system.storage_service import StorageService, StoredObject
+from app.system.services.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser
 
 

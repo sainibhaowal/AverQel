@@ -8,7 +8,7 @@ from app.auth.roles import canonicalize_role_name
 from app.db.session import set_db_tenant_context
 from app.auth.models.role import Role
 from app.auth.models.user_role import UserRole
-from app.repositories.system.base import BaseRepository
+from app.system.repositories.base import BaseRepository
 
 
 class RolesRepository(BaseRepository):

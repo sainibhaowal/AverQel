@@ -42,11 +42,11 @@ from app.models.query.message_version import MessageVersion
 from app.models.query.pinned_finding import PinnedFinding
 from app.models.query.query import Query
 from app.models.query.query_citation import QueryCitation
-from app.models.system.audit_log import AuditLog
-from app.models.system.break_glass_grant import BreakGlassGrant
-from app.models.system.idempotency_key import IdempotencyKey
-from app.models.system.support_ticket import SupportTicket
-from app.models.system.usage_record import UsageRecord
+from app.system.models.audit_log import AuditLog
+from app.system.models.break_glass_grant import BreakGlassGrant
+from app.system.models.idempotency_key import IdempotencyKey
+from app.system.models.support_ticket import SupportTicket
+from app.system.models.usage_record import UsageRecord
 
 __all__ = [
     "Tenant",

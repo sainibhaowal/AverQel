@@ -8,7 +8,7 @@ import pytest
 from botocore.exceptions import BotoCoreError, ClientError  # type: ignore[import-untyped]
 
 from app.core.config import Settings
-from app.services.system.storage_service import StorageService, StorageServiceError
+from app.system.services.storage_service import StorageService, StorageServiceError
 
 
 def _settings() -> SimpleNamespace:
@@ -49,7 +49,7 @@ def test_put_bytes_success_and_get_client_scheme(
         calls["kwargs"] = kwargs
         return FakeClient()
 
-    monkeypatch.setattr("app.services.system.storage_service.boto3.client", fake_client)
+    monkeypatch.setattr("app.system.services.storage_service.boto3.client", fake_client)
     service = StorageService(cast(Settings, _settings()))
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -79,7 +79,7 @@ def test_put_bytes_maps_storage_unavailable(monkeypatch: pytest.MonkeyPatch) -> 
             raise _client_error("AccessDenied", 403)
 
     monkeypatch.setattr(
-        "app.services.system.storage_service.boto3.client",
+        "app.system.services.storage_service.boto3.client",
         lambda *_args, **_kwargs: FakeClient(),
     )
     service = StorageService(cast(Settings, _settings()))
@@ -103,7 +103,7 @@ def test_get_bytes_not_found_maps_non_retryable(
             raise _client_error("NoSuchKey", 404)
 
     monkeypatch.setattr(
-        "app.services.system.storage_service.boto3.client",
+        "app.system.services.storage_service.boto3.client",
         lambda *_args, **_kwargs: FakeClient(),
     )
     service = StorageService(cast(Settings, _settings()))
@@ -119,7 +119,7 @@ def test_get_bytes_retryable_error_paths(monkeypatch: pytest.MonkeyPatch) -> Non
             raise _client_error("InternalError", 500)
 
     monkeypatch.setattr(
-        "app.services.system.storage_service.boto3.client",
+        "app.system.services.storage_service.boto3.client",
         lambda *_args, **_kwargs: ClientRaisesClientError(),
     )
     service = StorageService(cast(Settings, _settings()))
@@ -133,7 +133,7 @@ def test_get_bytes_retryable_error_paths(monkeypatch: pytest.MonkeyPatch) -> Non
             raise BotoCoreError()
 
     monkeypatch.setattr(
-        "app.services.system.storage_service.boto3.client",
+        "app.system.services.storage_service.boto3.client",
         lambda *_args, **_kwargs: ClientRaisesBotoCore(),
     )
     service = StorageService(cast(Settings, _settings()))
@@ -158,7 +158,7 @@ def test_get_bytes_success_and_delete_object_no_raise(
             raise _client_error("InternalError", 500)
 
     monkeypatch.setattr(
-        "app.services.system.storage_service.boto3.client",
+        "app.system.services.storage_service.boto3.client",
         lambda *_args, **_kwargs: FakeClient(),
     )
     service = StorageService(cast(Settings, _settings()))
@@ -179,7 +179,7 @@ def test_ensure_bucket_create_and_fail_paths(monkeypatch: pytest.MonkeyPatch) ->
 
     client = CreateBucketClient()
     monkeypatch.setattr(
-        "app.services.system.storage_service.boto3.client",
+        "app.system.services.storage_service.boto3.client",
         lambda *_args, **_kwargs: client,
     )
     service = StorageService(cast(Settings, _settings()))
@@ -191,7 +191,7 @@ def test_ensure_bucket_create_and_fail_paths(monkeypatch: pytest.MonkeyPatch) ->
             raise _client_error("BadGateway", 502)
 
     monkeypatch.setattr(
-        "app.services.system.storage_service.boto3.client",
+        "app.system.services.storage_service.boto3.client",
         lambda *_args, **_kwargs: HeadBucketHardFail(),
     )
     with pytest.raises(StorageServiceError):
@@ -207,7 +207,7 @@ def test_ensure_bucket_create_and_fail_paths(monkeypatch: pytest.MonkeyPatch) ->
             raise _client_error("InternalError", 500)
 
     monkeypatch.setattr(
-        "app.services.system.storage_service.boto3.client",
+        "app.system.services.storage_service.boto3.client",
         lambda *_args, **_kwargs: CreateBucketFail(),
     )
     with pytest.raises(StorageServiceError):

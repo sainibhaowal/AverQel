@@ -29,7 +29,7 @@ class ChunkMetadataCache:
         """Lazily resolve Redis client to avoid import-time failures."""
         if self._redis is None:
             try:
-                from app.services.system.cache_service import get_redis_client
+                from app.system.services.cache_service import get_redis_client
 
                 self._redis = get_redis_client()
             except Exception:  # noqa: BLE001

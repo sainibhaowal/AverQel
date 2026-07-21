@@ -50,9 +50,9 @@ from app.documents.schemas.documents import (
 )
 from app.ingestion.services.extraction_quality import confidence_band
 from app.ingestion.services.ingestion_service import IngestionService
-from app.services.system.audit_service import AuditService
-from app.services.system.rate_limit_service import RateLimitService
-from app.services.system.storage_service import StorageService
+from app.system.services.audit_service import AuditService
+from app.system.services.rate_limit_service import RateLimitService
+from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 

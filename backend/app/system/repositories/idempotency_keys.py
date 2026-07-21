@@ -4,8 +4,8 @@ import uuid
 
 from sqlalchemy import select
 
-from app.models.system.idempotency_key import IdempotencyKey
-from app.repositories.system.base import BaseRepository
+from app.system.models.idempotency_key import IdempotencyKey
+from app.system.repositories.base import BaseRepository
 
 
 class IdempotencyKeysRepository(BaseRepository):

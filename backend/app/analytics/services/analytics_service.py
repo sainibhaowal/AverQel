@@ -12,7 +12,7 @@ from app.analytics.schemas.analytics import (
     ConfidenceDistribution,
     QueryVolumePoint,
 )
-from app.services.system.metrics_service import (
+from app.system.services.metrics_service import (
     API_REQUEST_LATENCY_SECONDS,
     observe_db_query,
 )

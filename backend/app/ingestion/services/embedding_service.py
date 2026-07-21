@@ -22,7 +22,7 @@ from app.core.config import Settings
 from app.core.errors import ApiError
 from app.providers.services import EmbeddingRequest, ProviderRegistry
 from app.providers.services.selection_service import ProviderSelectionService
-from app.services.system.metrics_service import (
+from app.system.services.metrics_service import (
     EMBEDDING_PROVIDER_FAILURES_TOTAL,
     EMBEDDING_PROVIDER_LATENCY_SECONDS,
 )

@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.core.context import get_trace_id
 from app.core.ids import generate_uuid7_with_fallback
-from app.models.system.audit_log import AuditLog
-from app.repositories.system.audit_logs import AuditLogsRepository
+from app.system.models.audit_log import AuditLog
+from app.system.repositories.audit_logs import AuditLogsRepository
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 

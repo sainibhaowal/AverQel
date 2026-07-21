@@ -14,7 +14,7 @@ from app.ingestion.services.ingestion_service import (
     RetryableIngestionError,
     make_storage_key,
 )
-from app.services.system.storage_service import StorageServiceError
+from app.system.services.storage_service import StorageServiceError
 
 
 class _DB:

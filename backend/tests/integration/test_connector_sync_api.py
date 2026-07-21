@@ -11,7 +11,7 @@ from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.integration import Integration
-from app.models.system.audit_log import AuditLog
+from app.system.models.audit_log import AuditLog
 from app.integrations.services.connector_orchestrator import ConnectorOrchestrator
 
 

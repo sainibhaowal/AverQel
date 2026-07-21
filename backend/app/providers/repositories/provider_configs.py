@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from sqlalchemy import delete, or_, select, update
 
 from app.providers.models.provider_config import ProviderConfig
-from app.repositories.system.base import BaseRepository
+from app.system.repositories.base import BaseRepository
 
 
 class ProviderConfigsRepository(BaseRepository):

@@ -17,7 +17,7 @@ from app.ingestion.services.embedding_service import EmbeddingService
 from app.services.query.query_classifier import QueryClassifier, QueryType
 from app.services.query.reranker_service import RerankerService
 from app.services.query.trace_service import TraceCollector
-from app.services.system.metrics_service import QUERY_PIPELINE_DURATION_SECONDS
+from app.system.services.metrics_service import QUERY_PIPELINE_DURATION_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -589,7 +589,7 @@ class RetrievalService:
 
         from app.documents.models.document import Document
         from app.documents.models.document_chunk import DocumentChunk
-        from app.services.system.metrics_service import observe_db_query
+        from app.system.services.metrics_service import observe_db_query
 
         stmt = (
             select(DocumentChunk, Document.filename)

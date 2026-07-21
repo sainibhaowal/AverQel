@@ -4,20 +4,22 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import (
-    admin,
-    app_feedback,
-    capabilities,
     chats,
     client_storage,
     deepspace_chats,
     deepspace_export,
+    intelligence,
+    queries,
+    workspace,
+)
+from app.system.api import (
+    admin,
+    app_feedback,
+    capabilities,
     feedback,
     health,
-    intelligence,
     metrics,
-    queries,
     support,
-    workspace,
 )
 from app.integrations.api import integrations, mcp, voice as voice_routes
 from app.documents.api import collections, documents
@@ -29,7 +31,7 @@ from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import get_engine
-from app.services.system.otel import configure_telemetry, instrument_sqlalchemy, telemetry_span
+from app.system.services.otel import configure_telemetry, instrument_sqlalchemy, telemetry_span
 
 
 def _build_cors_kwargs(settings: Settings) -> dict[str, object]:

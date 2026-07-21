@@ -8,8 +8,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from app.core.config import Settings, get_settings
-from app.services.system.cache_service import get_redis_client
-from app.services.system.metrics_service import increment_subagent_stale_slot_reaped
+from app.system.services.cache_service import get_redis_client
+from app.system.services.metrics_service import increment_subagent_stale_slot_reaped
 
 logger = logging.getLogger(__name__)
 

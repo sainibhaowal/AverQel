@@ -63,7 +63,7 @@ from app.integrations.services.mcp_runtime import (
     render_mcp_result_text,
     serialize_mcp_result,
 )
-from app.services.system.otel import trace_async
+from app.system.services.otel import trace_async
 
 logger = logging.getLogger(__name__)
 

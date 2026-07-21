@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.db.session import get_session_factory
 from app.providers.models.provider_config import ProviderConfig
-from app.models.system.audit_log import AuditLog
+from app.system.models.audit_log import AuditLog
 from app.providers.repositories.provider_configs import ProviderConfigsRepository
 from app.providers.services.selection_service import ProviderSelectionService
 

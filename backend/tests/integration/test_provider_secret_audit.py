@@ -10,7 +10,7 @@ from app.core.ids import generate_uuid7_with_fallback
 from app.db.session import get_session_factory
 from app.auth.models.tenant import Tenant
 from app.providers.models.provider_config import ProviderConfig
-from app.models.system.audit_log import AuditLog
+from app.system.models.audit_log import AuditLog
 from app.services.security.provider_secret_crypto import ProviderSecretCrypto
 from app.services.security.provider_secret_service import ProviderSecretService
 

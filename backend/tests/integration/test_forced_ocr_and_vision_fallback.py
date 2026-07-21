@@ -15,7 +15,7 @@ from app.ingestion.services.extractors.layout_vision_extractor import (
     LayoutVisionExtractor,
 )
 from app.ingestion.services.ocr_service import OcrPageResult, OcrService
-from app.services.system.storage_service import StorageService, StoredObject
+from app.system.services.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser
 
 
