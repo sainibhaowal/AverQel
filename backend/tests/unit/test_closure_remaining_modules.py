@@ -14,10 +14,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.api.v1 import auth as auth_api
-from app.api.v1 import documents as documents_api
-from app.api.v1 import health as health_api
-from app.api.v1 import queries as queries_api
+from app.auth import api as auth_api
 from app.auth.dependencies import AuthContext, build_auth_context
 from app.auth.models.user import User
 from app.auth.rbac import require_permissions
@@ -32,6 +29,7 @@ from app.core import ids as ids_module
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError, register_exception_handlers
 from app.core.middleware import RequestContextMiddleware
+from app.documents.api import documents as documents_api
 from app.documents.models.data_deletion import DataDeletion
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.data_deletions import DataDeletionsRepository
@@ -40,7 +38,9 @@ from app.ingestion.services.chunking_service import ChunkingService
 from app.ingestion.services.parser_service import ParserService
 from app.ingestion.services.security.malware_scan_service import MalwareScanService
 from app.platform.database import session as session_module
+from app.query.api import queries as queries_api
 from app.query.repositories.queries import QueriesRepository
+from app.system.api import health as health_api
 from app.system.repositories.audit_logs import AuditLogsRepository
 from app.system.services.audit_service import AuditService
 

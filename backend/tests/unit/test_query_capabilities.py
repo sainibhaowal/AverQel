@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.api.v1.queries import _merge_chat_reasoning_capabilities
+from app.query.api.queries import _merge_chat_reasoning_capabilities
 
 
 def test_merge_chat_reasoning_capabilities_fills_missing_reasoning_flags_from_inference() -> (
