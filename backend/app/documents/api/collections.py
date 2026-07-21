@@ -712,12 +712,6 @@ async def add_documents_to_collection(
             document_ids=payload.document_ids,
         )
         db.commit()
-
-        await broadcast_manager.publish_event(
-            str(collection_id),
-            "document_sync",
-            {"action": "add", "document_ids": [str(d) for d in payload.document_ids]}
-        )
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         raise ApiError(
@@ -725,6 +719,15 @@ async def add_documents_to_collection(
             message="Failed to add documents to collection.",
             status_code=500,
         ) from exc
+
+    try:
+        await broadcast_manager.publish_event(
+            str(collection_id),
+            "document_sync",
+            {"action": "add", "document_ids": [str(d) for d in payload.document_ids]},
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("Collection document add broadcast failed", exc_info=True)
 
     return Response(status_code=204)
 
@@ -812,12 +815,6 @@ async def remove_documents_from_collection(
             document_ids=payload.document_ids,
         )
         db.commit()
-
-        await broadcast_manager.publish_event(
-            str(collection_id),
-            "document_sync",
-            {"action": "remove", "document_ids": [str(d) for d in payload.document_ids]}
-        )
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         raise ApiError(
@@ -825,6 +822,15 @@ async def remove_documents_from_collection(
             message="Failed to remove documents from collection.",
             status_code=500,
         ) from exc
+
+    try:
+        await broadcast_manager.publish_event(
+            str(collection_id),
+            "document_sync",
+            {"action": "remove", "document_ids": [str(d) for d in payload.document_ids]},
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("Collection document remove broadcast failed", exc_info=True)
 
     return Response(status_code=204)
 
