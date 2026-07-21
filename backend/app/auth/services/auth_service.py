@@ -42,7 +42,7 @@ from app.auth.repositories.revoked_access_tokens import RevokedAccessTokensRepos
 from app.auth.repositories.roles import RolesRepository
 from app.auth.repositories.tenants import TenantsRepository
 from app.auth.repositories.users import UsersRepository
-from app.services.security.provider_secret_crypto import (
+from app.providers.services.provider_secret_crypto import (
     ProviderSecretCrypto,
     ProviderSecretCryptoError,
 )

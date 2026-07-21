@@ -6,7 +6,7 @@ import json
 import pytest
 
 from app.core.config import Settings
-from app.services.security.provider_secret_crypto import (
+from app.providers.services.provider_secret_crypto import (
     ProviderSecretCrypto,
     ProviderSecretCryptoError,
 )
@@ -91,7 +91,7 @@ def test_provider_secret_crypto_supports_aws_kms_backend(
             return {"Plaintext": bytes(kwargs["CiphertextBlob"]).removeprefix(b"kms:")}
 
     monkeypatch.setattr(
-        "app.services.security.provider_secret_crypto.boto3.client",
+        "app.providers.services.provider_secret_crypto.boto3.client",
         lambda *args, **kwargs: FakeKmsClient(),
     )
     settings = Settings(

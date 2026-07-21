@@ -29,7 +29,7 @@ from app.providers.services.types import (
     ProviderModelInfo,
     ProviderSelectionCandidate,
 )
-from app.services.security.provider_secret_crypto import ProviderSecretCryptoError
+from app.providers.services.provider_secret_crypto import ProviderSecretCryptoError
 from app.providers.services.provider_secret_service import (
     MaskedProviderSecret,
     ProviderSecretService,

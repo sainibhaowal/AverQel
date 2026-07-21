@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.providers.models.provider_secret import ProviderSecret
 from app.providers.repositories.provider_secrets import ProviderSecretsRepository
-from app.services.security.provider_secret_crypto import (
+from app.providers.services.provider_secret_crypto import (
     ProviderSecretCrypto,
     ProviderSecretCryptoError,
 )

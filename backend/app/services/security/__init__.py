@@ -1,4 +1,4 @@
-from app.services.security.provider_secret_crypto import (
+from app.providers.services.provider_secret_crypto import (
     EncryptedProviderSecret,
     ProviderSecretCrypto,
     ProviderSecretCryptoError,

@@ -41,7 +41,7 @@ from app.system.repositories.audit_logs import AuditLogsRepository
 from app.documents.services.deletion_service import DeletionService
 from app.ingestion.services.chunking_service import ChunkingService
 from app.ingestion.services.parser_service import ParserService
-from app.services.security.malware_scan_service import MalwareScanService
+from app.ingestion.services.security.malware_scan_service import MalwareScanService
 from app.system.services.audit_service import AuditService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017

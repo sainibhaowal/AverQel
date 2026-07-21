@@ -11,7 +11,7 @@ from app.db.session import get_session_factory
 from app.auth.models.tenant import Tenant
 from app.providers.models.provider_config import ProviderConfig
 from app.system.models.audit_log import AuditLog
-from app.services.security.provider_secret_crypto import ProviderSecretCrypto
+from app.providers.services.provider_secret_crypto import ProviderSecretCrypto
 from app.services.security.provider_secret_service import ProviderSecretService
 
 

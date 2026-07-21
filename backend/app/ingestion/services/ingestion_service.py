@@ -37,7 +37,7 @@ from app.ingestion.services.extraction_quality import (
 from app.ingestion.services.extractors.base import ExtractionResult
 from app.ingestion.services.extractors.router import ExtractorRouter
 from app.ingestion.services.parser_service import ParserService, sanitize_document_text
-from app.services.security.malware_scan_service import MalwareScanService
+from app.ingestion.services.security.malware_scan_service import MalwareScanService
 from app.system.services.idempotency_service import IdempotencyService
 from app.system.services.metrics_service import (
     EXTRACTION_FAILURE_TOTAL,
@@ -1142,7 +1142,7 @@ class IngestionService:
                 details={"max_bytes": self.settings.upload_max_bytes},
             )
 
-        from app.services.security.archive_security import ArchiveSecurityService
+        from app.ingestion.services.security.archive_security import ArchiveSecurityService
 
         ArchiveSecurityService().validate_payload(filename=filename, payload=payload)
 
