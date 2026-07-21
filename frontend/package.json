@@ -3,6 +3,10 @@
   "version": "0.1.0-beta.0",
   "packageManager": "pnpm@10.28.2",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0",
+    "pnpm": ">=9.0.0"
+  },
   "scripts": {
     "predev": "bash ./scripts/ensure-runtime-dirs.sh",
     "dev": "bash ./scripts/run-with-runtime-env.sh \"next dev -p 1030\"",

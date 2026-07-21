@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -24,6 +25,7 @@ from app.integrations.workers.tasks_mcp import refresh_server_catalog
 from app.platform.database.session import get_db, set_db_tenant_context
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
+logger = logging.getLogger(__name__)
 
 
 def _marketplace_capabilities(entry: MCPRegistryEntry) -> list[str]:
@@ -152,9 +154,10 @@ def connect_marketplace_entry(
                 server=server,
                 user_id=auth.user_id,
             )
-        except Exception as exc:
+        except Exception:
+            logger.exception("MCP OAuth start failed for server %s", server.id)
             server.status = "needs_auth"
-            server.last_error = str(exc)[:1000]
+            server.last_error = "MCP OAuth setup failed"
             session.commit()
             result["setup_required"] = True
     return result
@@ -201,7 +204,8 @@ def start_oauth(server_id: uuid.UUID, session: Session = Depends(get_db), auth: 
     try:
         url = MCPServerOAuthService(session, get_settings()).start(server=server, user_id=auth.user_id)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.exception("MCP OAuth start request failed for server %s", server_id)
+        raise HTTPException(status_code=400, detail="MCP OAuth setup failed") from exc
     return {"authorization_url": url}
 
 
@@ -215,7 +219,8 @@ def oauth_callback(server_id: uuid.UUID, code: str, state: str, session: Session
         tenant_id = uuid.UUID(str(state_payload["tenant_id"]))
         set_db_tenant_context(session, tenant_id)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.exception("MCP OAuth callback failed for server %s", server_id)
+        raise HTTPException(status_code=400, detail="MCP OAuth callback failed") from exc
     server = session.get(MCPServer, server_id)
     if server is None:
         raise HTTPException(status_code=404, detail="MCP server not found")
@@ -354,15 +359,34 @@ def inspector(server_id: uuid.UUID, session: Session = Depends(get_db), auth: Au
     if server is None:
         raise HTTPException(status_code=404, detail="MCP server not found")
     events = session.execute(select(MCPEvent).where(MCPEvent.server_id == server.id).order_by(MCPEvent.sequence.desc()).limit(100)).scalars().all()
-    event_items = [
-        event.payload
-        | {
-            "event_type": event.event_type,
-            "sequence": event.sequence,
-            "created_at": event.created_at.isoformat(),
-        }
-        for event in events
-    ]
+    safe_payload_keys = {
+        "tool",
+        "argument_keys",
+        "error_code",
+        "content_item_count",
+        "content_types",
+        "has_structured_content",
+        "rendered_length",
+        "is_error",
+        "has_refresh_token",
+        "expires_in",
+        "provider",
+    }
+    event_items = []
+    for event in events:
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        event_items.append(
+            {
+                key: payload[key]
+                for key in safe_payload_keys
+                if key in payload
+            }
+            | {
+                "event_type": event.event_type,
+                "sequence": event.sequence,
+                "created_at": event.created_at.isoformat(),
+            }
+        )
     config = server.config if isinstance(server.config, dict) else {}
     cached_tools = config.get("mcp_tools_cache") if isinstance(config.get("mcp_tools_cache"), list) else []
     return {

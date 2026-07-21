@@ -23,6 +23,7 @@ from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration
 from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
+from app.integrations.services.mcp_http_client import build_safe_sync_client
 
 try:  # pragma: no cover - optional runtime dependency
     from mcp.client.auth.utils import (
@@ -565,7 +566,7 @@ class ConnectorOAuthService:
         self, server_url: str
     ) -> tuple[ProtectedResourceMetadata, OAuthMetadata]:
         headers = {MCP_PROTOCOL_VERSION: LATEST_PROTOCOL_VERSION}
-        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+        with build_safe_sync_client(timeout=30.0, headers=headers) as client:
             resource_metadata = self._discover_resource_metadata(
                 client, server_url, headers=headers
             )
@@ -641,7 +642,7 @@ class ConnectorOAuthService:
             client_metadata,
             base_url,
         )
-        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+        with build_safe_sync_client(timeout=30.0) as client:
             response = client.send(request)
         if response.status_code not in {200, 201}:
             raise ApiError(
@@ -729,7 +730,7 @@ class ConnectorOAuthService:
         elif auth_method == "client_secret_post" and client_info.client_secret:
             form_data["client_secret"] = client_info.client_secret
 
-        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+        with build_safe_sync_client(timeout=30.0) as client:
             response = client.post(token_endpoint, data=form_data, headers=headers)
         if response.status_code != 200:
             raise ApiError(

@@ -14,7 +14,7 @@ export default function ConnectorsMcpDocsPage() {
           },
           {
             title: "OAuth + Secret Safety",
-            body: "MCP OAuth metadata is discovered from the vendor, callbacks use signed expiring state, and access/refresh tokens are encrypted per tenant and server.",
+            body: "MCP OAuth metadata and PKCE state use an encrypted, single-use transaction record; access/refresh tokens and client metadata are encrypted per tenant and server.",
           },
           {
             title: "Connector Documents",
@@ -22,7 +22,7 @@ export default function ConnectorsMcpDocsPage() {
           },
           {
             title: "Native MCP Runtime",
-            body: "Installed servers support Streamable HTTP and SSE fallback, with reconnect workers, list-change notifications, prompts/resources/templates, and an Inspector view.",
+            body: "Installed servers support Streamable HTTP and SSE fallback, with reconnect workers, list-change notifications, freshness-bounded catalogs, prompts/resources/templates, and an Inspector view.",
           },
         ]}
       />
@@ -46,8 +46,8 @@ export default function ConnectorsMcpDocsPage() {
         <ul className="list-disc space-y-2 pl-6">
           <li>discover tools, prompts, resources, and templates dynamically from each server</li>
           <li>map MCP tool risk into AverQel&apos;s permission tiers</li>
-          <li>persist connection, catalog, notification, and tool-call events for replay and inspection</li>
-          <li>keep OAuth, tenant ownership, approvals, and audit safety under AverQel&apos;s control plane</li>
+          <li>persist metadata-only connection, catalog, notification, and tool-call events for safe inspection</li>
+          <li>keep OAuth, tenant ownership, endpoint validation, approvals, and audit safety under AverQel&apos;s control plane</li>
         </ul>
       </DocsSection>
 

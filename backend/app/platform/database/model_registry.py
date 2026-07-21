@@ -29,7 +29,13 @@ from app.ingestion.models.ingestion_job import IngestionJob
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration
-from app.integrations.models.mcp_server import MCPEvent, MCPOAuthToken, MCPServer
+from app.integrations.models.mcp_server import (
+    MCPEvent,
+    MCPOAuthToken,
+    MCPOAuthTransaction,
+    MCPRegistryEntry,
+    MCPServer,
+)
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.models.provider_health_check import ProviderHealthCheck
@@ -99,6 +105,8 @@ __all__ = [
     "AgentTodo",
     "AgentRuntimePreference",
     "MCPServer",
+    "MCPRegistryEntry",
     "MCPEvent",
     "MCPOAuthToken",
+    "MCPOAuthTransaction",
 ]

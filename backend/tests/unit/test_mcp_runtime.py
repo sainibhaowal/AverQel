@@ -109,8 +109,10 @@ def test_mcp_runtime_snapshot_formats_text_and_structured_payload(monkeypatch) -
         self: MCPConnectorRuntime,
         name: str,
         arguments: dict[str, Any] | None = None,
+        *,
+        allow_retry: bool = False,
     ) -> Any:
-        del self, name, arguments
+        del self, name, arguments, allow_retry
         return SimpleNamespace(
             isError=False,
             structuredContent={"items": [{"id": "doc-1", "name": "Design Notes"}]},

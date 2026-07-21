@@ -82,6 +82,7 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
             server.status = "connected"
             server.last_error = None
             server.reconnect_attempts = 0
+            server.last_connected_at = datetime.now(UTC)
             MCPEventsRepository(db).append(
                 tenant_id=tenant_uuid,
                 server_id=server.id,
@@ -94,7 +95,7 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
         except Exception as exc:  # noqa: BLE001
             logger.exception("MCP catalog refresh failed for %s", server.id)
             server.status = "failed"
-            server.last_error = str(exc)[:1000]
+            server.last_error = f"{type(exc).__name__}: MCP catalog refresh failed"
             server.reconnect_attempts = int(server.reconnect_attempts or 0) + 1
             MCPEventsRepository(db).append(
                 tenant_id=tenant_uuid,

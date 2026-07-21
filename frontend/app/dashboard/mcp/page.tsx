@@ -132,6 +132,7 @@ export default function MCPDashboard() {
   const [items, setItems] = useState<MarketplaceEntry[]>([]);
   const [installed, setInstalled] = useState<InstalledServer[]>([]);
   const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<MarketplaceEntry | null>(null);
@@ -151,9 +152,10 @@ export default function MCPDashboard() {
       ]);
       if (!marketplaceResponse.ok) throw new Error("Marketplace unavailable");
       if (!serversResponse.ok) throw new Error("Installed MCP servers unavailable");
-      const marketplace = await marketplaceResponse.json() as { items: MarketplaceEntry[]; total: number };
+      const marketplace = await marketplaceResponse.json() as { items: MarketplaceEntry[]; total: number; pages?: number };
       setItems(marketplace.items || []);
       setTotal(marketplace.total || 0);
+      setPages(Math.max(1, Number(marketplace.pages || 1)));
       setInstalled(await serversResponse.json() as InstalledServer[]);
       if (facetsResponse?.ok) setFacets(await facetsResponse.json() as MarketplaceFacets);
     } catch (reason) {
@@ -210,7 +212,7 @@ export default function MCPDashboard() {
         </>}
       </header>
       {error && <p className="rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
-      {tab === "marketplace" ? <section className="space-y-6"><p className="text-sm text-slate-400">{total.toLocaleString()} approved applications</p><div className="grid gap-4 md:grid-cols-2">{loading ? <p className="text-sm text-white/60">Loading...</p> : items.map((entry) => <MarketplaceCard key={entry.id} entry={entry} onDetails={() => setDetail(entry)} onConnect={() => void connect(entry)} />)}</div><Pagination page={page} hasNext={items.length > 0} onPrevious={() => setPage(page - 1)} onNext={() => setPage(page + 1)} /></section> : <section className="grid gap-4">{installed.map((server) => <InstalledCard key={server.id} server={server} onRefresh={async () => { await fetchWithAuth(`/mcp/servers/${server.id}/refresh`, { method: "POST" }); await load(); }} onInspect={() => window.location.assign(`/dashboard/mcp/inspector/${server.id}`)} onDisconnect={async () => { if (confirm("Disconnect this server?")) { await fetchWithAuth(`/mcp/servers/${server.id}`, { method: "DELETE" }); await load(); } }} />)}</section>}
+      {tab === "marketplace" ? <section className="space-y-6"><p className="text-sm text-slate-400">{total.toLocaleString()} approved applications</p><div className="grid gap-4 md:grid-cols-2">{loading ? <p className="text-sm text-white/60">Loading...</p> : items.map((entry) => <MarketplaceCard key={entry.id} entry={entry} onDetails={() => setDetail(entry)} onConnect={() => void connect(entry)} />)}</div><Pagination page={page} hasNext={page < pages} onPrevious={() => setPage(page - 1)} onNext={() => setPage(page + 1)} /></section> : <section className="grid gap-4">{installed.map((server) => <InstalledCard key={server.id} server={server} onRefresh={async () => { await fetchWithAuth(`/mcp/servers/${server.id}/refresh`, { method: "POST" }); await load(); }} onInspect={() => window.location.assign(`/dashboard/mcp/inspector/${server.id}`)} onDisconnect={async () => { if (confirm("Disconnect this server?")) { await fetchWithAuth(`/mcp/servers/${server.id}`, { method: "DELETE" }); await load(); } }} />)}</section>}
       {detail && <DetailsModal entry={detail} onClose={() => setDetail(null)} onConnect={() => void connect(detail)} />}
     </main>
   );

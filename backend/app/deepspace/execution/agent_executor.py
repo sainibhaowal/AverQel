@@ -863,9 +863,16 @@ class AgentExecutor:
                         MCPServer.tenant_id == self.auth.tenant_id,
                         MCPServer.user_id == self.auth.user_id,
                         MCPServer.enabled.is_(True),
+                        MCPServer.status == "connected",
                     )
                 ).scalars().all()
+                from app.integrations.services.mcp_runtime import mcp_catalog_is_fresh
                 for server in native_servers:
+                    if not mcp_catalog_is_fresh(
+                        server,
+                        max_age_seconds=self.settings.mcp_catalog_max_age_seconds,
+                    ):
+                        continue
                     for raw_tool in (server.config or {}).get("mcp_tools_cache", []):
                         if not isinstance(raw_tool, dict):
                             continue

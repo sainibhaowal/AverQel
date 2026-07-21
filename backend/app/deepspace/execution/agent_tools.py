@@ -1037,8 +1037,16 @@ class ToolExecutor:
                 or getattr(self, "current_parent_id", None)
             ),
             tool_name=name,
-            tool_args=redact_tool_payload(args),
-            tool_result=str(result.output)[:10000],
+            tool_args=(
+                {"argument_keys": sorted(str(key) for key in args)}
+                if name.startswith("mcp_")
+                else redact_tool_payload(args)
+            ),
+            tool_result=(
+                "[MCP result omitted from audit storage]"
+                if name.startswith("mcp_")
+                else str(result.output)[:10000]
+            ),
             status="success" if result.success else "failed",
             execution_time_ms=duration_ms,
         )
@@ -1163,10 +1171,21 @@ class ToolExecutor:
                     MCPServer.tenant_id == self.auth.tenant_id,
                     MCPServer.user_id == self.auth.user_id,
                     MCPServer.enabled.is_(True),
+                    MCPServer.status == "connected",
                 )
             ).scalar_one_or_none()
             if server is None:
                 return ToolResult(success=False, output="MCP server not found or disabled.")
+            from app.integrations.services.mcp_runtime import mcp_catalog_is_fresh
+            if not mcp_catalog_is_fresh(
+                server,
+                max_age_seconds=self.settings.mcp_catalog_max_age_seconds,
+            ):
+                return ToolResult(
+                    success=False,
+                    output="MCP server catalog is stale; refresh the connection before calling this tool.",
+                    data={"error_code": "stale_catalog"},
+                )
             from app.integrations.services.mcp_runtime import execute_mcp_server_tool
             result_payload = await execute_mcp_server_tool(
                 db=self.db, settings=self.settings, server=server,

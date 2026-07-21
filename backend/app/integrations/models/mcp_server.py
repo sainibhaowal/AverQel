@@ -64,6 +64,26 @@ class MCPRegistryEntry(Base):
     enrichment_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
 
+class MCPOAuthTransaction(Base):
+    """Encrypted, single-use OAuth transaction state for a native MCP server."""
+
+    __tablename__ = "mcp_oauth_transactions"
+    __table_args__ = (UniqueConstraint("state_hash", name="uq_mcp_oauth_transactions_state_hash"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False, index=True)
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    secret_ciphertext: Mapped[bytes] = mapped_column(nullable=False)
+    secret_nonce: Mapped[bytes] = mapped_column(nullable=False)
+    secret_kid: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+
 class MCPEvent(Base):
     """Durable lifecycle/catalog/tool event for replay and diagnostics."""
 

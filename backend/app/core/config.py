@@ -264,6 +264,7 @@ class Settings(BaseSettings):
     connector_slack_oauth_client_secret: str | None = None
     connector_notion_oauth_client_id: str | None = None
     connector_notion_oauth_client_secret: str | None = None
+    mcp_catalog_max_age_seconds: int = Field(default=900, ge=60, le=86_400)
     averqel_domain: str | None = Field(default=None, validation_alias="AVERQEL_DOMAIN")
     averqel_public_origin: str | None = Field(
         default=None, validation_alias="AVERQEL_PUBLIC_ORIGIN"

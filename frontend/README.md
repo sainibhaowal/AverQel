@@ -2,6 +2,18 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Use Node.js 22 (the production Docker image uses Node 22) and pnpm 10. The
+workspace declaration in `pnpm-workspace.yaml` is required so the checked-in
+Vitest 3 toolchain is installed instead of falling back to an incompatible
+temporary Vitest version.
+
+```bash
+corepack enable
+corepack prepare pnpm@10.28.2 --activate
+pnpm install --frozen-lockfile
+pnpm test
+```
+
 First, run the development server:
 
 ```bash

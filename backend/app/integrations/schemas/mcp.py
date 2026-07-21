@@ -22,23 +22,27 @@ class MCPServerRead(BaseModel):
 
     @field_serializer("config")
     def serialize_safe_config(self, value: dict[str, Any]) -> dict[str, Any]:
-        """Never expose OAuth material or PKCE state to browser clients."""
-        sensitive = {
-            "access_token", "refresh_token", "token", "client_secret",
-            "secret", "password", "authorization", "code", "code_verifier",
-            "oauth_pending",
+        """Expose only catalog metadata; never serialize arbitrary server JSON."""
+        allowed = {
+            "server_url",
+            "oauth_mode",
+            "auth_type",
+            "transport",
+            "vendor_slug",
+            "registry_entry_id",
+            "source",
+            "categories",
+            "mcp_tools_cache",
+            "mcp_prompts_cache",
+            "mcp_resources_cache",
+            "mcp_resource_templates_cache",
+            "mcp_catalog_tool_count",
+            "mcp_catalog_last_sync_at",
+            "catalog_revision",
         }
-
-        def redact(item: Any, key: str = "") -> Any:
-            if key.lower() in sensitive or any(marker in key.lower() for marker in ("token", "secret", "verifier", "key")):
-                return "[REDACTED]"
-            if isinstance(item, dict):
-                return {str(k): redact(v, str(k)) for k, v in item.items()}
-            if isinstance(item, list):
-                return [redact(v, key) for v in item]
-            return item
-
-        return redact(value) if isinstance(value, dict) else {}
+        if not isinstance(value, dict):
+            return {}
+        return {key: value[key] for key in allowed if key in value}
 
 
 class MCPCatalogReviewRequest(BaseModel):

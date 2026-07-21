@@ -7,9 +7,12 @@ import re
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import anyio
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import SchemaError, ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -26,6 +29,7 @@ from app.integrations.services.health_utils import (
     build_health_report,
     classify_health_status,
 )
+from app.integrations.services.mcp_http_client import build_safe_async_client
 
 try:  # pragma: no cover - optional runtime dependency
     from mcp.client.auth.oauth2 import OAuthClientProvider, TokenStorage
@@ -448,7 +452,7 @@ class MCPConnectorRuntime:
 
         if transport == "sse":
             auth = self._session_client()
-            async with create_mcp_http_client(headers=self.headers or None, auth=auth) as http_client:
+            async with build_safe_async_client(headers=self.headers or None, auth=auth) as http_client:
                 async with sse_client(self.server_url, http_client=http_client) as streams:
                     read_stream, write_stream = streams
                     async with ClientSession(read_stream, write_stream, message_handler=self.message_handler or _handle_message) as session:
@@ -457,7 +461,7 @@ class MCPConnectorRuntime:
             return
 
         auth = self._session_client()
-        async with create_mcp_http_client(headers=self.headers or None, auth=auth) as http_client:
+        async with build_safe_async_client(headers=self.headers or None, auth=auth) as http_client:
             async with streamable_http_client(self.server_url, http_client=http_client) as streams:
                 read_stream, write_stream, _session_id = streams
                 async with ClientSession(read_stream, write_stream, message_handler=self.message_handler or _handle_message) as session:
@@ -557,19 +561,25 @@ class MCPConnectorRuntime:
             return items
 
     async def call_tool(
-        self, name: str, arguments: dict[str, Any] | None = None
+        self,
+        name: str,
+        arguments: dict[str, Any] | None = None,
+        *,
+        allow_retry: bool = False,
     ) -> Any:
         last_error: Exception | None = None
-        for attempt in range(3):
+        attempts = 3 if allow_retry else 1
+        for attempt in range(attempts):
             try:
                 async with self.session() as session:
                     return await session.call_tool(name, arguments or {})
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
-                if attempt == 2:
+                if attempt == attempts - 1:
                     break
                 await anyio.sleep(0.25 * (2**attempt))
-        raise MCPRuntimeError(f"MCP tool {name} failed after reconnect attempts: {last_error}") from last_error
+        suffix = " after reconnect attempts" if allow_retry else ""
+        raise MCPRuntimeError(f"MCP tool {name} failed{suffix}: {last_error}") from last_error
 
     async def validate_tools(
         self, *, provider: str, expected_tools: Iterable[str]
@@ -617,7 +627,7 @@ class MCPConnectorRuntime:
         filename: str,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        result = await self.call_tool(tool_name, arguments)
+        result = await self.call_tool(tool_name, arguments, allow_retry=True)
         if bool(getattr(result, "isError", False)):
             rendered = self._result_content_to_text(result)
             raise MCPRuntimeError(rendered or f"MCP tool call failed: {tool_name}")
@@ -709,15 +719,25 @@ def build_mcp_server_runtime(
     if not isinstance(token_payload, dict):
         raise MCPRuntimeError("MCP OAuth token payload is invalid")
 
-    credentials = dict(config)
+    runtime_config_keys = {
+        "server_url",
+        "transport",
+        "mcp_sse_fallback",
+        "oauth_mode",
+        "auth_type",
+        "vendor_slug",
+        "declared_tools",
+        "mcp_tools",
+    }
+    credentials = {key: config[key] for key in runtime_config_keys if key in config}
     credentials.update(token_payload)
     credentials["auth_mode"] = "mcp"
     credentials["transport"] = server.transport
     credentials["server_url"] = config.get("server_url")
-    credentials["client_info"] = config.get("oauth_client_info")
-    credentials["client_metadata"] = config.get("client_metadata")
-    credentials["oauth_metadata"] = config.get("oauth_metadata")
-    credentials["resource_metadata"] = config.get("resource_metadata")
+    credentials["client_info"] = token_payload.get("client_info") or config.get("oauth_client_info")
+    credentials["client_metadata"] = token_payload.get("client_metadata") or config.get("client_metadata")
+    credentials["oauth_metadata"] = token_payload.get("oauth_metadata") or config.get("oauth_metadata")
+    credentials["resource_metadata"] = token_payload.get("resource_metadata") or config.get("resource_metadata")
 
     async def _persist(tokens: Any) -> None:
         if token_record is None:
@@ -764,23 +784,50 @@ async def execute_mcp_server_tool(
     """Execute a tool for a generic installed MCP server and persist its events."""
     from app.integrations.repositories.mcp_events import MCPEventsRepository
 
-    def _redact(value: Any) -> Any:
-        if isinstance(value, dict):
-            return {
-                str(key): ("[REDACTED]" if any(marker in str(key).lower() for marker in ("token", "secret", "password", "authorization", "code")) else _redact(item))
-                for key, item in value.items()
-            }
-        if isinstance(value, list):
-            return [_redact(item) for item in value]
-        return value
-
     events = MCPEventsRepository(db)
+    config = server.config if isinstance(server.config, dict) else {}
+    if not server.enabled or server.status != "connected":
+        return {
+            "status": "error",
+            "message": "MCP server is not connected",
+            "error_code": "server_not_connected",
+            "is_error": True,
+        }
+    if not mcp_catalog_is_fresh(server, max_age_seconds=settings.mcp_catalog_max_age_seconds):
+        return {
+            "status": "error",
+            "message": "MCP tool catalog is stale; reconnect or refresh the server",
+            "error_code": "stale_catalog",
+            "is_error": True,
+        }
+    cached_tools = config.get("mcp_tools_cache") if isinstance(config.get("mcp_tools_cache"), list) else []
+    catalog_tool = next(
+        (item for item in cached_tools if isinstance(item, dict) and item.get("name") == tool_name),
+        None,
+    )
+    if catalog_tool is None:
+        return {
+            "status": "error",
+            "message": "MCP tool is not present in the current catalog",
+            "error_code": "unknown_tool",
+            "is_error": True,
+        }
+    try:
+        Draft202012Validator.check_schema(catalog_tool.get("inputSchema") or {})
+        Draft202012Validator(catalog_tool.get("inputSchema") or {}).validate(arguments)
+    except (SchemaError, ValidationError):
+        return {
+            "status": "error",
+            "message": "MCP tool arguments do not match the current catalog schema",
+            "error_code": "invalid_arguments",
+            "is_error": True,
+        }
     events.append(
         tenant_id=server.tenant_id,
         user_id=server.user_id,
         server_id=server.id,
         event_type="tool_call_started",
-        payload={"tool": tool_name, "arguments": _redact(arguments)},
+        payload={"tool": tool_name, "argument_keys": sorted(str(key) for key in arguments)},
     )
     runtime = build_mcp_server_runtime(db=db, settings=settings, server=server)
     if runtime is None:
@@ -789,7 +836,7 @@ async def execute_mcp_server_tool(
             user_id=server.user_id,
             server_id=server.id,
             event_type="tool_call_failed",
-            payload={"tool": tool_name, "error": "MCP server is not authenticated"},
+            payload={"tool": tool_name, "error_code": "not_authenticated"},
         )
         db.commit()
         return {"status": "error", "message": "MCP server is not authenticated", "is_error": True}
@@ -801,7 +848,7 @@ async def execute_mcp_server_tool(
             user_id=server.user_id,
             server_id=server.id,
             event_type="tool_call_completed",
-            payload={"tool": tool_name, "result": payload},
+            payload={"tool": tool_name, "result": summarize_mcp_result(result)},
         )
         db.commit()
         return payload
@@ -811,7 +858,7 @@ async def execute_mcp_server_tool(
             user_id=server.user_id,
             server_id=server.id,
             event_type="tool_call_failed",
-            payload={"tool": tool_name, "error": str(exc)},
+            payload={"tool": tool_name, "error_code": type(exc).__name__},
         )
         db.commit()
         return {"status": "error", "message": str(exc), "is_error": True}
@@ -838,6 +885,47 @@ def serialize_mcp_result(result: Any) -> dict[str, Any]:
     payload["rendered_text"] = render_mcp_result_text(result)
     payload["is_error"] = bool(getattr(result, "isError", False))
     return payload
+
+
+def summarize_mcp_result(result: Any) -> dict[str, Any]:
+    """Return only non-content metadata suitable for durable event storage."""
+    content = getattr(result, "content", None)
+    content_types: set[str] = set()
+    for item in content or []:
+        if isinstance(item, dict):
+            item_type = item.get("type")
+        else:
+            item_type = getattr(item, "type", None)
+        if item_type:
+            content_types.add(str(item_type))
+    rendered_length = len(render_mcp_result_text(result))
+    structured = getattr(result, "structuredContent", None)
+    if structured is None:
+        structured = getattr(result, "structured_content", None)
+    return {
+        "content_item_count": len(content or []),
+        "content_types": sorted(content_types),
+        "has_structured_content": structured is not None,
+        "rendered_length": rendered_length,
+        "is_error": bool(getattr(result, "isError", False)),
+    }
+
+
+def mcp_catalog_is_fresh(server: MCPServer, *, max_age_seconds: int) -> bool:
+    if not server.enabled or server.status != "connected":
+        return False
+    config = server.config if isinstance(server.config, dict) else {}
+    raw_timestamp = config.get("mcp_catalog_last_sync_at")
+    if not raw_timestamp:
+        return False
+    try:
+        timestamp = datetime.fromisoformat(str(raw_timestamp).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    age = (datetime.now(UTC) - timestamp).total_seconds()
+    return 0 <= age <= max_age_seconds
 
 
 async def validate_mcp_runtime(
