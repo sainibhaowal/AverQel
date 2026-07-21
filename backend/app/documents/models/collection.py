@@ -4,14 +4,14 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     UniqueConstraint,
     func,
     text,
-    Boolean,
-    Integer,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -68,9 +68,7 @@ class DocumentCollection(Base):
 
 class CollectionPermission(Base):
     __tablename__ = "collection_permissions"
-    __table_args__ = (
-        UniqueConstraint("collection_id", "user_id", name="uq_coll_permission_user"),
-    )
+    __table_args__ = (UniqueConstraint("collection_id", "user_id", name="uq_coll_permission_user"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -104,9 +102,7 @@ class CollectionPermission(Base):
 
 class CollectionDocument(Base):
     __tablename__ = "collection_documents"
-    __table_args__ = (
-        UniqueConstraint("collection_id", "document_id", name="uq_coll_doc"),
-    )
+    __table_args__ = (UniqueConstraint("collection_id", "document_id", name="uq_coll_doc"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
