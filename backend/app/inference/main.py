@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import get_settings
 from app.inference.runtime import LocalInferenceRuntime
-from app.schemas.inference import (
+from app.inference.schemas.inference import (
     EmbedRequest,
     EmbedResponse,
     RerankItem,

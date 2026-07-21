@@ -368,7 +368,7 @@ RBAC, roles, and tenancy remain under `app/auth/` unless proven generic.
 ```text
 app/inference/main.py
 app/inference/runtime.py
-app/schemas/inference.py
+app/inference/schemas/inference.py
 ```
 
 Inference is an infrastructure boundary used by provider/local-runtime
