@@ -98,13 +98,40 @@ def infer_tool_contract(*, name: str, permission_level: PermissionLevel, metadat
     is_mcp = bool(metadata.get("is_mcp")) or normalized == "mcp_call"
     tier = permission_level.value if isinstance(permission_level, PermissionLevel) else str(permission_level)
     if is_mcp:
-        risk: RiskClass = "untrusted"
-        capabilities = ("external", "untrusted")
-        retries = ToolRetryPolicy()
-        timeout = 60.0
-        idempotent = False
-        compensation = True
-        approval: ApprovalRequirement = "human"
+        configured_risk = str(metadata.get("mcp_risk_level") or "").strip().lower()
+        configured_approval = str(metadata.get("mcp_approval_requirement") or "").strip().lower()
+        if configured_risk in {"read", "write", "delete", "external_message"}:
+            risk_map: dict[str, RiskClass] = {
+                "read": "external_read",
+                "write": "external_side_effect",
+                "delete": "destructive",
+                "external_message": "external_side_effect",
+            }
+            risk = risk_map[configured_risk]
+            capabilities = (
+                ("read", "external", "untrusted")
+                if configured_risk == "read"
+                else ("external", "write", "untrusted")
+            )
+            retries = ToolRetryPolicy(max_retries=1) if configured_risk == "read" else ToolRetryPolicy()
+            timeout = 60.0
+            idempotent = configured_risk == "read"
+            compensation = not idempotent
+            approval = (
+                configured_approval
+                if configured_approval in {"auto", "human", "block"}
+                else "human"
+            )
+        else:
+            # Unclassified dynamic tools retain the historical fail-safe:
+            # untrusted and human-approved with no retry.
+            risk = "untrusted"
+            capabilities = ("external", "untrusted")
+            retries = ToolRetryPolicy()
+            timeout = 60.0
+            idempotent = False
+            compensation = True
+            approval = "human"
     elif normalized in _DESTRUCTIVE_NAMES:
         risk = "destructive"
         capabilities = ("write", "destructive")

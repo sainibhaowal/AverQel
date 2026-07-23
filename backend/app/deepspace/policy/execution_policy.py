@@ -45,7 +45,7 @@ class ExecutionPolicy:
                 return ExecutionDecision(mode=mode, requires_human_approval=False, should_block=True, reason="Tool contract requires an active workspace scope.", tool_contract=tool_contract)
             if tool_contract.approval_requirement == "block":
                 return ExecutionDecision(mode=mode, requires_human_approval=False, should_block=True, reason=f"{tool_name} is blocked by its tool contract.", tool_contract=tool_contract)
-            if tool_contract.approval_requirement == "human" and tool_contract.risk_class in {"internal_write", "external_side_effect", "destructive", "privileged", "untrusted", "ambiguous"}:
+            if tool_contract.approval_requirement == "human" and tool_contract.risk_class in {"internal_write", "external_read", "external_side_effect", "destructive", "privileged", "untrusted", "ambiguous"}:
                 return ExecutionDecision(mode=mode, requires_human_approval=True, should_block=False, reason=f"{tool_name} requires human approval because its contract is {tool_contract.risk_class}.", tool_contract=tool_contract)
 
         if (

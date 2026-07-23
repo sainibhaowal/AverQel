@@ -42,6 +42,7 @@ from app.deepspace.execution.aci_tools import (
 from app.deepspace.execution.agent_permissions import (
     PermissionLevel,
     get_permission,
+    permission_for_mcp_policy,
     permission_tier_number,
 )
 from app.deepspace.execution.tool_context import ToolContext
@@ -745,6 +746,12 @@ def build_dynamic_mcp_tool(
     mcp_tool_def: dict[str, Any],
     *,
     server_name: str | None = None,
+    provider_id: str | None = None,
+    tenant_id: str | None = None,
+    user_id: str | None = None,
+    catalog_revision: int | None = None,
+    risk_level: str | None = None,
+    approval_requirement: str | None = None,
 ) -> AgentToolDef:
     """
     Convert a raw MCP tool definition into an AverQel AgentToolDef.
@@ -766,6 +773,21 @@ def build_dynamic_mcp_tool(
     server_component = _safe_component(server_name or "server")
     tool_component = _safe_component(raw_name)
     exposed_name = f"mcp_{server_component}_{tool_component}"
+    resolved_risk_level = str(
+        risk_level or mcp_tool_def.get("risk_level") or ""
+    ).strip().lower()
+    resolved_approval = str(
+        approval_requirement or mcp_tool_def.get("approval_requirement") or ""
+    ).strip().lower()
+    permission_level = (
+        permission_for_mcp_policy(
+            risk_level=resolved_risk_level,
+            approval_requirement=resolved_approval,
+        )
+        if resolved_risk_level in {"read", "write", "delete", "external_message"}
+        and resolved_approval in {"auto", "human", "block"}
+        else map_mcp_tool_to_permission(raw_name)
+    )
 
     return AgentToolDef(
         name=exposed_name,
@@ -773,10 +795,20 @@ def build_dynamic_mcp_tool(
         parameters=mcp_tool_def.get(
             "inputSchema", {"type": "object", "properties": {}}
         ),
-        permission_level=map_mcp_tool_to_permission(raw_name),
+        permission_level=permission_level,
         metadata={
             "connector_id": str(connector_id),
             "mcp_server_id": str(mcp_tool_def.get("server_id")) if mcp_tool_def.get("server_id") else None,
+            "provider_id": str(provider_id or mcp_tool_def.get("provider_id")) if (provider_id or mcp_tool_def.get("provider_id")) else None,
+            "server_id": str(mcp_tool_def.get("server_id")) if mcp_tool_def.get("server_id") else None,
+            "tenant_id": str(tenant_id or mcp_tool_def.get("tenant_id")) if (tenant_id or mcp_tool_def.get("tenant_id")) else None,
+            "user_id": str(user_id or mcp_tool_def.get("user_id")) if (user_id or mcp_tool_def.get("user_id")) else None,
+            "original_tool_name": raw_name,
+            "catalog_revision": catalog_revision if catalog_revision is not None else mcp_tool_def.get("catalog_revision"),
+            "risk_level": resolved_risk_level or None,
+            "approval_requirement": resolved_approval or None,
+            "mcp_risk_level": resolved_risk_level or None,
+            "mcp_approval_requirement": resolved_approval or None,
             "mcp_server_name": server_component,
             "mcp_exposed_name": exposed_name,
             "mcp_original_name": raw_name,
@@ -1152,7 +1184,12 @@ class ToolExecutor:
         return result
 
     async def _exec_mcp_dynamic_call(
-        self, name: str, args: dict[str, Any], tool_def: AgentToolDef
+        self,
+        name: str,
+        args: dict[str, Any],
+        tool_def: AgentToolDef,
+        *,
+        conversation_id: uuid.UUID | None = None,
     ) -> ToolResult:
         """
         Routes a dynamic MCP tool call to the universal bridge.
@@ -1176,7 +1213,10 @@ class ToolExecutor:
             ).scalar_one_or_none()
             if server is None:
                 return ToolResult(success=False, output="MCP server not found or disabled.")
-            from app.integrations.services.mcp_runtime import mcp_catalog_is_fresh
+            from app.integrations.services.mcp_runtime import (
+                evaluate_mcp_tool_policy,
+                mcp_catalog_is_fresh,
+            )
             if not mcp_catalog_is_fresh(
                 server,
                 max_age_seconds=self.settings.mcp_catalog_max_age_seconds,
@@ -1186,10 +1226,65 @@ class ToolExecutor:
                     output="MCP server catalog is stale; refresh the connection before calling this tool.",
                     data={"error_code": "stale_catalog"},
                 )
+            cached_tools = (server.config or {}).get("mcp_tools_cache", []) if isinstance(server.config, dict) else []
+            current_tool = next(
+                (
+                    item
+                    for item in cached_tools
+                    if isinstance(item, dict) and item.get("name") == original_name
+                ),
+                None,
+            )
+            if current_tool is None:
+                return ToolResult(
+                    success=False,
+                    output="MCP tool is not present in the current catalog; refresh the connection before calling it.",
+                    data={"error_code": "unknown_tool"},
+                )
+            metadata = tool_def.metadata or {}
+            expected_revision = metadata.get("catalog_revision")
+            try:
+                expected_revision = int(expected_revision) if expected_revision is not None else None
+            except (TypeError, ValueError):
+                expected_revision = None
+            expected_provider_id = str(metadata.get("provider_id") or "").strip()
+            current_provider_id = str(server.provider_slug or server.registry_entry_id or server.id)
+            if expected_provider_id and expected_provider_id != current_provider_id:
+                return ToolResult(
+                    success=False,
+                    output="MCP provider identity changed; refresh the connection before calling this tool.",
+                    data={"error_code": "provider_identity_changed"},
+                )
+            policy_decision = evaluate_mcp_tool_policy(
+                db=self.db,
+                server=server,
+                tool_name=str(original_name or ""),
+                tenant_id=self.auth.tenant_id,
+                user_id=self.auth.user_id,
+                conversation_id=conversation_id,
+                deepspace_id=getattr(self.tool_context, "mission_id", None),
+                tool=current_tool,
+                expected_catalog_revision=expected_revision,
+                max_age_seconds=self.settings.mcp_catalog_max_age_seconds,
+            )
+            if not policy_decision.allowed:
+                return ToolResult(
+                    success=False,
+                    output=policy_decision.reason,
+                    data={"error_code": "mcp_policy_blocked", "policy": policy_decision.metadata()},
+                )
+            if policy_decision.requires_approval:
+                return ToolResult(
+                    success=False,
+                    output="MCP tool requires user approval before execution.",
+                    data={"error_code": "approval_required", "policy": policy_decision.metadata()},
+                )
             from app.integrations.services.mcp_runtime import execute_mcp_server_tool
             result_payload = await execute_mcp_server_tool(
                 db=self.db, settings=self.settings, server=server,
                 tool_name=original_name, arguments=args,
+                conversation_id=conversation_id,
+                deepspace_id=getattr(self.tool_context, "mission_id", None),
             )
             is_error = result_payload.get("is_error", False)
             return ToolResult(
@@ -1351,7 +1446,7 @@ class ToolExecutor:
                 contract is not None
                 and contract.approval_requirement == "human"
                 and (
-                    contract.risk_class in {"internal_write", "external_side_effect", "destructive", "privileged", "untrusted", "ambiguous"}
+                    contract.risk_class in {"internal_write", "external_read", "external_side_effect", "destructive", "privileged", "untrusted", "ambiguous"}
                     or getattr(self, "execution_mode", "auto_review") != "full_access"
                 )
             )
@@ -1386,7 +1481,12 @@ class ToolExecutor:
 
             if tool_def.metadata and tool_def.metadata.get("is_mcp"):
                 # Dynamic routing for MCP tools
-                result = await self._exec_mcp_dynamic_call(name, audit_args, tool_def)
+                result = await self._exec_mcp_dynamic_call(
+                    name,
+                    audit_args,
+                    tool_def,
+                    conversation_id=active_conversation_id,
+                )
                 # Skip the standard implementation block by setting method to None and result already set
                 method = None
             else:

@@ -15,6 +15,7 @@ from app.integrations.repositories.mcp_events import MCPEventsRepository
 from app.integrations.services.mcp_runtime import (
     MCPCatalog,
     build_mcp_server_runtime,
+    mcp_server_provider_available,
 )
 from app.platform.database.session import SessionLocal, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
@@ -38,6 +39,12 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
         ).scalar_one_or_none()
         if server is None:
             return {"status": "not_found"}
+        provider_available, _provider_reason = mcp_server_provider_available(db, server)
+        if not provider_available:
+            server.status = "failed"
+            server.last_error = "MCP provider is disabled"
+            db.commit()
+            return {"status": "provider_disabled", "server_id": server_id}
         async def _notification(method: str, params: object) -> None:
             if method.endswith("tools/list_changed") or method.endswith("prompts/list_changed") or method.endswith("resources/list_changed"):
                 MCPEventsRepository(db).append(
@@ -136,6 +143,12 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
         server = db.execute(select(MCPServer).where(MCPServer.id == uuid.UUID(server_id), MCPServer.tenant_id == tenant_uuid)).scalar_one_or_none()
         if server is None or not server.enabled:
             return {"status": "stopped"}
+        provider_available, _provider_reason = mcp_server_provider_available(db, server)
+        if not provider_available:
+            server.status = "failed"
+            server.last_error = "MCP provider is disabled"
+            db.commit()
+            return {"status": "provider_disabled"}
 
         async def _notification(method: str, params: object) -> None:
             if method.endswith(("tools/list_changed", "prompts/list_changed", "resources/list_changed")):

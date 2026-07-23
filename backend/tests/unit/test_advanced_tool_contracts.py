@@ -74,6 +74,37 @@ def test_dynamic_mcp_tools_are_namespaced_by_server() -> None:
 
 
 @pytest.mark.unit_no_db
+def test_dynamic_mcp_tools_carry_native_identity_and_policy_metadata() -> None:
+    tool = build_dynamic_mcp_tool(
+        connector_id="00000000-0000-0000-0000-000000000001",
+        server_name="gmail",
+        provider_id="google-gmail",
+        tenant_id="00000000-0000-0000-0000-000000000010",
+        user_id="00000000-0000-0000-0000-000000000011",
+        catalog_revision=12,
+        risk_level="read",
+        approval_requirement="auto",
+        mcp_tool_def={
+            "name": "search_threads",
+            "server_id": "00000000-0000-0000-0000-000000000001",
+            "inputSchema": {"type": "object"},
+        },
+    )
+
+    assert tool.metadata["provider_id"] == "google-gmail"
+    assert tool.metadata["server_id"] == "00000000-0000-0000-0000-000000000001"
+    assert tool.metadata["tenant_id"] == "00000000-0000-0000-0000-000000000010"
+    assert tool.metadata["user_id"] == "00000000-0000-0000-0000-000000000011"
+    assert tool.metadata["original_tool_name"] == "search_threads"
+    assert tool.metadata["catalog_revision"] == 12
+    assert tool.metadata["risk_level"] == "read"
+    assert tool.metadata["approval_requirement"] == "auto"
+    assert tool.contract is not None
+    assert tool.contract.risk_class == "external_read"
+    assert tool.contract.approval_requirement == "auto"
+
+
+@pytest.mark.unit_no_db
 def test_external_side_effects_pause_even_in_full_access_mode() -> None:
     decision = ExecutionPolicy.assess(
         mode="full_access",

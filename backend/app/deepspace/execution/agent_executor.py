@@ -866,7 +866,11 @@ class AgentExecutor:
                         MCPServer.status == "connected",
                     )
                 ).scalars().all()
-                from app.integrations.services.mcp_runtime import mcp_catalog_is_fresh
+                from app.integrations.services.mcp_runtime import (
+                    evaluate_mcp_tool_policy,
+                    infer_mcp_tool_risk,
+                    mcp_catalog_is_fresh,
+                )
                 for server in native_servers:
                     if not mcp_catalog_is_fresh(
                         server,
@@ -876,7 +880,33 @@ class AgentExecutor:
                     for raw_tool in (server.config or {}).get("mcp_tools_cache", []):
                         if not isinstance(raw_tool, dict):
                             continue
-                        raw_tool = {**raw_tool, "server_id": str(server.id)}
+                        original_tool_name = str(raw_tool.get("name") or "").strip()
+                        if not original_tool_name:
+                            continue
+                        policy_decision = evaluate_mcp_tool_policy(
+                            db=self.db,
+                            server=server,
+                            tool_name=original_tool_name,
+                            tenant_id=self.auth.tenant_id,
+                            user_id=self.auth.user_id,
+                            conversation_id=conversation_id,
+                            deepspace_id=getattr(self, "mission_id", None),
+                            tool=raw_tool,
+                            expected_catalog_revision=server.catalog_revision,
+                            max_age_seconds=self.settings.mcp_catalog_max_age_seconds,
+                        )
+                        if not policy_decision.allowed:
+                            continue
+                        raw_tool = {
+                            **raw_tool,
+                            "server_id": str(server.id),
+                            "provider_id": str(server.provider_slug or server.registry_entry_id or server.id),
+                            "tenant_id": str(self.auth.tenant_id),
+                            "user_id": str(self.auth.user_id),
+                            "catalog_revision": int(server.catalog_revision or 0),
+                            "risk_level": policy_decision.risk_level or infer_mcp_tool_risk(original_tool_name, raw_tool),
+                            "approval_requirement": policy_decision.approval_requirement,
+                        }
                         dynamic_tool = build_dynamic_mcp_tool(
                             server.id, raw_tool, server_name=str(server.config.get("vendor_slug") or server.name)
                         )
@@ -1526,8 +1556,17 @@ class AgentExecutor:
                         if "conversation_id" in execute_signature.parameters:
                             execute_kwargs["conversation_id"] = conversation_id
                         if "tool_context" in execute_signature.parameters:
+                            context_tool = TOOL_MAP.get(p.name) or getattr(
+                                self.tool_executor, "dynamic_tools", {}
+                            ).get(p.name)
+                            context_metadata = getattr(context_tool, "metadata", {}) or {}
                             execute_kwargs["tool_context"] = self._make_tool_context(
                                 conversation_id=conversation_id,
+                                mission_id=(
+                                    getattr(self, "mission_id", None)
+                                    if context_metadata.get("is_mcp")
+                                    else None
+                                ),
                                 temp_state_store=tool_state_store,
                                 tool_call_id=p.id,
                             )

@@ -81,3 +81,16 @@ def permission_tier_number(level: PermissionLevel | str) -> int:
         if permission_level.value == normalized:
             return tier_number
     return _PERMISSION_TIER_NUMBERS[PermissionLevel.TIER3_APPROVE]
+
+
+def permission_for_mcp_policy(
+    *,
+    risk_level: str,
+    approval_requirement: str,
+) -> PermissionLevel:
+    """Map a native MCP policy decision to the existing DeepSpace tiers."""
+    if approval_requirement == "block":
+        return PermissionLevel.TIER4_WARN
+    if approval_requirement == "human" or risk_level != "read":
+        return PermissionLevel.TIER2_CONFIRM
+    return PermissionLevel.TIER1_AUTO

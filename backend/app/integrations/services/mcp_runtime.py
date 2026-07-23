@@ -4,21 +4,24 @@ import hashlib
 import json
 import logging
 import re
+import uuid
 from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import anyio
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.integrations.models.connector import Connector
 from app.integrations.models.connector_secret import ConnectorSecret
-from app.integrations.models.mcp_server import MCPOAuthToken, MCPServer
+from app.integrations.models.mcp_connection_policy import MCPConnectionPolicy
+from app.integrations.models.mcp_server import MCPOAuthToken, MCPRegistryEntry, MCPServer
 from app.integrations.services.config_utils import (
     resolve_config_dict,
     resolve_config_value,
@@ -61,6 +64,40 @@ except ImportError:  # pragma: no cover - graceful fallback when MCP is unavaila
     MCP_SDK_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+MCPRiskLevel = Literal["read", "write", "delete", "external_message"]
+MCPPolicyMode = Literal["always_allow", "needs_approval", "blocked"]
+_MCP_RISK_RANK: dict[str, int] = {
+    "read": 0,
+    "write": 1,
+    "delete": 2,
+    "external_message": 3,
+}
+_MCP_RISK_LABELS = set(_MCP_RISK_RANK)
+
+
+@dataclass(frozen=True, slots=True)
+class MCPToolPolicyDecision:
+    """One deny-first decision shared by planning and remote execution."""
+
+    allowed: bool
+    mode: MCPPolicyMode = "blocked"
+    risk_level: MCPRiskLevel = "write"
+    approval_requirement: Literal["auto", "human", "block"] = "block"
+    reason: str = "MCP tool is blocked by policy."
+
+    @property
+    def requires_approval(self) -> bool:
+        return self.allowed and self.approval_requirement == "human"
+
+    def metadata(self) -> dict[str, str | bool]:
+        return {
+            "allowed": self.allowed,
+            "mode": self.mode,
+            "risk_level": self.risk_level,
+            "approval_requirement": self.approval_requirement,
+            "reason": self.reason,
+        }
 
 
 @dataclass(slots=True)
@@ -676,6 +713,187 @@ def build_mcp_runtime(config: dict[str, Any], *, on_tokens_updated: Any | None =
         return None
 
 
+def mcp_server_provider_available(db: Session, server: MCPServer) -> tuple[bool, str | None]:
+    """Return whether a catalog-backed provider is still approved for use."""
+    registry_entry_id = getattr(server, "registry_entry_id", None)
+    if registry_entry_id is None:
+        # Legacy/manual MCP servers have no global provider record. Their
+        # tenant-owned policy and connection state remain the authority.
+        return True, None
+    entry = db.execute(
+        select(MCPRegistryEntry).where(
+            MCPRegistryEntry.id == registry_entry_id,
+        )
+    ).scalar_one_or_none()
+    if entry is None:
+        return False, "MCP provider catalog entry is unavailable."
+    if entry.trust_status != "approved":
+        return False, "MCP provider is no longer approved by AverQel."
+    if entry.catalog_status in {"disabled", "revoked", "rejected"}:
+        return False, "MCP provider has been disabled."
+    return True, None
+
+
+def infer_mcp_tool_risk(tool_name: str, tool: dict[str, Any] | None = None) -> MCPRiskLevel:
+    """Classify remote tools conservatively from reviewed labels and names."""
+    labels = {
+        str(label).strip().lower()
+        for label in ((tool or {}).get("risk_labels") or [])
+        if str(label).strip().lower() in _MCP_RISK_LABELS
+    }
+    if "delete" in labels:
+        return "delete"
+    if "external_message" in labels:
+        return "external_message"
+    if "write" in labels:
+        return "write"
+    if "read" in labels:
+        return "read"
+    normalized = str(tool_name).strip().lower()
+    if any(word in normalized for word in ("delete", "remove", "destroy", "revoke")):
+        return "delete"
+    if any(word in normalized for word in ("send", "post", "message", "comment", "respond")):
+        return "external_message"
+    if any(word in normalized for word in ("create", "update", "write", "upload", "append", "modify", "move", "copy")):
+        return "write"
+    return "read"
+
+
+def _scope_is_owned(
+    db: Session,
+    *,
+    model: Any,
+    id_column: Any,
+    raw_id: str | uuid.UUID | None,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> bool:
+    if raw_id is None:
+        return False
+    try:
+        scope_id = raw_id if isinstance(raw_id, uuid.UUID) else uuid.UUID(str(raw_id))
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return db.execute(
+        select(id_column).where(
+            id_column == scope_id,
+            model.tenant_id == tenant_id,
+            model.user_id == user_id,
+        )
+    ).scalar_one_or_none() is not None
+
+
+def evaluate_mcp_tool_policy(
+    *,
+    db: Session,
+    server: MCPServer,
+    tool_name: str,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    conversation_id: str | uuid.UUID | None,
+    deepspace_id: str | uuid.UUID | None = None,
+    tool: dict[str, Any] | None = None,
+    expected_catalog_revision: int | None = None,
+    max_age_seconds: int | None = None,
+) -> MCPToolPolicyDecision:
+    """Evaluate native MCP access at planning and immediately before a call."""
+    if server.tenant_id != tenant_id or server.user_id != user_id:
+        return MCPToolPolicyDecision(False, reason="MCP connection ownership check failed.")
+    if not server.enabled or server.status != "connected":
+        return MCPToolPolicyDecision(False, reason="MCP connection is disabled or disconnected.")
+    provider_available, provider_reason = mcp_server_provider_available(db, server)
+    if not provider_available:
+        return MCPToolPolicyDecision(False, reason=provider_reason or "MCP provider is disabled.")
+    if max_age_seconds is not None and not mcp_catalog_is_fresh(server, max_age_seconds=max_age_seconds):
+        return MCPToolPolicyDecision(False, reason="MCP tool catalog is stale.")
+    if expected_catalog_revision is not None and int(server.catalog_revision or 0) != int(expected_catalog_revision):
+        return MCPToolPolicyDecision(False, reason="MCP tool catalog changed; refresh the tool list.")
+
+    policy = db.execute(
+        select(MCPConnectionPolicy).where(
+            MCPConnectionPolicy.server_id == server.id,
+            MCPConnectionPolicy.tenant_id == tenant_id,
+            MCPConnectionPolicy.user_id == user_id,
+        )
+    ).scalar_one_or_none()
+    if policy is None:
+        return MCPToolPolicyDecision(False, reason="MCP connection policy is not configured.")
+    if not policy.default_enabled:
+        return MCPToolPolicyDecision(False, reason="MCP connection is disabled by policy.")
+
+    from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
+    from app.query.models.conversation import Conversation
+
+    if not _scope_is_owned(
+        db,
+        model=Conversation,
+        id_column=Conversation.id,
+        raw_id=conversation_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    ):
+        return MCPToolPolicyDecision(False, reason="MCP conversation scope is not owned by the current user.")
+    conversation_overrides = policy.conversation_overrides if isinstance(policy.conversation_overrides, dict) else {}
+    if conversation_overrides.get(str(conversation_id)) is not True:
+        return MCPToolPolicyDecision(False, reason="MCP connection is disabled for this conversation.")
+    if deepspace_id is not None:
+        if not _scope_is_owned(
+            db,
+            model=DeepSpaceMissionSnapshot,
+            id_column=DeepSpaceMissionSnapshot.mission_id,
+            raw_id=deepspace_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        ):
+            return MCPToolPolicyDecision(False, reason="MCP DeepSpace scope is not owned by the current user.")
+        deepspace_overrides = policy.deepspace_overrides if isinstance(policy.deepspace_overrides, dict) else {}
+        if deepspace_overrides.get(str(deepspace_id)) is not True:
+            return MCPToolPolicyDecision(False, reason="MCP connection is disabled for this DeepSpace.")
+
+    normalized_name = str(tool_name).strip()
+    denied_tools = {str(value).strip() for value in (policy.denied_tools or [])}
+    allowed_tools = {str(value).strip() for value in (policy.allowed_tools or [])}
+    if normalized_name in denied_tools:
+        return MCPToolPolicyDecision(False, reason="MCP tool is explicitly blocked by policy.")
+    if allowed_tools and normalized_name not in allowed_tools:
+        return MCPToolPolicyDecision(False, reason="MCP tool is not in the connection allowlist.")
+
+    risk_level = infer_mcp_tool_risk(normalized_name, tool)
+    risk_ceiling = str(policy.risk_ceiling or "read").strip().lower()
+    if risk_level not in _MCP_RISK_RANK or _MCP_RISK_RANK[risk_level] > _MCP_RISK_RANK.get(risk_ceiling, 0):
+        return MCPToolPolicyDecision(False, risk_level=risk_level, reason="MCP tool exceeds the connection risk ceiling.")
+    if policy.read_only and risk_level != "read":
+        return MCPToolPolicyDecision(False, risk_level=risk_level, reason="MCP tool is blocked by read-only mode.")
+
+    approval_rule = (policy.approval_rules or {}).get(risk_level) if isinstance(policy.approval_rules, dict) else None
+    configured_mode = (policy.tool_modes or {}).get(normalized_name) if isinstance(policy.tool_modes, dict) else None
+    if approval_rule == "blocked":
+        return MCPToolPolicyDecision(
+            False,
+            mode="blocked",
+            risk_level=risk_level,
+            reason="MCP tool is blocked by its risk-level policy.",
+        )
+    mode = configured_mode if configured_mode in {"always_allow", "needs_approval", "blocked"} else (
+        approval_rule if approval_rule in {"always_allow", "needs_approval", "blocked"} else "needs_approval"
+    )
+    if mode == "blocked":
+        return MCPToolPolicyDecision(False, mode=mode, risk_level=risk_level, reason="MCP tool is blocked by its per-tool policy.")
+    approval_requirement: Literal["auto", "human", "block"] = "human"
+    if mode == "always_allow" and risk_level == "read":
+        approval_requirement = "auto"
+    elif mode == "always_allow" and risk_level != "read":
+        # Platform safety still requires confirmation for remote side effects.
+        approval_requirement = "human"
+    return MCPToolPolicyDecision(
+        True,
+        mode=mode,
+        risk_level=risk_level,
+        approval_requirement=approval_requirement,
+        reason="MCP tool allowed by connection policy." if approval_requirement == "auto" else "MCP tool requires approval by policy.",
+    )
+
+
 def build_mcp_server_runtime(
     *,
     db: Session,
@@ -691,7 +909,10 @@ def build_mcp_server_runtime(
     encrypted back into ``mcp_oauth_tokens`` through the callback supplied to
     the SDK token storage.
     """
-    from sqlalchemy import select
+    provider_available, provider_reason = mcp_server_provider_available(db, server)
+    if not provider_available:
+        logger.warning("MCP runtime blocked for server %s: %s", server.id, provider_reason)
+        return None
 
     token_record = db.execute(
         select(MCPOAuthToken).where(
@@ -700,6 +921,17 @@ def build_mcp_server_runtime(
             MCPOAuthToken.user_id == server.user_id,
         )
     ).scalar_one_or_none()
+    if token_record is not None and (
+        token_record.tenant_id != server.tenant_id
+        or token_record.user_id != server.user_id
+        or (
+            token_record.provider_slug
+            and server.provider_slug
+            and token_record.provider_slug != server.provider_slug
+        )
+    ):
+        logger.warning("MCP token identity mismatch for server %s", server.id)
+        return None
     config = dict(server.config or {})
     if token_record is None and str(config.get("oauth_mode") or "").lower() != "none":
         return None
@@ -783,6 +1015,8 @@ async def execute_mcp_server_tool(
     server: MCPServer,
     tool_name: str,
     arguments: dict[str, Any],
+    conversation_id: str | uuid.UUID | None = None,
+    deepspace_id: str | uuid.UUID | None = None,
 ) -> dict[str, Any]:
     """Execute a tool for a generic installed MCP server and persist its events."""
     from app.integrations.repositories.mcp_events import MCPEventsRepository
@@ -814,6 +1048,34 @@ async def execute_mcp_server_tool(
             "message": "MCP tool is not present in the current catalog",
             "error_code": "unknown_tool",
             "is_error": True,
+        }
+    policy_decision = evaluate_mcp_tool_policy(
+        db=db,
+        server=server,
+        tool_name=tool_name,
+        tenant_id=server.tenant_id,
+        user_id=server.user_id,
+        conversation_id=conversation_id,
+        deepspace_id=deepspace_id,
+        tool=catalog_tool,
+        expected_catalog_revision=server.catalog_revision,
+        max_age_seconds=settings.mcp_catalog_max_age_seconds,
+    )
+    if not policy_decision.allowed:
+        return {
+            "status": "error",
+            "message": policy_decision.reason,
+            "error_code": "mcp_policy_blocked",
+            "is_error": True,
+            "policy": policy_decision.metadata(),
+        }
+    if policy_decision.requires_approval:
+        return {
+            "status": "error",
+            "message": "MCP tool requires user approval before execution.",
+            "error_code": "approval_required",
+            "is_error": True,
+            "policy": policy_decision.metadata(),
         }
     try:
         Draft202012Validator.check_schema(catalog_tool.get("inputSchema") or {})
