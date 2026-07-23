@@ -12,7 +12,12 @@ from app.integrations.schemas.connectors import (
     IntegrationRead,
     SyncResult,
 )
-from app.integrations.schemas.mcp import MCPCatalogReviewRequest, MCPServerRead
+from app.integrations.schemas.mcp import (
+    MCPCatalogReviewRequest,
+    MCPConnectionPolicyRead,
+    MCPConnectionPolicyUpdate,
+    MCPServerRead,
+)
 
 __all__ = [
     "ConnectorBase",
@@ -26,5 +31,7 @@ __all__ = [
     "IntegrationRead",
     "MCPCatalogReviewRequest",
     "MCPServerRead",
+    "MCPConnectionPolicyRead",
+    "MCPConnectionPolicyUpdate",
     "SyncResult",
 ]

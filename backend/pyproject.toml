@@ -104,6 +104,7 @@ module = [
     "app.integrations.services.mcp_oauth_service",
     "app.integrations.services.mcp_runtime",
     "app.integrations.workers.tasks_mcp",
+    "app.integrations.workers.tasks_mcp_catalog",
     "app.query.api.chats",
     "app.main",
 ]

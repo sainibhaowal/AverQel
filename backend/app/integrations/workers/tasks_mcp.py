@@ -69,6 +69,7 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                 {**item, "inputSchema": MCPCatalog.normalize_schema(item.get("inputSchema"))}
                 for item in catalog["tools"] if isinstance(item, dict)
             ]
+            catalog_revision = int(server.catalog_revision or 0) + 1
             server.config = {
                 **server.config,
                 "mcp_tools_cache": catalog["tools"],
@@ -77,8 +78,9 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                 "mcp_resource_templates_cache": catalog["resource_templates"],
                 "mcp_catalog_tool_count": len(catalog["tools"]),
                 "mcp_catalog_last_sync_at": datetime.now(UTC).isoformat(),
-                "catalog_revision": int(server.config.get("catalog_revision", 0)) + 1,
+                "catalog_revision": catalog_revision,
             }
+            server.catalog_revision = catalog_revision
             server.status = "connected"
             server.last_error = None
             server.reconnect_attempts = 0

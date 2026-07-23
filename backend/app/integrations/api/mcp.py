@@ -26,6 +26,17 @@ from app.platform.database.session import get_db, set_db_tenant_context
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 logger = logging.getLogger(__name__)
+_SENSITIVE_MARKETPLACE_METADATA_MARKERS = {
+    "api_key",
+    "apikey",
+    "authorization",
+    "cookie",
+    "credential",
+    "password",
+    "secret",
+    "token",
+    "verifier",
+}
 
 
 def _marketplace_capabilities(entry: MCPRegistryEntry) -> list[str]:
@@ -65,6 +76,8 @@ def _marketplace_auth_type(entry: MCPRegistryEntry) -> str:
 
 
 def _marketplace_docs_url(entry: MCPRegistryEntry) -> str | None:
+    if isinstance(entry.documentation_url, str) and entry.documentation_url.strip().startswith(("https://", "http://")):
+        return entry.documentation_url.strip()
     raw = entry.raw_metadata if isinstance(entry.raw_metadata, dict) else {}
     server = raw.get("server") if isinstance(raw.get("server"), dict) else raw
     for key in ("documentationUrl", "documentation_url", "docsUrl", "docs_url", "documentation", "homepage"):
@@ -96,6 +109,157 @@ def _marketplace_connection_options(entry: MCPRegistryEntry) -> list[dict[str, A
     return options
 
 
+def _marketplace_catalog_metadata(entry: MCPRegistryEntry) -> dict[str, Any]:
+    raw = entry.raw_metadata if isinstance(entry.raw_metadata, dict) else {}
+    catalog = raw.get("catalog")
+    result = dict(catalog) if isinstance(catalog, dict) else {}
+    direct_values = {
+        "provider_slug": entry.provider_slug,
+        "publisher_type": entry.publisher_type,
+        "documentation_url": entry.documentation_url,
+        "author_website_url": entry.author_website_url,
+        "support_url": entry.support_url,
+        "privacy_policy_url": entry.privacy_policy_url,
+        "trusted_logo_key": entry.trusted_logo_key,
+        "supported_products": entry.supported_products,
+        "tool_categories": entry.tool_categories,
+        "risk_policy": entry.risk_policy,
+    }
+    for key, value in direct_values.items():
+        if value not in (None, [], {}):
+            result[key] = value
+    if isinstance(entry.catalog_badges, dict) and entry.catalog_badges:
+        result["badges"] = entry.catalog_badges
+    existing_health = result.get("health") if isinstance(result.get("health"), dict) else {}
+    result["health"] = {
+        **existing_health,
+        "status": entry.health_status,
+        "last_checked_at": entry.health_checked_at.isoformat() if entry.health_checked_at else None,
+    }
+    return result
+
+
+def _safe_string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _safe_badges(value: object) -> dict[str, bool]:
+    if not isinstance(value, dict):
+        return {}
+    allowed = {"official", "community", "new", "trending", "interactive", "developer_preview"}
+    return {key: bool(value[key]) for key in allowed if isinstance(value.get(key), bool)}
+
+
+def _safe_marketplace_metadata(value: object) -> Any:
+    """Strip credentials from legacy registry metadata before serializing it."""
+    if isinstance(value, dict):
+        safe: dict[str, Any] = {}
+        for key, nested in value.items():
+            normalized_key = str(key).replace("-", "_").casefold()
+            if any(marker in normalized_key for marker in _SENSITIVE_MARKETPLACE_METADATA_MARKERS):
+                continue
+            safe[str(key)] = _safe_marketplace_metadata(nested)
+        return safe
+    if isinstance(value, list):
+        return [_safe_marketplace_metadata(item) for item in value]
+    if isinstance(value, str | int | float | bool) or value is None:
+        return value
+    return str(value)
+
+
+def _marketplace_connectability(entry: MCPRegistryEntry) -> tuple[bool, str | None]:
+    """Keep legacy approved entries working while gating curated OAuth profiles.
+
+    A curated provider remains visible before its provider-specific OAuth flow
+    exists, but it must never fall back to generic discovery/registration.
+    Entries without this explicit metadata preserve the existing approved-entry
+    behavior until they are migrated to an explicit readiness state.
+    """
+    if entry.trust_status != "approved":
+        return False, "This provider has not been approved by AverQel."
+    if not entry.remote_url:
+        return False, "This provider does not publish a remote endpoint."
+    catalog = _marketplace_catalog_metadata(entry)
+    readiness = catalog.get("connection_ready")
+    if isinstance(readiness, bool):
+        if readiness:
+            return True, None
+        reason = catalog.get("connection_readiness_reason")
+        return False, str(reason) if isinstance(reason, str) and reason.strip() else "Connection setup is not ready."
+    return True, None
+
+
+def _marketplace_entry_payload(entry: MCPRegistryEntry) -> dict[str, Any]:
+    """Return public marketplace data without OAuth or connection secrets."""
+    catalog = _marketplace_catalog_metadata(entry)
+    connectable, connectability_reason = _marketplace_connectability(entry)
+    requested_scopes = _safe_string_list(entry.requested_scopes)
+    if not requested_scopes:
+        requested_scopes = _safe_string_list(
+            (entry.oauth_requirements if isinstance(entry.oauth_requirements, dict) else {}).get("requested_scopes")
+        )
+    return {
+        "id": str(entry.id),
+        "name": entry.display_name,
+        "server_name": entry.server_name,
+        "publisher": entry.publisher,
+        "description": entry.description,
+        "transport": entry.transport,
+        "remote_url": entry.remote_url,
+        "categories": entry.categories,
+        "official": entry.official,
+        "verified": entry.verified,
+        "source": entry.source,
+        "oauth_requirements": _safe_marketplace_metadata(entry.oauth_requirements),
+        "package_metadata": _safe_marketplace_metadata(entry.package_metadata),
+        "action": "connect" if entry.remote_url else "install",
+        "logo_url": entry.logo_url,
+        "tool_count": entry.tool_count,
+        "last_catalog_sync_at": entry.last_catalog_sync_at.isoformat() if entry.last_catalog_sync_at else None,
+        "verification_reason": entry.verification_reason,
+        "last_seen_at": entry.last_seen_at.isoformat(),
+        "docs_url": _marketplace_docs_url(entry),
+        "connection_options": _marketplace_connection_options(entry),
+        "capabilities": _marketplace_capabilities(entry),
+        "tool_preview": _marketplace_tool_preview(entry),
+        "catalog_status": entry.catalog_status,
+        "auth_type": _marketplace_auth_type(entry),
+        "trust_status": entry.trust_status,
+        "verification_source": entry.verification_source,
+        "popularity_rank": entry.popularity_rank,
+        "provider_slug": catalog.get("provider_slug") if isinstance(catalog.get("provider_slug"), str) else None,
+        "publisher_type": catalog.get("publisher_type") if isinstance(catalog.get("publisher_type"), str) else None,
+        "author_name": catalog.get("author_name") if isinstance(catalog.get("author_name"), str) else None,
+        "author_website_url": catalog.get("author_website_url") if isinstance(catalog.get("author_website_url"), str) else None,
+        "support_url": catalog.get("support_url") if isinstance(catalog.get("support_url"), str) else None,
+        "privacy_policy_url": catalog.get("privacy_policy_url") if isinstance(catalog.get("privacy_policy_url"), str) else None,
+        "badges": _safe_badges(catalog.get("badges")),
+        "availability": catalog.get("availability") if isinstance(catalog.get("availability"), str) else None,
+        "trusted_logo_key": catalog.get("trusted_logo_key") if isinstance(catalog.get("trusted_logo_key"), str) else None,
+        "supported_products": _safe_string_list(catalog.get("supported_products")),
+        "tool_categories": _safe_string_list(catalog.get("tool_categories")),
+        "risk_policy": catalog.get("risk_policy") if isinstance(catalog.get("risk_policy"), dict) else {},
+        "health": catalog.get("health") if isinstance(catalog.get("health"), dict) else {},
+        "reviewed_at": catalog.get("reviewed_at") if isinstance(catalog.get("reviewed_at"), str) else None,
+        "review_due_at": catalog.get("review_due_at") if isinstance(catalog.get("review_due_at"), str) else None,
+        "requested_scopes": requested_scopes,
+        "scope_mode": (
+            entry.oauth_requirements.get("scope_mode")
+            if isinstance(entry.oauth_requirements, dict) and isinstance(entry.oauth_requirements.get("scope_mode"), str)
+            else None
+        ),
+        "scope_note": (
+            entry.oauth_requirements.get("scope_note")
+            if isinstance(entry.oauth_requirements, dict) and isinstance(entry.oauth_requirements.get("scope_note"), str)
+            else None
+        ),
+        "connectable": connectable,
+        "connectability_reason": connectability_reason,
+    }
+
+
 @router.get("/servers", response_model=list[MCPServerRead])
 def list_servers(session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
     set_db_tenant_context(session, auth.tenant_id)
@@ -117,6 +281,9 @@ def connect_marketplace_entry(
         raise HTTPException(status_code=403, detail="Only official verified MCP entries can be connected")
     if not entry.remote_url:
         raise HTTPException(status_code=409, detail="This MCP entry does not publish a remote endpoint")
+    connectable, connectability_reason = _marketplace_connectability(entry)
+    if not connectable:
+        raise HTTPException(status_code=409, detail=connectability_reason or "This MCP entry is not ready to connect")
     try:
         endpoint = validate_remote_endpoint(entry.remote_url)
     except MCPEndpointRejectedError as exc:
@@ -130,15 +297,21 @@ def connect_marketplace_entry(
         "oauth_mode": oauth_mode,
         "auth_type": auth_type,
         "registry_entry_id": str(entry.id),
+        "provider_slug": entry.provider_slug,
+        "vendor_slug": entry.provider_slug,
         "source": entry.source,
         "categories": entry.categories or [],
     }
     server = MCPServer(
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
+        registry_entry_id=entry.id,
+        provider_slug=entry.provider_slug,
         name=entry.display_name,
         transport="streamable_http",
         config=config,
+        account_identity={},
+        catalog_revision=0,
         enabled=True,
         status="needs_auth" if auth_type == "oauth" else "disconnected",
     )
@@ -241,17 +414,7 @@ def catalog(session: Session = Depends(get_db), auth: AuthContext = Depends(get_
     """Return the synchronized registry catalog, never a hardcoded vendor list."""
     set_db_tenant_context(session, auth.tenant_id)
     rows = session.execute(select(MCPRegistryEntry).where(MCPRegistryEntry.remote_url.is_not(None), MCPRegistryEntry.trust_status == "approved").order_by(MCPRegistryEntry.display_name)).scalars().all()
-    return [{"id": str(row.id), "name": row.display_name, "server_name": row.server_name,
-             "publisher": row.publisher, "description": row.description, "transport": row.transport,
-             "remote_url": row.remote_url, "categories": row.categories, "official": row.official,
-             "verified": row.verified, "source": row.source, "oauth_requirements": row.oauth_requirements,
-             "package_metadata": row.package_metadata, "logo_url": row.logo_url,
-             "tool_count": row.tool_count, "last_catalog_sync_at": row.last_catalog_sync_at.isoformat() if row.last_catalog_sync_at else None,
-             "docs_url": _marketplace_docs_url(row), "connection_options": _marketplace_connection_options(row),
-             "capabilities": _marketplace_capabilities(row), "tool_preview": _marketplace_tool_preview(row),
-             "catalog_status": row.catalog_status,
-             "auth_type": _marketplace_auth_type(row), "trust_status": row.trust_status,
-             "verification_source": row.verification_source, "popularity_rank": row.popularity_rank} for row in rows]
+    return [_marketplace_entry_payload(row) for row in rows]
 
 @router.get("/marketplace/facets", response_model=dict[str, Any])
 def marketplace_facets(session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
@@ -308,21 +471,7 @@ def marketplace(q: str | None = None, category: str | None = None, transport: st
         rows.sort(key=lambda row: (row.popularity_rank is None, row.popularity_rank or 1_000_000, row.display_name.casefold()))
     total = len(rows)
     rows = rows[(page - 1) * page_size : page * page_size]
-    return {"items": [{"id": str(r.id), "name": r.display_name, "server_name": r.server_name, "publisher": r.publisher,
-        "description": r.description, "transport": r.transport, "remote_url": r.remote_url,
-        "categories": r.categories, "official": r.official, "verified": r.verified, "source": r.source,
-        "oauth_requirements": r.oauth_requirements, "package_metadata": r.package_metadata,
-        "action": "connect" if r.remote_url else "install",
-        "logo_url": r.logo_url,
-        "tool_count": r.tool_count, "last_catalog_sync_at": r.last_catalog_sync_at.isoformat() if r.last_catalog_sync_at else None,
-        "verification_reason": r.verification_reason, "last_seen_at": r.last_seen_at.isoformat(),
-        "docs_url": _marketplace_docs_url(r),
-        "connection_options": _marketplace_connection_options(r),
-        "capabilities": _marketplace_capabilities(r),
-        "tool_preview": _marketplace_tool_preview(r),
-        "catalog_status": r.catalog_status,
-        "auth_type": _marketplace_auth_type(r), "trust_status": r.trust_status,
-        "verification_source": r.verification_source, "popularity_rank": r.popularity_rank} for r in rows],
+    return {"items": [_marketplace_entry_payload(row) for row in rows],
         "page": page, "page_size": page_size, "total": total, "pages": (total + page_size - 1) // page_size}
 
 @router.post(
@@ -393,10 +542,18 @@ def inspector(server_id: uuid.UUID, session: Session = Depends(get_db), auth: Au
         "server": MCPServerRead.model_validate(server).model_dump(mode="json"),
         "diagnostics": {
             "credential_configured": session.execute(
-                select(MCPOAuthToken.id).where(MCPOAuthToken.server_id == server.id)
+                select(MCPOAuthToken.id).where(
+                    MCPOAuthToken.server_id == server.id,
+                    MCPOAuthToken.tenant_id == auth.tenant_id,
+                    MCPOAuthToken.user_id == auth.user_id,
+                )
             ).scalar_one_or_none() is not None,
             "oauth_configured": str(config.get("oauth_mode") or "none").lower() != "none" and session.execute(
-                select(MCPOAuthToken.id).where(MCPOAuthToken.server_id == server.id)
+                select(MCPOAuthToken.id).where(
+                    MCPOAuthToken.server_id == server.id,
+                    MCPOAuthToken.tenant_id == auth.tenant_id,
+                    MCPOAuthToken.user_id == auth.user_id,
+                )
             ).scalar_one_or_none() is not None,
             "catalog_counts": {
                 key.removeprefix("mcp_").removesuffix("_cache"): len(value)

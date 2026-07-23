@@ -3,9 +3,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
+from app.integrations.catalog.mcp_official_providers import CURATED_MCP_CATALOG_SOURCE
+from app.integrations.models.mcp_server import MCPRegistryEntry
+from app.integrations.services.mcp_catalog_service import MCPCatalogService
 from tests.conftest import SeededUser
 
 
@@ -81,3 +86,52 @@ def test_legacy_catalog_import_route_is_removed(
     )
 
     assert response.status_code == 404
+
+
+def test_curated_provider_is_visible_but_cannot_use_generic_oauth_before_phase_three(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    db_session: Session,
+) -> None:
+    db_session.execute(
+        delete(MCPRegistryEntry).where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
+    )
+    MCPCatalogService(db_session).sync_official_providers()
+    db_session.commit()
+    seeded = seed_user(
+        "tenant-mcp-curated-catalog",
+        "mcp-curated-catalog@example.com",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    try:
+        response = client.get("/api/v1/mcp/marketplace?page=1", headers=_auth_headers(seeded))
+
+        assert response.status_code == 200
+        gmail = next(item for item in response.json()["items"] if item["provider_slug"] == "google-gmail")
+        assert gmail["official"] is True
+        assert gmail["connectable"] is False
+        assert gmail["requested_scopes"] == [
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.compose",
+        ]
+        assert "client_secret" not in str(gmail["oauth_requirements"])
+        assert "client_secret" not in str(gmail["package_metadata"])
+        assert gmail["health"] == {
+            "status": "not_checked",
+            "last_checked_at": None,
+            "detail": "Live health is checked only after user authentication.",
+        }
+
+        connect_response = client.post(
+            f"/api/v1/mcp/marketplace/{gmail['id']}/connect",
+            headers=_auth_headers(seeded),
+        )
+
+        assert connect_response.status_code == 409
+        assert "OAuth provider profile is not configured" in str(connect_response.json())
+    finally:
+        db_session.execute(
+            delete(MCPRegistryEntry).where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
+        )
+        db_session.commit()

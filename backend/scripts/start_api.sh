@@ -26,6 +26,10 @@ alembic upgrade heads
 # come up empty in the UI.
 python scripts/seed_integrations.py
 
+# Seed only code-reviewed, public remote MCP metadata. This does not contact
+# vendors and does not create OAuth clients, credentials, or user connections.
+python scripts/seed_mcp_catalog.py
+
 # The client-owned Tauri workspace proxy is process-local. Keep the default
 # local deployment on one worker so the terminal websocket and agent stream
 # share the same proxy registry. Deployments that use a distributed proxy can

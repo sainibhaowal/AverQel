@@ -1,0 +1,399 @@
+"""Code-reviewed metadata for AverQel's official remote MCP catalog.
+
+This module is deliberately data-only. It contains public provider metadata,
+never OAuth client credentials, user tokens, HTTP headers, or live catalog
+responses. Live tools are rediscovered only after a user authenticates.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Literal
+from urllib.parse import urlsplit
+
+CURATED_MCP_CATALOG_SOURCE = "averqel-curated-official-v1"
+CATALOG_REVIEWED_AT = datetime(2026, 7, 23, tzinfo=UTC)
+CATALOG_REVIEW_DUE_AT = datetime(2026, 10, 21, tzinfo=UTC)
+
+RiskLabel = Literal["read", "write", "delete", "external_message"]
+
+
+@dataclass(frozen=True, slots=True)
+class CuratedMCPTool:
+    """A reviewed preview only; the remote catalog remains authoritative."""
+
+    name: str
+    description: str
+    category: str
+    risk_labels: tuple[RiskLabel, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "risk_labels": list(self.risk_labels),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CuratedMCPProvider:
+    """One reviewed official remote MCP provider entry."""
+
+    provider_slug: str
+    display_name: str
+    publisher: str
+    description: str
+    remote_url: str
+    documentation_url: str
+    author_website_url: str
+    support_url: str
+    privacy_policy_url: str
+    categories: tuple[str, ...]
+    supported_products: tuple[str, ...]
+    requested_scopes: tuple[str, ...]
+    tool_preview: tuple[CuratedMCPTool, ...]
+    availability: str
+    popularity_rank: int
+    trusted_logo_key: str
+    scope_mode: str = "explicit"
+    scope_note: str | None = None
+
+    @property
+    def transport(self) -> str:
+        return "streamable_http"
+
+    def registry_values(self) -> dict[str, Any]:
+        """Return safe values for ``MCPRegistryEntry`` fields.
+
+        ``connection_ready`` remains false until Phase 3 adds a reviewed
+        provider OAuth profile. This prevents the legacy generic OAuth path
+        from handling an official provider prematurely.
+        """
+        badges = {
+            "official": True,
+            "community": False,
+            "new": False,
+            "trending": False,
+            "interactive": False,
+            "developer_preview": self.availability == "developer_preview",
+        }
+        risk_policy = {
+            "default_mode": "needs_approval",
+            "read": {"default_mode": "always_allow"},
+            "write": {"default_mode": "needs_approval"},
+            "delete": {"default_mode": "needs_approval"},
+            "external_message": {"default_mode": "needs_approval"},
+        }
+        tool_preview = [tool.as_dict() for tool in self.tool_preview]
+        tool_risk_summary = {
+            label: sum(label in tool.risk_labels for tool in self.tool_preview)
+            for label in ("read", "write", "delete", "external_message")
+        }
+        catalog_metadata = {
+            "schema_version": 1,
+            "provider_slug": self.provider_slug,
+            "publisher_type": "official",
+            "author_name": self.publisher,
+            "author_website_url": self.author_website_url,
+            "documentation_url": self.documentation_url,
+            "support_url": self.support_url,
+            "privacy_policy_url": self.privacy_policy_url,
+            "badges": badges,
+            "availability": self.availability,
+            "reviewed_at": CATALOG_REVIEWED_AT.isoformat(),
+            "review_due_at": CATALOG_REVIEW_DUE_AT.isoformat(),
+            "trusted_logo_key": self.trusted_logo_key,
+            "supported_products": list(self.supported_products),
+            "tool_categories": sorted({tool.category for tool in self.tool_preview}),
+            "tool_preview": tool_preview,
+            "risk_policy": risk_policy,
+            "health": {
+                "status": "not_checked",
+                "last_checked_at": None,
+                "detail": "Live health is checked only after user authentication.",
+            },
+            "connection_ready": False,
+            "connection_readiness_reason": "OAuth provider profile is not configured yet.",
+        }
+        if self.scope_note:
+            catalog_metadata["scope_note"] = self.scope_note
+
+        return {
+            "source": CURATED_MCP_CATALOG_SOURCE,
+            "server_name": self.provider_slug,
+            "display_name": self.display_name,
+            "publisher": self.publisher,
+            "provider_slug": self.provider_slug,
+            "publisher_type": "official",
+            "version": None,
+            "description": self.description,
+            "transport": self.transport,
+            "remote_url": self.remote_url,
+            "documentation_url": self.documentation_url,
+            "health_status": "not_checked",
+            "health_checked_at": None,
+            "requested_scopes": list(self.requested_scopes),
+            "supported_products": list(self.supported_products),
+            "risk_policy": risk_policy,
+            "oauth_profile": {
+                "status": "not_configured",
+                "provider_slug": self.provider_slug,
+            },
+            "author_website_url": self.author_website_url,
+            "support_url": self.support_url,
+            "privacy_policy_url": self.privacy_policy_url,
+            "catalog_badges": badges,
+            "trusted_logo_key": self.trusted_logo_key,
+            "tool_categories": catalog_metadata["tool_categories"],
+            "tool_risk_summary": tool_risk_summary,
+            "package_metadata": {
+                "provider_slug": self.provider_slug,
+                "auth_type": "oauth",
+                "tool_preview": tool_preview,
+                "tool_categories": catalog_metadata["tool_categories"],
+                "supported_products": list(self.supported_products),
+                "risk_policy": risk_policy,
+                "trusted_logo_key": self.trusted_logo_key,
+            },
+            "oauth_requirements": {
+                "type": "oauth",
+                "requested_scopes": list(self.requested_scopes),
+                "scope_mode": self.scope_mode,
+                "scope_note": self.scope_note,
+            },
+            "categories": list(self.categories),
+            "official": True,
+            "verified": True,
+            "raw_metadata": {
+                "schema_version": 1,
+                "server": {
+                    "homepage": self.author_website_url,
+                    "documentationUrl": self.documentation_url,
+                    "supportUrl": self.support_url,
+                    "privacyPolicyUrl": self.privacy_policy_url,
+                    "remotes": [
+                        {
+                            "type": self.transport,
+                            "url": self.remote_url,
+                            "securitySchemes": {"type": "oauth2"},
+                        }
+                    ],
+                },
+                "catalog": catalog_metadata,
+            },
+            # Curated logos are served from local assets in Phase 6. Never
+            # populate a third-party remote image URL from this catalog.
+            "logo_url": None,
+            "tool_count": len(tool_preview),
+            "verification_reason": "Code-reviewed official remote MCP endpoint.",
+            "trust_status": "approved",
+            "verification_source": self.documentation_url,
+            "verified_at": CATALOG_REVIEWED_AT,
+            "popularity_rank": self.popularity_rank,
+            "catalog_status": "oauth_profile_required",
+            "enrichment_error": None,
+        }
+
+
+GOOGLE_DOCUMENTATION_URL = "https://developers.google.com/workspace/guides/configure-mcp-servers"
+GOOGLE_WEBSITE_URL = "https://workspace.google.com/"
+GOOGLE_SUPPORT_URL = "https://support.google.com/"
+GOOGLE_PRIVACY_URL = "https://policies.google.com/privacy"
+GITHUB_DOCUMENTATION_URL = "https://github.com/github/github-mcp-server"
+GITHUB_WEBSITE_URL = "https://github.com/"
+GITHUB_SUPPORT_URL = "https://support.github.com/"
+GITHUB_PRIVACY_URL = "https://docs.github.com/site-policy/privacy-policies/github-privacy-statement"
+
+
+OFFICIAL_MCP_PROVIDERS: tuple[CuratedMCPProvider, ...] = (
+    CuratedMCPProvider(
+        provider_slug="google-gmail",
+        display_name="Google Gmail",
+        publisher="Google",
+        description="Search Gmail, read threads, manage labels, and create email drafts with user approval.",
+        remote_url="https://gmailmcp.googleapis.com/mcp/v1",
+        documentation_url=GOOGLE_DOCUMENTATION_URL,
+        author_website_url=GOOGLE_WEBSITE_URL,
+        support_url=GOOGLE_SUPPORT_URL,
+        privacy_policy_url=GOOGLE_PRIVACY_URL,
+        categories=("Communication", "Productivity"),
+        supported_products=("Gmail",),
+        requested_scopes=(
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.compose",
+        ),
+        tool_preview=(
+            CuratedMCPTool("search_threads", "Search Gmail threads.", "Email", ("read",)),
+            CuratedMCPTool("get_thread", "Read a Gmail thread.", "Email", ("read",)),
+            CuratedMCPTool("create_draft", "Create a Gmail draft for review.", "Email", ("write",)),
+        ),
+        availability="developer_preview",
+        popularity_rank=1,
+        trusted_logo_key="google",
+    ),
+    CuratedMCPProvider(
+        provider_slug="google-drive",
+        display_name="Google Drive",
+        publisher="Google",
+        description="Search, read, create, and copy Drive files with user approval.",
+        remote_url="https://drivemcp.googleapis.com/mcp/v1",
+        documentation_url=GOOGLE_DOCUMENTATION_URL,
+        author_website_url=GOOGLE_WEBSITE_URL,
+        support_url=GOOGLE_SUPPORT_URL,
+        privacy_policy_url=GOOGLE_PRIVACY_URL,
+        categories=("Files", "Productivity"),
+        supported_products=("Google Drive",),
+        requested_scopes=(
+            "https://www.googleapis.com/auth/drive.readonly",
+            "https://www.googleapis.com/auth/drive.file",
+        ),
+        tool_preview=(
+            CuratedMCPTool("search_files", "Search files in Google Drive.", "Files", ("read",)),
+            CuratedMCPTool("read_file_content", "Read a Drive file's content.", "Files", ("read",)),
+            CuratedMCPTool("create_file", "Create a file in Google Drive.", "Files", ("write",)),
+        ),
+        availability="developer_preview",
+        popularity_rank=2,
+        trusted_logo_key="google",
+    ),
+    CuratedMCPProvider(
+        provider_slug="google-calendar",
+        display_name="Google Calendar",
+        publisher="Google",
+        description="View availability and calendar events, then create or update events with approval.",
+        remote_url="https://calendarmcp.googleapis.com/mcp/v1",
+        documentation_url=GOOGLE_DOCUMENTATION_URL,
+        author_website_url=GOOGLE_WEBSITE_URL,
+        support_url=GOOGLE_SUPPORT_URL,
+        privacy_policy_url=GOOGLE_PRIVACY_URL,
+        categories=("Productivity", "Planning"),
+        supported_products=("Google Calendar",),
+        requested_scopes=(
+            "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+            "https://www.googleapis.com/auth/calendar.events.freebusy",
+            "https://www.googleapis.com/auth/calendar.events.readonly",
+        ),
+        tool_preview=(
+            CuratedMCPTool("list_events", "List calendar events.", "Calendar", ("read",)),
+            CuratedMCPTool("create_event", "Create a calendar event.", "Calendar", ("write",)),
+            CuratedMCPTool("delete_event", "Delete a calendar event.", "Calendar", ("delete",)),
+        ),
+        availability="developer_preview",
+        popularity_rank=3,
+        trusted_logo_key="google",
+    ),
+    CuratedMCPProvider(
+        provider_slug="google-chat",
+        display_name="Google Chat",
+        publisher="Google",
+        description="Search and read Google Chat messages, then send messages with approval.",
+        remote_url="https://chatmcp.googleapis.com/mcp/v1",
+        documentation_url=GOOGLE_DOCUMENTATION_URL,
+        author_website_url=GOOGLE_WEBSITE_URL,
+        support_url=GOOGLE_SUPPORT_URL,
+        privacy_policy_url=GOOGLE_PRIVACY_URL,
+        categories=("Communication", "Productivity"),
+        supported_products=("Google Chat",),
+        requested_scopes=(
+            "https://www.googleapis.com/auth/chat.spaces.readonly",
+            "https://www.googleapis.com/auth/chat.memberships.readonly",
+            "https://www.googleapis.com/auth/chat.messages.readonly",
+            "https://www.googleapis.com/auth/chat.messages.create",
+            "https://www.googleapis.com/auth/chat.users.readstate.readonly",
+        ),
+        tool_preview=(
+            CuratedMCPTool("search_messages", "Search Google Chat messages.", "Messages", ("read",)),
+            CuratedMCPTool("list_messages", "List messages in a Chat space.", "Messages", ("read",)),
+            CuratedMCPTool("send_message", "Send a Google Chat message.", "Messages", ("write", "external_message")),
+        ),
+        availability="developer_preview",
+        popularity_rank=4,
+        trusted_logo_key="google",
+    ),
+    CuratedMCPProvider(
+        provider_slug="google-people",
+        display_name="Google People",
+        publisher="Google",
+        description="Read the signed-in user's profile and search contacts or directory people.",
+        remote_url="https://people.googleapis.com/mcp/v1",
+        documentation_url=GOOGLE_DOCUMENTATION_URL,
+        author_website_url=GOOGLE_WEBSITE_URL,
+        support_url=GOOGLE_SUPPORT_URL,
+        privacy_policy_url=GOOGLE_PRIVACY_URL,
+        categories=("People", "Productivity"),
+        supported_products=("People API",),
+        requested_scopes=(
+            "https://www.googleapis.com/auth/directory.readonly",
+            "https://www.googleapis.com/auth/userinfo.profile",
+            "https://www.googleapis.com/auth/contacts.readonly",
+        ),
+        tool_preview=(
+            CuratedMCPTool("get_user_profile", "Read the signed-in user's profile.", "People", ("read",)),
+            CuratedMCPTool("search_contacts", "Search the user's contacts.", "People", ("read",)),
+            CuratedMCPTool("search_directory_people", "Search the Workspace directory.", "People", ("read",)),
+        ),
+        availability="developer_preview",
+        popularity_rank=5,
+        trusted_logo_key="google",
+    ),
+    CuratedMCPProvider(
+        provider_slug="github",
+        display_name="GitHub",
+        publisher="GitHub",
+        description="Use GitHub's hosted MCP server to work with repositories, issues, pull requests, and workflows.",
+        remote_url="https://api.githubcopilot.com/mcp/",
+        documentation_url=GITHUB_DOCUMENTATION_URL,
+        author_website_url=GITHUB_WEBSITE_URL,
+        support_url=GITHUB_SUPPORT_URL,
+        privacy_policy_url=GITHUB_PRIVACY_URL,
+        categories=("Development", "Productivity"),
+        supported_products=("GitHub", "GitHub Copilot"),
+        requested_scopes=(),
+        tool_preview=(),
+        availability="host_oauth_configuration_required",
+        popularity_rank=6,
+        trusted_logo_key="github",
+        scope_mode="provider_negotiated",
+        scope_note="The reviewed AverQel GitHub OAuth profile will declare the exact requested scopes in Phase 3.",
+    ),
+)
+
+
+def validate_official_mcp_catalog() -> None:
+    """Fail fast when a future edit violates static catalog safety rules."""
+    slugs: set[str] = set()
+    ranks: set[int] = set()
+    for provider in OFFICIAL_MCP_PROVIDERS:
+        if provider.provider_slug in slugs:
+            raise ValueError(f"Duplicate curated MCP provider slug: {provider.provider_slug}")
+        slugs.add(provider.provider_slug)
+        if provider.popularity_rank in ranks:
+            raise ValueError(f"Duplicate curated MCP popularity rank: {provider.popularity_rank}")
+        ranks.add(provider.popularity_rank)
+
+        for label, value in (
+            ("remote endpoint", provider.remote_url),
+            ("documentation URL", provider.documentation_url),
+            ("author website URL", provider.author_website_url),
+            ("support URL", provider.support_url),
+            ("privacy URL", provider.privacy_policy_url),
+        ):
+            parsed = urlsplit(value)
+            if (
+                parsed.scheme != "https"
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError(f"Curated MCP {label} is not a safe HTTPS URL: {value}")
+        if provider.transport != "streamable_http":
+            raise ValueError(f"Unsupported curated MCP transport: {provider.transport}")
+        if any(not scope.startswith("https://") for scope in provider.requested_scopes):
+            raise ValueError(f"Curated MCP provider has an invalid OAuth scope: {provider.provider_slug}")
+
+
+validate_official_mcp_catalog()

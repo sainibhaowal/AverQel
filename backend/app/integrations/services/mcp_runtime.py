@@ -697,6 +697,7 @@ def build_mcp_server_runtime(
         select(MCPOAuthToken).where(
             MCPOAuthToken.server_id == server.id,
             MCPOAuthToken.tenant_id == server.tenant_id,
+            MCPOAuthToken.user_id == server.user_id,
         )
     ).scalar_one_or_none()
     config = dict(server.config or {})

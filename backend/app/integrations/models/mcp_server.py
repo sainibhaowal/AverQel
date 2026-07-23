@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,9 +20,24 @@ class MCPServer(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    registry_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("mcp_registry_entries.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    provider_slug: Mapped[str | None] = mapped_column(String(240), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     transport: Mapped[str] = mapped_column(String(32), nullable=False)
     config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    account_identity: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    connection_policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("mcp_connection_policies.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    catalog_revision: Mapped[int] = mapped_column(nullable=False, server_default=text("0"))
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'disconnected'"), index=True)
     enabled: Mapped[bool] = mapped_column(nullable=False, server_default=text("true"))
     last_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
@@ -35,11 +50,20 @@ class MCPServer(Base):
 class MCPRegistryEntry(Base):
     """Public marketplace metadata imported from the MCP Registry."""
     __tablename__ = "mcp_registry_entries"
-    __table_args__ = (UniqueConstraint("source", "server_name", name="uq_mcp_registry_source_name"),)
+    __table_args__ = (
+        UniqueConstraint("source", "server_name", name="uq_mcp_registry_source_name"),
+        CheckConstraint(
+            "publisher_type IN ('official', 'community')",
+            name="ck_mcp_registry_entries_publisher_type",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback)
     source: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     server_name: Mapped[str] = mapped_column(String(240), nullable=False, index=True)
+    provider_slug: Mapped[str] = mapped_column(String(240), nullable=False, index=True)
+    publisher_type: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    version: Mapped[str | None] = mapped_column(String(128), nullable=True)
     display_name: Mapped[str] = mapped_column(String(240), nullable=False)
     publisher: Mapped[str | None] = mapped_column(String(240), nullable=True, index=True)
     description: Mapped[str | None] = mapped_column(String(2000), nullable=True)
@@ -47,12 +71,24 @@ class MCPRegistryEntry(Base):
     remote_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     package_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     oauth_requirements: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    oauth_profile: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    requested_scopes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    supported_products: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    risk_policy: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     categories: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     official: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"), index=True)
     verified: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"), index=True)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"), index=True)
     raw_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     logo_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    documentation_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    author_website_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    support_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    privacy_policy_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    catalog_badges: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    trusted_logo_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    tool_categories: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    tool_risk_summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     tool_count: Mapped[int] = mapped_column(nullable=False, server_default=text("0"))
     last_catalog_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     verification_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -61,6 +97,8 @@ class MCPRegistryEntry(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     popularity_rank: Mapped[int | None] = mapped_column(nullable=True, index=True)
     catalog_status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'pending'"), index=True)
+    health_status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'not_checked'"), index=True)
+    health_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enrichment_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
 
@@ -107,7 +145,15 @@ class MCPOAuthToken(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False, unique=True)
+    registry_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("mcp_registry_entries.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    provider_slug: Mapped[str | None] = mapped_column(String(240), nullable=True, index=True)
     secret_ciphertext: Mapped[bytes] = mapped_column(nullable=False)
     secret_nonce: Mapped[bytes] = mapped_column(nullable=False)
     secret_kid: Mapped[str] = mapped_column(String(128), nullable=False)

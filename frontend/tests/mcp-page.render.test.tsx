@@ -69,6 +69,8 @@ describe("MCP dashboard", () => {
               capabilities: ["list_channels"],
               docs_url: "https://example.com/docs/mcp",
               trust_status: "discovered",
+              connectable: false,
+              connectability_reason: "OAuth provider profile is not configured yet.",
             },
           ],
           total: 1,
@@ -110,7 +112,8 @@ describe("MCP dashboard", () => {
     expect(screen.getByText("18 tools")).toBeInTheDocument();
     expect(screen.getByText("search_files")).toBeInTheDocument();
     expect(screen.queryByText("Sync registry")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Verification pending" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Setup pending" })).toBeDisabled();
+    expect(screen.getByText("OAuth provider profile is not configured yet.")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "View details" })[0]);
 

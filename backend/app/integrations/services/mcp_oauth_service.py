@@ -55,6 +55,7 @@ class MCPServerOAuthService:
             select(MCPOAuthToken).where(
                 MCPOAuthToken.server_id == server.id,
                 MCPOAuthToken.tenant_id == server.tenant_id,
+                MCPOAuthToken.user_id == server.user_id,
             )
         ).scalar_one_or_none()
         if record is None:
@@ -309,11 +310,15 @@ class MCPServerOAuthService:
         record = self.db.query(MCPOAuthToken).filter(
             MCPOAuthToken.server_id == server.id,
             MCPOAuthToken.tenant_id == server.tenant_id,
+            MCPOAuthToken.user_id == server.user_id,
         ).one_or_none()
         if record is None:
             record = MCPOAuthToken(
                 tenant_id=server.tenant_id,
+                user_id=server.user_id,
                 server_id=server.id,
+                registry_entry_id=server.registry_entry_id,
+                provider_slug=server.provider_slug or str((server.config or {}).get("vendor_slug") or "") or None,
                 secret_ciphertext=encrypted.ciphertext,
                 secret_nonce=encrypted.nonce,
                 secret_kid=encrypted.kid,
@@ -321,6 +326,9 @@ class MCPServerOAuthService:
             )
             self.db.add(record)
         else:
+            record.user_id = server.user_id
+            record.registry_entry_id = server.registry_entry_id
+            record.provider_slug = server.provider_slug or str((server.config or {}).get("vendor_slug") or "") or None
             record.secret_ciphertext = encrypted.ciphertext
             record.secret_nonce = encrypted.nonce
             record.secret_kid = encrypted.kid
