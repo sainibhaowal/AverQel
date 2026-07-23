@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 
 from app.core.config import Settings
@@ -18,6 +19,9 @@ from app.integrations.models.mcp_server import (
 from app.integrations.repositories.mcp_events import MCPEventsRepository
 from app.integrations.services.connector_oauth_service import ConnectorOAuthService
 from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
+from app.integrations.services.mcp_endpoint_security import validate_remote_endpoint
+from app.integrations.services.mcp_http_client import build_safe_sync_client
+from app.integrations.services.mcp_provider_auth import get_mcp_provider_profile
 
 
 class MCPServerOAuthService:
@@ -136,11 +140,327 @@ class MCPServerOAuthService:
                 raise ValueError("OAuth transaction has expired")
         return pending
 
+    def _mcp_redirect_uri(self, server: MCPServer) -> str:
+        configured = (self.settings.mcp_oauth_redirect_uri or "").strip().rstrip("/")
+        if configured:
+            return configured.replace("{server_id}", str(server.id))
+        origin = self.helper._public_origin()
+        if origin:
+            return f"{origin}{self.settings.api_prefix}/mcp/oauth/callback"
+        raise ValueError("MCP OAuth callback URL is not configured")
+
+    def _static_profile(self, server: MCPServer):
+        profile = get_mcp_provider_profile(server.provider_slug)
+        if profile is None:
+            return None
+        ready, reason = profile.readiness(self.settings)
+        if not ready:
+            raise ValueError(reason or "MCP provider OAuth is not configured")
+        return profile
+
+    def _start_static_profile(self, *, server: MCPServer, user_id: uuid.UUID, profile: Any) -> str:
+        from mcp.shared.auth import (
+            OAuthClientInformationFull,
+            OAuthClientMetadata,
+            OAuthMetadata,
+            ProtectedResourceMetadata,
+        )
+
+        client_id, client_secret, missing = profile.configured_credentials(self.settings)
+        if missing:
+            raise ValueError("MCP provider OAuth is not configured")
+        redirect_uri = self._mcp_redirect_uri(server)
+        scopes = profile.scopes_for(server.provider_slug or "")
+        client_metadata = OAuthClientMetadata(
+            redirect_uris=[redirect_uri],
+            token_endpoint_auth_method=profile.token_endpoint_auth_method,
+            scope=" ".join(scopes),
+            client_name="AverQel",
+            client_uri=self.helper._public_origin(),
+            software_id="averqel",
+            software_version="1.0",
+        )
+        client_info = OAuthClientInformationFull(
+            **client_metadata.model_dump(mode="json", exclude_none=True),
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+        oauth_metadata = OAuthMetadata.model_validate(
+            profile.oauth_metadata(scopes=scopes)
+        )
+        resource_metadata = ProtectedResourceMetadata.model_validate(
+            profile.protected_resource_metadata(
+                resource_url=str(server.config.get("server_url") or ""),
+                scopes=scopes,
+            )
+        )
+        pkce = self.helper._generate_pkce()
+        transaction_id = uuid.uuid4()
+        expires_at = datetime.now(UTC) + self.TRANSACTION_TTL
+        state_payload = {
+            "mcp_server_id": str(server.id),
+            "tenant_id": str(server.tenant_id),
+            "user_id": str(user_id),
+            "provider_slug": server.provider_slug,
+            "transaction_id": str(transaction_id),
+            "nonce": secrets.token_urlsafe(24),
+            "issued_at": datetime.now(UTC).isoformat(),
+        }
+        state = self.helper._sign_state(state_payload)
+        transaction = MCPOAuthTransaction(
+            id=transaction_id,
+            tenant_id=server.tenant_id,
+            user_id=user_id,
+            server_id=server.id,
+            state_hash=self._state_hash(state),
+            expires_at=expires_at,
+        )
+        encrypted = ConnectorSecretCrypto(self.settings).encrypt(
+            json.dumps(
+                {
+                    "provider_slug": server.provider_slug,
+                    "code_verifier": pkce["code_verifier"],
+                    "client_info": client_info.model_dump(mode="json", exclude_none=True),
+                    "client_metadata": client_metadata.model_dump(mode="json", exclude_none=True),
+                    "resource_metadata": resource_metadata.model_dump(mode="json", exclude_none=True),
+                    "oauth_metadata": oauth_metadata.model_dump(mode="json", exclude_none=True),
+                },
+                separators=(",", ":"),
+            ),
+            aad=self._transaction_aad(transaction),
+        )
+        transaction.secret_ciphertext = encrypted.ciphertext
+        transaction.secret_nonce = encrypted.nonce
+        transaction.secret_kid = encrypted.kid
+        self.db.add(transaction)
+        config = dict(server.config or {})
+        config.pop("oauth_pending", None)
+        config["oauth_transaction_id"] = str(transaction.id)
+        config["oauth_profile"] = profile.key
+        server.config = config
+        self.db.add(server)
+        self.db.commit()
+        MCPEventsRepository(self.db).append(
+            tenant_id=server.tenant_id,
+            server_id=server.id,
+            user_id=server.user_id,
+            event_type="oauth_started",
+            payload={"provider": profile.key},
+        )
+        self.db.commit()
+        return profile.authorization_url(
+            client_id=client_id,
+            redirect_uri=redirect_uri,
+            state=state,
+            code_challenge=pkce["code_challenge"],
+            scopes=scopes,
+        )
+
+    def _exchange_static_token(
+        self,
+        *,
+        profile: Any,
+        client_id: str,
+        client_secret: str,
+        code: str,
+        code_verifier: str,
+        redirect_uri: str,
+    ) -> Any:
+        form_data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code_verifier": code_verifier,
+        }
+        headers = {"Accept": "application/json"}
+        with build_safe_sync_client(timeout=30.0) as client:
+            response = client.post(profile.token_endpoint, data=form_data, headers=headers)
+        if response.status_code != 200:
+            raise ValueError("MCP OAuth token exchange failed")
+        try:
+            from mcp.shared.auth import OAuthToken
+
+            return OAuthToken.model_validate(response.json())
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("MCP OAuth provider returned an invalid token") from exc
+
+    def _fetch_static_identity(self, *, profile: Any, access_token: str) -> dict[str, str | int]:
+        headers = profile.identity_headers(access_token)
+        try:
+            with build_safe_sync_client(timeout=15.0) as client:
+                response = client.get(profile.identity_endpoint, headers=headers)
+                if response.status_code != 200:
+                    raise ValueError
+                identity_payload = response.json()
+                email_payload = None
+                if profile.identity_email_endpoint:
+                    email_response = client.get(profile.identity_email_endpoint, headers=headers)
+                    if email_response.status_code == 200:
+                        email_payload = email_response.json()
+            return profile.extract_identity(identity_payload, email_payload)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("Unable to verify the connected OAuth account") from exc
+
+    def _finish_static_profile(
+        self,
+        *,
+        server: MCPServer,
+        code: str,
+        state: str,
+        state_payload: dict[str, Any],
+        profile: Any,
+    ) -> None:
+        transaction, pending = self._load_transaction(
+            server=server, state=state, state_payload=state_payload
+        )
+        if transaction is None or pending is None:
+            raise ValueError("OAuth transaction is missing or expired")
+        if pending.get("provider_slug") != server.provider_slug:
+            raise ValueError("OAuth provider does not match this MCP server")
+        client_id, client_secret, missing = profile.configured_credentials(self.settings)
+        if missing:
+            raise ValueError("MCP provider OAuth is not configured")
+        token = self._exchange_static_token(
+            profile=profile,
+            client_id=client_id,
+            client_secret=client_secret,
+            code=code,
+            code_verifier=str(pending.get("code_verifier") or ""),
+            redirect_uri=str(
+                pending.get("client_metadata", {}).get("redirect_uris", [""])[0]
+            ),
+        )
+        granted_scopes = profile.verify_scopes(
+            provider_slug=server.provider_slug or "",
+            granted_scope=getattr(token, "scope", None),
+        )
+        identity = self._fetch_static_identity(
+            profile=profile,
+            access_token=str(token.access_token),
+        )
+        token_payload = token.model_dump(mode="json", exclude_none=True)
+        token_payload.update(
+            {
+                "provider_slug": server.provider_slug,
+                "scope": " ".join(granted_scopes),
+                "client_info": pending["client_info"],
+                "client_metadata": pending["client_metadata"],
+                "oauth_metadata": pending["oauth_metadata"],
+                "resource_metadata": pending["resource_metadata"],
+            }
+        )
+        existing_credentials = self._decrypt_token_credentials(server)
+        existing_credentials.update(token_payload)
+        encrypted = ConnectorSecretCrypto(self.settings).encrypt(
+            json.dumps(existing_credentials, separators=(",", ":")),
+            aad=str(server.tenant_id).encode(),
+        )
+        token_expires_in = getattr(token, "expires_in", None)
+        expires_at = (
+            datetime.now(UTC) + timedelta(seconds=int(token_expires_in))
+            if token_expires_in is not None
+            else None
+        )
+        record = self.db.query(MCPOAuthToken).filter(
+            MCPOAuthToken.server_id == server.id,
+            MCPOAuthToken.tenant_id == server.tenant_id,
+            MCPOAuthToken.user_id == server.user_id,
+        ).one_or_none()
+        if record is None:
+            record = MCPOAuthToken(
+                tenant_id=server.tenant_id,
+                user_id=server.user_id,
+                server_id=server.id,
+                registry_entry_id=server.registry_entry_id,
+                provider_slug=server.provider_slug,
+                secret_ciphertext=encrypted.ciphertext,
+                secret_nonce=encrypted.nonce,
+                secret_kid=encrypted.kid,
+                expires_at=expires_at,
+            )
+            self.db.add(record)
+        else:
+            record.secret_ciphertext = encrypted.ciphertext
+            record.secret_nonce = encrypted.nonce
+            record.secret_kid = encrypted.kid
+            record.expires_at = expires_at
+        server.account_identity = identity
+        server.config = {
+            key: value
+            for key, value in (server.config or {}).items()
+            if key not in {"oauth_pending", "oauth_transaction_id", "oauth_client_info", "client_metadata", "oauth_metadata", "resource_metadata"}
+        }
+        server.config.update({"auth_mode": "mcp", "oauth_mode": "mcp_oauth", "auth_type": "oauth", "oauth_profile": profile.key})
+        server.status = "disconnected"
+        transaction.consumed_at = datetime.now(UTC)
+        self.db.add(server)
+        MCPEventsRepository(self.db).append(
+            tenant_id=server.tenant_id,
+            server_id=server.id,
+            user_id=server.user_id,
+            event_type="oauth_completed",
+            payload={"provider": profile.key},
+        )
+        self.db.commit()
+
+    def disconnect(self, *, server: MCPServer, user_id: uuid.UUID) -> None:
+        if server.user_id != user_id:
+            raise ValueError("MCP server does not belong to this user")
+        profile = get_mcp_provider_profile(server.provider_slug)
+        record = self.db.execute(
+            select(MCPOAuthToken).where(
+                MCPOAuthToken.server_id == server.id,
+                MCPOAuthToken.tenant_id == server.tenant_id,
+                MCPOAuthToken.user_id == user_id,
+            )
+        ).scalar_one_or_none()
+        if record is not None and profile is not None and profile.revocation_endpoint:
+            credentials = self._decrypt_token_credentials(server)
+            token_value = str(credentials.get("refresh_token") or credentials.get("access_token") or "").strip()
+            if token_value:
+                client_id, client_secret, _ = profile.configured_credentials(self.settings)
+                if client_id and client_secret:
+                    endpoint = profile.revocation_endpoint.format(client_id=client_id)
+                    with build_safe_sync_client(timeout=15.0) as client:
+                        if profile.revocation_method == "delete_basic":
+                            response = client.delete(
+                                endpoint,
+                                headers={"Accept": "application/json"},
+                                auth=httpx.BasicAuth(client_id, client_secret),
+                            )
+                        else:
+                            response = client.post(endpoint, data={"token": token_value})
+                    if response.status_code not in {200, 204}:
+                        raise ValueError("OAuth provider token revocation failed")
+        if record is not None:
+            self.db.delete(record)
+        server.account_identity = {}
+        server.status = "needs_auth"
+        server.config = {
+            key: value
+            for key, value in (server.config or {}).items()
+            if key not in {"auth_mode", "oauth_pending", "oauth_transaction_id"}
+        }
+        MCPEventsRepository(self.db).append(
+            tenant_id=server.tenant_id,
+            server_id=server.id,
+            user_id=user_id,
+            event_type="oauth_disconnected",
+            payload={"provider": server.provider_slug},
+        )
+        self.db.commit()
+
     def start(self, *, server: MCPServer, user_id: uuid.UUID) -> str:
         if server.user_id != user_id:
             raise ValueError("MCP server does not belong to this user")
         if not server.config.get("server_url"):
             raise ValueError("This MCP vendor does not publish a remote endpoint")
+        validate_remote_endpoint(str(server.config["server_url"]))
+        profile = self._static_profile(server)
+        if profile is not None:
+            return self._start_static_profile(server=server, user_id=user_id, profile=profile)
         origin = self.helper._public_origin()
         redirect_uri = (
             f"{origin}{self.settings.api_prefix}/mcp/servers/{server.id}/oauth/callback"
@@ -258,6 +578,17 @@ class MCPServerOAuthService:
             raise ValueError("OAuth state has an invalid issue time") from exc
         if datetime.now(UTC) - issued > self.TRANSACTION_TTL:
             raise ValueError("OAuth state has expired")
+
+        profile = get_mcp_provider_profile(server.provider_slug)
+        if profile is not None and payload.get("provider_slug") == server.provider_slug:
+            self._finish_static_profile(
+                server=server,
+                code=code,
+                state=state,
+                state_payload=payload,
+                profile=profile,
+            )
+            return
 
         transaction, pending = self._load_transaction(
             server=server, state=state, state_payload=payload

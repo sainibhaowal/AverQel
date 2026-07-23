@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+import pytest
+
+from app.integrations.services.mcp_provider_auth import (
+    GITHUB_MCP_OAUTH_PROFILE,
+    GOOGLE_MCP_OAUTH_PROFILE,
+    get_mcp_provider_profile,
+)
+
+
+@pytest.mark.unit_no_db
+def test_curated_profiles_use_fixed_provider_endpoints_and_scopes(settings) -> None:
+    settings.mcp_google_oauth_client_id = "mcp-google-id"
+    settings.mcp_google_oauth_client_secret = "mcp-google-secret"
+    settings.mcp_oauth_redirect_uri = "https://averqel.example/api/v1/mcp/oauth/callback"
+
+    profile = get_mcp_provider_profile("google-gmail")
+    assert profile is GOOGLE_MCP_OAUTH_PROFILE
+    ready, reason = profile.readiness(settings)
+    assert ready is True
+    assert reason is None
+    assert profile.authorization_endpoint == "https://accounts.google.com/o/oauth2/v2/auth"
+    authorization_url = profile.authorization_url(
+        client_id="mcp-google-id",
+        redirect_uri=settings.mcp_oauth_redirect_uri,
+        state="signed-state",
+        code_challenge="pkce-challenge",
+        scopes=profile.scopes_for("google-gmail"),
+    )
+    assert "access_type=offline" in authorization_url
+    assert "prompt=consent" in authorization_url
+    assert profile.scopes_for("google-gmail") == (
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.compose",
+    )
+
+
+@pytest.mark.unit_no_db
+def test_scope_verification_rejects_escalation_and_missing_scope() -> None:
+    with pytest.raises(ValueError, match="unapproved scope"):
+        GOOGLE_MCP_OAUTH_PROFILE.verify_scopes(
+            provider_slug="google-gmail",
+            granted_scope="https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/cloud-platform",
+        )
+
+    with pytest.raises(ValueError, match="did not return granted scopes"):
+        GITHUB_MCP_OAUTH_PROFILE.verify_scopes(
+            provider_slug="github",
+            granted_scope=None,
+        )
+
+
+@pytest.mark.unit_no_db
+def test_identity_capture_is_restricted_to_safe_account_labels() -> None:
+    identity = GITHUB_MCP_OAUTH_PROFILE.extract_identity(
+        {"id": 42, "login": "ravi", "name": "Ravi", "private_token": "must-not-store"},
+        [{"email": "Ravi@Example.com", "primary": True}],
+    )
+
+    assert identity == {
+        "provider_subject": 42,
+        "account_id": 42,
+        "email": "ravi@example.com",
+        "display_name": "Ravi",
+    }
+    assert "private_token" not in identity

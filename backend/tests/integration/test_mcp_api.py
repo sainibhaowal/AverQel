@@ -88,7 +88,7 @@ def test_legacy_catalog_import_route_is_removed(
     assert response.status_code == 404
 
 
-def test_curated_provider_is_visible_but_cannot_use_generic_oauth_before_phase_three(
+def test_curated_provider_is_visible_but_requires_provider_oauth_configuration(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
     db_session: Session,
@@ -129,7 +129,7 @@ def test_curated_provider_is_visible_but_cannot_use_generic_oauth_before_phase_t
         )
 
         assert connect_response.status_code == 409
-        assert "OAuth provider profile is not configured" in str(connect_response.json())
+        assert "MCP_GOOGLE_OAUTH_CLIENT_ID" in str(connect_response.json())
     finally:
         db_session.execute(
             delete(MCPRegistryEntry).where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)

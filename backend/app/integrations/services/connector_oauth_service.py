@@ -529,6 +529,8 @@ class ConnectorOAuthService:
     def _provider_oauth_client_config_for_integration(
         self, integration: Integration
     ) -> ConnectorOAuthClientConfig | None:
+        # Connector OAuth is intentionally isolated from the dedicated
+        # mcp_* provider credentials used by native remote MCP servers.
         ui_metadata = integration.ui_metadata if isinstance(integration.ui_metadata, dict) else {}
         provider_key = str(
             ui_metadata.get("oauth_provider_key")

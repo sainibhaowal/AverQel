@@ -21,6 +21,7 @@ from app.integrations.services.mcp_endpoint_security import (
     validate_remote_endpoint,
 )
 from app.integrations.services.mcp_oauth_service import MCPServerOAuthService
+from app.integrations.services.mcp_provider_auth import get_mcp_provider_profile
 from app.integrations.workers.tasks_mcp import refresh_server_catalog
 from app.platform.database.session import get_db, set_db_tenant_context
 
@@ -181,6 +182,12 @@ def _marketplace_connectability(entry: MCPRegistryEntry) -> tuple[bool, str | No
         return False, "This provider has not been approved by AverQel."
     if not entry.remote_url:
         return False, "This provider does not publish a remote endpoint."
+    profile = get_mcp_provider_profile(entry.provider_slug)
+    if profile is not None:
+        ready, reason = profile.readiness(get_settings())
+        if not ready:
+            return False, reason or "Provider-specific OAuth is not configured."
+        return True, None
     catalog = _marketplace_catalog_metadata(entry)
     readiness = catalog.get("connection_ready")
     if isinstance(readiness, bool):
@@ -394,7 +401,13 @@ def oauth_callback(server_id: uuid.UUID, code: str, state: str, session: Session
     except Exception as exc:
         logger.exception("MCP OAuth callback failed for server %s", server_id)
         raise HTTPException(status_code=400, detail="MCP OAuth callback failed") from exc
-    server = session.get(MCPServer, server_id)
+    server = session.execute(
+        select(MCPServer).where(
+            MCPServer.id == server_id,
+            MCPServer.tenant_id == tenant_id,
+            MCPServer.user_id == uuid.UUID(str(state_payload["user_id"])),
+        )
+    ).scalar_one_or_none()
     if server is None:
         raise HTTPException(status_code=404, detail="MCP server not found")
     try:
@@ -407,6 +420,63 @@ def oauth_callback(server_id: uuid.UUID, code: str, state: str, session: Session
         query = urlencode({"mcp_status": "connected", "server_id": str(server.id)})
         return RedirectResponse(url=f"{origin}/dashboard/mcp?{query}", status_code=303)
     return {"status": "connected", "server_id": str(server.id)}
+
+
+@router.get("/oauth/callback")
+def stable_oauth_callback(code: str, state: str, session: Session = Depends(get_db)):
+    """Stable provider callback; server identity comes only from signed state."""
+    service = MCPServerOAuthService(session, get_settings())
+    try:
+        state_payload = service.verify_state(state)
+        server_id = uuid.UUID(str(state_payload["mcp_server_id"]))
+        tenant_id = uuid.UUID(str(state_payload["tenant_id"]))
+        user_id = uuid.UUID(str(state_payload["user_id"]))
+        set_db_tenant_context(session, tenant_id)
+        server = session.execute(
+            select(MCPServer).where(
+                MCPServer.id == server_id,
+                MCPServer.tenant_id == tenant_id,
+                MCPServer.user_id == user_id,
+            )
+        ).scalar_one_or_none()
+        if server is None:
+            raise ValueError("MCP server not found")
+        service.finish(server=server, code=code, state=state)
+    except Exception as exc:
+        logger.exception("MCP OAuth callback failed")
+        raise HTTPException(status_code=400, detail="MCP OAuth callback failed") from exc
+    refresh_server_catalog.delay(str(server.id), str(server.tenant_id))
+    origin = (get_settings().averqel_public_origin or "").strip().rstrip("/")
+    if origin:
+        query = urlencode({"mcp_status": "connected", "server_id": str(server.id)})
+        return RedirectResponse(url=f"{origin}/dashboard/mcp?{query}", status_code=303)
+    return {"status": "connected", "server_id": str(server.id)}
+
+
+@router.delete("/servers/{server_id}/oauth", status_code=status.HTTP_204_NO_CONTENT)
+def disconnect_oauth(
+    server_id: uuid.UUID,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> Response:
+    set_db_tenant_context(session, auth.tenant_id)
+    server = session.execute(
+        select(MCPServer).where(
+            MCPServer.id == server_id,
+            MCPServer.tenant_id == auth.tenant_id,
+            MCPServer.user_id == auth.user_id,
+        )
+    ).scalar_one_or_none()
+    if server is None:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    try:
+        MCPServerOAuthService(session, get_settings()).disconnect(
+            server=server,
+            user_id=auth.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="MCP OAuth disconnect failed") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/catalog", response_model=list[dict[str, Any]])

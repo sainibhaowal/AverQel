@@ -264,6 +264,13 @@ class Settings(BaseSettings):
     connector_slack_oauth_client_secret: str | None = None
     connector_notion_oauth_client_id: str | None = None
     connector_notion_oauth_client_secret: str | None = None
+    # Dedicated native remote MCP OAuth credentials. These are intentionally
+    # separate from connector_* settings used by existing integrations.
+    mcp_google_oauth_client_id: str | None = None
+    mcp_google_oauth_client_secret: str | None = None
+    mcp_github_oauth_client_id: str | None = None
+    mcp_github_oauth_client_secret: str | None = None
+    mcp_oauth_redirect_uri: str | None = None
     mcp_catalog_max_age_seconds: int = Field(default=900, ge=60, le=86_400)
     averqel_domain: str | None = Field(default=None, validation_alias="AVERQEL_DOMAIN")
     averqel_public_origin: str | None = Field(
@@ -841,6 +848,18 @@ class Settings(BaseSettings):
             )
         return cleaned
 
+    @field_validator("mcp_oauth_redirect_uri")
+    @classmethod
+    def validate_mcp_oauth_redirect_uri(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().rstrip("/")
+        if not cleaned:
+            return None
+        if not _is_http_url(cleaned):
+            raise ValueError("mcp_oauth_redirect_uri must be a valid http/https URL")
+        return cleaned
+
     @field_validator(
         "llm_model",
         "llm_api_key",
@@ -850,6 +869,11 @@ class Settings(BaseSettings):
         "totp_secret_keyring_json",
         "provider_openai_oauth_client_id",
         "provider_openai_oauth_redirect_uri",
+        "mcp_google_oauth_client_id",
+        "mcp_google_oauth_client_secret",
+        "mcp_github_oauth_client_id",
+        "mcp_github_oauth_client_secret",
+        "mcp_oauth_redirect_uri",
         "averqel_domain",
         "averqel_public_origin",
     )
@@ -955,6 +979,24 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def resolve_mcp_oauth_defaults(self) -> Settings:
+        public_origin = (self.averqel_public_origin or "").strip().rstrip("/")
+        if public_origin and not self.mcp_oauth_redirect_uri:
+            object.__setattr__(
+                self,
+                "mcp_oauth_redirect_uri",
+                f"{public_origin}{self.api_prefix}/mcp/oauth/callback",
+            )
+        for provider in ("google", "github"):
+            client_id = getattr(self, f"mcp_{provider}_oauth_client_id")
+            client_secret = getattr(self, f"mcp_{provider}_oauth_client_secret")
+            if bool(client_id) != bool(client_secret):
+                raise ValueError(
+                    f"mcp_{provider}_oauth_client_id and mcp_{provider}_oauth_client_secret must be configured together"
+                )
+        return self
+
+    @model_validator(mode="after")
     def validate_internal_consistency(self) -> Settings:
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("chunk_overlap must be smaller than chunk_size")
@@ -1042,6 +1084,9 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Production requires connector_oauth_frontend_redirect_uri to use https"
             )
+
+        if self.mcp_oauth_redirect_uri and not self.mcp_oauth_redirect_uri.startswith("https://"):
+            raise ValueError("Production requires mcp_oauth_redirect_uri to use https")
 
         if self.llm_provider in REMOTE_LLM_PROVIDERS and not self.llm_api_key:
             raise ValueError(

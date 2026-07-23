@@ -743,7 +743,9 @@ def build_mcp_server_runtime(
     async def _persist(tokens: Any) -> None:
         if token_record is None:
             return
-        payload = tokens.model_dump(mode="json", exclude_none=True) if hasattr(tokens, "model_dump") else dict(vars(tokens))
+        refreshed = tokens.model_dump(mode="json", exclude_none=True) if hasattr(tokens, "model_dump") else dict(vars(tokens))
+        payload = dict(token_payload)
+        payload.update(refreshed)
         encrypted = crypto.encrypt(json.dumps(payload, separators=(",", ":")), aad=str(server.tenant_id).encode())
         token_record.secret_ciphertext = encrypted.ciphertext
         token_record.secret_nonce = encrypted.nonce
