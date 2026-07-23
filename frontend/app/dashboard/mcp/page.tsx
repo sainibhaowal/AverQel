@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 
 import {
@@ -20,6 +21,7 @@ import {
 
 import MCPMarketplaceCard from "./_components/MCPMarketplaceCard";
 import MCPHealthStatus from "./_components/MCPHealthStatus";
+import { readMCPActiveContext } from "@/lib/mcp-context";
 
 export { buildMarketplaceQuery } from "@/lib/mcp-api";
 
@@ -27,6 +29,7 @@ const FALLBACK_CATEGORIES = ["Productivity", "Development", "Communication", "Fi
 
 export default function MCPDashboard() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [tab, setTab] = useState<"marketplace" | "installed">("marketplace");
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
@@ -64,13 +67,21 @@ export default function MCPDashboard() {
     const status = searchParams.get("mcp_status");
     const serverId = searchParams.get("server_id");
     if (!status) return;
-    setTab(status === "connected" ? "installed" : "marketplace");
-    setCallbackMessage(status === "connected" && serverId ? "MCP provider connected successfully. Open Installed to manage its account and permissions." : "MCP authorization did not complete.");
+    if (status === "connected" && serverId) {
+      const context = readMCPActiveContext();
+      const target = new URLSearchParams({ mcp_status: "connected" });
+      if (context?.conversation_id) target.set("conversation_id", context.conversation_id);
+      if (context?.deepspace_id) target.set("deepspace_id", context.deepspace_id);
+      router.replace(`/dashboard/mcp/inspector/${encodeURIComponent(serverId)}?${target.toString()}`);
+      return;
+    }
+    setTab("marketplace");
+    setCallbackMessage("MCP authorization did not complete.");
     const url = new URL(window.location.href);
     url.searchParams.delete("mcp_status");
     url.searchParams.delete("server_id");
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [searchParams]);
+  }, [router, searchParams]);
 
   const connect = async (entry: MCPMarketplaceEntry) => {
     setError(null);

@@ -21,6 +21,7 @@ import toast from "react-hot-toast";
 
 import ChatSidebar from "@/app/components/dashboard/ChatSidebar";
 import { fetchWithAuth } from "@/lib/api";
+import { saveMCPActiveContext } from "@/lib/mcp-context";
 import {
   listProviders,
   listProviderModels,
@@ -528,6 +529,7 @@ export default function DeepSpaceChatClient({
   }, []);
 
   useEffect(() => {
+    saveMCPActiveContext({ conversation_id: activeConversationId });
     if (activeConversationId) {
       void loadConversation(activeConversationId);
     } else {

@@ -5,6 +5,7 @@ import MCPDashboard from "../app/dashboard/mcp/page";
 
 const fetchWithAuthMock = vi.fn();
 const searchParamsMock = { value: new URLSearchParams() };
+const routerMock = { replace: vi.fn() };
 
 vi.mock("@/lib/api", () => ({
   fetchWithAuth: (...args: unknown[]) => fetchWithAuthMock(...args),
@@ -12,6 +13,7 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParamsMock.value,
+  useRouter: () => routerMock,
 }));
 
 vi.mock("lucide-react", async () => {
@@ -22,6 +24,7 @@ vi.mock("lucide-react", async () => {
 describe("MCP dashboard", () => {
   beforeEach(() => {
     searchParamsMock.value = new URLSearchParams();
+    routerMock.replace.mockReset();
     fetchWithAuthMock.mockReset();
     fetchWithAuthMock
       .mockResolvedValueOnce({
@@ -164,7 +167,6 @@ describe("MCP dashboard", () => {
   it("handles a successful OAuth return and opens installed connections", async () => {
     searchParamsMock.value = new URLSearchParams("mcp_status=connected&server_id=server-1");
     render(<MCPDashboard />);
-    expect(await screen.findByRole("status")).toHaveTextContent(/connected successfully/i);
-    expect(screen.getByText(/Installed \(1\)/i)).toBeInTheDocument();
+    await waitFor(() => expect(routerMock.replace).toHaveBeenCalledWith("/dashboard/mcp/inspector/server-1?mcp_status=connected"));
   });
 });

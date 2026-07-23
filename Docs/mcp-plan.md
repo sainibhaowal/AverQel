@@ -1069,3 +1069,17 @@ database already stored it but the prior API response did not expose it. The
 full `tools` field was added separately from `tool_preview` so list-card
 compatibility is preserved while provider details have an explicit complete
 reviewed catalog contract.
+
+## Phase 6 post-OAuth and active-context UX
+
+After OAuth succeeds, the marketplace now redirects directly to the connected
+server inspector instead of stopping at the Installed list. The inspector
+shows the safe account identity, refreshed tool catalog, granted scope names,
+and policy controls immediately.
+
+DeepSpace stores the currently active conversation identifier in browser-owned
+short-lived context state. The MCP inspector reads that context and loads the
+conversation scope automatically. No Gmail, GitHub, OAuth, or credential data
+is stored in this context. The backend still validates tenant/user ownership
+and requires an explicit enable decision because absent or stale overrides
+remain disabled by design.
