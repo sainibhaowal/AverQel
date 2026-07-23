@@ -14,8 +14,31 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.rbac import require_permissions
 from app.core.config import get_settings
+from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
+from app.integrations.models.mcp_connection_policy import MCPConnectionPolicy
 from app.integrations.models.mcp_server import MCPRegistryEntry, MCPServer
-from app.integrations.schemas.mcp import MCPCatalogReviewRequest, MCPServerRead
+from app.integrations.schemas.mcp import (
+    MCPActionResponse,
+    MCPCatalogReviewRead,
+    MCPCatalogReviewRequest,
+    MCPConnectionCreateResponse,
+    MCPConnectionOverrideRead,
+    MCPConnectionOverrideUpdate,
+    MCPConnectionPolicyRead,
+    MCPConnectionPolicyUpdate,
+    MCPConnectionRead,
+    MCPInspectorRead,
+    MCPMarketplaceEntryRead,
+    MCPMarketplaceFacetsRead,
+    MCPMarketplacePageRead,
+    MCPOAuthStartResponse,
+    MCPScopedConnectionListRead,
+    MCPScopedConnectionRead,
+    MCPServerRead,
+    MCPToolCatalogRead,
+    MCPToolPolicyUpdate,
+    MCPToolRead,
+)
 from app.integrations.services.mcp_endpoint_security import (
     MCPEndpointRejectedError,
     validate_remote_endpoint,
@@ -24,6 +47,7 @@ from app.integrations.services.mcp_oauth_service import MCPServerOAuthService
 from app.integrations.services.mcp_provider_auth import get_mcp_provider_profile
 from app.integrations.workers.tasks_mcp import refresh_server_catalog
 from app.platform.database.session import get_db, set_db_tenant_context
+from app.query.models.conversation import Conversation
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 logger = logging.getLogger(__name__)
@@ -68,7 +92,16 @@ def _marketplace_tool_preview(entry: MCPRegistryEntry) -> list[dict[str, Any]]:
     preview = package.get("tool_preview")
     if not isinstance(preview, list):
         return []
-    return [item for item in preview if isinstance(item, dict) and str(item.get("name") or "").strip()]
+    return [
+        {
+            "name": str(item.get("name") or "").strip(),
+            "description": str(item.get("description") or "").strip() or None,
+            "category": str(item.get("category") or "").strip() or None,
+            "risk_labels": _safe_string_list(item.get("risk_labels")),
+        }
+        for item in preview
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    ]
 
 
 def _marketplace_auth_type(entry: MCPRegistryEntry) -> str:
@@ -105,7 +138,7 @@ def _marketplace_connection_options(entry: MCPRegistryEntry) -> list[dict[str, A
         options.append({
             "transport": remote.get("type") or "streamable_http",
             "url": url,
-            "security_schemes": remote.get("securitySchemes") or {},
+            "security_schemes": _safe_marketplace_metadata(remote.get("securitySchemes") or {}),
         })
     return options
 
@@ -131,12 +164,12 @@ def _marketplace_catalog_metadata(entry: MCPRegistryEntry) -> dict[str, Any]:
             result[key] = value
     if isinstance(entry.catalog_badges, dict) and entry.catalog_badges:
         result["badges"] = entry.catalog_badges
-    existing_health = result.get("health") if isinstance(result.get("health"), dict) else {}
     result["health"] = {
-        **existing_health,
         "status": entry.health_status,
         "last_checked_at": entry.health_checked_at.isoformat() if entry.health_checked_at else None,
     }
+    if entry.health_status == "not_checked":
+        result["health"]["detail"] = "Live health is checked only after user authentication."
     return result
 
 
@@ -168,6 +201,146 @@ def _safe_marketplace_metadata(value: object) -> Any:
     if isinstance(value, str | int | float | bool) or value is None:
         return value
     return str(value)
+
+
+def _safe_marketplace_package_metadata(entry: MCPRegistryEntry) -> dict[str, Any]:
+    package = entry.package_metadata if isinstance(entry.package_metadata, dict) else {}
+    allowed = {
+        "provider_slug",
+        "auth_type",
+        "supported_products",
+        "tool_categories",
+        "tool_preview",
+        "discovered_capabilities",
+    }
+    safe = {key: package[key] for key in allowed if key in package}
+    safe["tool_preview"] = _marketplace_tool_preview(entry)
+    return _safe_marketplace_metadata(safe)
+
+
+def _safe_marketplace_oauth_requirements(entry: MCPRegistryEntry) -> dict[str, Any]:
+    requirements = entry.oauth_requirements if isinstance(entry.oauth_requirements, dict) else {}
+    allowed = {"type", "requested_scopes", "scope_mode", "scope_note"}
+    safe = {key: requirements[key] for key in allowed if key in requirements}
+    safe["requested_scopes"] = _safe_string_list(entry.requested_scopes) or _safe_string_list(
+        requirements.get("requested_scopes")
+    )
+    return _safe_marketplace_metadata(safe)
+
+
+def _policy_defaults(server: MCPServer) -> MCPConnectionPolicy:
+    return MCPConnectionPolicy(
+        tenant_id=server.tenant_id,
+        user_id=server.user_id,
+        server_id=server.id,
+        allowed_tools=[],
+        denied_tools=[],
+        read_only=True,
+        risk_ceiling="read",
+        approval_rules={
+            "write": "needs_approval",
+            "delete": "needs_approval",
+            "external_message": "needs_approval",
+        },
+        tool_modes={},
+        default_enabled=False,
+        deepspace_overrides={},
+        conversation_overrides={},
+    )
+
+
+def _get_policy(session: Session, server: MCPServer, *, create: bool) -> MCPConnectionPolicy | None:
+    policy = session.execute(
+        select(MCPConnectionPolicy).where(
+            MCPConnectionPolicy.server_id == server.id,
+            MCPConnectionPolicy.tenant_id == server.tenant_id,
+            MCPConnectionPolicy.user_id == server.user_id,
+        )
+    ).scalar_one_or_none()
+    if policy is None and create:
+        policy = _policy_defaults(server)
+        session.add(policy)
+        session.flush()
+        server.connection_policy_id = policy.id
+    return policy
+
+
+def _connection_payload(session: Session, server: MCPServer) -> MCPConnectionRead:
+    policy = _get_policy(session, server, create=False)
+    return MCPConnectionRead.model_validate(server).model_copy(
+        update={"policy": MCPConnectionPolicyRead.model_validate(policy) if policy else None}
+    )
+
+
+def _owned_server(session: Session, auth: AuthContext, server_id: uuid.UUID) -> MCPServer:
+    server = session.execute(
+        select(MCPServer).where(
+            MCPServer.id == server_id,
+            MCPServer.tenant_id == auth.tenant_id,
+            MCPServer.user_id == auth.user_id,
+        )
+    ).scalar_one_or_none()
+    if server is None:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    return server
+
+
+def _tool_payload(server: MCPServer, tool_name: str, mode: str) -> MCPToolRead:
+    config = server.config if isinstance(server.config, dict) else {}
+    cached_tools = config.get("mcp_tools_cache") if isinstance(config.get("mcp_tools_cache"), list) else []
+    item = next(
+        (value for value in cached_tools if isinstance(value, dict) and value.get("name") == tool_name),
+        None,
+    )
+    item = item or {"name": tool_name}
+    risk_labels = _safe_string_list(item.get("risk_labels"))
+    return MCPToolRead(
+        name=tool_name,
+        description=str(item.get("description") or "").strip() or None,
+        category=str(item.get("category") or "").strip() or None,
+        risk_labels=risk_labels,
+        mode=mode if mode in {"always_allow", "needs_approval", "blocked"} else "needs_approval",
+    )
+
+
+def _scope_owner(session: Session, auth: AuthContext, scope: str, scope_id: uuid.UUID) -> None:
+    model = DeepSpaceMissionSnapshot if scope == "deepspace" else Conversation
+    id_column = model.mission_id if scope == "deepspace" else model.id
+    owner = session.execute(
+        select(id_column).where(
+            id_column == scope_id,
+            model.tenant_id == auth.tenant_id,
+            model.user_id == auth.user_id,
+        )
+    ).scalar_one_or_none()
+    if owner is None:
+        raise HTTPException(status_code=404, detail=f"{scope.title()} not found")
+
+
+def _apply_policy_update(policy: MCPConnectionPolicy, payload: MCPConnectionPolicyUpdate) -> None:
+    policy.allowed_tools = list(dict.fromkeys(payload.allowed_tools))
+    policy.denied_tools = list(dict.fromkeys(payload.denied_tools))
+    policy.read_only = payload.read_only
+    policy.risk_ceiling = payload.risk_ceiling
+    policy.approval_rules = payload.approval_rules or {
+        "write": "needs_approval",
+        "delete": "needs_approval",
+        "external_message": "needs_approval",
+    }
+    policy.tool_modes = dict(payload.tool_modes)
+    policy.default_enabled = payload.default_enabled
+    policy.deepspace_overrides = dict(payload.deepspace_overrides)
+    policy.conversation_overrides = dict(payload.conversation_overrides)
+    policy.updated_at = datetime.now(UTC)
+
+
+def _tool_mode(policy: MCPConnectionPolicy | None, tool_name: str) -> str:
+    if policy is None:
+        return "needs_approval"
+    if tool_name in (policy.denied_tools or []):
+        return "blocked"
+    configured = (policy.tool_modes or {}).get(tool_name)
+    return configured if configured in {"always_allow", "needs_approval", "blocked"} else "needs_approval"
 
 
 def _marketplace_connectability(entry: MCPRegistryEntry) -> tuple[bool, str | None]:
@@ -219,10 +392,12 @@ def _marketplace_entry_payload(entry: MCPRegistryEntry) -> dict[str, Any]:
         "official": entry.official,
         "verified": entry.verified,
         "source": entry.source,
-        "oauth_requirements": _safe_marketplace_metadata(entry.oauth_requirements),
-        "package_metadata": _safe_marketplace_metadata(entry.package_metadata),
+        "oauth_requirements": _safe_marketplace_oauth_requirements(entry),
+        "package_metadata": _safe_marketplace_package_metadata(entry),
         "action": "connect" if entry.remote_url else "install",
-        "logo_url": entry.logo_url,
+        # Curated logos are resolved by the frontend from ``trusted_logo_key``;
+        # never pass through an arbitrary registry-hosted image URL.
+        "logo_url": None,
         "tool_count": entry.tool_count,
         "last_catalog_sync_at": entry.last_catalog_sync_at.isoformat() if entry.last_catalog_sync_at else None,
         "verification_reason": entry.verification_reason,
@@ -267,13 +442,228 @@ def _marketplace_entry_payload(entry: MCPRegistryEntry) -> dict[str, Any]:
     }
 
 
-@router.get("/servers", response_model=list[MCPServerRead])
+@router.get("/servers", response_model=list[MCPConnectionRead])
 def list_servers(session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
     set_db_tenant_context(session, auth.tenant_id)
-    return list(session.execute(select(MCPServer).where(MCPServer.tenant_id == auth.tenant_id, MCPServer.user_id == auth.user_id).order_by(MCPServer.created_at.desc())).scalars().all())
+    servers = list(
+        session.execute(
+            select(MCPServer).where(
+                MCPServer.tenant_id == auth.tenant_id,
+                MCPServer.user_id == auth.user_id,
+            ).order_by(MCPServer.created_at.desc())
+        ).scalars().all()
+    )
+    return [_connection_payload(session, server) for server in servers]
 
 
-@router.post("/marketplace/{entry_id}/connect", response_model=dict[str, Any], status_code=201)
+@router.get("/servers/{server_id}", response_model=MCPConnectionRead)
+def get_server(server_id: uuid.UUID, session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
+    set_db_tenant_context(session, auth.tenant_id)
+    return _connection_payload(session, _owned_server(session, auth, server_id))
+
+
+@router.get("/servers/{server_id}/policy", response_model=MCPConnectionPolicyRead)
+def get_server_policy(
+    server_id: uuid.UUID,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    set_db_tenant_context(session, auth.tenant_id)
+    server = _owned_server(session, auth, server_id)
+    policy = _get_policy(session, server, create=True)
+    session.commit()
+    # Tenant context is transaction-local; restore it before refreshing or
+    # serializing ORM state after the commit.
+    set_db_tenant_context(session, auth.tenant_id)
+    session.refresh(policy)
+    return policy
+
+
+@router.put("/servers/{server_id}/policy", response_model=MCPConnectionPolicyRead)
+def update_server_policy(
+    server_id: uuid.UUID,
+    payload: MCPConnectionPolicyUpdate,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    set_db_tenant_context(session, auth.tenant_id)
+    server = _owned_server(session, auth, server_id)
+    policy = _get_policy(session, server, create=True)
+    _apply_policy_update(policy, payload)
+    session.commit()
+    set_db_tenant_context(session, auth.tenant_id)
+    session.refresh(policy)
+    return policy
+
+
+@router.get("/servers/{server_id}/tools", response_model=MCPToolCatalogRead)
+def list_server_tools(
+    server_id: uuid.UUID,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    set_db_tenant_context(session, auth.tenant_id)
+    server = _owned_server(session, auth, server_id)
+    policy = _get_policy(session, server, create=False)
+    config = server.config if isinstance(server.config, dict) else {}
+    cached_tools = config.get("mcp_tools_cache") if isinstance(config.get("mcp_tools_cache"), list) else []
+    tools = [
+        _tool_payload(server, str(item["name"]), _tool_mode(policy, str(item["name"])))
+        for item in cached_tools
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    ]
+    return MCPToolCatalogRead(
+        server_id=server.id,
+        catalog_revision=int(server.catalog_revision or 0),
+        tools=tools,
+    )
+
+
+@router.put("/servers/{server_id}/tools/{tool_name}/policy", response_model=MCPToolRead)
+def update_server_tool_policy(
+    server_id: uuid.UUID,
+    tool_name: str,
+    payload: MCPToolPolicyUpdate,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    set_db_tenant_context(session, auth.tenant_id)
+    server = _owned_server(session, auth, server_id)
+    normalized_tool_name = tool_name.strip()
+    if not normalized_tool_name or len(normalized_tool_name) > 240:
+        raise HTTPException(status_code=422, detail="Invalid MCP tool name")
+    config = server.config if isinstance(server.config, dict) else {}
+    cached_tools = config.get("mcp_tools_cache") if isinstance(config.get("mcp_tools_cache"), list) else []
+    known_tools = {
+        str(item.get("name"))
+        for item in cached_tools
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    }
+    if normalized_tool_name not in known_tools:
+        raise HTTPException(status_code=404, detail="MCP tool is not present in the current catalog")
+    policy = _get_policy(session, server, create=True)
+    modes = dict(policy.tool_modes or {})
+    modes[normalized_tool_name] = payload.mode
+    policy.tool_modes = modes
+    policy.updated_at = datetime.now(UTC)
+    session.commit()
+    set_db_tenant_context(session, auth.tenant_id)
+    return _tool_payload(server, normalized_tool_name, payload.mode)
+
+
+def _scoped_connections(
+    session: Session,
+    auth: AuthContext,
+    *,
+    scope: Literal["deepspace", "conversation"],
+    scope_id: uuid.UUID,
+) -> MCPScopedConnectionListRead:
+    _scope_owner(session, auth, scope, scope_id)
+    servers = session.execute(
+        select(MCPServer).where(
+            MCPServer.tenant_id == auth.tenant_id,
+            MCPServer.user_id == auth.user_id,
+        ).order_by(MCPServer.created_at.desc())
+    ).scalars().all()
+    connections: list[MCPScopedConnectionRead] = []
+    key = str(scope_id)
+    for server in servers:
+        policy = _get_policy(session, server, create=False)
+        overrides = (
+            policy.deepspace_overrides if scope == "deepspace" else policy.conversation_overrides
+        ) if policy else {}
+        enabled = bool(overrides.get(key)) if isinstance(overrides, dict) and isinstance(overrides.get(key), bool) else False
+        connections.append(
+            MCPScopedConnectionRead(
+                server=_connection_payload(session, server),
+                enabled=enabled,
+            )
+        )
+    return MCPScopedConnectionListRead(scope=scope, scope_id=scope_id, connections=connections)
+
+
+def _set_scoped_connection(
+    session: Session,
+    auth: AuthContext,
+    *,
+    scope: Literal["deepspace", "conversation"],
+    scope_id: uuid.UUID,
+    server_id: uuid.UUID,
+    payload: MCPConnectionOverrideUpdate,
+) -> MCPConnectionOverrideRead:
+    _scope_owner(session, auth, scope, scope_id)
+    server = _owned_server(session, auth, server_id)
+    policy = _get_policy(session, server, create=True)
+    key = str(scope_id)
+    if scope == "deepspace":
+        overrides = dict(policy.deepspace_overrides or {})
+        overrides[key] = payload.enabled
+        policy.deepspace_overrides = overrides
+    else:
+        overrides = dict(policy.conversation_overrides or {})
+        overrides[key] = payload.enabled
+        policy.conversation_overrides = overrides
+    policy.updated_at = datetime.now(UTC)
+    session.commit()
+    return MCPConnectionOverrideRead(
+        scope=scope,
+        scope_id=scope_id,
+        server_id=server.id,
+        enabled=payload.enabled,
+    )
+
+
+@router.get("/deepspaces/{deepspace_id}/connections", response_model=MCPScopedConnectionListRead)
+def list_deepspace_connections(
+    deepspace_id: uuid.UUID,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    set_db_tenant_context(session, auth.tenant_id)
+    return _scoped_connections(session, auth, scope="deepspace", scope_id=deepspace_id)
+
+
+@router.put("/deepspaces/{deepspace_id}/connections/{server_id}", response_model=MCPConnectionOverrideRead)
+def update_deepspace_connection(
+    deepspace_id: uuid.UUID,
+    server_id: uuid.UUID,
+    payload: MCPConnectionOverrideUpdate,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    set_db_tenant_context(session, auth.tenant_id)
+    return _set_scoped_connection(
+        session, auth, scope="deepspace", scope_id=deepspace_id,
+        server_id=server_id, payload=payload,
+    )
+
+
+@router.get("/conversations/{conversation_id}/connections", response_model=MCPScopedConnectionListRead)
+def list_conversation_connections(
+    conversation_id: uuid.UUID,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    set_db_tenant_context(session, auth.tenant_id)
+    return _scoped_connections(session, auth, scope="conversation", scope_id=conversation_id)
+
+
+@router.put("/conversations/{conversation_id}/connections/{server_id}", response_model=MCPConnectionOverrideRead)
+def update_conversation_connection(
+    conversation_id: uuid.UUID,
+    server_id: uuid.UUID,
+    payload: MCPConnectionOverrideUpdate,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    set_db_tenant_context(session, auth.tenant_id)
+    return _set_scoped_connection(
+        session, auth, scope="conversation", scope_id=conversation_id,
+        server_id=server_id, payload=payload,
+    )
+
+
+@router.post("/marketplace/{entry_id}/connect", response_model=MCPConnectionCreateResponse, status_code=201)
 def connect_marketplace_entry(
     entry_id: uuid.UUID,
     session: Session = Depends(get_db),
@@ -285,7 +675,7 @@ def connect_marketplace_entry(
     if entry is None:
         raise HTTPException(status_code=404, detail="MCP marketplace entry not found")
     if entry.trust_status != "approved":
-        raise HTTPException(status_code=403, detail="Only official verified MCP entries can be connected")
+        raise HTTPException(status_code=403, detail="Only AverQel-approved MCP entries can be connected")
     if not entry.remote_url:
         raise HTTPException(status_code=409, detail="This MCP entry does not publish a remote endpoint")
     connectable, connectability_reason = _marketplace_connectability(entry)
@@ -323,14 +713,19 @@ def connect_marketplace_entry(
         status="needs_auth" if auth_type == "oauth" else "disconnected",
     )
     session.add(server)
+    session.flush()
+    _get_policy(session, server, create=True)
     session.commit()
+    set_db_tenant_context(session, auth.tenant_id)
     session.refresh(server)
-    result: dict[str, Any] = {"server": MCPServerRead.model_validate(server).model_dump(mode="json")}
+    result = MCPConnectionCreateResponse(
+        server=_connection_payload(session, server),
+    )
     if oauth_mode == "none":
         refresh_server_catalog.delay(str(server.id), str(auth.tenant_id))
     else:
         try:
-            result["authorization_url"] = MCPServerOAuthService(session, get_settings()).start(
+            result.authorization_url = MCPServerOAuthService(session, get_settings()).start(
                 server=server,
                 user_id=auth.user_id,
             )
@@ -339,18 +734,20 @@ def connect_marketplace_entry(
             server.status = "needs_auth"
             server.last_error = "MCP OAuth setup failed"
             session.commit()
-            result["setup_required"] = True
+            set_db_tenant_context(session, auth.tenant_id)
+            result.setup_required = True
+    result.server = _connection_payload(session, server)
     return result
 
 
-@router.post("/servers/{server_id}/refresh", response_model=dict[str, Any])
+@router.post("/servers/{server_id}/refresh", response_model=MCPActionResponse)
 def refresh_server(server_id: uuid.UUID, session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
     set_db_tenant_context(session, auth.tenant_id)
     server = session.execute(select(MCPServer).where(MCPServer.id == server_id, MCPServer.tenant_id == auth.tenant_id, MCPServer.user_id == auth.user_id)).scalar_one_or_none()
     if server is None:
         raise HTTPException(status_code=404, detail="MCP server not found")
     refresh_server_catalog.delay(str(server.id), str(auth.tenant_id))
-    return {"status": "scheduled", "server_id": str(server.id)}
+    return MCPActionResponse(status="scheduled", server_id=server.id)
 
 
 @router.delete("/servers/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -375,7 +772,7 @@ def uninstall_server(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/servers/{server_id}/oauth/start", response_model=dict[str, str])
+@router.post("/servers/{server_id}/oauth/start", response_model=MCPOAuthStartResponse)
 def start_oauth(server_id: uuid.UUID, session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
     set_db_tenant_context(session, auth.tenant_id)
     server = session.execute(select(MCPServer).where(MCPServer.id == server_id, MCPServer.tenant_id == auth.tenant_id, MCPServer.user_id == auth.user_id)).scalar_one_or_none()
@@ -386,7 +783,7 @@ def start_oauth(server_id: uuid.UUID, session: Session = Depends(get_db), auth: 
     except Exception as exc:
         logger.exception("MCP OAuth start request failed for server %s", server_id)
         raise HTTPException(status_code=400, detail="MCP OAuth setup failed") from exc
-    return {"authorization_url": url}
+    return MCPOAuthStartResponse(authorization_url=url)
 
 
 @router.get("/servers/{server_id}/oauth/callback")
@@ -479,14 +876,14 @@ def disconnect_oauth(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/catalog", response_model=list[dict[str, Any]])
+@router.get("/catalog", response_model=list[MCPMarketplaceEntryRead])
 def catalog(session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
     """Return the synchronized registry catalog, never a hardcoded vendor list."""
     set_db_tenant_context(session, auth.tenant_id)
     rows = session.execute(select(MCPRegistryEntry).where(MCPRegistryEntry.remote_url.is_not(None), MCPRegistryEntry.trust_status == "approved").order_by(MCPRegistryEntry.display_name)).scalars().all()
     return [_marketplace_entry_payload(row) for row in rows]
 
-@router.get("/marketplace/facets", response_model=dict[str, Any])
+@router.get("/marketplace/facets", response_model=MCPMarketplaceFacetsRead)
 def marketplace_facets(session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
     """Return filter values from catalog data, never from a vendor allowlist."""
     set_db_tenant_context(session, auth.tenant_id)
@@ -495,10 +892,34 @@ def marketplace_facets(session: Session = Depends(get_db), auth: AuthContext = D
     transports = sorted({row.transport for row in rows if row.transport})
     auth_types = sorted({_marketplace_auth_type(row) for row in rows})
     trust_statuses = sorted({row.trust_status for row in rows if row.trust_status})
-    return {"categories": categories, "transports": transports, "auth_types": auth_types, "trust_statuses": trust_statuses}
+    return MCPMarketplaceFacetsRead(
+        categories=categories,
+        transports=transports,
+        auth_types=auth_types,
+        trust_statuses=trust_statuses,
+    )
 
 
-@router.get("/marketplace", response_model=dict[str, Any])
+@router.get("/marketplace/{entry_id}", response_model=MCPMarketplaceEntryRead)
+def marketplace_detail(
+    entry_id: uuid.UUID,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+):
+    set_db_tenant_context(session, auth.tenant_id)
+    entry = session.execute(
+        select(MCPRegistryEntry).where(
+            MCPRegistryEntry.id == entry_id,
+            MCPRegistryEntry.remote_url.is_not(None),
+            MCPRegistryEntry.trust_status == "approved",
+        )
+    ).scalar_one_or_none()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="MCP marketplace entry not found")
+    return _marketplace_entry_payload(entry)
+
+
+@router.get("/marketplace", response_model=MCPMarketplacePageRead)
 def marketplace(q: str | None = None, category: str | None = None, transport: str | None = None,
                 official: bool | None = None, verified: bool | None = None,
                 auth_type: str | None = None, trust_status: str | None = None,
@@ -541,12 +962,17 @@ def marketplace(q: str | None = None, category: str | None = None, transport: st
         rows.sort(key=lambda row: (row.popularity_rank is None, row.popularity_rank or 1_000_000, row.display_name.casefold()))
     total = len(rows)
     rows = rows[(page - 1) * page_size : page * page_size]
-    return {"items": [_marketplace_entry_payload(row) for row in rows],
-        "page": page, "page_size": page_size, "total": total, "pages": (total + page_size - 1) // page_size}
+    return MCPMarketplacePageRead(
+        items=[_marketplace_entry_payload(row) for row in rows],
+        page=page,
+        page_size=page_size,
+        total=total,
+        pages=(total + page_size - 1) // page_size,
+    )
 
 @router.post(
     "/catalog/{entry_id}/review",
-    response_model=dict[str, Any],
+    response_model=MCPCatalogReviewRead,
     dependencies=[Depends(require_permissions("mcp:catalog:manage"))],
 )
 def review_catalog_entry(
@@ -565,10 +991,14 @@ def review_catalog_entry(
     entry.popularity_rank = payload.popularity_rank
     entry.verified_at = datetime.now(UTC) if payload.status == "approved" else None
     session.commit()
-    return {"id": str(entry.id), "trust_status": entry.trust_status, "verification_source": entry.verification_source}
+    return MCPCatalogReviewRead(
+        id=entry.id,
+        trust_status=entry.trust_status,
+        verification_source=entry.verification_source,
+    )
 
 
-@router.get("/servers/{server_id}/inspector", response_model=dict[str, Any])
+@router.get("/servers/{server_id}/inspector", response_model=MCPInspectorRead)
 def inspector(server_id: uuid.UUID, session: Session = Depends(get_db), auth: AuthContext = Depends(get_auth_context)):
     from collections import Counter
 
@@ -633,7 +1063,7 @@ def inspector(server_id: uuid.UUID, session: Session = Depends(get_db), auth: Au
             "event_counts": dict(Counter(event.event_type for event in events)),
             "latest_event": event_items[0] if event_items else None,
             "reconnect_attempts": int(server.reconnect_attempts or 0),
-            "last_error": server.last_error,
+            "last_error": "MCP connection failed" if server.last_error else None,
             "last_catalog_sync_at": config.get("mcp_catalog_last_sync_at"),
             "active_tools": [
                 {
