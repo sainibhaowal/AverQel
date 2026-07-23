@@ -115,6 +115,7 @@ def test_curated_provider_is_visible_but_requires_provider_oauth_configuration(
             "https://www.googleapis.com/auth/gmail.readonly",
             "https://www.googleapis.com/auth/gmail.compose",
         ]
+        assert gmail["tools"] == gmail["tool_preview"]
         assert "client_secret" not in str(gmail["oauth_requirements"])
         assert "client_secret" not in str(gmail["package_metadata"])
         assert gmail["health"] == {

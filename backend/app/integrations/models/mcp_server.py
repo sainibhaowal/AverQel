@@ -154,6 +154,7 @@ class MCPOAuthToken(Base):
         index=True,
     )
     provider_slug: Mapped[str | None] = mapped_column(String(240), nullable=True, index=True)
+    granted_scopes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     secret_ciphertext: Mapped[bytes] = mapped_column(nullable=False)
     secret_nonce: Mapped[bytes] = mapped_column(nullable=False)
     secret_kid: Mapped[str] = mapped_column(String(128), nullable=False)

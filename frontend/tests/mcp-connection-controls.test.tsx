@@ -84,6 +84,13 @@ describe("MCP connection controls", () => {
     expect(screen.getByText("Healthy")).toBeInTheDocument();
   });
 
+  it("renders the complete reviewed tool field and rejects unsafe remote logos", () => {
+    render(<MCPProviderDetails entry={{ ...entry, tools: [{ name: "create_draft", description: "Create a draft", category: "Email", risk_labels: ["write"] }], logo_url: "javascript:alert(1)" }} onConnect={vi.fn()} />);
+    expect(screen.getByText("create_draft")).toBeInTheDocument();
+    expect(screen.getByText("write")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
   it("updates a tool permission through the typed API boundary", async () => {
     render(<MCPToolPermissionTable serverId="server-1" tools={tools} />);
     fireEvent.change(screen.getByRole("combobox", { name: "Permission for search_mail" }), { target: { value: "blocked" } });

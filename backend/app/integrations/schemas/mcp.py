@@ -23,6 +23,7 @@ class MCPServerRead(BaseModel):
     status: str
     last_error: str | None
     reconnect_attempts: int
+    granted_scopes: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -155,6 +156,7 @@ class MCPMarketplaceEntryRead(BaseModel):
     connection_options: list[MCPMarketplaceConnectionOptionRead] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
     tool_preview: list[MCPMarketplaceToolPreviewRead] = Field(default_factory=list)
+    tools: list[MCPMarketplaceToolPreviewRead] = Field(default_factory=list)
     catalog_status: str
     auth_type: str
     trust_status: str

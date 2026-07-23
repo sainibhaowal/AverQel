@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import {
   disconnectMCPServerOAuth,
@@ -22,6 +23,7 @@ import MCPHealthStatus from "../../_components/MCPHealthStatus";
 import MCPToolPermissionTable from "../../_components/MCPToolPermissionTable";
 
 export default function MCPInspector({ params }: { params: { id: string } }) {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<MCPInspectorData | null>(null);
   const [policy, setPolicy] = useState<MCPConnectionPolicy | null>(null);
   const [tools, setTools] = useState<MCPTool[]>([]);
@@ -58,8 +60,8 @@ export default function MCPInspector({ params }: { params: { id: string } }) {
       {(identity.email || identity.display_name) && <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"><h2 className="text-lg font-semibold text-white">Connected account</h2><p className="mt-2 text-sm text-white/70">{identity.display_name || identity.email}</p>{identity.display_name && identity.email && <p className="mt-1 text-sm text-white/50">{identity.email}</p>}</section>}
       <MCPConnectionPolicyPanel serverId={server.id} policy={policy} onSaved={setPolicy} />
       <MCPToolPermissionTable serverId={server.id} tools={tools} onChanged={setTools} />
-      <MCPConnectionScopePanel serverId={server.id} />
-      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"><h2 className="text-lg font-semibold text-white">OAuth and catalog status</h2><dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><Metric label="Authentication" value={config.oauth_mode === "none" ? "Anonymous" : data.diagnostics.oauth_configured ? "OAuth connected" : "OAuth required"} /><Metric label="Requested OAuth scopes" value={provider?.requested_scopes.length ? provider.requested_scopes.join(", ") : "Managed by the provider authorization screen"} /><Metric label="Reconnect attempts" value={String(data.diagnostics.reconnect_attempts)} /><Metric label="Current tool catalog" value={`${tools.length} tools at revision ${server.catalog_revision || 0}`} /></dl>{provider?.scope_note && <p className="mt-3 text-xs leading-5 text-white/45">{provider.scope_note}</p>}<p className="mt-4 text-xs leading-5 text-white/45">OAuth tokens, refresh tokens, client secrets, and raw OAuth metadata are never returned to this page. Only safe account labels and catalog status are shown.</p></section>
+      <MCPConnectionScopePanel serverId={server.id} initialConversationId={searchParams.get("conversation_id") || ""} initialDeepSpaceId={searchParams.get("deepspace_id") || ""} />
+      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"><h2 className="text-lg font-semibold text-white">OAuth and catalog status</h2><dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><Metric label="Authentication" value={config.oauth_mode === "none" ? "Anonymous" : data.diagnostics.oauth_configured ? "OAuth connected" : "OAuth required"} /><Metric label="Requested OAuth scopes" value={provider?.requested_scopes.length ? provider.requested_scopes.join(", ") : "Managed by the provider authorization screen"} /><Metric label="Granted OAuth scopes" value={server.granted_scopes?.length ? server.granted_scopes.join(", ") : "Not yet confirmed"} /><Metric label="Reconnect attempts" value={String(data.diagnostics.reconnect_attempts)} /><Metric label="Current tool catalog" value={`${tools.length} tools at revision ${server.catalog_revision || 0}`} /></dl>{provider?.scope_note && <p className="mt-3 text-xs leading-5 text-white/45">{provider.scope_note}</p>}<p className="mt-4 text-xs leading-5 text-white/45">OAuth tokens, refresh tokens, client secrets, and raw OAuth metadata are never returned to this page. Only verified scope names, safe account labels, and catalog status are shown.</p></section>
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"><h2 className="mb-3 text-lg font-semibold text-white">Recent safe events</h2><div className="space-y-2">{data.events.length === 0 ? <p className="text-sm text-white/50">No lifecycle events recorded.</p> : data.events.map((event) => <div key={`${event.sequence}-${event.event_type}`} className="flex flex-wrap justify-between gap-2 border-b border-white/5 py-2 text-sm"><span className="font-mono text-white/70">{event.event_type}</span><span className="text-xs text-white/40">#{event.sequence} · {formatDateTime(event.created_at)}</span></div>)}</div></section>
     </main>
   );

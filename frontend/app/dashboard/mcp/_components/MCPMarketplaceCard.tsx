@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, ExternalLink } from "lucide-react";
@@ -21,9 +22,10 @@ export function resolveTrustedLogoPath(key?: string | null): string | null {
 
 export function MCPLogo({ entry, size = 48 }: { entry: MCPMarketplaceEntry; size?: number }) {
   const logoPath = resolveTrustedLogoPath(entry.trusted_logo_key || entry.provider_slug);
+  const communityLogo = entry.publisher_type === "community" && entry.logo_url && /^https:\/\//i.test(entry.logo_url) ? entry.logo_url : null;
   return (
     <div className="flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-900" style={{ height: size, width: size }}>
-      {logoPath ? <Image src={logoPath} alt="" width={size - 12} height={size - 12} priority={size > 40} /> : <span className="text-sm font-semibold text-white/75">{entry.name.slice(0, 2).toUpperCase()}</span>}
+      {logoPath ? <Image src={logoPath} alt="" width={size - 12} height={size - 12} priority={size > 40} /> : communityLogo ? <img src={communityLogo} alt="" width={size - 12} height={size - 12} referrerPolicy="no-referrer" /> : <span className="text-sm font-semibold text-white/75">{entry.name.slice(0, 2).toUpperCase()}</span>}
     </div>
   );
 }

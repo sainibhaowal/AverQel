@@ -21,7 +21,7 @@ RiskLabel = Literal["read", "write", "delete", "external_message"]
 
 @dataclass(frozen=True, slots=True)
 class CuratedMCPTool:
-    """A reviewed preview only; the remote catalog remains authoritative."""
+    """A reviewed catalog tool safe for marketplace display."""
 
     name: str
     description: str
@@ -64,6 +64,17 @@ class CuratedMCPProvider:
     def transport(self) -> str:
         return "streamable_http"
 
+    @property
+    def tools(self) -> tuple[CuratedMCPTool, ...]:
+        """The complete reviewed tool set currently published by AverQel.
+
+        ``tool_preview`` remains the compatibility name used by existing
+        marketplace cards. Both values come from the same reviewed source;
+        the detail API exposes ``tools`` explicitly so it is not mistaken for
+        a truncated live-server response.
+        """
+        return self.tool_preview
+
     def registry_values(self) -> dict[str, Any]:
         """Return safe values for ``MCPRegistryEntry`` fields.
 
@@ -86,7 +97,8 @@ class CuratedMCPProvider:
             "delete": {"default_mode": "needs_approval"},
             "external_message": {"default_mode": "needs_approval"},
         }
-        tool_preview = [tool.as_dict() for tool in self.tool_preview]
+        tools = [tool.as_dict() for tool in self.tools]
+        tool_preview = tools
         tool_risk_summary = {
             label: sum(label in tool.risk_labels for tool in self.tool_preview)
             for label in ("read", "write", "delete", "external_message")
@@ -107,6 +119,7 @@ class CuratedMCPProvider:
             "trusted_logo_key": self.trusted_logo_key,
             "supported_products": list(self.supported_products),
             "tool_categories": sorted({tool.category for tool in self.tool_preview}),
+            "tools": tools,
             "tool_preview": tool_preview,
             "risk_policy": risk_policy,
             "health": {
@@ -151,6 +164,7 @@ class CuratedMCPProvider:
             "package_metadata": {
                 "provider_slug": self.provider_slug,
                 "auth_type": "oauth",
+                "tools": tools,
                 "tool_preview": tool_preview,
                 "tool_categories": catalog_metadata["tool_categories"],
                 "supported_products": list(self.supported_products),

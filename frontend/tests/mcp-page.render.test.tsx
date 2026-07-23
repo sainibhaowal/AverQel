@@ -4,9 +4,14 @@ import { vi } from "vitest";
 import MCPDashboard from "../app/dashboard/mcp/page";
 
 const fetchWithAuthMock = vi.fn();
+const searchParamsMock = { value: new URLSearchParams() };
 
 vi.mock("@/lib/api", () => ({
   fetchWithAuth: (...args: unknown[]) => fetchWithAuthMock(...args),
+}));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => searchParamsMock.value,
 }));
 
 vi.mock("lucide-react", async () => {
@@ -16,6 +21,7 @@ vi.mock("lucide-react", async () => {
 
 describe("MCP dashboard", () => {
   beforeEach(() => {
+    searchParamsMock.value = new URLSearchParams();
     fetchWithAuthMock.mockReset();
     fetchWithAuthMock
       .mockResolvedValueOnce({
@@ -153,5 +159,12 @@ describe("MCP dashboard", () => {
       expect(screen.getByText(/Remote HTTP · OAuth · 2 tools/i)).toBeInTheDocument();
       expect(screen.getByText(/Last refreshed/i)).toBeInTheDocument();
     });
+  });
+
+  it("handles a successful OAuth return and opens installed connections", async () => {
+    searchParamsMock.value = new URLSearchParams("mcp_status=connected&server_id=server-1");
+    render(<MCPDashboard />);
+    expect(await screen.findByRole("status")).toHaveTextContent(/connected successfully/i);
+    expect(screen.getByText(/Installed \(1\)/i)).toBeInTheDocument();
   });
 });

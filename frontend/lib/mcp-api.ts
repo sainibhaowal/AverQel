@@ -35,8 +35,10 @@ export type MCPMarketplaceEntry = {
   last_catalog_sync_at?: string | null;
   last_seen_at?: string | null;
   docs_url?: string | null;
+  logo_url?: string | null;
   capabilities: string[];
   tool_preview: MCPMarketplaceTool[];
+  tools?: MCPMarketplaceTool[];
   catalog_status: string;
   auth_type: string;
   trust_status: string;
@@ -127,6 +129,7 @@ export type MCPConnection = {
   registry_entry_id?: string | null;
   provider_slug?: string | null;
   account_identity: MCPSafeAccountIdentity;
+  granted_scopes?: string[];
   connection_policy_id?: string | null;
   catalog_revision: number;
   status: string;

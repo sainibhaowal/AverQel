@@ -34,6 +34,14 @@ class MCPServerOAuthService:
 
     TRANSACTION_TTL = timedelta(minutes=10)
 
+    @staticmethod
+    def _safe_scope_list(value: object) -> list[str]:
+        if isinstance(value, str):
+            return sorted({item for item in value.split() if item})
+        if isinstance(value, list):
+            return sorted({str(item).strip() for item in value if str(item).strip()})
+        return []
+
     def __init__(self, db: Any, settings: Settings) -> None:
         self.db = db
         self.settings = settings
@@ -379,6 +387,7 @@ class MCPServerOAuthService:
                 secret_nonce=encrypted.nonce,
                 secret_kid=encrypted.kid,
                 expires_at=expires_at,
+                granted_scopes=granted_scopes,
             )
             self.db.add(record)
         else:
@@ -386,6 +395,7 @@ class MCPServerOAuthService:
             record.secret_nonce = encrypted.nonce
             record.secret_kid = encrypted.kid
             record.expires_at = expires_at
+            record.granted_scopes = granted_scopes
         server.account_identity = identity
         server.config = {
             key: value
@@ -654,6 +664,7 @@ class MCPServerOAuthService:
                 secret_nonce=encrypted.nonce,
                 secret_kid=encrypted.kid,
                 expires_at=expires_at,
+                granted_scopes=self._safe_scope_list(getattr(token, "scope", None)),
             )
             self.db.add(record)
         else:
@@ -664,6 +675,7 @@ class MCPServerOAuthService:
             record.secret_nonce = encrypted.nonce
             record.secret_kid = encrypted.kid
             record.expires_at = expires_at
+            record.granted_scopes = self._safe_scope_list(getattr(token, "scope", None))
 
         server.config = {
             key: value

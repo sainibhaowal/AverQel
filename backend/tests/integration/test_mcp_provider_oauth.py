@@ -118,6 +118,10 @@ def test_static_provider_oauth_encrypts_pending_data_and_captures_identity(
     token = db_session.execute(
         select(MCPOAuthToken).where(MCPOAuthToken.server_id == server.id)
     ).scalar_one()
+    assert token.granted_scopes == [
+        "https://www.googleapis.com/auth/gmail.compose",
+        "https://www.googleapis.com/auth/gmail.readonly",
+    ]
     plaintext = ConnectorSecretCrypto(settings).decrypt(
         ciphertext=token.secret_ciphertext,
         nonce=token.secret_nonce,

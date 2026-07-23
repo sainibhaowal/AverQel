@@ -42,6 +42,8 @@ def test_official_mcp_catalog_is_public_metadata_without_credentials() -> None:
         assert values["catalog_status"] == "oauth_profile_required"
         assert values["raw_metadata"]["catalog"]["connection_ready"] is False
         assert values["logo_url"] is None
+        assert values["package_metadata"]["tools"] == values["package_metadata"]["tool_preview"]
+        assert values["raw_metadata"]["catalog"]["tools"] == values["raw_metadata"]["catalog"]["tool_preview"]
         assert all(
             forbidden not in key.lower()
             for key in values["raw_metadata"]["catalog"]

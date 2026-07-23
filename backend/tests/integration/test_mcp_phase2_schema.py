@@ -38,7 +38,7 @@ def test_mcp_phase2_schema_has_identity_metadata_and_rls(db_session: Session) ->
         "connection_policy_id",
         "catalog_revision",
     }.issubset(server_columns)
-    assert {"user_id", "registry_entry_id", "provider_slug"}.issubset(token_columns)
+    assert {"user_id", "registry_entry_id", "provider_slug", "granted_scopes"}.issubset(token_columns)
     assert {
         "tenant_id",
         "user_id",

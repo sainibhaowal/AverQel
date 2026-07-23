@@ -16,7 +16,7 @@ from app.auth.rbac import require_permissions
 from app.core.config import get_settings
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
 from app.integrations.models.mcp_connection_policy import MCPConnectionPolicy
-from app.integrations.models.mcp_server import MCPRegistryEntry, MCPServer
+from app.integrations.models.mcp_server import MCPOAuthToken, MCPRegistryEntry, MCPServer
 from app.integrations.schemas.mcp import (
     MCPActionResponse,
     MCPCatalogReviewRead,
@@ -100,6 +100,31 @@ def _marketplace_tool_preview(entry: MCPRegistryEntry) -> list[dict[str, Any]]:
             "risk_labels": _safe_string_list(item.get("risk_labels")),
         }
         for item in preview
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    ]
+
+
+def _marketplace_tools(entry: MCPRegistryEntry) -> list[dict[str, Any]]:
+    """Return only the complete reviewed tool catalog for this entry.
+
+    Live MCP discovery is intentionally not used for marketplace metadata.
+    The catalog worker writes reviewed ``tools`` data; ``tool_preview`` is a
+    compatibility fallback for older curated rows.
+    """
+    package = entry.package_metadata if isinstance(entry.package_metadata, dict) else {}
+    values = package.get("tools")
+    if not isinstance(values, list):
+        values = package.get("tool_preview")
+    if not isinstance(values, list):
+        return []
+    return [
+        {
+            "name": str(item.get("name") or "").strip(),
+            "description": str(item.get("description") or "").strip() or None,
+            "category": str(item.get("category") or "").strip() or None,
+            "risk_labels": _safe_string_list(item.get("risk_labels")),
+        }
+        for item in values
         if isinstance(item, dict) and str(item.get("name") or "").strip()
     ]
 
@@ -215,6 +240,7 @@ def _safe_marketplace_package_metadata(entry: MCPRegistryEntry) -> dict[str, Any
     }
     safe = {key: package[key] for key in allowed if key in package}
     safe["tool_preview"] = _marketplace_tool_preview(entry)
+    safe["tools"] = _marketplace_tools(entry)
     return _safe_marketplace_metadata(safe)
 
 
@@ -267,8 +293,21 @@ def _get_policy(session: Session, server: MCPServer, *, create: bool) -> MCPConn
 
 def _connection_payload(session: Session, server: MCPServer) -> MCPConnectionRead:
     policy = _get_policy(session, server, create=False)
+    token = session.execute(
+        select(MCPOAuthToken).where(
+            MCPOAuthToken.server_id == server.id,
+            MCPOAuthToken.tenant_id == server.tenant_id,
+            MCPOAuthToken.user_id == server.user_id,
+        )
+    ).scalar_one_or_none()
+    granted_scopes = []
+    if token is not None and isinstance(token.granted_scopes, list):
+        granted_scopes = sorted({str(scope).strip() for scope in token.granted_scopes if str(scope).strip()})
     return MCPConnectionRead.model_validate(server).model_copy(
-        update={"policy": MCPConnectionPolicyRead.model_validate(policy) if policy else None}
+        update={
+            "policy": MCPConnectionPolicyRead.model_validate(policy) if policy else None,
+            "granted_scopes": granted_scopes,
+        }
     )
 
 
@@ -380,6 +419,12 @@ def _marketplace_entry_payload(entry: MCPRegistryEntry) -> dict[str, Any]:
         requested_scopes = _safe_string_list(
             (entry.oauth_requirements if isinstance(entry.oauth_requirements, dict) else {}).get("requested_scopes")
         )
+    logo_url = None
+    if catalog.get("publisher_type") == "community" and isinstance(entry.logo_url, str):
+        try:
+            logo_url = validate_remote_endpoint(entry.logo_url)
+        except MCPEndpointRejectedError:
+            logo_url = None
     return {
         "id": str(entry.id),
         "name": entry.display_name,
@@ -398,7 +443,7 @@ def _marketplace_entry_payload(entry: MCPRegistryEntry) -> dict[str, Any]:
         "action": "connect" if entry.remote_url else "install",
         # Curated logos are resolved by the frontend from ``trusted_logo_key``;
         # never pass through an arbitrary registry-hosted image URL.
-        "logo_url": None,
+        "logo_url": logo_url,
         "tool_count": entry.tool_count,
         "last_catalog_sync_at": entry.last_catalog_sync_at.isoformat() if entry.last_catalog_sync_at else None,
         "verification_reason": entry.verification_reason,
@@ -407,6 +452,7 @@ def _marketplace_entry_payload(entry: MCPRegistryEntry) -> dict[str, Any]:
         "connection_options": _marketplace_connection_options(entry),
         "capabilities": _marketplace_capabilities(entry),
         "tool_preview": _marketplace_tool_preview(entry),
+        "tools": _marketplace_tools(entry),
         "catalog_status": entry.catalog_status,
         "auth_type": _marketplace_auth_type(entry),
         "trust_status": entry.trust_status,
