@@ -133,6 +133,7 @@ class MCPMarketplaceConnectionOptionRead(BaseModel):
 class MCPMarketplaceEntryRead(BaseModel):
     id: uuid.UUID
     name: str
+    version: str | None = None
     server_name: str
     publisher: str | None = None
     description: str | None = None

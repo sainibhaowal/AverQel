@@ -383,6 +383,7 @@ def _marketplace_entry_payload(entry: MCPRegistryEntry) -> dict[str, Any]:
     return {
         "id": str(entry.id),
         "name": entry.display_name,
+        "version": entry.version,
         "server_name": entry.server_name,
         "publisher": entry.publisher,
         "description": entry.description,

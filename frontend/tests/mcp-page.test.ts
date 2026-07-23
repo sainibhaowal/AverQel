@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildMarketplaceQuery } from "../app/dashboard/mcp/page";
+import { safeExternalUrl } from "../lib/mcp-api";
 
 describe("buildMarketplaceQuery", () => {
   it("omits empty filters so the backend does not reject the request", () => {
@@ -43,5 +44,13 @@ describe("buildMarketplaceQuery", () => {
       sort: "popular",
       page: 2,
     })).toBe("/mcp/marketplace?category=Productivity&transport=streamable_http&auth_type=oauth&trust_status=approved&sort=popular&page=2");
+  });
+});
+
+describe("safeExternalUrl", () => {
+  it("only permits plain http(s) links for provider resources", () => {
+    expect(safeExternalUrl("https://provider.example/docs")).toBe("https://provider.example/docs");
+    expect(safeExternalUrl("javascript:alert(1)")).toBeNull();
+    expect(safeExternalUrl("https://user:password@provider.example")).toBeNull();
   });
 });

@@ -46,6 +46,15 @@ describe("MCP dashboard", () => {
               catalog_status: "anonymous_catalog",
               auth_type: "oauth",
               trust_status: "approved",
+              publisher_type: "official",
+              badges: { official: true },
+              trusted_logo_key: "google",
+              supported_products: ["Google Workspace"],
+              tool_categories: ["Communication"],
+              risk_policy: {},
+              health: { status: "healthy", last_checked_at: "2026-07-18T10:00:00Z" },
+              requested_scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+              connectable: true,
             },
             {
               id: "registry-2",
@@ -71,6 +80,14 @@ describe("MCP dashboard", () => {
               trust_status: "discovered",
               connectable: false,
               connectability_reason: "OAuth provider profile is not configured yet.",
+              publisher_type: "official",
+              badges: { official: true },
+              trusted_logo_key: "google-gmail",
+              supported_products: ["Google Workspace"],
+              tool_categories: ["Communication"],
+              risk_policy: {},
+              health: { status: "not_checked", last_checked_at: null },
+              requested_scopes: [],
             },
           ],
           total: 1,
@@ -90,47 +107,51 @@ describe("MCP dashboard", () => {
             config: {
               oauth_mode: "mcp_oauth",
               mcp_tools_cache: [{ name: "search_files" }, { name: "get_file" }],
+              mcp_catalog_tool_count: 2,
               mcp_catalog_last_sync_at: "2026-07-18T09:58:00Z",
             },
             last_error: null,
           },
         ],
       });
+    fetchWithAuthMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        categories: ["Productivity"],
+        transports: ["streamable_http"],
+        auth_types: ["oauth"],
+        trust_statuses: ["approved"],
+      }),
+    });
   });
 
-  it("renders the marketplace controls, cards, installed status, and details modal", async () => {
+  it("renders the marketplace controls, cards, route link, and installed status", async () => {
     render(<MCPDashboard />);
 
     expect(await screen.findByText("MCP Marketplace")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /more filters and install options/i }));
+    fireEvent.click(screen.getByRole("button", { name: /more filters/i }));
     expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Productivity" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Verified" })).toBeInTheDocument();
     expect(screen.getByText("Example Remote MCP")).toBeInTheDocument();
-    expect(screen.getAllByText("OFFICIAL")).toHaveLength(2);
-    expect(screen.getAllByText("VERIFIED")).toHaveLength(1);
+    expect(screen.getAllByText("Official")).toHaveLength(3);
+    expect(screen.getAllByText("Verified")).toHaveLength(2);
     expect(screen.getByText("18 tools")).toBeInTheDocument();
     expect(screen.getByText("search_files")).toBeInTheDocument();
     expect(screen.queryByText("Sync registry")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Setup pending" })).toBeDisabled();
     expect(screen.getByText("OAuth provider profile is not configured yet.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "View details" })[0]);
-
-    expect(await screen.findByRole("button", { name: "Close" })).toBeInTheDocument();
-    expect(screen.getByText("Source")).toBeInTheDocument();
-    expect(screen.getByText("Last verified")).toBeInTheDocument();
-    expect(screen.getByText("Search files")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Connect Example Remote MCP" })).toHaveLength(2);
-
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    const detailLinks = screen.getAllByRole("link", { name: "View details" });
+    expect(detailLinks).toHaveLength(2);
+    expect(detailLinks[0]).toHaveAttribute("href", "/dashboard/mcp/providers/registry-1");
 
     fireEvent.click(screen.getByRole("button", { name: /installed \(1\)/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("CONNECTED")).toBeInTheDocument();
-      expect(screen.getByText(/Remote · OAuth · 2 tools/i)).toBeInTheDocument();
-      expect(screen.getByText(/Last catalog sync:/i)).toBeInTheDocument();
+      expect(screen.getByText("connected")).toBeInTheDocument();
+      expect(screen.getByText(/Remote HTTP · OAuth · 2 tools/i)).toBeInTheDocument();
+      expect(screen.getByText(/Last refreshed/i)).toBeInTheDocument();
     });
   });
 });
