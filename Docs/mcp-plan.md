@@ -7,21 +7,38 @@ phases.
 
 ## Current implementation status
 
-### Implemented and verified
+This is the short, authoritative status. Read this section first.
+
+### Implemented in AverQel
 
 ```text
-Phase 1  Curated provider catalog
-Phase 2  Database improvements and connection policies
-Phase 3  Static Google/GitHub OAuth provider profiles
-Phase 4  API routes, DTOs, ownership checks, and redaction
-Phase 5  Runtime and DeepSpace policy enforcement
-Phase 6  Frontend marketplace, provider details, inspector, and controls
-Phase 7  Documentation and complete MCP test matrix
+[DONE] Phase 1  Curated provider catalog
+[DONE] Phase 2  Database improvements and connection policies
+[DONE] Phase 3  Static Google/GitHub OAuth provider profiles
+[DONE] Phase 4  API routes, DTOs, ownership checks, and redaction
+[DONE] Phase 5  Runtime and DeepSpace policy enforcement
+[DONE] Phase 6  Frontend marketplace, provider details, inspector, and controls
+[DONE] Phase 7  Documentation and complete MCP test matrix
 ```
 
-The implementation, tests, documentation, TypeScript, ESLint, Ruff, and
-backend/frontend verification results are recorded in the corresponding phase
-sections below. The current verified commits are:
+### Verified by automated tests and checks
+
+```text
+[PASS] Backend full pytest suite
+[PASS] Frontend full Vitest suite: 83 files, 256 tests
+[PASS] TypeScript check
+[PASS] ESLint
+[PASS] Ruff
+[PASS] Git diff validation
+[PASS] Exact backend and frontend MCP test paths exist
+[PASS] Tenant/user isolation and secret-redaction tests
+[PASS] OAuth state, scope, token, and callback safety tests
+[PASS] Tool policy, read-only, approval, stale-catalog, and health-gate tests
+[PASS] Marketplace, provider-detail, inspector, policy, and scope UI tests
+```
+
+The implementation and verification details are recorded in the phase
+sections below. The latest relevant commits are:
 
 ```text
 e48120ef6  Phase 6 marketplace controls
@@ -33,26 +50,29 @@ ddfe9cd15  Phase 4 API verification record
 eced7835a  Phase 4 visible verified status
 ```
 
-### Remaining work and release operations
+### Not yet completed: operational work only
 
-The core implementation is complete. The remaining items are operational or
-explicitly outside this release:
+No Phase 1–7 product coding task is currently unfinished. The remaining items
+require deployment credentials, live staging systems, or are intentionally
+outside this release:
 
-- Configure `MCP_GOOGLE_OAUTH_CLIENT_ID`, `MCP_GOOGLE_OAUTH_CLIENT_SECRET`,
+- [TODO] Configure `MCP_GOOGLE_OAUTH_CLIENT_ID`, `MCP_GOOGLE_OAUTH_CLIENT_SECRET`,
   `MCP_GITHUB_OAUTH_CLIENT_ID`, `MCP_GITHUB_OAUTH_CLIENT_SECRET`, and the
   production `MCP_OAUTH_REDIRECT_URI` on the VPS. Until then, curated entries
   remain visible as `Setup pending` and cannot start provider OAuth.
-- Register and verify the production/staging callback URLs and run real
+- [TODO] Register and verify the production/staging callback URLs and run real
   staging Google and GitHub OAuth flows with staging credentials.
-- Run live DeepSpace Gmail-read and GitHub-read smoke tests in staging, plus a
+- [TODO] Run live DeepSpace Gmail-read and GitHub-read smoke tests in staging, plus a
   real write-action confirmation test. These are not run in automated tests
   and no live credentials belong in the repository.
-- Add future providers only through catalog review, provider OAuth profile
+- [FUTURE] Add future providers only through catalog review, provider OAuth profile
   review, endpoint health review, scopes review, and the same security tests.
-- Stdio, SSH, local-process, arbitrary endpoint, and vendor-repository
+- [OUT OF SCOPE] Stdio, SSH, local-process, arbitrary endpoint, and vendor-repository
   execution remain intentionally unsupported in this release.
 
-No Phase 1–7 product implementation is currently listed as unfinished.
+The only current user-visible limitation is `Setup pending` until the VPS OAuth
+credentials are configured. Automated tests intentionally use mocked provider
+responses and never contain real Google/GitHub credentials.
 
 The correct decision is:
 
