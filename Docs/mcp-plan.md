@@ -5,6 +5,55 @@ plan and release record; future provider onboarding and live staging OAuth
 verification remain operational follow-up work, not unimplemented product
 phases.
 
+## Current implementation status
+
+### Implemented and verified
+
+```text
+Phase 1  Curated provider catalog
+Phase 2  Database improvements and connection policies
+Phase 3  Static Google/GitHub OAuth provider profiles
+Phase 4  API routes, DTOs, ownership checks, and redaction
+Phase 5  Runtime and DeepSpace policy enforcement
+Phase 6  Frontend marketplace, provider details, inspector, and controls
+Phase 7  Documentation and complete MCP test matrix
+```
+
+The implementation, tests, documentation, TypeScript, ESLint, Ruff, and
+backend/frontend verification results are recorded in the corresponding phase
+sections below. The current verified commits are:
+
+```text
+e48120ef6  Phase 6 marketplace controls
+17614712c  Phase 7 documentation
+cd73c9f56  Complete MCP test coverage
+61d61dd76  Test matrix plan record
+4d82efd12  Phase 6 file/test record
+ddfe9cd15  Phase 4 API verification record
+eced7835a  Phase 4 visible verified status
+```
+
+### Remaining work and release operations
+
+The core implementation is complete. The remaining items are operational or
+explicitly outside this release:
+
+- Configure `MCP_GOOGLE_OAUTH_CLIENT_ID`, `MCP_GOOGLE_OAUTH_CLIENT_SECRET`,
+  `MCP_GITHUB_OAUTH_CLIENT_ID`, `MCP_GITHUB_OAUTH_CLIENT_SECRET`, and the
+  production `MCP_OAUTH_REDIRECT_URI` on the VPS. Until then, curated entries
+  remain visible as `Setup pending` and cannot start provider OAuth.
+- Register and verify the production/staging callback URLs and run real
+  staging Google and GitHub OAuth flows with staging credentials.
+- Run live DeepSpace Gmail-read and GitHub-read smoke tests in staging, plus a
+  real write-action confirmation test. These are not run in automated tests
+  and no live credentials belong in the repository.
+- Add future providers only through catalog review, provider OAuth profile
+  review, endpoint health review, scopes review, and the same security tests.
+- Stdio, SSH, local-process, arbitrary endpoint, and vendor-repository
+  execution remain intentionally unsupported in this release.
+
+No Phase 1–7 product implementation is currently listed as unfinished.
+
 The correct decision is:
 
 - Do not clone `taylorwilsdon/google_workspace_mcp` for the official marketplace.
@@ -193,7 +242,11 @@ The next implementation must retain these working paths while expanding them
 into the complete connector experience below. This is an expansion of the
 current marketplace, not a replacement with hard-coded provider screens.
 
-## 2. What is currently missing
+## 2. Historical gaps resolved by Phases 1–7
+
+The following subsections describe the original gaps that motivated this plan.
+They are retained as traceability notes; their implementation status is
+recorded in the completed phase sections below.
 
 ### A. Official provider catalog data
 
@@ -795,6 +848,9 @@ Phase 5 implementation notes:
 
 ### Phase 6: Frontend marketplace and connection controls
 
+Status: **implemented and verified**. Exact implementation files and tests are
+listed in the Phase 6 verification record below.
+
 Update:
 
 ```text
@@ -896,6 +952,9 @@ Connect
 The frontend will never receive access tokens, refresh tokens, client secrets or raw OAuth metadata.
 
 ### Phase 7: Documentation
+
+Status: **implemented and verified**. Documentation and the complete MCP test
+matrix are listed in the Phase 7 verification record below.
 
 Update:
 
