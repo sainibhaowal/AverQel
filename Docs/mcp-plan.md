@@ -641,6 +641,11 @@ Implementation notes:
 
 ### Phase 4: API changes
 
+Status: **implemented and verified** in `backend/app/integrations/api/mcp.py`.
+The route contract below is live, uses explicit DTOs, preserves existing MCP
+routes, and is covered by the Phase 4 API, policy, tenant-isolation, and
+cross-user tests listed at the end of this section.
+
 Update:
 
 [backend/app/integrations/api/mcp.py](/home/ravi/Projects/AverQel/backend/app/integrations/api/mcp.py:99)
@@ -710,6 +715,18 @@ Phase 4 implementation notes:
   stale overrides resolve to disabled.
 - Tenant context is restored after commits before ORM refresh/serialization so
   PostgreSQL RLS remains active throughout the request lifecycle.
+
+Phase 4 verification files:
+
+```text
+backend/tests/integration/test_mcp_api.py
+backend/tests/integration/test_mcp_phase4_api.py
+backend/tests/integration/test_mcp_connection_policy.py
+backend/tests/security/test_mcp_tenant_isolation.py
+backend/tests/security/test_mcp_cross_user_access.py
+```
+
+Phase 4 verification passed as part of the backend MCP and full test suites.
 
 ### Phase 5: Runtime and DeepSpace policy enforcement
 
