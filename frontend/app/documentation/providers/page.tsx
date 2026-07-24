@@ -4,75 +4,105 @@ export default function ProvidersPage() {
   return (
     <DocsShell
       title="Providers"
-      intro="Providers are the model and search runtimes AverQel can route work through for chat, reasoning, embeddings, reranking, web search, and local execution."
+      intro="AverQel has two related provider concepts: model providers for AI runtime routing and MCP providers for user-authorized remote tools such as Gmail and GitHub."
     >
       <DocsCards
         items={[
-          {
-            title: "Cloud Providers",
-            body: "AverQel can use OpenRouter, OpenAI-compatible endpoints, Anthropic, Google, Tavily, Cohere, and other provider families depending on the feature scope.",
-          },
-          {
-            title: "Local Providers",
-            body: "Local runtimes such as Ollama, LM Studio, sentence-transformers, and deterministic/local embedding paths give teams a route for private local execution and model control.",
-          },
-          {
-            title: "OpenRouter Coverage",
-            body: "OpenRouter is a major flexibility surface because it gives AverQel access to a broad upstream model catalog through one integration point while still preserving provider routing logic inside AverQel.",
-          },
-          {
-            title: "Secret Rules",
-            body: "Keys are encrypted, masked, never returned raw, and should not appear in logs, audit details, or UI payloads.",
-          },
+          { title: "Model Providers", body: "OpenRouter, OpenAI-compatible endpoints, Anthropic, Google, Ollama, LM Studio, embeddings, rerankers, and search runtimes power AI generation and retrieval." },
+          { title: "MCP Providers", body: "Google Gmail, Drive, Calendar, Chat, People, GitHub, and future approved vendors expose remote tools to DeepSpace through user-owned connections." },
+          { title: "Provider-Owned Login", body: "MCP users authenticate on the provider authorization page. AverQel stores encrypted tokens and safe account identity, not provider passwords." },
+          { title: "Explicit Ownership", body: "Provider credentials and MCP connections are scoped to the current tenant and user. They are never treated as a shared global account." },
         ]}
       />
 
-      <DocsSection title="What the provider layer does">
+      <DocsSection title="Model providers versus MCP providers">
         <p>
-          The provider layer does more than store keys. It decides which runtime to use for chat,
-          embeddings, reranking, web search, and model discovery. It also resolves whether a task
-          should go to a cloud endpoint or a local endpoint based on the configured feature scope
-          and available capabilities.
+          Model providers answer questions or create embeddings. MCP providers expose tools that
+          DeepSpace can use to search, read, create, update, or otherwise act on an external product.
+          A Google model provider and a Google Gmail MCP connection are separate integrations with
+          separate credentials, policies, and ownership.
+        </p>
+        <p>
+          Do not put MCP OAuth credentials into the normal model-provider configuration. MCP uses
+          dedicated provider profiles and dedicated per-user connection records so existing Google,
+          GitHub, Drive, and other integrations remain compatible.
         </p>
       </DocsSection>
 
-      <DocsSection title="What the current codebase supports">
+      <DocsSection title="Google and GitHub MCP connections">
+        <ol className="list-decimal space-y-2 pl-6">
+          <li>AverQel publishes a curated marketplace entry with the official remote endpoint, reviewed tools, requested scopes, and risk policy.</li>
+          <li>An administrator configures AverQel&apos;s Google or GitHub OAuth client ID, client secret, and exact callback URI on the VPS.</li>
+          <li>The user selects Connect and is redirected to Google or GitHub.</li>
+          <li>The provider returns an authorization result to AverQel&apos;s signed callback.</li>
+          <li>AverQel verifies scopes and account identity, encrypts the token material, refreshes the safe catalog, and opens the connection inspector.</li>
+          <li>DeepSpace can use only the current user&apos;s approved connection after policy and scope checks pass.</li>
+        </ol>
+        <p>
+          If an OAuth client is not configured, the marketplace entry remains visible but shows
+          Setup pending. This is an operator configuration state, not a request for users to give
+          AverQel their Google or GitHub password.
+        </p>
+      </DocsSection>
+
+      <DocsSection title="MCP marketplace trust metadata">
         <ul className="list-disc space-y-2 pl-6">
-          <li>
-            chat runtimes for OpenRouter, OpenAI-compatible providers, Anthropic, Google, Ollama, LM
-            Studio, and OpenCode Zen
-          </li>
-          <li>
-            embedding runtimes for local deterministic, sentence-transformers, OpenRouter, Ollama,
-            LM Studio, and OpenAI-compatible providers
-          </li>
-          <li>reranker support through sentence-transformers and Cohere-style paths</li>
-          <li>web search provider routing through Tavily</li>
-          <li>
-            model discovery and, where relevant, model installation support for local runtimes like
-            Ollama
-          </li>
+          <li><strong>Official:</strong> reviewed provider operated by the represented vendor.</li>
+          <li><strong>Community:</strong> reviewed third-party provider; it is never automatically official.</li>
+          <li><strong>New:</strong> recently added provider within its catalog review period.</li>
+          <li><strong>Trending:</strong> reviewed popularity signal with explicit review metadata.</li>
+          <li><strong>Interactive:</strong> reviewed support for interactive workflows.</li>
         </ul>
-      </DocsSection>
-
-      <DocsSection title="Why OpenRouter matters here">
         <p>
-          OpenRouter gives AverQel a broad model access surface from one provider integration. That
-          makes it especially useful when the platform needs flexibility across many upstream model
-          families without hardwiring every one of them into the product UI separately.
-        </p>
-        <p>
-          In AverQel, OpenRouter is still treated as one provider inside the native provider routing
-          system. It does not replace AverQel&apos;s own selection logic, safety model, or execution
-          preferences.
+          These are catalog attributes, not security permissions. Approval status controls whether a
+          provider can be connected; badges help users understand provenance and product status.
         </p>
       </DocsSection>
 
-      <DocsSection title="Personal, tenant, and future platform control">
+      <DocsSection title="Remote MCP transport labels">
         <p>
-          The current safe default is personal provider ownership with tenant-aware scoping and
-          encrypted secret storage. Platform-managed or broader shared provider flows can be layered
-          in later, but the secure base remains explicit ownership and explicit assignment.
+          Remote HTTP means a vendor-hosted HTTPS Streamable HTTP MCP endpoint. Remote SSE means a
+          vendor-hosted HTTPS Server-Sent Events MCP endpoint. AverQel validates remote endpoints and
+          does not let the browser probe them directly.
+        </p>
+        <p>
+          Stdio, SSH, and local process transports are not supported in this release. AverQel does
+          not clone or execute arbitrary vendor MCP repositories on the VPS. This reduces supply-chain
+          and host-execution risk while the product focuses on approved remote services.
+        </p>
+      </DocsSection>
+
+      <DocsSection title="Provider health and catalog preview">
+        <p>
+          Marketplace previews are reviewed metadata. Once connected, AverQel can refresh the live
+          tool catalog and records a safe catalog revision and health status. Health is an operational
+          signal, not an uptime guarantee, and remote providers can change tools or permissions.
+        </p>
+        <p>
+          The runtime rejects stale catalogs, disabled providers, revoked connections, removed tools,
+          and policy violations. The frontend receives only typed safe DTOs; provider tokens, client
+          secrets, raw OAuth metadata, and raw MCP event payloads remain server-side.
+        </p>
+      </DocsSection>
+
+      <DocsSection title="Why AverQel does not clone MCP repositories">
+        <p>
+          The vendor owns its MCP implementation, endpoint availability, OAuth application, and tool
+          behavior. AverQel owns the marketplace review, tenant/user connection, encryption, policy,
+          approval, runtime routing, and safe inspection. Keeping those responsibilities separate
+          makes provider updates safer and prevents unreviewed code from running inside AverQel.
+        </p>
+      </DocsSection>
+
+      <DocsSection title="Existing AI provider support">
+        <ul className="list-disc space-y-2 pl-6">
+          <li>Chat runtimes include OpenRouter, OpenAI-compatible providers, Anthropic, Google, Ollama, LM Studio, and OpenCode Zen.</li>
+          <li>Embedding runtimes include local deterministic paths, sentence-transformers, OpenRouter, Ollama, LM Studio, and OpenAI-compatible providers.</li>
+          <li>Reranking and web search use their own provider routing and secret boundaries.</li>
+        </ul>
+        <p>
+          These model-provider flows remain separate from the remote MCP marketplace and are not
+          replaced by it.
         </p>
       </DocsSection>
     </DocsShell>

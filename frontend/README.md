@@ -38,6 +38,44 @@ stored through the existing encrypted provider-secret flow.
 The DeepSpace composer exposes a Web toggle. When enabled, the backend searches through the
 configured Tavily provider for that turn, then injects bounded Tavily results into the LLM context.
 
+## Remote MCP Marketplace
+
+AverQel includes a curated marketplace for approved remote MCP providers. Users can browse provider
+details, reviewed tools, requested OAuth scopes, transport, health, risk labels, and trust badges
+from `Dashboard -> MCP Marketplace`.
+
+The supported connection flow is:
+
+```text
+Marketplace → provider details → Connect → provider OAuth consent
+→ AverQel callback → encrypted per-user connection → catalog refresh
+→ connection policy → DeepSpace tool execution
+```
+
+Google and GitHub authentication happens on the provider's authorization page. AverQel never receives
+the user's provider password. OAuth access and refresh tokens remain encrypted on the backend and are
+never returned to the browser, prompts, logs, or raw MCP events. Disconnect removes the local token
+record and requests provider revocation where supported.
+
+MCP connections are tenant- and user-scoped. Tool access is checked through connection ownership,
+provider approval, catalog freshness, conversation/DeepSpace enablement, read-only mode, risk ceiling,
+and per-tool mode. `Blocked` wins first; then allowlists and risk/read-only rules apply; `Needs
+approval` pauses risky actions; `Always allow` cannot bypass platform or tenant safety rules. Missing
+or stale conversation and DeepSpace overrides remain disabled.
+
+The marketplace distinguishes Official providers from reviewed Community providers. New, Trending, and
+Interactive are catalog review attributes, not automatic security approvals. Health and tool previews
+are useful status metadata, not uptime guarantees; connected providers can change their live catalog.
+
+This release supports approved remote Streamable HTTP and SSE MCP servers. Stdio, SSH, local process
+servers, and arbitrary vendor repositories are not supported. AverQel does not clone vendor MCP
+servers: vendors operate their endpoints, while AverQel provides the secure marketplace, OAuth broker,
+encryption, tenant isolation, policy enforcement, approval flow, and DeepSpace routing.
+
+Provider OAuth client credentials are configured by the AverQel operator on the VPS. Until the correct
+Google or GitHub OAuth profile is configured, the provider can remain visible in the marketplace but
+will show `Setup pending` and cannot start user authorization.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
