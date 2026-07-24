@@ -1,6 +1,9 @@
 
-I inspected the current AverQel MCP implementation. Phase 1 of this plan was
-implemented on 2026-07-23; later phases remain planned work.
+I inspected the current AverQel MCP implementation. Phases 1 through 7 are
+implemented in the current `main` branch. This document is the implementation
+plan and release record; future provider onboarding and live staging OAuth
+verification remain operational follow-up work, not unimplemented product
+phases.
 
 The correct decision is:
 
@@ -1083,3 +1086,88 @@ conversation scope automatically. No Gmail, GitHub, OAuth, or credential data
 is stored in this context. The backend still validates tenant/user ownership
 and requires an explicit enable decision because absent or stale overrides
 remain disabled by design.
+
+## Phase 7 documentation and complete test matrix
+
+Phase 7 documentation is complete. The user-facing documentation now explains:
+
+- Official versus Community providers and the Official, Community, New,
+  Trending, and Interactive badges.
+- OAuth consent, PKCE, encrypted token storage, revocation, scope changes,
+  and the `Setup pending` operator configuration state.
+- Tenant/user isolation, read-only mode, approval requirements, and the
+  precedence of `Always allow`, `Needs approval`, and `Blocked`.
+- Remote HTTP/SSE transport and why stdio, SSH, local processes, arbitrary
+  endpoints, and vendor repository cloning are not supported in this release.
+- Safe provider health/preview limitations and the fact that tokens, secrets,
+  raw OAuth metadata, and raw MCP events are never returned to the frontend.
+- How Google and GitHub connections work through approved remote MCP servers.
+
+Updated documentation files:
+
+```text
+frontend/app/documentation/connectors-mcp/page.tsx
+frontend/app/documentation/privacy-security/page.tsx
+frontend/app/documentation/providers/page.tsx
+frontend/README.md
+```
+
+The complete MCP test matrix is present under the exact requested paths:
+
+```text
+backend/tests/unit/test_mcp_catalog_service.py
+backend/tests/unit/test_mcp_provider_auth.py
+backend/tests/unit/test_mcp_connection_policy.py
+backend/tests/unit/test_mcp_runtime.py
+backend/tests/unit/test_mcp_security.py
+
+backend/tests/integration/test_mcp_api.py
+backend/tests/integration/test_mcp_oauth_flows.py
+backend/tests/integration/test_mcp_marketplace_catalog.py
+backend/tests/integration/test_mcp_connection_policy.py
+backend/tests/security/test_mcp_tenant_isolation.py
+backend/tests/security/test_mcp_oauth_secrets.py
+backend/tests/security/test_mcp_tool_policy.py
+backend/tests/security/test_mcp_cross_user_access.py
+
+frontend/tests/mcp-page.test.ts
+frontend/tests/mcp-page.render.test.tsx
+frontend/tests/mcp-provider-details.test.tsx
+frontend/tests/mcp-connection-policy.test.tsx
+frontend/tests/mcp-oauth-state.test.tsx
+frontend/tests/mcp-inspector.test.tsx
+frontend/tests/mcp-marketplace-card.test.tsx
+frontend/tests/mcp-provider-detail-page.test.tsx
+frontend/tests/mcp-tool-permission-table.test.tsx
+frontend/tests/mcp-connection-scope-panel.test.tsx
+```
+
+The tests cover rejected/unapproved providers, visible Community status,
+tenant and user isolation, OAuth state and secret handling, token/event
+redaction, scope and reauthorization boundaries, denied/read-only/risky tool
+policy, stale catalogs, provider health gates, and preservation of the legacy
+connector path. Frontend coverage verifies the marketplace, provider details,
+OAuth boundary, inspector, cards, policy controls, tool permissions, and
+conversation/DeepSpace scope controls.
+
+Phase 7 verification completed:
+
+```text
+backend full pytest suite: passed
+frontend full Vitest suite: passed (83 files, 256 tests)
+frontend TypeScript check: passed
+frontend ESLint: passed
+backend Ruff: passed
+git diff validation: passed
+```
+
+The test suite uses mocked OAuth/provider responses and never stores real
+Google or GitHub credentials. Live staging OAuth checks remain a release
+operator task requiring staging credentials and are intentionally not run in
+CI or committed to the repository.
+
+The test coverage was committed and pushed as:
+
+```text
+cd73c9f56 test(mcp): complete end-to-end coverage
+```
