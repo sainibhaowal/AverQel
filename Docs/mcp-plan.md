@@ -1028,7 +1028,42 @@ Phase 5 runtime and DeepSpace policy enforcement is complete and released as
 
 ## 7. Phase 6 frontend marketplace and connection controls
 
-Phase 6 is complete with one typed API boundary in
+Phase 6 is complete. The exact implementation files verified for this phase
+are:
+
+```text
+frontend/app/dashboard/mcp/page.tsx
+frontend/app/dashboard/mcp/inspector/[id]/page.tsx
+frontend/lib/mcp-api.ts
+frontend/app/dashboard/mcp/providers/[entryId]/page.tsx
+frontend/app/dashboard/mcp/_components/MCPMarketplaceCard.tsx
+frontend/app/dashboard/mcp/_components/MCPProviderDetails.tsx
+frontend/app/dashboard/mcp/_components/MCPConnectionPolicyPanel.tsx
+frontend/app/dashboard/mcp/_components/MCPToolPermissionTable.tsx
+frontend/app/dashboard/mcp/_components/MCPConnectionScopePanel.tsx
+frontend/app/dashboard/mcp/_components/MCPCommunityWarning.tsx
+frontend/app/dashboard/mcp/_components/MCPHealthStatus.tsx
+frontend/public/mcp/google.svg
+frontend/public/mcp/github.svg
+```
+
+The exact Phase 6 frontend test files are:
+
+```text
+frontend/tests/mcp-page.test.ts
+frontend/tests/mcp-page.render.test.tsx
+frontend/tests/mcp-provider-details.test.tsx
+frontend/tests/mcp-connection-policy.test.tsx
+frontend/tests/mcp-oauth-state.test.tsx
+frontend/tests/mcp-inspector.test.tsx
+frontend/tests/mcp-marketplace-card.test.tsx
+frontend/tests/mcp-provider-detail-page.test.tsx
+frontend/tests/mcp-tool-permission-table.test.tsx
+frontend/tests/mcp-connection-scope-panel.test.tsx
+```
+
+These files were verified as present and included in the frontend test run.
+Phase 6 is implemented with one typed API boundary in
 `frontend/lib/mcp-api.ts`. The marketplace remains catalog/API-driven and now
 uses a two-column responsive card grid, trusted local Google/GitHub logo keys,
 official/community/New/Trending/Interactive badges, transport/auth labels,
