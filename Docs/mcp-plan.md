@@ -1026,6 +1026,54 @@ Only after all verification succeeds will I create the commit and release tag.
 Phase 5 runtime and DeepSpace policy enforcement is complete and released as
 `averqel-mcp-phase5-20260723`.
 
+## Phase 4 API implementation and verification record
+
+The Phase 4 API implementation is complete in:
+
+```text
+backend/app/integrations/api/mcp.py
+```
+
+The route contract verified in that file includes:
+
+```text
+GET/POST /api/v1/mcp/marketplace
+GET      /api/v1/mcp/marketplace/{entry_id}
+GET      /api/v1/mcp/servers
+GET      /api/v1/mcp/servers/{server_id}
+DELETE   /api/v1/mcp/servers/{server_id}
+GET/PUT  /api/v1/mcp/servers/{server_id}/policy
+GET/PUT  /api/v1/mcp/servers/{server_id}/tools/{tool_name}/policy
+GET/PUT  /api/v1/mcp/conversations/{conversation_id}/connections/{server_id}
+GET/PUT  /api/v1/mcp/deepspaces/{deepspace_id}/connections/{server_id}
+POST     /api/v1/mcp/servers/{server_id}/refresh
+POST     /api/v1/mcp/servers/{server_id}/oauth/start
+GET      /api/v1/mcp/oauth/callback
+GET      /api/v1/mcp/servers/{server_id}/oauth/callback
+GET      /api/v1/mcp/servers/{server_id}/inspector
+```
+
+Existing MCP routes remain preserved. API responses use explicit marketplace,
+connection, policy, tool, OAuth-action, and Inspector DTOs. Configuration is
+allowlisted; raw endpoint errors, OAuth transaction data, credentials, and
+raw MCP event payloads are not returned. Catalog management remains protected
+by `mcp:catalog:manage`, and approved Community entries remain connectable
+when their reviewed readiness metadata allows it.
+
+The Phase 4 API/security verification files are:
+
+```text
+backend/tests/integration/test_mcp_api.py
+backend/tests/integration/test_mcp_phase4_api.py
+backend/tests/integration/test_mcp_connection_policy.py
+backend/tests/security/test_mcp_tenant_isolation.py
+backend/tests/security/test_mcp_cross_user_access.py
+```
+
+These tests verify DTO redaction, approved Community eligibility, tenant/user
+ownership of servers and scoped resources, policy/tool updates, and rejection
+of unknown or cross-owner conversation/DeepSpace scope changes.
+
 ## 7. Phase 6 frontend marketplace and connection controls
 
 Phase 6 is complete. The exact implementation files verified for this phase
