@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 MAX_AGENT_ROUNDS = 12
 MAX_WEB_SEARCH_CALLS = 3
 MAX_TOOL_RETRIES = 1
+MAX_NO_TOOL_REPROMPTS = 2
 DEFAULT_AGENT_TIMEOUT_SECONDS = 180
 WEB_SEARCH_TOOL = {
     "type": "function",
@@ -315,6 +316,30 @@ class DeepSpaceChatService:
         if tool_name == "final":
             return "finalizing", "Verifying the work before the final answer."
         return "working", f"Working with {tool_name}."
+
+    @staticmethod
+    def _requires_agent_tools(prompt: str) -> bool:
+        words = prompt.split()
+        if len(words) >= 12:
+            return True
+        tool_intent_terms = (
+            "search",
+            "latest",
+            "internet",
+            "research",
+            "case study",
+            "references",
+            "citations",
+            "diagram",
+            "table",
+            "write",
+            "analyze",
+            "compare",
+            "plan",
+            "checklist",
+        )
+        lowered = prompt.lower()
+        return any(term in lowered for term in tool_intent_terms)
 
     async def _execute_productivity_tool(
         self,
@@ -644,6 +669,7 @@ class DeepSpaceChatService:
         forced_answer: str | None = None
         seen_tool_calls: dict[str, int] = {}
         web_search_calls = 0
+        no_tool_reprompts = 0
         loop_deadline = time.monotonic() + max(
             30,
             min(int(getattr(self.settings, "deepspace_agent_timeout_seconds", DEFAULT_AGENT_TIMEOUT_SECONDS)), 300),
@@ -667,7 +693,13 @@ class DeepSpaceChatService:
                     stream=True,
                     reasoning_enabled=thinking_enabled,
                     tools=available_tools or None,
-                    tool_choice="auto" if available_tools else None,
+                    tool_choice=(
+                        "required"
+                        if available_tools
+                        and round_index == 0
+                        and self._requires_agent_tools(prompt)
+                        else ("auto" if available_tools else None)
+                    ),
                     metadata={
                         "surface": "deepspace",
                         "conversation_id": str(conversation_id),
@@ -728,7 +760,41 @@ class DeepSpaceChatService:
 
                 normalized_calls = [tool_calls[index] for index in sorted(tool_calls)]
                 if not normalized_calls:
+                    task_check = self.task_store.check_tasks(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                    )
+                    if (
+                        available_tools
+                        and task_check["task_count"]
+                        and not task_check["complete"]
+                        and no_tool_reprompts < MAX_NO_TOOL_REPROMPTS
+                        and round_index + 1 < MAX_AGENT_ROUNDS
+                    ):
+                        no_tool_reprompts += 1
+                        yield sse(
+                            "agent_status",
+                            {
+                                "phase": "retrying",
+                                "message": "The task plan is unfinished; requesting the next structured tool step.",
+                                "active_tools": [],
+                                "attempt": no_tool_reprompts + 1,
+                            },
+                        )
+                        conversation_messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Your persisted DeepSpace task list is unfinished. Do not provide a prose answer yet. "
+                                    "Call exactly one appropriate structured tool now to continue the next pending task, "
+                                    "then inspect its result. Use web_search for current web research."
+                                ),
+                            }
+                        )
+                        continue
                     break
+                no_tool_reprompts = 0
 
                 conversation_messages.append(
                     {

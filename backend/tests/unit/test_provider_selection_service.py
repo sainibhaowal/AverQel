@@ -218,6 +218,29 @@ def test_missing_assignment_returns_no_candidates(settings) -> None:
         session.close()
 
 
+def test_web_search_uses_builtin_searxng_when_no_provider_row_exists(settings) -> None:
+    session = get_session_factory()()
+    try:
+        tenant = _tenant("Builtin Web Search Tenant")
+        session.add(tenant)
+        session.flush()
+
+        selection = ProviderSelectionService(session, settings).resolve_web_search(
+            tenant_id=tenant.id,
+            actor_user_id=None,
+        )
+
+        assert len(selection.candidates) == 1
+        candidate = selection.candidates[0]
+        assert candidate.provider_type == "searxng"
+        assert candidate.source == "builtin"
+        assert candidate.base_url == "http://searxng:8080"
+        assert candidate.provider_config_id is None
+    finally:
+        session.rollback()
+        session.close()
+
+
 def test_context_window_does_not_fall_back_to_stale_cache_when_live_discovery_is_unknown(
     settings,
     monkeypatch,

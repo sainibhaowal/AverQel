@@ -249,6 +249,13 @@ class ProviderSelectionService:
                 candidates=candidates,
                 seen_provider_configs=seen_provider_configs,
             )
+        if feature_scope == "web_search" and not candidates:
+            self._append_builtin_web_search_candidate(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                notes=notes,
+                candidates=candidates,
+            )
 
         self.audit.write_event(
             tenant_id=tenant_id,
@@ -572,6 +579,39 @@ class ProviderSelectionService:
             seen_provider_configs.add(provider.id)
             notes.append(f"auto-web-search:{provider.id}")
             return
+
+    def _append_builtin_web_search_candidate(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        workspace_id: uuid.UUID | None,
+        notes: list[str],
+        candidates: list[ProviderSelectionCandidate],
+    ) -> None:
+        """Expose the isolated deployment SearXNG service without a DB provider row."""
+        endpoint = str(getattr(self.settings, "searxng_base_url", "http://searxng:8080") or "").strip()
+        if not endpoint:
+            notes.append("builtin-web-search:missing-endpoint")
+            return
+        notes.append("builtin-web-search:searxng")
+        candidates.append(ProviderSelectionCandidate(
+            provider_type="searxng",
+            model_name="web-search",
+            feature_scope="web_search",
+            source="builtin",
+            provider_config_id=None,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            base_url=self._dockerize_url(endpoint),
+            api_key=None,
+            auth_mode="none",
+            priority=1000,
+            metadata={
+                "display_name": "SearXNG (Self-hosted)",
+                "auto_selected": True,
+                "builtin": True,
+            },
+        ))
 
     def _providers_in_resolution_scope(
         self,
