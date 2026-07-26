@@ -108,6 +108,8 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
   ) => {
     const { theme } = useTheme();
     const [isExporting, setIsExporting] = useState(false);
+    const [showWidthMenu, setShowWidthMenu] = useState(false);
+    const [showExportMenu, setShowExportMenu] = useState(false);
     const [marginSize, setMarginSize] = useState<"narrow" | "medium" | "wide" | "full">("medium");
     const marginClasses = {
       narrow: "max-w-[600px] px-4 sm:px-8 lg:px-24",
@@ -131,6 +133,30 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
       };
       loadInitial();
     }, [editor, initialContent]);
+
+    useEffect(() => {
+      if (!showWidthMenu && !showExportMenu) return;
+
+      const closeMenus = (event: PointerEvent) => {
+        const target = event.target;
+        if (target instanceof Element && target.closest("[data-deepspace-toolbar-menu]")) return;
+        setShowWidthMenu(false);
+        setShowExportMenu(false);
+      };
+      const closeOnEscape = (event: KeyboardEvent) => {
+        if (event.key === "Escape") {
+          setShowWidthMenu(false);
+          setShowExportMenu(false);
+        }
+      };
+
+      document.addEventListener("pointerdown", closeMenus);
+      document.addEventListener("keydown", closeOnEscape);
+      return () => {
+        document.removeEventListener("pointerdown", closeMenus);
+        document.removeEventListener("keydown", closeOnEscape);
+      };
+    }, [showExportMenu, showWidthMenu]);
 
     useImperativeHandle(ref, () => ({
       insertHTML: async (html: string) => {
@@ -272,15 +298,31 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
             )}
 
             {/* Page Width/Margin Selector */}
-            <div className="group/width relative mr-1">
-              <button className="border-glass-border bg-surface-1 text-muted-foreground hover:border-primary/40 hover:bg-surface-2 hover:text-primary inline-flex h-9 items-center gap-2 rounded-xl border px-3.5 text-xs font-bold transition">
+            <div className="relative mr-1" data-deepspace-toolbar-menu>
+              <button
+                type="button"
+                aria-expanded={showWidthMenu}
+                aria-haspopup="menu"
+                onClick={() => {
+                  setShowWidthMenu((open) => !open);
+                  setShowExportMenu(false);
+                }}
+                className="border-glass-border bg-surface-1 text-muted-foreground hover:border-primary/40 hover:bg-surface-2 hover:text-primary inline-flex h-9 items-center gap-2 rounded-xl border px-3.5 text-xs font-bold transition"
+              >
                 <Maximize2 size={13} className="text-primary/75" />
                 <span className="capitalize">Width: {marginSize}</span>
               </button>
-              <div className="absolute top-full right-0 z-50 hidden pt-2 group-hover/width:flex">
+              <div
+                className={`${showWidthMenu ? "flex" : "hidden"} absolute top-full right-0 z-50 pt-2`}
+              >
                 <div className="border-glass-border bg-surface-0 flex w-36 flex-col rounded-2xl border p-1 shadow-2xl backdrop-blur-xl">
                   <button
-                    onClick={() => setMarginSize("narrow")}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMarginSize("narrow");
+                      setShowWidthMenu(false);
+                    }}
                     className={`flex items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium transition ${
                       marginSize === "narrow"
                         ? "bg-primary/10 text-primary"
@@ -290,7 +332,12 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                     Narrow (600px)
                   </button>
                   <button
-                    onClick={() => setMarginSize("medium")}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMarginSize("medium");
+                      setShowWidthMenu(false);
+                    }}
                     className={`flex items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium transition ${
                       marginSize === "medium"
                         ? "bg-primary/10 text-primary"
@@ -300,7 +347,12 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                     Medium (900px)
                   </button>
                   <button
-                    onClick={() => setMarginSize("wide")}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMarginSize("wide");
+                      setShowWidthMenu(false);
+                    }}
                     className={`flex items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium transition ${
                       marginSize === "wide"
                         ? "bg-primary/10 text-primary"
@@ -310,7 +362,12 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                     Wide (1200px)
                   </button>
                   <button
-                    onClick={() => setMarginSize("full")}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMarginSize("full");
+                      setShowWidthMenu(false);
+                    }}
                     className={`flex items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium transition ${
                       marginSize === "full"
                         ? "bg-primary/10 text-primary"
@@ -323,8 +380,18 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
               </div>
             </div>
 
-            <div className="group/export relative">
-              <button className="border-glass-border bg-surface-1 text-muted-foreground hover:border-primary/40 hover:bg-surface-2 hover:text-primary inline-flex h-9 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition">
+            <div className="relative" data-deepspace-toolbar-menu>
+              <button
+                type="button"
+                aria-expanded={showExportMenu}
+                aria-haspopup="menu"
+                disabled={isExporting}
+                onClick={() => {
+                  setShowExportMenu((open) => !open);
+                  setShowWidthMenu(false);
+                }}
+                className="border-glass-border bg-surface-1 text-muted-foreground hover:border-primary/40 hover:bg-surface-2 hover:text-primary inline-flex h-9 items-center gap-2 rounded-xl border px-4 text-xs font-bold transition disabled:cursor-wait disabled:opacity-70"
+              >
                 {isExporting ? (
                   <div className="border-primary h-3 w-3 animate-spin rounded-full border-2 border-t-transparent" />
                 ) : (
@@ -332,24 +399,41 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                 )}
                 Export
               </button>
-              <div className="absolute top-full right-0 z-50 hidden pt-2 group-hover/export:flex">
+              <div
+                className={`${showExportMenu ? "flex" : "hidden"} absolute top-full right-0 z-50 pt-2`}
+              >
                 <div className="border-glass-border bg-surface-0 flex w-40 flex-col rounded-2xl border p-1 shadow-2xl backdrop-blur-xl">
                   <button
-                    onClick={() => handleExport("pdf")}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowExportMenu(false);
+                      void handleExport("pdf");
+                    }}
                     className="text-muted-foreground hover:bg-surface-1 hover:text-primary flex items-center gap-3 rounded-xl px-3 py-2 text-left text-xs font-medium"
                   >
                     <FileText size={14} className="text-danger" />
                     Export as PDF
                   </button>
                   <button
-                    onClick={() => handleExport("docx")}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowExportMenu(false);
+                      void handleExport("docx");
+                    }}
                     className="text-muted-foreground hover:bg-surface-1 hover:text-primary flex items-center gap-3 rounded-xl px-3 py-2 text-left text-xs font-medium"
                   >
                     <FileText size={14} className="text-primary" />
                     Export as DOCX
                   </button>
                   <button
-                    onClick={() => handleExport("md")}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowExportMenu(false);
+                      void handleExport("md");
+                    }}
                     className="text-muted-foreground hover:bg-surface-1 hover:text-primary flex items-center gap-3 rounded-xl px-3 py-2 text-left text-xs font-medium"
                   >
                     <FileText size={14} className="text-success" />
