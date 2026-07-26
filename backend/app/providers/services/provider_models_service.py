@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -40,6 +41,8 @@ from app.providers.services.types import (
     ProviderSelectionCandidate,
 )
 from app.system.services.audit_service import AuditService
+
+logger = logging.getLogger(__name__)
 
 
 def _looks_like_auth_failure(status_code: int, message: str | None) -> bool:
@@ -178,6 +181,14 @@ class ProviderModelsService:
         except ProviderRequestError as exc:
             raise provider_request_error_to_api_error(exc, operation="refresh") from exc
         except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "Provider model refresh failed during discovery",
+                extra={
+                    "tenant_id": str(tenant_id),
+                    "provider_config_id": str(provider_config_id),
+                    "provider_type": provider.provider_type,
+                },
+            )
             raise ApiError(
                 code="PROVIDER_TEST_FAILED",
                 message="Provider model refresh failed.",
@@ -331,7 +342,7 @@ class ProviderModelsService:
         api_key = self._resolve_api_key(tenant_id=tenant_id, provider=provider)
         try:
             runtime: ModelDiscoveryProvider | ChatProvider | EmbeddingProvider
-            if provider.provider_type == "tavily":
+            if provider.provider_type in {"tavily", "searxng"}:
                 runtime = self.registry.get_web_search_provider_from_config(
                     provider, api_key=api_key
                 )

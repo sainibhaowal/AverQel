@@ -9,7 +9,7 @@ from uuid import UUID
 @dataclass(slots=True, frozen=True)
 class ChatGenerateRequest:
     model: str
-    messages: list[dict[str, str]]
+    messages: list[dict[str, Any]]
     temperature: float
     max_tokens: int
     base_url: str
@@ -91,6 +91,8 @@ class WebSearchResultItem:
     score: float | None = None
     raw_content: str | None = None
     favicon: str | None = None
+    published_date: str | None = None
+    source: str | None = None
 
 
 @dataclass(slots=True, frozen=True)

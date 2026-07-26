@@ -10,12 +10,13 @@ _settings = get_settings()
 
 
 class AgentMemory(Base):
+    """Persistent DeepSpace memory retained for the productivity workspace."""
+
     __tablename__ = "agent_memory"
 
     id = Column(String, primary_key=True, index=True)
     tenant_id = Column(String, index=True, nullable=False)
     user_id = Column(String, index=True, nullable=False)
-
     key = Column(String, index=True, nullable=False)
     value = Column(Text, nullable=False)
     embedding = Column(JSON, nullable=True)
@@ -28,12 +29,7 @@ class AgentMemory(Base):
     access_count = Column(Integer, default=0, nullable=False)
     last_accessed_at = Column(DateTime, nullable=True)
     metadata_json = Column(JSON, default=dict)
-    scope = Column(String, index=True, default="persistent")  # user, global, session
+    scope = Column(String, index=True, default="persistent")
     tags = Column(JSON, default=list)
-
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(
-        DateTime,
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
-    )
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))

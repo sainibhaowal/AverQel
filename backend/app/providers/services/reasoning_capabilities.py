@@ -36,6 +36,7 @@ _OPENAI_COMPATIBLE_HINTS: Final[tuple[str, ...]] = (
     "deepseek-r1",
     "deepseek-r",
     "deepseek-reasoner",
+    "deepseek-v4",
     "deepseek-v3",
     "deepseek-v2.5",
     "qwq",
@@ -96,6 +97,7 @@ _ENABLE_THINKING_HINTS: Final[tuple[str, ...]] = (
     "qwq",
     "deepseek-r1",
     "deepseek-r",
+    "deepseek-v4",
     "deepseek-v3",
     "kimi",
     "kimi-k2",
@@ -122,6 +124,7 @@ _ENABLE_THINKING_HINTS: Final[tuple[str, ...]] = (
 _THINK_TAG_HINTS: Final[tuple[str, ...]] = (
     "deepseek-r1",
     "deepseek-r",
+    "deepseek-v4",
     "deepseek-v3",
     "qwq",
     "qwen",

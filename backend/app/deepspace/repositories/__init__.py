@@ -1,1 +1,3 @@
-"""Persistence helpers for DeepSpace mission and subagent state."""
+from .chat import DeepSpaceChatRepository
+
+__all__ = ["DeepSpaceChatRepository"]

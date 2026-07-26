@@ -10,7 +10,7 @@ from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
 from app.deepspace.api import chats as deepspace_chats
-from app.deepspace.api import client_storage, workspace
+from app.deepspace.api import client_storage
 from app.deepspace.api import export as deepspace_export
 from app.documents.api import collections, documents
 from app.integrations.api import integrations, mcp
@@ -106,7 +106,6 @@ def create_app() -> FastAPI:
     app.include_router(client_storage.router, prefix=settings.api_prefix)
     app.include_router(queries.router, prefix=settings.api_prefix)
     app.include_router(intelligence.router, prefix=settings.api_prefix)
-    app.include_router(workspace.router, prefix=settings.api_prefix)
     app.include_router(analytics.router, prefix=settings.api_prefix)
     app.include_router(providers.router, prefix=settings.api_prefix)
     app.include_router(

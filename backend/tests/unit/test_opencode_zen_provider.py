@@ -157,6 +157,36 @@ def test_opencode_zen_provider_parses_string_context_windows(monkeypatch):
     assert models[1].context_window == 200000
 
 
+def test_opencode_zen_provider_emits_live_context_for_deepseek_v4_flash(monkeypatch):
+    def _fake_get(url, *args, **kwargs):
+        return _FakeResponse(
+            200,
+            {
+                "data": [
+                    {
+                        "id": "deepseek-v4-flash",
+                        "contextWindow": 131072,
+                    }
+                ]
+            },
+        )
+
+    fake_httpx = SimpleNamespace(
+        get=_fake_get, Timeout=_FakeTimeout, AsyncClient=_FakeAsyncClient
+    )
+    monkeypatch.setitem(sys.modules, "httpx", fake_httpx)
+
+    provider = OpenCodeZenProvider(
+        base_url="https://opencode.ai/zen/v1", api_key="zen_test"
+    )
+    models = provider.list_models()
+
+    assert len(models) == 1
+    assert models[0].name == "deepseek-v4-flash"
+    assert models[0].context_window == 131072
+    assert models[0].context_window_source == "live_model"
+
+
 def test_opencode_zen_provider_uses_verified_docs_context_when_live_payload_missing(
     monkeypatch,
 ):
@@ -249,7 +279,9 @@ async def test_opencode_zen_provider_streams_responses_events(monkeypatch):
     provider = OpenCodeZenProvider(
         base_url="https://opencode.ai/zen/v1", api_key="zen_test"
     )
-    request = _request("gpt-5.4", reasoning_enabled=True)
+    # Capturing emitted reasoning must not depend on the request flag or model
+    # capability hints. The provider already emitted the reasoning event.
+    request = _request("gpt-5.4", reasoning_enabled=False)
 
     events = []
     async for event in provider.stream_generate_events(request):

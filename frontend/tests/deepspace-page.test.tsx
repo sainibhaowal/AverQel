@@ -128,37 +128,6 @@ describe("deepspace page", () => {
         } satisfies Partial<Response>;
       }
 
-      if (endpoint === "/deepspace/chats/vitals" && !options?.method) {
-        return {
-          ok: true,
-          json: async () => ({
-            sources: 0,
-            documents: 0,
-            proactive_daemon: { healthy: true },
-            connector_statuses: {},
-          }),
-        } satisfies Partial<Response>;
-      }
-
-      if (endpoint === "/deepspace/chats/runtime" && !options?.method) {
-        return {
-          ok: true,
-          json: async () => ({
-            model_name: "test-model",
-            provider_type: "local",
-            context_limit: 4096,
-            context_limit_source: "test",
-          }),
-        } satisfies Partial<Response>;
-      }
-
-      if (endpoint === "/workspace/root" && !options?.method) {
-        return {
-          ok: true,
-          json: async () => ({ path: "/workspace" }),
-        } satisfies Partial<Response>;
-      }
-
       throw new Error(`Unhandled fetchWithAuth call: ${endpoint} (${options?.method ?? "GET"})`);
     });
 
@@ -326,15 +295,17 @@ describe("deepspace page", () => {
     expect(screen.getByRole("table")).toBeInTheDocument();
   });
 
-  it("renders chart transport as a chart block in deepspace", () => {
+  it("renders an explicit chart fence as a chart block in deepspace", () => {
     render(
       <DeepSpaceThread
         messages={[
           {
             id: "assistant_chart_1",
             role: "assistant",
-            content: "Trend summary.\n\nChart Data\n- Jan: 10\n- Feb: 12\n- Mar: 18\n",
-            rawContent: "Trend summary.\n\nChart Data\n- Jan: 10\n- Feb: 12\n- Mar: 18\n",
+            content:
+              'Trend summary.\n\n```chart\n{"chart_type":"line","title":"Chart Data","series":[{"label":"Jan","value":10},{"label":"Feb","value":12},{"label":"Mar","value":18}]}\n```\n',
+            rawContent:
+              'Trend summary.\n\n```chart\n{"chart_type":"line","title":"Chart Data","series":[{"label":"Jan","value":10},{"label":"Feb","value":12},{"label":"Mar","value":18}]}\n```\n',
             createdAt: new Date().toISOString(),
             status: "ready",
           },
@@ -348,11 +319,11 @@ describe("deepspace page", () => {
     expect(screen.getByText("Trend summary.")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Chart Data" })).toBeInTheDocument();
     expect(screen.getByText(/3 points/i)).toBeInTheDocument();
-    expect(screen.getByText(/pattern/i)).toBeInTheDocument();
+    expect(screen.getByText(/json/i)).toBeInTheDocument();
     expect(screen.queryByText(/No diagram type detected/i)).not.toBeInTheDocument();
   });
 
-  it("promotes pseudo-mermaid chart fences into chart blocks in deepspace", () => {
+  it("renders chart fences independently from Mermaid diagrams in deepspace", () => {
     render(
       <DeepSpaceThread
         messages={[
@@ -360,9 +331,9 @@ describe("deepspace page", () => {
             id: "assistant_chart_mermaid_1",
             role: "assistant",
             content:
-              "Trend view\n\n```mermaid\nline\ntitle Monthly Sales Trend (USD)\nx-axis Month\ny-axis Sales\n2023-01: 150\n2023-02: 175\n2023-03: 200\n2023-04: 225\n2023-05: 210\n```\n",
+              'Trend view\n\n```chart\n{"chart_type":"line","title":"Monthly Sales Trend","series":[{"label":"2023-01","value":150},{"label":"2023-02","value":175},{"label":"2023-03","value":200},{"label":"2023-04","value":225},{"label":"2023-05","value":210}]}\n```\n',
             rawContent:
-              "Trend view\n\n```mermaid\nline\ntitle Monthly Sales Trend (USD)\nx-axis Month\ny-axis Sales\n2023-01: 150\n2023-02: 175\n2023-03: 200\n2023-04: 225\n2023-05: 210\n```\n",
+              'Trend view\n\n```chart\n{"chart_type":"line","title":"Monthly Sales Trend","series":[{"label":"2023-01","value":150},{"label":"2023-02","value":175},{"label":"2023-03","value":200},{"label":"2023-04","value":225},{"label":"2023-05","value":210}]}\n```\n',
             createdAt: new Date().toISOString(),
             status: "ready",
           },

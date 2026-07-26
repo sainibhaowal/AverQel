@@ -134,7 +134,7 @@ class GoogleProvider:
             text, thinking_text = self._extract_candidate_parts(candidates[0])
         return ChatGenerateResponse(
             content=text,
-            thinking_content=thinking_text if request.reasoning_enabled else None,
+            thinking_content=thinking_text,
         )
 
     async def stream_generate(self, request: ChatGenerateRequest) -> AsyncIterator[str]:
@@ -187,7 +187,7 @@ class GoogleProvider:
                     if not isinstance(candidates, list) or not candidates:
                         continue
                     text, thinking_text = self._extract_candidate_parts(candidates[0])
-                    if request.reasoning_enabled and thinking_text:
+                    if thinking_text:
                         yield {"type": "thinking", "text": thinking_text}
                     if text:
                         yield {"type": "delta", "text": text}

@@ -9,7 +9,8 @@ export default function ProvidersPage() {
       <DocsCards
         items={[
           { title: "Model Providers", body: "OpenRouter, OpenAI-compatible endpoints, Anthropic, Google, Ollama, LM Studio, embeddings, rerankers, and search runtimes power AI generation and retrieval." },
-          { title: "MCP Providers", body: "Google Gmail, Drive, Calendar, Chat, People, GitHub, and future approved vendors expose remote tools to DeepSpace through user-owned connections." },
+          { title: "Self-hosted SearXNG", body: "DeepSpace can use a configured SearXNG JSON endpoint for server-side web search without a third-party search API key." },
+          { title: "MCP Providers", body: "Google Gmail, Drive, Calendar, Chat, People, GitHub, and future approved vendors remain available through the separate MCP surface." },
           { title: "Provider-Owned Login", body: "MCP users authenticate on the provider authorization page. AverQel stores encrypted tokens and safe account identity, not provider passwords." },
           { title: "Explicit Ownership", body: "Provider credentials and MCP connections are scoped to the current tenant and user. They are never treated as a shared global account." },
         ]}
@@ -17,8 +18,8 @@ export default function ProvidersPage() {
 
       <DocsSection title="Model providers versus MCP providers">
         <p>
-          Model providers answer questions or create embeddings. MCP providers expose tools that
-          DeepSpace can use to search, read, create, update, or otherwise act on an external product.
+          Model providers answer questions or create embeddings. MCP providers remain a separate
+          protected integration surface for external product actions.
           A Google model provider and a Google Gmail MCP connection are separate integrations with
           separate credentials, policies, and ownership.
         </p>
@@ -29,6 +30,27 @@ export default function ProvidersPage() {
         </p>
       </DocsSection>
 
+      <DocsSection title="Self-hosted SearXNG web search">
+        <p>
+          Add <strong>SearXNG (Self-hosted)</strong> from the Web provider tab and enter the URL
+          reachable by the AverQel API, for example <code>http://searxng:8080</code> when both
+          services share a private Docker network. SearXNG must have its JSON search format enabled.
+          No API key is required.
+        </p>
+        <p>
+          DeepSpace invokes the bounded <code>web_search</code> tool only when the selected model
+          requests it. Results are fetched server-side, filtered by the configured domain policy,
+          and returned with titles, URLs, snippets, source engines, and available publication dates.
+          The final Markdown response receives a Sources section with links.
+        </p>
+        <p>
+          Requests use bounded timeouts, Redis-backed per-user rate limits, redirect blocking, URL
+          validation, and endpoint SSRF checks. The model never receives shell or cURL access; it
+          receives only the typed web-search tool and sanitized result data. MCP remains a separate
+          integration surface.
+        </p>
+      </DocsSection>
+
       <DocsSection title="Google and GitHub MCP connections">
         <ol className="list-decimal space-y-2 pl-6">
           <li>AverQel publishes a curated marketplace entry with the official remote endpoint, reviewed tools, requested scopes, and risk policy.</li>
@@ -36,7 +58,7 @@ export default function ProvidersPage() {
           <li>The user selects Connect and is redirected to Google or GitHub.</li>
           <li>The provider returns an authorization result to AverQel&apos;s signed callback.</li>
           <li>AverQel verifies scopes and account identity, encrypts the token material, refreshes the safe catalog, and opens the connection inspector.</li>
-          <li>DeepSpace can use only the current user&apos;s approved connection after policy and scope checks pass.</li>
+          <li>MCP actions remain available only through the current user&apos;s approved connection after policy and scope checks pass.</li>
         </ol>
         <p>
           If an OAuth client is not configured, the marketplace entry remains visible but shows

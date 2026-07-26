@@ -1,36 +1,35 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, ChevronDown, Check, Sparkles, MessageSquare, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  Check,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import ExecutionModeDropdown from "./ExecutionModeDropdown";
-import RuntimePreferencesDropdown, {
-  type RuntimePreferencesValue,
-} from "./RuntimePreferencesDropdown";
 
 interface DeepSpaceComposerProps {
   query: string;
   isStreaming: boolean;
-  variant?: "default" | "deepspace";
   onQueryChange: (value: string) => void;
   onSubmit: () => void;
   onStop: () => void;
-  usedTokens?: number;
-  totalContext?: number | null;
   modelName?: string | null;
-  isAgentic?: boolean;
-  onAgenticChange?: (val: boolean) => void;
-  availableModels?: Array<{ providerId: string; modelName: string; displayName: string }>;
+  availableModels?: Array<{
+    providerId: string;
+    modelName: string;
+    displayName: string;
+    contextWindow?: number | null;
+    contextWindowSource?: string | null;
+  }>;
   onModelSelect?: (providerId: string, modelName: string) => void;
-  executionMode?: "auto_review" | "full_access";
-  onExecutionModeChange?: (mode: "auto_review" | "full_access") => void;
-  runtimePreferences?: RuntimePreferencesValue;
-  isSavingRuntimePreferences?: boolean;
-  activeConversationId?: string | null;
-  onRuntimePreferencesChange?: (changes: Partial<RuntimePreferencesValue>) => void;
-  fullAutonomyEnabled?: boolean;
-  onFullAutonomyChange?: (enabled: boolean) => void;
   voiceState?: "idle" | "listening" | "thinking" | "speaking";
+  contextUsedTokens?: number | null;
+  contextLimit?: number | null;
   sttActive?: boolean;
   ttsActive?: boolean;
   onSttToggle?: () => void;
@@ -131,117 +130,18 @@ function StreamingIcon() {
   );
 }
 
-function TokenIndicator({ used, total }: { used: number; total: number | null }) {
-  const hasKnownTotal = typeof total === "number" && total > 0;
-  const percentage = hasKnownTotal ? Math.min(100, Math.max(0, (used / total) * 100)) : 0;
-  const remaining = hasKnownTotal ? Math.max((total as number) - used, 0) : null;
-  const isWarning = percentage > 80;
-  const isCritical = percentage > 95;
-
-  return (
-    <div className="group relative flex items-center">
-      <div className="relative h-7 w-7 transition-transform group-hover:scale-110">
-        <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 32 32">
-          <circle
-            cx="16"
-            cy="16"
-            r="14"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            className="text-foreground/5"
-          />
-          <motion.circle
-            cx="16"
-            cy="16"
-            r="14"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeDasharray={88}
-            initial={{ strokeDashoffset: 88 }}
-            animate={{ strokeDashoffset: 88 - (88 * percentage) / 100 }}
-            transition={{ duration: 1, ease: "easeOut" }}
-            className={`${
-              isCritical ? "text-danger" : isWarning ? "text-warning" : "text-primary/60"
-            }`}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span
-            className={`text-[10px] font-bold ${isCritical ? "text-danger" : "text-foreground/40"}`}
-          >
-            {hasKnownTotal ? `${Math.round(percentage)}%` : "—"}
-          </span>
-        </div>
-      </div>
-
-      {/* Tooltip */}
-      <div className="pointer-events-none absolute right-full bottom-0 z-50 mr-3 mb-0 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-1 group-hover:opacity-100">
-        <div className="theme-panel border-glass-border bg-surface-0/95 min-w-[220px] border p-4 shadow-2xl backdrop-blur-xl rounded-2xl">
-          <div className="border-glass-border/40 mb-2 flex items-center justify-between border-b pb-2">
-            <span className="text-foreground/40 text-[10px] font-bold tracking-wider uppercase">
-              Context Usage
-            </span>
-            <span
-              className={`text-[10px] font-bold ${isCritical ? "text-danger" : "text-primary"}`}
-            >
-              {hasKnownTotal ? `${Math.round(percentage)}%` : "unknown"}
-            </span>
-          </div>
-          <div className="space-y-1.5 text-xs">
-            <div className="flex justify-between gap-4">
-              <span className="text-foreground/50">Used</span>
-              <span className="text-foreground font-mono font-medium">{used.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-foreground/50">Available</span>
-              <span className="text-foreground font-mono font-medium">
-                {typeof remaining === "number" ? remaining.toLocaleString() : "unknown"}
-              </span>
-            </div>
-            <div className="border-glass-border/20 flex justify-between gap-4 border-t pt-1.5">
-              <span className="text-foreground/50 font-semibold">Limit</span>
-              <span className="text-foreground/80 font-mono font-bold">
-                {hasKnownTotal ? total.toLocaleString() : "unknown"}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function DeepSpaceComposer({
   query,
   isStreaming,
-  variant = "default",
   onQueryChange,
   onSubmit,
   onStop,
-  usedTokens = 0,
-  totalContext = null,
   modelName,
-  isAgentic = true,
-  onAgenticChange,
   availableModels = [],
   onModelSelect,
-  executionMode = "auto_review",
-  onExecutionModeChange,
-  runtimePreferences = {
-    planner_mode: "default",
-    subagent_profile: "default",
-    runtime_hooks_enabled: true,
-    workspace_mode_enabled: true,
-    full_autonomy_enabled: false,
-  },
-  isSavingRuntimePreferences = false,
-  activeConversationId = null,
-  onRuntimePreferencesChange,
-  fullAutonomyEnabled = false,
-  onFullAutonomyChange,
   voiceState = "idle",
+  contextUsedTokens = null,
+  contextLimit = null,
   sttActive = false,
   ttsActive = false,
   onSttToggle,
@@ -261,14 +161,15 @@ export default function DeepSpaceComposer({
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
-  const borderHighlight = isAgentic
-    ? "border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.18)]"
-    : "border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.12)]";
+  const borderHighlight =
+    "border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.18)]";
 
   const shellPadding = "p-2.5 sm:p-3";
   const composerShell = `bg-surface-1/35 backdrop-blur-md border ${borderHighlight} transition-all duration-300`;
-  const textareaClass = "min-h-[52px] rounded-[1rem] bg-transparent px-3 py-2 text-[14px] leading-6";
-  const pillClass = "theme-pill !rounded-[0.5rem] h-8 border-primary/15 bg-primary/5 px-2.5 text-[10px] font-semibold tracking-wide";
+  const textareaClass =
+    "min-h-[52px] rounded-[1rem] bg-transparent px-3 py-2 text-[14px] leading-6";
+  const pillClass =
+    "theme-pill !rounded-[0.5rem] h-8 border-primary/15 bg-primary/5 px-2.5 text-[10px] font-semibold tracking-wide";
   return (
     <div className="border-glass-border/60 sticky bottom-0 z-20 w-full border-t bg-transparent px-3 pt-3 pb-0 sm:px-5">
       <div
@@ -288,65 +189,31 @@ export default function DeepSpaceComposer({
           disabled={isStreaming}
         />
 
+        {contextLimit && contextLimit > 0 ? (
+          <div className="mt-1 flex items-center gap-2 px-2 text-[9px] text-white/40">
+            <span className="shrink-0 tracking-[0.14em] uppercase">Context</span>
+            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  (contextUsedTokens ?? 0) / contextLimit > 0.9
+                    ? "bg-red-400"
+                    : (contextUsedTokens ?? 0) / contextLimit > 0.7
+                      ? "bg-amber-300"
+                      : "bg-cyan-300"
+                }`}
+                style={{
+                  width: `${Math.min(100, Math.max(0, ((contextUsedTokens ?? 0) / contextLimit) * 100))}%`,
+                }}
+              />
+            </div>
+            <span className="shrink-0 tabular-nums">
+              {(contextUsedTokens ?? 0).toLocaleString()} / {contextLimit.toLocaleString()}
+            </span>
+          </div>
+        ) : null}
+
         <div className="border-glass-border/70 mt-2.5 flex items-center justify-between gap-3 border-t pt-2.5">
           <div className="flex min-w-0 flex-grow flex-wrap items-center gap-1.5 sm:gap-2">
-            <button
-              type="button"
-              aria-pressed={fullAutonomyEnabled}
-              aria-label="Full Autonomy"
-              onClick={() => onFullAutonomyChange?.(!fullAutonomyEnabled)}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[10px] font-bold tracking-wide transition ${
-                fullAutonomyEnabled
-                  ? "border-emerald-400/50 bg-emerald-400/15 text-emerald-300"
-                  : "border-white/10 bg-black/20 text-white/55 hover:text-white/85"
-              }`}
-              title="Automatically continue checkpointed missions until verified, stopped, cancelled, or approval is required."
-            >
-              <Sparkles size={12} />
-              Full Autonomy
-            </button>
-            {/* Premium Mode Selector (Toggle Section with Icons & Tooltips) */}
-            <div className="relative flex h-8 items-center rounded-lg border border-white/10 bg-black/40 p-0.5 backdrop-blur-md">
-              <div className="group relative">
-                <button
-                  type="button"
-                  onClick={() => onAgenticChange?.(false)}
-                  className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
-                    !isAgentic
-                      ? "bg-white/10 text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
-                      : "text-white/40 hover:text-white/80"
-                  }`}
-                  aria-label="Normal Chat Mode"
-                >
-                  <MessageSquare size={13} />
-                </button>
-                <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
-                  <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
-                    Normal Chat
-                  </div>
-                </div>
-              </div>
-              <div className="group relative">
-                <button
-                  type="button"
-                  onClick={() => onAgenticChange?.(true)}
-                  className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
-                    isAgentic
-                      ? "bg-primary/20 text-primary border-primary/30 border shadow-[0_2px_8px_rgba(var(--primary),0.2)]"
-                      : "border border-transparent text-white/40 hover:text-white/80"
-                  }`}
-                  aria-label="Agentic Work Mode"
-                >
-                  <Sparkles size={13} className={isAgentic ? "animate-pulse" : ""} />
-                </button>
-                <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
-                  <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
-                    Agentic Work
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* Functional Model Dropdown */}
             <div ref={dropdownRef} className="relative flex-shrink-0">
               <button
@@ -406,23 +273,6 @@ export default function DeepSpaceComposer({
               </AnimatePresence>
             </div>
 
-            {/* Integrated Execution Mode Dropdown */}
-            <ExecutionModeDropdown
-              value={executionMode}
-              onChange={onExecutionModeChange || (() => {})}
-              compact
-              className={`${pillClass} border-glass-border bg-surface-2 flex items-center gap-1.5 transition-all hover:bg-white/5 active:scale-95`}
-            />
-
-            {/* Integrated Runtime Preferences Dropdown */}
-            <RuntimePreferencesDropdown
-              value={runtimePreferences}
-              saving={isSavingRuntimePreferences}
-              conversationScoped={Boolean(activeConversationId)}
-              onChange={onRuntimePreferencesChange || (() => {})}
-              className={`${pillClass} border-glass-border bg-surface-2 flex items-center gap-1.5 transition-all hover:bg-white/5 active:scale-95`}
-            />
-
             {/* Direct Voice Integration Controls */}
             <div className="relative flex h-8 items-center rounded-lg border border-white/10 bg-black/40 p-0.5 backdrop-blur-md">
               {/* Voice Dictation (STT Mode) Button */}
@@ -432,15 +282,19 @@ export default function DeepSpaceComposer({
                   onClick={onSttToggle}
                   className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-[0.35rem] transition-all duration-200 ${
                     sttActive
-                      ? "bg-emerald-500/25 text-emerald-400 border-emerald-500/35 border shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
+                      ? "border border-emerald-500/35 bg-emerald-500/25 text-emerald-400 shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
                       : "border border-transparent text-white/40 hover:text-white/80"
                   }`}
                   aria-label="Voice Dictation (STT)"
                 >
-                  {sttActive ? <Mic size={13} className={voiceState === "listening" ? "animate-pulse" : ""} /> : <MicOff size={13} />}
+                  {sttActive ? (
+                    <Mic size={13} className={voiceState === "listening" ? "animate-pulse" : ""} />
+                  ) : (
+                    <MicOff size={13} />
+                  )}
                 </button>
-                <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100 z-[60]">
-                  <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
+                <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
+                  <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                     Voice Dictation (STT)
                   </div>
                 </div>
@@ -458,10 +312,17 @@ export default function DeepSpaceComposer({
                   }`}
                   aria-label="Jarvis Mode"
                 >
-                  {ttsActive ? <Volume2 size={13} className={voiceState === "speaking" ? "animate-bounce" : ""} /> : <VolumeX size={13} />}
+                  {ttsActive ? (
+                    <Volume2
+                      size={13}
+                      className={voiceState === "speaking" ? "animate-bounce" : ""}
+                    />
+                  ) : (
+                    <VolumeX size={13} />
+                  )}
                 </button>
-                <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100 z-[60]">
-                  <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
+                <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
+                  <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                     Voice Commentary (TTS)
                   </div>
                 </div>
@@ -469,15 +330,13 @@ export default function DeepSpaceComposer({
             </div>
 
             {(sttActive || ttsActive) && voiceLabel && (
-              <span className="text-[10px] text-white/45 animate-pulse truncate max-w-[140px] font-semibold tracking-wide ml-0.5">
+              <span className="ml-0.5 max-w-[140px] animate-pulse truncate text-[10px] font-semibold tracking-wide text-white/45">
                 {voiceLabel}
               </span>
             )}
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
-            <TokenIndicator used={usedTokens} total={totalContext} />
-
             <motion.button
               type="button"
               onClick={isStreaming ? onStop : onSubmit}

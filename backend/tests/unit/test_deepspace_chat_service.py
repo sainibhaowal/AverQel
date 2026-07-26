@@ -1,0 +1,236 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+from uuid import uuid4
+
+import pytest
+
+from app.deepspace.services import chat_service as chat_service_module
+from app.deepspace.services.chat_service import DeepSpaceChatService
+from app.providers.services.types import WebSearchResponse, WebSearchResultItem
+
+
+class _FakeProvider:
+    async def stream_generate_events(self, request):
+        yield {"type": "thinking", "text": "Plan first."}
+        yield {"type": "thinking", "text": " Then answer."}
+        yield {"type": "delta", "text": "Final answer."}
+
+
+class _FakeRepository:
+    completed_metadata = None
+    completed_content = None
+
+    def __init__(self, db):
+        self.conversation_id = uuid4()
+        self.assistant_id = uuid4()
+
+    def get_messages(self, **kwargs):
+        return []
+
+    def create_conversation(self, **kwargs):
+        return SimpleNamespace(id=self.conversation_id)
+
+    def get_conversation(self, **kwargs):
+        return SimpleNamespace(id=self.conversation_id)
+
+    def add_message(self, **kwargs):
+        return SimpleNamespace(id=self.assistant_id)
+
+    def complete_assistant_message(self, **kwargs):
+        _FakeRepository.completed_metadata = kwargs.get("metadata_json")
+        _FakeRepository.completed_content = kwargs.get("content")
+        return None
+
+
+class _FakeTaskStore:
+    def __init__(self, db):
+        self.tasks = []
+
+    def check_tasks(self, **kwargs):
+        return {"complete": False, "task_count": 0, "completed_count": 0, "remaining_count": 0, "blocked_count": 0, "tasks": []}
+
+    def read_tasks(self, **kwargs):
+        return []
+
+    def replace_tasks(self, **kwargs):
+        self.tasks = kwargs["tasks"]
+        return self.tasks
+
+    def mark_task(self, **kwargs):
+        return kwargs
+
+    def read_note(self, **kwargs):
+        return {"conversation_id": str(kwargs["conversation_id"]), "content_html": "", "length": 0}
+
+    def write_note(self, **kwargs):
+        return self.read_note(**kwargs)
+
+
+class _FakeSelectionService:
+    def __init__(self, db, settings):
+        pass
+
+    def resolve_chat(self, **kwargs):
+        return SimpleNamespace(
+            candidates=[
+                SimpleNamespace(
+                    model_name="deepseek-v4-flash",
+                    provider_type="opencode-zen",
+                    base_url="https://opencode.ai/zen/v1",
+                    api_key="test-key",
+                    context_window=131072,
+                    context_window_source="live_model",
+                )
+            ]
+        )
+
+
+class _FakeRegistry:
+    def __init__(self, settings):
+        pass
+
+    def get_chat_provider_from_selection(self, candidate):
+        return _FakeProvider()
+
+
+class _ToolProvider:
+    calls = 0
+
+    async def stream_generate_events(self, request):
+        self.calls += 1
+        if self.calls == 1:
+            yield {
+                "type": "tool_calls_delta",
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_web_1",
+                        "function": {
+                            "name": "web_search",
+                            "arguments": '{"query":"latest research"}',
+                        },
+                    }
+                ],
+            }
+            return
+        yield {"type": "delta", "text": "A sourced answer."}
+
+
+class _ToolProviderSelection(_FakeSelectionService):
+    def resolve_chat(self, **kwargs):
+        return SimpleNamespace(
+            candidates=[
+                SimpleNamespace(
+                    model_name="deepseek-v4-flash",
+                    provider_type="opencode-zen",
+                    base_url="https://opencode.ai/zen/v1",
+                    api_key="test-key",
+                    context_window=131072,
+                    context_window_source="live_model",
+                    metadata={},
+                )
+            ]
+        )
+
+    def resolve_web_search(self, **kwargs):
+        return SimpleNamespace(
+            candidates=[
+                SimpleNamespace(
+                    provider_type="searxng",
+                    metadata={},
+                )
+            ]
+        )
+
+
+class _ToolRegistry(_FakeRegistry):
+    def __init__(self, settings):
+        self.tool_provider = _ToolProvider()
+
+    def get_chat_provider_from_selection(self, candidate):
+        return self.tool_provider
+
+    def get_web_search_provider_from_selection(self, candidate):
+        class _SearchProvider:
+            def search(self, request):
+                return WebSearchResponse(
+                    query=request.query,
+                    answer=None,
+                    results=[
+                        WebSearchResultItem(
+                            title="Research source",
+                            url="https://example.com/source",
+                            content="A source snippet.",
+                        )
+                    ],
+                )
+
+        return _SearchProvider()
+
+
+@pytest.mark.asyncio
+async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _FakeRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="Explain this clearly",
+            thinking_enabled=False,
+        )
+    ]
+
+    thinking_frames = [frame for frame in frames if frame.startswith("event: thinking")]
+    delta_frames = [frame for frame in frames if frame.startswith("event: delta")]
+    meta_frame = next(frame for frame in frames if frame.startswith("event: meta"))
+    assert len(thinking_frames) == 2
+    meta = json.loads(meta_frame.split("data: ", 1)[1].strip())
+    assert meta["context_window"] == 131072
+    assert meta["context_limit_source"] == "live_model"
+    assert json.loads(thinking_frames[-1].split("data: ", 1)[1].strip())["text"] == " Then answer."
+    assert json.loads(delta_frames[-1].split("data: ", 1)[1].strip())["text"] == "Final answer."
+    assert _FakeRepository.completed_metadata["thinking"]["content"] == "Plan first. Then answer."
+
+
+@pytest.mark.asyncio
+async def test_deepspace_runs_bounded_web_search_loop_and_citations(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _ToolProviderSelection)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _ToolRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="Find a source",
+            thinking_enabled=False,
+        )
+    ]
+
+    assert any(frame.startswith("event: tool_start") for frame in frames)
+    assert any(frame.startswith("event: tool_result") for frame in frames)
+    done = next(frame for frame in frames if frame.startswith("event: done"))
+    assert done.startswith("event: done")
+    assert "https://example.com/source" in _FakeRepository.completed_content
+    assert any(frame.startswith("event: tool_delta") for frame in frames)

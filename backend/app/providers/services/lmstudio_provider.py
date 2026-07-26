@@ -255,7 +255,7 @@ class LMStudioProvider(OpenAICompatibleProvider):
             return
         except Exception:
             response = self.generate(request)
-            if request.reasoning_enabled and response.thinking_content:
+            if response.thinking_content:
                 for chunk in self._chunk_fallback_content(response.thinking_content):
                     yield {"type": "thinking", "text": chunk}
             for chunk in self._chunk_fallback_content(response.content):

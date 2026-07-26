@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from app.providers.services.types import (
     ChatGenerateRequest,
@@ -40,6 +40,10 @@ class ChatProvider(Protocol):
     def generate(self, request: ChatGenerateRequest) -> ChatGenerateResponse: ...
 
     def stream_generate(self, request: ChatGenerateRequest) -> AsyncIterator[str]: ...
+
+    def stream_generate_events(
+        self, request: ChatGenerateRequest
+    ) -> AsyncIterator[dict[str, Any]]: ...
 
     def stream_generate_sync(self, request: ChatGenerateRequest) -> Iterator[str]: ...
 

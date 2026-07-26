@@ -8,8 +8,8 @@ from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.rbac import require_permissions
 from app.core.errors import ApiError
 from app.deepspace.integrations.export_service import DeepSpaceExportService
+from app.deepspace.repositories.chat import DeepSpaceChatRepository
 from app.platform.database.session import get_db
-from app.query.repositories.chat import ChatRepository
 
 router = APIRouter(prefix="/deepspace/export", tags=["deepspace-export"])
 
@@ -24,7 +24,7 @@ async def export_conversation(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> Response:
-    repo = ChatRepository(db)
+    repo = DeepSpaceChatRepository(db)
     conversation = repo.get_conversation(
         tenant_id=auth.tenant_id,
         conversation_id=conversation_id,

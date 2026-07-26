@@ -27,7 +27,7 @@ interface ProviderAssignmentsEditorProps {
 
 function providerSupportsScope(provider: ProviderConfig, scope: string) {
   if (scope.includes("web_search"))
-    return provider.supports_web_search || provider.provider_type === "tavily";
+    return provider.supports_web_search || ["tavily", "searxng"].includes(provider.provider_type);
   if (scope.includes("reranking")) return provider.supports_reranking;
   if (scope.includes("embedding")) return provider.supports_embeddings;
   return provider.supports_chat;

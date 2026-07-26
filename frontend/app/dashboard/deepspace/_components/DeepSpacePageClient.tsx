@@ -8,22 +8,18 @@ import {
   PanelRightClose,
   Bot,
   Database,
-  FolderSearch,
-  Brain,
   PanelLeftClose,
   History,
+  RefreshCw,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { fetchWithAuth } from "@/lib/api";
 import type { Transition } from "framer-motion";
 import toast from "react-hot-toast";
 
-import DeepSpaceChatClient, { type DeepSpaceRuntimeMetrics } from "./DeepSpaceChatClient";
-import FileExplorer from "./FileExplorer";
-import DeepSpaceEditor, { DeepSpaceEditorHandle } from "./DeepSpaceEditor";
-import AgentIntelligencePanel from "./AgentIntelligencePanel";
-import type { AgentStep } from "../_lib/deepspace-stream";
+import DeepSpaceChatClient from "./DeepSpaceChatClient";
+import DeepSpaceEditor, { type DeepSpaceEditorHandle } from "./DeepSpaceEditor";
 
 export interface DeepSpaceNote {
   id: string;
@@ -32,27 +28,13 @@ export interface DeepSpaceNote {
   content_html?: string | null;
 }
 
-interface DeepSpaceVitals {
-  internet: string;
-  llm: string;
-  web_search: string;
-  sources: number;
-  connector_statuses?: Record<string, number>;
-  proactive_daemon?: {
-    enabled: boolean;
-    phase: string;
-    timestamp?: string | null;
-    interval_seconds?: number | null;
-    healthy: boolean;
-  } | null;
-}
-
 const STORAGE_KEY = "averqel_deepspace_draft";
 const ACTIVE_NOTE_KEY = "averqel_deepspace_active_conversation";
 const MIN_LEFT_WIDTH = 32;
 const MAX_LEFT_WIDTH = 68;
 const DEFAULT_NOTE_TITLE = "Untitled Note";
 const MOBILE_STACKED_BREAKPOINT = 1024;
+const DEEPSPACE_INITIAL_LOAD_GRACE_MS = 2_500;
 
 function IconTooltipButton({
   label,
@@ -101,7 +83,7 @@ function IconTooltipButton({
       }}
       onPointerUp={hide}
       onPointerCancel={hide}
-      className={`group relative inline-flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full transition-all ${
+      className={`group relative inline-flex h-8 w-8 items-center justify-center rounded-full transition-all sm:h-10 sm:w-10 ${
         active
           ? "bg-primary text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.3)]"
           : "text-foreground/70 hover:bg-surface-2 hover:text-primary"
@@ -140,32 +122,14 @@ function deriveNoteTitleFromContent(html: string): string | null {
 export default function DeepSpacePageClient() {
   const [notes, setNotes] = useState<DeepSpaceNote[]>([]);
   const [activeNote, setActiveNote] = useState<DeepSpaceNote | null>(null);
-  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
-  const [activeFolderPath, setActiveFolderPath] = useState("");
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [panelMode, setPanelMode] = useState<"split" | "notes" | "chat" | "memory">("split");
-  const [isIntelligenceDrawerOpen, setIsIntelligenceDrawerOpen] = useState(false);
-  const [isExplorerOpen, setIsExplorerOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [metrics, setMetrics] = useState<DeepSpaceRuntimeMetrics>({
-    usage: 0,
-    tokens: 0,
-    tools: [],
-    contextLimit: null,
-    contextLimitSource: null,
-    contextUsedTokens: 0,
-    contextRemainingTokens: null,
-    modelName: null,
-    providerType: null,
-    phase: null,
-    compaction: null,
-    latencyTimeline: [],
-    agentSteps: [],
-  });
-  const [vitals, setVitals] = useState<DeepSpaceVitals | null>(null);
-
   const editorRef = useRef<DeepSpaceEditorHandle>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [serviceWarnings, setServiceWarnings] = useState<string[]>([]);
+  const [serviceRetryKey, setServiceRetryKey] = useState(0);
+
   const [leftWidth, setLeftWidth] = useState(48);
   const [isDragging, setIsDragging] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -174,44 +138,21 @@ export default function DeepSpacePageClient() {
   const activeDividerPointerIdRef = useRef<number | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  const addServiceWarning = useCallback((message: string) => {
+    setServiceWarnings((previous) =>
+      previous.includes(message) ? previous : [...previous, message].slice(-3),
+    );
+  }, []);
+
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  // Load workspace root and restore last active folder path from localStorage
-  useEffect(() => {
-    const initializeFolder = async () => {
-      try {
-        const savedFolder = window.localStorage.getItem("deepspace_active_folder_path");
-        if (savedFolder) {
-          setActiveFolderPath(savedFolder);
-        } else {
-          const res = (await fetchWithAuth("/workspace/root")) as Response;
-          if (res.ok) {
-            const data = await res.json();
-            if (data.path) {
-              setActiveFolderPath(data.path);
-              window.localStorage.setItem("deepspace_active_folder_path", data.path);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Failed to initialize workspace folder path", err);
-      }
-    };
-    void initializeFolder();
-  }, []);
-
-  const handleFolderSelect = (path: string) => {
-    setActiveFolderPath(path);
-    window.localStorage.setItem("deepspace_active_folder_path", path);
-  };
 
   // ── Data Fetching ────────────────────────────────────────────────────────
 
   const fetchNotes = useCallback(async () => {
     try {
-      const res = (await fetchWithAuth("/deepspace/chats")) as Response;
+      const res = (await fetchWithAuth("/deepspace/chats", { timeoutMs: 5_000 })) as Response;
       if (res.ok) {
         const data = await res.json();
         const items = data.items as DeepSpaceNote[];
@@ -228,6 +169,7 @@ export default function DeepSpacePageClient() {
     try {
       const res = (await fetchWithAuth("/deepspace/chats", {
         method: "POST",
+        timeoutMs: 5_000,
         body: JSON.stringify({ title, content_html: content }),
       })) as Response;
       if (res.ok) {
@@ -242,150 +184,29 @@ export default function DeepSpacePageClient() {
     return null;
   };
 
-  const handleFileSelect = async (path: string) => {
-    try {
-      const res = (await fetchWithAuth(
-        `/workspace/file/content?path=${encodeURIComponent(path)}`,
-      )) as Response;
-      if (res.ok) {
-        const data = await res.json();
-        const fileContent = data.content || "";
-
-        if (editorRef.current) {
-          editorRef.current.clear();
-          const extension = path.split(".").pop() || "txt";
-          const formatted = path.endsWith(".md")
-            ? fileContent
-            : `# ${path}\n\n\`\`\`${extension}\n${fileContent}\n\`\`\``;
-
-          await editorRef.current.insertMarkdown(formatted);
-          setActiveFilePath(path);
-          toast.success(`Loaded ${path}`);
-          if (panelMode === "chat") setPanelMode("split");
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load file", err);
-      toast.error("Failed to load file");
-    }
-  };
-
-  const handleSaveFile = async () => {
-    if (!activeFilePath || !editorRef.current) return;
-    setIsSaving(true);
-    try {
-      const markdown = await editorRef.current.getMarkdown();
-
-      let rawContent = markdown;
-      if (!activeFilePath.endsWith(".md")) {
-        const codeBlockRegex = /^\s*#\s+.*?\n+```[a-z]*\n([\s\S]*?)```\s*$/i;
-        const match = markdown.match(codeBlockRegex);
-        if (match) {
-          rawContent = match[1];
-        } else {
-          const headerRegex = /^\s*#\s+.*?\n+([\s\S]*)$/i;
-          const headerMatch = markdown.match(headerRegex);
-          if (headerMatch) {
-            rawContent = headerMatch[1];
-          }
-        }
-      }
-
-      const res = (await fetchWithAuth("/workspace/file", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          path: activeFilePath,
-          content: rawContent,
-        }),
-      })) as Response;
-
-      if (res.ok) {
-        toast.success(`Saved successfully: ${activeFilePath}`);
-      } else {
-        toast.error("Failed to save file");
-      }
-    } catch (err) {
-      console.error("Save file failed", err);
-      toast.error("Failed to save file");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const activeNoteId = activeNote?.id ?? null;
-  const handleCompactNow = useCallback(async () => {
-    if (!activeNoteId) return;
-    try {
-      const res = (await fetchWithAuth(`/deepspace/chats/session/${activeNoteId}/compact`, {
-        method: "POST",
-      })) as Response;
-      if (res.ok) {
-        const compactPayload = (await res.json()) as {
-          status?: string;
-          compaction?: DeepSpaceRuntimeMetrics["compaction"];
-        };
-        const contextRes = (await fetchWithAuth(
-          `/deepspace/chats/session/${activeNoteId}/context`,
-        )) as Response;
-        if (contextRes.ok) {
-          const contextPayload = (await contextRes.json()) as {
-            token_count?: number;
-            usage_pct?: number;
-            limit?: number | null;
-            context_limit_source?: string | null;
-            compaction?: DeepSpaceRuntimeMetrics["compaction"];
-          };
-          setMetrics((prev) => ({
-            ...prev,
-            usage:
-              typeof contextPayload.usage_pct === "number" ? contextPayload.usage_pct : prev.usage,
-            tokens:
-              typeof contextPayload.token_count === "number"
-                ? contextPayload.token_count
-                : prev.tokens,
-            contextUsedTokens:
-              typeof contextPayload.token_count === "number"
-                ? contextPayload.token_count
-                : prev.contextUsedTokens,
-            contextRemainingTokens:
-              typeof contextPayload.limit === "number" &&
-              typeof contextPayload.token_count === "number"
-                ? Math.max(contextPayload.limit - contextPayload.token_count, 0)
-                : prev.contextRemainingTokens,
-            contextLimit:
-              typeof contextPayload.limit === "number" ? contextPayload.limit : prev.contextLimit,
-            contextLimitSource:
-              typeof contextPayload.context_limit_source === "string"
-                ? contextPayload.context_limit_source
-                : prev.contextLimitSource,
-            compaction:
-              contextPayload.compaction ?? compactPayload.compaction ?? prev.compaction ?? null,
-          }));
-        }
-        const updatedVitals = (await fetchWithAuth("/deepspace/chats/vitals")) as Response;
-        if (updatedVitals.ok) {
-          setVitals((await updatedVitals.json()) as DeepSpaceVitals);
-        }
-        toast.success("Conversation context compacted.");
-      }
-    } catch (error) {
-      console.error("Manual compaction failed", error);
-      toast.error("Context compaction failed.");
-    }
-  }, [activeNoteId]);
 
   // ── Lifecycle & Migration ────────────────────────────────────────────────
 
   useEffect(() => {
+    let mounted = true;
+    const releaseTimer = window.setTimeout(() => {
+      if (!mounted) return;
+      setIsInitialLoading(false);
+      addServiceWarning(
+        "Conversation history is taking longer than expected; the workspace remains available.",
+      );
+    }, DEEPSPACE_INITIAL_LOAD_GRACE_MS);
+
     const init = async () => {
       const items = await fetchNotes();
+      if (!mounted) return;
+      window.clearTimeout(releaseTimer);
       if (items === null) {
         // Do not create a replacement conversation when the VPS is briefly
         // unavailable; that would make the real history appear lost.
         setIsInitialLoading(false);
+        addServiceWarning("Conversation history is temporarily unavailable.");
         return;
       }
       if (items.length === 0) {
@@ -401,9 +222,17 @@ export default function DeepSpacePageClient() {
         setActiveNote(items.find((item) => item.id === savedId) || items[0] || null);
       }
       setIsInitialLoading(false);
+      setServiceWarnings((previous) =>
+        previous.filter((warning) => !warning.toLowerCase().includes("conversation history")),
+      );
     };
-    init();
-  }, [fetchNotes]);
+    void init();
+
+    return () => {
+      mounted = false;
+      window.clearTimeout(releaseTimer);
+    };
+  }, [addServiceWarning, fetchNotes, serviceRetryKey]);
 
   // Keep the selected conversation stable across route changes, refreshes,
   // browser restarts, and returning from another dashboard page. The message
@@ -414,44 +243,12 @@ export default function DeepSpacePageClient() {
     }
   }, [activeNote?.id]);
 
-  useEffect(() => {
-    const loadVitals = async () => {
-      try {
-        const res = (await fetchWithAuth("/deepspace/chats/vitals")) as Response;
-        if (res.ok) setVitals((await res.json()) as DeepSpaceVitals);
-      } catch (error) {
-        console.error("Failed to fetch DeepSpace vitals", error);
-      }
-    };
-    void loadVitals();
-  }, []);
-
-  useEffect(() => {
-    const loadRuntime = async () => {
-      try {
-        const res = (await fetchWithAuth("/deepspace/chats/runtime")) as Response;
-        if (!res.ok) return;
-        const runtime = await res.json();
-        setMetrics((prev) => ({
-          ...prev,
-          contextLimit: runtime.context_limit,
-          contextLimitSource: runtime.context_limit_source,
-          modelName: runtime.model_name,
-          providerType: runtime.provider_type,
-        }));
-      } catch (error) {
-        console.error("Failed to fetch DeepSpace runtime", error);
-      }
-    };
-    void loadRuntime();
-  }, []);
-
   // ── Auto-save ────────────────────────────────────────────────────────────
 
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleEditorChange = (html: string) => {
-    if (!activeNote || activeFilePath) return;
+    if (!activeNote) return;
     const nextAutoTitle =
       activeNote.title === DEFAULT_NOTE_TITLE ? deriveNoteTitleFromContent(html) : null;
     setActiveNote((prev) =>
@@ -540,7 +337,6 @@ export default function DeepSpacePageClient() {
     : { type: "spring", damping: 24, stiffness: 220 };
   const shellTransitionClass = isStackedLayout ? "duration-150" : "duration-300";
 
-
   useEffect(() => {
     if (isStackedLayout && panelMode === "split") setPanelMode("chat");
   }, [isStackedLayout, panelMode]);
@@ -559,39 +355,28 @@ export default function DeepSpacePageClient() {
 
   return (
     <div className="relative flex h-full w-full overflow-hidden rounded-2xl bg-transparent">
-
-
-      {/* ── Floating Drawer Sidebar (File Explorer) ─────────────────────────────── */}
-      <AnimatePresence>
-        {isExplorerOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[1.5px]"
-              onClick={() => setIsExplorerOpen(false)}
-            />
-            <motion.aside
-              initial={{ x: -320, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -320, opacity: 0 }}
-              className="fixed top-4 left-4 bottom-4 z-50 flex w-[280px] sm:w-[320px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl"
+      {serviceWarnings.length > 0 && (
+        <div className="pointer-events-none absolute top-2 right-2 left-2 z-30 flex justify-center">
+          <div
+            role="status"
+            className="pointer-events-auto flex max-w-3xl items-center gap-3 rounded-xl border border-amber-400/25 bg-amber-950/80 px-4 py-3 text-xs text-amber-100 shadow-xl backdrop-blur-xl"
+          >
+            <span className="min-w-0 flex-1">{serviceWarnings.join(" ")}</span>
+            <button
+              type="button"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300/25 px-2.5 py-1.5 font-semibold hover:bg-amber-300/10"
+              onClick={() => {
+                setServiceWarnings([]);
+                setIsInitialLoading(true);
+                setServiceRetryKey((value) => value + 1);
+              }}
             >
-              <FileExplorer
-                variant="sidebar"
-                onFileSelect={(path) => {
-                  void handleFileSelect(path);
-                  setIsExplorerOpen(false);
-                }}
-                onFolderSelect={handleFolderSelect}
-                onClose={() => setIsExplorerOpen(false)}
-                isOpen={isExplorerOpen}
-              />
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+              <RefreshCw size={12} />
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
 
       <div
         className={`relative flex h-full flex-1 flex-col overflow-hidden ${
@@ -609,7 +394,7 @@ export default function DeepSpacePageClient() {
 
           if (shouldRenderPortal) {
             return createPortal(
-              <div className="border-glass-border bg-surface-0/90 pointer-events-auto flex items-center gap-0.5 sm:gap-1 rounded-full border p-0.5 sm:p-1 shadow-xl backdrop-blur-md">
+              <div className="border-glass-border bg-surface-0/90 pointer-events-auto flex items-center gap-0.5 rounded-full border p-0.5 shadow-xl backdrop-blur-md sm:gap-1 sm:p-1">
                 <IconTooltipButton
                   label="Chat"
                   active={panelMode === "chat"}
@@ -633,18 +418,6 @@ export default function DeepSpacePageClient() {
                   active={panelMode === "notes"}
                   icon={<PanelRightClose size={15} />}
                   onClick={() => setPanelMode("notes")}
-                />
-                <IconTooltipButton
-                  label="Explorer"
-                  active={isExplorerOpen}
-                  icon={<FolderSearch size={16} />}
-                  onClick={() => setIsExplorerOpen(!isExplorerOpen)}
-                />
-                <IconTooltipButton
-                  label="Insights"
-                  active={isIntelligenceDrawerOpen}
-                  icon={<Brain size={16} />}
-                  onClick={() => setIsIntelligenceDrawerOpen(!isIntelligenceDrawerOpen)}
                 />
                 <IconTooltipButton
                   label="History"
@@ -686,9 +459,6 @@ export default function DeepSpacePageClient() {
                   showCollapseControls={false}
                   panelMode={panelMode}
                   onSetPanelMode={setPanelMode}
-                  activeFilePath={activeFilePath}
-                  activeFolderPath={activeFolderPath}
-                  onSaveFile={handleSaveFile}
                 />
               </motion.section>
             ) : null}
@@ -737,7 +507,6 @@ export default function DeepSpacePageClient() {
                 <DeepSpaceChatClient
                   activeConversationId={activeNote?.id ?? null}
                   currentContent={activeNote?.content_html ?? ""}
-                  onMetricsUpdate={setMetrics}
                   onConversationRenamed={(note) => {
                     setNotes((prev) => prev.map((item) => (item.id === note.id ? note : item)));
                     setActiveNote((prev) => (prev?.id === note.id ? note : prev));
@@ -746,12 +515,10 @@ export default function DeepSpacePageClient() {
                     const note = notes.find((n) => n.id === noteId);
                     if (note) {
                       setActiveNote(note);
-                      setActiveFilePath(null);
                     }
                   }}
                   onNewNote={() => {
                     createNote();
-                    setActiveFilePath(null);
                   }}
                   onInsertLatestAnswer={insertAnswer}
                   panelMode={panelMode}
@@ -764,44 +531,6 @@ export default function DeepSpacePageClient() {
           </AnimatePresence>
         </div>
 
-        <AnimatePresence>
-          {isIntelligenceDrawerOpen && (
-            <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[1.5px]"
-                onClick={() => setIsIntelligenceDrawerOpen(false)}
-              />
-              <motion.aside
-                initial={{ x: 420, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: 420, opacity: 0 }}
-                className="fixed top-4 right-4 bottom-4 z-50 flex w-[360px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl"
-              >
-                <AgentIntelligencePanel
-                  contextUsage={metrics.usage}
-                  tokenCount={metrics.tokens}
-                  activeTools={metrics.tools}
-                  contextLimit={metrics.contextLimit}
-                  contextLimitSource={metrics.contextLimitSource}
-                  contextUsedTokens={metrics.contextUsedTokens}
-                  contextRemainingTokens={metrics.contextRemainingTokens}
-                  modelName={metrics.modelName}
-                  providerType={metrics.providerType}
-                  phase={metrics.phase}
-                  compaction={metrics.compaction ?? null}
-                  latencyTimeline={metrics.latencyTimeline ?? []}
-                  agentSteps={metrics.agentSteps ?? []}
-                  vitals={vitals}
-                  onCompactNow={handleCompactNow}
-                  variant="drawer"
-                />
-              </motion.aside>
-            </>
-          )}
-        </AnimatePresence>
       </div>
     </div>
   );

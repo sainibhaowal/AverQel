@@ -137,7 +137,7 @@ class AnthropicProvider:
             text, thinking_text = self._extract_text_blocks(content)
         return ChatGenerateResponse(
             content=text,
-            thinking_content=thinking_text if request.reasoning_enabled else None,
+            thinking_content=thinking_text,
             usage=payload_obj.get("usage", {}),
         )
 
@@ -201,10 +201,9 @@ class AnthropicProvider:
                         delta = payload_obj.get("delta", {})
                         if not isinstance(delta, dict):
                             continue
-                        if request.reasoning_enabled:
-                            thinking_text = delta.get("thinking")
-                            if isinstance(thinking_text, str) and thinking_text:
-                                yield {"type": "thinking", "text": thinking_text}
+                        thinking_text = delta.get("thinking")
+                        if isinstance(thinking_text, str) and thinking_text:
+                            yield {"type": "thinking", "text": thinking_text}
                         text = delta.get("text")
                         if isinstance(text, str) and text:
                             yield {"type": "delta", "text": text}
@@ -216,7 +215,7 @@ class AnthropicProvider:
                         block_type = block.get("type")
                         text = block.get("text")
                         if isinstance(text, str) and text:
-                            if request.reasoning_enabled and block_type in {
+                            if block_type in {
                                 "thinking",
                                 "redacted_thinking",
                             }:

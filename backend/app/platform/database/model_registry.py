@@ -8,10 +8,11 @@ from app.auth.models.tenant import Tenant
 from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
 from app.deepspace.models.agent_activity import AgentActivity
-from app.deepspace.models.agent_audit import AgentAuditLog
 from app.deepspace.models.agent_memory import AgentMemory
-from app.deepspace.models.agent_runtime_preference import AgentRuntimePreference
 from app.deepspace.models.agent_todo import AgentTodo
+from app.deepspace.models.conversation import Conversation
+from app.deepspace.models.message import Message
+from app.deepspace.models.message_version import MessageVersion
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.collection import (
@@ -44,10 +45,7 @@ from app.providers.models.provider_model_cache import ProviderModelCache
 from app.providers.models.provider_secret import ProviderSecret
 from app.providers.models.provider_usage_record import ProviderUsageRecord
 from app.query.models.comment import Comment
-from app.query.models.conversation import Conversation
 from app.query.models.feedback import Feedback
-from app.query.models.message import Message
-from app.query.models.message_version import MessageVersion
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
 from app.query.models.query_citation import QueryCitation
@@ -87,7 +85,6 @@ __all__ = [
     "AuditLog",
     "BreakGlassGrant",
     "DataDeletion",
-    "DeepSpaceMissionSnapshot",
     "Conversation",
     "Message",
     "MessageVersion",
@@ -101,11 +98,10 @@ __all__ = [
     "ConnectorStatus",
     "ConnectorSecret",
     "MCPConnectionPolicy",
-    "AgentActivity",
-    "AgentAuditLog",
     "AgentMemory",
     "AgentTodo",
-    "AgentRuntimePreference",
+    "AgentActivity",
+    "DeepSpaceMissionSnapshot",
     "MCPServer",
     "MCPRegistryEntry",
     "MCPEvent",

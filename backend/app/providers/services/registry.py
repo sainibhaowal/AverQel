@@ -23,6 +23,7 @@ from app.providers.services.ollama_provider import OllamaProvider
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.providers.services.opencode_zen_provider import OpenCodeZenProvider
 from app.providers.services.openrouter_provider import OpenRouterProvider
+from app.providers.services.searxng_provider import SearXNGProvider
 from app.providers.services.sentence_transformers_provider import (
     SentenceTransformersEmbeddingProvider,
 )
@@ -173,9 +174,18 @@ class ProviderRegistry:
         *,
         base_url: str | None,
         api_key: str | None,
+        settings: Settings | None = None,
+        metadata: dict[str, object] | None = None,
     ) -> WebSearchProvider:
         if provider == "tavily":
             return TavilyProvider(base_url=base_url, api_key=api_key)
+        if provider == "searxng":
+            return SearXNGProvider(
+                base_url=base_url,
+                api_key=api_key,
+                settings=settings,
+                metadata=metadata,
+            )
         raise ValueError(f"Unsupported web search provider: {provider}")
 
     def get_web_search_provider_from_selection(
@@ -186,6 +196,8 @@ class ProviderRegistry:
             selection.provider_type,
             base_url=selection.base_url,
             api_key=selection.api_key,
+            settings=self.settings,
+            metadata=selection.metadata,
         )
 
     def get_web_search_provider_from_config(
@@ -198,6 +210,8 @@ class ProviderRegistry:
             provider_config.provider_type,
             base_url=provider_config.api_base_url,
             api_key=api_key,
+            settings=self.settings,
+            metadata=dict(provider_config.metadata_json or {}),
         )
 
     def get_model_discovery_provider(

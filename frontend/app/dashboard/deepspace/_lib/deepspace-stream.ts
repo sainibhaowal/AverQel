@@ -1,8 +1,66 @@
-import type {
-  StructuredAnswerShape,
-  StructuredBlock,
-  MessageMetrics,
-} from "@/app/dashboard/query/_lib/stream-protocol";
+export function estimateTokens(text: string): number {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
+
+export interface MessageMetrics {
+  tokensPerSec?: number;
+  totalTokens?: number;
+  ttftMs?: number;
+  modelName?: string;
+  providerType?: string;
+  startedAt?: string;
+  firstTokenAt?: string;
+  contextLimit?: number;
+  contextLimitSource?: string | null;
+  contextUsedTokens?: number;
+  contextRemainingTokens?: number;
+  contextUsage?: number;
+  phase?: string;
+  activeTools?: string[];
+  latencyTimeline?: Array<{ label: string; atMs: number; detail?: string }>;
+}
+
+export interface StructuredAnswerShape {
+  key_findings: string[];
+  detailed_analysis: string;
+  limitations: string;
+  conclusion: string;
+  confidence_score: number;
+  follow_up_suggestions: string[];
+}
+
+export interface StreamTableBlock {
+  id: string;
+  type: "table";
+  title?: string | null;
+  headers: string[];
+  rows: string[][];
+}
+
+export interface StreamChartBlock {
+  id: string;
+  type: "chart";
+  title?: string | null;
+  chart_type: "line" | "bar" | "pie" | "area" | "scatter";
+  series: Array<{ label: string; value: number }>;
+  raw_payload?: string | null;
+  x_key?: string;
+  y_key?: string;
+  z_key?: string;
+}
+
+export interface StreamDiagramBlock {
+  id: string;
+  type: "diagram";
+  title?: string | null;
+  diagram_type: string;
+  source: "mermaid" | "graph_json";
+  syntax: string;
+  description?: string;
+}
+
+export type StructuredBlock = StreamTableBlock | StreamChartBlock | StreamDiagramBlock;
 
 export interface DeepSpaceStreamEvent {
   event:
@@ -143,7 +201,6 @@ export interface MissionRuntimeState {
   runtimeHooksState?: "active" | "disabled";
   subagentProfile?: string;
   subagentProfileClassification?: "adaptive" | "preferred_profile";
-  workspaceModeEnabled?: boolean;
   diagnostics?: MissionRuntimeDiagnostics;
 }
 

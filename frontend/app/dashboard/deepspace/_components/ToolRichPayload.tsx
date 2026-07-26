@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Clock3, ListTodo, AlertTriangle } from "lucide-react";
 
-import { InlineMarkdown } from "@/app/dashboard/query/_components/InlineMarkdown";
+import DeepSpaceInlineMarkdown from "./DeepSpaceInlineMarkdown";
 
 type TodoItem = {
   content?: string;
@@ -56,12 +56,12 @@ export function renderStructuredToolInput(toolName: string, toolInput: Record<st
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="prose prose-invert text-foreground/80 max-w-none text-[12px] leading-relaxed">
-                    <InlineMarkdown content={content} />
+                    <DeepSpaceInlineMarkdown content={content} />
                   </div>
                   {activeForm && activeForm !== content ? (
                     <div className="text-foreground/45 mt-1 text-[11px] leading-relaxed">
                       <span className="text-foreground/25">Active form: </span>
-                      <InlineMarkdown content={activeForm} />
+                      <DeepSpaceInlineMarkdown content={activeForm} />
                     </div>
                   ) : null}
                 </div>
@@ -100,7 +100,7 @@ export function renderStructuredToolOutput(toolName: string, toolOutput: string)
           <span>Ledger update</span>
         </div>
         <div className="prose prose-invert text-foreground/70 max-w-none text-[11px] leading-relaxed">
-          <InlineMarkdown content={trimmed} />
+          <DeepSpaceInlineMarkdown content={trimmed} />
         </div>
       </div>
     );
@@ -108,7 +108,7 @@ export function renderStructuredToolOutput(toolName: string, toolOutput: string)
 
   return (
     <div className="prose prose-invert text-foreground/45 custom-scrollbar max-h-[250px] max-w-none overflow-x-auto overflow-y-auto rounded border border-white/5 bg-black/25 p-2 text-[11px] leading-relaxed">
-      <InlineMarkdown content={toolOutput} />
+      <DeepSpaceInlineMarkdown content={toolOutput} />
     </div>
   );
 }

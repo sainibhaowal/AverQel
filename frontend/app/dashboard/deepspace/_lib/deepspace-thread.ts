@@ -21,18 +21,9 @@ import {
   type MessageMetrics,
   type StructuredAnswerShape,
   type StructuredBlock,
-} from "@/app/dashboard/query/_lib/stream-protocol";
+} from "./deepspace-stream";
+import { normalizeMarkdown } from "./markdown";
 import { TOOL_LABELS } from "./constants";
-
-const PHASE_LABELS: Record<AgentPhase, string> = {
-  exploring: "Exploring",
-  planning: "Planning",
-  modifying: "Modifying",
-  verifying: "Verifying",
-  testing: "Testing",
-  completed: "Completed",
-  thinking: "Thinking",
-};
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -233,10 +224,6 @@ function readMissionRuntimeState(value: unknown): MissionRuntimeState | undefine
     subagentProfileClassification:
       typeof runtime.subagent_profile_classification === "string"
         ? (runtime.subagent_profile_classification as MissionRuntimeState["subagentProfileClassification"])
-        : undefined,
-    workspaceModeEnabled:
-      typeof runtime.workspace_mode_enabled === "boolean"
-        ? runtime.workspace_mode_enabled
         : undefined,
     diagnostics: diagnostics
       ? {
@@ -474,7 +461,6 @@ function mergeMissionRuntimeState(
     subagentProfile: incoming.subagentProfile ?? current.subagentProfile,
     subagentProfileClassification:
       incoming.subagentProfileClassification ?? current.subagentProfileClassification,
-    workspaceModeEnabled: incoming.workspaceModeEnabled ?? current.workspaceModeEnabled,
     diagnostics: {
       ...(current.diagnostics ?? {}),
       ...(incoming.diagnostics ?? {}),
@@ -618,49 +604,61 @@ function updateDurableMissionRuntime(
   event: DeepSpaceStreamEvent,
 ): DurableMissionRuntimeState | undefined {
   const data = event.data;
-  const durableEventType = typeof data.durable_event_type === "string" ? data.durable_event_type : "";
-  const runId = typeof data.durable_run_id === "string"
-    ? data.durable_run_id
-    : current?.runId;
+  const durableEventType =
+    typeof data.durable_event_type === "string" ? data.durable_event_type : "";
+  const runId = typeof data.durable_run_id === "string" ? data.durable_run_id : current?.runId;
   if (!runId && !current) return undefined;
-  const sequence = typeof data.sequence === "number" ? data.sequence : current?.lastSequence ?? 0;
-  const transportState = typeof data.durable_transport_state === "string"
-    ? data.durable_transport_state
-    : "connected";
-  const approvalDelta = durableEventType === "approval_requested" || durableEventType === "run_paused_for_approval"
-    ? 1
-    : durableEventType === "approval_resolved"
-      ? -1
-      : 0;
+  const sequence = typeof data.sequence === "number" ? data.sequence : (current?.lastSequence ?? 0);
+  const transportState =
+    typeof data.durable_transport_state === "string" ? data.durable_transport_state : "connected";
+  const approvalDelta =
+    durableEventType === "approval_requested" || durableEventType === "run_paused_for_approval"
+      ? 1
+      : durableEventType === "approval_resolved"
+        ? -1
+        : 0;
   return {
     runId: runId ?? "",
-    status: typeof data.status === "string"
-      ? data.status
-      : durableEventType === "run_completed"
-        ? "completed"
-        : durableEventType === "run_failed"
-          ? "failed"
-          : durableEventType === "run_cancelled"
-            ? "cancelled"
-            : current?.status,
+    status:
+      typeof data.status === "string"
+        ? data.status
+        : durableEventType === "run_completed"
+          ? "completed"
+          : durableEventType === "run_failed"
+            ? "failed"
+            : durableEventType === "run_cancelled"
+              ? "cancelled"
+              : current?.status,
     lastSequence: Math.max(current?.lastSequence ?? 0, sequence),
-    checkpointSequence: typeof data.checkpoint_sequence === "number"
-      ? Math.max(current?.checkpointSequence ?? 0, data.checkpoint_sequence)
-      : current?.checkpointSequence,
-    continuationEpoch: typeof data.continuation_epoch === "number"
-      ? Math.max(current?.continuationEpoch ?? 0, data.continuation_epoch)
-      : current?.continuationEpoch,
-    recoveryCount: typeof data.recovery_count === "number"
-      ? Math.max(current?.recoveryCount ?? 0, data.recovery_count)
-      : current?.recoveryCount,
+    checkpointSequence:
+      typeof data.checkpoint_sequence === "number"
+        ? Math.max(current?.checkpointSequence ?? 0, data.checkpoint_sequence)
+        : current?.checkpointSequence,
+    continuationEpoch:
+      typeof data.continuation_epoch === "number"
+        ? Math.max(current?.continuationEpoch ?? 0, data.continuation_epoch)
+        : current?.continuationEpoch,
+    recoveryCount:
+      typeof data.recovery_count === "number"
+        ? Math.max(current?.recoveryCount ?? 0, data.recovery_count)
+        : current?.recoveryCount,
     pendingApprovals: Math.max(0, (current?.pendingApprovals ?? 0) + approvalDelta),
     reconnectState:
       transportState === "reconnecting" || transportState === "interrupted"
         ? transportState
         : "connected",
-    budgetUsage: data.budget_usage && typeof data.budget_usage === "object" ? data.budget_usage as Record<string, number> : current?.budgetUsage,
-    budgetLimits: data.budget_limits && typeof data.budget_limits === "object" ? data.budget_limits as Record<string, number> : current?.budgetLimits,
-    supervisorDecision: typeof data.supervisor_decision === "string" ? data.supervisor_decision : current?.supervisorDecision,
+    budgetUsage:
+      data.budget_usage && typeof data.budget_usage === "object"
+        ? (data.budget_usage as Record<string, number>)
+        : current?.budgetUsage,
+    budgetLimits:
+      data.budget_limits && typeof data.budget_limits === "object"
+        ? (data.budget_limits as Record<string, number>)
+        : current?.budgetLimits,
+    supervisorDecision:
+      typeof data.supervisor_decision === "string"
+        ? data.supervisor_decision
+        : current?.supervisorDecision,
     replayReadOnly: true,
   };
 }
@@ -684,15 +682,16 @@ function updateMissionCanvas(
       startedAt,
       lastUpdatedAt: startedAt,
       runtimeState: readMissionRuntimeState(data.runtime_state),
-      durableRuntime: typeof data.durable_run_id === "string"
-        ? {
-            runId: data.durable_run_id,
-            status: typeof data.status === "string" ? data.status : "planning",
-            lastSequence: typeof data.sequence === "number" ? data.sequence : 0,
-            reconnectState: "connected",
-            replayReadOnly: true,
-          }
-        : undefined,
+      durableRuntime:
+        typeof data.durable_run_id === "string"
+          ? {
+              runId: data.durable_run_id,
+              status: typeof data.status === "string" ? data.status : "planning",
+              lastSequence: typeof data.sequence === "number" ? data.sequence : 0,
+              reconnectState: "connected",
+              replayReadOnly: true,
+            }
+          : undefined,
       approvalQueue: [],
       lanes: [],
       globalEvents: [
@@ -1278,19 +1277,6 @@ function extractThinking(content: string): { text: string; thinking: string } {
     }
   }
   return { text: text.trim(), thinking: thinking.trim() };
-}
-
-function normalizeRenderedMarkdown(content: string): string {
-  let next = content;
-  next = next.replace(/([^#\n])(#{1,4}\s)/g, "$1\n\n$2");
-  next = next
-    .split("\n")
-    .map((line) =>
-      line.trim().startsWith("|") && line.includes("||") ? line.replace(/\|\|/g, "|\n|") : line,
-    )
-    .join("\n");
-  next = next.replace(/\n{3,}/g, "\n\n");
-  return next.trim();
 }
 
 function mergeUniqueBlocks(
@@ -2112,7 +2098,7 @@ function promoteTurnTextToThinking(
   return {
     ...message,
     rawContent,
-    content: normalizeRenderedMarkdown(rawContent),
+    content: normalizeMarkdown(rawContent),
     currentTurnText: "",
     agentSteps: nextSteps,
   };
@@ -2246,7 +2232,7 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     metadata.structured_answer && typeof metadata.structured_answer === "object"
       ? (metadata.structured_answer as StructuredAnswerShape)
       : null;
-  const content = normalizeRenderedMarkdown(message.content);
+  const content = normalizeMarkdown(message.content);
   const metrics = rehydrateMetricsFromHistory(metadata, message.created_at);
   const agentSteps = normalizeHistoryAgentSteps(metadata.agent_steps);
   const compaction = readConversationCompactionState(metadata.conversation_compaction);
@@ -2510,7 +2496,7 @@ function reduceDeepSpaceThread(
         metadata.structured_answer && typeof metadata.structured_answer === "object"
           ? (metadata.structured_answer as StructuredAnswerShape)
           : null;
-      const content = normalizeRenderedMarkdown(version.content);
+      const content = normalizeMarkdown(version.content);
       const compaction = readConversationCompactionState(metadata.conversation_compaction);
 
       return {
@@ -2695,7 +2681,7 @@ function reduceDeepSpaceThread(
           ...current,
           rawContent,
           thinkingContent: extracted.thinking || current.thinkingContent,
-          content: normalizeRenderedMarkdown(extracted.text),
+          content: normalizeMarkdown(extracted.text),
           currentTurnText,
           status: "streaming",
           metrics,
@@ -2711,7 +2697,7 @@ function reduceDeepSpaceThread(
           ...current,
           rawContent: content,
           thinkingContent: extracted.thinking || current.thinkingContent,
-          content: normalizeRenderedMarkdown(extracted.text),
+          content: normalizeMarkdown(extracted.text),
           structured: (event.data.structured as StructuredAnswerShape | null | undefined) ?? null,
           status: state.isStreaming ? "streaming" : "ready",
           timeline: nextTimeline,
@@ -3298,7 +3284,8 @@ function durableStateFromHistory(
     const runId = metadata.durable_run_id;
     return {
       runId,
-      status: typeof metadata.durable_run_status === "string" ? metadata.durable_run_status : undefined,
+      status:
+        typeof metadata.durable_run_status === "string" ? metadata.durable_run_status : undefined,
       lastSequence: parseDurableNumber(metadata.durable_sequence) ?? 0,
       checkpointSequence: parseDurableNumber(metadata.durable_checkpoint_sequence) ?? null,
       continuationEpoch: parseDurableNumber(metadata.durable_continuation_epoch),
@@ -3339,18 +3326,20 @@ function syncDurableRuntimeState(
   }
 
   const data = action.event.data;
-  const runId = typeof data.durable_run_id === "string"
-    ? data.durable_run_id
-    : typeof data.run_id === "string"
-      ? data.run_id
-      : action.event.event === "mission_start" && typeof data.mission_id === "string"
-        ? data.mission_id
-        : state.durableRun?.runId;
+  const runId =
+    typeof data.durable_run_id === "string"
+      ? data.durable_run_id
+      : typeof data.run_id === "string"
+        ? data.run_id
+        : action.event.event === "mission_start" && typeof data.mission_id === "string"
+          ? data.mission_id
+          : state.durableRun?.runId;
   const sequence = parseDurableNumber(data.sequence);
-  const durableEventType = typeof data.durable_event_type === "string"
-    ? data.durable_event_type
-    : "";
-  const isDurableEvent = Boolean(data.durable_run_id || data.durable_event_type || sequence !== undefined);
+  const durableEventType =
+    typeof data.durable_event_type === "string" ? data.durable_event_type : "";
+  const isDurableEvent = Boolean(
+    data.durable_run_id || data.durable_event_type || sequence !== undefined,
+  );
   if (!isDurableEvent || !runId) {
     return state;
   }
@@ -3359,55 +3348,65 @@ function syncDurableRuntimeState(
   // PostgreSQL replay and SSE reconnects may deliver an already acknowledged
   // event again. The cursor is the durable identity, so do not let a replay
   // append duplicate timeline/tool steps or move runtime state backwards.
-  if (
-    sequence !== undefined &&
-    current?.runId === runId &&
-    sequence <= current.lastSequence
-  ) {
+  if (sequence !== undefined && current?.runId === runId && sequence <= current.lastSequence) {
     return state;
   }
-  const status = typeof data.status === "string"
-    ? data.status
-    : durableEventType === "run_completed"
-      ? "completed"
-      : durableEventType === "run_failed"
-        ? "failed"
-        : durableEventType === "run_cancelled"
-          ? "cancelled"
-          : current?.status;
-  const approvalDelta = durableEventType === "approval_requested" || durableEventType === "run_paused_for_approval"
-    ? 1
-    : durableEventType === "approval_resolved"
-      ? -1
-      : 0;
+  const status =
+    typeof data.status === "string"
+      ? data.status
+      : durableEventType === "run_completed"
+        ? "completed"
+        : durableEventType === "run_failed"
+          ? "failed"
+          : durableEventType === "run_cancelled"
+            ? "cancelled"
+            : current?.status;
+  const approvalDelta =
+    durableEventType === "approval_requested" || durableEventType === "run_paused_for_approval"
+      ? 1
+      : durableEventType === "approval_resolved"
+        ? -1
+        : 0;
   const next: DurableMissionRuntimeState = {
     runId,
     status,
     lastSequence: Math.max(current?.lastSequence ?? 0, sequence ?? 0),
-    checkpointSequence: parseDurableNumber(data.checkpoint_sequence) !== undefined
-      ? Math.max(current?.checkpointSequence ?? 0, parseDurableNumber(data.checkpoint_sequence) ?? 0)
-      : current?.checkpointSequence ?? null,
-    continuationEpoch: parseDurableNumber(data.continuation_epoch) !== undefined
-      ? Math.max(current?.continuationEpoch ?? 0, parseDurableNumber(data.continuation_epoch) ?? 0)
-      : current?.continuationEpoch,
-    recoveryCount: parseDurableNumber(data.recovery_count) !== undefined
-      ? Math.max(current?.recoveryCount ?? 0, parseDurableNumber(data.recovery_count) ?? 0)
-      : current?.recoveryCount,
+    checkpointSequence:
+      parseDurableNumber(data.checkpoint_sequence) !== undefined
+        ? Math.max(
+            current?.checkpointSequence ?? 0,
+            parseDurableNumber(data.checkpoint_sequence) ?? 0,
+          )
+        : (current?.checkpointSequence ?? null),
+    continuationEpoch:
+      parseDurableNumber(data.continuation_epoch) !== undefined
+        ? Math.max(
+            current?.continuationEpoch ?? 0,
+            parseDurableNumber(data.continuation_epoch) ?? 0,
+          )
+        : current?.continuationEpoch,
+    recoveryCount:
+      parseDurableNumber(data.recovery_count) !== undefined
+        ? Math.max(current?.recoveryCount ?? 0, parseDurableNumber(data.recovery_count) ?? 0)
+        : current?.recoveryCount,
     pendingApprovals: Math.max(0, (current?.pendingApprovals ?? 0) + approvalDelta),
     reconnectState:
       data.durable_transport_state === "reconnecting" ||
       data.durable_transport_state === "interrupted"
         ? data.durable_transport_state
         : "connected",
-    budgetUsage: data.budget_usage && typeof data.budget_usage === "object"
-      ? (data.budget_usage as Record<string, number>)
-      : current?.budgetUsage,
-    budgetLimits: data.budget_limits && typeof data.budget_limits === "object"
-      ? (data.budget_limits as Record<string, number>)
-      : current?.budgetLimits,
-    supervisorDecision: typeof data.supervisor_decision === "string"
-      ? data.supervisor_decision
-      : current?.supervisorDecision,
+    budgetUsage:
+      data.budget_usage && typeof data.budget_usage === "object"
+        ? (data.budget_usage as Record<string, number>)
+        : current?.budgetUsage,
+    budgetLimits:
+      data.budget_limits && typeof data.budget_limits === "object"
+        ? (data.budget_limits as Record<string, number>)
+        : current?.budgetLimits,
+    supervisorDecision:
+      typeof data.supervisor_decision === "string"
+        ? data.supervisor_decision
+        : current?.supervisorDecision,
     replayReadOnly: true,
   };
   return { ...state, durableRun: next };

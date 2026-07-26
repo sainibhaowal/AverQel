@@ -36,6 +36,7 @@ DEFAULT_PROVIDER_BASE_URLS: dict[str, str] = {
     "google": "https://generativelanguage.googleapis.com/v1beta",
     "opencode-zen": "https://opencode.ai/zen/v1",
     "tavily": "https://api.tavily.com",
+    "searxng": "http://searxng:8080",
 }
 
 
@@ -54,9 +55,7 @@ class ProviderSelectionService:
     def __post_init__(self) -> None:
         object.__setattr__(self, "assignments", ProviderAssignmentsRepository(self.db))
         object.__setattr__(self, "configs", ProviderConfigsRepository(self.db))
-        object.__setattr__(
-            self, "health_checks", ProviderHealthChecksRepository(self.db)
-        )
+        object.__setattr__(self, "health_checks", ProviderHealthChecksRepository(self.db))
         object.__setattr__(self, "model_cache", ProviderModelCacheRepository(self.db))
         object.__setattr__(self, "registry", ProviderRegistry(self.settings))
         object.__setattr__(self, "secrets", ProviderSecretService(self.db))
@@ -68,6 +67,7 @@ class ProviderSelectionService:
         tenant_id: uuid.UUID,
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
+        allow_live_model_discovery: bool = True,
     ) -> ProviderSelectionResult:
         return self._resolve(
             tenant_id=tenant_id,
@@ -75,6 +75,7 @@ class ProviderSelectionService:
             actor_user_id=actor_user_id,
             feature_scope="chat",
             fallback_scope="fallback_chat",
+            allow_live_model_discovery=allow_live_model_discovery,
         )
 
     def resolve_embeddings(
@@ -129,6 +130,7 @@ class ProviderSelectionService:
         actor_user_id: uuid.UUID | None,
         feature_scope: str,
         fallback_scope: str,
+        allow_live_model_discovery: bool = True,
     ) -> ProviderSelectionResult:
         notes: list[str] = []
         ordered_assignments: list[
@@ -202,6 +204,7 @@ class ProviderSelectionService:
                 source=source,
                 assignment=assignment,
                 notes=notes,
+                allow_live_model_discovery=allow_live_model_discovery,
             )
             if candidate is None:
                 continue
@@ -216,6 +219,7 @@ class ProviderSelectionService:
                 notes=notes,
                 candidates=candidates,
                 seen_provider_configs=seen_provider_configs,
+                allow_live_model_discovery=allow_live_model_discovery,
             )
 
         if feature_scope == "embeddings" and not candidates:
@@ -256,9 +260,7 @@ class ProviderSelectionService:
                 "feature_scope": feature_scope,
                 "workspace_id": str(workspace_id) if workspace_id else "",
                 "selected_source": candidates[0].source if candidates else "none",
-                "selected_provider_type": (
-                    candidates[0].provider_type if candidates else "none"
-                ),
+                "selected_provider_type": (candidates[0].provider_type if candidates else "none"),
                 "selected_model_name": candidates[0].model_name if candidates else "",
             },
         )
@@ -277,6 +279,7 @@ class ProviderSelectionService:
         notes: list[str],
         candidates: list[ProviderSelectionCandidate],
         seen_provider_configs: set[uuid.UUID],
+        allow_live_model_discovery: bool = True,
     ) -> None:
         scoped_providers = sorted(
             self._providers_in_resolution_scope(
@@ -326,6 +329,7 @@ class ProviderSelectionService:
                 tenant_id=tenant_id,
                 provider_config_id=provider.id,
                 model_name=resolved_model_name,
+                allow_live_model_discovery=allow_live_model_discovery,
             )
             candidates.append(
                 ProviderSelectionCandidate(
@@ -345,9 +349,7 @@ class ProviderSelectionService:
                     context_window=context_window,
                     context_window_source=context_window_source,
                     priority=provider.priority,
-                    health_status=(
-                        latest_health.status if latest_health is not None else None
-                    ),
+                    health_status=(latest_health.status if latest_health is not None else None),
                     metadata={
                         "display_name": provider.display_name,
                         "auto_selected": True,
@@ -461,9 +463,7 @@ class ProviderSelectionService:
                 or provider.id in seen_provider_configs
             ):
                 continue
-            model_name = (
-                provider.default_reranker_model or self.settings.reranking_model
-            )
+            model_name = provider.default_reranker_model or self.settings.reranking_model
             latest_health = self.health_checks.get_latest_check(
                 tenant_id=tenant_id,
                 provider_config_id=provider.id,
@@ -492,9 +492,7 @@ class ProviderSelectionService:
                     api_key=api_key,
                     auth_mode=provider.auth_mode,
                     priority=provider.priority,
-                    health_status=(
-                        latest_health.status if latest_health is not None else None
-                    ),
+                    health_status=(latest_health.status if latest_health is not None else None),
                     metadata={
                         "display_name": provider.display_name,
                         "auto_selected": True,
@@ -530,7 +528,7 @@ class ProviderSelectionService:
         for provider in scoped_providers:
             if (
                 not provider.enabled
-                or provider.provider_type != "tavily"
+                or provider.provider_type not in {"tavily", "searxng"}
                 or provider.id in seen_provider_configs
             ):
                 continue
@@ -562,9 +560,7 @@ class ProviderSelectionService:
                     api_key=api_key,
                     auth_mode=provider.auth_mode,
                     priority=provider.priority,
-                    health_status=(
-                        latest_health.status if latest_health is not None else None
-                    ),
+                    health_status=(latest_health.status if latest_health is not None else None),
                     metadata={
                         **dict(provider.metadata_json or {}),
                         "display_name": provider.display_name,
@@ -593,9 +589,7 @@ class ProviderSelectionService:
         )
         if owner_user_id is None:
             scoped = [
-                provider
-                for provider in scoped
-                if provider.visibility_scope in {"tenant", "system"}
+                provider for provider in scoped if provider.visibility_scope in {"tenant", "system"}
             ]
         return scoped
 
@@ -644,9 +638,7 @@ class ProviderSelectionService:
             model_name=model_name,
         )
 
-        base_url = provider.api_base_url or DEFAULT_PROVIDER_BASE_URLS.get(
-            provider.provider_type
-        )
+        base_url = provider.api_base_url or DEFAULT_PROVIDER_BASE_URLS.get(provider.provider_type)
         docker_url = self._dockerize_url(base_url)
 
         return ProviderSelectionCandidate(
@@ -701,6 +693,7 @@ class ProviderSelectionService:
         source: str,
         assignment: ProviderAssignment,
         notes: list[str],
+        allow_live_model_discovery: bool = True,
     ) -> ProviderSelectionCandidate | None:
         config = (
             self.configs.get_accessible_by_id(
@@ -729,7 +722,7 @@ class ProviderSelectionService:
         if feature_scope == "reranking" and not config.supports_reranking:
             notes.append(f"{source}:missing-reranking-capability:{config.id}")
             return None
-        if feature_scope == "web_search" and config.provider_type != "tavily":
+        if feature_scope == "web_search" and config.provider_type not in {"tavily", "searxng"}:
             notes.append(f"{source}:missing-web-search-capability:{config.id}")
             return None
 
@@ -760,9 +753,7 @@ class ProviderSelectionService:
                 config.default_embedding_model
                 if feature_scope == "embeddings"
                 else (
-                    config.default_reranker_model
-                    if feature_scope == "reranking"
-                    else "web-search"
+                    config.default_reranker_model if feature_scope == "reranking" else "web-search"
                 )
             )
         )
@@ -777,9 +768,7 @@ class ProviderSelectionService:
                 fallback_model_name=config.default_chat_model,
             )
             if resolved_chat_model is None:
-                notes.append(
-                    f"{source}:unavailable-chat-model:{config.id}:{model_name}"
-                )
+                notes.append(f"{source}:unavailable-chat-model:{config.id}:{model_name}")
                 return None
             if resolved_chat_model != model_name:
                 notes.append(
@@ -790,6 +779,7 @@ class ProviderSelectionService:
                 tenant_id=tenant_id,
                 provider_config_id=config.id,
                 model_name=model_name,
+                allow_live_model_discovery=allow_live_model_discovery,
             )
         else:
             context_window = None
@@ -810,8 +800,7 @@ class ProviderSelectionService:
             tenant_id=tenant_id,
             workspace_id=assignment.workspace_id,
             base_url=self._dockerize_url(
-                config.api_base_url
-                or DEFAULT_PROVIDER_BASE_URLS.get(config.provider_type)
+                config.api_base_url or DEFAULT_PROVIDER_BASE_URLS.get(config.provider_type)
             ),
             api_key=api_key,
             auth_mode=config.auth_mode,
@@ -820,6 +809,7 @@ class ProviderSelectionService:
             priority=assignment.priority,
             health_status=latest_health.status if latest_health is not None else None,
             metadata={
+                **dict(config.metadata_json or {}),
                 "display_name": config.display_name,
                 "is_local": bool(config.is_local),
             },
@@ -885,6 +875,7 @@ class ProviderSelectionService:
         tenant_id: uuid.UUID,
         provider_config_id: uuid.UUID,
         model_name: str,
+        allow_live_model_discovery: bool = True,
     ) -> tuple[int | None, str | None]:
         provider = self.configs.get_by_id(
             tenant_id=tenant_id,
@@ -893,21 +884,21 @@ class ProviderSelectionService:
         if provider is None:
             return None, None
 
-        api_key = self._resolve_secret_value(
-            tenant_id=tenant_id,
-            provider_config_id=provider_config_id,
-            auth_mode=provider.auth_mode,
-        )
-        try:
-            discovery = self.registry.get_model_discovery_provider_from_config(
-                provider,
-                api_key=api_key,
+        model_infos = []
+        if allow_live_model_discovery:
+            api_key = self._resolve_secret_value(
+                tenant_id=tenant_id,
+                provider_config_id=provider_config_id,
+                auth_mode=provider.auth_mode,
             )
-            model_infos = (
-                list(discovery.list_models()) if provider.supports_chat else []
-            )
-        except Exception:  # noqa: BLE001
-            model_infos = []
+            try:
+                discovery = self.registry.get_model_discovery_provider_from_config(
+                    provider,
+                    api_key=api_key,
+                )
+                model_infos = list(discovery.list_models()) if provider.supports_chat else []
+            except Exception:  # noqa: BLE001
+                model_infos = []
 
         normalized_requested_model = self._normalize_model_name(model_name)
         for model in model_infos:

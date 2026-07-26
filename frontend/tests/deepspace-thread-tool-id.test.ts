@@ -6,6 +6,53 @@ import {
 } from "../app/dashboard/deepspace/_lib/deepspace-thread";
 
 describe("deepSpaceThreadReducer tool streaming", () => {
+  it("keeps streamed thinking visible after completion and history reload", () => {
+    let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "stream_event",
+      event: {
+        event: "start",
+        data: {
+          message_id: "assistant-thinking",
+          conversation_id: "conv-thinking",
+          started_at: new Date().toISOString(),
+        },
+      },
+    });
+
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: {
+        event: "thinking",
+        data: { text: "First thought." },
+      },
+    });
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: {
+        event: "done",
+        data: {},
+      },
+    });
+
+    expect(state.messages[0]?.thinkingContent).toBe("First thought.");
+
+    const reloaded = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conv-thinking",
+      messages: [
+        {
+          id: "assistant-thinking",
+          role: "assistant",
+          content: "Answer",
+          created_at: new Date().toISOString(),
+          metadata_json: { thinking: { content: "First thought." } },
+        },
+      ],
+    });
+
+    expect(reloaded.messages[0]?.thinkingContent).toBe("First thought.");
+  });
+
   it("matches tool results by tool id when the same tool runs multiple times", () => {
     let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "stream_event",

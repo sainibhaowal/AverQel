@@ -690,11 +690,9 @@ class OpenCodeZenProvider:
             self._raise_provider_error(response)
         payload_obj: dict[str, Any] = response.json()
         content = self._extract_response_text(payload_obj)
-        thinking_content = (
-            self._extract_response_thinking(payload_obj)
-            if request.reasoning_enabled
-            else None
-        )
+        # Response capture is provider-output driven. Request controls may be
+        # model-specific, but emitted reasoning must never be discarded here.
+        thinking_content = self._extract_response_thinking(payload_obj)
         tool_calls = self._extract_response_tool_calls(payload_obj)
         usage = payload_obj.get("usage", {})
         return ChatGenerateResponse(

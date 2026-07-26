@@ -22,6 +22,7 @@ def test_provider_management_service_lists_supported_catalog() -> None:
         assert "ollama" in provider_types
         assert "opencode-zen" in provider_types
         assert "tavily" in provider_types
+        assert "searxng" in provider_types
     finally:
         session.close()
 

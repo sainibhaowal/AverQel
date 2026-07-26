@@ -25,11 +25,9 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
   default: ({
     onQueryChange,
     onSubmit,
-    onRuntimePreferencesChange,
   }: {
     onQueryChange: (value: string) => void;
     onSubmit: () => void;
-    onRuntimePreferencesChange?: (val: Record<string, unknown>) => void;
   }) => (
     <div>
       <button type="button" onClick={() => onQueryChange("hi")}>
@@ -38,14 +36,6 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
       <button type="button" onClick={onSubmit}>
         Submit Query
       </button>
-      {onRuntimePreferencesChange && (
-        <button
-          type="button"
-          onClick={() => onRuntimePreferencesChange({ planner_mode: "structured" })}
-        >
-          Update Runtime Preferences
-        </button>
-      )}
     </div>
   ),
 }));
@@ -75,31 +65,12 @@ vi.mock("../app/dashboard/query/_components/DeepSpaceScrollTracker", () => ({
   default: () => null,
 }));
 
-vi.mock("../app/dashboard/deepspace/_components/AgentCapabilities", () => ({
-  default: () => null,
-}));
-
-vi.mock("../app/dashboard/deepspace/_components/RuntimePreferencesDropdown", () => ({
-  default: ({
-    onChange,
-  }: {
-    onChange?: (value: {
-      planner_mode?: "default" | "structured";
-      runtime_hooks_enabled?: boolean;
-    }) => void;
-  }) => (
-    <button type="button" onClick={() => onChange?.({ planner_mode: "structured" })}>
-      Update Runtime Preferences
-    </button>
-  ),
-}));
-
 describe("DeepSpaceChatClient history sync", () => {
   beforeEach(() => {
     fetchWithAuthMock.mockReset();
     startMock.mockReset();
 
-    fetchWithAuthMock.mockImplementation(async (url: string, options?: RequestInit) => {
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
       if (url === "/deepspace/chats/conv-1/messages") {
         return {
           ok: true,
@@ -110,48 +81,9 @@ describe("DeepSpaceChatClient history sync", () => {
                 role: "assistant",
                 content: "Saved DeepSpace answer.",
                 created_at: new Date().toISOString(),
-                metadata_json: {
-                  conversation_compaction: {
-                    version: 1,
-                    trigger: "manual",
-                    compacted_at: new Date().toISOString(),
-                    anchor_message_id: "assistant-1",
-                    summary: "Compacted conversation history:\n- User: earlier context",
-                    summarized_count: 5,
-                    kept_recent_count: 8,
-                    before_tokens: 4200,
-                    after_tokens: 1600,
-                    saved_tokens: 2600,
-                  },
-                },
+                metadata_json: {},
               },
             ],
-          }),
-        };
-      }
-
-      if (url === "/deepspace/chats/runtime-preferences?conversation_id=conv-1") {
-        return {
-          ok: true,
-          json: async () => ({
-            execution_mode: "auto_review",
-            planner_mode: "default",
-            subagent_profile: "default",
-            runtime_hooks_enabled: true,
-            workspace_mode_enabled: true,
-          }),
-        };
-      }
-
-      if (url === "/deepspace/chats/runtime-preferences" && options?.method === "PATCH") {
-        return {
-          ok: true,
-          json: async () => ({
-            execution_mode: "auto_review",
-            planner_mode: "structured",
-            subagent_profile: "default",
-            runtime_hooks_enabled: true,
-            workspace_mode_enabled: true,
           }),
         };
       }
@@ -194,47 +126,6 @@ describe("DeepSpaceChatClient history sync", () => {
 
     await waitFor(() => {
       expect(startMock).toHaveBeenCalled();
-    });
-  });
-
-  it("reports usage metrics for loaded history", async () => {
-    const onMetricsUpdate = vi.fn();
-
-    render(<DeepSpaceChatClient activeConversationId="conv-1" onMetricsUpdate={onMetricsUpdate} />);
-
-    await waitFor(() => {
-      expect(onMetricsUpdate).toHaveBeenCalled();
-    });
-
-    await waitFor(() => {
-      expect(
-        onMetricsUpdate.mock.calls.some(
-          ([metrics]) => (metrics as { tokens?: number }).tokens === 1600,
-        ),
-      ).toBe(true);
-    });
-  });
-
-  it("persists runtime control changes through the runtime preferences endpoint", async () => {
-    render(<DeepSpaceChatClient activeConversationId="conv-1" />);
-
-    await waitFor(() => {
-      expect(
-        fetchWithAuthMock.mock.calls.some(
-          ([url]) => url === "/deepspace/chats/runtime-preferences?conversation_id=conv-1",
-        ),
-      ).toBe(true);
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /update runtime preferences/i }));
-
-    await waitFor(() => {
-      expect(
-        fetchWithAuthMock.mock.calls.some(
-          ([url, options]) =>
-            url === "/deepspace/chats/runtime-preferences" && options?.method === "PATCH",
-        ),
-      ).toBe(true);
     });
   });
 });

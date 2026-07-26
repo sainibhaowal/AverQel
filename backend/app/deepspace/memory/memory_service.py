@@ -235,8 +235,8 @@ class MemoryService:
         user_id = self._normalize_owner_id(user_id)
 
         from app.deepspace.integrations.client_proxy import client_proxy_registry
-        channel = "storage" if client_proxy_registry.is_storage_connected(str(tenant_id), str(user_id)) else "workspace"
-        if client_proxy_registry.is_client_connected(str(tenant_id), str(user_id), channel=channel):
+        channel = "storage"
+        if client_proxy_registry.is_storage_connected(str(tenant_id), str(user_id)):
             return await client_proxy_registry.db_proxy_call(
                 str(tenant_id), str(user_id),
                 "db.memories.store_fact",
@@ -346,8 +346,8 @@ class MemoryService:
         user_id = self._normalize_owner_id(user_id)
 
         from app.deepspace.integrations.client_proxy import client_proxy_registry
-        channel = "storage" if client_proxy_registry.is_storage_connected(str(tenant_id), str(user_id)) else "workspace"
-        if client_proxy_registry.is_client_connected(str(tenant_id), str(user_id), channel=channel):
+        channel = "storage"
+        if client_proxy_registry.is_storage_connected(str(tenant_id), str(user_id)):
             return await client_proxy_registry.db_proxy_call(
                 str(tenant_id), str(user_id),
                 "db.memories.search_memories",

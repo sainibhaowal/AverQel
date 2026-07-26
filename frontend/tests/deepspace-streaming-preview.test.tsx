@@ -6,7 +6,7 @@ const markdownRendererMock = vi.fn(({ content }: { content: string }) => (
   <div>Markdown: {content}</div>
 ));
 
-vi.mock("../app/dashboard/query/_components/MarkdownRenderer", () => ({
+vi.mock("../app/dashboard/deepspace/_components/DeepSpaceMarkdownRenderer", () => ({
   default: (props: { content: string }) => markdownRendererMock(props),
 }));
 

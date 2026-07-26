@@ -100,7 +100,7 @@ def _provider_config_response(
     tenant_id: uuid.UUID,
     provider: Any,
 ) -> ProviderConfigResponse:
-    supports_web_search = provider.provider_type == "tavily" or bool(
+    supports_web_search = provider.provider_type in {"tavily", "searxng"} or bool(
         dict(provider.metadata_json or {}).get("supports_web_search")
     )
     return ProviderConfigResponse(

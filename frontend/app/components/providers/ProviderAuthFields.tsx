@@ -22,6 +22,7 @@ interface ProviderAuthFieldsProps {
 }
 
 export default function ProviderAuthFields({
+  providerType,
   catalogEntry,
   authMode,
   onAuthModeChange,
@@ -33,7 +34,7 @@ export default function ProviderAuthFields({
 }: ProviderAuthFieldsProps) {
   const authModes = catalogEntry?.auth_modes || ["api_key", "none"];
   // Only hide URL for fully built-in providers (auth_mode "none") — local runtimes like LM Studio still need their URL
-  const requiresBaseUrl = authMode !== "none";
+  const requiresBaseUrl = authMode !== "none" || providerType === "searxng";
 
   const authOptions = authModes.map((m) => ({
     value: m,
@@ -59,7 +60,7 @@ export default function ProviderAuthFields({
 
         <div className="space-y-1.5">
           <label className="text-muted-foreground/60 block px-0.5 font-mono text-[9px] tracking-[0.2em] uppercase">
-            API / Runtime URL
+            {providerType === "searxng" ? "SearXNG Endpoint" : "API / Runtime URL"}
           </label>
           {requiresBaseUrl ? (
             <div className="group relative">

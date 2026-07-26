@@ -15,19 +15,18 @@ STORAGE_RPC_TTL_SECONDS = 90
 
 class ClientProxyRegistry:
     """
-    Manages active Tauri/Electron desktop client proxy connections.
-    Enables zero-VPS-storage executions by redirecting fs/shell commands over WebSockets.
+    Manages the authenticated client-owned storage connection.
+
+    This channel is limited to encrypted chat, memory, and provider persistence
+    RPCs. Local filesystem and shell proxying are intentionally unsupported.
     """
     def __init__(self):
-        # A user may have more than one client channel open at once.  The
-        # workspace terminal and the client-owned data channel must never
-        # overwrite each other.
         self._clients: dict[tuple[str, str], WebSocket] = {}
         self._pending_requests: dict[str, asyncio.Future[Any]] = {}
 
     @staticmethod
     def _key(tenant_id: str, user_id: str, channel: str) -> tuple[str, str]:
-        return (f"{tenant_id}:{user_id}", str(channel or "workspace"))
+        return (f"{tenant_id}:{user_id}", str(channel or "storage"))
 
     async def register_client(
         self,
@@ -35,7 +34,7 @@ class ClientProxyRegistry:
         user_id: str,
         websocket: WebSocket,
         *,
-        channel: str = "workspace",
+        channel: str = "storage",
     ):
         key = self._key(tenant_id, user_id, channel)
         previous = self._clients.get(key)
@@ -52,7 +51,7 @@ class ClientProxyRegistry:
         tenant_id: str,
         user_id: str,
         *,
-        channel: str = "workspace",
+        channel: str = "storage",
         websocket: WebSocket | None = None,
     ):
         key = self._key(tenant_id, user_id, channel)
@@ -62,15 +61,12 @@ class ClientProxyRegistry:
             logger.info("Unregistered client proxy connection for %s/%s", key[0], key[1])
 
     def is_client_connected(
-        self, tenant_id: str, user_id: str, *, channel: str = "workspace"
+        self, tenant_id: str, user_id: str, *, channel: str = "storage"
     ) -> bool:
         key = self._key(tenant_id, user_id, channel)
         return key in self._clients
 
     def is_storage_connected(self, tenant_id: str, user_id: str) -> bool:
-        # Chat/history RPCs use the dedicated client-storage websocket.  The
-        # workspace channel is a separate terminal transport and may exist
-        # without the encrypted persistence channel.
         key = self._key(tenant_id, user_id, "storage")
         return key in self._clients
 
@@ -102,7 +98,7 @@ class ClientProxyRegistry:
         params: dict[str, Any],
         timeout: float = 30.0,
         *,
-        channel: str = "workspace",
+        channel: str = "storage",
     ) -> Any:
         key = self._key(tenant_id, user_id, channel)
         websocket = self._clients.get(key)
@@ -141,7 +137,7 @@ class ClientProxyRegistry:
         params: dict[str, Any],
         timeout: float = 30.0,
         *,
-        channel: str = "workspace",
+        channel: str = "storage",
     ) -> Any:
         """
         Sends database-specific queries to the client proxy.

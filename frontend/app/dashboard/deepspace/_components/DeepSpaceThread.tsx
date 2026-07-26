@@ -14,9 +14,6 @@ import {
   ChevronRight,
   X,
   AlertCircle,
-  Activity,
-  Database,
-  Clock,
   ThumbsUp,
   ThumbsDown,
   Download,
@@ -30,28 +27,22 @@ import { memo, useMemo, useState, useEffect, useRef } from "react";
 import { fetchWithAuth } from "@/lib/api";
 import { exportToDocx, exportToMarkdown, exportToPDF } from "@/lib/exportUtils";
 
-import ThinkingPanel from "@/app/dashboard/query/_components/ThinkingPanel";
-import AgentStepPanel from "./AgentStepPanel";
-import MarkdownRenderer from "@/app/dashboard/query/_components/MarkdownRenderer";
-import RichMessageRenderer from "@/app/dashboard/query/_components/RichMessageRenderer";
-import type { QueryThreadMessage } from "@/app/dashboard/query/_lib/stream-protocol";
+import DeepSpaceThinkingPanel from "./DeepSpaceThinkingPanel";
+import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 
 import type { DeepSpaceMessage } from "../_lib/deepspace-stream";
 
-import type { RuntimeIndicatorState } from "./RuntimeIndicatorChips";
 
 const LARGE_THREAD_THRESHOLD = 28;
 const RECENT_MESSAGE_WINDOW = 14;
 const HISTORY_REVEAL_BATCH = 20;
 const VIRTUAL_WINDOW_MIN_MESSAGES = 14;
 const VIRTUAL_WINDOW_OVERSCAN_PX = 1200;
-const NOOP = () => {};
 
 interface DeepSpaceThreadProps {
   messages: DeepSpaceMessage[];
   emptyPrompts: string[];
   onPromptSelect: (prompt: string) => void;
-  onClarifyAnswer?: (prompt: string) => void;
   onInsertLatestAnswer: () => void;
   onDeleteAssistant?: (messageId: string) => void;
   onRegenerate?: (messageId: string) => void;
@@ -60,12 +51,10 @@ interface DeepSpaceThreadProps {
   onUpdateDraft?: (messageId: string, content: string) => void;
   onSaveEdit?: (messageId: string, content: string) => void;
   onActivateVersion?: (messageId: string, versionId: string) => void;
-  onResumePermission?: (stepId: string, toolId: string, approved: boolean) => void;
   scrollMetrics?: {
     scrollTop: number;
     viewportHeight: number;
   } | null;
-  runtimeIndicators?: RuntimeIndicatorState | null;
 }
 
 type MessageWindow = {
@@ -91,10 +80,7 @@ const MessageBubble = memo(
     onUpdateDraft,
     onSaveEdit,
     onActivateVersion,
-    onResumePermission,
-    onClarifyAnswer,
     isLast,
-    runtimeIndicators,
   }: {
     message: DeepSpaceMessage;
     onRegenerate: (messageId: string) => void;
@@ -103,10 +89,7 @@ const MessageBubble = memo(
     onUpdateDraft: (messageId: string, content: string) => void;
     onSaveEdit: (messageId: string, content: string) => void;
     onActivateVersion: (messageId: string, versionId: string) => void;
-    onResumePermission?: (stepId: string, toolId: string, approved: boolean) => void;
-    onClarifyAnswer?: (prompt: string) => void;
     isLast: boolean;
-    runtimeIndicators?: RuntimeIndicatorState | null;
   }) {
     const [copied, setCopied] = useState(false);
     const [feedbackState, setFeedbackState] = useState<"helpful" | "unhelpful" | null>(null);
@@ -114,7 +97,6 @@ const MessageBubble = memo(
     const [showExportMenu, setShowExportMenu] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
 
-    const queryLikeMessage = useMemo(() => toQueryLikeMessage(message), [message]);
 
     useEffect(() => {
       function handleClickOutside(event: MouseEvent) {
@@ -295,19 +277,8 @@ const MessageBubble = memo(
 
           <div className="w-full min-w-0 flex-1">
             <div className="text-foreground/90 leading-relaxed">
-              {(message.agentSteps && message.agentSteps.length > 0) ||
-              (message.status === "streaming" && !message.content) ? (
-                <AgentStepPanel
-                  steps={message.agentSteps || []}
-                  timeline={message.timeline}
-                  isStreaming={message.status === "streaming"}
-                  metrics={message.metrics}
-                  onResume={onResumePermission}
-                  onClarifyAnswer={onClarifyAnswer}
-                  hasContent={!!message.content}
-                />
-              ) : message.thinkingContent?.trim() ? (
-                <ThinkingPanel
+              {message.thinkingContent?.trim() ? (
+                <DeepSpaceThinkingPanel
                   content={message.thinkingContent}
                   isStreaming={message.status === "streaming"}
                 />
@@ -315,19 +286,12 @@ const MessageBubble = memo(
 
               <div className="prose-premium prose prose-invert max-w-none">
                 {message.status === "streaming" && message.content.trim() ? (
-                  <MarkdownRenderer
+                  <DeepSpaceMarkdownRenderer
                     content={message.content}
                     streaming={true}
-                    messageId={message.id}
                   />
                 ) : message.status !== "streaming" ? (
-                  <RichMessageRenderer
-                    mode="deepspace"
-                    message={queryLikeMessage}
-                    isStreaming={false}
-                    onPreviewDocument={NOOP}
-                    onFollowupSelect={NOOP}
-                  />
+                  <DeepSpaceMarkdownRenderer content={message.content} />
                 ) : null}
               </div>
 
@@ -344,89 +308,6 @@ const MessageBubble = memo(
                 </div>
               ) : null}
 
-              {/* Advanced Metrics diagnostic panel */}
-              {message.metrics && (
-                <div className="mt-6 space-y-1.5 border-t border-white/5 pt-3 font-mono text-[9px] font-bold tracking-tight uppercase opacity-40 transition-opacity select-none hover:opacity-100">
-                  {/* Line 1: Model | T/S, Tokens, TTFT, Phase */}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {message.metrics.modelName && (
-                      <div className="flex items-center gap-1">
-                        <Bot size={10} />
-                        <span>{message.metrics.modelName}</span>
-                      </div>
-                    )}
-
-                    {message.metrics.modelName && (
-                      <span className="text-white/10" aria-hidden="true">
-                        |
-                      </span>
-                    )}
-
-                    {message.metrics.tokensPerSec !== undefined &&
-                      message.metrics.tokensPerSec > 0 && (
-                        <div className="flex items-center gap-1.5">
-                          <Activity size={11} className="text-emerald-500/80" />
-                          <span>
-                            <span className="text-emerald-400">{message.metrics.tokensPerSec}</span>{" "}
-                            <span className="text-foreground/30">T/S</span>
-                          </span>
-                        </div>
-                      )}
-
-                    {message.metrics.totalTokens !== undefined &&
-                      message.metrics.totalTokens > 0 && (
-                        <div className="flex items-center gap-1.5">
-                          <Database size={11} className="text-blue-500/80" />
-                          <span>
-                            <span className="text-blue-400">{message.metrics.totalTokens}</span>{" "}
-                            <span className="text-foreground/30">TOKENS</span>
-                          </span>
-                        </div>
-                      )}
-
-                    {message.metrics.ttftMs !== undefined && message.metrics.ttftMs > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <Clock size={11} className="text-amber-500/80" />
-                        <span>
-                          <span className="text-amber-400">{message.metrics.ttftMs}MS</span>{" "}
-                          <span className="text-foreground/30">TTFT</span>
-                        </span>
-                      </div>
-                    )}
-
-                    {message.metrics.phase && (
-                      <div className="flex items-center gap-1.5">
-                        <Sparkles size={11} className="text-cyan-400/80" />
-                        <span>
-                          <span className="text-cyan-400">
-                            {message.metrics.phase.replace(/_/g, " ")}
-                          </span>{" "}
-                          <span className="text-foreground/30">PHASE</span>
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Line 2: Last Milestone */}
-                  {message.metrics.latencyTimeline &&
-                    message.metrics.latencyTimeline.length > 0 && (
-                      <div className="text-foreground/30 flex items-center gap-1.5">
-                        <Activity size={11} className="text-fuchsia-400/80" />
-                        <span>
-                          <span className="text-fuchsia-400">
-                            {
-                              message.metrics.latencyTimeline[
-                                message.metrics.latencyTimeline.length - 1
-                              ]?.atMs
-                            }
-                            MS
-                          </span>{" "}
-                          <span className="text-foreground/30">LAST MILESTONE</span>
-                        </span>
-                      </div>
-                    )}
-                </div>
-              )}
             </div>
 
             {message.status !== "streaming" ? (
@@ -646,47 +527,11 @@ function areMessageBubblesEqual(previous: DeepSpaceMessage, next: DeepSpaceMessa
   );
 }
 
-function toQueryLikeMessage(message: DeepSpaceMessage): QueryThreadMessage {
-  return {
-    id: message.id,
-    role: message.role,
-    content: message.content,
-    rawContent: message.rawContent,
-    createdAt: message.createdAt,
-    status: message.status,
-    citations: [],
-    blocks: message.blocks ?? [],
-    artifacts: [],
-    trace: null,
-    followups: [],
-    statusHistory: [],
-    output: [],
-    files: [],
-    thinkingContent: message.thinkingContent,
-    confidence: undefined,
-    traceId: undefined,
-    cached: false,
-    structured: message.structured ?? null,
-    error: message.error ?? null,
-    activeVersionId: null,
-    activeVersionIndex: 0,
-    versionCount: 0,
-    versions: [],
-    metrics: message.metrics,
-  };
-}
-
-function StreamingTextPreview({ content }: { content: string }) {
-  return <div className="text-[15px] leading-8 whitespace-pre-wrap">{content || " "}</div>;
-}
-
 function estimateMessageHeight(message: DeepSpaceMessage): number {
   // More accurate height estimation to prevent jumping during virtualization
   const bodyLength =
     (message.content?.length ?? 0) +
     (message.thinkingContent?.length ?? 0) +
-    (message.agentSteps?.length ?? 0) * 120 + // Reduced from 220 as timeline is more compact
-    (message.metrics ? 40 : 0) +
     (message.error ? 80 : 0);
   const baseHeight = message.role === "user" ? 100 : 160;
   const lineHeight = message.role === "user" ? 22 : 24;
@@ -835,16 +680,13 @@ export default function DeepSpaceThread({
   messages,
   emptyPrompts,
   onPromptSelect,
-  onClarifyAnswer,
   onRegenerate = () => {},
   onStartEdit = () => {},
   onCancelEdit = () => {},
   onUpdateDraft = () => {},
   onSaveEdit = () => {},
   onActivateVersion = () => {},
-  onResumePermission,
   scrollMetrics = null,
-  runtimeIndicators = null,
 }: DeepSpaceThreadProps) {
   const [revealedHistoryCount, setRevealedHistoryCount] = useState(RECENT_MESSAGE_WINDOW);
 
@@ -953,9 +795,6 @@ export default function DeepSpaceThread({
             onUpdateDraft={onUpdateDraft}
             onSaveEdit={onSaveEdit}
             onActivateVersion={onActivateVersion}
-            onResumePermission={onResumePermission}
-            onClarifyAnswer={onClarifyAnswer}
-            runtimeIndicators={runtimeIndicators}
           />
         );
 

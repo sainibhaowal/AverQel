@@ -2,11 +2,14 @@
 
 import { useCallback, useRef } from "react";
 
-import type { DeepSpaceStreamEvent } from "../_lib/deepspace-stream";
+import { fetchWithAuth } from "@/lib/api";
 import {
-  connectDeepSpaceWebSocketStream,
-  type DeepSpaceWebSocketStreamHandle,
-} from "../websocketIntegration";
+  isRetryableStreamStatus,
+  isRetryableStreamTransportError,
+  normalizeStreamTransportMessage,
+} from "@/app/lib/streaming/sseTransport";
+
+import { parseSseFrames, type DeepSpaceStreamEvent } from "../_lib/deepspace-stream";
 
 interface StartStreamArgs {
   endpoint?: string;
@@ -21,10 +24,10 @@ interface UseDeepSpaceStreamOptions {
   onUserCancel?: () => void;
 }
 
+const MAX_INITIAL_STREAM_RETRIES = 1;
+const INITIAL_STREAM_RETRY_DELAY_MS = 350;
+
 export function compactQueuedEvents(events: DeepSpaceStreamEvent[]): DeepSpaceStreamEvent[] {
-  if (events.length <= 1) {
-    return events;
-  }
   return events;
 }
 
@@ -35,10 +38,9 @@ export function useDeepSpaceStream({
   onFinally,
   onUserCancel,
 }: UseDeepSpaceStreamOptions) {
+  const abortRef = useRef<AbortController | null>(null);
   const cancelledByUserRef = useRef(false);
   const suppressFinallyRef = useRef(false);
-  const activeSocketRef = useRef<DeepSpaceWebSocketStreamHandle | null>(null);
-
   const onEventRef = useRef(onEvent);
   const onEventsRef = useRef(onEvents);
   const onTransportErrorRef = useRef(onTransportError);
@@ -51,85 +53,117 @@ export function useDeepSpaceStream({
   onFinallyRef.current = onFinally;
   onUserCancelRef.current = onUserCancel;
 
-  const resetStreamState = useCallback(() => {
-    activeSocketRef.current?.close();
-    activeSocketRef.current = null;
-    suppressFinallyRef.current = true;
-  }, []);
-
-  const enqueueEvent = useCallback((event: DeepSpaceStreamEvent) => {
-    if (cancelledByUserRef.current) return;
-    if (onEventsRef.current) {
-      onEventsRef.current([event]);
-    } else {
-      onEventRef.current(event);
-    }
-  }, []);
-
   const cancel = useCallback(() => {
+    if (!abortRef.current) return;
     cancelledByUserRef.current = true;
-    resetStreamState();
+    suppressFinallyRef.current = true;
+    abortRef.current.abort();
+    abortRef.current = null;
     onUserCancelRef.current?.();
-  }, [resetStreamState]);
+  }, []);
 
   const start = useCallback(
     async ({ endpoint = "/deepspace/chats/stream", body }: StartStreamArgs) => {
-      resetStreamState();
+      cancel();
       cancelledByUserRef.current = false;
       suppressFinallyRef.current = false;
-      const socketHandle = connectDeepSpaceWebSocketStream({
-        endpoint,
-        body,
-        onEvents: (events) => {
-          if (cancelledByUserRef.current) return;
-          for (const event of events) {
-            enqueueEvent(event);
-          }
-        },
-        onTransportError: (error) => {
-          if (!cancelledByUserRef.current) {
-            onTransportErrorRef.current(error);
-          }
-        },
-      });
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-      if (!socketHandle) {
-        return;
-      }
-
-      activeSocketRef.current = socketHandle;
       try {
-        await socketHandle.closed;
+        for (let attempt = 0; attempt <= MAX_INITIAL_STREAM_RETRIES; attempt += 1) {
+          let receivedAnyEvent = false;
+          try {
+            const response = (await fetchWithAuth(endpoint, {
+              method: "POST",
+              body: JSON.stringify(body),
+              signal: controller.signal,
+              headers: { Accept: "text/event-stream", "Cache-Control": "no-cache" },
+            })) as Response;
+
+            if (!response.ok) {
+              let message = `HTTP ${response.status}`;
+              try {
+                const payload = await response.clone().json();
+                message = payload?.error?.message ?? payload?.detail ?? message;
+              } catch {
+                // Keep the HTTP fallback.
+              }
+              if (
+                !receivedAnyEvent &&
+                attempt < MAX_INITIAL_STREAM_RETRIES &&
+                isRetryableStreamStatus(response.status)
+              ) {
+                await new Promise((resolve) =>
+                  window.setTimeout(resolve, INITIAL_STREAM_RETRY_DELAY_MS),
+                );
+                continue;
+              }
+              onTransportErrorRef.current({ code: "STREAM_HTTP_ERROR", message });
+              return;
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) {
+              onTransportErrorRef.current({
+                code: "STREAM_BODY_MISSING",
+                message: "Streaming response body is unavailable.",
+              });
+              return;
+            }
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (controller.signal.aborted) return;
+              buffer += decoder.decode(value, { stream: true });
+              const parsed = parseSseFrames(buffer);
+              buffer = parsed.remainder;
+              if (parsed.events.length > 0) {
+                receivedAnyEvent = true;
+                if (onEventsRef.current) onEventsRef.current(parsed.events);
+                else parsed.events.forEach((event) => onEventRef.current(event));
+              }
+            }
+
+            if (buffer.trim()) {
+              const parsed = parseSseFrames(`${buffer}\n\n`);
+              if (onEventsRef.current) onEventsRef.current(parsed.events);
+              else parsed.events.forEach((event) => onEventRef.current(event));
+            }
+            return;
+          } catch (error) {
+            if (controller.signal.aborted) return;
+            const retryable = isRetryableStreamTransportError(error);
+            const message = normalizeStreamTransportMessage(
+              error,
+              "The chat stream could not be reached.",
+              retryable,
+            );
+            if (
+              attempt < MAX_INITIAL_STREAM_RETRIES &&
+              retryable
+            ) {
+              await new Promise((resolve) =>
+                window.setTimeout(resolve, INITIAL_STREAM_RETRY_DELAY_MS),
+              );
+              continue;
+            }
+            onTransportErrorRef.current({ code: "STREAM_TRANSPORT_ERROR", message });
+            return;
+          }
+        }
       } finally {
-        if (activeSocketRef.current === socketHandle) {
-          activeSocketRef.current = null;
-        }
-        cancelledByUserRef.current = false;
-        if (!suppressFinallyRef.current) {
-          onFinallyRef.current?.();
-        }
+        if (abortRef.current === controller) abortRef.current = null;
+        if (!suppressFinallyRef.current) onFinallyRef.current?.();
         suppressFinallyRef.current = false;
+        cancelledByUserRef.current = false;
       }
     },
-    [enqueueEvent, resetStreamState],
+    [cancel],
   );
 
-  const resume = useCallback(
-    async (args: { conversationId: string; stepId: string; toolId: string; approved: boolean; durableRunId?: string; approvalId?: string }) => {
-      return start({
-        endpoint: "/deepspace/chats/resume",
-        body: {
-          conversation_id: args.conversationId,
-          step_id: args.stepId,
-          tool_id: args.toolId,
-          approved: args.approved,
-          durable_run_id: args.durableRunId,
-          approval_id: args.approvalId,
-        },
-      });
-    },
-    [start],
-  );
-
-  return { start, cancel, resume };
+  return { start, cancel };
 }

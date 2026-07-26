@@ -320,6 +320,49 @@ def test_context_window_uses_verified_docs_when_live_discovery_is_missing(
         session.close()
 
 
+def test_context_window_can_skip_live_discovery_for_request_path(settings, monkeypatch) -> None:
+    session = get_session_factory()()
+    try:
+        tenant = _tenant("Context Window Request Safety Tenant")
+        session.add(tenant)
+        session.flush()
+
+        configs = ProviderConfigsRepository(session)
+        provider = configs.create(
+            _provider(
+                tenant_id=tenant.id,
+                display_name="OpenCode Zen",
+                provider_type="opencode-zen",
+            )
+        )
+        session.commit()
+
+        service = ProviderSelectionService(session, settings)
+
+        class _FailingDiscovery:
+            def list_models(self) -> list[ProviderModelInfo]:
+                raise AssertionError("request-path selection must not perform live discovery")
+
+        monkeypatch.setattr(
+            service.registry,
+            "get_model_discovery_provider_from_config",
+            lambda *args, **kwargs: _FailingDiscovery(),
+        )
+
+        context_window, context_window_source = service._resolve_model_context_window(
+            tenant_id=tenant.id,
+            provider_config_id=provider.id,
+            model_name="gemini-3-pro",
+            allow_live_model_discovery=False,
+        )
+
+        assert context_window == 1_048_576
+        assert context_window_source == "official_docs:google"
+    finally:
+        session.rollback()
+        session.close()
+
+
 def test_reranking_auto_selects_sentence_transformers_provider(settings) -> None:
     session = get_session_factory()()
     try:
@@ -613,9 +656,7 @@ def test_embeddings_auto_fall_back_to_lmstudio_when_managed_provider_disabled(
         )
         assert selection.candidates[0].provider_config_id == lmstudio.id
         assert selection.candidates[0].provider_type == "lmstudio"
-        assert (
-            selection.candidates[0].model_name == "text-embedding-nomic-embed-text-v1.5"
-        )
+        assert selection.candidates[0].model_name == "text-embedding-nomic-embed-text-v1.5"
     finally:
         session.rollback()
         session.close()
@@ -660,9 +701,7 @@ def test_missing_capability_is_ignored_without_env_fallback(settings) -> None:
             actor_user_id=user.id,
         )
         assert selection.candidates == []
-        assert any(
-            "missing-embedding-capability" in note for note in selection.selection_notes
-        )
+        assert any("missing-embedding-capability" in note for note in selection.selection_notes)
     finally:
         session.rollback()
         session.close()

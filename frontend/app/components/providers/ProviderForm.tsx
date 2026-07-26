@@ -50,6 +50,7 @@ const PROVIDER_BASE_URL_PRESETS: Record<string, string> = {
   "opencode-zen": "https://opencode.ai/zen/v1",
   cohere: "https://api.cohere.ai/v1",
   tavily: "https://api.tavily.com",
+  searxng: "http://searxng:8080",
 };
 
 const INVISIBLE_INPUT_CHARS = /[\u200B-\u200D\u2060\uFEFF]/g;
@@ -89,6 +90,19 @@ export default function ProviderForm({
   );
   const [authMode, setAuthMode] = useState(provider?.auth_mode || "api_key");
   const [secretValue, setSecretValue] = useState("");
+  const [searchLanguage, setSearchLanguage] = useState(
+    typeof provider?.metadata_json?.language === "string" ? provider.metadata_json.language : "auto",
+  );
+  const [allowedDomains, setAllowedDomains] = useState(
+    Array.isArray(provider?.metadata_json?.allowed_domains)
+      ? provider.metadata_json.allowed_domains.join(", ")
+      : "",
+  );
+  const [blockedDomains, setBlockedDomains] = useState(
+    Array.isArray(provider?.metadata_json?.blocked_domains)
+      ? provider.metadata_json.blocked_domains.join(", ")
+      : "",
+  );
 
   const [defaultChatModel, setDefaultChatModel] = useState(provider?.default_chat_model || "");
   const [defaultEmbeddingModel, setDefaultEmbeddingModel] = useState(
@@ -112,6 +126,19 @@ export default function ProviderForm({
       setDefaultRerankerModel(provider.default_reranker_model || "");
       setPreviewModels(models);
       setSecretValue("");
+      setSearchLanguage(
+        typeof provider.metadata_json?.language === "string" ? provider.metadata_json.language : "auto",
+      );
+      setAllowedDomains(
+        Array.isArray(provider.metadata_json?.allowed_domains)
+          ? provider.metadata_json.allowed_domains.join(", ")
+          : "",
+      );
+      setBlockedDomains(
+        Array.isArray(provider.metadata_json?.blocked_domains)
+          ? provider.metadata_json.blocked_domains.join(", ")
+          : "",
+      );
       setDiscoverError(null);
     }
   }, [provider, models]);
@@ -122,6 +149,9 @@ export default function ProviderForm({
       setAuthMode(catalogEntry.auth_modes[0] || "api_key");
       setApiBaseUrl(PROVIDER_BASE_URL_PRESETS[catalogEntry.provider_type] || "");
       setSecretValue("");
+      setSearchLanguage("auto");
+      setAllowedDomains("");
+      setBlockedDomains("");
       setPreviewModels([]);
       setDefaultChatModel("");
       setDefaultEmbeddingModel("");
@@ -231,6 +261,22 @@ export default function ProviderForm({
   ]);
 
   const handleLocalSubmit = async () => {
+    const searchMetadata =
+      activeProviderType === "searxng"
+        ? {
+            language: sanitizeInput(searchLanguage) || "auto",
+            allowed_domains: allowedDomains
+              .split(",")
+              .map((item) => sanitizeInput(item).toLowerCase())
+              .filter(Boolean)
+              .slice(0, 50),
+            blocked_domains: blockedDomains
+              .split(",")
+              .map((item) => sanitizeInput(item).toLowerCase())
+              .filter(Boolean)
+              .slice(0, 50),
+          }
+        : undefined;
     const basePayload: CreateProviderInput = {
       display_name: provider?.display_name || catalogEntry?.display_name || "",
       provider_type: activeProviderType,
@@ -248,6 +294,7 @@ export default function ProviderForm({
       supports_model_install:
         catalogEntry?.supports_model_install ?? provider?.supports_model_install ?? false,
       is_local: catalogEntry?.is_local ?? provider?.is_local ?? false,
+      ...(searchMetadata ? { metadata_json: searchMetadata } : {}),
     };
 
     if (normalizedSecretValue) basePayload.api_key = normalizedSecretValue;
@@ -266,6 +313,7 @@ export default function ProviderForm({
         default_chat_model: basePayload.default_chat_model,
         default_embedding_model: basePayload.default_embedding_model,
         default_reranker_model: basePayload.default_reranker_model,
+        ...(searchMetadata ? { metadata_json: searchMetadata } : {}),
       };
       if (basePayload.api_key) updatePayload.api_key = basePayload.api_key;
       await onSubmit(updatePayload);
@@ -337,6 +385,29 @@ export default function ProviderForm({
             maskedSummary={provider?.secrets?.[0]?.masked_value || null}
           />
 
+          {activeProviderType === "searxng" && (
+            <div className="theme-panel-muted grid gap-4 rounded-2xl p-5 ring-1 ring-white/5 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <label className="text-muted-foreground/60 px-0.5 font-mono text-[9px] tracking-[0.2em] uppercase">
+                  Search language
+                </label>
+                <input value={searchLanguage} onChange={(event) => setSearchLanguage(event.target.value)} placeholder="auto" className="border-glass-border bg-surface-1 text-foreground h-10 w-full rounded-xl border px-3 text-xs outline-none" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-muted-foreground/60 px-0.5 font-mono text-[9px] tracking-[0.2em] uppercase">
+                  Allowed domains
+                </label>
+                <input value={allowedDomains} onChange={(event) => setAllowedDomains(event.target.value)} placeholder="example.com, docs.example.org" className="border-glass-border bg-surface-1 text-foreground h-10 w-full rounded-xl border px-3 text-xs outline-none" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-muted-foreground/60 px-0.5 font-mono text-[9px] tracking-[0.2em] uppercase">
+                  Blocked domains
+                </label>
+                <input value={blockedDomains} onChange={(event) => setBlockedDomains(event.target.value)} placeholder="ads.example.com" className="border-glass-border bg-surface-1 text-foreground h-10 w-full rounded-xl border px-3 text-xs outline-none" />
+              </div>
+            </div>
+          )}
+
           {kind !== "web" ? (
             <div className="space-y-2">
               <label className="text-muted-foreground/60 px-1 font-mono text-[10px] font-bold tracking-[0.2em] uppercase">
@@ -398,7 +469,7 @@ export default function ProviderForm({
         <div className="grid gap-4 md:grid-cols-3">
           <StatusPanel
             label="Current Target"
-            value={kind === "web" ? "Tavily Search API" : activeModelName || "No model selected"}
+            value={kind === "web" ? catalogEntry?.display_name || provider?.display_name || "Web Search" : activeModelName || "No model selected"}
             subtext={`${(catalogEntry?.is_local ?? provider?.is_local) ? "Managed" : "Hosted"} ${kind} runtime`}
           />
           <StatusPanel label="Runtime URL" value={apiBaseUrl || "Not set"} />

@@ -163,9 +163,9 @@ class OpenAICompatibleProvider:
             raise RuntimeError("provider response missing choices")
         message = choices[0].get("message", {})
         content = message.get("content", "")
-        thinking_content = (
-            self._extract_reasoning_text(message) if request.reasoning_enabled else None
-        )
+        # Capture reasoning whenever the provider returns it. The request flag
+        # controls provider-side generation settings, not response visibility.
+        thinking_content = self._extract_reasoning_text(message)
         if not isinstance(content, str):
             raise RuntimeError("provider response missing message content")
         if not thinking_content:
@@ -274,11 +274,7 @@ class OpenAICompatibleProvider:
                     delta = choice.get("delta", {})
                     if not isinstance(delta, dict):
                         delta = {}
-                    thinking = (
-                        self._extract_reasoning_text(delta)
-                        if request.reasoning_enabled
-                        else None
-                    )
+                    thinking = self._extract_reasoning_text(delta)
                     if thinking:
                         thinking_delta = self._stream_text_suffix(
                             emitted_thinking_text,
@@ -829,9 +825,8 @@ class OpenAICompatibleProvider:
         enabled: bool,
         model: str | None = None,
     ) -> tuple[list[tuple[str, str]], str]:
-        if enabled and (
-            uses_gemma_think_trigger(model)
-            or state == "gemma_thought"
+        if (
+            state == "gemma_thought"
             or cls._contains_gemma_channel_reasoning(content)
         ):
             return cls._split_gemma_channel_content(
@@ -879,12 +874,12 @@ class OpenAICompatibleProvider:
             end = content.find(cls._GEMMA_CHANNEL_END, cursor)
             if end == -1:
                 reasoning_text = content[cursor:]
-                if reasoning_text and enabled:
+                if reasoning_text:
                     events.append(("thinking", reasoning_text))
                 cursor = len(content)
                 break
             reasoning_text = content[cursor:end]
-            if reasoning_text and enabled:
+            if reasoning_text:
                 events.append(("thinking", reasoning_text.rstrip()))
             cursor = end + len(cls._GEMMA_CHANNEL_END)
             if cursor < len(content) and content[cursor] == "\n":
@@ -923,12 +918,12 @@ class OpenAICompatibleProvider:
             end = content.find("</think>", cursor)
             if end == -1:
                 reasoning_text = content[cursor:]
-                if reasoning_text and enabled:
+                if reasoning_text:
                     events.append(("thinking", reasoning_text))
                 cursor = len(content)
                 break
             reasoning_text = content[cursor:end]
-            if reasoning_text and enabled:
+            if reasoning_text:
                 events.append(("thinking", reasoning_text.rstrip()))
             cursor = end + len("</think>")
             mode = "answer"

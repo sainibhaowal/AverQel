@@ -1,0 +1,17 @@
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "AverQel SearXNG"
+
+search:
+  formats:
+    - html
+    - json
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  secret_key: "${SEARXNG_SECRET}"
+  limiter: true
+  image_proxy: false

@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronDown } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
 interface ProviderDropdownOption {
@@ -22,6 +22,10 @@ interface ProviderDropdownProps {
   className?: string;
 }
 
+const emptySubscribe = () => () => undefined;
+const clientMountedSnapshot = () => true;
+const serverMountedSnapshot = () => false;
+
 export default function ProviderDropdown({
   label,
   value,
@@ -33,6 +37,11 @@ export default function ProviderDropdown({
   className,
 }: ProviderDropdownProps) {
   const [open, setOpen] = useState(false);
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    clientMountedSnapshot,
+    serverMountedSnapshot,
+  );
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -187,7 +196,7 @@ export default function ProviderDropdown({
         />
       </button>
 
-      {typeof document !== "undefined" ? createPortal(menu, document.body) : null}
+      {mounted ? createPortal(menu, document.body) : null}
     </div>
   );
 }

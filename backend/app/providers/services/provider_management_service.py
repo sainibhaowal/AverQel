@@ -181,6 +181,18 @@ SUPPORTED_PROVIDER_CATALOG: dict[str, dict[str, object]] = {
         "supports_account_linking": False,
         "is_local": False,
     },
+    "searxng": {
+        "display_name": "SearXNG (Self-hosted)",
+        "auth_modes": ["local_no_key"],
+        "supports_chat": False,
+        "supports_embeddings": False,
+        "supports_reranking": False,
+        "supports_web_search": True,
+        "supports_model_listing": False,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": True,
+    },
     "openrouter": {
         "display_name": "OpenRouter",
         "auth_modes": ["api_key"],
@@ -1694,7 +1706,7 @@ class ProviderManagementService:
             )
         if (
             feature_scope in {"web_search", "fallback_web_search"}
-            and provider.provider_type != "tavily"
+            and provider.provider_type not in {"tavily", "searxng"}
         ):
             raise ApiError(
                 code="PROVIDER_ASSIGNMENT_INVALID",

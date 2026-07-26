@@ -122,6 +122,12 @@ services:
       - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
     expose:
       - "1000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:1000/api/v1/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -139,7 +145,7 @@ services:
       NEXT_PROXY_TARGET: http://api:1000
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
     expose:
       - "1030"
 
@@ -235,6 +241,21 @@ services:
     volumes:
       - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
 
+  searxng:
+    container_name: averqel-searxng
+    image: docker.io/searxng/searxng:latest
+    restart: always
+    stop_grace_period: 20s
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-replace-with-a-random-searxng-secret}
+      FORCE_OWNERSHIP: "false"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng_cache:/var/cache/searxng
+    expose:
+      - "8080"
+
   caddy:
     container_name: averqel-caddy
     image: caddy:2-alpine
@@ -244,7 +265,7 @@ services:
       frontend:
         condition: service_started
       api:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -262,3 +283,4 @@ volumes:
   minio_data:
   caddy_data:
   caddy_config:
+  searxng_cache:

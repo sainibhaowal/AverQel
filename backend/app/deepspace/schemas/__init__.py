@@ -1,21 +1,3 @@
-"""Schemas for DeepSpace runtime and planning APIs."""
+"""DeepSpace-owned API schemas."""
 
-from app.deepspace.schemas.planner import (
-    PlannerApprovalEntrySchema,
-    PlannerLaneBlueprintSchema,
-    PlannerPayloadSchema,
-)
-from app.deepspace.schemas.runtime import (
-    ResolveMissionApprovalRequest,
-    UpdateExecutionModeRequest,
-    UpdateRuntimePreferencesRequest,
-)
-
-__all__ = [
-    "PlannerApprovalEntrySchema",
-    "PlannerLaneBlueprintSchema",
-    "PlannerPayloadSchema",
-    "ResolveMissionApprovalRequest",
-    "UpdateExecutionModeRequest",
-    "UpdateRuntimePreferencesRequest",
-]
+from .chats import *  # noqa: F403
