@@ -33,8 +33,99 @@ export default function LoginPage() {
     }
   }, []);
 
+  // OAuth callbacks return here after the server has exchanged the provider
+  // code and set the secure refresh cookie.
+  useEffect(() => {
+    const oauthResult = new URLSearchParams(window.location.search).get("oauth");
+    if (!oauthResult) {
+      return;
+    }
+
+    if (oauthResult === "2fa") {
+      setOauthTwoFactor(true);
+      setShow2fa(true);
+      setError("Complete two-factor authentication to finish signing in.");
+      router.replace("/auth/login");
+      return;
+    }
+
+    if (oauthResult !== "success") {
+      setError("Social login could not be completed. Please try again.");
+      router.replace("/auth/login");
+      return;
+    }
+
+    let cancelled = false;
+    const finishOAuthLogin = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const data = await safeReadJson(response);
+        if (!response.ok || !data || typeof data !== "object" || !("access_token" in data)) {
+          throw new Error("The social login session could not be established.");
+        }
+        const accessToken = (data as { access_token: unknown }).access_token;
+        if (typeof accessToken !== "string" || !accessToken) {
+          throw new Error("The social login session returned an invalid token.");
+        }
+        const profileResponse = await fetch(`${getApiBaseUrl()}/auth/profile`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          credentials: "include",
+        });
+        const profile = await safeReadJson(profileResponse);
+        if (!profileResponse.ok || !profile || typeof profile !== "object") {
+          throw new Error("The social login profile could not be loaded.");
+        }
+        const userProfile = profile as {
+          user_id: string;
+          tenant_id: string;
+          email: string;
+          roles: string[];
+        };
+        if (!userProfile.user_id || !userProfile.tenant_id || !userProfile.email) {
+          throw new Error("The social login profile was incomplete.");
+        }
+        if (!cancelled) {
+          completeLogin(
+            {
+              access_token: accessToken,
+              user: {
+                user_id: userProfile.user_id,
+                tenant_id: userProfile.tenant_id,
+                roles: userProfile.roles,
+              },
+            },
+            userProfile.email,
+          );
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Social login could not be completed.");
+          router.replace("/auth/login");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void finishOAuthLogin();
+    return () => {
+      cancelled = true;
+    };
+    // completeLogin intentionally uses the current form/session state and is
+    // only invoked when an OAuth result is present in the callback URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
   // 2FA challenge state
   const [show2fa, setShow2fa] = useState(false);
+  const [oauthTwoFactor, setOauthTwoFactor] = useState(false);
   const [pendingToken, setPendingToken] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [verifying2fa, setVerifying2fa] = useState(false);
@@ -65,13 +156,17 @@ export default function LoginPage() {
     }
   };
 
-  const completeLogin = (data: {
-    access_token: string;
-    user: { user_id: string; tenant_id: string; roles: string[] };
-  }) => {
+  const completeLogin = (
+    data: {
+      access_token: string;
+      user: { user_id: string; tenant_id: string; roles: string[] };
+    },
+    emailOverride?: string,
+  ) => {
+    const email = emailOverride || formData.email;
     // Save credentials if Remember Me is checked
     if (rememberMe) {
-      localStorage.setItem("averqel_saved_email", formData.email);
+      localStorage.setItem("averqel_saved_email", email);
       localStorage.setItem("averqel_remember", "true");
     } else {
       localStorage.removeItem("averqel_saved_email");
@@ -83,7 +178,7 @@ export default function LoginPage() {
       data.user.tenant_id,
       {
         id: data.user.user_id,
-        email: formData.email,
+        email,
         tenant_id: data.user.tenant_id,
         roles: data.user.roles,
       },
@@ -131,6 +226,7 @@ export default function LoginPage() {
           : null;
 
       if ("requires_2fa" in data && data.requires_2fa && pendingTokenValue) {
+        setOauthTwoFactor(false);
         setPendingToken(pendingTokenValue);
         setShow2fa(true);
         return;
@@ -161,12 +257,17 @@ export default function LoginPage() {
     setVerifying2fa(true);
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/auth/2fa/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ pending_token: pendingToken, code: totpCode }),
-      });
+      const response = await fetch(
+        `${getApiBaseUrl()}${oauthTwoFactor ? "/auth/oauth/2fa/verify" : "/auth/2fa/verify"}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(
+            oauthTwoFactor ? { code: totpCode } : { pending_token: pendingToken, code: totpCode },
+          ),
+        },
+      );
 
       const data = await safeReadJson(response);
       if (!response.ok) {
@@ -184,12 +285,32 @@ export default function LoginPage() {
         throw new Error("The authentication service returned an unexpected response.");
       }
 
-      completeLogin(
-        data as {
-          access_token: string;
-          user: { user_id: string; tenant_id: string; roles: string[] };
-        },
-      );
+      const tokenData = data as {
+        access_token: string;
+        user: { user_id: string; tenant_id: string; roles: string[] };
+      };
+      let emailOverride: string | undefined;
+      if (oauthTwoFactor) {
+        const profileResponse = await fetch(`${getApiBaseUrl()}/auth/profile`, {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+          credentials: "include",
+        });
+        const profile = await safeReadJson(profileResponse);
+        if (
+          !profileResponse.ok ||
+          !profile ||
+          typeof profile !== "object" ||
+          !("email" in profile)
+        ) {
+          throw new Error("The social login profile could not be loaded.");
+        }
+        const profileEmail = (profile as { email?: unknown }).email;
+        if (typeof profileEmail !== "string" || !profileEmail) {
+          throw new Error("The social login profile was incomplete.");
+        }
+        emailOverride = profileEmail;
+      }
+      completeLogin(tokenData, emailOverride);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Something went wrong.";
       setError(message);
@@ -224,6 +345,27 @@ export default function LoginPage() {
               <p className="text-muted-foreground mb-8 text-sm">
                 Log in to manage your document intelligence.
               </p>
+
+              <div className="mb-6 grid gap-3 sm:grid-cols-2">
+                <a
+                  href={`${getApiBaseUrl()}/auth/oauth/google/start?return_to=%2Fauth%2Flogin`}
+                  className="border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex items-center justify-center rounded-lg border px-4 py-3 text-sm font-semibold transition-colors"
+                >
+                  Continue with Google
+                </a>
+                <a
+                  href={`${getApiBaseUrl()}/auth/oauth/github/start?return_to=%2Fauth%2Flogin`}
+                  className="border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex items-center justify-center rounded-lg border px-4 py-3 text-sm font-semibold transition-colors"
+                >
+                  Continue with GitHub
+                </a>
+              </div>
+
+              <div className="text-muted-foreground mb-6 flex items-center gap-3 text-[10px] font-semibold tracking-[0.2em] uppercase">
+                <span className="bg-glass-border h-px flex-1" />
+                <span>or use email</span>
+                <span className="bg-glass-border h-px flex-1" />
+              </div>
 
               {error && (
                 <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">
@@ -366,6 +508,8 @@ export default function LoginPage() {
               <button
                 onClick={() => {
                   setShow2fa(false);
+                  setOauthTwoFactor(false);
+                  setPendingToken("");
                   setTotpCode("");
                   setError("");
                 }}

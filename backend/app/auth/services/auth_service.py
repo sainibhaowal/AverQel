@@ -306,6 +306,50 @@ class AuthService:
             tenant_id=user.tenant_id, user_id=user.id, role_name=role_name
         )
 
+    def complete_external_login(self, *, user: User) -> LoginResult:
+        """Issue the same session/2FA result as password login for a verified identity."""
+        self._ensure_bootstrap_admin_role(user=user)
+        self._ensure_user_can_authenticate(user=user)
+        role_names = self._effective_role_names_for_user(user=user, tenant_id=user.tenant_id)
+        if not role_names:
+            raise ApiError(
+                code="ROLE_ASSIGNMENT_REQUIRED",
+                message="User has no assigned roles.",
+                status_code=403,
+            )
+        self.users.register_successful_login(tenant_id=user.tenant_id, user=user)
+        if user.totp_enabled:
+            pending_token = self._mint_pending_2fa_token(user_id=user.id, tenant_id=user.tenant_id)
+            self.db.commit()
+            return LoginResult(user=user, roles=sorted(role_names), requires_2fa=True, pending_token=pending_token)
+
+        access_token = create_access_token(
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+            roles=role_names,
+            access_token_version=user.access_token_version,
+            settings=self.settings,
+        )
+        raw_refresh_token = self._mint_refresh_token(tenant_id=user.tenant_id)
+        self.refresh_tokens.create(
+            RefreshToken(
+                id=generate_uuid7_with_fallback(),
+                tenant_id=user.tenant_id,
+                user_id=user.id,
+                token_hash=hash_refresh_token(raw_refresh_token, self.settings.refresh_token_hash_secret),
+                token_family_id=generate_uuid7_with_fallback(),
+                expires_at=self._refresh_expiry(),
+            )
+        )
+        self.db.commit()
+        return LoginResult(
+            user=user,
+            roles=sorted(role_names),
+            access_token=access_token,
+            refresh_token=raw_refresh_token,
+            expires_in=self.settings.jwt_access_ttl_minutes * 60,
+        )
+
     def _ensure_bootstrap_admin_role(self, *, user: User) -> None:
         if not self._is_bootstrap_super_admin_email(user.email):
             return

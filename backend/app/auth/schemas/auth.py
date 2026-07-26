@@ -39,6 +39,12 @@ class TokenResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class OAuthTwoFactorRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=16)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class RefreshResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

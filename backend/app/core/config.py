@@ -247,6 +247,12 @@ class Settings(BaseSettings):
     provider_secret_audit_reads: bool = True
     totp_secret_active_kid: str | None = None
     totp_secret_keyring_json: str | None = None
+    auth_oauth_redirect_uri: str | None = None
+    auth_oauth_frontend_redirect_uri: str | None = None
+    auth_google_oauth_client_id: str | None = None
+    auth_google_oauth_client_secret: str | None = None
+    auth_github_oauth_client_id: str | None = None
+    auth_github_oauth_client_secret: str | None = None
     provider_openai_oauth_enabled: bool = False
     provider_openai_oauth_official_support_verified: bool = False
     provider_openai_oauth_client_id: str | None = None

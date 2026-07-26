@@ -5,7 +5,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import cast
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
@@ -22,6 +23,7 @@ from app.auth.schemas.auth import (
     ExportAccountResponse,
     LoginRequest,
     LogoutResponse,
+    OAuthTwoFactorRequest,
     ProfileResponse,
     ProfileUpdateRequest,
     RefreshResponse,
@@ -34,7 +36,12 @@ from app.auth.schemas.auth import (
     TotpVerifyRequest,
     UserRegisterResponse,
 )
-from app.auth.services.auth_service import AuthService
+from app.auth.services.auth_service import AuthService, LoginResult
+from app.auth.services.oauth_login_service import (
+    OAUTH_2FA_COOKIE,
+    OAUTH_STATE_COOKIE,
+    OAuthLoginService,
+)
 from app.auth.tenancy import get_login_tenant_id
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
@@ -45,6 +52,19 @@ from app.system.services.rate_limit_service import RateLimitService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _token_response(result: LoginResult) -> TokenResponse:
+    return TokenResponse(
+        access_token=result.access_token,
+        token_type="bearer",  # nosec B106
+        expires_in=result.expires_in,
+        user=AuthUserResponse(
+            user_id=str(result.user.id),
+            tenant_id=str(result.user.tenant_id),
+            roles=[role for role in result.roles if role],
+        ),
+    )
 
 
 def _set_refresh_cookie(
@@ -157,6 +177,89 @@ def login(
             roles=[role for role in result.roles if role],
         ),
     )
+
+
+@router.get("/oauth/{provider}/start")
+def oauth_start(
+    provider: str,
+    response: Response,
+    return_to: str | None = Query(default="/auth/login"),
+    settings: Settings = Depends(get_settings),
+) -> RedirectResponse:
+    service = OAuthLoginService(None, settings)
+    url = service.start(provider_name=provider, response=response, return_to=return_to)
+    redirect = RedirectResponse(url=url, status_code=307)
+    for header, value in response.headers.items():
+        redirect.headers[header] = value
+    return redirect
+
+
+@router.get("/oauth/{provider}/callback")
+def oauth_callback(
+    provider: str,
+    request: Request,
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RedirectResponse:
+    service = OAuthLoginService(db, settings)
+    try:
+        frontend_url = service.frontend_redirect_uri()
+    except ApiError:
+        frontend_url = "/auth/login"
+    if error:
+        redirect = RedirectResponse(url=f"{frontend_url}?oauth=error", status_code=303)
+        redirect.delete_cookie(OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
+        return redirect
+    try:
+        result = service.authenticate_callback(
+            provider_name=provider,
+            code=code or "",
+            state=state or "",
+            state_cookie=request.cookies.get(OAUTH_STATE_COOKIE),
+        )
+    except ApiError:
+        db.rollback()
+        redirect = RedirectResponse(url=f"{frontend_url}?oauth=error", status_code=303)
+        redirect.delete_cookie(OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
+        return redirect
+    redirect = RedirectResponse(url=f"{frontend_url}?oauth={'2fa' if result.requires_2fa else 'success'}", status_code=303)
+    redirect.delete_cookie(OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
+    if result.requires_2fa:
+        redirect.set_cookie(
+            OAUTH_2FA_COOKIE,
+            result.pending_token,
+            max_age=300,
+            httponly=True,
+            secure=settings.refresh_cookie_secure,
+            samesite="lax",
+            path=f"{settings.api_prefix.rstrip('/')}/auth/oauth",
+        )
+    else:
+        _set_refresh_cookie(redirect, settings, result.refresh_token)
+    return redirect
+
+
+@router.post("/oauth/2fa/verify", response_model=TokenResponse)
+def verify_oauth_2fa(
+    request: Request,
+    payload: OAuthTwoFactorRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> TokenResponse:
+    RateLimitService(settings).enforce_auth_login_limit(request=request, tenant_id=None, email="oauth_2fa_verify")
+    pending_token = request.cookies.get(OAUTH_2FA_COOKIE)
+    if not pending_token:
+        raise ApiError(code="INVALID_2FA_TOKEN", message="OAuth two-factor challenge expired.", status_code=401)
+    service = AuthService(db, settings)
+    result = service.verify_totp_login(pending_token=pending_token, code=payload.code)
+    _audit_and_commit(db=db, tenant_id=result.user.tenant_id, action="auth.oauth_2fa_verify", actor_user_id=result.user.id)
+    _set_refresh_cookie(response, settings, result.refresh_token)
+    response.delete_cookie(OAUTH_2FA_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
+    return _token_response(result)
 
 
 @router.post("/register", response_model=UserRegisterResponse)

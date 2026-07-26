@@ -1,6 +1,7 @@
 """Import all feature-owned ORM models for SQLAlchemy/Alembic discovery."""
 
 from app.auth.models.api_key import ApiKey
+from app.auth.models.oauth_identity import OAuthIdentity
 from app.auth.models.refresh_token import RefreshToken
 from app.auth.models.revoked_access_token import RevokedAccessToken
 from app.auth.models.role import Role
@@ -60,6 +61,7 @@ __all__ = [
     "User",
     "Role",
     "UserRole",
+    "OAuthIdentity",
     "RefreshToken",
     "RevokedAccessToken",
     "ApiKey",
