@@ -11,7 +11,7 @@ import { getApiBaseUrl } from "../../../lib/api";
 
 function GoogleMark() {
   return (
-    <svg aria-hidden="true" className="h-4 w-4 shrink-0" viewBox="0 0 24 24" role="img">
+    <svg aria-hidden="true" className="h-5 w-5 shrink-0" viewBox="0 0 24 24" role="img">
       <path
         fill="#4285F4"
         d="M21.35 12.27c0-.72-.06-1.42-.18-2.09H12v3.96h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.7 2.91-4.2 2.91-7.26Z"
@@ -373,19 +373,19 @@ export default function LoginPage() {
               <div className="mb-6 grid gap-3 sm:grid-cols-2">
                 <a
                   href={`${getApiBaseUrl()}/auth/oauth/google/start?return_to=%2Fauth%2Flogin`}
-                  className="border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex items-center justify-center rounded-lg border px-4 py-3 text-sm font-semibold transition-colors"
+                  className="border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex min-h-14 items-center justify-center rounded-lg border px-4 py-3 text-sm leading-tight font-semibold transition-colors"
                 >
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center gap-2.5">
                     <GoogleMark />
                     <span>Continue with Google</span>
                   </span>
                 </a>
                 <a
                   href={`${getApiBaseUrl()}/auth/oauth/github/start?return_to=%2Fauth%2Flogin`}
-                  className="border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex items-center justify-center rounded-lg border px-4 py-3 text-sm font-semibold transition-colors"
+                  className="border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex min-h-14 items-center justify-center rounded-lg border px-4 py-3 text-sm leading-tight font-semibold transition-colors"
                 >
-                  <span className="flex items-center gap-2">
-                    <Github aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={2} />
+                  <span className="flex items-center gap-2.5">
+                    <Github aria-hidden="true" className="h-5 w-5 shrink-0" strokeWidth={2} />
                     <span>Continue with GitHub</span>
                   </span>
                 </a>
