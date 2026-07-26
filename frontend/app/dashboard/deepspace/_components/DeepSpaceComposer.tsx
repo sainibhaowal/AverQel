@@ -156,7 +156,7 @@ export default function DeepSpaceComposer({
   const borderHighlight = "border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.18)]";
 
   const shellPadding = "p-2.5 sm:p-3";
-  const composerShell = `relative isolate bg-surface-1/35 backdrop-blur-md border ${borderHighlight} transition-all duration-300`;
+  const composerShell = `bg-surface-1/35 backdrop-blur-md border ${borderHighlight} transition-all duration-300`;
   const textareaClass =
     "min-h-[52px] rounded-[1rem] bg-transparent px-3 py-2 text-[14px] leading-6";
   const pillClass =
@@ -166,67 +166,6 @@ export default function DeepSpaceComposer({
       <div
         className={`mx-auto w-full max-w-[min(100%,74rem)] overflow-visible rounded-[1.2rem] shadow-xl transition-all ${composerShell} ${shellPadding}`}
       >
-        {isStreaming && (
-          <>
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-[-3px] z-0 rounded-[1.2rem] opacity-90 blur-[7px]"
-              style={{
-                background:
-                  "conic-gradient(from 0deg, rgba(34,211,238,.05), rgba(45,212,191,.9), rgba(168,85,247,.7), rgba(59,130,246,.8), rgba(34,211,238,.05))",
-              }}
-              animate={{ rotate: 360 }}
-              transition={{ duration: 4.5, repeat: Infinity, ease: "linear" }}
-            />
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute -inset-px z-0 rounded-[1.2rem] border border-cyan-300/70"
-              animate={{
-                opacity: [0.25, 0.9, 0.25],
-                boxShadow: [
-                  "0 0 10px rgba(34,211,238,.15), 0 0 24px rgba(168,85,247,.08)",
-                  "0 0 18px rgba(34,211,238,.55), 0 0 42px rgba(168,85,247,.25)",
-                  "0 0 10px rgba(34,211,238,.15), 0 0 24px rgba(168,85,247,.08)",
-                ],
-              }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-            />
-          </>
-        )}
-
-        <div className="relative z-10">
-          {isStreaming && (
-            <div className="mb-2 flex items-center gap-2 overflow-hidden rounded-lg border border-white/[0.07] bg-black/20 px-2.5 py-1.5">
-              <div className="flex items-center gap-1.5" aria-label="DeepSpace is processing">
-                {[0, 1, 2, 3].map((index) => (
-                  <motion.span
-                    key={`processing-node-${index}`}
-                    className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(103,232,249,.8)]"
-                    animate={{
-                      scale: [0.65, 1.35, 0.65],
-                      opacity: [0.35, 1, 0.35],
-                    }}
-                    transition={{
-                      duration: 1.1,
-                      delay: index * 0.16,
-                      repeat: Infinity,
-                      ease: "easeInOut",
-                    }}
-                  />
-                ))}
-              </div>
-              <span className="text-[9px] font-semibold tracking-[0.18em] text-cyan-100/65 uppercase">
-                Processing request
-              </span>
-              <motion.span
-                aria-hidden="true"
-                className="ml-auto h-px w-16 bg-gradient-to-r from-transparent via-fuchsia-300/80 to-transparent"
-                animate={{ x: [-24, 24, -24], opacity: [0.15, 0.9, 0.15] }}
-                transition={{ duration: 1.7, repeat: Infinity, ease: "easeInOut" }}
-              />
-            </div>
-          )}
-
           <textarea
             value={query}
             onChange={(event) => onQueryChange(event.target.value.slice(0, 4000))}
@@ -274,7 +213,26 @@ export default function DeepSpaceComposer({
                   disabled={isStreaming}
                   className={`${pillClass} border-glass-border bg-surface-2 text-foreground/60 hover:text-foreground flex items-center gap-1.5 transition-all hover:bg-white/5 active:scale-95`}
                 >
-                  <Bot size={11} />
+                  {isStreaming ? (
+                    <motion.span
+                      aria-hidden="true"
+                      className="inline-flex text-cyan-300"
+                      animate={{
+                        rotate: [0, -8, 8, -4, 0],
+                        scale: [1, 1.12, 1],
+                        filter: [
+                          "drop-shadow(0 0 0 rgba(103,232,249,0))",
+                          "drop-shadow(0 0 5px rgba(103,232,249,.9))",
+                          "drop-shadow(0 0 0 rgba(103,232,249,0))",
+                        ],
+                      }}
+                      transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      <Bot size={11} />
+                    </motion.span>
+                  ) : (
+                    <Bot size={11} />
+                  )}
                   <span className="max-w-[11rem] truncate">{modelName || "Select Model"}</span>
                   <ChevronDown
                     size={11}
@@ -444,7 +402,6 @@ export default function DeepSpaceComposer({
               </motion.button>
             </div>
           </div>
-        </div>
       </div>
     </div>
   );
