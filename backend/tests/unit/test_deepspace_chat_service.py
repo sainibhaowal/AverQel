@@ -206,7 +206,7 @@ async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_deepspace_runs_bounded_web_search_loop_and_citations(monkeypatch):
+async def test_deepspace_runs_web_search_loop_and_citations(monkeypatch):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _ToolProviderSelection)
     monkeypatch.setattr(chat_service_module, "ProviderRegistry", _ToolRegistry)

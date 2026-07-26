@@ -698,6 +698,24 @@ class OpenAICompatibleProvider:
                 else:
                     messages[index]["content"] = final_text
                 break
+        elif request.images:
+            # DeepSpace may attach an image after a tool call even when the
+            # selected model does not use slash-think controls. Keep this
+            # provider-local and additive: requests without images are
+            # unchanged.
+            for index in range(len(messages) - 1, -1, -1):
+                if messages[index].get("role") != "user":
+                    continue
+                content = messages[index].get("content", "")
+                text = content if isinstance(content, str) else str(content)
+                messages[index]["content"] = [
+                    {"type": "text", "text": text},
+                    *[
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}}
+                        for img_b64 in request.images
+                    ],
+                ]
+                break
         return cls._prepare_gemma_thinking(messages, request)
 
     @classmethod

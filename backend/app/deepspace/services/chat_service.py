@@ -13,7 +13,10 @@ from typing import Any
 from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
+from app.deepspace.services.runtime_policy import DeepSpaceToolPolicy
+from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore, summarize_tasks
+from app.deepspace.services.url_reader import read_image, read_url
 from app.providers.services import ChatGenerateRequest, ProviderRegistry
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.selection_service import ProviderSelectionService
@@ -22,11 +25,8 @@ from app.system.services.rate_limit_service import RateLimitService
 
 logger = logging.getLogger(__name__)
 
-MAX_AGENT_ROUNDS = 12
-MAX_WEB_SEARCH_CALLS = 3
 MAX_TOOL_RETRIES = 1
-MAX_NO_TOOL_REPROMPTS = 2
-DEFAULT_AGENT_TIMEOUT_SECONDS = 180
+DEFAULT_AGENT_TIMEOUT_SECONDS = 1800
 WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
@@ -49,6 +49,54 @@ WEB_SEARCH_TOOL = {
                 "time_range": {"type": "string", "enum": ["day", "week", "month", "year"]},
             },
             "required": ["query"],
+        },
+    },
+}
+URL_READ_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "url_read",
+        "description": "Read a public web URL for source-backed research. Use only when the URL is relevant and current content is needed.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "url": {"type": "string", "minLength": 8, "maxLength": 2048},
+                "allowed_domains": {"type": "array", "items": {"type": "string", "maxLength": 120}, "maxItems": 20},
+            },
+            "required": ["url"],
+        },
+    },
+}
+IMAGE_READ_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "image_read",
+        "description": "Inspect a public image URL for dimensions and visual context. The image is passed to compatible vision models; this never accesses local files.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "url": {"type": "string", "minLength": 8, "maxLength": 2048},
+                "allowed_domains": {"type": "array", "items": {"type": "string", "maxLength": 120}, "maxItems": 20},
+            },
+            "required": ["url"],
+        },
+    },
+}
+ASK_USER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "ask_user",
+        "description": "Ask the user for information that is genuinely required before continuing. Use this to pause the run, not as a conversational shortcut.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "question": {"type": "string", "minLength": 1, "maxLength": 2000},
+                "options": {"type": "array", "items": {"type": "string", "maxLength": 200}, "maxItems": 8},
+            },
+            "required": ["question"],
         },
     },
 }
@@ -185,6 +233,9 @@ PRODUCTIVITY_TOOLS = [
     ANALYZE_TOOL,
     NOTE_READ_TOOL,
     NOTE_WRITE_TOOL,
+    URL_READ_TOOL,
+    IMAGE_READ_TOOL,
+    ASK_USER_TOOL,
     FINAL_TOOL,
 ]
 TOOL_CAPABLE_CHAT_PROVIDERS = {
@@ -221,6 +272,11 @@ class DeepSpaceChatService:
         self.providers = ProviderSelectionService(db, settings)
         self.registry = ProviderRegistry(settings)
         self.task_store = DeepSpaceTaskLoopStore(db)
+        self.runtime = DeepSpaceRuntimeStore(
+            db,
+            retained_steps=int(getattr(settings, "deepspace_agent_retained_steps", 10_000)),
+        )
+        self.tool_policy = DeepSpaceToolPolicy()
 
     @staticmethod
     def _now() -> str:
@@ -244,6 +300,8 @@ class DeepSpaceChatService:
         accumulator: dict[int, dict[str, Any]],
         deltas: object,
     ) -> None:
+        if isinstance(deltas, dict):
+            deltas = [deltas]
         if not isinstance(deltas, list):
             return
         for position, item in enumerate(deltas):
@@ -313,6 +371,12 @@ class DeepSpaceChatService:
             return "analyzing", "Analyzing evidence and choosing the next task."
         if tool_name == "web_search":
             return "searching", "Searching the configured web provider."
+        if tool_name == "url_read":
+            return "researching", "Reading the requested public URL safely."
+        if tool_name == "image_read":
+            return "researching", "Inspecting the requested image safely."
+        if tool_name == "ask_user":
+            return "awaiting_user", "Waiting for the information needed to continue."
         if tool_name == "final":
             return "finalizing", "Verifying the work before the final answer."
         return "working", f"Working with {tool_name}."
@@ -356,13 +420,13 @@ class DeepSpaceChatService:
             tasks = arguments.get("tasks")
             if not isinstance(tasks, list):
                 raise ValueError("todo_write requires a tasks array.")
-            result = self.task_store.replace_tasks(
+            task_result = self.task_store.replace_tasks(
                 tenant_id=auth.tenant_id,
                 user_id=auth.user_id,
                 conversation_id=conversation_id,
                 tasks=tasks,
             )
-            return {"tasks": result, "summary": summarize_tasks(result)}
+            return {"tasks": task_result, "summary": summarize_tasks(task_result)}
         if tool_name == "todo_read":
             tasks = self.task_store.read_tasks(
                 tenant_id=auth.tenant_id,
@@ -446,6 +510,47 @@ class DeepSpaceChatService:
                 request=request,
             )
             return payload
+        if tool_name == "url_read":
+            requested_domains = arguments.get("allowed_domains")
+            configured_domains = getattr(self.settings, "deepspace_url_allowed_domains", [])
+            allowed_domains = requested_domains if isinstance(requested_domains, list) and requested_domains else configured_domains
+            url_result = await asyncio.to_thread(
+                read_url,
+                str(arguments.get("url") or "").strip(),
+                timeout_seconds=min(30, int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15))),
+                max_bytes=int(getattr(self.settings, "deepspace_url_read_max_bytes", 2_000_000)),
+                allowed_domains=allowed_domains,
+            )
+            return {
+                "url": url_result.url,
+                "title": url_result.title,
+                "content_type": url_result.content_type,
+                "text": url_result.text,
+                "truncated": url_result.truncated,
+                "links": url_result.links,
+                "citations": [{"title": url_result.title or url_result.url, "url": url_result.url, "snippet": url_result.text[:800], "source": "url_read"}],
+            }
+        if tool_name == "image_read":
+            requested_domains = arguments.get("allowed_domains")
+            configured_domains = getattr(self.settings, "deepspace_url_allowed_domains", [])
+            allowed_domains = requested_domains if isinstance(requested_domains, list) and requested_domains else configured_domains
+            return await asyncio.to_thread(
+                read_image,
+                str(arguments.get("url") or "").strip(),
+                timeout_seconds=min(30, int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15))),
+                max_bytes=int(getattr(self.settings, "deepspace_url_read_max_bytes", 2_000_000)),
+                allowed_domains=allowed_domains,
+            )
+        if tool_name == "ask_user":
+            question = str(arguments.get("question") or "").strip()[:2000]
+            if not question:
+                raise ValueError("ask_user requires a question.")
+            options = arguments.get("options")
+            return {
+                "awaiting_user": True,
+                "question": question,
+                "options": [str(item).strip()[:200] for item in options[:8] if str(item).strip()] if isinstance(options, list) else [],
+            }
         if tool_name == "final":
             check = self.task_store.check_tasks(
                 tenant_id=auth.tenant_id,
@@ -461,6 +566,52 @@ class DeepSpaceChatService:
                 "task_check": check,
             }
         raise ValueError(f"Tool '{tool_name}' is not available in DeepSpace.")
+
+    async def _run_tool_call(
+        self,
+        *,
+        tool_name: str,
+        arguments: dict[str, Any],
+        auth: AuthContext,
+        conversation_id: uuid.UUID,
+        web_provider: Any | None,
+        web_candidate: Any | None,
+        request: Any | None,
+        loop_deadline: float,
+        run_id: uuid.UUID | None,
+        read_semaphore: asyncio.Semaphore,
+        write_lock: asyncio.Lock,
+    ) -> dict[str, Any]:
+        decision = self.tool_policy.before_tool(tool_name, arguments)
+        if not decision.allowed:
+            return {"success": False, "error": decision.reason or "Tool blocked by policy."}
+
+        gate = read_semaphore if decision.mode == "read" else write_lock
+        async with gate:
+            for attempt in range(MAX_TOOL_RETRIES + 1):
+                if time.monotonic() >= loop_deadline:
+                    return {"success": False, "error": "Tool execution stopped by the runtime policy timeout."}
+                if run_id is not None and self.runtime.is_cancel_requested(run_id=run_id):
+                    return {"success": False, "error": "Tool execution cancelled by the user."}
+                try:
+                    payload = await asyncio.wait_for(
+                        self._execute_productivity_tool(
+                            tool_name=tool_name,
+                            arguments=arguments,
+                            auth=auth,
+                            conversation_id=conversation_id,
+                            web_provider=web_provider,
+                            web_candidate=web_candidate,
+                            request=request,
+                        ),
+                        timeout=max(5, min(30, loop_deadline - time.monotonic())),
+                    )
+                    return {"success": True, "payload": payload}
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("DeepSpace tool failed: %s", tool_name, exc_info=True)
+                    if attempt >= MAX_TOOL_RETRIES:
+                        return {"success": False, "error": f"{tool_name} failed safely: {exc}"}
+        return {"success": False, "error": f"{tool_name} failed safely."}
 
     @staticmethod
     def _domain_allowed_by_config(domain: str, configured: object) -> bool:
@@ -590,6 +741,20 @@ class DeepSpaceChatService:
 
         started_at = self._now()
         yield sse("start", {"conversation_id": str(conversation_id), "message_id": str(assistant_message.id), "started_at": started_at})
+        run_id: uuid.UUID | None = None
+        try:
+            run = self.runtime.create_run(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                assistant_message_id=assistant_message.id,
+                checkpoint={"status": "starting", "started_at": started_at},
+            )
+            run_id = run.id
+        except AttributeError:
+            # Lightweight unit-test repositories can omit the runtime tables;
+            # the production database always has them after the migration.
+            logger.debug("DeepSpace runtime persistence is unavailable in this test double.")
 
         selection = self.providers.resolve_chat(
             tenant_id=auth.tenant_id,
@@ -601,7 +766,7 @@ class DeepSpaceChatService:
             yield sse("error", {"code": "LLM_UNAVAILABLE", "message": "No DeepSpace chat model is configured."})
             return
 
-        meta = {
+        meta: dict[str, Any] = {
             "conversation_id": str(conversation_id),
             "message_id": str(assistant_message.id),
             "model_name": candidate.model_name,
@@ -632,7 +797,7 @@ class DeepSpaceChatService:
                 web_provider = None
         productivity_tools = PRODUCTIVITY_TOOLS if candidate.provider_type in TOOL_CAPABLE_CHAT_PROVIDERS else []
         web_tools = [WEB_SEARCH_TOOL] if web_candidate is not None and web_provider is not None else []
-        available_tools = [*productivity_tools, *web_tools]
+        available_tools: list[dict[str, Any]] = [*productivity_tools, *web_tools]
         if available_tools:
             yield sse(
                 "agent_status",
@@ -655,7 +820,11 @@ class DeepSpaceChatService:
                     "with multiple meaningful steps, call analyze, then todo_write and todo_read before "
                     "doing work. Use observe after work, analyze the evidence, todo_check, and todo_mark "
                     "each task with evidence. Call final only after todo_check confirms completion or a "
-                    "clear blocker. Thinking/reasoning text is display-only and never controls execution. "
+                    "clear blocker. Independent read-only tools may be emitted together and DeepSpace "
+                    "will execute them concurrently; keep note/task writes and final verification ordered. "
+                    "Use url_read for a specific public URL, image_read for a public image, and ask_user "
+                    "only when required information is missing. Thinking/reasoning text is display-only "
+                    "and never controls execution. "
                     "When web_search results are provided, use only those sources for web claims, cite "
                     "them as [1], [2], and do not invent URLs."
                 ),
@@ -668,21 +837,47 @@ class DeepSpaceChatService:
         citations: list[dict[str, Any]] = []
         forced_answer: str | None = None
         seen_tool_calls: dict[str, int] = {}
-        web_search_calls = 0
-        no_tool_reprompts = 0
-        loop_deadline = time.monotonic() + max(
+        pending_images: list[str] = []
+        awaiting_user: dict[str, Any] | None = None
+        max_runtime_seconds = max(
             30,
-            min(int(getattr(self.settings, "deepspace_agent_timeout_seconds", DEFAULT_AGENT_TIMEOUT_SECONDS)), 300),
+            min(
+                int(getattr(self.settings, "deepspace_agent_max_runtime_seconds", DEFAULT_AGENT_TIMEOUT_SECONDS)),
+                24 * 60 * 60,
+            ),
         )
+        loop_deadline = time.monotonic() + max_runtime_seconds
+        round_index = 0
+        terminal_status = "running"
         try:
-            for round_index in range(MAX_AGENT_ROUNDS):
+            while True:
+                round_index += 1
+                if run_id is not None:
+                    self.runtime.update_checkpoint(
+                        run_id=run_id,
+                        status="running",
+                        checkpoint={"turn_index": round_index, "phase": "model"},
+                    )
                 if time.monotonic() >= loop_deadline:
-                    yield sse("agent_status", {"phase": "blocked", "message": "DeepSpace reached its safe execution timeout.", "active_tools": []})
+                    terminal_status = "blocked"
+                    if run_id is not None:
+                        self.runtime.finish(run_id=run_id, status="blocked", error="runtime_timeout")
+                    yield sse("agent_status", {"phase": "blocked", "message": "DeepSpace reached its safe runtime policy timeout.", "active_tools": []})
                     break
                 if await self._request_disconnected(request):
+                    terminal_status = "cancelled"
+                    if run_id is not None:
+                        self.runtime.finish(run_id=run_id, status="cancelled", error="client_disconnected")
                     yield sse("agent_status", {"phase": "blocked", "message": "DeepSpace run cancelled because the client disconnected.", "active_tools": []})
                     break
+                if run_id is not None and self.runtime.is_cancel_requested(run_id=run_id):
+                    terminal_status = "cancelled"
+                    self.runtime.finish(run_id=run_id, status="cancelled", error="user_cancelled")
+                    yield sse("agent_status", {"phase": "blocked", "message": "DeepSpace run cancelled by the user.", "active_tools": []})
+                    break
                 tool_calls: dict[int, dict[str, Any]] = {}
+                request_images = list(pending_images)
+                pending_images.clear()
                 request_payload = ChatGenerateRequest(
                     model=candidate.model_name,
                     messages=conversation_messages,
@@ -692,11 +887,12 @@ class DeepSpaceChatService:
                     api_key=candidate.api_key,
                     stream=True,
                     reasoning_enabled=thinking_enabled,
+                    images=request_images or None,
                     tools=available_tools or None,
                     tool_choice=(
                         "required"
                         if available_tools
-                        and round_index == 0
+                        and round_index == 1
                         and self._requires_agent_tools(prompt)
                         else ("auto" if available_tools else None)
                     ),
@@ -705,6 +901,8 @@ class DeepSpaceChatService:
                         "conversation_id": str(conversation_id),
                         "provider_type": candidate.provider_type,
                         "timeout_seconds": min(15, int(getattr(self.settings, "llm_timeout_seconds", 15))),
+                        "run_id": str(run_id) if run_id else None,
+                        "turn_index": round_index,
                     },
                 )
                 stream_events = getattr(provider, "stream_generate_events", None)
@@ -713,8 +911,14 @@ class DeepSpaceChatService:
                         if not isinstance(provider_event, dict):
                             continue
                         event_type = str(provider_event.get("type") or "")
-                        if event_type in {"tool_calls_delta", "tool_call", "tool_calls"}:
-                            raw_deltas = provider_event.get("tool_calls") or provider_event.get("tool_call")
+                        if event_type in {"tool_calls_delta", "tool_call_delta", "tool_call", "tool_calls", "function_call"}:
+                            raw_deltas = (
+                                provider_event.get("tool_calls")
+                                or provider_event.get("tool_call")
+                                or provider_event.get("function_call")
+                            )
+                            if isinstance(raw_deltas, dict):
+                                raw_deltas = [raw_deltas]
                             if isinstance(raw_deltas, list):
                                 for position, item in enumerate(raw_deltas):
                                     if not isinstance(item, dict):
@@ -743,6 +947,15 @@ class DeepSpaceChatService:
                             self._tool_call_accumulator(tool_calls, raw_deltas)
                             continue
                         text = provider_event.get("text")
+                        if event_type not in {"thinking", "reasoning", "reasoning_delta"}:
+                            provider_reasoning = (
+                                provider_event.get("reasoning_content")
+                                or provider_event.get("reasoning")
+                                or provider_event.get("thinking")
+                            )
+                            if isinstance(provider_reasoning, str) and provider_reasoning:
+                                thinking_parts.append(provider_reasoning)
+                                yield sse("thinking", {"text": provider_reasoning})
                         if not isinstance(text, str) or not text:
                             continue
                         if event_type in {"thinking", "reasoning", "reasoning_delta"}:
@@ -758,6 +971,18 @@ class DeepSpaceChatService:
                         answer_parts.append(chunk)
                         yield sse("delta", {"text": chunk})
 
+                if run_id is not None:
+                    self.runtime.record_step(
+                        run_id=run_id,
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        step_type="model_turn",
+                        status="completed",
+                        input_json={"turn_index": round_index, "tool_count": len(tool_calls)},
+                        result_json={"answer_chars": sum(len(item) for item in answer_parts), "thinking_chars": sum(len(item) for item in thinking_parts)},
+                    )
+
                 normalized_calls = [tool_calls[index] for index in sorted(tool_calls)]
                 if not normalized_calls:
                     task_check = self.task_store.check_tasks(
@@ -769,17 +994,14 @@ class DeepSpaceChatService:
                         available_tools
                         and task_check["task_count"]
                         and not task_check["complete"]
-                        and no_tool_reprompts < MAX_NO_TOOL_REPROMPTS
-                        and round_index + 1 < MAX_AGENT_ROUNDS
                     ):
-                        no_tool_reprompts += 1
                         yield sse(
                             "agent_status",
                             {
                                 "phase": "retrying",
                                 "message": "The task plan is unfinished; requesting the next structured tool step.",
                                 "active_tools": [],
-                                "attempt": no_tool_reprompts + 1,
+                                "attempt": round_index + 1,
                             },
                         )
                         conversation_messages.append(
@@ -794,8 +1016,6 @@ class DeepSpaceChatService:
                         )
                         continue
                     break
-                no_tool_reprompts = 0
-
                 conversation_messages.append(
                     {
                         "role": "assistant",
@@ -803,6 +1023,7 @@ class DeepSpaceChatService:
                         "tool_calls": normalized_calls,
                     }
                 )
+                valid_calls: list[dict[str, Any]] = []
                 for call in normalized_calls:
                     call_id = str(call.get("id") or uuid.uuid4())
                     tool_name = self._tool_name(call)
@@ -810,20 +1031,9 @@ class DeepSpaceChatService:
                     step_id = f"{tool_name}_{round_index}_{call_id}"
                     if arguments is None:
                         output = f"The {tool_name} arguments were invalid JSON."
-                        yield sse(
-                            "tool_error",
-                            {
-                                "tool_name": tool_name,
-                                "tool_id": call_id,
-                                "step_id": step_id,
-                                "error": output,
-                            },
-                        )
-                        conversation_messages.append(
-                            {"role": "tool", "tool_call_id": call_id, "content": output}
-                        )
+                        yield sse("tool_error", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "error": output})
+                        conversation_messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
                         continue
-
                     signature = hashlib.sha256(
                         json.dumps({"name": tool_name, "arguments": arguments}, sort_keys=True, ensure_ascii=False).encode("utf-8")
                     ).hexdigest()
@@ -833,122 +1043,90 @@ class DeepSpaceChatService:
                         yield sse("tool_error", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "error": output})
                         conversation_messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
                         continue
-                    phase, phase_message = self._tool_phase(tool_name)
+                    decision = self.tool_policy.before_tool(tool_name, arguments)
+                    if not decision.allowed:
+                        output = decision.reason or "Tool blocked by DeepSpace policy."
+                        yield sse("tool_error", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "error": output})
+                        conversation_messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
+                        continue
+                    valid_calls.append({"call": call, "call_id": call_id, "tool_name": tool_name, "arguments": arguments, "step_id": step_id})
 
-                    yield sse(
-                        "tool_start",
-                        {
-                            "tool_name": tool_name,
-                            "tool_id": call_id,
-                            "step_id": step_id,
-                            "tool_input": arguments,
-                            "permission_level": "auto",
-                            "turn_index": round_index,
-                            "started_at": self._now(),
-                        },
+                for item in valid_calls:
+                    tool_name = str(item["tool_name"])
+                    phase, phase_message = self._tool_phase(tool_name)
+                    yield sse("tool_start", {"tool_name": tool_name, "tool_id": item["call_id"], "step_id": item["step_id"], "tool_input": item["arguments"], "permission_level": "auto", "turn_index": round_index, "started_at": self._now()})
+                    yield sse("agent_status", {"phase": phase, "message": phase_message, "active_tools": [str(entry["tool_name"]) for entry in valid_calls]})
+
+                read_semaphore = asyncio.Semaphore(max(1, min(int(getattr(self.settings, "deepspace_max_concurrent_tools", 8)), 32)))
+                write_lock = asyncio.Lock()
+                results = await asyncio.gather(
+                    *(
+                        self._run_tool_call(
+                            tool_name=str(item["tool_name"]),
+                            arguments=item["arguments"],
+                            auth=auth,
+                            conversation_id=conversation_id,
+                            web_provider=web_provider,
+                            web_candidate=web_candidate,
+                            request=request,
+                            loop_deadline=loop_deadline,
+                            run_id=run_id,
+                            read_semaphore=read_semaphore,
+                            write_lock=write_lock,
+                        )
+                        for item in valid_calls
                     )
-                    yield sse(
-                        "agent_status",
-                        {
-                            "phase": phase,
-                            "message": phase_message,
-                            "active_tools": [tool_name],
-                        },
-                    )
-                    success = False
-                    output = ""
-                    for attempt in range(MAX_TOOL_RETRIES + 1):
-                        if time.monotonic() >= loop_deadline or await self._request_disconnected(request):
-                            output = "Tool execution cancelled or timed out safely."
-                            break
-                        try:
-                            if tool_name == "web_search":
-                                web_search_calls += 1
-                                if web_search_calls > MAX_WEB_SEARCH_CALLS:
-                                    raise ValueError("Maximum web-search calls reached for this turn.")
-                            tool_payload = await asyncio.wait_for(
-                                self._execute_productivity_tool(
-                                    tool_name=tool_name,
-                                    arguments=arguments,
-                                    auth=auth,
-                                    conversation_id=conversation_id,
-                                    web_provider=web_provider,
-                                    web_candidate=web_candidate,
-                                    request=request,
-                                ),
-                                timeout=max(5, min(30, loop_deadline - time.monotonic())),
-                            )
-                            if tool_name == "web_search":
-                                citations.extend(tool_payload.get("citations", []))
-                            output = json.dumps(tool_payload, ensure_ascii=False, separators=(",", ":"))
-                            success = True
-                            break
-                        except Exception as exc:  # noqa: BLE001
-                            logger.warning("DeepSpace tool failed: %s", tool_name, exc_info=True)
-                            output = f"{tool_name} failed safely: {exc}"
-                            if attempt < MAX_TOOL_RETRIES:
-                                yield sse("agent_status", {"phase": "retrying", "message": f"Retrying {tool_name}.", "active_tools": [tool_name], "attempt": attempt + 2})
-                            else:
-                                yield sse("tool_error", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "error": str(exc)})
+                )
+                for item, result in zip(valid_calls, results, strict=True):
+                    tool_name = str(item["tool_name"])
+                    call_id = str(item["call_id"])
+                    step_id = str(item["step_id"])
+                    success = bool(result.get("success"))
+                    raw_tool_payload = result.get("payload")
+                    tool_payload = raw_tool_payload if isinstance(raw_tool_payload, dict) else {}
                     if success:
-                        yield sse(
-                            "tool_result",
-                            {
-                                "tool_name": tool_name,
-                                "tool_id": call_id,
-                                "step_id": step_id,
-                                "tool_input": arguments,
-                                "output": output,
-                                "success": True,
-                                "turn_index": round_index,
-                                "completed_at": self._now(),
-                            },
-                        )
-                        yield sse(
-                            "observing",
-                            {
-                                "tool_name": tool_name,
-                                "tool_id": call_id,
-                                "step_id": step_id,
-                                "summary": "Search results received; analyzing sources.",
-                                "success": True,
-                                "turn_index": round_index,
-                            },
-                        )
-                        if isinstance(tool_payload, dict) and isinstance(tool_payload.get("tasks"), list):
-                            yield sse(
-                                "agent_status",
-                                {
-                                    "phase": "checking",
-                                    "message": summarize_tasks(tool_payload["tasks"]),
-                                    "active_tools": [],
-                                    "task_summary": tool_payload,
-                                },
-                            )
-                        if tool_name == "final" and isinstance(tool_payload, dict) and tool_payload.get("accepted"):
+                        raw_image = tool_payload.get("_image_base64")
+                        if isinstance(raw_image, str) and raw_image:
+                            pending_images.append(raw_image)
+                        tool_payload = self.tool_policy.after_tool(tool_name, tool_payload)
+                        if tool_name in {"web_search", "url_read"}:
+                            for citation in tool_payload.get("citations", []):
+                                if isinstance(citation, dict):
+                                    citations.append({**citation, "id": len(citations) + 1})
+                        output = json.dumps(tool_payload, ensure_ascii=False, separators=(",", ":"))
+                    else:
+                        output = str(result.get("error") or f"{tool_name} failed safely.")
+                    if run_id is not None:
+                        self.runtime.record_step(run_id=run_id, tenant_id=auth.tenant_id, user_id=auth.user_id, conversation_id=conversation_id, step_type="tool_result", status="completed" if success else "failed", tool_name=tool_name, tool_call_id=call_id, input_json=item["arguments"], result_json={"success": success, "output": output})
+                    if success:
+                        yield sse("tool_result", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "tool_input": item["arguments"], "output": output, "success": True, "turn_index": round_index, "completed_at": self._now()})
+                        yield sse("observing", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "summary": "Tool result received; analyzing the next step.", "success": True, "turn_index": round_index})
+                        if isinstance(tool_payload.get("tasks"), list):
+                            yield sse("agent_status", {"phase": "checking", "message": summarize_tasks(tool_payload["tasks"]), "active_tools": [], "task_summary": tool_payload})
+                        if tool_name == "ask_user" and tool_payload.get("awaiting_user"):
+                            awaiting_user = tool_payload
+                            yield sse("ask_user_question", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "message": tool_payload.get("question"), "options": tool_payload.get("options", []), "turn_index": round_index})
+                        if tool_name == "final" and tool_payload.get("accepted"):
                             forced_answer = str(tool_payload.get("answer") or "").strip()
                             yield sse("agent_status", {"phase": "completed", "message": "All required work was verified.", "active_tools": []})
-                            conversation_messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
-                            break
-                    yield sse(
-                        "agent_status",
-                        {
-                            "phase": "analyzing",
-                            "message": "Analyzing the tool result and choosing the next safe step.",
-                            "active_tools": [],
-                        },
-                    )
-                    conversation_messages.append(
-                        {"role": "tool", "tool_call_id": call_id, "content": output}
-                    )
-                if forced_answer is not None:
+                    else:
+                        yield sse("tool_error", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "error": output})
+                    conversation_messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
+                yield sse("agent_status", {"phase": "analyzing", "message": "Analyzing tool results and choosing the next safe step.", "active_tools": []})
+                if forced_answer is not None or awaiting_user is not None:
                     break
         except ProviderRequestError as exc:
+            terminal_status = "failed"
+            if run_id is not None:
+                self.runtime.finish(run_id=run_id, status=terminal_status, error=str(exc))
             self.db.rollback()
             logger.warning("DeepSpace provider request failed", exc_info=True)
             yield sse("error", {"code": "LLM_REQUEST_FAILED", "message": str(exc)})
             return
         except Exception:
+            terminal_status = "failed"
+            if run_id is not None:
+                self.runtime.finish(run_id=run_id, status=terminal_status, error="stream_failed")
             self.db.rollback()
             logger.exception("DeepSpace stream failed")
             yield sse("error", {"code": "DEEPSPACE_STREAM_FAILED", "message": "DeepSpace could not complete this response."})
@@ -961,10 +1139,15 @@ class DeepSpaceChatService:
             conversation_id=conversation_id,
         )
         raw_answer = (forced_answer or "".join(answer_parts)).strip()
-        if final_task_check["task_count"] and not final_task_check["complete"] and forced_answer is None:
+        if awaiting_user is not None:
+            terminal_status = "awaiting_user"
+            raw_answer = str(awaiting_user.get("question") or "Please provide the requested information.").strip()
+            yield sse("agent_status", {"phase": "awaiting_user", "message": "DeepSpace is waiting for your answer before continuing.", "active_tools": [], "options": awaiting_user.get("options", [])})
+        elif final_task_check["task_count"] and not final_task_check["complete"] and forced_answer is None:
+            terminal_status = "blocked"
             raw_answer = (
-                "I could not safely complete every planned task within this run. "
-                "The remaining work is persisted in the DeepSpace task list."
+                "DeepSpace paused because the task list is not complete. "
+                "The remaining work is persisted and can continue from your next message."
             )
             yield sse(
                 "agent_status",
@@ -979,7 +1162,7 @@ class DeepSpaceChatService:
         if answer != raw_answer and answer.startswith(raw_answer):
             yield sse("delta", {"text": answer[len(raw_answer):]})
         metadata = {
-            "status": "ready",
+            "status": "awaiting_user" if terminal_status == "awaiting_user" else ("blocked" if terminal_status == "blocked" else "ready"),
             "surface": "deepspace",
             "provider_type": candidate.provider_type,
             "model_name": candidate.model_name,
@@ -996,6 +1179,8 @@ class DeepSpaceChatService:
             metadata_json=metadata,
         )
         self.db.commit()
+        if run_id is not None:
+            self.runtime.finish(run_id=run_id, status=terminal_status if terminal_status != "running" else "ready")
         metrics = {
             "modelName": candidate.model_name,
             "providerType": candidate.provider_type,
@@ -1006,4 +1191,4 @@ class DeepSpaceChatService:
         if candidate.context_window_source:
             metrics["contextLimitSource"] = candidate.context_window_source
         yield sse("metrics", metrics)
-        yield sse("done", {"conversation_id": str(conversation_id), "message_id": str(assistant_message.id)})
+        yield sse("done", {"conversation_id": str(conversation_id), "message_id": str(assistant_message.id), "run_id": str(run_id) if run_id else None, "status": terminal_status if terminal_status != "running" else "ready"})

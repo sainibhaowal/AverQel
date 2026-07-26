@@ -27,6 +27,7 @@ def test_reasoning_capabilities_cover_supported_providers() -> None:
     assert model_supports_reasoning("opencode-zen", "gpt-5.4")
     assert model_supports_reasoning("opencode-zen", "claude-sonnet-4-6")
     assert model_supports_reasoning("opencode-zen", "gemini-3.1-pro")
+    assert model_supports_reasoning("opencode-zen", "deepseek-v4-flash")
     assert model_supports_reasoning("google", "gemini-3-pro")
     assert model_supports_reasoning("anthropic", "claude-3-7-sonnet-latest")
     assert model_supports_reasoning("google", "gemini-2.5-pro")
@@ -98,6 +99,15 @@ def test_reasoning_profile_tracks_dynamic_controls_for_google() -> None:
     assert profile.request_controls_off == ("thinking_config_disable",)
 
 
+def test_reasoning_profile_supports_opencode_deepseek_v4_flash() -> None:
+    profile = resolve_reasoning_profile("opencode-zen", "deepseek-v4-flash")
+
+    assert profile.supports_reasoning is True
+    assert profile.supports_thinking_summary_stream is True
+    assert profile.supports_thinking_toggle is True
+    assert "reasoning" in profile.request_controls_on
+
+
 def test_reasoning_profile_tracks_dynamic_controls_for_gemini_3() -> None:
     profile = resolve_reasoning_profile("google", "gemini-3-pro")
 
@@ -143,7 +153,9 @@ def test_anthropic_generate_exposes_thinking_only_when_enabled(monkeypatch) -> N
     assert result.thinking_content == "Plan first."
 
     off_result = provider.generate(replace(request, reasoning_enabled=False))
-    assert off_result.thinking_content is None
+    # Provider-emitted thinking is always captured; the flag controls only
+    # optional request-side reasoning controls.
+    assert off_result.thinking_content == "Plan first."
 
 
 def test_google_generate_exposes_thinking_only_when_enabled(monkeypatch) -> None:
@@ -187,7 +199,7 @@ def test_google_generate_exposes_thinking_only_when_enabled(monkeypatch) -> None
     assert result.thinking_content == "Plan first."
 
     off_result = provider.generate(replace(request, reasoning_enabled=False))
-    assert off_result.thinking_content is None
+    assert off_result.thinking_content == "Plan first."
 
 
 def test_google_build_generation_config_disables_thinking_explicitly() -> None:

@@ -10,6 +10,7 @@ from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
 from app.deepspace.models.agent_activity import AgentActivity
 from app.deepspace.models.agent_memory import AgentMemory
+from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceAgentStep
 from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.message import Message
@@ -101,6 +102,8 @@ __all__ = [
     "ConnectorSecret",
     "MCPConnectionPolicy",
     "AgentMemory",
+    "DeepSpaceAgentRun",
+    "DeepSpaceAgentStep",
     "AgentTodo",
     "AgentActivity",
     "DeepSpaceMissionSnapshot",

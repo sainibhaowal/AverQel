@@ -43,6 +43,7 @@ from app.deepspace.schemas.chats import (
     RegenerateRequest,
 )
 from app.deepspace.services.chat_service import DeepSpaceChatService
+from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.platform.database.session import get_db
 
 router = APIRouter(prefix="/deepspace/chats", tags=["deepspace-chats"])
@@ -344,8 +345,12 @@ async def cancel_deepspace_chat(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> Response:
-    del conversation_id, auth, db
-    return Response(status_code=204)
+    cancelled = DeepSpaceRuntimeStore(db).request_cancel(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    return Response(status_code=204, headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"})
 
 
 @router.post(
