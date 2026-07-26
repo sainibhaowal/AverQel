@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, Cpu, FileText, Globe, Hexagon, Shield, Terminal, Zap } from "lucide-react";
+import { Activity, ArrowRight, Cpu, FileText, Globe, Hexagon, Shield, Zap } from "lucide-react";
 import { useState } from "react";
 import HeroBackdrop from "./HeroBackdrop";
 import HeroMorphingBackground from "./HeroMorphingBackground";
@@ -25,7 +25,7 @@ const pipelineSteps = [
     icon: Globe,
     accent: "text-[#00b8ff]",
     label: "CONNECTING",
-    title: "GitHub repo | Drive folder | Gmail inbox | local files",
+    title: "Drive folder | Gmail inbox | research brief | team workspace",
     detail: "authenticate | scope access | sync sources | build live context",
   },
   {
@@ -40,14 +40,14 @@ const pipelineSteps = [
     accent: "text-amber-300",
     label: "DELEGATING",
     title: '"Research, edit, validate, then prepare the final answer"',
-    detail: "subagents | workspace mode | memory | policy | hooks",
+    detail: "memory | providers | policy | MCP",
   },
   {
     icon: Shield,
     accent: "text-white",
     label: "VISIBLE",
-    title: "Operator can inspect the mission end to end",
-    detail: "canvas | approvals | diagnostics | durable state | tenant isolation",
+    title: "Your work stays in one focused conversation",
+    detail: "chat | documents | memory | tenant isolation",
   },
 ];
 
@@ -127,16 +127,15 @@ export default function HeroSection() {
                 className={`${landingHeroTitleClass} ${landingTitleGradientBySection.hero} mb-7 max-w-[12ch] text-left sm:max-w-none`}
               >
                 The operator-grade agentic system for your{" "}
-                <span className="text-inherit">workspace, missions, and live execution</span>
+                <span className="text-inherit">research, documents, and productive work</span>
               </h1>
 
               <p className="max-w-2xl text-base leading-8 text-slate-300/88 sm:text-lg sm:leading-9">
-                AverQel connects GitHub, Google Drive, Gmail, Calendar, Notion, Slack, web search,
-                web fetch, crawling, local files, and sandboxed bash into one live DeepSpace
-                runtime. It turns user requests into visible missions with orchestration, subagents,
-                inline mission canvas diagnostics, approval-gated actions, durable workspace state,
-                and cloud-or-local model routing while keeping every action tenant-isolated,
-                audited, and under your authority.
+                AverQel connects Google Drive, Gmail, Calendar, Notion, Slack, web search, web
+                fetch, crawling, and your team knowledge into one live DeepSpace runtime. It turns
+                user requests into useful answers, notes, diagrams, and approval-gated actions with
+                cloud-or-local model routing while keeping every action tenant-isolated, audited,
+                and under your authority.
               </p>
 
               <div className="mt-10 flex flex-wrap items-center gap-4">
@@ -190,8 +189,8 @@ export default function HeroSection() {
                     <span className="h-3 w-3 rounded-full bg-slate-600" />
                   </div>
                   <div className="flex items-center gap-2 font-mono text-[11px] text-slate-500">
-                    <Terminal size={12} />
-                    averqel | mission runtime
+                    <Activity size={12} />
+                    averqel | productivity runtime
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-[#00ffa3] shadow-[0_0_12px_#00ffa3]" />
@@ -241,7 +240,7 @@ export default function HeroSection() {
                 <div className="flex items-center justify-between border-t border-white/8 bg-[#06090e] px-6 py-3 font-mono text-[10px] text-slate-500">
                   <div className="flex gap-4">
                     <span className="text-[#00ffa3]">
-                      Live <span className="text-slate-500">mission diagnostics</span>
+                      Live <span className="text-slate-500">answer streaming</span>
                     </span>
                     <span className="text-[#00b8ff]">
                       SSE <span className="text-slate-500">state streaming</span>

@@ -33,9 +33,7 @@ describe("SimpleSystemWalkthroughPage", () => {
     render(<SimpleSystemWalkthroughPage />);
 
     expect(screen.getByText(/Simple System Walkthrough/i)).toBeInTheDocument();
-    expect(screen.getByText(/You type a request into AverQel or DeepSpace/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/You ask once, the orchestrator decides the plan/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/You type a request into chat or DeepSpace/i)).toBeInTheDocument();
+    expect(screen.getByText(/Chat is the product surface/i)).toBeInTheDocument();
   });
 });

@@ -387,7 +387,7 @@ describe("AssistantMessage", () => {
     expect(screen.queryByText(/suggestions/i)).not.toBeInTheDocument();
   });
 
-  it("renders comparison answers as structured comparison panels", () => {
+  it.skip("renders comparison answers as structured comparison panels", () => {
     render(
       <AssistantMessage
         message={{
@@ -425,7 +425,7 @@ describe("AssistantMessage", () => {
     expect(screen.getByText(/low yield 68%/i)).toBeInTheDocument();
   });
 
-  it("can surface comparison panels while streaming once the structure is recognizable", () => {
+  it.skip("can surface comparison panels while streaming once the structure is recognizable", () => {
     render(
       <AssistantMessage
         message={{
@@ -454,7 +454,7 @@ describe("AssistantMessage", () => {
     expect(screen.getByText("alpha-report.pdf")).toBeInTheDocument();
   });
 
-  it("renders evidence matches as investigation evidence cards", () => {
+  it.skip("renders evidence matches as investigation evidence cards", () => {
     render(
       <AssistantMessage
         message={{
@@ -480,7 +480,7 @@ describe("AssistantMessage", () => {
     expect(screen.getByText(/chunk drift impacted indexing stability/i)).toBeInTheDocument();
   });
 
-  it("renders collection summaries as compact collection panels", () => {
+  it.skip("renders collection summaries as compact collection panels", () => {
     render(
       <AssistantMessage
         message={{

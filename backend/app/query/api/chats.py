@@ -105,32 +105,10 @@ async def list_conversations(
         limit=limit,
         offset=offset,
     )
-    from app.core.config import get_settings
-    from app.deepspace.missions.mission_registry import MissionRegistry
-
-    missions = MissionRegistry(get_settings(), db=db).list_missions(
-        tenant_id=str(auth.tenant_id), user_id=str(auth.user_id), limit=100
-    )
-    by_conversation: dict[str, dict[str, Any]] = {}
-    for mission in missions:
-        key = str(mission.get("parent_id") or mission.get("conversation_id") or "")
-        if key and key not in by_conversation:
-            by_conversation[key] = mission
-    serialized = []
-    active_states = {"planning", "ready", "running", "awaiting_approval", "blocked", "failed", "repairing"}
-    for item in items:
-        payload = ConversationSchema.model_validate(item).model_dump()
-        mission = by_conversation.get(str(item.id))
-        if mission and str(mission.get("status") or "") in active_states:
-            payload["live_status"] = str(mission["status"])
-            payload["live_mission_id"] = str(mission.get("id"))
-        serialized.append(ConversationSchema.model_validate(payload))
     return ConversationListResponse(
-        items=serialized,
+        items=[ConversationSchema.model_validate(item) for item in items],
         total=len(items),
     )
-
-
 @router.get(
     "/{conversation_id}/messages",
     response_model=ChatHistoryResponse,

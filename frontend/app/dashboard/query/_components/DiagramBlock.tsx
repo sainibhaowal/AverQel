@@ -117,7 +117,14 @@ export default function DiagramBlock({ block, isStreaming = false }: DiagramBloc
         });
 
         try {
-          await mermaid.parse(sanitizedSyntax, { suppressErrors: true });
+          const parsed = await mermaid.parse(sanitizedSyntax, { suppressErrors: true });
+          if (!parsed) {
+            if (!cancelled && mountedRef.current) {
+              setError("Invalid Mermaid syntax.");
+              setIsRendering(false);
+            }
+            return;
+          }
         } catch (parseError) {
           if (!cancelled && mountedRef.current) {
             const message =

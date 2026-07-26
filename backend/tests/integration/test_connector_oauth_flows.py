@@ -35,7 +35,7 @@ def _configure_secret_backend(settings: Settings) -> None:
         "https://averqel.localhost/api/v1/integrations/connectors/oauth/callback"
     )
     settings.connector_oauth_frontend_redirect_uri = (
-        "https://averqel.localhost/dashboard/connectors"
+        "https://averqel.localhost/dashboard"
     )
     settings.connector_google_oauth_client_id = "google-client-id"
     settings.connector_google_oauth_client_secret = "google-client-secret"

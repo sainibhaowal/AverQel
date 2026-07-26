@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..800&family=Teko:wght@500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..800&family=Teko:wght@500;600;700&display=swap");
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 @plugin "@tailwindcss/typography";
@@ -40,10 +40,11 @@ button {
 }
 
 :root {
-  --font-inter: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-jetbrains-mono: 'JetBrains Mono', monospace;
-  --font-display: 'Chakra Petch', sans-serif;
-  --font-landing-display: 'Teko', sans-serif;
+  --font-inter:
+    "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-jetbrains-mono: "JetBrains Mono", monospace;
+  --font-display: "Chakra Petch", sans-serif;
+  --font-landing-display: "Teko", sans-serif;
 
   /* Core Base - Pure & Clean */
   --background: #f8fafc;
@@ -512,7 +513,7 @@ body {
   contain-intrinsic-size: 1px 1000px;
 }
 
-.dashboard-main-surface>* {
+.dashboard-main-surface > * {
   content-visibility: auto;
   contain-intrinsic-size: 1px 900px;
 }
@@ -531,7 +532,8 @@ body {
   opacity: 0.5;
 }
 
-:is(.theme-panel,
+:is(
+  .theme-panel,
   .theme-panel-muted,
   .theme-panel-strong,
   .theme-card,
@@ -540,19 +542,22 @@ body {
   .card-elevated,
   .card-accent,
   .card-danger,
-  .matte-panel)::after {
+  .matte-panel
+)::after {
   content: "";
   position: absolute;
   top: 0;
   left: -30%;
   width: 160%;
   height: 1px;
-  background: linear-gradient(90deg,
-      transparent 0%,
-      color-mix(in srgb, var(--accent-cyan) 34%, transparent) 18%,
-      color-mix(in srgb, hsl(var(--primary)) 54%, transparent) 50%,
-      color-mix(in srgb, var(--accent-blue) 34%, transparent) 74%,
-      transparent 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent-cyan) 34%, transparent) 18%,
+    color-mix(in srgb, hsl(var(--primary)) 54%, transparent) 50%,
+    color-mix(in srgb, var(--accent-blue) 34%, transparent) 74%,
+    transparent 100%
+  );
   background-size: 240% 100%;
   animation:
     border-trace 7.5s linear infinite,
@@ -562,18 +567,19 @@ body {
   z-index: 1;
 }
 
-:is(.theme-panel,
-  .theme-panel-muted,
-  .theme-panel-strong,
-  .theme-card,
-  .glass-card,
-  .card-default,
-  .card-elevated,
-  .card-accent,
-  .card-danger,
-  .matte-panel,
+:is(
+    .theme-panel,
+    .theme-panel-muted,
+    .theme-panel-strong,
+    .theme-card,
+    .glass-card,
+    .card-default,
+    .card-elevated,
+    .card-accent,
+    .card-danger,
+    .matte-panel,
 
-):hover::after {
+  ):hover::after {
   opacity: 0.82;
 }
 
@@ -747,7 +753,6 @@ body {
 }
 
 @keyframes float {
-
   0%,
   100% {
     transform: translateY(0px);
@@ -759,7 +764,6 @@ body {
 }
 
 @keyframes pulse-glow {
-
   0%,
   100% {
     opacity: 0.45;
@@ -781,7 +785,6 @@ body {
 }
 
 @keyframes typewriter-cursor {
-
   0%,
   100% {
     opacity: 1;
@@ -823,7 +826,6 @@ body {
 }
 
 @keyframes border-trace-pulse {
-
   0%,
   100% {
     opacity: 0.18;
@@ -901,9 +903,11 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: radial-gradient(ellipse 82% 62% at 20% 0%,
-      color-mix(in srgb, hsl(var(--accent)) 8%, transparent),
-      transparent 60%);
+  background: radial-gradient(
+    ellipse 82% 62% at 20% 0%,
+    color-mix(in srgb, hsl(var(--accent)) 8%, transparent),
+    transparent 60%
+  );
   opacity: 0;
   transition: opacity 420ms ease;
   pointer-events: none;
@@ -924,11 +928,13 @@ body {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg,
-      transparent,
-      color-mix(in srgb, hsl(var(--accent)) 18%, transparent) 30%,
-      color-mix(in srgb, hsl(var(--accent)) 10%, transparent) 70%,
-      transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, hsl(var(--accent)) 18%, transparent) 30%,
+    color-mix(in srgb, hsl(var(--accent)) 10%, transparent) 70%,
+    transparent
+  );
   opacity: 0;
   transition: opacity 360ms ease;
   pointer-events: none;
@@ -1020,7 +1026,6 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-
   .providers-page-enter,
   .providers-page-section,
   .providers-page-enter.is-entered,
@@ -1139,9 +1144,11 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: radial-gradient(ellipse 84% 64% at 20% 0%,
-      color-mix(in srgb, hsl(var(--accent)) 12%, transparent),
-      transparent 60%);
+  background: radial-gradient(
+    ellipse 84% 64% at 20% 0%,
+    color-mix(in srgb, hsl(var(--accent)) 12%, transparent),
+    transparent 60%
+  );
   opacity: 0;
   transition: opacity 420ms ease;
   pointer-events: none;
@@ -1157,11 +1164,13 @@ body {
 .card-danger.hover-yellow::after,
 .matte-panel.hover-yellow::after,
 .theme-card.hover-yellow::after {
-  background: linear-gradient(90deg,
-      transparent,
-      color-mix(in srgb, hsl(var(--accent)) 24%, transparent) 30%,
-      color-mix(in srgb, hsl(var(--accent)) 16%, transparent) 70%,
-      transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, hsl(var(--accent)) 24%, transparent) 30%,
+    color-mix(in srgb, hsl(var(--accent)) 16%, transparent) 70%,
+    transparent
+  );
 }
 
 .theme-panel-muted.hover-yellow:hover::before,
@@ -1544,35 +1553,14 @@ select:-webkit-autofill:focus {
   animation: dash-flow 1.5s linear infinite;
 }
 
-.terminal-window {
-  background: #0a0f18;
-  border: 1px solid color-mix(in srgb, var(--text-muted) 25%, transparent);
-  border-radius: 14px;
-  overflow: hidden;
-  font-family: var(--font-mono), monospace;
-}
-
-.terminal-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 18px;
-  background: color-mix(in srgb, var(--surface-0) 30%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--text-muted) 20%, transparent);
-}
-
-.terminal-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
 .section-separator {
   height: 1px;
-  background: linear-gradient(90deg,
-      transparent,
-      color-mix(in srgb, var(--text-muted) 35%, transparent),
-      transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--text-muted) 35%, transparent),
+    transparent
+  );
   margin: 0 auto;
   max-width: 70%;
 }
@@ -1680,9 +1668,11 @@ select:-webkit-autofill:focus {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: radial-gradient(ellipse 80% 60% at 20% 0%,
-      color-mix(in srgb, hsl(var(--accent)) 8%, transparent),
-      transparent 60%);
+  background: radial-gradient(
+    ellipse 80% 60% at 20% 0%,
+    color-mix(in srgb, hsl(var(--accent)) 8%, transparent),
+    transparent 60%
+  );
   opacity: 0;
   transition: opacity 500ms ease;
   pointer-events: none;
@@ -1722,11 +1712,13 @@ select:-webkit-autofill:focus {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg,
-      transparent,
-      color-mix(in srgb, hsl(var(--accent)) 18%, transparent) 30%,
-      color-mix(in srgb, hsl(var(--accent)) 10%, transparent) 70%,
-      transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, hsl(var(--accent)) 18%, transparent) 30%,
+    color-mix(in srgb, hsl(var(--accent)) 10%, transparent) 70%,
+    transparent
+  );
   opacity: 0;
   transition: opacity 400ms ease;
 }
@@ -1758,10 +1750,12 @@ select:-webkit-autofill:focus {
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(135deg,
-      color-mix(in srgb, var(--accent-cyan) 40%, transparent),
-      color-mix(in srgb, var(--accent-blue) 20%, transparent) 50%,
-      color-mix(in srgb, var(--accent-cyan) 10%, transparent));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-cyan) 40%, transparent),
+    color-mix(in srgb, var(--accent-blue) 20%, transparent) 50%,
+    color-mix(in srgb, var(--accent-cyan) 10%, transparent)
+  );
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
@@ -1779,12 +1773,14 @@ select:-webkit-autofill:focus {
 /* Animated gradient line separator */
 .settings-divider {
   height: 1px;
-  background: linear-gradient(90deg,
-      transparent 0%,
-      color-mix(in srgb, var(--accent-cyan) 30%, transparent) 20%,
-      color-mix(in srgb, var(--accent-blue) 25%, transparent) 50%,
-      color-mix(in srgb, var(--accent-cyan) 30%, transparent) 80%,
-      transparent 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent-cyan) 30%, transparent) 20%,
+    color-mix(in srgb, var(--accent-blue) 25%, transparent) 50%,
+    color-mix(in srgb, var(--accent-cyan) 30%, transparent) 80%,
+    transparent 100%
+  );
   background-size: 200% 100%;
   animation: gradient-shift 6s ease infinite;
 }
@@ -1871,7 +1867,6 @@ select:-webkit-autofill:focus {
 
 /* Pulsing status dot */
 @keyframes status-pulse {
-
   0%,
   100% {
     opacity: 1;
@@ -1904,10 +1899,12 @@ select:-webkit-autofill:focus {
 }
 
 .settings-shimmer {
-  background: linear-gradient(90deg,
-      transparent 25%,
-      color-mix(in srgb, var(--accent-cyan) 6%, transparent) 50%,
-      transparent 75%);
+  background: linear-gradient(
+    90deg,
+    transparent 25%,
+    color-mix(in srgb, var(--accent-cyan) 6%, transparent) 50%,
+    transparent 75%
+  );
   background-size: 200% 100%;
   animation: settings-shimmer 3s ease infinite;
 }
@@ -1942,9 +1939,11 @@ select:-webkit-autofill:focus {
 
 /* Role badge gradient */
 .settings-role-badge {
-  background: linear-gradient(135deg,
-      color-mix(in srgb, var(--accent-cyan) 15%, transparent),
-      color-mix(in srgb, var(--accent-blue) 12%, transparent));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-cyan) 15%, transparent),
+    color-mix(in srgb, var(--accent-blue) 12%, transparent)
+  );
   border: 1px solid color-mix(in srgb, var(--accent-cyan) 25%, transparent);
   color: var(--accent-cyan);
 }
@@ -1969,7 +1968,6 @@ select:-webkit-autofill:focus {
 
 /* Premium button glow effect */
 @keyframes btn-glow-pulse {
-
   0%,
   100% {
     box-shadow: 0 0 20px -8px color-mix(in srgb, var(--accent-cyan) 30%, transparent);
@@ -2003,10 +2001,12 @@ select:-webkit-autofill:focus {
   left: -150%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0.28) 50%,
-      rgba(255, 255, 255, 0) 100%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
   transform: skewX(-20deg);
   pointer-events: none;
 }

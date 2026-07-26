@@ -29,7 +29,6 @@ import type { ComponentType } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import UploadModal from "@/app/components/dashboard/documents/UploadModal";
-import IntelligencePulseCard from "@/app/components/dashboard/IntelligencePulseCard";
 import ParticleAccelerator from "@/app/components/dashboard/ParticleAccelerator";
 import { hasAdminRole, hasProviderAccess } from "@/lib/roles";
 import { fetchWithAuth } from "../../lib/api";
@@ -618,8 +617,6 @@ export default function DashboardPage() {
           transition={{ duration: 0.35, delay: 0.1 }}
           className="space-y-5"
         >
-          <IntelligencePulseCard />
-
           <div className="theme-panel rounded-[1.45rem] p-5">
             <SectionHeader
               eyebrow="Recent work"

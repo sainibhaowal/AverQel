@@ -280,7 +280,34 @@ export default function DeepSpaceChatClient({
         );
 
         if (active) {
-          setAvailableModels(allChatModels);
+          const fallbackModels = chatProviders.flatMap((provider) => {
+            const modelName = provider.default_chat_model?.trim();
+            return modelName
+              ? [{
+                  providerId: provider.id,
+                  modelName,
+                  displayName: modelName,
+                  contextWindow: null,
+                  contextWindowSource: "provider_default",
+                }]
+              : [];
+          });
+          if (chatAssignment?.model_name && chatAssignment.provider_config_id) {
+            fallbackModels.push({
+              providerId: chatAssignment.provider_config_id,
+              modelName: chatAssignment.model_name,
+              displayName: chatAssignment.model_name,
+              contextWindow: null,
+              contextWindowSource: "assignment",
+            });
+          }
+          const merged = new Map(
+            [...allChatModels, ...fallbackModels].map((model) => [
+              `${model.providerId}:${model.modelName}`,
+              model,
+            ]),
+          );
+          setAvailableModels([...merged.values()]);
         }
       } catch (err) {
         console.error("Failed to load models", err);
@@ -381,6 +408,33 @@ export default function DeepSpaceChatClient({
       }),
       [],
     ),
+  );
+
+  const resolveMCPApproval = useCallback(
+    async (approvalId: string, decision: "approved" | "denied") => {
+      if (!activeConversationId || !approvalId) return;
+      const response = (await fetchWithAuth(
+        `/deepspace/chats/${activeConversationId}/approvals/${encodeURIComponent(approvalId)}`,
+        {
+          method: "POST",
+          body: JSON.stringify({ decision }),
+        },
+      )) as Response;
+      if (!response.ok) {
+        toast.error("Unable to resolve the MCP approval request.");
+        return;
+      }
+      pendingHistorySyncRef.current = true;
+      await stream.start({
+        endpoint: "/deepspace/chats/stream",
+        body: {
+          conversation_id: activeConversationId,
+          resume_approval_id: approvalId,
+          thinking_enabled: thinkingEnabled,
+        },
+      });
+    },
+    [activeConversationId, stream, thinkingEnabled],
   );
 
   const loadConversation = useCallback(async (conversationId: string) => {
@@ -822,6 +876,7 @@ export default function DeepSpaceChatClient({
               }
               onSaveEdit={handleSaveEdit}
               onActivateVersion={handleActivateVersion}
+              onResolveApproval={resolveMCPApproval}
             />
           </div>
 

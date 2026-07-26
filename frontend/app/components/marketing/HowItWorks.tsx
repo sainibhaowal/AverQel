@@ -33,12 +33,12 @@ const stages = [
     step: "01",
     title: "Connect your ecosystem",
     description:
-      "Bring your production sources into AverQel. Connect GitHub repositories, Google Drive folders, Gmail inboxes, Google Calendar, Notion, Slack, web search, web crawling, and local files into one tenant-scoped runtime.",
+      "Bring your production sources into AverQel. Connect Google Drive folders, Gmail inboxes, Google Calendar, Notion, Slack, web search, and web crawling into one tenant-scoped runtime.",
     icon: Upload,
     accent: "blue",
     details: [
       { icon: FileText, text: "GitHub | Drive | Gmail | Calendar | Notion | Slack" },
-      { icon: Layers, text: "Web crawler, web search, fetch, and local file ingestion" },
+      { icon: Layers, text: "Web crawler, web search, fetch, and connected documents" },
       { icon: BarChart3, text: "Automated synchronization with live health and audit trails" },
     ],
   },

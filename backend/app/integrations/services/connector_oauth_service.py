@@ -486,7 +486,7 @@ class ConnectorOAuthService:
         if not value:
             origin = self._public_origin()
             if origin:
-                value = f"{origin}/dashboard/connectors"
+                value = f"{origin}/dashboard"
         return value or None
 
     def _profile_for_integration(self, integration: Integration) -> MCPProfile | None:

@@ -21,6 +21,7 @@ import {
   FileCode,
   FileText,
   FileType,
+  ShieldCheck,
 } from "lucide-react";
 import { memo, useMemo, useState, useEffect, useRef } from "react";
 
@@ -51,6 +52,7 @@ interface DeepSpaceThreadProps {
   onUpdateDraft?: (messageId: string, content: string) => void;
   onSaveEdit?: (messageId: string, content: string) => void;
   onActivateVersion?: (messageId: string, versionId: string) => void;
+  onResolveApproval?: (approvalId: string, decision: "approved" | "denied") => Promise<void>;
   scrollMetrics?: {
     scrollTop: number;
     viewportHeight: number;
@@ -80,6 +82,7 @@ const MessageBubble = memo(
     onUpdateDraft,
     onSaveEdit,
     onActivateVersion,
+    onResolveApproval,
     isLast,
   }: {
     message: DeepSpaceMessage;
@@ -90,12 +93,19 @@ const MessageBubble = memo(
     onSaveEdit: (messageId: string, content: string) => void;
     onActivateVersion: (messageId: string, versionId: string) => void;
     isLast: boolean;
+    onResolveApproval?: (approvalId: string, decision: "approved" | "denied") => Promise<void>;
   }) {
     const [copied, setCopied] = useState(false);
     const [feedbackState, setFeedbackState] = useState<"helpful" | "unhelpful" | null>(null);
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
+    const [approvalBusy, setApprovalBusy] = useState(false);
+    const pendingApproval = [...(message.agentSteps ?? [])]
+      .reverse()
+      .find((step) => step.type === "permission_request" && step.status === "awaiting_approval");
+    const pendingApprovalData = pendingApproval?.data ?? {};
+    const pendingApprovalId = String(pendingApprovalData.approval_id ?? "").trim();
 
 
     useEffect(() => {
@@ -282,6 +292,66 @@ const MessageBubble = memo(
                   content={message.thinkingContent}
                   isStreaming={message.status === "streaming"}
                 />
+              ) : null}
+
+              {pendingApproval && pendingApprovalId && onResolveApproval ? (
+                <div className="mb-5 rounded-2xl border border-amber-400/25 bg-amber-400/[0.07] p-4 shadow-[0_12px_40px_-24px_rgba(251,191,36,0.8)]">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 rounded-lg border border-amber-300/20 bg-amber-300/10 p-2 text-amber-200">
+                      <ShieldCheck size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-amber-100">Approval required</div>
+                      <p className="mt-1 text-xs leading-5 text-amber-100/70">
+                        {String(pendingApprovalData.message ?? "A connected MCP action needs your approval.")}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold tracking-[0.14em] text-amber-100/60 uppercase">
+                        <span>{String(pendingApprovalData.mcp_server ?? "Connected MCP")}</span>
+                        <span>•</span>
+                        <span>{String(pendingApprovalData.mcp_tool ?? pendingApproval.toolName ?? "Tool")}</span>
+                        <span>•</span>
+                        <span>{String(pendingApprovalData.risk_level ?? "protected")}</span>
+                      </div>
+                      {pendingApprovalData.tool_input ? (
+                        <pre className="mt-3 max-h-36 overflow-auto rounded-lg border border-white/10 bg-black/20 p-2 text-[10px] leading-5 whitespace-pre-wrap text-amber-50/65">
+                          {JSON.stringify(pendingApprovalData.tool_input, null, 2)}
+                        </pre>
+                      ) : null}
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          disabled={approvalBusy}
+                          onClick={async () => {
+                            setApprovalBusy(true);
+                            try {
+                              await onResolveApproval(pendingApprovalId, "approved");
+                            } finally {
+                              setApprovalBusy(false);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/25 disabled:cursor-wait disabled:opacity-50"
+                        >
+                          <Check size={13} /> Approve
+                        </button>
+                        <button
+                          type="button"
+                          disabled={approvalBusy}
+                          onClick={async () => {
+                            setApprovalBusy(true);
+                            try {
+                              await onResolveApproval(pendingApprovalId, "denied");
+                            } finally {
+                              setApprovalBusy(false);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/65 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-50"
+                        >
+                          <X size={13} /> Deny
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ) : null}
 
               <div className="prose-premium prose prose-invert max-w-none">
@@ -686,6 +756,7 @@ export default function DeepSpaceThread({
   onUpdateDraft = () => {},
   onSaveEdit = () => {},
   onActivateVersion = () => {},
+  onResolveApproval,
   scrollMetrics = null,
 }: DeepSpaceThreadProps) {
   const [revealedHistoryCount, setRevealedHistoryCount] = useState(RECENT_MESSAGE_WINDOW);
@@ -795,6 +866,7 @@ export default function DeepSpaceThread({
             onUpdateDraft={onUpdateDraft}
             onSaveEdit={onSaveEdit}
             onActivateVersion={onActivateVersion}
+            onResolveApproval={onResolveApproval}
           />
         );
 

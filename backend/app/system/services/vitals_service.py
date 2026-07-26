@@ -1,12 +1,11 @@
+import asyncio
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.core.config import get_settings
-from app.deepspace.subagents.subagent_registry import SubagentRegistry
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.platform.database.session import get_session_factory
 from app.providers.models.provider_assignment import ProviderAssignment
@@ -17,45 +16,60 @@ logger = logging.getLogger(__name__)
 class VitalsService:
     @staticmethod
     async def get_system_vitals(tenant_id: Any) -> dict[str, Any]:
-        """
-        Check core system vitals: Internet, LLM, Search, and Source connectivity.
-        """
+        """Check core system vitals without blocking unrelated API requests."""
         settings = get_settings()
-        factory = get_session_factory()
-        db = factory()
-
-        vitals = {
+        vitals: dict[str, Any] = {
             "internet": "disconnected",
             "llm": "disconnected",
             "web_search": "unavailable",
             "sources": 0,
             "connector_statuses": {},
-            "proactive_daemon": {
-                "enabled": bool(
-                    getattr(settings, "deepspace_proactive_daemon_enabled", False)
-                ),
-                "phase": "disabled",
-                "timestamp": None,
-                "interval_seconds": int(
-                    getattr(
-                        settings, "deepspace_proactive_daemon_interval_seconds", 300
-                    )
-                ),
-                "healthy": False,
-            },
         }
 
         try:
-            # 1. Check Internet (Quick ping)
+            # Network diagnostics already use an async client and a short timeout.
             async with httpx.AsyncClient(timeout=2.0) as client:
                 try:
                     res = await client.get("https://www.google.com")
                     if res.status_code == 200:
                         vitals["internet"] = "connected"
-                except Exception:
+                except Exception:  # noqa: BLE001
                     vitals["internet"] = "disconnected"
 
-            # 2. Check LLM Connectivity
+            # SQLAlchemy's synchronous Session is deliberately isolated from the
+            # API event loop. A stalled pool/query cannot freeze other requests.
+            database_vitals = await asyncio.wait_for(
+                asyncio.to_thread(
+                    VitalsService._collect_database_vitals,
+                    tenant_id,
+                    settings,
+                ),
+                timeout=4.0,
+            )
+            vitals.update(database_vitals)
+        except TimeoutError:
+            logger.warning("Vitals database check exceeded its 4 second budget")
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Vitals check failed: %s", exc)
+
+        return vitals
+
+    @staticmethod
+    def _collect_database_vitals(tenant_id: Any, settings: Any) -> dict[str, Any]:
+        """Run synchronous diagnostic queries in a worker thread."""
+        db = get_session_factory()()
+        vitals: dict[str, Any] = {
+            "llm": "disconnected",
+            "web_search": "unavailable",
+            "sources": 0,
+            "connector_statuses": {},
+        }
+
+        try:
+            # This local transaction setting only bounds diagnostic queries; it
+            # does not change application transaction policy.
+            db.execute(text("SET LOCAL statement_timeout = '3000ms'"))
+
             stmt = select(ProviderAssignment).where(
                 ProviderAssignment.tenant_id == tenant_id,
                 ProviderAssignment.feature_scope == "chat",
@@ -64,7 +78,6 @@ class VitalsService:
             if assignment:
                 vitals["llm"] = "connected"
             else:
-                # Fallback: check if any provider config supports chat
                 from app.providers.models.provider_config import ProviderConfig
 
                 stmt_cfg = select(ProviderConfig).where(
@@ -77,7 +90,6 @@ class VitalsService:
                 elif settings.llm_provider != "disabled":
                     vitals["llm"] = "connected"
 
-            # 3. Check Web Search (Check if any search provider is assigned)
             stmt_search = select(ProviderAssignment).where(
                 ProviderAssignment.tenant_id == tenant_id,
                 ProviderAssignment.feature_scope == "web_search",
@@ -86,22 +98,18 @@ class VitalsService:
             if search_assignment:
                 vitals["web_search"] = "available"
             else:
-                # Fallback: check if any provider config is Tavily or Perplexity
                 from app.providers.models.provider_config import ProviderConfig
 
                 stmt_search_cfg = select(ProviderConfig).where(
                     ProviderConfig.tenant_id == tenant_id,
                     ProviderConfig.enabled,
-                    ProviderConfig.provider_type.in_(
-                        ["tavily", "perplexity", "google-search"]
-                    ),
+                    ProviderConfig.provider_type.in_(["tavily", "perplexity", "google-search"]),
                 )
                 if db.execute(stmt_search_cfg).scalars().first():
                     vitals["web_search"] = "available"
                 elif settings.llm_provider == "perplexity":
                     vitals["web_search"] = "available"
 
-            # 4. Check Sources
             stmt_count = select(func.count(Connector.id)).where(
                 Connector.tenant_id == tenant_id,
                 Connector.status == ConnectorStatus.ACTIVE,
@@ -118,54 +126,8 @@ class VitalsService:
                 for status, count in db.execute(status_stmt)
             }
 
-            daemon = SubagentRegistry(settings).get_daemon_heartbeat()
-            if daemon:
-                timestamp_raw = str(daemon.get("timestamp") or "")
-                healthy = False
-                if timestamp_raw:
-                    try:
-                        timestamp = datetime.fromisoformat(
-                            timestamp_raw.replace("Z", "+00:00")
-                        )
-                        interval_seconds_raw = daemon.get("interval_seconds")
-                        interval_seconds = (
-                            int(interval_seconds_raw)
-                            if interval_seconds_raw is not None
-                            else int(
-                                getattr(
-                                    settings,
-                                    "deepspace_proactive_daemon_interval_seconds",
-                                    300,
-                                )
-                            )
-                        )
-                        healthy = daemon.get("phase") != "error" and (
-                            datetime.now(UTC) - timestamp
-                        ).total_seconds() <= max(interval_seconds * 3, 300)
-                    except Exception:  # noqa: BLE001
-                        healthy = False
-                daemon_interval_raw = daemon.get("interval_seconds")
-                daemon_interval = (
-                    int(daemon_interval_raw)
-                    if daemon_interval_raw is not None
-                    else int(
-                        getattr(
-                            settings, "deepspace_proactive_daemon_interval_seconds", 300
-                        )
-                    )
-                )
-                vitals["proactive_daemon"] = {
-                    "enabled": bool(
-                        getattr(settings, "deepspace_proactive_daemon_enabled", False)
-                    ),
-                    "phase": str(daemon.get("phase") or "running"),
-                    "timestamp": daemon.get("timestamp"),
-                    "interval_seconds": daemon_interval,
-                    "healthy": healthy,
-                }
-
-        except Exception as e:
-            logger.error(f"Vitals check failed: {e}")
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Vitals database check failed: %s", exc)
         finally:
             db.close()
 

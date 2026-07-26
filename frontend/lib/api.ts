@@ -40,17 +40,11 @@ export const getApiBaseUrl = () => {
       // Tauri development loads the web app from the local Caddy origin.
       // Keep API calls on that same origin; falling back to averqel.com here
       // makes the desktop login hang when the production host is unavailable.
-      if (
-        hostname === "localhost" ||
-        hostname === "127.0.0.1" ||
-        hostname.endsWith(".localhost")
-      ) {
+      if (hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".localhost")) {
         // Some WebKit/Tauri versions expose a `tauri://` origin even when
         // loading the remote dev URL. Never construct an API URL from that
         // non-HTTP origin.
-        return origin.startsWith("http")
-          ? `${origin}/api/v1`
-          : "https://averqel.localhost/api/v1";
+        return origin.startsWith("http") ? `${origin}/api/v1` : "https://averqel.localhost/api/v1";
       }
     }
     return process.env.NEXT_PUBLIC_API_URL || "https://averqel.com/api/v1";
@@ -58,10 +52,12 @@ export const getApiBaseUrl = () => {
   return "/api/v1";
 };
 
-let isRefreshing = false;
-let refreshSubscribers: ((token: string | null) => void)[] = [];
+let refreshPromise: Promise<string | null> | null = null;
 let authSessionInvalidated = false;
 const ACCESS_TOKEN_REFRESH_BUFFER_MS = 60_000;
+const DEFAULT_API_TIMEOUT_MS = 10_000;
+const AUTH_API_TIMEOUT_MS = 5_000;
+const STREAM_API_TIMEOUT_MS = 120_000;
 const REFRESH_LOCK_KEY = "averqel_refresh_lock";
 const REFRESH_LOCK_TTL_MS = 15_000;
 const AUTH_CHANNEL_NAME = "averqel_auth";
@@ -76,16 +72,10 @@ const TAB_ID =
     ? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     : "server";
 
-function subscribeTokenRefresh(cb: (token: string | null) => void) {
-  refreshSubscribers.push(cb);
-}
-
 function onTokenRefreshed(token: string | null) {
   if (token) {
     authSessionInvalidated = false;
   }
-  refreshSubscribers.forEach((cb) => cb(token));
-  refreshSubscribers = [];
 }
 
 function getAuthChannel(): BroadcastChannel | null {
@@ -121,6 +111,63 @@ export function clearStoredSession() {
 
 export function resetAuthSessionState() {
   authSessionInvalidated = false;
+}
+
+export class ApiRequestTimeoutError extends Error {
+  readonly endpoint: string;
+
+  constructor(endpoint: string, timeoutMs: number) {
+    super(`Request timed out after ${Math.ceil(timeoutMs / 1000)} seconds: ${endpoint}`);
+    this.name = "ApiRequestTimeoutError";
+    this.endpoint = endpoint;
+  }
+}
+
+function requestTimeoutFor(endpoint: string, override?: number): number {
+  if (typeof override === "number" && Number.isFinite(override) && override > 0) {
+    return override;
+  }
+  if (endpoint.includes("/stream")) {
+    return STREAM_API_TIMEOUT_MS;
+  }
+  if (normalizeEndpointPath(endpoint).startsWith("/auth/")) {
+    return AUTH_API_TIMEOUT_MS;
+  }
+  if (normalizeEndpointPath(endpoint) === "/health/ready") {
+    return 2_500;
+  }
+  return DEFAULT_API_TIMEOUT_MS;
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number,
+  endpoint: string,
+): Promise<Response> {
+  const controller = new AbortController();
+  const externalSignal = init.signal;
+  const forwardAbort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      forwardAbort();
+    } else {
+      externalSignal.addEventListener("abort", forwardAbort, { once: true });
+    }
+  }
+
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted && !externalSignal?.aborted) {
+      throw new ApiRequestTimeoutError(endpoint, timeoutMs);
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", forwardAbort);
+  }
 }
 
 function normalizeEndpointPath(endpoint: string): string {
@@ -299,55 +346,71 @@ async function waitForExternalRefresh(timeoutMs = 5000): Promise<string | null> 
 }
 
 export async function refreshAccessToken(tenantId: string | null): Promise<string | null> {
-  if (isRefreshing) {
-    return new Promise<string | null>((resolve) => subscribeTokenRefresh(resolve));
+  if (refreshPromise) {
+    return refreshPromise;
   }
 
   if (!acquireRefreshLock()) {
     return waitForExternalRefresh();
   }
 
-  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const refreshResponse = await fetchWithTimeout(
+        `${getApiBaseUrl()}/auth/refresh`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(tenantId ? { "X-Tenant-Id": tenantId } : {}),
+          },
+          credentials: "include",
+        },
+        AUTH_API_TIMEOUT_MS,
+        "/auth/refresh",
+      );
+
+      if (!refreshResponse.ok) {
+        invalidateAuthSession();
+        return null;
+      }
+
+      const data = await refreshResponse.json();
+      const newToken = data.access_token as string | undefined;
+      if (!newToken) {
+        invalidateAuthSession();
+        return null;
+      }
+
+      localStorage.setItem("averqel_token", newToken);
+      onTokenRefreshed(newToken);
+      broadcastAuthEvent({ type: "token_refreshed", token: newToken });
+      return newToken;
+    } catch {
+      invalidateAuthSession();
+      return null;
+    } finally {
+      releaseRefreshLock();
+    }
+  })();
+
   try {
-    const refreshResponse = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(tenantId ? { "X-Tenant-Id": tenantId } : {}),
-      },
-      credentials: "include",
-    });
-
-    if (!refreshResponse.ok) {
-      invalidateAuthSession();
-      return null;
-    }
-
-    const data = await refreshResponse.json();
-    const newToken = data.access_token as string | undefined;
-    if (!newToken) {
-      invalidateAuthSession();
-      return null;
-    }
-
-    localStorage.setItem("averqel_token", newToken);
-    onTokenRefreshed(newToken);
-    broadcastAuthEvent({ type: "token_refreshed", token: newToken });
-    return newToken;
-  } catch {
-    invalidateAuthSession();
-    return null;
+    return await refreshPromise;
   } finally {
-    isRefreshing = false;
-    releaseRefreshLock();
+    refreshPromise = null;
   }
 }
 
 export async function fetchWithAuth(
   endpoint: string,
-  options: RequestInit & { _isRetry?: boolean } = {},
+  options: RequestInit & {
+    _isRetry?: boolean;
+    _skipAuthRefresh?: boolean;
+    timeoutMs?: number;
+  } = {},
 ) {
   const endpointPath = normalizeEndpointPath(endpoint);
+  const { _isRetry, _skipAuthRefresh, timeoutMs, ...requestInit } = options;
   let token = localStorage.getItem("averqel_token");
   let tenantId = getRequestTenantId(token);
 
@@ -355,7 +418,12 @@ export async function fetchWithAuth(
     return createUnauthorizedResponse();
   }
 
-  if (!options._isRetry && !isPublicAuthEndpoint(endpointPath) && shouldRefreshAccessToken(token)) {
+  if (
+    !_isRetry &&
+    !_skipAuthRefresh &&
+    !isPublicAuthEndpoint(endpointPath) &&
+    shouldRefreshAccessToken(token)
+  ) {
     const refreshedToken = await refreshAccessToken(tenantId);
     if (!refreshedToken) {
       return createUnauthorizedResponse();
@@ -364,7 +432,7 @@ export async function fetchWithAuth(
     tenantId = getRequestTenantId(token);
   }
 
-  const headers = new Headers(options.headers);
+  const headers = new Headers(requestInit.headers);
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
@@ -374,7 +442,7 @@ export async function fetchWithAuth(
 
   // Set Content-Type only if it's not FormData.
   // The browser automatically sets Content-Type to multipart/form-data with the correct boundary for FormData.
-  if (!(options.body instanceof FormData)) {
+  if (!(requestInit.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -385,37 +453,35 @@ export async function fetchWithAuth(
 
   let response: Response;
   try {
-    response = await fetch(fullUrl, {
-      ...options,
-      headers,
-      credentials: "include",
-    });
+    response = await fetchWithTimeout(
+      fullUrl,
+      {
+        ...requestInit,
+        headers,
+        credentials: "include",
+      },
+      requestTimeoutFor(endpoint, timeoutMs),
+      endpointPath,
+    );
   } catch (error) {
+    if (error instanceof ApiRequestTimeoutError) {
+      toast.error("AverQel services are busy or temporarily unavailable. Please try again.", {
+        id: "api-timeout-busy",
+        duration: 4_000,
+      });
+    }
     throw error;
   }
 
-  if (response.status === 401 && endpointPath !== "/auth/refresh" && !options._isRetry) {
-    if (isRefreshing) {
-      return new Promise<Response>((resolve) => {
-        subscribeTokenRefresh((newToken) => {
-          if (newToken) {
-            resolve(fetchWithAuth(endpoint, { ...options, _isRetry: true }));
-          } else {
-            resolve(response);
-          }
-        });
-      });
-    }
-
-    isRefreshing = true;
-
-    try {
-      const refreshedToken = await refreshAccessToken(tenantId);
-      if (refreshedToken) {
-        return fetchWithAuth(endpoint, { ...options, _isRetry: true });
-      }
-    } finally {
-      isRefreshing = false;
+  if (
+    response.status === 401 &&
+    endpointPath !== "/auth/refresh" &&
+    !_isRetry &&
+    !_skipAuthRefresh
+  ) {
+    const refreshedToken = await refreshAccessToken(tenantId);
+    if (refreshedToken) {
+      return fetchWithAuth(endpoint, { ...requestInit, timeoutMs, _isRetry: true });
     }
 
     // If refresh fails, the session is already invalidated; redirect the current tab.

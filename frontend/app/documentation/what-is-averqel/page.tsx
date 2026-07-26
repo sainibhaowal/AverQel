@@ -17,9 +17,8 @@ export default function WhatIsAverQelPage() {
       <DocsSection title="What It Does">
         <p>
           It processes documents, extracts text, creates retrievable chunks and embeddings, lets
-          users ask questions, streams agent steps in DeepSpace, and returns answers grounded in
-          source evidence. This is a server-processed SaaS workflow with application-level user
-          isolation.
+          users ask questions, streams answers in DeepSpace, and returns results grounded in source
+          evidence. This is a server-processed SaaS workflow with application-level user isolation.
         </p>
       </DocsSection>
       <DocsSection title="What It Does Not Mean">
@@ -31,10 +30,9 @@ export default function WhatIsAverQelPage() {
       </DocsSection>
       <DocsSection title="What It Has Become">
         <p>
-          AverQel now includes autonomous grounded chat, DeepSpace streaming, a proactive workspace,
-          connector automation, durable task ledgers, and recurring rules. It is still
-          tenant-isolated and approval-gated, but the platform is now designed to behave like a
-          production-grade agent system rather than only a document assistant.
+          AverQel now includes grounded chat, DeepSpace streaming, protected integrations, notes,
+          exports, and persistent memory. It remains tenant-isolated and approval-gated while
+          keeping the product focused on productivity rather than IDE-style operation.
         </p>
       </DocsSection>
     </DocsShell>

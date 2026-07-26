@@ -162,7 +162,7 @@ describe("rich message mermaid dedup", () => {
     expect(within(table).getByText("92")).toBeInTheDocument();
   });
 
-  it("strips markdown mermaid fences when a structured diagram block exists", () => {
+  it("renders a markdown Mermaid fence once instead of duplicating the structured diagram", () => {
     const message: QueryThreadMessage = {
       id: "assistant-1",
       role: "assistant",
@@ -211,8 +211,8 @@ describe("rich message mermaid dedup", () => {
       />,
     );
 
-    expect(screen.getByText("Generated Diagram")).toBeInTheDocument();
-    expect(screen.queryByText(/Course Book Mind Map/)).not.toBeInTheDocument();
+    expect(screen.getByText("Here is the diagram.")).toBeInTheDocument();
+    expect(screen.queryByText("Generated Diagram")).not.toBeInTheDocument();
   });
 
   it("keeps markdown mermaid fences during streaming and suppresses the structured mermaid block", () => {
@@ -453,7 +453,7 @@ describe("rich message mermaid dedup", () => {
     expect(screen.getAllByText("Jan").length).toBeGreaterThan(0);
   });
 
-  it("promotes markdown chart tables into dedicated chart blocks and strips the table transport", () => {
+  it("keeps Markdown chart tables as normal Markdown instead of promoting them through a second parser", () => {
     const message: QueryThreadMessage = {
       id: "assistant-markdown-charts",
       role: "assistant",
@@ -492,9 +492,8 @@ describe("rich message mermaid dedup", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "Line Chart" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Pie Chart" })).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(screen.queryAllByText("Chart Data")).toHaveLength(0);
+    expect(screen.getAllByRole("table")).toHaveLength(2);
+    expect(screen.getAllByText("Chart Data")).toHaveLength(2);
+    expect(screen.getAllByText("Jan").length).toBeGreaterThan(0);
   });
 });

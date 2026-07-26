@@ -49,7 +49,9 @@ from app.providers.services import (
 )
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.provider_models_service import (
+    acquire_model_discovery_slot,
     provider_request_error_to_api_error,
+    release_model_discovery_slot,
 )
 from app.providers.services.registry import ProviderRegistry
 
@@ -345,6 +347,7 @@ def preview_models(
         metadata_json={},
     )
     registry = ProviderRegistry(settings)
+    acquire_model_discovery_slot("preview")
     try:
         discovery = registry.get_model_discovery_provider_from_config(
             provider, api_key=payload.api_key
@@ -370,6 +373,8 @@ def preview_models(
             message="Provider model preview failed.",
             status_code=502,
         ) from exc
+    finally:
+        release_model_discovery_slot()
 
     items: list[ProviderModelResponse] = []
     seen: set[tuple[str, str]] = set()

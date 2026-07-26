@@ -2310,7 +2310,14 @@ export default function CodeBlock({
           });
 
           try {
-            await mermaid.parse(mermaidSource, { suppressErrors: true });
+            const parsed = await mermaid.parse(mermaidSource, { suppressErrors: true });
+            if (!parsed) {
+              if (!cancelled && mountedRef.current) {
+                setRenderError("Invalid Mermaid syntax.");
+                setIsRendering(false);
+              }
+              return;
+            }
           } catch (error) {
             if (!cancelled && mountedRef.current) {
               setRenderError(error instanceof Error ? error.message : "Invalid Mermaid syntax.");

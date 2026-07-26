@@ -683,6 +683,8 @@ class QueryService:
                 or selected_candidate.provider_type
                 or "DeepSpace AI",
                 "provider_type": selected_candidate.provider_type,
+                "context_limit": selected_candidate.context_window,
+                "context_limit_source": selected_candidate.context_window_source,
             },
         )
         yield AnswerService.encode_sse_event(metadata_event)

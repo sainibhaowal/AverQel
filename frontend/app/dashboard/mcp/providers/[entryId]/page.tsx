@@ -1,22 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 
 import { connectMarketplaceEntry, getMarketplaceEntry, listMCPServers, startMCPServerOAuth, type MCPConnection, type MCPMarketplaceEntry } from "@/lib/mcp-api";
 
 import MCPProviderDetails from "../../_components/MCPProviderDetails";
 
-export default function MCPProviderPage({ params }: { params: { entryId: string } }) {
+export default function MCPProviderPage({ params }: { params?: { entryId: string } }) {
+  const routeParams = useParams();
+  const entryId = typeof params?.entryId === "string" ? params.entryId : typeof routeParams?.entryId === "string" ? routeParams.entryId : Array.isArray(routeParams?.entryId) ? routeParams.entryId[0] : "";
   const [entry, setEntry] = useState<MCPMarketplaceEntry | null>(null);
   const [connectedServer, setConnectedServer] = useState<MCPConnection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
+    if (!entryId) return;
     let active = true;
-    void Promise.all([getMarketplaceEntry(params.entryId), listMCPServers()]).then(([value, servers]) => { if (active) { setEntry(value); setConnectedServer(servers.find((server) => server.registry_entry_id === value.id || (server.provider_slug && server.provider_slug === value.provider_slug)) || null); } }).catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Provider details unavailable"); });
+    void Promise.all([getMarketplaceEntry(entryId), listMCPServers()]).then(([value, servers]) => { if (active) { setEntry(value); setConnectedServer(servers.find((server) => server.registry_entry_id === value.id || (server.provider_slug && server.provider_slug === value.provider_slug)) || null); } }).catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Provider details unavailable"); });
     return () => { active = false; };
-  }, [params.entryId]);
+  }, [entryId]);
 
   const connect = async (value: MCPMarketplaceEntry) => {
     setConnecting(true); setError(null);

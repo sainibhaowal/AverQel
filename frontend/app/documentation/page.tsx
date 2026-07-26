@@ -8,27 +8,19 @@ export default function DocsIndex() {
     "What Is AverQel":
       "Product definition, privacy model, and how AverQel evolved from document intelligence into an agentic operating layer.",
     Features:
-      "Explore RAG, DeepSpace, orchestration, file-aware editing, proactive work, runtime preferences, and visual answer rendering.",
+      "Explore grounded retrieval, DeepSpace chat, note editing, memory, providers, and visual answer rendering.",
     "Grounded Queries":
       "Document ingestion, grounded retrieval, source-backed answers, rich rendering, and how the classic query layer fits beside DeepSpace.",
     "Documents Hub":
-      "See how the note editor, math blocks, exports, split panels, and file-aware save actions work together.",
+      "See how the note editor, math blocks, exports, and split panels work together.",
     "Collections & Sharing":
       "Zero-knowledge E2EE bridge with safety numbers, encrypted backups, self-destruct timers, real-time delivery ticks, and peer-to-peer document sharing.",
     "Connectors & MCP":
       "See the current connector model, OAuth posture, MCP runtime foundations, and the long-term MCP standardization path.",
-    "DeepSpace Missions":
-      "Real examples of durable-first research, coding, approval, recovery, repair, and connector missions and what users actually see.",
     "Runtime & Streaming":
-      "See how DeepSpace streams durable planning, tool calls, approvals, compaction, replay, and final answers through reconnectable SSE and WebSocket cursors.",
-    "Insights Monitor":
-      "The live runtime sidecar for context meter, compaction, vitals, latency, and subagent monitoring.",
+      "See how DeepSpace streams answers, safety prompts, persistence, and reconnectable chat state.",
     "Memory & Workspace":
-      "Understand memory facts, task ledgers, compaction, recurring work, and proactive follow-up infrastructure.",
-    "Proactive Agents":
-      "Background automation, event-driven triggers, lane scheduling, and approval-gated autonomous execution.",
-    "Global Orchestration":
-      "Explore the federated mission brain, dynamic lane scheduling, live control room, and operator observability surfaces.",
+      "Understand persistent memory facts and how they support future conversations.",
     "Privacy & Security":
       "Deep dive into isolation, encrypted provider and connector secrets, approval gating, and metadata-first admin boundaries.",
     "Trust & Privacy":
@@ -49,16 +41,14 @@ export default function DocsIndex() {
       "What is finished, what is hardened, and where the platform is headed next without rewriting the core.",
     "Architecture Spec":
       "One page that maps frontend surfaces, backend services, persistence, providers, connectors, and runtime flows together.",
-    "Unified Brain Guide":
-      "Developer-facing contracts and the end-to-end checklist that keeps AverQel, orchestrator, executor, memory, and safety layers aligned.",
     "System Walkthrough":
-      "A plain-language step-by-step guide to how the UI, orchestrator, executor, tools, memory, and approvals work together.",
+      "A plain-language step-by-step guide to how the UI, chat service, tools, memory, and approvals work together.",
   };
 
   return (
     <DocsShell
       title="AverQel Documentation"
-      intro="The in-app source of truth for AverQel: DeepSpace runtime, orchestration, editor and file workflows, memory and proactive work, connectors and MCP, providers, privacy, and developer-facing architecture clarity."
+      intro="The in-app source of truth for AverQel: grounded chat, DeepSpace, documents, memory, connectors and MCP, providers, privacy, and product architecture."
     >
       {docsNavGroups
         .filter((g) => g.group !== "Core Concept")
@@ -70,7 +60,7 @@ export default function DocsIndex() {
           });
           return (
             <div key={group.group} className="space-y-4">
-              <h3 className="text-foreground text-lg font-black tracking-tight flex items-center gap-3">
+              <h3 className="text-foreground flex items-center gap-3 text-lg font-black tracking-tight">
                 <div className="bg-primary h-4 w-1 rounded-full" />
                 {group.group}
               </h3>
@@ -90,31 +80,25 @@ export default function DocsIndex() {
         })}
       <DocsSection title="What AverQel Does Now">
         <p>
-          AverQel is no longer only a document question-answering surface. It now combines grounded
-          retrieval, DeepSpace agentic execution, mission planning, subagents, provider routing,
-          connector automation, durable memory, proactive follow-up, and a full working editor.
+          AverQel combines grounded retrieval, DeepSpace chat, provider routing, connector and MCP
+          integrations, persistent memory, and a working document editor.
         </p>
         <p>
-          The command surface is DeepSpace and chat. The execution layer is the backend agent loop
-          plus the durable mission orchestrator. New DeepSpace messages automatically use PostgreSQL
-          runs, checkpoints, event cursors, approvals, budgets, memory, verification, repair, and
-          assistant-message persistence. The working surface is the editor, task ledger, mission
-          canvas, and orchestration control room. All of it stays tenant-scoped and streams live
-          state into the UI.
+          The command surface is chat. DeepSpace keeps the conversation, provider selection, safe
+          tool execution, memory, and assistant-message persistence tenant-scoped and separate from
+          the MCP runtime.
         </p>
       </DocsSection>
       <DocsSection title="Durable runtime readiness">
         <p>
-          DeepSpace now has a durable execution foundation: PostgreSQL-backed runs, graph nodes,
-          ordered events, immutable checkpoints, leases, approvals, budgets, replay, rehydration,
-          and persisted assistant answers. Existing chat routes remain compatible adapters, so
-          users see one unified DeepSpace experience.
+          DeepSpace keeps chat history and assistant answers durable so a reload can restore the
+          conversation without requiring an IDE-style workspace or control room.
         </p>
         <p>
-          The implementation has been validated with focused integration, recovery, chaos, and
-          short real-provider staging tests. This documentation does not promise a universal
-          throughput number: every deployment must validate its own provider, worker, database,
-          Redis, connector, and concurrency limits before broad rollout.
+          The implementation has been validated with focused integration, recovery, chaos, and short
+          real-provider staging tests. This documentation does not promise a universal throughput
+          number: every deployment must validate its own provider, worker, database, Redis,
+          connector, and concurrency limits before broad rollout.
         </p>
       </DocsSection>
       <DocsSection title="How To Use This Documentation">
@@ -124,9 +108,9 @@ export default function DocsIndex() {
           hardening phases, and where future development should stay careful.
         </p>
         <p>
-          If you are a user or operator, start with Getting Started, DeepSpace Missions, Runtime &
-          Streaming, and Global Orchestration. If you are developing the system, also read Unified
-          Brain Checklist, Connectors & MCP, Providers, and Memory & Workspace.
+          If you are a user, start with Getting Started, Grounded Queries, Documents Hub, and
+          Memory & Workspace. If you are developing the system, also read Connectors & MCP,
+          Providers, Privacy & Security, and Architecture.
         </p>
       </DocsSection>
       <DocsCards
@@ -165,10 +149,9 @@ export default function DocsIndex() {
         <p>The documentation now covers:</p>
         <ul className="list-disc space-y-2 pl-6">
           <li>document ingestion and grounded query behavior</li>
-          <li>DeepSpace runtime and streamed thought/action surfaces</li>
-          <li>mission planning, orchestration, subagents, and approvals</li>
-          <li>note editor, file-aware tasks, exports, and working surfaces</li>
-          <li>memory, task ledgers, compaction, and proactive workflows</li>
+          <li>DeepSpace chat, streaming answers, and safe approval prompts</li>
+          <li>note editor, research tasks, exports, and working surfaces</li>
+          <li>persistent memory and conversation history</li>
           <li>connectors, MCP transition direction, and external system handling</li>
           <li>provider routing across cloud and local runtimes</li>
           <li>privacy, secret handling, tenant boundaries, and admin posture</li>

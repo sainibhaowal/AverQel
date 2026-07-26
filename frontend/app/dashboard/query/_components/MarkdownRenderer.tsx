@@ -1,22 +1,21 @@
 "use client";
 
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import type { Components } from "react-markdown";
+import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
 
-import {
-  parseStreamingDocument,
-  resetNormCache,
-} from "@/app/dashboard/query/_lib/streaming-document-parser";
-import type {
-  StreamingChartNode,
-  StreamingCodeNode,
-  StreamingDocumentNode,
-  StreamingFootnoteNode,
-  StreamingImageNode,
-  StreamingListNode,
-  StreamingTableNode,
-} from "@/app/dashboard/query/_lib/streaming-document-types";
+import InlineCitation from "@/app/components/query/InlineCitation";
 
-import StreamingDocumentRenderer from "./streaming-document/StreamingDocumentRenderer";
+import { parseVisualChart } from "../_lib/chart-parser";
+import type { StreamChartBlock, StreamChartPoint } from "../_lib/stream-protocol";
+import { normalizeMarkdown } from "../_lib/markdown";
+
+import ChartBlock from "./ChartBlock";
+import CodeBlock from "./CodeBlock";
 
 interface MarkdownRendererProps {
   content: string;
@@ -25,310 +24,145 @@ interface MarkdownRendererProps {
   enableRichPreview?: boolean;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TABLE NODE IDENTITY STABILISER
-//
-// Problem: parseStreamingDocument runs on every delta token and always returns
-// brand-new object references. For table nodes this causes TableBlock to
-// re-render on every single character token — even mid-cell characters that
-// change nothing visible. This produces the "ghost rows" / shimmer flicker
-// seen in picture 2.
-//
-// This function stabilises table node object identity. After parsing, it
-// replaces any table node that is structurally identical to the previous
-// parse's table node with the PREVIOUS object reference. React.memo on
-// TableBlock then sees the same reference → skips the re-render entirely.
-//
-// All other node types (heading, paragraph, list, code, rule) are returned
-// as-is with their new references — they update on every token as before,
-// which is correct because mid-word characters DO change what those nodes
-// display (the text content grows character by character).
-//
-// The stabilisation only suppresses re-renders when nothing structurally
-// changed in the table. A re-render IS allowed through when:
-//   • row count changes          (new completed row arrived)
-//   • column count changes       (separator row locked columns)
-//   • header content changes     (header text still arriving on first ticks)
-//   • last row content changes   (final row gaining cells)
-//   • incomplete flag changes    (separator row just arrived)
-//   • title changes              (rare)
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STRUCTURED NODE IDENTITY STABILISER  (tables + charts)
-//
-// Problem: parseStreamingDocument runs on every delta token and always returns
-// brand-new object references. For structured nodes (tables, charts) this
-// causes their React components to re-render on every single character token —
-// even tokens that change nothing visible inside the block.
-//
-// This function stabilises structured node object identity. After parsing, it
-// replaces any node that is structurally identical to the previous parse with
-// the PREVIOUS object reference. React.memo on TableBlock / ChartBlock then
-// sees the same reference → skips the re-render entirely.
-//
-// TABLE re-renders are allowed when:
-//   • row/column count changes, header content changes, last row changes,
-//     incomplete flag changes, or title changes.
-//
-// CHART re-renders are allowed when:
-//   • raw_payload changes  (more JSON has streamed in)
-//   • incomplete flag changes  (fence just closed — this is the moment the
-//     chart should render, so the re-render IS needed exactly once)
-//   • chart_type or title changes (rare, but allowed through)
-//
-// Critically: once the fence closes (incomplete: false) and raw_payload is
-// stable, every subsequent token that adds more TEXT after the chart returns
-// the PREVIOUS chart object → ChartBlock skips re-render → no flicker/flash.
-// ─────────────────────────────────────────────────────────────────────────────
-
-function stabiliseStructuredNodes(
-  nextNodes: StreamingDocumentNode[],
-  prevNodes: StreamingDocumentNode[],
-): StreamingDocumentNode[] {
-  // ── Tables ──────────────────────────────────────────────────────────────
-  const prevTables: StreamingTableNode[] = [];
-  for (const node of prevNodes) {
-    if (node.type === "table") prevTables.push(node);
-  }
-
-  // ── Charts ──────────────────────────────────────────────────────────────
-  const prevCharts: StreamingChartNode[] = [];
-  for (const node of prevNodes) {
-    if (node.type === "chart") prevCharts.push(node as StreamingChartNode);
-  }
-
-  const prevImages: StreamingImageNode[] = [];
-  const prevFootnotes: StreamingFootnoteNode[] = [];
-  const prevLists: StreamingListNode[] = [];
-  for (const node of prevNodes) {
-    if (node.type === "image") prevImages.push(node as StreamingImageNode);
-    if (node.type === "footnote") prevFootnotes.push(node as StreamingFootnoteNode);
-    if (node.type === "list") prevLists.push(node as StreamingListNode);
-  }
-
-  if (
-    prevTables.length === 0 &&
-    prevCharts.length === 0 &&
-    prevImages.length === 0 &&
-    prevFootnotes.length === 0 &&
-    prevLists.length === 0
-  )
-    return nextNodes;
-
-  let tablesSeen = 0;
-  let chartsSeen = 0;
-  let imagesSeen = 0;
-  let footnotesSeen = 0;
-  let listsSeen = 0;
-  let anySubstituted = false;
-  const result: StreamingDocumentNode[] = [];
-
-  for (const node of nextNodes) {
-    // ── Table stabilisation ───────────────────────────────────────────────
-    if (node.type === "table") {
-      const next = node as StreamingTableNode;
-      const prev = prevTables[tablesSeen] as StreamingTableNode | undefined;
-      tablesSeen++;
-
-      if (!prev) {
-        result.push(next);
-        continue;
-      }
-
-      const structurallyIdentical =
-        prev.title === next.title &&
-        prev.incomplete === next.incomplete &&
-        prev.headers.length === next.headers.length &&
-        prev.rows.length === next.rows.length &&
-        prev.headers.join("\x00") === next.headers.join("\x00") &&
-        (prev.rows[prev.rows.length - 1]?.join("\x00") ?? "") ===
-          (next.rows[next.rows.length - 1]?.join("\x00") ?? "");
-
-      if (structurallyIdentical) {
-        result.push(prev);
-        anySubstituted = true;
-      } else {
-        result.push(next);
-      }
-      continue;
-    }
-
-    // ── Code/Mermaid stabilisation ────────────────────────────────────────
-    if (node.type === "code") {
-      const next = node as StreamingCodeNode;
-      if (next.incomplete) {
-        result.push(next);
-        continue;
-      }
-      const prev = prevNodes.find(
-        (p) => p.type === "code" && (p as StreamingCodeNode).value === next.value,
-      ) as StreamingCodeNode | undefined;
-      if (prev) {
-        result.push(prev);
-        anySubstituted = true;
-      } else {
-        result.push(next);
-      }
-      continue;
-    }
-
-    // ── Chart stabilisation ───────────────────────────────────────────────
-    if (node.type === "chart") {
-      const next = node as StreamingChartNode;
-      const prev = prevCharts[chartsSeen] as StreamingChartNode | undefined;
-      chartsSeen++;
-
-      if (!prev) {
-        result.push(next);
-        continue;
-      }
-
-      const structurallyIdentical =
-        prev.incomplete === next.incomplete &&
-        prev.chart_type === next.chart_type &&
-        prev.title === next.title &&
-        (next.incomplete === true ? false : prev.raw_payload === next.raw_payload);
-
-      if (structurallyIdentical) {
-        result.push(prev);
-        anySubstituted = true;
-      } else {
-        result.push(next);
-      }
-      continue;
-    }
-
-    if (node.type === "image") {
-      const next = node as StreamingImageNode;
-      const prev = prevImages[imagesSeen] as StreamingImageNode | undefined;
-      imagesSeen++;
-
-      if (prev && prev.src === next.src && prev.alt === next.alt && prev.title === next.title) {
-        result.push(prev);
-        anySubstituted = true;
-      } else {
-        result.push(next);
-      }
-      continue;
-    }
-
-    if (node.type === "footnote") {
-      const next = node as StreamingFootnoteNode;
-      const prev = prevFootnotes[footnotesSeen] as StreamingFootnoteNode | undefined;
-      footnotesSeen++;
-
-      if (prev && prev.identifier === next.identifier && prev.content === next.content) {
-        result.push(prev);
-        anySubstituted = true;
-      } else {
-        result.push(next);
-      }
-      continue;
-    }
-
-    if (node.type === "list") {
-      const next = node as StreamingListNode;
-      const prev = prevLists[listsSeen] as StreamingListNode | undefined;
-      listsSeen++;
-
-      if (prev && listFingerprint(prev) === listFingerprint(next)) {
-        result.push(prev);
-        anySubstituted = true;
-      } else {
-        result.push(next);
-      }
-      continue;
-    }
-
-    result.push(node);
-  }
-
-  return anySubstituted ? result : nextNodes;
-}
-
-function listFingerprint(node: StreamingListNode): string {
-  return [
-    node.ordered ? "1" : "0",
-    ...node.items.map((item) => {
-      const base = [item.task ? "t" : "n", item.checked ? "1" : "0", item.content].join(":");
-      if (!item.children || item.children.length === 0) return base;
-      return `${base}[${item.children.map((child) => listFingerprint(child)).join("|")}]`;
-    }),
-  ].join("\u001f");
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// COMPONENT
-// ─────────────────────────────────────────────────────────────────────────────
-
+/**
+ * The single answer-content renderer.
+ *
+ * Markdown owns text, tables, lists, math, images, and fenced code. The only
+ * custom fence is `chart`, which is promoted to the existing chart component.
+ * Mermaid remains a normal fenced code block and is previewed by CodeBlock.
+ */
 export default function MarkdownRenderer({
   content,
   streaming = false,
-  messageId,
+  messageId = "message",
   enableRichPreview = true,
 }: MarkdownRendererProps) {
-  // Persistent NormCache ref — lives for the lifetime of this component.
-  // Memoises the stable prefix so only the last ~40 lines re-normalise per token.
-  const normCacheRef = useRef({
-    stablePrefix: "",
-    stablePrefixRaw: "",
-    stableLineCount: 0,
-  });
+  const normalizedContent = useMemo(() => normalizeMarkdown(content), [content]);
+  const components = useMemo<Components>(() => ({
+    pre: ({ children }) => <>{children}</>,
+    code: ({ children, className, ...props }) => {
+      const language = className?.match(/language-([^\s]+)/i)?.[1]?.toLowerCase() ?? "";
+      const value = String(children).replace(/\n$/, "");
+      const inline = !className && !String(children).includes("\n");
 
-  // State to track if we were previously streaming to handle resets
-  const [wasStreaming, setWasStreaming] = useState(false);
+      if (inline) {
+        return (
+          <code className={className} {...props}>
+            {children}
+          </code>
+        );
+      }
 
-  // Reset cache when message changes (new stream / new message).
-  useEffect(() => {
-    resetNormCache(normCacheRef.current);
-  }, [messageId]);
+      const chartBlock =
+        enableRichPreview && isChartFence(language, value)
+          ? createChartBlock(value, `${messageId}-chart`)
+          : null;
 
-  // Handle retry scenario or stream restart
-  useEffect(() => {
-    if (streaming && !wasStreaming) {
-      resetNormCache(normCacheRef.current);
-    }
-    setWasStreaming(streaming);
-  }, [streaming, wasStreaming]);
+      if (chartBlock) {
+        return <ChartBlock block={chartBlock} />;
+      }
 
-  const contentWithLinks = content.replace(/\[(\d+)\]/g, "[$1](#citation-$1)");
-
-  // Ref holding the previous render's node array.
-  // Used by stabiliseTableNodes to reuse table node objects when structurally
-  // unchanged, so React.memo on TableBlock can skip re-renders.
-  const prevNodesRef = useRef<StreamingDocumentNode[]>([]);
-
-  const nodes = useMemo(() => {
-    // Always parse on every token — this keeps headings, paragraphs, bullet
-    // points, code blocks, and lists updating character by character as before.
-    // The stabiliser only affects TABLE node object identity, not parse frequency.
-
-    const parsed = parseStreamingDocument(contentWithLinks, streaming, normCacheRef.current);
-
-    // During streaming: stabilise table node object references so that
-    // TableBlock's React.memo comparator can skip mid-cell re-renders.
-    // During non-streaming (final render): skip stabilisation — always use
-    // the fresh parse result.
-
-    const stabilised = streaming ? stabiliseStructuredNodes(parsed, prevNodesRef.current) : parsed;
-
-    prevNodesRef.current = stabilised;
-    return stabilised;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentWithLinks, streaming, messageId]);
-  // normCacheRef intentionally excluded — stable ref, mutations must not
-  // trigger re-renders.
+      return (
+        <CodeBlock
+          language={language || undefined}
+          value={value}
+          incomplete={streaming}
+          enableRichPreview={enableRichPreview}
+          answerStreaming={streaming}
+          defaultPreviewOpen={enableRichPreview && language === "mermaid"}
+        />
+      );
+    },
+    table: ({ children }) => (
+      <div className="border-glass-border/30 bg-glass-bg/20 my-6 overflow-x-auto rounded-xl border shadow-sm">
+        <table className="w-full border-collapse text-left">{children}</table>
+      </div>
+    ),
+    thead: ({ children }) => (
+      <thead className="border-glass-border/30 bg-primary/5 text-primary border-b text-[11px] font-bold tracking-widest uppercase">
+        {children}
+      </thead>
+    ),
+    th: ({ children }) => <th className="px-5 py-3.5">{children}</th>,
+    td: ({ children }) => (
+      <td className="border-glass-border/10 text-foreground/80 border-b px-5 py-3.5 text-sm">
+        {children}
+      </td>
+    ),
+    h1: ({ children }) => <h1 className="text-foreground text-3xl font-semibold">{children}</h1>,
+    h2: ({ children }) => <h2 className="text-foreground text-2xl font-semibold">{children}</h2>,
+    h3: ({ children }) => <h3 className="text-foreground text-xl font-semibold">{children}</h3>,
+    h4: ({ children }) => <h4 className="text-foreground text-lg font-semibold">{children}</h4>,
+    h5: ({ children }) => <h5 className="text-foreground text-base font-semibold">{children}</h5>,
+    h6: ({ children }) => <h6 className="text-foreground text-sm font-semibold">{children}</h6>,
+    p: ({ children }) => <p className="text-foreground/90 leading-8">{children}</p>,
+    blockquote: ({ children }) => (
+      <blockquote className="border-primary/45 bg-primary/5 rounded-r-2xl border-l-2 px-4 py-3">
+        {children}
+      </blockquote>
+    ),
+    ul: ({ children }) => <ul className="my-2 list-disc space-y-2 pl-5">{children}</ul>,
+    ol: ({ children }) => <ol className="my-2 list-decimal space-y-2 pl-5">{children}</ol>,
+    li: ({ children, className }) => (
+      <li className={`${className?.includes("task-list-item") ? "list-none pl-0" : ""} leading-7`}>
+        {children}
+      </li>
+    ),
+    input: ({ type, checked, ...props }) =>
+      type === "checkbox" ? (
+        <input
+          type="checkbox"
+          checked={Boolean(checked)}
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          className="mr-2 h-4 w-4 translate-y-[1px] rounded border border-cyan-400/35 bg-slate-950/90 align-middle text-cyan-400 accent-cyan-400"
+          {...props}
+        />
+      ) : (
+        <input type={type} {...props} />
+      ),
+    a: ({ href, children, ...props }) => {
+      if (href?.startsWith("#citation-")) {
+        const index = Number.parseInt(href.replace("#citation-", ""), 10);
+        if (!Number.isNaN(index)) return <InlineCitation index={index} />;
+      }
+      const external = typeof href === "string" && !href.startsWith("#");
+      return (
+        <a
+          href={href}
+          target={external ? "_blank" : undefined}
+          rel={external ? "noreferrer noopener" : undefined}
+          className="text-primary decoration-primary/30 underline underline-offset-4"
+          {...props}
+        >
+          {children}
+        </a>
+      );
+    },
+    img: ({ src, alt, ...props }) => (
+      <span className="my-3 block overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src ?? ""} alt={alt ?? ""} loading="lazy" decoding="async" {...props} />
+      </span>
+    ),
+    strong: ({ children }) => <strong className="text-foreground font-semibold">{children}</strong>,
+    em: ({ children }) => <em className="italic">{children}</em>,
+    del: ({ children }) => <del className="text-muted-foreground/80 line-through">{children}</del>,
+    hr: () => <hr className="border-glass-border/25" />,
+  }), [enableRichPreview, messageId, streaming]);
 
   return (
     <div
-      className={`chat-message-container ${streaming ? "is-streaming" : ""} prose text-foreground/90 prose-p:my-0 prose-headings:my-0 prose-table:my-0 prose-code:before:hidden prose-code:after:hidden dark:prose-invert max-w-none text-[15px] leading-8 sm:text-[15.5px] sm:leading-[2rem]`}
+      className={`chat-message-container ${streaming ? "is-streaming" : ""} prose dark:prose-invert max-w-none text-[15px] leading-8`}
     >
-      <StreamingDocumentRenderer
-        nodes={nodes}
-        isStreaming={streaming}
-        enableRichPreview={enableRichPreview}
-      />
+      <ReactMarkdown
+        remarkPlugins={[[remarkGfm, { autoLinkLiterals: false }], remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={components}
+      >
+        {normalizedContent}
+      </ReactMarkdown>
       {streaming ? (
         <div className="text-foreground/35 mt-4 animate-pulse text-[11px] tracking-[0.18em] uppercase">
           Intelligence Streaming...
@@ -336,4 +170,37 @@ export default function MarkdownRenderer({
       ) : null}
     </div>
   );
+}
+
+function isChartFence(language: string, value: string): boolean {
+  if (language === "chart") return true;
+  return language === "json" && /"(?:chart_type|series|chart_data|chartData)"\s*:/.test(value);
+}
+
+function createChartBlock(value: string, id: string): StreamChartBlock | null {
+  const parsed = parseVisualChart(value, "chart");
+  if (!parsed || parsed.data.length < 2) return null;
+
+  return {
+    id,
+    type: "chart",
+    title: parsed.title,
+    chart_type: parsed.type,
+    series: parsed.data.map(
+      (point): StreamChartPoint => ({
+        ...point,
+        label: String(point[parsed.xKey] ?? point.label ?? ""),
+        value: Number(point[parsed.yKey] ?? point.value ?? 0),
+        ...(parsed.zKey ? { z: Number(point[parsed.zKey]) } : {}),
+      }),
+    ),
+    raw_payload: value,
+    parser_source: parsed.metadata.source,
+    confidence: parsed.metadata.confidence,
+    fields: parsed.metadata.fields,
+    is_streaming: false,
+    x_key: parsed.xKey,
+    y_key: parsed.yKey,
+    z_key: parsed.zKey,
+  };
 }

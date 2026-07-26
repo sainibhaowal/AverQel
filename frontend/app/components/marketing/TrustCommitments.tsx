@@ -38,9 +38,9 @@ const securityFeatures = [
     title: "Data Isolation",
     icon: Lock,
     items: [
-      "Tenant- and user-scoped durable run state",
-      "PostgreSQL is the authoritative mission source of truth",
-      "Redis is limited to cache, live presence, and reconnect projection",
+      "Tenant- and user-scoped conversation state",
+      "PostgreSQL stores authoritative chat and memory records",
+      "Redis is limited to cache and transient service coordination",
       "Workspace and connector policy remains enforced at execution time",
       "Cross-tenant run and event access is denied server-side",
     ],
@@ -49,9 +49,9 @@ const securityFeatures = [
     title: "Operational Visibility",
     icon: ScrollText,
     items: [
-      "Ordered event ledger with integrity hashes and redaction",
-      "Checkpoints, replay, rehydration, and dead-letter evidence",
-      "Trace IDs, approval decisions, and budget posture",
+      "Redacted operational records with integrity checks",
+      "Saved messages and safe reload behavior",
+      "Trace IDs, approval decisions, and provider posture",
       "Admin surfaces restricted to operational metadata by policy",
       "Live execution state streamed without exposing raw secrets",
     ],
@@ -61,10 +61,10 @@ const securityFeatures = [
     icon: ShieldCheck,
     items: [
       "Rate limiting on account endpoints",
-      "Secure native local shell execution",
+      "Secure connector and workflow execution",
       "Secure session cookies with HTTPS",
-      "Local execution gates and approval controls",
-      "Shell mutations execute only on authorized local client",
+      "Execution gates and approval controls",
+      "External mutations execute only through authorized connectors",
     ],
   },
 ];
@@ -73,7 +73,7 @@ const trustPillars = [
   {
     icon: Eye,
     title: "Durable state has a clear source of truth",
-    body: "DeepSpace stores authoritative run state, checkpoints, approvals, events, and final assistant-message links in PostgreSQL. Redis can accelerate live presence, but it cannot authorize or replace a run.",
+    body: "DeepSpace stores conversation messages and memory in PostgreSQL. Transient service state cannot authorize or replace tenant-scoped records.",
   },
   {
     icon: Fingerprint,
@@ -87,8 +87,8 @@ const trustPillars = [
   },
   {
     icon: UserX,
-    title: "Operators can reconstruct work",
-    body: "Reconnectable event cursors, replay, checkpoints, and persisted assistant messages let authorized users recover the visible thread after browser, API, or worker interruption.",
+    title: "Users can recover their conversation",
+    body: "Persisted assistant messages let authorized users recover the visible thread after a browser or API interruption.",
   },
 ];
 

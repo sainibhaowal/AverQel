@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -44,7 +44,7 @@ class QueryRequest(BaseModel):
     query: str = Field(min_length=1, max_length=4000)
     top_k: int = Field(ge=1, le=100)
     conversation_id: UUID | None = None
-    conversation_kind: str = Field(default="query", pattern="^(query|deepspace)$")
+    conversation_kind: Literal["query"] = "query"
     search_mode: str = Field(default="hybrid", pattern="^(hybrid|semantic|keyword)$")
     thinking_enabled: bool = False
     filters: QueryFilters = Field(default_factory=QueryFilters)

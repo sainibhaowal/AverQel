@@ -22,11 +22,17 @@ interface QueryComposerProps {
   onThinkingChange: (value: boolean) => void;
   onSubmit: () => void;
   onStop: () => void;
-  usedTokens?: number;
-  totalContext?: number | null;
   modelName?: string | null;
-  availableModels?: Array<{ providerId: string; modelName: string; displayName: string }>;
+  availableModels?: Array<{
+    providerId: string;
+    modelName: string;
+    displayName: string;
+    contextWindow?: number | null;
+    contextWindowSource?: string | null;
+  }>;
   onModelSelect?: (providerId: string, modelName: string) => void;
+  contextUsedTokens?: number | null;
+  contextLimit?: number | null;
 }
 
 // Idle button icon - minimalist arrow send
@@ -228,11 +234,11 @@ export default function QueryComposer({
   onThinkingChange,
   onSubmit,
   onStop,
-  usedTokens = 0,
-  totalContext = null,
   modelName,
   availableModels = [],
   onModelSelect,
+  contextUsedTokens = null,
+  contextLimit = null,
 }: QueryComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const scopeMenuRef = useRef<HTMLDivElement | null>(null);
@@ -272,6 +278,29 @@ export default function QueryComposer({
           className="text-foreground placeholder:text-foreground/30 min-h-[60px] w-full resize-none border-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed outline-none sm:px-3"
           disabled={isStreaming}
         />
+
+        {contextLimit && contextLimit > 0 ? (
+          <div className="mt-1 flex items-center gap-2 px-2 text-[9px] text-white/40">
+            <span className="shrink-0 tracking-[0.14em] uppercase">Context</span>
+            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
+              <div
+                className={`h-full rounded-full transition-[width] duration-200 ${
+                  (contextUsedTokens ?? 0) / contextLimit > 0.9
+                    ? "bg-red-400"
+                    : (contextUsedTokens ?? 0) / contextLimit > 0.7
+                      ? "bg-amber-300"
+                      : "bg-cyan-300"
+                }`}
+                style={{
+                  width: `${Math.min(100, Math.max(0, ((contextUsedTokens ?? 0) / contextLimit) * 100))}%`,
+                }}
+              />
+            </div>
+            <span className="shrink-0 tabular-nums">
+              {(contextUsedTokens ?? 0).toLocaleString()} / {contextLimit.toLocaleString()}
+            </span>
+          </div>
+        ) : null}
 
         <div className="border-glass-border mt-3 flex items-center justify-between gap-3 border-t pt-3">
           <div className="flex min-w-0 flex-grow flex-wrap items-center gap-1.5 sm:gap-2">
@@ -383,28 +412,6 @@ export default function QueryComposer({
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Real-time Token Count Display */}
-            <div className="mr-1 hidden flex-col items-end gap-1 sm:flex">
-              <span className="text-foreground/40 text-[10px] font-bold tracking-widest uppercase">
-                Context
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-foreground/90 font-mono text-xs font-bold">
-                  {usedTokens.toLocaleString()}
-                </span>
-                <span className="text-foreground/20 text-[10px]">/</span>
-                <span className="text-foreground/40 font-mono text-[10px]">
-                  {typeof totalContext === "number"
-                    ? totalContext >= 1000
-                      ? `${totalContext / 1000}k`
-                      : totalContext
-                    : "unknown"}
-                </span>
-              </div>
-            </div>
-
-            <TokenIndicator used={usedTokens} total={totalContext} />
-
             <motion.button
               type="button"
               onClick={isStreaming ? onStop : onSubmit}

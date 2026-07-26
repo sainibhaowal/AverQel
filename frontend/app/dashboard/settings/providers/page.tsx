@@ -162,15 +162,27 @@ export default function ProvidersSettingsPage() {
   const loadModels = useCallback(async (id: string) => {
     setLoadingModels(true);
     try {
+      const provider = providers.find((item) => item.id === id);
+      if (!provider) {
+        setProviderModels([]);
+        return;
+      }
+
       let m: ProviderModel[];
-      try {
-        m = await refreshProviderModels(id);
-      } catch (refreshError) {
-        console.warn(
-          "Provider model refresh failed, falling back to cached inventory",
-          refreshError,
-        );
+      if (!provider.enabled) {
+        // Disabled providers cannot be refreshed by design. Their cached
+        // inventory is still safe to display while the connection is resumed.
         m = await listProviderModels(id);
+      } else {
+        try {
+          m = await refreshProviderModels(id);
+        } catch (refreshError) {
+          console.warn(
+            "Provider model refresh failed, falling back to cached inventory",
+            refreshError,
+          );
+          m = await listProviderModels(id);
+        }
       }
       setProviderModels(m);
     } catch (error) {
@@ -178,7 +190,7 @@ export default function ProvidersSettingsPage() {
     } finally {
       setLoadingModels(false);
     }
-  }, []);
+  }, [providers]);
 
   useEffect(() => {
     if (selectedProviderId) {

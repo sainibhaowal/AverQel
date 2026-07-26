@@ -29,6 +29,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
 from app.deepspace.schemas.chats import (
+    ApprovalDecisionRequest,
     BulkDeleteRequest,
     ChatHistoryResponse,
     ConversationCreateRequest,
@@ -354,6 +355,36 @@ async def cancel_deepspace_chat(
 
 
 @router.post(
+    "/{conversation_id}/approvals/{approval_id}",
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def resolve_deepspace_approval(
+    conversation_id: uuid.UUID,
+    approval_id: str,
+    payload: ApprovalDecisionRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    resolved = DeepSpaceRuntimeStore(db).resolve_approval(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        approval_id=approval_id,
+        decision=payload.decision,
+    )
+    if resolved is None:
+        raise ApiError(code="APPROVAL_NOT_FOUND", message="Approval request not found.", status_code=404)
+    if resolved.get("status") == "already_resolved":
+        raise ApiError(code="APPROVAL_ALREADY_RESOLVED", message="Approval request was already resolved.", status_code=409)
+    return {
+        "approval_id": approval_id,
+        "decision": payload.decision,
+        "tool_name": resolved.get("tool_name"),
+        "status": "resolved",
+    }
+
+
+@router.post(
     "/bulk-delete",
     dependencies=[Depends(require_permissions("queries:run"))],
 )
@@ -514,6 +545,9 @@ async def stream_deepspace_chat(
             prompt=prompt,
             thinking_enabled=bool(raw_payload.get("thinking_enabled", False)),
             request=request,
+            resume_approval_id=(
+                str(raw_payload.get("resume_approval_id") or "").strip() or None
+            ),
         ),
         media_type="text/event-stream",
         headers=SSE_HEADERS,

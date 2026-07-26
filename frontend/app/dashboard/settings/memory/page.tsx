@@ -10,7 +10,6 @@ import {
   Clock,
   Info,
   Database,
-  CheckSquare,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -27,21 +26,8 @@ type MemoryFact = {
   updated_at?: string | null;
 };
 
-type TodoItem = {
-  id: string;
-  content: string;
-  status: "completed" | "pending" | "in_progress" | string;
-  priority?: number;
-  is_recurring?: boolean;
-  enabled?: boolean;
-  next_run_at?: string | null;
-  metadata_json?: Record<string, unknown> | null;
-};
-
 export default function MemoryManagementPage() {
-  const [activeTab, setActiveTab] = useState<"memory" | "tasks">("memory");
   const [memories, setMemories] = useState<MemoryFact[]>([]);
-  const [todos, setTodos] = useState<TodoItem[]>([]);
   const [search, setSearch] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -54,20 +40,9 @@ export default function MemoryManagementPage() {
     }
   };
 
-  const fetchTodos = async () => {
-    try {
-      // Assuming we add a todo endpoint in deepspace_chats.py as well
-      const data = await apiV1.get<TodoItem[]>("/deepspace/chats/tasks");
-      setTodos(data);
-    } catch {
-      toast.error("Failed to load tasks");
-    }
-  };
-
   useEffect(() => {
-    if (activeTab === "memory") fetchMemories();
-    else fetchTodos();
-  }, [activeTab]);
+    void fetchMemories();
+  }, []);
 
   const deleteMemory = async (key: string) => {
     setDeletingId(key);
@@ -98,26 +73,7 @@ export default function MemoryManagementPage() {
         accentGlowClassName="shadow-[0_0_20px_rgba(var(--primary),0.4)]"
       />
 
-      {/* Tabs */}
-      <div className="flex w-fit items-center gap-1 rounded-2xl border border-white/10 bg-white/5 p-1">
-        <button
-          onClick={() => setActiveTab("memory")}
-          className={`flex items-center gap-2 rounded-xl px-6 py-2.5 text-xs font-black tracking-widest uppercase transition-all ${activeTab === "memory" ? "bg-primary shadow-primary/20 text-white shadow-lg" : "text-foreground/40 hover:text-foreground/60"}`}
-        >
-          <Database size={14} />
-          Knowledge Base
-        </button>
-        <button
-          onClick={() => setActiveTab("tasks")}
-          className={`flex items-center gap-2 rounded-xl px-6 py-2.5 text-xs font-black tracking-widest uppercase transition-all ${activeTab === "tasks" ? "bg-primary shadow-primary/20 text-white shadow-lg" : "text-foreground/40 hover:text-foreground/60"}`}
-        >
-          <CheckSquare size={14} />
-          Live Tasks
-        </button>
-      </div>
-
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {activeTab === "memory" ? (
           <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
@@ -218,71 +174,6 @@ export default function MemoryManagementPage() {
               </div>
             </div>
           </div>
-        ) : (
-          <div className="theme-panel border-glass-border/40 flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border bg-white/[0.03] p-4 sm:p-5">
-            <div className="custom-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto">
-              {todos.length === 0 ? (
-                <div className="flex min-h-[18rem] flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.03] text-center">
-                  <div className="text-foreground/20 inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/5">
-                    <CheckSquare size={24} />
-                  </div>
-                  <p className="text-foreground/40 mt-4 text-sm font-medium">
-                    No active tasks currently tracked by AverQel.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {todos.map((todo) => (
-                    <div
-                      key={todo.id}
-                      className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-4"
-                    >
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${todo.status === "completed" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500" : "text-foreground/20 border-white/10 bg-white/5"}`}
-                      >
-                        {todo.status === "completed" ? (
-                          <CheckSquare size={18} />
-                        ) : (
-                          <Clock size={18} />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p
-                          className={`text-sm font-bold tracking-tight ${todo.status === "completed" ? "text-foreground/40 line-through" : "text-foreground/80"}`}
-                        >
-                          {todo.content}
-                        </p>
-                        <p className="text-foreground/30 mt-1 text-[10px] font-black tracking-widest uppercase">
-                          {todo.status}
-                        </p>
-                        {typeof todo.priority === "number" ? (
-                          <p className="text-foreground/25 mt-1 text-[10px] font-black tracking-widest uppercase">
-                            Priority {todo.priority}
-                          </p>
-                        ) : null}
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          {todo.is_recurring ? (
-                            <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black tracking-widest text-cyan-300 uppercase">
-                              Recurring
-                            </span>
-                          ) : null}
-                          <span className="text-foreground/35 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black tracking-widest uppercase">
-                            {todo.enabled === false ? "Paused" : "Active"}
-                          </span>
-                          {todo.next_run_at ? (
-                            <span className="text-foreground/35 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black tracking-widest uppercase">
-                              Next {new Date(todo.next_run_at).toLocaleDateString()}
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="bg-primary/5 border-primary/10 flex items-start gap-4 rounded-2xl border p-6">

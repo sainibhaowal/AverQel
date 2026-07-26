@@ -97,6 +97,12 @@ class RegenerateRequest(BaseModel):
     thinking_enabled: bool = False
 
 
+class ApprovalDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(approved|denied)$")
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class MemoryFactSchema(BaseModel):
     id: str
     key: str

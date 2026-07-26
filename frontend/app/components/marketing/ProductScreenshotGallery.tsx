@@ -15,25 +15,17 @@ import {
 
 const screenshots = [
   {
-    title: "DeepSpace Mission Runtime",
+    title: "DeepSpace Chat",
     description:
-      "Use this slot for a real DeepSpace thread screenshot showing streaming steps, mission canvas visibility, approvals, and operator-facing runtime state.",
+      "Use this slot for a real DeepSpace conversation screenshot showing grounded answers, notes, memory, and safe approval prompts.",
     fileHint: "/public/landing-proof/deepspace-runtime.png",
     accent: "from-cyan-400/35 via-cyan-300/10 to-transparent",
     glow: "bg-cyan-400/15",
   },
   {
-    title: "Orchestration Control Room",
-    description:
-      "Use this slot for the real orchestration page showing mission topology, lane state, delegated work, diagnostics, and the live mission overview.",
-    fileHint: "/public/landing-proof/orchestration-control-room.png",
-    accent: "from-violet-400/35 via-violet-300/10 to-transparent",
-    glow: "bg-violet-400/15",
-  },
-  {
     title: "Workspace Editor And Deliverables",
     description:
-      "Use this slot for the real editor or split-workspace view showing notes, file-aware work, exports, and the output side of agentic execution.",
+      "Use this slot for the real editor or split-workspace view showing notes, drafts, exports, and the output side of agentic execution.",
     fileHint: "/public/landing-proof/workspace-editor.png",
     accent: "from-emerald-400/35 via-emerald-300/10 to-transparent",
     glow: "bg-emerald-400/15",

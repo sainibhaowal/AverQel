@@ -43,10 +43,10 @@ describe("HeroSection", () => {
 
     const heading = screen.getByRole("heading", { level: 1 });
     expect(heading).toHaveTextContent(/The operator-grade agentic system for your/i);
-    expect(heading).toHaveTextContent(/workspace, missions, and live execution/i);
+    expect(heading).toHaveTextContent(/research, documents, and productive work/i);
     expect(screen.getByText(/Operator-Grade Agentic Operating Layer/i)).toBeInTheDocument();
     expect(screen.getByText(/Start Using AverQel/i)).toBeInTheDocument();
-    expect(screen.getByText(/averqel \| mission runtime/i)).toBeInTheDocument();
+    expect(screen.getByText(/averqel \| productivity runtime/i)).toBeInTheDocument();
     expect(screen.getAllByText(/DeepSpace runtime/i)).not.toHaveLength(0);
   });
 });

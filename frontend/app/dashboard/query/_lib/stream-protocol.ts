@@ -304,14 +304,14 @@ export interface QueryThreadMessage {
   role: "user" | "assistant";
   /**
    * Normalized (display-ready) content. Always derived from rawContent via
-   * normalizeRenderedMarkdown. Never used as an accumulation base — that is
+   * normalizeMarkdown. Never used as an accumulation base — that is
    * what rawContent is for.
    */
   content: string;
   /**
    * The unmodified accumulated raw text from delta tokens, or the original
    * replace/history content before normalization. Used as the single source
-   * of truth for content accumulation so normalizeRenderedMarkdown is never
+   * of truth for content accumulation so normalizeMarkdown is never
    * applied to its own output.
    */
   rawContent?: string;

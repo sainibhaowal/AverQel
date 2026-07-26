@@ -199,7 +199,7 @@ export default function Dropzone({ onSuccess, onCancel, allowedExtensions }: Dro
               }}
               className="theme-pill !bg-danger/10 !text-danger mt-6 transition-transform hover:scale-105"
             >
-              Reset Terminal
+              Reset Upload
             </button>
           </div>
         ) : (

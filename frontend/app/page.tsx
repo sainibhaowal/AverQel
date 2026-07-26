@@ -5,9 +5,6 @@ import Footer from "@/app/components/layout/Footer";
 import HeroSection from "@/app/components/marketing/HeroSection";
 import SupportedFormats from "@/app/components/marketing/SupportedFormats";
 import HowItWorks from "@/app/components/marketing/HowItWorks";
-import AutonomousAgenticShowcase from "@/app/components/marketing/AutonomousAgenticShowcase";
-import GlobalOrchestrationShowcase from "@/app/components/marketing/GlobalOrchestrationShowcase";
-import OperatorReadinessShowcase from "@/app/components/marketing/OperatorReadinessShowcase";
 import PlatformSurfaces from "@/app/components/marketing/PlatformSurfaces";
 import ProductScreenshotGallery from "@/app/components/marketing/ProductScreenshotGallery";
 import FeaturesGrid from "@/app/components/marketing/FeaturesGrid";
@@ -35,9 +32,6 @@ export default function Home() {
         <HeroSection />
         <SupportedFormats />
         <HowItWorks />
-        <AutonomousAgenticShowcase />
-        <GlobalOrchestrationShowcase />
-        <OperatorReadinessShowcase />
         <PlatformSurfaces />
         <ProductScreenshotGallery />
         <FeaturesGrid />

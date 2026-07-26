@@ -4,15 +4,13 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  Activity,
   BellRing,
-  Binary,
   Database,
-  Layers3,
   MessageSquareText,
   Network,
   NotebookPen,
   ShieldCheck,
-  Terminal,
   Workflow,
   CheckCircle2,
   TimerReset,
@@ -45,29 +43,15 @@ const surfaces = [
   {
     eyebrow: "Execution Surface",
     title: "DeepSpace",
-    icon: Terminal,
+    icon: Activity,
     accent: "violet",
     description:
-      "Run durable-first agentic missions with PostgreSQL-backed state, streamed plans, checkpoints, approvals, memory, verification, repair, and bounded continuation epochs.",
+      "Use DeepSpace as a focused productivity chat for research, drafting, analysis, memory, and safe tool-assisted work.",
     bullets: [
-      "Live SSE timeline, active tool trace, and mission stream",
-      "Approval gates for writes, shell actions, and risky operations",
-      "Context meter, auto-compaction, rewind, and export controls",
-      "Restart recovery, final-answer persistence, event replay, and cursor reconnect",
-      "Explicit time, token, cost, retry, concurrency, side-effect, and risk budgets",
-    ],
-  },
-  {
-    eyebrow: "Visibility Surface",
-    title: "Mission Canvas + Orchestration",
-    icon: Binary,
-    accent: "emerald",
-    description:
-      "Inspect the actual mission structure instead of guessing. Lane activity, approvals, planner posture, hook state, diagnostics, and delegated work become visible in the UI.",
-    bullets: [
-      "Inline mission canvas inside DeepSpace threads",
-      "Live orchestration control room for active missions",
-      "Lane-level diagnostics, dependencies, and approval queue",
+      "Streaming answers and saved conversation history",
+      "Approval gates for external actions and risky operations",
+      "Notes, exports, memory, and provider controls",
+      "Tenant-scoped persistence after reload",
     ],
   },
   {
@@ -76,24 +60,11 @@ const surfaces = [
     icon: NotebookPen,
     accent: "blue",
     description:
-      "Move from chat into a real working surface with split layout, file-aware tasks, drafts, exports, and note-driven execution support.",
+      "Move from chat into a real working surface with split layout, drafts, exports, and note-driven execution support.",
     bullets: [
       "Split chat-plus-notes workflow",
       "Markdown, math blocks, and exportable notes",
-      "File-aware editing for repo and document tasks",
-    ],
-  },
-  {
-    eyebrow: "Review Surface",
-    title: "Memory + Proactive Workspace",
-    icon: Layers3,
-    accent: "emerald",
-    description:
-      "Keep recurring rules, durable task state, saved memory, connector-driven follow-ups, and background work alive after the live conversation ends.",
-    bullets: [
-      "Recurring rules and draft queue",
-      "Task ledger, memory facts, and proactive follow-up",
-      "Connector coverage and live runtime health",
+      "Research drafting, notes, and document deliverables",
     ],
   },
   {
@@ -176,8 +147,7 @@ export default function PlatformSurfaces() {
           </h2>
           <p className={landingSectionLeadClass}>
             AverQel is no longer only a single chat interface. It now spans grounded query, the
-            DeepSpace execution runtime, inline mission canvas visibility, orchestration oversight,
-            editor-plus-files workflows, durable memory, proactive follow-up, connectors, and
+            DeepSpace chat, editor and deliverable workflows, persistent memory, connectors, and
             provider control across cloud and local runtimes.
           </p>
         </motion.div>
@@ -300,10 +270,8 @@ export default function PlatformSurfaces() {
             <p className="text-foreground text-sm font-bold">Live from the current build</p>
             <p className="text-muted-foreground mt-2 text-sm leading-6 sm:leading-7">
               The homepage points users toward the actual shipped surfaces: grounded query,
-              DeepSpace, mission canvas diagnostics, the orchestration control room, the workspace
-              editor, proactive follow-up, connectors, provider control, and the security model that
-              keeps them isolated. Capacity depends on the selected provider and deployment
-              resources, so production rollout should be validated against the expected workload.
+              DeepSpace, the workspace editor, memory, connectors, provider control, and the
+              security model that keeps them isolated.
             </p>
             <Link
               href="/documentation"

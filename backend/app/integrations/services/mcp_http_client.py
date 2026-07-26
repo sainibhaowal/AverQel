@@ -19,7 +19,11 @@ class _PinnedAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
     """Connect to the exact public address resolved immediately before connect."""
 
     def __init__(self) -> None:
-        self._backend = httpcore.AutoBackend()
+        self._backend = (
+            httpcore.AsyncNetworkBackend()
+            if hasattr(httpcore, "AsyncNetworkBackend")
+            else getattr(httpcore, "AutoBackend", httpcore.AnyIOBackend)()
+        )
 
     async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
         errors: list[Exception] = []
@@ -41,7 +45,11 @@ class _PinnedSyncNetworkBackend(httpcore.NetworkBackend):
     """Synchronous equivalent of the pinned MCP network backend."""
 
     def __init__(self) -> None:
-        self._backend = httpcore.AutoBackend()
+        self._backend = (
+            httpcore.SyncBackend()
+            if hasattr(httpcore, "SyncBackend")
+            else getattr(httpcore, "AutoBackend", httpcore.SyncBackend)()
+        )
 
     def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
         errors: list[Exception] = []

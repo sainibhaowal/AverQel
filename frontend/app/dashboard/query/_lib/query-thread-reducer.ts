@@ -16,6 +16,7 @@ import {
   type StructuredBlock,
   estimateTokens,
 } from "./stream-protocol";
+import { normalizeMarkdown } from "./markdown";
 
 export interface QueryThreadState {
   messages: QueryThreadMessage[];
@@ -52,19 +53,6 @@ export const initialQueryThreadState: QueryThreadState = {
   streamError: null,
   lastModelName: null,
 };
-
-function normalizeRenderedMarkdown(content: string): string {
-  let next = content;
-  next = next.replace(/([^#\n])(#{1,4}\s)/g, "$1\n\n$2");
-  next = next
-    .split("\n")
-    .map((line) =>
-      line.trim().startsWith("|") && line.includes("||") ? line.replace(/\|\|/g, "|\n|") : line,
-    )
-    .join("\n");
-  next = next.replace(/\n{3,}/g, "\n\n");
-  return next.trim();
-}
 
 function mergeUniqueCitations(existing: CitationItem[], incoming: CitationItem): CitationItem[] {
   if (existing.some((item) => item.chunk_id === incoming.chunk_id)) {
@@ -149,7 +137,7 @@ function parseAssistantContent(raw: string): {
 } {
   const structured = parseStructuredAnswer(raw);
   if (!structured) {
-    return { content: normalizeRenderedMarkdown(raw), structured: null };
+    return { content: normalizeMarkdown(raw), structured: null };
   }
   return { content: structuredAnswerToMarkdown(structured), structured };
 }
@@ -875,7 +863,7 @@ export function queryThreadReducer(
                   }
                 }
               } else {
-                displayContent = normalizeRenderedMarkdown(raw);
+                displayContent = normalizeMarkdown(raw);
               }
               // Metrics calculation
               const now = Date.now();
@@ -920,7 +908,7 @@ export function queryThreadReducer(
           if (!targetAssistantId) return state;
           return updateMessage(state, targetAssistantId, (message) =>
             updateActiveVersion(message, (version) => {
-              const normalized = normalizeRenderedMarkdown(replace.content);
+              const normalized = normalizeMarkdown(replace.content);
               return {
                 ...version,
                 rawContent: replace.content,

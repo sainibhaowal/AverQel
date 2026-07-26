@@ -4,11 +4,19 @@ import { memo, useMemo, useState } from "react";
 import { Check, Copy, FileSpreadsheet } from "lucide-react";
 import * as XLSX from "xlsx";
 
-import type { StreamingTableNode } from "../_lib/streaming-document-types";
 import { InlineMarkdown } from "./InlineMarkdown";
 
+type TableBlockData = {
+  id?: string;
+  type?: "table";
+  title?: string | null;
+  headers: string[];
+  rows: string[][];
+  incomplete?: boolean;
+};
+
 interface TableBlockProps {
-  block: StreamingTableNode;
+  block: TableBlockData;
   isStreaming?: boolean;
 }
 

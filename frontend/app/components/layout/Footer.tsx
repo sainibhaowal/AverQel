@@ -55,8 +55,8 @@ export default function Footer() {
             <AverQelLogo size="footer" showWordmark={true} />
             <p className="text-muted-foreground mt-4 max-w-xs text-sm leading-6">
               The agentic intelligence layer for your entire ecosystem. Grounded chat, DeepSpace,
-              and the proactive workspace keep work moving with citations, approvals, and durable
-              state across GitHub, Drive, Gmail, Calendar, Notion, and Slack.
+              memory, and protected integrations support research and productive work with
+              citations, approvals, and durable conversation history.
             </p>
           </div>
 

@@ -17,7 +17,7 @@ vi.mock("mermaid", () => ({
 }));
 
 describe("diagram block rendering", () => {
-  it("renders structured tables and cards alongside other rich blocks", () => {
+  it("renders structured tables as the supported tabular fallback", () => {
     render(
       <StructuredBlockRenderer
         blocks={[
@@ -28,21 +28,12 @@ describe("diagram block rendering", () => {
             headers: ["Name", "Score"],
             rows: [["Alpha", "92"]],
           },
-          {
-            id: "card-1",
-            type: "card",
-            title: "Warning",
-            content: "OCR confidence is low.",
-            tone: "warning",
-          },
         ]}
       />,
     );
 
     expect(screen.getByText("Comparison")).toBeInTheDocument();
     expect(screen.getByText("Alpha")).toBeInTheDocument();
-    expect(screen.getByText("Warning")).toBeInTheDocument();
-    expect(screen.getByText("OCR confidence is low.")).toBeInTheDocument();
   });
 
   it("renders inline mermaid code with an on-demand view action", async () => {
@@ -60,6 +51,26 @@ describe("diagram block rendering", () => {
     fireEvent.click(screen.getByTitle(/view diagram/i));
     await screen.findByRole("button", { name: "Hide View" });
     expect(container.querySelector("svg")).toBeTruthy();
+  });
+
+  it("does not call Mermaid render when parse reports invalid syntax", async () => {
+    const parseMock = vi.mocked(mermaid.parse);
+    const renderMock = vi.mocked(mermaid.render);
+    parseMock.mockImplementationOnce(async () => false as never);
+    renderMock.mockClear();
+
+    render(
+      <CodeBlock
+        language="mermaid"
+        value={"flowchart LR\nA --> B"}
+        incomplete={false}
+        enableRichPreview={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle(/view diagram/i));
+    expect(await screen.findByText("Invalid Mermaid syntax.")).toBeInTheDocument();
+    expect(renderMock).not.toHaveBeenCalled();
   });
 
   it("centers the initial mermaid view using visible diagram bounds instead of the raw svg canvas", async () => {

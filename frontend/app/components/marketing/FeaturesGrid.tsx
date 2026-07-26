@@ -13,17 +13,13 @@ import {
   Shield,
   Lock,
   KeyRound,
-  ScrollText,
   Database,
   Workflow,
   HeartHandshake,
   Bot,
-  Terminal,
   Search,
   Sparkles,
-  Radar,
   NotebookPen,
-  Columns2,
   Volume2,
 } from "lucide-react";
 import { useLandingSectionMotion } from "./landingMotion";
@@ -46,8 +42,8 @@ const features = [
     accent: "blue",
     size: "large",
     capabilities: [
-      { icon: ScanSearch, text: "Specialized sub-agents | isolated mission delegation" },
-      { icon: FileText, text: "Surgical code editing | persistent bash streaming" },
+      { icon: ScanSearch, text: "Source search | grounded document context" },
+      { icon: FileText, text: "Structured drafting | persistent memory" },
       { icon: BarChart3, text: "Extraction confidence, coverage, and source health metrics" },
       { icon: Shield, text: "Durable memory, todo ledgers, and session recovery" },
     ],
@@ -62,20 +58,23 @@ const features = [
     capabilities: [
       { icon: Bot, text: "Action authority | autonomous task execution" },
       { icon: Search, text: "Web fetch, web search, and crawler intelligence" },
-      { icon: BrainCircuit, text: "Plan mode | mission planning | delegation posture" },
-      { icon: Terminal, text: "Reconnectable SSE/WebSocket events, approvals, replay, and terminal-style execution" },
+      { icon: BrainCircuit, text: "Research mode | focused reasoning | safe actions" },
+      {
+        icon: FileText,
+        text: "Streaming answers, approvals, and saved conversation history",
+      },
     ],
   },
   {
     title: "Workspace Editor + Deliverables",
     description:
-      "AverQel includes a real working surface for notes, drafts, exports, equations, markdown import, and file-aware task support so missions can turn into usable output without leaving the app.",
+      "AverQel includes a real working surface for notes, drafts, exports, equations, and markdown import so conversations can turn into usable output.",
     icon: NotebookPen,
     accent: "cyan",
     size: "medium",
     capabilities: [
-      { icon: FileText, text: "Notes, drafts, exports, and split workspace modes" },
-      { icon: FileCode, text: "File-aware support for repo and document tasks" },
+      { icon: FileText, text: "Notes, drafts, exports, and focused workspaces" },
+      { icon: FileCode, text: "Structured support for research and document tasks" },
       { icon: Sparkles, text: "Markdown, Mermaid, math blocks, charts, and rich rendering" },
     ],
   },
@@ -93,36 +92,9 @@ const features = [
     ],
   },
   {
-    title: "Operator Visibility Layer",
-    description:
-      "Users and operators can inspect mission status, planner source, lane activity, runtime posture, approvals, and diagnostics through inline canvas views and the orchestration control room.",
-    icon: Radar,
-    accent: "amber",
-    size: "medium",
-    capabilities: [
-      { icon: Radar, text: "Mission canvas, orchestration control room, and lane inspection" },
-      { icon: ScrollText, text: "Hook, policy, approval, and compaction visibility" },
-      { icon: Database, text: "PostgreSQL event history, checkpoints, replay, and safer runtime diagnostics" },
-    ],
-  },
-  {
-    title: "Vector-State Predictive Terminal",
-    description:
-      "Instead of a static text streaming shell, our terminal calculates codebase complexity using Shannon Entropy, dynamically updates virtualenv prompt indicators, and plots execution trajectory vectors in real-time.",
-    icon: Terminal,
-    accent: "blue",
-    size: "medium",
-    capabilities: [
-      { icon: Sparkles, text: "Live Ghost Autocomplete | Predictive intent suggestion inline" },
-      { icon: Radar, text: "State Space Trajectory | Live graphing of potential & kinetic code changes" },
-      { icon: Cpu, text: "Persistent Virtualenvs | Automate env tracking with active prompt prefixes" },
-      { icon: Columns2, text: "N-Way Pane Splits | Horizontal terminal divides linked with tree branches" },
-    ],
-  },
-  {
     title: "Flexible AI Providers",
     description:
-      "Connect cloud providers or local runtimes without exposing secret values. Each provider belongs to the user who added it and can be selected per task, mission type, or specialized workflow.",
+      "Connect cloud providers or local runtimes without exposing secret values. Each provider belongs to the user who added it and can be selected for chat or research.",
     icon: Cpu,
     accent: "rose",
     size: "medium",
@@ -143,10 +115,22 @@ const features = [
     accent: "emerald",
     size: "large",
     capabilities: [
-      { icon: ShieldCheck, text: "Safety Numbers | Hashed cryptographic fingerprints verify peer identity" },
-      { icon: Database, text: "Password-Encrypted Backups | Export/Import local IndexedDB chat logs securely" },
-      { icon: Radar, text: "Self-Destruct Timers | Expire and purge messages from server & browser caches automatically" },
-      { icon: Volume2, text: "E2EE Media & Audio | Real-time waveforms, files, typing indicators & delivery status ticks" },
+      {
+        icon: ShieldCheck,
+        text: "Safety Numbers | Hashed cryptographic fingerprints verify peer identity",
+      },
+      {
+        icon: Database,
+        text: "Password-Encrypted Backups | Export/Import local IndexedDB chat logs securely",
+      },
+      {
+        icon: Lock,
+        text: "Self-Destruct Timers | Expire and purge messages from server & browser caches automatically",
+      },
+      {
+        icon: Volume2,
+        text: "E2EE Media & Audio | Real-time waveforms, files, typing indicators & delivery status ticks",
+      },
     ],
   },
 ];

@@ -143,14 +143,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    // Clear the local session first. Logout must remain usable when the API,
+    // proxy, or refresh-token endpoint is unavailable.
+    const serverLogout = fetchWithAuth("/auth/logout", {
+      method: "POST",
+      timeoutMs: 5_000,
+      _skipAuthRefresh: true,
+    });
+
+    invalidateAuthSession({ broadcast: false, notify: false });
+    setUser(null);
+    setUserDisabled(false);
+
     try {
-      await fetchWithAuth("/auth/logout", { method: "POST" });
+      await serverLogout;
     } catch (err) {
-      console.error("Logout error:", err);
-    } finally {
-      invalidateAuthSession({ broadcast: false, notify: false });
-      setUser(null);
-      setUserDisabled(false);
+      console.warn("Server logout was unavailable; local session was cleared.", err);
     }
   };
 

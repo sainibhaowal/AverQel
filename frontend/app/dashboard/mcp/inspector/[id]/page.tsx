@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { readMCPActiveContext } from "@/lib/mcp-context";
 
 import {
@@ -23,7 +23,9 @@ import MCPConnectionScopePanel from "../../_components/MCPConnectionScopePanel";
 import MCPHealthStatus from "../../_components/MCPHealthStatus";
 import MCPToolPermissionTable from "../../_components/MCPToolPermissionTable";
 
-export default function MCPInspector({ params }: { params: { id: string } }) {
+export default function MCPInspector({ params }: { params?: { id: string } }) {
+  const routeParams = useParams();
+  const id = typeof params?.id === "string" ? params.id : typeof routeParams?.id === "string" ? routeParams.id : Array.isArray(routeParams?.id) ? routeParams.id[0] : "";
   const searchParams = useSearchParams();
   const [data, setData] = useState<MCPInspectorData | null>(null);
   const [policy, setPolicy] = useState<MCPConnectionPolicy | null>(null);
@@ -35,14 +37,15 @@ export default function MCPInspector({ params }: { params: { id: string } }) {
   const [callbackMessage, setCallbackMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!id) return;
     try {
-      const [inspector, connectionPolicy, catalog] = await Promise.all([getMCPInspector(params.id), getMCPPolicy(params.id), getMCPTools(params.id)]);
+      const [inspector, connectionPolicy, catalog] = await Promise.all([getMCPInspector(id), getMCPPolicy(id), getMCPTools(id)]);
       const providerEntry = inspector.server.registry_entry_id ? await getMarketplaceEntry(inspector.server.registry_entry_id).catch(() => null) : null;
       setData(inspector); setPolicy(connectionPolicy); setTools(catalog.tools || []); setProvider(providerEntry); setError(null);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Inspector unavailable"); }
-  }, [params.id]);
+  }, [id]);
 
-  useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 10000); return () => window.clearInterval(timer); }, [load]);
+  useEffect(() => { if (!id || typeof window === "undefined") return; void load(); if (process.env.NODE_ENV === "test") return; const timer = window.setInterval(() => void load(), 10000); return () => window.clearInterval(timer); }, [id, load]);
   useEffect(() => {
     const context = readMCPActiveContext();
     const conversationId = searchParams.get("conversation_id") || context?.conversation_id || "";
@@ -54,11 +57,11 @@ export default function MCPInspector({ params }: { params: { id: string } }) {
       url.searchParams.delete("mcp_status");
       window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     }
-  }, [searchParams]);
+  }, [searchParams?.toString()]);
 
-  const refresh = async () => { setBusy("refresh"); try { await refreshMCPServer(params.id); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to refresh catalog."); } finally { setBusy(null); } };
-  const reconnect = async () => { setBusy("reconnect"); try { const result = await startMCPServerOAuth(params.id); window.location.assign(result.authorization_url); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to start reconnect."); setBusy(null); } };
-  const disconnect = async () => { if (!window.confirm("Disconnect this account from AverQel?")) return; setBusy("disconnect"); try { await disconnectMCPServerOAuth(params.id); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to disconnect account."); } finally { setBusy(null); } };
+  const refresh = async () => { setBusy("refresh"); try { await refreshMCPServer(id); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to refresh catalog."); } finally { setBusy(null); } };
+  const reconnect = async () => { setBusy("reconnect"); try { const result = await startMCPServerOAuth(id); window.location.assign(result.authorization_url); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to start reconnect."); setBusy(null); } };
+  const disconnect = async () => { if (!window.confirm("Disconnect this account from AverQel?")) return; setBusy("disconnect"); try { await disconnectMCPServerOAuth(id); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to disconnect account."); } finally { setBusy(null); } };
 
   if (error && !data) return <main className="mx-auto max-w-5xl p-6"><p className="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200" role="alert">{error}</p></main>;
   if (!data || !policy) return <main className="mx-auto max-w-5xl p-6 text-sm text-white/60">Loading MCP connection…</main>;

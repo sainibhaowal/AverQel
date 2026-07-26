@@ -1,4 +1,9 @@
 {
+  "name": "averqel-workspace",
+  "private": true,
+  "scripts": {
+    "tauri": "pnpm --filter tauri-app tauri"
+  },
   "dependencies": {
     "framer-motion": "^12.40.0",
     "mermaid": "^11.14.0",

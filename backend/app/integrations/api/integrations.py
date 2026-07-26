@@ -239,14 +239,6 @@ def connector_fleet_summary(
             )
 
     attention_connectors = attention_connectors[:8]
-    daemon_heartbeat = None
-    try:
-        from app.deepspace.subagents.subagent_registry import SubagentRegistry
-
-        daemon_heartbeat = SubagentRegistry().get_daemon_heartbeat()
-    except Exception:
-        daemon_heartbeat = None
-
     return ConnectorFleetSummary(
         total_connectors=len(connectors),
         active_count=active_count,
@@ -264,7 +256,6 @@ def connector_fleet_summary(
         health_status_breakdown=health_status_breakdown,
         retry_state_breakdown=retry_state_breakdown,
         attention_connectors=attention_connectors,
-        daemon_heartbeat=daemon_heartbeat,
     )
 
 
@@ -360,7 +351,7 @@ async def connector_oauth_callback(
     frontend_base = (
         (settings.connector_oauth_frontend_redirect_uri or "").strip().rstrip("/")
     )
-    redirect_base = frontend_base or "/dashboard/connectors"
+    redirect_base = frontend_base or "/dashboard"
 
     if error:
         redirect_url = f"{redirect_base}?oauth=error&message={error}" + (

@@ -13,11 +13,6 @@
     "core:window:allow-unmaximize",
     "core:window:allow-start-dragging",
     "notification:default",
-    "notification:allow-is-permission-granted",
-    "autostart:default",
-    "shell:default",
-    "shell:allow-execute",
-    "shell:allow-spawn",
-    "shell:allow-kill"
+    "autostart:default"
   ]
 }

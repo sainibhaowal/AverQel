@@ -39,23 +39,22 @@ export default function GroundedQueryDocsPage() {
         </ul>
       </DocsSection>
 
-      <DocsSection title="How it differs from DeepSpace missions">
+      <DocsSection title="How it differs from DeepSpace chat">
         <p>
           Grounded query is best when the user wants evidence-backed answers over documents.
-          DeepSpace missions are best when the user wants broader agentic execution: planning,
-          delegation, tool use, approvals, or proactive follow-up.
+          DeepSpace is best when the user wants a broader productivity conversation with memory,
+          safe retrieval, and optional source inspection.
         </p>
         <p>
-          Both surfaces are important. Query is your strong retrieval-first path. DeepSpace is your
-          broader agentic command surface.
+          Both surfaces are important: Query is retrieval-first, while DeepSpace is the broader
+          conversation surface.
         </p>
       </DocsSection>
 
       <DocsSection title="Why it still matters">
         <p>
-          Even though DeepSpace and orchestration have grown a lot, AverQel still depends on solid
-          grounded retrieval. This is the part of the product that turns private files into usable,
-          trustworthy context for both normal query answers and agentic workflows.
+          AverQel depends on solid grounded retrieval to turn private files into usable,
+          trustworthy context for both query answers and DeepSpace conversations.
         </p>
       </DocsSection>
     </DocsShell>

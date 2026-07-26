@@ -27,7 +27,6 @@
     "@blocknote/react": "^0.48.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/plugin-shell": "^2",
 
     "@tiptap/extension-image": "^3.22.3",
     "@tiptap/extension-table": "^3.22.3",

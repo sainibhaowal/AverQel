@@ -31,7 +31,41 @@ The DeepSpace allowlist contains:
 database. URL and image tools use server-side HTTP with timeouts, redirect
 limits, DNS/IP private-network blocking, domain allowlists, response-size
 limits, and provider/user rate limiting. The model never receives shell,
-terminal, arbitrary cURL, filesystem, file-explorer, or MCP access.
+terminal, arbitrary cURL, filesystem, or file-explorer access.
+
+## MCP-connected productivity tools
+
+MCP is an optional, conversation-scoped extension of the DeepSpace tool
+registry. It does not replace or bypass the existing MCP integration. A tool
+is exposed to DeepSpace only when all of the following are true:
+
+- the MCP server belongs to the authenticated tenant and user;
+- the server is enabled, connected, backed by an approved provider, and has a
+  fresh discovered catalog;
+- the server policy is enabled and explicitly attached to the current
+  conversation.
+
+The bridge is implemented in
+`app/deepspace/services/mcp_bridge.py`. It namespaces model-facing tool names,
+uses the existing MCP catalog and policy evaluator, and forwards execution to
+`app/integrations/services/mcp_runtime.py`. OAuth, encrypted credentials,
+transport, provider checks, catalog refresh, and tenant ownership remain owned
+by the MCP integration service.
+
+Read-only MCP actions can run automatically when the configured policy allows
+them. Writes, deletes, sends, and other external side effects pause the
+DeepSpace run and emit a visible approval request. The UI resolves the request
+through `POST /api/v1/deepspace/chats/{conversation_id}/approvals/{approval_id}`;
+an approved request resumes the same persisted run, while a denial blocks it.
+Approval decisions are server-side, tenant-scoped, persisted in the run
+checkpoint, and cannot be replayed after resolution.
+
+To attach a server, use the existing MCP conversation-scope endpoints:
+`GET /api/v1/mcp/conversations/{conversation_id}/connections` and
+`PUT /api/v1/mcp/conversations/{conversation_id}/connections/{server_id}`.
+The DeepSpace stream then discovers the attached tools automatically. No MCP
+tool gets shell, filesystem, terminal, arbitrary cURL, or operating-system
+access through this bridge.
 
 ## Durability and safety
 
@@ -50,5 +84,7 @@ Database migration:
 
 - `alembic/versions/20260726_0002_deepspace_agent_runtime.py`
 
-This runtime does not modify Query, MCP, terminal, file-explorer, connector,
-or operating-system storage behavior.
+This runtime does not modify Query, terminal, file-explorer, connector, or
+operating-system storage behavior. It adds only the DeepSpace adapter and the
+approval/resume path described above; the existing MCP transport and security
+boundary remain unchanged.

@@ -68,7 +68,7 @@ export default function PrivacySecurityPage() {
           confirmation requirement before planning and again immediately before the remote call.
         </p>
         <p>
-          A blocked or disabled tool is not offered to DeepSpace. A tool result may be summarized for
+          A blocked or disabled tool is not offered to the MCP action surface. A tool result may be summarized for
           the user, but raw remote payloads are not returned through the MCP inspector or persisted as
           unredacted MCP events.
         </p>

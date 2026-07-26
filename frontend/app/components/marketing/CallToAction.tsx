@@ -14,8 +14,8 @@ import {
 
 const highlights = [
   { icon: FileText, text: "Connect GitHub, Drive, Gmail, Calendar, Notion, Slack" },
-  { icon: Search, text: "DeepSpace missions with live SSE and mission canvas visibility" },
-  { icon: Database, text: "Durable memory, proactive workspace, and long-session stability" },
+  { icon: Search, text: "DeepSpace chat for research, drafting, and analysis" },
+  { icon: Database, text: "Persistent memory and durable conversation history" },
   { icon: Users, text: "Grounded answers, workspace deliverables, and approval-based sharing" },
   {
     icon: Shield,
@@ -41,13 +41,12 @@ export default function CallToAction() {
         >
           <h2 className={`${landingSectionTitleClass} ${landingTitleGradientBySection.cta}`}>
             Ready to turn your entire ecosystem into{" "}
-            <span className="text-inherit">an operator-grade agentic work system</span>?
+            <span className="text-inherit">a focused productivity workspace</span>?
           </h2>
           <p className={`${landingSectionLeadClass} text-muted-foreground/90 mx-auto max-w-2xl`}>
             Stop stitching together disconnected tools manually. Connect your workspace, ask
-            questions, launch visible missions, inspect the runtime, approve risky actions when
-            needed, and turn results into durable notes, tasks, and follow-up work backed by real
-            evidence and production safety boundaries.
+            questions, create notes and diagrams, approve sensitive actions when needed, and turn
+            results into durable work backed by real evidence and production safety boundaries.
           </p>
 
           {/* Highlights */}

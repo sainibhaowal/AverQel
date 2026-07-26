@@ -36,7 +36,7 @@ def test_connector_oauth_readiness_requires_callback_url(
     settings.averqel_public_origin = None
     settings.connector_oauth_redirect_uri = None
     settings.connector_oauth_frontend_redirect_uri = (
-        "https://averqel.localhost/dashboard/connectors"
+        "https://averqel.localhost/dashboard"
     )
     settings.connector_google_oauth_client_id = "google-id"
     settings.connector_google_oauth_client_secret = "google-secret"
@@ -84,7 +84,7 @@ def test_connector_oauth_derives_redirect_uri_from_public_origin(
     settings.averqel_public_origin = "https://averqel.localhost"
     settings.connector_oauth_redirect_uri = None
     settings.connector_oauth_frontend_redirect_uri = (
-        "https://averqel.localhost/dashboard/connectors"
+        "https://averqel.localhost/dashboard"
     )
     monkeypatch.setattr(connector_oauth_service, "MCP_SDK_AVAILABLE", True)
 
@@ -135,4 +135,4 @@ def test_connector_oauth_derives_frontend_redirect_uri_from_public_origin(
 
     assert readiness["configured"] is True
     assert readiness["missing"] == []
-    assert service._connector_frontend_redirect_uri() == "https://averqel.localhost/dashboard/connectors"
+    assert service._connector_frontend_redirect_uri() == "https://averqel.localhost/dashboard"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -43,6 +44,23 @@ from app.providers.services.types import (
 from app.system.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
+
+_MODEL_DISCOVERY_GATE = threading.BoundedSemaphore(2)
+
+
+def acquire_model_discovery_slot(operation: str) -> None:
+    """Prevent provider discovery from exhausting the API request pool."""
+    if _MODEL_DISCOVERY_GATE.acquire(blocking=False):
+        return
+    raise ApiError(
+        code="PROVIDER_MODEL_DISCOVERY_BUSY",
+        message=f"Provider model {operation} is already busy. Cached models remain available; try again shortly.",
+        status_code=409,
+    )
+
+
+def release_model_discovery_slot() -> None:
+    _MODEL_DISCOVERY_GATE.release()
 
 
 def _looks_like_auth_failure(status_code: int, message: str | None) -> bool:
@@ -153,6 +171,7 @@ class ProviderModelsService:
             require_enabled=True,
         )
         api_key = self._resolve_api_key(tenant_id=tenant_id, provider=provider)
+        acquire_model_discovery_slot("refresh")
         try:
             discovery = self.registry.get_model_discovery_provider_from_config(
                 provider, api_key=api_key
@@ -194,6 +213,8 @@ class ProviderModelsService:
                 message="Provider model refresh failed.",
                 status_code=502,
             ) from exc
+        finally:
+            release_model_discovery_slot()
 
         rows: list[ProviderModelCache] = []
         seen: set[tuple[str, str]] = set()

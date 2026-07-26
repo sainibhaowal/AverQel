@@ -23,7 +23,7 @@ export default function ConnectorsMcpDocsPage() {
           <li>Sign in and approve the requested scopes at Google, GitHub, or another provider.</li>
           <li>AverQel returns to the connection inspector, captures only safe account identity, refreshes the catalog, and shows the available tools.</li>
           <li>Configure the connection policy. A connection or scope remains unavailable when it has not been explicitly enabled.</li>
-          <li>In DeepSpace, ask for work such as searching Gmail or reading a GitHub repository. The runtime checks identity, connection, catalog freshness, tool policy, and approval requirements before calling the remote server.</li>
+          <li>Use the protected MCP surface for actions such as searching Gmail or reading a GitHub repository. The runtime checks identity, connection, catalog freshness, tool policy, and approval requirements before calling the remote server.</li>
         </ol>
       </DocsSection>
 

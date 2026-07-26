@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceAgentStep
 
 DEFAULT_RETAINED_STEPS = 10_000
-ACTIVE_RUN_STATUSES = {"running", "awaiting_user", "cancelling"}
+ACTIVE_RUN_STATUSES = {"running", "awaiting_user", "awaiting_approval", "cancelling"}
 
 
 class DeepSpaceRuntimeStore:
@@ -121,6 +121,76 @@ class DeepSpaceRuntimeStore:
             select(DeepSpaceAgentRun.cancel_requested).where(DeepSpaceAgentRun.id == run_id)
         ).scalar_one_or_none()
         return bool(run)
+
+    def get_run_for_approval(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        approval_id: str,
+    ) -> DeepSpaceAgentRun | None:
+        """Return only a user-owned run containing the requested approval."""
+        runs = self.db.execute(
+            select(DeepSpaceAgentRun)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.status.in_({"awaiting_approval", "running", "blocked"}),
+            )
+            .order_by(DeepSpaceAgentRun.updated_at.desc())
+            .limit(25)
+        ).scalars().all()
+        for run in runs:
+            checkpoint = run.checkpoint if isinstance(run.checkpoint, dict) else {}
+            pending = checkpoint.get("pending_approval")
+            if isinstance(pending, dict) and str(pending.get("approval_id") or "") == approval_id:
+                return run
+        return None
+
+    def resolve_approval(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        approval_id: str,
+        decision: str,
+    ) -> dict[str, object] | None:
+        """Persist an approval decision without executing the remote tool."""
+        if decision not in {"approved", "denied"}:
+            raise ValueError("Approval decision must be approved or denied.")
+        run = self.get_run_for_approval(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            approval_id=approval_id,
+        )
+        if run is None:
+            return None
+        checkpoint = dict(run.checkpoint) if isinstance(run.checkpoint, dict) else {}
+        pending = dict(checkpoint.get("pending_approval") or {})
+        current_decision = str(pending.get("decision") or "")
+        if current_decision and current_decision != "pending":
+            return {**pending, "status": "already_resolved"}
+        pending["decision"] = decision
+        pending["resolved_at"] = datetime.now(UTC).isoformat()
+        checkpoint["pending_approval"] = pending
+        checkpoint["phase"] = "approval_resolved"
+        run.checkpoint = checkpoint
+        run.status = "running" if decision == "approved" else "blocked"
+        run.updated_at = datetime.now(UTC)
+        self.db.add(run)
+        self.db.commit()
+        return pending
+
+    def clear_pending_approval(self, *, run_id: uuid.UUID, checkpoint: dict[str, object] | None = None) -> None:
+        """Remove a consumed approval while retaining the rest of the checkpoint."""
+        values = dict(checkpoint or {})
+        values.pop("pending_approval", None)
+        values["phase"] = "tool"
+        self.update_checkpoint(run_id=run_id, status="running", checkpoint=values)
 
     def request_cancel(
         self,

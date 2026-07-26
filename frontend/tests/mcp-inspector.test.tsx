@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import MCPInspector from "../app/dashboard/mcp/inspector/[id]/page";
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(), useParams: () => ({ id: "server-1", entryId: "provider-1" }) }));
 vi.mock("@/lib/mcp-context", () => ({ readMCPActiveContext: () => ({ conversation_id: "conversation-1", deepspace_id: "deepspace-1" }) }));
 vi.mock("@/lib/mcp-api", () => ({
   getMCPInspector: vi.fn().mockResolvedValue({ server: { id: "server-1", name: "Community Mail", status: "connected", transport: "streamable_http", provider_slug: "community-mail", registry_entry_id: "provider-1", enabled: true, account_identity: { email: "owner@example.com", display_name: "Owner" }, catalog_revision: 2, granted_scopes: ["mail.read"], config: { oauth_mode: "mcp_oauth" } }, diagnostics: { last_catalog_sync_at: "2026-07-20T00:00:00Z", last_error: null, oauth_configured: true, reconnect_attempts: 0 }, events: [] }),
@@ -21,7 +21,7 @@ describe("MCP inspector", () => {
     render(<MCPInspector params={{ id: "server-1" }} />);
     await waitFor(() => expect(screen.getByText("owner@example.com")).toBeInTheDocument());
     expect(screen.getByText("search_mail")).toBeInTheDocument();
-    expect(screen.getByText(/blocked or disabled tool/i)).toBeInTheDocument();
-    expect(screen.getByText(/DeepSpace/i)).toBeInTheDocument();
+    expect(screen.getByText(/Blocked tools will not be offered to DeepSpace/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/DeepSpace/i).length).toBeGreaterThan(0);
   });
 });

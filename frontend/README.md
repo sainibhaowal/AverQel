@@ -49,7 +49,7 @@ The supported connection flow is:
 ```text
 Marketplace → provider details → Connect → provider OAuth consent
 → AverQel callback → encrypted per-user connection → catalog refresh
-→ connection policy → DeepSpace tool execution
+→ connection policy → protected MCP action surface
 ```
 
 Google and GitHub authentication happens on the provider's authorization page. AverQel never receives
@@ -66,6 +66,22 @@ or stale conversation and DeepSpace overrides remain disabled.
 The marketplace distinguishes Official providers from reviewed Community providers. New, Trending, and
 Interactive are catalog review attributes, not automatic security approvals. Health and tool previews
 are useful status metadata, not uptime guarantees; connected providers can change their live catalog.
+
+## Request and service reliability
+
+The browser client bounds ordinary API requests at 10 seconds, authentication requests at 5 seconds,
+and streaming requests at 120 seconds. A stalled request is aborted and surfaced as an error instead
+of leaving a page action pending forever. Logout clears the local session immediately and reports a
+server-side logout failure without blocking the user.
+
+DeepSpace loads independent panels independently. A slow conversation-history, vitals, workspace, or
+runtime request shows a visible warning and a Retry action while the rest of the workspace remains
+usable. Normal agent runtime selection uses verified or cached provider metadata; live provider model
+discovery belongs to provider-management refresh flows so an unavailable provider catalog cannot hold
+the API request loop.
+
+The desktop/Tauri workspace proxy remains single-process because its client registry is process-local.
+Do not increase API worker count without first moving that registry to a shared transport.
 
 This release supports approved remote Streamable HTTP and SSE MCP servers. Stdio, SSH, local process
 servers, and arbitrary vendor repositories are not supported. AverQel does not clone vendor MCP

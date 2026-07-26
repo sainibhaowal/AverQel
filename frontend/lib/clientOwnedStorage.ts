@@ -93,11 +93,10 @@ async function encryptionKey(): Promise<CryptoKey> {
   });
   if (existing) return existing;
 
-  const key = await crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
+  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
   await new Promise<void>((resolve, reject) => {
     const request = db
       .transaction(META, "readwrite")
@@ -150,13 +149,13 @@ export async function putClientOwnedRecord(
   });
 }
 
-export async function getClientOwnedRecord<T>(
-  namespace: string,
-  key: string,
-): Promise<T | null> {
+export async function getClientOwnedRecord<T>(namespace: string, key: string): Promise<T | null> {
   const db = await openDb();
   const record = await new Promise<StoredRecord | undefined>((resolve, reject) => {
-    const request = db.transaction(RECORDS, "readonly").objectStore(RECORDS).get(recordId(namespace, key));
+    const request = db
+      .transaction(RECORDS, "readonly")
+      .objectStore(RECORDS)
+      .get(recordId(namespace, key));
     request.onsuccess = () => resolve(request.result as StoredRecord | undefined);
     request.onerror = () => reject(request.error);
   });
@@ -180,7 +179,10 @@ export async function listClientOwnedRecords<T>(namespace: string): Promise<T[]>
 export async function deleteClientOwnedRecord(namespace: string, key: string): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
-    const request = db.transaction(RECORDS, "readwrite").objectStore(RECORDS).delete(recordId(namespace, key));
+    const request = db
+      .transaction(RECORDS, "readwrite")
+      .objectStore(RECORDS)
+      .delete(recordId(namespace, key));
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
@@ -189,7 +191,10 @@ export async function deleteClientOwnedRecord(namespace: string, key: string): P
 function websocketUrl(): string | null {
   if (typeof window === "undefined" || typeof WebSocket === "undefined") return null;
   try {
-    const url = new URL(`${getApiBaseUrl().replace(/\/+$/, "")}/deepspace/client-storage/ws`, window.location.origin);
+    const url = new URL(
+      `${getApiBaseUrl().replace(/\/+$/, "")}/deepspace/client-storage/ws`,
+      window.location.origin,
+    );
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     const token = window.localStorage.getItem("averqel_token");
     const tenantId = window.localStorage.getItem("averqel_tenant_id");
@@ -225,7 +230,9 @@ async function handleRpc(request: RpcRequest): Promise<unknown> {
       const offset = Number(params.offset ?? 0);
       const items = (await listClientOwnedRecords<Record<string, unknown>>("chat.conversations"))
         .filter((item) => !userId || String(item.user_id ?? "") === userId)
-        .sort((left, right) => String(right.updated_at ?? "").localeCompare(String(left.updated_at ?? "")))
+        .sort((left, right) =>
+          String(right.updated_at ?? "").localeCompare(String(left.updated_at ?? "")),
+        )
         .slice(offset, offset + limit);
       return items.map(publicConversation);
     }
@@ -248,17 +255,18 @@ async function handleRpc(request: RpcRequest): Promise<unknown> {
       const messages = await listClientOwnedRecords<Record<string, unknown>>("chat.messages");
       return messages
         .filter((item) => String(item.conversation_id ?? "") === conversationId)
-        .sort((left, right) => String(left.created_at ?? "").localeCompare(String(right.created_at ?? "")))
+        .sort((left, right) =>
+          String(left.created_at ?? "").localeCompare(String(right.created_at ?? "")),
+        )
         .map(publicMessage);
     }
-    case "db.chats.get_message":
-      {
-        const message = await getClientOwnedRecord<Record<string, unknown>>(
-          "chat.messages",
-          String(params.message_id ?? key),
-        );
-        return message ? publicMessage(message) : null;
-      }
+    case "db.chats.get_message": {
+      const message = await getClientOwnedRecord<Record<string, unknown>>(
+        "chat.messages",
+        String(params.message_id ?? key),
+      );
+      return message ? publicMessage(message) : null;
+    }
     case "db.chats.add_message": {
       const now = new Date().toISOString();
       const messageId = String(params.message_id ?? crypto.randomUUID());
@@ -273,14 +281,16 @@ async function handleRpc(request: RpcRequest): Promise<unknown> {
         active_version_id: messageId,
         active_version_index: 1,
         version_count: 1,
-        versions: [{
-          id: messageId,
-          version_index: 1,
-          content,
-          metadata_json: (params.metadata_json as Record<string, unknown> | undefined) ?? {},
-          source_type: "initial",
-          created_at: now,
-        }],
+        versions: [
+          {
+            id: messageId,
+            version_index: 1,
+            content,
+            metadata_json: (params.metadata_json as Record<string, unknown> | undefined) ?? {},
+            source_type: "initial",
+            created_at: now,
+          },
+        ],
       };
       await putClientOwnedRecord("chat.messages", messageId, message);
       return publicMessage(message);
@@ -312,85 +322,15 @@ async function handleRpc(request: RpcRequest): Promise<unknown> {
       return memories
         .map((memory) => ({
           ...memory,
-          score: `${String(memory.key ?? "")} ${String(memory.value ?? "")}`.toLowerCase().includes(query) ? 1 : 0,
+          score: `${String(memory.key ?? "")} ${String(memory.value ?? "")}`
+            .toLowerCase()
+            .includes(query)
+            ? 1
+            : 0,
         }))
         .filter((memory) => Number(memory.score) > 0)
         .sort((left, right) => Number(right.score) - Number(left.score))
         .slice(0, limit);
-    }
-    case "fs.exists": {
-      const path = String(params.path ?? ".");
-      return Boolean(await getClientOwnedRecord("workspace.files", path));
-    }
-    case "fs.read_file": {
-      const file = await getClientOwnedRecord<{ content?: string }>(
-        "workspace.files",
-        String(params.path ?? ""),
-      );
-      if (!file) throw new Error("Local workspace file not found");
-      return String(file.content ?? "");
-    }
-    case "fs.write_file": {
-      const path = String(params.path ?? "");
-      await putClientOwnedRecord("workspace.files", path, {
-        path,
-        type: "file",
-        content: String(params.content ?? ""),
-        updated_at: new Date().toISOString(),
-      });
-      return path;
-    }
-    case "fs.delete_path":
-      await deleteClientOwnedRecord("workspace.files", String(params.path ?? ""));
-      return { deleted: true };
-    case "fs.create_directory": {
-      const path = String(params.path ?? "");
-      await putClientOwnedRecord("workspace.files", path, {
-        path,
-        type: "directory",
-        content: "",
-        updated_at: new Date().toISOString(),
-      });
-      return path;
-    }
-    case "fs.move_path": {
-      const oldPath = String(params.old_path ?? "");
-      const newPath = String(params.new_path ?? "");
-      const file = await getClientOwnedRecord("workspace.files", oldPath);
-      if (!file) throw new Error("Local workspace path not found");
-      await putClientOwnedRecord("workspace.files", newPath, {
-        ...(file as Record<string, unknown>),
-        path: newPath,
-        updated_at: new Date().toISOString(),
-      });
-      await deleteClientOwnedRecord("workspace.files", oldPath);
-      return newPath;
-    }
-    case "fs.copy_path": {
-      const sourcePath = String(params.source_path ?? "");
-      const destinationPath = String(params.destination_path ?? "");
-      const file = await getClientOwnedRecord("workspace.files", sourcePath);
-      if (!file) throw new Error("Local workspace path not found");
-      await putClientOwnedRecord("workspace.files", destinationPath, {
-        ...(file as Record<string, unknown>),
-        path: destinationPath,
-        updated_at: new Date().toISOString(),
-      });
-      return destinationPath;
-    }
-    case "fs.list_dir": {
-      const prefix = String(params.path ?? ".").replace(/\/+$/, "");
-      const files = await listClientOwnedRecords<{ path: string; type: string; content?: string; updated_at?: string }>("workspace.files");
-      return files
-        .filter((item) => item.path !== prefix && item.path.startsWith(prefix === "." ? "" : `${prefix}/`))
-        .map((item) => ({
-          name: item.path.split("/").filter(Boolean).pop() ?? item.path,
-          path: item.path,
-          type: item.type,
-          size: item.type === "file" ? String(item.content ?? "").length : 0,
-          modified_at: item.updated_at ?? "",
-          extension: item.type === "file" ? item.path.split(".").pop() ?? null : null,
-        }));
     }
     default:
       throw new Error(`Unsupported client storage method: ${request.method}`);

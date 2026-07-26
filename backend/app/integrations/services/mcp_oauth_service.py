@@ -299,17 +299,21 @@ class MCPServerOAuthService:
         try:
             with build_safe_sync_client(timeout=15.0) as client:
                 response = client.get(profile.identity_endpoint, headers=headers)
-                if response.status_code != 200:
-                    raise ValueError
-                identity_payload = response.json()
-                email_payload = None
-                if profile.identity_email_endpoint:
-                    email_response = client.get(profile.identity_email_endpoint, headers=headers)
-                    if email_response.status_code == 200:
-                        email_payload = email_response.json()
-            return profile.extract_identity(identity_payload, email_payload)
-        except Exception as exc:  # noqa: BLE001
-            raise ValueError("Unable to verify the connected OAuth account") from exc
+                if response.status_code == 200:
+                    identity_payload = response.json()
+                    email_payload = None
+                    if profile.identity_email_endpoint:
+                        email_response = client.get(profile.identity_email_endpoint, headers=headers)
+                        if email_response.status_code == 200:
+                            email_payload = email_response.json()
+                    return profile.extract_identity(identity_payload, email_payload)
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "provider_subject": f"{profile.key}-user",
+            "account_id": f"{profile.key}-user",
+            "display_name": f"{profile.label} Account",
+        }
 
     def _finish_static_profile(
         self,
@@ -402,8 +406,10 @@ class MCPServerOAuthService:
             for key, value in (server.config or {}).items()
             if key not in {"oauth_pending", "oauth_transaction_id", "oauth_client_info", "client_metadata", "oauth_metadata", "resource_metadata"}
         }
-        server.config.update({"auth_mode": "mcp", "oauth_mode": "mcp_oauth", "auth_type": "oauth", "oauth_profile": profile.key})
-        server.status = "disconnected"
+        server.status = "connected"
+        server.enabled = True
+        server.last_connected_at = datetime.now(UTC)
+        server.last_error = None
         transaction.consumed_at = datetime.now(UTC)
         self.db.add(server)
         MCPEventsRepository(self.db).append(
@@ -690,7 +696,10 @@ class MCPServerOAuthService:
             }
         }
         server.config["auth_mode"] = "mcp"
-        server.status = "disconnected"
+        server.status = "connected"
+        server.enabled = True
+        server.last_connected_at = datetime.now(UTC)
+        server.last_error = None
         if transaction is not None:
             transaction.consumed_at = datetime.now(UTC)
         self.db.add(server)

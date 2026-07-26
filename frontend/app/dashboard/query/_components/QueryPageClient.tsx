@@ -22,11 +22,10 @@ import {
 import { useQueryStream } from "../_hooks/useQueryStream";
 import { initialQueryThreadState, queryThreadReducer } from "../_lib/query-thread-reducer";
 import { resolveLatestEditableMessageId } from "../_lib/edit-target";
-import { estimateTokens, type QueryHistoryMessage } from "../_lib/stream-protocol";
+import { type QueryHistoryMessage } from "../_lib/stream-protocol";
 
 import MessageThread from "./MessageThread";
 import QueryComposer from "./QueryComposer";
-import DeepSpaceScrollTracker from "./DeepSpaceScrollTracker";
 
 const DEFAULT_QUERY_TOP_K = 5;
 
@@ -110,22 +109,7 @@ interface CollectionDocumentItem {
   document_id: string;
 }
 
-interface QueryPageClientProps {
-  mode?: "query" | "deepspace";
-  onInsertLatestAnswer?: (content: string) => void;
-}
-
-interface QueryRuntimeMetrics {
-  contextLimit: number | null;
-  contextLimitSource: string | null;
-  modelName: string | null;
-  providerType: string | null;
-}
-
-export default function QueryPageClient({
-  mode = "query",
-  onInsertLatestAnswer,
-}: QueryPageClientProps) {
+export default function QueryPageClient() {
   const [state, dispatch] = useReducer(queryThreadReducer, initialQueryThreadState);
   const [query, setQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"hybrid" | "semantic" | "keyword">("hybrid");
@@ -151,29 +135,23 @@ export default function QueryPageClient({
   }, []);
   const [deleteAssistantMessageId, setDeleteAssistantMessageId] = useState<string | null>(null);
   const [deleteAssistantBusy, setDeleteAssistantBusy] = useState(false);
-  const [runtimeMetrics, setRuntimeMetrics] = useState<QueryRuntimeMetrics>({
-    contextLimit: null,
-    contextLimitSource: null,
-    modelName: null,
-    providerType: null,
-  });
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const autoFollowRef = useRef(true);
   const scrollRafRef = useRef<number | null>(null);
-  const streamingRef = useRef(state.isStreaming);
   const pendingHistorySyncRef = useRef(false);
+  const modelSwitchRef = useRef<Promise<void> | null>(null);
+  const modelSelectionVersionRef = useRef(0);
   const searchParams = useSearchParams();
   const docId = searchParams.get("docId");
   const selectedCollectionName = useMemo(
     () => collectionOptions.find((item) => item.id === selectedCollectionId)?.name ?? null,
     [collectionOptions, selectedCollectionId],
   );
-  const isEmbedded = mode === "deepspace";
-  const chatEndpointBase = isEmbedded ? "/deepspace/chats" : "/chats";
-  const streamEndpoint = isEmbedded ? "/deepspace/chats/stream" : "/queries/stream";
-  const conversationKind = isEmbedded ? "deepspace" : "query";
+  const chatEndpointBase = "/chats";
+  const streamEndpoint = "/queries/stream";
+  const conversationKind = "query";
 
   const stream = useQueryStream(
     useMemo(
@@ -205,74 +183,44 @@ export default function QueryPageClient({
     ].join(":");
   }, [state.isStreaming, state.messages]);
 
-  const totalUsedTokens = useMemo(() => {
-    const historyTokens = state.messages.reduce((acc, msg) => {
-      return (
-        acc +
-        estimateTokens(msg.content) +
-        (msg.thinkingContent ? estimateTokens(msg.thinkingContent) : 0)
-      );
-    }, 0);
-    return historyTokens + estimateTokens(query);
-  }, [state.messages, query]);
-
-  const totalContext = runtimeMetrics.contextLimit;
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadRuntime = async () => {
-      try {
-        const response = (await fetchWithAuth("/deepspace/chats/runtime")) as Response;
-        if (!response.ok) return;
-        const runtime = (await response.json()) as {
-          context_limit?: number | null;
-          context_limit_source?: string | null;
-          model_name?: string | null;
-          provider_type?: string | null;
-        };
-        if (cancelled) return;
-        setRuntimeMetrics({
-          contextLimit:
-            typeof runtime.context_limit === "number" && runtime.context_limit > 0
-              ? runtime.context_limit
-              : null,
-          contextLimitSource:
-            typeof runtime.context_limit_source === "string" ? runtime.context_limit_source : null,
-          modelName:
-            typeof runtime.model_name === "string" && runtime.model_name.trim()
-              ? runtime.model_name
-              : null,
-          providerType:
-            typeof runtime.provider_type === "string" && runtime.provider_type.trim()
-              ? runtime.provider_type
-              : null,
-        });
-      } catch (error) {
-        console.error("Failed to fetch embedded runtime", error);
-      }
-    };
-    void loadRuntime();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const [availableModels, setAvailableModels] = useState<
-    Array<{ providerId: string; modelName: string; displayName: string }>
+    Array<{
+      providerId: string;
+      modelName: string;
+      displayName: string;
+      contextWindow?: number | null;
+      contextWindowSource?: string | null;
+    }>
   >([]);
+  const [selectedProviderOverride, setSelectedProviderOverride] = useState<string | null>(null);
+  const [selectedModelOverride, setSelectedModelOverride] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     const fetchModels = async () => {
       try {
-        const [providersList] = await Promise.all([
+        const [providersList, assignmentsList] = await Promise.all([
           listProviders(),
+          listAssignments().catch(() => []),
         ]);
         if (!active) return;
 
+        const chatAssignment = assignmentsList.find(
+          (assignment) => assignment.feature_scope === "chat" && assignment.enabled,
+        );
+        if (chatAssignment?.model_name) {
+          setSelectedModelOverride(chatAssignment.model_name);
+          setSelectedProviderOverride(chatAssignment.provider_config_id);
+        }
+
         const chatProviders = providersList.filter((p) => p.enabled && p.supports_chat);
-        const allChatModels: Array<{ providerId: string; modelName: string; displayName: string }> =
-          [];
+        const allChatModels: Array<{
+          providerId: string;
+          modelName: string;
+          displayName: string;
+          contextWindow?: number | null;
+          contextWindowSource?: string | null;
+        }> = [];
 
         await Promise.all(
           chatProviders.map(async (provider) => {
@@ -285,6 +233,11 @@ export default function QueryPageClient({
                     providerId: provider.id,
                     modelName: m.model_name,
                     displayName: m.display_name || m.model_name,
+                    contextWindow: m.context_window,
+                    contextWindowSource:
+                      typeof m.capabilities_json.context_window_source === "string"
+                        ? m.capabilities_json.context_window_source
+                        : null,
                   })),
                 );
               }
@@ -295,7 +248,34 @@ export default function QueryPageClient({
         );
 
         if (active) {
-          setAvailableModels(allChatModels);
+          const fallbackModels = chatProviders.flatMap((provider) => {
+            const modelName = provider.default_chat_model?.trim();
+            return modelName
+              ? [{
+                  providerId: provider.id,
+                  modelName,
+                  displayName: modelName,
+                  contextWindow: null,
+                  contextWindowSource: "provider_default",
+                }]
+              : [];
+          });
+          if (chatAssignment?.model_name && chatAssignment.provider_config_id) {
+            fallbackModels.push({
+              providerId: chatAssignment.provider_config_id,
+              modelName: chatAssignment.model_name,
+              displayName: chatAssignment.model_name,
+              contextWindow: null,
+              contextWindowSource: "assignment",
+            });
+          }
+          const merged = new Map(
+            [...allChatModels, ...fallbackModels].map((model) => [
+              `${model.providerId}:${model.modelName}`,
+              model,
+            ]),
+          );
+          setAvailableModels([...merged.values()]);
         }
       } catch (err) {
         console.error("Failed to load models", err);
@@ -308,54 +288,54 @@ export default function QueryPageClient({
     };
   }, []);
 
-  const handleModelSelect = useCallback(async (providerId: string, modelName: string) => {
-    const toastId = toast.loading("Switching model...");
-    try {
-      const assignmentsList = await listAssignments();
-      const chatAssignment = assignmentsList.find((a) => a.feature_scope === "chat");
+  const handleModelSelect = useCallback((providerId: string, modelName: string) => {
+    const previousModel = selectedModelOverride;
+    const previousProvider = selectedProviderOverride;
+    const selectionVersion = ++modelSelectionVersionRef.current;
 
-      if (chatAssignment) {
-        await updateAssignment(chatAssignment.id, {
-          provider_config_id: providerId,
-          model_name: modelName,
-          enabled: true,
-        });
-      } else {
-        await createAssignment({
-          feature_scope: "chat",
-          provider_config_id: providerId,
-          model_name: modelName,
-          enabled: true,
-        });
+    // Optimistic UI keeps both composers truthful immediately after the click.
+    setSelectedModelOverride(modelName);
+    setSelectedProviderOverride(providerId);
+
+    const waitForPrevious = modelSwitchRef.current ?? Promise.resolve();
+    const operation = waitForPrevious.catch(() => undefined).then(async () => {
+      const toastId = toast.loading("Switching model...");
+      try {
+        const assignmentsList = await listAssignments();
+        const chatAssignment = assignmentsList.find((a) => a.feature_scope === "chat");
+
+        if (chatAssignment) {
+          await updateAssignment(chatAssignment.id, {
+            provider_config_id: providerId,
+            model_name: modelName,
+            enabled: true,
+          });
+        } else {
+          await createAssignment({
+            feature_scope: "chat",
+            provider_config_id: providerId,
+            model_name: modelName,
+            enabled: true,
+          });
+        }
+
+        toast.success(`Switched model to ${modelName}`, { id: toastId });
+      } catch (err) {
+        console.error("Failed to switch model", err);
+        if (selectionVersion === modelSelectionVersionRef.current) {
+          setSelectedModelOverride(previousModel);
+          setSelectedProviderOverride(previousProvider);
+        }
+        toast.error("Failed to switch model", { id: toastId });
       }
+    });
 
-      toast.success(`Switched model to ${modelName}`, { id: toastId });
-
-      const response = await fetchWithAuth("/deepspace/chats/runtime");
-      if (response && response.ok) {
-        const runtime = await response.json();
-        setRuntimeMetrics({
-          contextLimit:
-            typeof runtime.context_limit === "number" && runtime.context_limit > 0
-              ? runtime.context_limit
-              : null,
-          contextLimitSource:
-            typeof runtime.context_limit_source === "string" ? runtime.context_limit_source : null,
-          modelName:
-            typeof runtime.model_name === "string" && runtime.model_name.trim()
-              ? runtime.model_name
-              : null,
-          providerType:
-            typeof runtime.provider_type === "string" && runtime.provider_type.trim()
-              ? runtime.provider_type
-              : null,
-        });
-      }
-    } catch (err) {
-      console.error("Failed to switch model", err);
-      toast.error("Failed to switch model", { id: toastId });
-    }
-  }, []);
+    modelSwitchRef.current = operation;
+    void operation.finally(() => {
+      if (modelSwitchRef.current === operation) modelSwitchRef.current = null;
+    });
+    return operation;
+  }, [selectedModelOverride, selectedProviderOverride]);
 
   const isNearBottom = useCallback((element: HTMLDivElement) => {
     const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
@@ -377,24 +357,14 @@ export default function QueryPageClient({
     }
 
     const target = Math.max(0, container.scrollHeight - container.clientHeight);
-    const delta = target - container.scrollTop;
-    const isStreaming = streamingRef.current;
-    const ease = isStreaming ? 0.22 : 0.16;
-    const snapThreshold = isStreaming ? 1 : 2;
-
-    if (Math.abs(delta) <= snapThreshold) {
+    // Streaming content changes the document height every few milliseconds.
+    // Snap once per content update instead of easing forever; the latter causes
+    // a visible oscillation when Markdown blocks change height.
+    if (Math.abs(container.scrollTop - target) > 1) {
       container.scrollTop = target;
-      cancelAutoFollow();
-      return;
     }
-
-    container.scrollTop += delta * ease;
-    scrollRafRef.current = window.requestAnimationFrame(stepAutoFollow);
+    scrollRafRef.current = null;
   }, [cancelAutoFollow]);
-
-  useEffect(() => {
-    streamingRef.current = state.isStreaming;
-  }, [state.isStreaming]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;
@@ -402,22 +372,19 @@ export default function QueryPageClient({
       return;
     }
 
-    if (!state.isStreaming) {
-      container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      cancelAutoFollow();
-      return;
-    }
-
     if (scrollRafRef.current === null) {
       scrollRafRef.current = window.requestAnimationFrame(stepAutoFollow);
     }
 
-    return () => {
-      if (!state.isStreaming) {
-        cancelAutoFollow();
-      }
-    };
-  }, [cancelAutoFollow, scrollAnchor, state.activeAssistantId, state.isStreaming, stepAutoFollow]);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (!autoFollowRef.current || scrollRafRef.current !== null) return;
+      scrollRafRef.current = window.requestAnimationFrame(stepAutoFollow);
+    });
+    observer.observe(container);
+    if (container.firstElementChild) observer.observe(container.firstElementChild);
+    return () => observer.disconnect();
+  }, [scrollAnchor, state.activeAssistantId, state.isStreaming, stepAutoFollow]);
 
   const loadConversation = useCallback(
     async (conversationId: string) => {
@@ -470,16 +437,6 @@ export default function QueryPageClient({
         typeof payload.model_name === "string" &&
         payload.model_name.trim()
       ) {
-        setRuntimeMetrics({
-          contextLimit: payload.context_limit,
-          contextLimitSource:
-            typeof payload.context_limit_source === "string" ? payload.context_limit_source : null,
-          modelName: payload.model_name,
-          providerType:
-            typeof payload.provider_type === "string" && payload.provider_type.trim()
-              ? payload.provider_type
-              : null,
-        });
       }
       if (!supported) {
         setThinkingEnabled(false);
@@ -616,15 +573,6 @@ export default function QueryPageClient({
   }, [docId, selectedCollectionDocumentIds]);
 
   const emptyPrompts = useMemo(() => {
-    if (isEmbedded) {
-      return [
-        "Help me think through this idea clearly.",
-        "Draft a concise message I can send to my team.",
-        "Turn these rough thoughts into a cleaner note.",
-        "Explain this topic simply, then improve the wording.",
-      ];
-    }
-
     if (selectedCollectionName) {
       return [
         `What are the most important findings in ${selectedCollectionName}?`,
@@ -649,7 +597,7 @@ export default function QueryPageClient({
       "Which files contain the strongest evidence for this topic?",
       "Answer only from grounded evidence and show the supporting citations.",
     ];
-  }, [docId, isEmbedded, selectedCollectionName]);
+  }, [docId, selectedCollectionName]);
 
   const submitQuery = useCallback(
     async (nextQuery?: string) => {
@@ -657,6 +605,10 @@ export default function QueryPageClient({
       if (!effectiveQuery || state.isStreaming) {
         return;
       }
+
+      // A provider assignment is persisted asynchronously. Queue the request
+      // behind the latest model switch so the next turn cannot use the old model.
+      await modelSwitchRef.current;
 
       setQuery("");
       autoFollowRef.current = true;
@@ -844,6 +796,16 @@ export default function QueryPageClient({
     state.currentConversationId,
     dispatch,
   ]);
+  const effectiveModelName = selectedModelOverride ?? state.lastModelName ?? null;
+  const selectedModel = availableModels.find(
+    (model) =>
+      model.modelName === effectiveModelName &&
+      (!selectedProviderOverride || model.providerId === selectedProviderOverride),
+  ) ?? availableModels.find((model) => model.modelName === effectiveModelName);
+  const latestAssistant = [...state.messages].reverse().find((message) => message.role === "assistant");
+  const contextUsedTokens =
+    latestAssistant?.metrics?.contextUsedTokens ?? latestAssistant?.metrics?.totalTokens ?? null;
+  const contextLimit = selectedModel?.contextWindow ?? latestAssistant?.metrics?.contextLimit ?? null;
   const activeError = state.streamError;
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-transparent">
@@ -852,7 +814,7 @@ export default function QueryPageClient({
           typeof document !== "undefined"
             ? document.getElementById("header-layout-controls")
             : null;
-        const shouldRenderPortal = !isEmbedded && mounted && portalTarget;
+        const shouldRenderPortal = mounted && portalTarget;
 
         if (shouldRenderPortal) {
           return createPortal(
@@ -877,27 +839,6 @@ export default function QueryPageClient({
       })()}
       <div className="relative min-w-0 flex-1 overflow-hidden">
         <div className="flex h-full min-h-0 min-w-0 flex-col">
-          {isEmbedded ? (
-            <>
-              <button
-                type="button"
-                aria-label="Open conversation history"
-                title="Open conversation history"
-                onClick={() => setHistoryOpen(true)}
-                className={`border-primary/25 bg-surface-0/80 text-foreground hover:border-primary/40 hover:bg-surface-1 absolute top-4 right-4 z-20 inline-flex h-11 items-center gap-2 rounded-full border px-4 shadow-xl backdrop-blur-md transition ${
-                  historyOpen ? "pointer-events-none opacity-0" : ""
-                }`}
-              >
-                <History size={17} className="text-primary" />
-                <span className="text-sm font-medium">History</span>
-              </button>
-              <DeepSpaceScrollTracker
-                messages={state.messages}
-                scrollContainerRef={scrollContainerRef}
-                onInsertActiveAnswer={onInsertLatestAnswer}
-              />
-            </>
-          ) : null}
           <div
             ref={scrollContainerRef}
             onScroll={(event) => {
@@ -906,7 +847,7 @@ export default function QueryPageClient({
                 cancelAutoFollow();
               }
             }}
-            className={`custom-scrollbar scrollbar-hide min-h-0 flex-1 overflow-y-auto ${isEmbedded ? "pt-16 pr-12 pl-4" : "pr-12 pl-6"}`}
+            className="custom-scrollbar scrollbar-hide min-h-0 flex-1 overflow-y-auto pr-12 pl-6"
           >
             {activeError ? (
               <div className="border-danger/20 bg-danger/5 text-danger mx-auto mt-6 flex max-w-5xl items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
@@ -919,7 +860,6 @@ export default function QueryPageClient({
             ) : null}
 
             <MessageThread
-              mode={mode}
               messages={state.messages}
               emptyPrompts={emptyPrompts}
               activeAssistantId={state.activeAssistantId}
@@ -944,7 +884,6 @@ export default function QueryPageClient({
 
           <div className="shrink-0">
             <QueryComposer
-              mode={mode}
               query={query}
               searchMode={searchMode}
               selectedCollectionId={selectedCollectionId}
@@ -961,11 +900,11 @@ export default function QueryPageClient({
               onThinkingChange={setThinkingEnabled}
               onSubmit={() => void submitQuery()}
               onStop={stopStreaming}
-              usedTokens={totalUsedTokens}
-              totalContext={totalContext}
-              modelName={state.lastModelName ?? runtimeMetrics.modelName}
+              modelName={effectiveModelName}
               availableModels={availableModels}
               onModelSelect={handleModelSelect}
+              contextUsedTokens={contextUsedTokens}
+              contextLimit={contextLimit}
             />
           </div>
         </div>

@@ -1,21 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import { ArrowUp } from "lucide-react";
 import type { QueryThreadMessage, QueryThreadMessageVersion } from "../_lib/stream-protocol";
-import type {
-  DeepSpaceHistoryVersion,
-  DeepSpaceMessage,
-} from "../../deepspace/_lib/deepspace-stream";
+
+type TrackerMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  rawContent?: string;
+  createdAt?: string;
+  status?: string;
+  activeVersionId?: string | null;
+  versions?: QueryThreadMessageVersion[];
+  blocks?: QueryThreadMessage["blocks"];
+};
 
 interface DeepSpaceScrollTrackerProps {
-  messages: (QueryThreadMessage | DeepSpaceMessage)[];
+  messages: TrackerMessage[];
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   onInsertActiveAnswer?: (content: string) => void;
 }
 
-type TrackerVersion = QueryThreadMessageVersion | DeepSpaceHistoryVersion;
+type TrackerVersion = QueryThreadMessageVersion;
 
 function getVersionContent(version: TrackerVersion | null | undefined): string {
   if (!version) return "";
@@ -24,9 +31,9 @@ function getVersionContent(version: TrackerVersion | null | undefined): string {
 }
 
 function resolveFocusedAssistantMessage(
-  messages: (QueryThreadMessage | DeepSpaceMessage)[],
+  messages: TrackerMessage[],
   effectiveActiveId: string | null,
-): QueryThreadMessage | DeepSpaceMessage | null {
+): TrackerMessage | null {
   if (!effectiveActiveId) return null;
 
   let msg = messages.find((m) => m.id === effectiveActiveId) ?? null;
@@ -43,7 +50,7 @@ function resolveFocusedAssistantMessage(
   return msg && msg.role === "assistant" ? msg : null;
 }
 
-function buildActiveAnswerContent(msg: QueryThreadMessage | DeepSpaceMessage): string {
+function buildActiveAnswerContent(msg: TrackerMessage): string {
   const activeVersion =
     "versions" in msg && Array.isArray(msg.versions)
       ? msg.versions.find((v) => v.id === (msg as QueryThreadMessage).activeVersionId)
@@ -184,7 +191,7 @@ export default function DeepSpaceScrollTracker({
     setTooltipMessageId(messageId);
   };
 
-  const getMessageLabel = (msg: QueryThreadMessage | DeepSpaceMessage, index: number) => {
+  const getMessageLabel = (msg: TrackerMessage, index: number) => {
     const order = index + 1;
     if (msg.role === "user") {
       const preview = msg.content.trim().slice(0, 28);
@@ -208,19 +215,17 @@ export default function DeepSpaceScrollTracker({
             const label = getMessageLabel(msg, index);
             const isTooltipVisible = tooltipMessageId === msg.id;
             return (
-              <motion.div
+              <div
                 key={msg.id}
                 className="group relative flex items-center justify-end"
-                layout
               >
-                <motion.button
+                <button
                   type="button"
                   onClick={() => jumpToMessage(msg.id)}
                   onMouseEnter={() => setTooltipMessageId(msg.id)}
                   onFocus={() => setTooltipMessageId(msg.id)}
                   aria-label={label}
                   className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full focus:ring-2 focus:ring-cyan-300/55 focus:ring-offset-2 focus:ring-offset-black/30 focus:outline-none"
-                  layout
                 >
                   <span
                     className={`block rounded-full transition-all duration-300 ${
@@ -233,7 +238,7 @@ export default function DeepSpaceScrollTracker({
                           : "h-5 w-2.5 bg-[#c8b6ff]/28"
                     } group-hover:scale-110`}
                   />
-                </motion.button>
+                </button>
                 <div
                   className={`pointer-events-none absolute right-full mr-3 max-w-[12rem] rounded-2xl border px-3 py-1.5 text-[11px] leading-4 font-medium truncate text-white shadow-[0_14px_30px_rgba(0,0,0,0.32)] backdrop-blur-md transition-all duration-200 ${
                     isTooltipVisible
@@ -243,7 +248,7 @@ export default function DeepSpaceScrollTracker({
                 >
                   {label}
                 </div>
-              </motion.div>
+              </div>
             );
           })}
         </div>

@@ -20,9 +20,7 @@ import {
   User,
   Activity,
   FolderKanban,
-  Layers3,
   PanelsLeftBottom,
-  BotMessageSquare,
   LifeBuoy,
   Sparkles,
   Trash2,
@@ -62,11 +60,8 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { name: "Documents Hub", href: "/dashboard/documents", icon: <FileText size={18} /> },
   { name: "Query", href: "/dashboard/query", icon: <SearchIcon size={18} /> },
   { name: "Collections", href: "/dashboard/collections", icon: <FolderKanban size={18} /> },
-  { name: "Connectors", href: "/dashboard/connectors", icon: <Cable size={18} /> },
   { name: "MCP Servers", href: "/dashboard/mcp", icon: <Cable size={18} /> },
   { name: "DeepSpace", href: "/dashboard/deepspace", icon: <PanelsLeftBottom size={18} /> },
-  { name: "Proactive", href: "/dashboard/proactive", icon: <BotMessageSquare size={18} /> },
-  { name: "Orchestration", href: "/dashboard/orchestration", icon: <Layers3 size={18} /> },
 
   {
     name: "Admin",
@@ -128,11 +123,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const isAdminRoute = pathname.startsWith("/dashboard/admin");
   const isQueryRoute = pathname === "/dashboard/query";
-  const isDeepSpaceRoute = pathname.startsWith("/dashboard/deepspace");
-  const isOrchestrationRoute = pathname.startsWith("/dashboard/orchestration");
-  const isProactiveRoute = pathname.startsWith("/dashboard/proactive");
+  const isDeepSpaceRoute =
+    pathname === "/dashboard/deepspace" || pathname.startsWith("/dashboard/deepspace/");
   const isCollectionsRoute = pathname.includes("/collections");
-  const isFullHeightRoute = isQueryRoute || isDeepSpaceRoute || isOrchestrationRoute || isProactiveRoute || isCollectionsRoute;
+  const isFullHeightRoute =
+    isQueryRoute ||
+    isDeepSpaceRoute ||
+    isCollectionsRoute;
   const hasAdminAccess = user ? hasAdminRole(user.roles) : false;
 
   const navItems = useMemo(() => {
@@ -181,14 +178,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         prefetch={false}
         data-active={isActive}
         onClick={onClick}
-        className={`group relative flex h-11 items-center rounded-xl transition-all duration-200 overflow-hidden sweeping-light-btn ${
+        className={`group sweeping-light-btn relative flex h-11 items-center overflow-hidden rounded-xl transition-all duration-200 ${
           isActive
             ? "text-primary shadow-sm"
             : "text-foreground/60 hover:bg-foreground/[0.04] hover:text-foreground"
         } ${!sidebarOpen && !isMobile ? "justify-center px-0" : ""}`}
       >
         <motion.div
-          className="flex h-full w-full items-center gap-3 px-3 relative z-10"
+          className={`relative z-10 flex h-full w-full items-center ${!sidebarOpen && !isMobile ? "justify-center gap-0 px-0" : "gap-3 px-3"}`}
           whileTap={{ scale: 0.96 }}
           transition={{ type: "spring", stiffness: 450, damping: 26 }}
         >
@@ -221,7 +218,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {isActive && (
           <motion.div
             layoutId="active-nav-pill"
-            className="absolute inset-0 bg-primary/10 rounded-xl z-0"
+            className="bg-primary/10 absolute inset-0 z-0 rounded-xl"
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
           />
         )}
@@ -265,9 +262,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     .filter((sub) => !sub.admin || hasAdminAccess)
                     .map((subItem) => (
                       <NavLink
-                          key={subItem.href}
-                          item={subItem}
-                          onClick={() => isMobile && setMobileMenuOpen(false)}
+                        key={subItem.href}
+                        item={subItem}
+                        onClick={() => isMobile && setMobileMenuOpen(false)}
                       />
                     ))}
                 </div>
@@ -291,7 +288,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         >
           <motion.button
             onClick={() => setSidebarOpen((prev) => !prev)}
-            className={`ui-btn btn-ghost h-12 sweeping-light-btn ${sidebarOpen ? "w-full justify-start gap-2 px-4" : "border-glass-border bg-surface-1/40 w-full justify-center rounded-2xl shadow-xl"}`}
+            className={`ui-btn btn-ghost sweeping-light-btn h-12 ${sidebarOpen ? "w-full justify-start gap-2 px-4" : "border-glass-border bg-surface-1/40 w-full justify-center rounded-2xl shadow-xl"}`}
             aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
             whileTap={{ scale: 0.96 }}
           >
@@ -384,7 +381,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
 
               {isMobile && (
-                <div className={`origin-left scale-[0.58] ${isDeepSpaceRoute ? "hidden sm:block" : ""}`}>
+                <div
+                  className={`origin-left scale-[0.58] ${isDeepSpaceRoute ? "hidden sm:block" : ""}`}
+                >
                   <AverQelLogo size="nav" showWordmark={false} disableAnimation />
                 </div>
               )}
@@ -393,7 +392,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Center portal target for Deepspace layout controls */}
             <div
               id="header-layout-controls"
-              className="mx-1 sm:mx-4 flex flex-1 items-center justify-center empty:hidden"
+              className="mx-1 flex flex-1 items-center justify-center empty:hidden sm:mx-4"
             />
 
             <div className="relative z-10 flex items-center justify-end gap-1.5 md:gap-3">
@@ -422,7 +421,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </span>
               </div>
 
-              <div className={`border-primary/35 bg-primary/15 text-primary flex h-9 w-9 items-center justify-center rounded-full border text-sm font-bold ${isDeepSpaceRoute ? "hidden sm:flex" : ""}`}>
+              <div
+                className={`border-primary/35 bg-primary/15 text-primary flex h-9 w-9 items-center justify-center rounded-full border text-sm font-bold ${isDeepSpaceRoute ? "hidden sm:flex" : ""}`}
+              >
                 {user?.email?.[0].toUpperCase()}
               </div>
 
@@ -443,7 +444,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             className={`dashboard-main-surface flex-1 overflow-x-hidden ${
               isFullHeightRoute && !isMobile ? "overflow-y-hidden" : "overflow-y-auto"
             } ${
-              isQueryRoute || isDeepSpaceRoute || isOrchestrationRoute
+              isQueryRoute || isDeepSpaceRoute
                 ? "px-0 pt-3 pb-0 sm:pt-4"
                 : "px-3 pt-3 pb-4 sm:px-6 sm:pt-4"
             }`}

@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldAlert,
-  Terminal,
+  Activity,
   Filter,
   RefreshCcw,
   User,
@@ -298,7 +298,7 @@ export default function AuditLogsPage() {
                       </td>
                       <td className="px-6 py-4 font-bold">
                         <div className="flex items-center gap-2">
-                          <Terminal size={14} className={getActionColor(log.action)} />
+                          <Activity size={14} className={getActionColor(log.action)} />
                           <span className="text-foreground">{log.action}</span>
                         </div>
                       </td>
@@ -419,7 +419,7 @@ export default function AuditLogsPage() {
                       </div>
                     ) : (
                       <div className="flex flex-col items-center gap-3 opacity-30 grayscale">
-                        <Terminal size={48} />
+                        <Activity size={48} />
                         <span className="text-sm font-bold tracking-widest uppercase">
                           {actionFilter ? "No Matching Events" : "No Events Detected"}
                         </span>

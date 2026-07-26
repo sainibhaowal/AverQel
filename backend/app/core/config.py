@@ -534,11 +534,6 @@ class Settings(BaseSettings):
     rate_limit_auth_logout_per_user_per_5_minutes: int = 60
 
     provider_timeout_seconds: int = 8
-    # Supervisor budget (not a fixed executor loop).  The supervisor may use
-    # this as a deployment ceiling while stopping earlier on completion,
-    # stagnation, cancellation, or safety conditions.
-    deepspace_agent_max_steps: int = 256
-    deepspace_full_autonomy_enabled: bool = False
     provider_retry_attempts: int = 3
     provider_circuit_breaker_threshold: int = 3
     provider_circuit_breaker_reset_seconds: int = 30
@@ -554,39 +549,6 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = "http://otel-collector:4317"
     otel_exporter_otlp_insecure: bool = True
 
-    # -----------------------------------------------------------------------
-    # DeepSpace Runtime Coordination
-    # -----------------------------------------------------------------------
-
-    deepspace_subagent_max_concurrency: int = 4
-    deepspace_subagent_lock_ttl_seconds: int = 7200
-    deepspace_subagent_run_ttl_seconds: int = 604800
-    deepspace_subagent_stale_heartbeat_seconds: int = 900
-    deepspace_subagent_timeout_seconds: int = 300
-    deepspace_proactive_daemon_enabled: bool = False
-    deepspace_proactive_daemon_interval_seconds: int = 300
-    deepspace_document_context_doc_limit: int = 5
-    deepspace_document_context_chunk_limit: int = 4
-    deepspace_document_context_max_chars: int = 6000
-    deepspace_default_planner_mode: Literal["default", "structured"] = "default"
-    deepspace_default_subagent_profile: Literal[
-        "default",
-        "research",
-        "analysis",
-        "writer",
-        "executor",
-        "planner",
-        "support",
-        "file",
-    ] = "default"
-    deepspace_runtime_hooks_enabled: bool = True
-    deepspace_workspace_mode_enabled: bool = True
-    deepspace_structured_planner_rollout_enabled: bool = True
-    deepspace_subagent_profiles_rollout_enabled: bool = True
-    deepspace_runtime_hooks_rollout_enabled: bool = True
-    deepspace_workspace_mode_rollout_enabled: bool = True
-    deepspace_coding_isolation_mode: str = "container"
-    deepspace_coding_container_image: str = "python:3.12-slim"
     # -----------------------------------------------------------------------
     # Field Validators
     # -----------------------------------------------------------------------
@@ -764,7 +726,6 @@ class Settings(BaseSettings):
         "rate_limit_auth_refresh_per_ip_per_5_minutes",
         "rate_limit_auth_logout_per_user_per_5_minutes",
         "provider_timeout_seconds",
-        "deepspace_agent_max_steps",
         "provider_retry_attempts",
         "provider_circuit_breaker_threshold",
         "provider_circuit_breaker_reset_seconds",
@@ -980,7 +941,7 @@ class Settings(BaseSettings):
                 object.__setattr__(
                     self,
                     "connector_oauth_frontend_redirect_uri",
-                    f"{public_origin}/dashboard/connectors",
+                    f"{public_origin}/dashboard",
                 )
         return self
 

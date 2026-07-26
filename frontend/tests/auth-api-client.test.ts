@@ -60,4 +60,41 @@ describe("fetchWithAuth", () => {
     expect(followUp.status).toBe(401);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("does not deadlock when a protected request receives 401", async () => {
+    localStorage.setItem("averqel_token", createJwt(300));
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/refresh")) {
+        return new Response(JSON.stringify({ detail: "Refresh token expired" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ detail: "Unauthorized" }), { status: 401 });
+    });
+
+    const response = await fetchWithAuth("/dashboard/overview", { timeoutMs: 100 });
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem("averqel_token")).toBeNull();
+  });
+
+  it("rejects a stalled request with a bounded timeout", async () => {
+    localStorage.setItem("averqel_token", createJwt(300));
+    fetchMock.mockImplementation(
+      async (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          });
+        }),
+    );
+
+    await expect(fetchWithAuth("/dashboard/overview", { timeoutMs: 10 })).rejects.toMatchObject({
+      name: "ApiRequestTimeoutError",
+      endpoint: "/dashboard/overview",
+    });
+  });
 });

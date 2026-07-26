@@ -11,7 +11,6 @@ ignore = ["E501"]
 "app/services/deepspace/execution/agent_executor.py" = ["B007", "B025", "E722", "F821", "F841"]
 "app/services/deepspace/execution/agent_tools.py" = ["E712", "F841"]
 "app/services/deepspace/orchestration/deepspace_service.py" = ["E712", "F841"]
-"app/services/deepspace/subagents/subagent_manager.py" = ["B904"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends"]
@@ -82,20 +81,14 @@ module = [
     # These modules integrate dynamic SDKs, Redis payloads, or large mixed
     # endpoints. Keep them explicitly quarantined until their planned splits.
     "app.deepspace.autonomy.controller",
-    "app.deepspace.execution.aci_tools",
     "app.deepspace.execution.tool_contracts",
     "app.deepspace.integrations.client_proxy",
     "app.deepspace.integrations.voice_agent",
     "app.deepspace.missions.mission_registry",
-    "app.deepspace.orchestration.master_orchestrator",
     "app.deepspace.proactive.trigger_runner",
     "app.deepspace.runtime.runtime_observability",
-    "app.deepspace.subagents.subagent_profiles",
-    "app.deepspace.subagents.subagent_registry",
     "app.deepspace.api.workspace",
     "app.deepspace.api.client_storage",
-    "app.deepspace.workspace.qsat_predictor",
-    "app.deepspace.workspace.workspace_service",
     "app.documents.api.collections",
     "app.documents.repositories.collections",
     "app.integrations.api.mcp",
@@ -121,13 +114,9 @@ module = [
     "app.deepspace.integrations.export_service",
     "app.deepspace.memory.memory_service",
     "app.deepspace.planning.mission_planner",
-    "app.deepspace.workspace.shell_manager",
-    "app.deepspace.subagents.subagent_manager",
     "app.deepspace.models.*",
     "app.deepspace.api.chats",
     "app.deepspace.api.export",
     "app.integrations.workers.tasks_connectors",
-    "app.deepspace.workers.tasks_proactive",
-    "app.deepspace.workers.tasks",
 ]
 ignore_errors = true

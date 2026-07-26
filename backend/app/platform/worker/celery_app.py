@@ -15,8 +15,6 @@ celery_app = Celery(
         "app.ingestion.workers.tasks",
         "app.system.workers.tasks_maintenance",
         "app.integrations.workers.tasks_connectors",
-        "app.deepspace.workers.tasks_proactive",
-        "app.deepspace.workers.tasks",
         "app.integrations.workers.tasks_mcp",
         "app.integrations.workers.tasks_mcp_catalog",
     ],
@@ -62,17 +60,5 @@ celery_app.conf.update(
             "task": "mcp.sync_official_catalog",
             "schedule": crontab(hour=3, minute=17),
         },
-        **(
-            {}
-            if settings.deepspace_proactive_daemon_enabled
-            else {
-                "agent-proactive-monitor": {
-                    "task": "app.deepspace.workers.tasks_proactive.monitor_agent_triggers",
-                    "schedule": crontab(minute="*/5"),  # Every 5 minutes
-                },
-            }
-        ),
     },
 )
-
-# Background task modules use the lightweight AgentExecutor

@@ -1017,6 +1017,7 @@ async def execute_mcp_server_tool(
     arguments: dict[str, Any],
     conversation_id: str | uuid.UUID | None = None,
     deepspace_id: str | uuid.UUID | None = None,
+    approval_granted: bool = False,
 ) -> dict[str, Any]:
     """Execute a tool for a generic installed MCP server and persist its events."""
     from app.integrations.repositories.mcp_events import MCPEventsRepository
@@ -1069,7 +1070,7 @@ async def execute_mcp_server_tool(
             "is_error": True,
             "policy": policy_decision.metadata(),
         }
-    if policy_decision.requires_approval:
+    if policy_decision.requires_approval and not approval_granted:
         return {
             "status": "error",
             "message": "MCP tool requires user approval before execution.",

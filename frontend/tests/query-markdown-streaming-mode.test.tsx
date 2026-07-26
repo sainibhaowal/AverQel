@@ -88,4 +88,17 @@ describe("markdown streaming mode", () => {
     expect(headingText.tagName.toLowerCase()).toBe("strong");
     expect(screen.queryByText(/\*\*1\. Core Design Philosophy\*\*/i)).not.toBeInTheDocument();
   });
+
+  it("renders an explicit chart fence without a second document parser", () => {
+    render(
+      <MarkdownRenderer
+        content={
+          '```chart\n{"chart_type":"line","title":"Monthly volume","series":[{"label":"Jan","value":10},{"label":"Feb","value":12}]}\n```'
+        }
+      />,
+    );
+
+    expect(screen.getByText("Monthly volume")).toBeInTheDocument();
+    expect(screen.getByText("2 points")).toBeInTheDocument();
+  });
 });

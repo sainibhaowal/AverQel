@@ -239,6 +239,16 @@ class RateLimitService:
             scope="queries_user",
         )
 
+    def enforce_deepspace_user_limit(self, *, request: Request, user_id: str) -> None:
+        """Apply the independent DeepSpace chat budget."""
+        self.enforce(
+            request=request,
+            key=f"rate_limit:deepspace_user:{_safe_key(user_id)}",
+            limit=self.settings.rate_limit_queries_per_user_per_minute,
+            window_seconds=60,
+            scope="deepspace_user",
+        )
+
     def enforce_upload_user_limit(self, *, request: Request, user_id: str) -> None:
         self.enforce(
             request=request,

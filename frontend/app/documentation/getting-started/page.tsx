@@ -4,7 +4,7 @@ export default function GettingStartedPage() {
   return (
     <DocsShell
       title="Getting Started"
-      intro="Start with documents, providers, and connectors, then move into grounded chat, DeepSpace missions, note editing, and approval-aware agentic workflows."
+      intro="Start with providers and documents, then use grounded chat, DeepSpace, memory, and MCP integrations when needed."
     >
       <DocsCards
         items={[
@@ -22,31 +22,29 @@ export default function GettingStartedPage() {
           },
           {
             title: "4. Connect Sources",
-            body: "Add GitHub, Drive, Gmail, Calendar, Notion, Slack, or crawler sources so DeepSpace missions can work with live context and connector documents.",
+            body: "Use the protected MCP surface for authorized remote tools and integrations.",
           },
           {
             title: "5. Use DeepSpace",
-            body: "Use DeepSpace for agentic work, watch the live tool stream, inspect mission canvas diagnostics, and approve risky actions when AverQel asks for authority.",
+            body: "Use DeepSpace for research, drafting, analysis, and other productivity work in one conversation.",
           },
           {
-            title: "6. Work In Notes And Tasks",
-            body: "Turn outputs into editable notes, file-aware drafts, exports, memory facts, and proactive follow-up tasks without leaving the app.",
+            title: "6. Save Useful Context",
+            body: "Turn outputs into notes, exports, and persistent memory facts without leaving the app.",
           },
         ]}
       />
       <DocsSection title="Provider Setup">
         <p>
           Today, users can add personal providers from Settings &gt; Providers. Personal provider
-          keys are encrypted and private to the owning account. AverQel can route tasks to the best
-          available provider for chat, reasoning, web search, or local execution.
+          keys are encrypted and private to the owning account. AverQel can route requests to the
+          best available provider for chat, reasoning, or web search.
         </p>
       </DocsSection>
-      <DocsSection title="Agentic Workflows">
+      <DocsSection title="Productivity Chat">
         <p>
-          DeepSpace can plan, reason, call tools, populate the proactive workspace with recurring
-          rules and tasks, and show its mission structure inline. The same tenant-scoped runtime
-          keeps working after logout because long-running work stays on the backend and streams
-          state back into the UI.
+          DeepSpace is a productivity chat surface for research, drafting, analysis, notes, memory,
+          and durable conversation history. It is not an IDE or background orchestration console.
         </p>
       </DocsSection>
     </DocsShell>

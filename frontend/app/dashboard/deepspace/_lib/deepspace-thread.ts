@@ -3185,6 +3185,26 @@ function reduceDeepSpaceThread(
           mission: nextMission,
           compaction: nextCompaction,
         };
+      } else if (event.event === "permission_granted" || event.event === "permission_denied") {
+        const approvalId = String(event.data.approval_id ?? "");
+        const toolId = String(event.data.tool_id ?? "");
+        const nextSteps: AgentStep[] = (current.agentSteps ?? []).map((step) => {
+          const matchesApproval = approvalId && String(step.data?.approval_id ?? "") === approvalId;
+          const matchesTool = toolId && String(step.tool_id ?? step.toolId ?? "") === toolId;
+          if (!matchesApproval && !matchesTool) return step;
+          return {
+            ...step,
+            status: (event.event === "permission_granted" ? "running" : "failed") as AgentStep["status"],
+            completedAt: event.event === "permission_denied" ? new Date().toISOString() : undefined,
+          };
+        });
+        nextMessages[index] = {
+          ...current,
+          agentSteps: nextSteps,
+          timeline: nextTimeline,
+          mission: nextMission,
+          compaction: nextCompaction,
+        };
       } else if (event.event === "permission_request" || event.event === "approval_request") {
         const turnIndex =
           typeof event.data.turn_index === "number" ? event.data.turn_index : undefined;
