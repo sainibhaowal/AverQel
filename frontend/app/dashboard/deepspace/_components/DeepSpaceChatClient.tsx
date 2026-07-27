@@ -25,7 +25,7 @@ import { initialDeepSpaceThreadState, deepSpaceThreadReducer } from "../_lib/dee
 import type { DeepSpaceHistoryMessage } from "../_lib/deepspace-stream";
 import { resolveLatestEditableMessageId } from "../_lib/edit-target";
 
-import DeepSpaceComposer from "./DeepSpaceComposer";
+import DeepSpaceComposer, { type DeepSpaceRuntimePhase } from "./DeepSpaceComposer";
 import DeepSpaceThread from "./DeepSpaceThread";
 import DeepSpaceScrollTracker from "./DeepSpaceScrollTracker";
 const buildInitialPrompt = (messages: any[], currentContent?: string): string => {
@@ -111,6 +111,7 @@ export default function DeepSpaceChatClient({
 }: DeepSpaceChatClientProps) {
   const [state, dispatch] = useReducer(deepSpaceThreadReducer, initialDeepSpaceThreadState);
   const [query, setQuery] = useState("");
+  const [completionPulse, setCompletionPulse] = useState(false);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
   const historyOpen = isHistoryOpen !== undefined ? isHistoryOpen : localHistoryOpen;
   const setHistoryOpen = onSetHistoryOpen !== undefined ? onSetHistoryOpen : setLocalHistoryOpen;
@@ -435,7 +436,11 @@ export default function DeepSpaceChatClient({
         },
         onTransportError: (error) => dispatch({ type: "stream_failed", error }),
         onUserCancel: () => dispatch({ type: "stream_interrupted" }),
-        onFinally: () => dispatch({ type: "stream_finished" }),
+        onFinally: () => {
+          setCompletionPulse(true);
+          window.setTimeout(() => setCompletionPulse(false), 950);
+          dispatch({ type: "stream_finished" });
+        },
       }),
       [],
     ),
@@ -535,6 +540,7 @@ export default function DeepSpaceChatClient({
       try {
         await modelSwitchRef.current;
 
+        setCompletionPulse(false);
         setQuery("");
         autoFollowRef.current = true;
         dispatch({ type: "submit_query", query: effectiveQuery });
@@ -815,6 +821,55 @@ export default function DeepSpaceChatClient({
           message.agentSteps?.length ||
           message.status === "streaming"),
     );
+  const runtimeActivity = useMemo(() => {
+    const hasError = Boolean(state.streamError || latestAssistant?.error);
+    const activeSteps = (latestAssistant?.agentSteps ?? []).filter(
+      (step) => step.status === "running" || step.status === "awaiting_approval",
+    );
+    const activeTool = activeSteps.find(
+      (step) =>
+        step.type === "tool_start" ||
+        step.type === "observing" ||
+        step.type === "tool_result" ||
+        step.type === "tool_error",
+    );
+    const activeTimelineTool = (latestAssistant?.timeline ?? []).find(
+      (step) =>
+        step.status === "running" &&
+        (step.type === "tool_call" || step.type === "observation"),
+    );
+
+    let phase: DeepSpaceRuntimePhase = "idle";
+    if (hasError) {
+      phase = "error";
+    } else if (completionPulse) {
+      phase = "completed";
+    } else if (
+      state.isStreaming &&
+      !latestAssistant?.rawContent?.trim() &&
+      !latestAssistant?.thinkingContent?.trim() &&
+      !(latestAssistant?.agentSteps?.length ?? 0) &&
+      !(latestAssistant?.timeline?.length ?? 0)
+    ) {
+      phase = "submitting";
+    } else if (state.isStreaming && (activeTool || activeTimelineTool)) {
+      phase = "tool_calling";
+    } else if (state.isStreaming && latestAssistant?.thinkingContent?.trim()) {
+      phase = "thinking";
+    } else if (state.isStreaming) {
+      phase = "receiving";
+    }
+
+    return {
+      phase,
+      activeToolName: activeTool?.toolName ?? activeTimelineTool?.toolName ?? null,
+      hasError,
+      streamActivity:
+        (latestAssistant?.rawContent?.length ?? 0) +
+        (latestAssistant?.thinkingContent?.length ?? 0) +
+        (latestAssistant?.agentSteps?.length ?? 0),
+    };
+  }, [completionPulse, latestAssistant, state.isStreaming, state.streamError]);
   const renderableMessages = useMemo(
     () =>
       state.messages.filter(
@@ -953,6 +1008,10 @@ export default function DeepSpaceChatClient({
               onSttToggle={handleSttToggle}
               onTtsToggle={handleTtsToggle}
               voiceLabel={voiceLabel}
+              runtimePhase={runtimeActivity.phase}
+              activeToolName={runtimeActivity.activeToolName}
+              streamActivity={runtimeActivity.streamActivity}
+              hasRuntimeError={runtimeActivity.hasError}
             />
           </div>
         </div>
