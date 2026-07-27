@@ -63,7 +63,11 @@ URL_READ_TOOL = {
             "additionalProperties": False,
             "properties": {
                 "url": {"type": "string", "minLength": 8, "maxLength": 2048},
-                "allowed_domains": {"type": "array", "items": {"type": "string", "maxLength": 120}, "maxItems": 20},
+                "allowed_domains": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 120},
+                    "maxItems": 20,
+                },
             },
             "required": ["url"],
         },
@@ -79,7 +83,11 @@ IMAGE_READ_TOOL = {
             "additionalProperties": False,
             "properties": {
                 "url": {"type": "string", "minLength": 8, "maxLength": 2048},
-                "allowed_domains": {"type": "array", "items": {"type": "string", "maxLength": 120}, "maxItems": 20},
+                "allowed_domains": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 120},
+                    "maxItems": 20,
+                },
             },
             "required": ["url"],
         },
@@ -95,7 +103,11 @@ ASK_USER_TOOL = {
             "additionalProperties": False,
             "properties": {
                 "question": {"type": "string", "minLength": 1, "maxLength": 2000},
-                "options": {"type": "array", "items": {"type": "string", "maxLength": 200}, "maxItems": 8},
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 200},
+                    "maxItems": 8,
+                },
             },
             "required": ["question"],
         },
@@ -120,9 +132,22 @@ TODO_WRITE_TOOL = {
                             "id": {"type": "string"},
                             "content": {"type": "string", "maxLength": 1000},
                             "active_form": {"type": "string", "maxLength": 1000},
-                            "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "blocked", "failed"]},
+                            "status": {
+                                "type": "string",
+                                "enum": [
+                                    "pending",
+                                    "in_progress",
+                                    "completed",
+                                    "blocked",
+                                    "failed",
+                                ],
+                            },
                             "priority": {"type": "integer", "minimum": 0, "maximum": 1000},
-                            "dependencies": {"type": "array", "items": {"type": "string"}, "maxItems": 40},
+                            "dependencies": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "maxItems": 40,
+                            },
                         },
                         "required": ["content"],
                     },
@@ -158,7 +183,10 @@ TODO_MARK_TOOL = {
             "additionalProperties": False,
             "properties": {
                 "task_id": {"type": "string"},
-                "status": {"type": "string", "enum": ["pending", "in_progress", "completed", "blocked", "failed"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "completed", "blocked", "failed"],
+                },
                 "evidence": {"type": "string", "maxLength": 1000},
             },
             "required": ["task_id", "status"],
@@ -239,19 +267,6 @@ PRODUCTIVITY_TOOLS = [
     ASK_USER_TOOL,
     FINAL_TOOL,
 ]
-TOOL_CAPABLE_CHAT_PROVIDERS = {
-    "openai",
-    "groq",
-    "groq-openai-compatible",
-    "mistral",
-    "together",
-    "fireworks",
-    "perplexity",
-    "vllm",
-    "custom",
-    "opencode-zen",
-    "openrouter",
-}
 
 
 def sse(event: str, data: dict[str, Any]) -> str:
@@ -324,7 +339,11 @@ class DeepSpaceChatService:
                 index = position
             current = accumulator.setdefault(
                 index,
-                {"id": f"tool_{index}", "type": "function", "function": {"name": "", "arguments": ""}},
+                {
+                    "id": f"tool_{index}",
+                    "type": "function",
+                    "function": {"name": "", "arguments": ""},
+                },
             )
             call_id = item.get("id")
             if isinstance(call_id, str) and call_id.strip():
@@ -503,14 +522,20 @@ class DeepSpaceChatService:
                 conversation_id=conversation_id,
             )
             next_task = next(
-                (item for item in check["tasks"] if item["status"] not in {"completed", "failed", "blocked"}),
+                (
+                    item
+                    for item in check["tasks"]
+                    if item["status"] not in {"completed", "failed", "blocked"}
+                ),
                 None,
             )
             return {
                 "focus": str(arguments.get("focus") or "").strip()[:1000],
                 "task_check": check,
                 "next_task": next_task,
-                "decision": "complete" if check["complete"] else ("work_next_task" if next_task else "report_blocker"),
+                "decision": "complete"
+                if check["complete"]
+                else ("work_next_task" if next_task else "report_blocker"),
             }
         if tool_name == "read":
             return self.task_store.read_note(
@@ -540,11 +565,17 @@ class DeepSpaceChatService:
         if tool_name == "url_read":
             requested_domains = arguments.get("allowed_domains")
             configured_domains = getattr(self.settings, "deepspace_url_allowed_domains", [])
-            allowed_domains = requested_domains if isinstance(requested_domains, list) and requested_domains else configured_domains
+            allowed_domains = (
+                requested_domains
+                if isinstance(requested_domains, list) and requested_domains
+                else configured_domains
+            )
             url_result = await asyncio.to_thread(
                 read_url,
                 str(arguments.get("url") or "").strip(),
-                timeout_seconds=min(30, int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15))),
+                timeout_seconds=min(
+                    30, int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15))
+                ),
                 max_bytes=int(getattr(self.settings, "deepspace_url_read_max_bytes", 2_000_000)),
                 allowed_domains=allowed_domains,
             )
@@ -555,16 +586,29 @@ class DeepSpaceChatService:
                 "text": url_result.text,
                 "truncated": url_result.truncated,
                 "links": url_result.links,
-                "citations": [{"title": url_result.title or url_result.url, "url": url_result.url, "snippet": url_result.text[:800], "source": "url_read"}],
+                "citations": [
+                    {
+                        "title": url_result.title or url_result.url,
+                        "url": url_result.url,
+                        "snippet": url_result.text[:800],
+                        "source": "url_read",
+                    }
+                ],
             }
         if tool_name == "image_read":
             requested_domains = arguments.get("allowed_domains")
             configured_domains = getattr(self.settings, "deepspace_url_allowed_domains", [])
-            allowed_domains = requested_domains if isinstance(requested_domains, list) and requested_domains else configured_domains
+            allowed_domains = (
+                requested_domains
+                if isinstance(requested_domains, list) and requested_domains
+                else configured_domains
+            )
             return await asyncio.to_thread(
                 read_image,
                 str(arguments.get("url") or "").strip(),
-                timeout_seconds=min(30, int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15))),
+                timeout_seconds=min(
+                    30, int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15))
+                ),
                 max_bytes=int(getattr(self.settings, "deepspace_url_read_max_bytes", 2_000_000)),
                 allowed_domains=allowed_domains,
             )
@@ -576,7 +620,9 @@ class DeepSpaceChatService:
             return {
                 "awaiting_user": True,
                 "question": question,
-                "options": [str(item).strip()[:200] for item in options[:8] if str(item).strip()] if isinstance(options, list) else [],
+                "options": [str(item).strip()[:200] for item in options[:8] if str(item).strip()]
+                if isinstance(options, list)
+                else [],
             }
         if tool_name == "final":
             check = self.task_store.check_tasks(
@@ -627,7 +673,10 @@ class DeepSpaceChatService:
         async with gate:
             for attempt in range(MAX_TOOL_RETRIES + 1):
                 if time.monotonic() >= loop_deadline:
-                    return {"success": False, "error": "Tool execution stopped by the runtime policy timeout."}
+                    return {
+                        "success": False,
+                        "error": "Tool execution stopped by the runtime policy timeout.",
+                    }
                 if run_id is not None and self.runtime.is_cancel_requested(run_id=run_id):
                     return {"success": False, "error": "Tool execution cancelled by the user."}
                 try:
@@ -659,7 +708,10 @@ class DeepSpaceChatService:
         host = domain.lower().lstrip(".")
         return any(
             isinstance(item, str)
-            and (host == item.strip().lower().lstrip(".") or host.endswith(f".{item.strip().lower().lstrip('.')}"))
+            and (
+                host == item.strip().lower().lstrip(".")
+                or host.endswith(f".{item.strip().lower().lstrip('.')}")
+            )
             for item in configured
         )
 
@@ -752,7 +804,13 @@ class DeepSpaceChatService:
 
         if resume_approval_id:
             if conversation_id is None:
-                yield sse("error", {"code": "APPROVAL_CONVERSATION_REQUIRED", "message": "A conversation is required to resume an approval."})
+                yield sse(
+                    "error",
+                    {
+                        "code": "APPROVAL_CONVERSATION_REQUIRED",
+                        "message": "A conversation is required to resume an approval.",
+                    },
+                )
                 return
             run = self.runtime.get_run_for_approval(
                 tenant_id=auth.tenant_id,
@@ -761,16 +819,37 @@ class DeepSpaceChatService:
                 approval_id=resume_approval_id,
             )
             if run is None:
-                yield sse("error", {"code": "APPROVAL_NOT_FOUND", "message": "The approval request is no longer available."})
+                yield sse(
+                    "error",
+                    {
+                        "code": "APPROVAL_NOT_FOUND",
+                        "message": "The approval request is no longer available.",
+                    },
+                )
                 return
             checkpoint = run.checkpoint if isinstance(run.checkpoint, dict) else {}
             pending = checkpoint.get("pending_approval")
-            if not isinstance(pending, dict) or str(pending.get("decision") or "") not in {"approved", "denied"}:
-                yield sse("error", {"code": "APPROVAL_NOT_RESOLVED", "message": "The approval decision has not been recorded."})
+            if not isinstance(pending, dict) or str(pending.get("decision") or "") not in {
+                "approved",
+                "denied",
+            }:
+                yield sse(
+                    "error",
+                    {
+                        "code": "APPROVAL_NOT_RESOLVED",
+                        "message": "The approval decision has not been recorded.",
+                    },
+                )
                 return
             assistant_message_id = run.assistant_message_id
             if assistant_message_id is None:
-                yield sse("error", {"code": "APPROVAL_RUN_INVALID", "message": "The approval run is missing its assistant message."})
+                yield sse(
+                    "error",
+                    {
+                        "code": "APPROVAL_RUN_INVALID",
+                        "message": "The approval run is missing its assistant message.",
+                    },
+                )
                 return
             assistant_message = self.chat.get_message_by_conversation(
                 tenant_id=auth.tenant_id,
@@ -779,7 +858,13 @@ class DeepSpaceChatService:
                 user_id=auth.user_id,
             )
             if assistant_message is None:
-                yield sse("error", {"code": "APPROVAL_MESSAGE_NOT_FOUND", "message": "The approval message no longer exists."})
+                yield sse(
+                    "error",
+                    {
+                        "code": "APPROVAL_MESSAGE_NOT_FOUND",
+                        "message": "The approval message no longer exists.",
+                    },
+                )
                 return
             previous = self._messages(
                 auth=auth,
@@ -794,7 +879,9 @@ class DeepSpaceChatService:
             return
 
         if request is not None and not resume_approval_id:
-            RateLimitService(self.settings).enforce_deepspace_user_limit(request=request, user_id=str(auth.user_id))
+            RateLimitService(self.settings).enforce_deepspace_user_limit(
+                request=request, user_id=str(auth.user_id)
+            )
 
         if not resume_approval_id:
             if conversation_id is None:
@@ -804,8 +891,19 @@ class DeepSpaceChatService:
                     title=prompt[:80],
                 )
                 conversation_id = conversation.id
-            elif self.chat.get_conversation(tenant_id=auth.tenant_id, conversation_id=conversation_id, user_id=auth.user_id) is None:
-                yield sse("error", {"code": "CONVERSATION_NOT_FOUND", "message": "DeepSpace conversation not found."})
+            elif (
+                self.chat.get_conversation(
+                    tenant_id=auth.tenant_id, conversation_id=conversation_id, user_id=auth.user_id
+                )
+                is None
+            ):
+                yield sse(
+                    "error",
+                    {
+                        "code": "CONVERSATION_NOT_FOUND",
+                        "message": "DeepSpace conversation not found.",
+                    },
+                )
                 return
 
             previous = self._messages(auth=auth, conversation_id=conversation_id)
@@ -825,7 +923,14 @@ class DeepSpaceChatService:
             self.db.commit()
 
         started_at = self._now()
-        yield sse("start", {"conversation_id": str(conversation_id), "message_id": str(assistant_message.id), "started_at": started_at})
+        yield sse(
+            "start",
+            {
+                "conversation_id": str(conversation_id),
+                "message_id": str(assistant_message.id),
+                "started_at": started_at,
+            },
+        )
         if not resume_approval_id:
             try:
                 run = self.runtime.create_run(
@@ -848,7 +953,10 @@ class DeepSpaceChatService:
         )
         candidate = selection.candidates[0] if selection.candidates else None
         if candidate is None:
-            yield sse("error", {"code": "LLM_UNAVAILABLE", "message": "No DeepSpace chat model is configured."})
+            yield sse(
+                "error",
+                {"code": "LLM_UNAVAILABLE", "message": "No DeepSpace chat model is configured."},
+            )
             return
 
         meta: dict[str, Any] = {
@@ -864,9 +972,14 @@ class DeepSpaceChatService:
             meta["context_limit_source"] = candidate.context_window_source
         yield sse("meta", meta)
         provider = self.registry.get_chat_provider_from_selection(candidate)
+        # Tool access is a DeepSpace capability, not a provider allowlist.
+        # Every registered chat adapter translates the common tool contract to
+        # its native API (or its OpenAI-compatible interface). A future adapter
+        # can explicitly opt out with supports_tool_calling = False.
+        provider_supports_tools = bool(getattr(provider, "supports_tool_calling", True))
         web_candidate = None
         web_provider = None
-        if candidate.provider_type in TOOL_CAPABLE_CHAT_PROVIDERS:
+        if provider_supports_tools:
             try:
                 web_selection = self.providers.resolve_web_search(
                     tenant_id=auth.tenant_id,
@@ -875,19 +988,26 @@ class DeepSpaceChatService:
                 )
                 web_candidate = web_selection.candidates[0] if web_selection.candidates else None
                 if web_candidate is not None:
-                    web_provider = self.registry.get_web_search_provider_from_selection(web_candidate)
+                    web_provider = self.registry.get_web_search_provider_from_selection(
+                        web_candidate
+                    )
             except Exception:  # noqa: BLE001
-                logger.warning("DeepSpace web search is unavailable; continuing without the tool", exc_info=True)
+                logger.warning(
+                    "DeepSpace web search is unavailable; continuing without the tool",
+                    exc_info=True,
+                )
                 web_candidate = None
                 web_provider = None
-        productivity_tools = PRODUCTIVITY_TOOLS if candidate.provider_type in TOOL_CAPABLE_CHAT_PROVIDERS else []
-        web_tools = [WEB_SEARCH_TOOL] if web_candidate is not None and web_provider is not None else []
+        productivity_tools = PRODUCTIVITY_TOOLS if provider_supports_tools else []
+        web_tools = (
+            [WEB_SEARCH_TOOL] if web_candidate is not None and web_provider is not None else []
+        )
         mcp_bindings = (
             self.mcp_bridge.tools_for_conversation(
                 auth=auth,
                 conversation_id=conversation_id,
             )
-            if candidate.provider_type in TOOL_CAPABLE_CHAT_PROVIDERS
+            if provider_supports_tools
             else {}
         )
         mcp_tools = [binding.definition for binding in mcp_bindings.values()]
@@ -951,7 +1071,13 @@ class DeepSpaceChatService:
         max_runtime_seconds = max(
             30,
             min(
-                int(getattr(self.settings, "deepspace_agent_max_runtime_seconds", DEFAULT_AGENT_TIMEOUT_SECONDS)),
+                int(
+                    getattr(
+                        self.settings,
+                        "deepspace_agent_max_runtime_seconds",
+                        DEFAULT_AGENT_TIMEOUT_SECONDS,
+                    )
+                ),
                 24 * 60 * 60,
             ),
         )
@@ -978,10 +1104,17 @@ class DeepSpaceChatService:
                 pending_binding = mcp_bindings.get(pending_tool_name)
                 pending_call_id = str(resumed_pending.get("call_id") or "")
                 pending_arguments = resumed_pending.get("tool_input")
-                if pending_binding is None or not isinstance(pending_arguments, dict) or not pending_call_id:
+                if (
+                    pending_binding is None
+                    or not isinstance(pending_arguments, dict)
+                    or not pending_call_id
+                ):
                     terminal_status = "blocked"
                     forced_answer = "The approved MCP action is no longer available because its connection or catalog changed."
-                    yield sse("permission_denied", {"approval_id": resume_approval_id, "message": forced_answer})
+                    yield sse(
+                        "permission_denied",
+                        {"approval_id": resume_approval_id, "message": forced_answer},
+                    )
                     if run_id is not None:
                         self.runtime.clear_pending_approval(run_id=run_id)
                 else:
@@ -990,11 +1123,17 @@ class DeepSpaceChatService:
                         "type": "function",
                         "function": {
                             "name": pending_tool_name,
-                            "arguments": json.dumps(pending_arguments, ensure_ascii=False, separators=(",", ":")),
+                            "arguments": json.dumps(
+                                pending_arguments, ensure_ascii=False, separators=(",", ":")
+                            ),
                         },
                     }
-                    conversation_messages.append({"role": "assistant", "content": None, "tool_calls": [pending_call]})
-                    pending_step_id = str(resumed_pending.get("step_id") or f"mcp_{pending_call_id}")
+                    conversation_messages.append(
+                        {"role": "assistant", "content": None, "tool_calls": [pending_call]}
+                    )
+                    pending_step_id = str(
+                        resumed_pending.get("step_id") or f"mcp_{pending_call_id}"
+                    )
                     yield sse(
                         "permission_granted",
                         {
@@ -1033,8 +1172,14 @@ class DeepSpaceChatService:
                     )
                     pending_success = bool(pending_result.get("success"))
                     pending_payload = pending_result.get("payload")
-                    pending_output = json.dumps(pending_payload, ensure_ascii=False, separators=(",", ":")) if pending_success else str(pending_result.get("error") or "MCP action failed safely.")
-                    conversation_messages.append({"role": "tool", "tool_call_id": pending_call_id, "content": pending_output})
+                    pending_output = (
+                        json.dumps(pending_payload, ensure_ascii=False, separators=(",", ":"))
+                        if pending_success
+                        else str(pending_result.get("error") or "MCP action failed safely.")
+                    )
+                    conversation_messages.append(
+                        {"role": "tool", "tool_call_id": pending_call_id, "content": pending_output}
+                    )
                     if run_id is not None:
                         self.runtime.record_step(
                             run_id=run_id,
@@ -1076,19 +1221,44 @@ class DeepSpaceChatService:
                 if time.monotonic() >= loop_deadline:
                     terminal_status = "blocked"
                     if run_id is not None:
-                        self.runtime.finish(run_id=run_id, status="blocked", error="runtime_timeout")
-                    yield sse("agent_status", {"phase": "blocked", "message": "DeepSpace reached its safe runtime policy timeout.", "active_tools": []})
+                        self.runtime.finish(
+                            run_id=run_id, status="blocked", error="runtime_timeout"
+                        )
+                    yield sse(
+                        "agent_status",
+                        {
+                            "phase": "blocked",
+                            "message": "DeepSpace reached its safe runtime policy timeout.",
+                            "active_tools": [],
+                        },
+                    )
                     break
                 if await self._request_disconnected(request):
                     terminal_status = "cancelled"
                     if run_id is not None:
-                        self.runtime.finish(run_id=run_id, status="cancelled", error="client_disconnected")
-                    yield sse("agent_status", {"phase": "blocked", "message": "DeepSpace run cancelled because the client disconnected.", "active_tools": []})
+                        self.runtime.finish(
+                            run_id=run_id, status="cancelled", error="client_disconnected"
+                        )
+                    yield sse(
+                        "agent_status",
+                        {
+                            "phase": "blocked",
+                            "message": "DeepSpace run cancelled because the client disconnected.",
+                            "active_tools": [],
+                        },
+                    )
                     break
                 if run_id is not None and self.runtime.is_cancel_requested(run_id=run_id):
                     terminal_status = "cancelled"
                     self.runtime.finish(run_id=run_id, status="cancelled", error="user_cancelled")
-                    yield sse("agent_status", {"phase": "blocked", "message": "DeepSpace run cancelled by the user.", "active_tools": []})
+                    yield sse(
+                        "agent_status",
+                        {
+                            "phase": "blocked",
+                            "message": "DeepSpace run cancelled by the user.",
+                            "active_tools": [],
+                        },
+                    )
                     break
                 tool_calls: dict[int, dict[str, Any]] = {}
                 request_images = list(pending_images)
@@ -1115,7 +1285,9 @@ class DeepSpaceChatService:
                         "surface": "deepspace",
                         "conversation_id": str(conversation_id),
                         "provider_type": candidate.provider_type,
-                        "timeout_seconds": min(15, int(getattr(self.settings, "llm_timeout_seconds", 15))),
+                        "timeout_seconds": min(
+                            15, int(getattr(self.settings, "llm_timeout_seconds", 15))
+                        ),
                         "run_id": str(run_id) if run_id else None,
                         "turn_index": round_index,
                     },
@@ -1126,7 +1298,13 @@ class DeepSpaceChatService:
                         if not isinstance(provider_event, dict):
                             continue
                         event_type = str(provider_event.get("type") or "")
-                        if event_type in {"tool_calls_delta", "tool_call_delta", "tool_call", "tool_calls", "function_call"}:
+                        if event_type in {
+                            "tool_calls_delta",
+                            "tool_call_delta",
+                            "tool_call",
+                            "tool_calls",
+                            "function_call",
+                        }:
                             raw_deltas = (
                                 provider_event.get("tool_calls")
                                 or provider_event.get("tool_call")
@@ -1138,12 +1316,18 @@ class DeepSpaceChatService:
                                 for position, item in enumerate(raw_deltas):
                                     if not isinstance(item, dict):
                                         continue
-                                    function = item.get("function") if isinstance(item.get("function"), dict) else item
+                                    function = (
+                                        item.get("function")
+                                        if isinstance(item.get("function"), dict)
+                                        else item
+                                    )
                                     if not isinstance(function, dict):
                                         continue
                                     fragment = function.get("arguments")
                                     if isinstance(fragment, dict):
-                                        fragment = json.dumps(fragment, ensure_ascii=False, separators=(",", ":"))
+                                        fragment = json.dumps(
+                                            fragment, ensure_ascii=False, separators=(",", ":")
+                                        )
                                     name = str(function.get("name") or "").strip()
                                     call_id = str(item.get("id") or f"tool_{position}")
                                     if isinstance(fragment, str) and fragment:
@@ -1195,7 +1379,10 @@ class DeepSpaceChatService:
                         step_type="model_turn",
                         status="completed",
                         input_json={"turn_index": round_index, "tool_count": len(tool_calls)},
-                        result_json={"answer_chars": sum(len(item) for item in answer_parts), "thinking_chars": sum(len(item) for item in thinking_parts)},
+                        result_json={
+                            "answer_chars": sum(len(item) for item in answer_parts),
+                            "thinking_chars": sum(len(item) for item in thinking_parts),
+                        },
                     )
 
                 normalized_calls = [tool_calls[index] for index in sorted(tool_calls)]
@@ -1205,11 +1392,7 @@ class DeepSpaceChatService:
                         user_id=auth.user_id,
                         conversation_id=conversation_id,
                     )
-                    if (
-                        available_tools
-                        and task_check["task_count"]
-                        and not task_check["complete"]
-                    ):
+                    if available_tools and task_check["task_count"] and not task_check["complete"]:
                         yield sse(
                             "agent_status",
                             {
@@ -1246,17 +1429,41 @@ class DeepSpaceChatService:
                     step_id = f"{tool_name}_{round_index}_{call_id}"
                     if arguments is None:
                         output = f"The {tool_name} arguments were invalid JSON."
-                        yield sse("tool_error", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "error": output})
-                        conversation_messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
+                        yield sse(
+                            "tool_error",
+                            {
+                                "tool_name": tool_name,
+                                "tool_id": call_id,
+                                "step_id": step_id,
+                                "error": output,
+                            },
+                        )
+                        conversation_messages.append(
+                            {"role": "tool", "tool_call_id": call_id, "content": output}
+                        )
                         continue
                     signature = hashlib.sha256(
-                        json.dumps({"name": tool_name, "arguments": arguments}, sort_keys=True, ensure_ascii=False).encode("utf-8")
+                        json.dumps(
+                            {"name": tool_name, "arguments": arguments},
+                            sort_keys=True,
+                            ensure_ascii=False,
+                        ).encode("utf-8")
                     ).hexdigest()
                     seen_tool_calls[signature] = seen_tool_calls.get(signature, 0) + 1
                     if seen_tool_calls[signature] > 2:
                         output = "Duplicate tool call detected and stopped safely."
-                        yield sse("tool_error", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "error": output})
-                        conversation_messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
+                        yield sse(
+                            "tool_error",
+                            {
+                                "tool_name": tool_name,
+                                "tool_id": call_id,
+                                "step_id": step_id,
+                                "error": output,
+                            },
+                        )
+                        conversation_messages.append(
+                            {"role": "tool", "tool_call_id": call_id, "content": output}
+                        )
                         continue
                     mcp_binding = mcp_bindings.get(tool_name)
                     decision = (
@@ -1270,8 +1477,18 @@ class DeepSpaceChatService:
                     )
                     if not decision.allowed:
                         output = decision.reason or "Tool blocked by DeepSpace policy."
-                        yield sse("tool_error", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "error": output})
-                        conversation_messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
+                        yield sse(
+                            "tool_error",
+                            {
+                                "tool_name": tool_name,
+                                "tool_id": call_id,
+                                "step_id": step_id,
+                                "error": output,
+                            },
+                        )
+                        conversation_messages.append(
+                            {"role": "tool", "tool_call_id": call_id, "content": output}
+                        )
                         continue
                     if mcp_binding is not None and decision.requires_approval:
                         awaiting_approval = {
@@ -1292,7 +1509,15 @@ class DeepSpaceChatService:
                             "requested_at": self._now(),
                         }
                         break
-                    valid_calls.append({"call": call, "call_id": call_id, "tool_name": tool_name, "arguments": arguments, "step_id": step_id})
+                    valid_calls.append(
+                        {
+                            "call": call,
+                            "call_id": call_id,
+                            "tool_name": tool_name,
+                            "arguments": arguments,
+                            "step_id": step_id,
+                        }
+                    )
 
                 if awaiting_approval is not None:
                     valid_calls = []
@@ -1336,10 +1561,32 @@ class DeepSpaceChatService:
                 for item in valid_calls:
                     tool_name = str(item["tool_name"])
                     phase, phase_message = self._tool_phase(tool_name)
-                    yield sse("tool_start", {"tool_name": tool_name, "tool_id": item["call_id"], "step_id": item["step_id"], "tool_input": item["arguments"], "permission_level": "auto", "turn_index": round_index, "started_at": self._now()})
-                    yield sse("agent_status", {"phase": phase, "message": phase_message, "active_tools": [str(entry["tool_name"]) for entry in valid_calls]})
+                    yield sse(
+                        "tool_start",
+                        {
+                            "tool_name": tool_name,
+                            "tool_id": item["call_id"],
+                            "step_id": item["step_id"],
+                            "tool_input": item["arguments"],
+                            "permission_level": "auto",
+                            "turn_index": round_index,
+                            "started_at": self._now(),
+                        },
+                    )
+                    yield sse(
+                        "agent_status",
+                        {
+                            "phase": phase,
+                            "message": phase_message,
+                            "active_tools": [str(entry["tool_name"]) for entry in valid_calls],
+                        },
+                    )
 
-                read_semaphore = asyncio.Semaphore(max(1, min(int(getattr(self.settings, "deepspace_max_concurrent_tools", 8)), 32)))
+                read_semaphore = asyncio.Semaphore(
+                    max(
+                        1, min(int(getattr(self.settings, "deepspace_max_concurrent_tools", 8)), 32)
+                    )
+                )
                 write_lock = asyncio.Lock()
                 results = await asyncio.gather(
                     *(
@@ -1380,23 +1627,102 @@ class DeepSpaceChatService:
                     else:
                         output = str(result.get("error") or f"{tool_name} failed safely.")
                     if run_id is not None:
-                        self.runtime.record_step(run_id=run_id, tenant_id=auth.tenant_id, user_id=auth.user_id, conversation_id=conversation_id, step_type="tool_result", status="completed" if success else "failed", tool_name=tool_name, tool_call_id=call_id, input_json=item["arguments"], result_json={"success": success, "output": output})
+                        self.runtime.record_step(
+                            run_id=run_id,
+                            tenant_id=auth.tenant_id,
+                            user_id=auth.user_id,
+                            conversation_id=conversation_id,
+                            step_type="tool_result",
+                            status="completed" if success else "failed",
+                            tool_name=tool_name,
+                            tool_call_id=call_id,
+                            input_json=item["arguments"],
+                            result_json={"success": success, "output": output},
+                        )
                     if success:
-                        yield sse("tool_result", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "tool_input": item["arguments"], "output": output, "success": True, "turn_index": round_index, "completed_at": self._now()})
-                        yield sse("observing", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "summary": "Tool result received; analyzing the next step.", "success": True, "turn_index": round_index})
+                        yield sse(
+                            "tool_result",
+                            {
+                                "tool_name": tool_name,
+                                "tool_id": call_id,
+                                "step_id": step_id,
+                                "tool_input": item["arguments"],
+                                "output": output,
+                                "success": True,
+                                "turn_index": round_index,
+                                "completed_at": self._now(),
+                            },
+                        )
+                        yield sse(
+                            "observing",
+                            {
+                                "tool_name": tool_name,
+                                "tool_id": call_id,
+                                "step_id": step_id,
+                                "summary": "Tool result received; analyzing the next step.",
+                                "success": True,
+                                "turn_index": round_index,
+                            },
+                        )
                         if isinstance(tool_payload.get("tasks"), list):
-                            yield sse("agent_status", {"phase": "checking", "message": summarize_tasks(tool_payload["tasks"]), "active_tools": [], "task_summary": tool_payload})
+                            yield sse(
+                                "agent_status",
+                                {
+                                    "phase": "checking",
+                                    "message": summarize_tasks(tool_payload["tasks"]),
+                                    "active_tools": [],
+                                    "task_summary": tool_payload,
+                                },
+                            )
                         if tool_name == "ask_user" and tool_payload.get("awaiting_user"):
                             awaiting_user = tool_payload
-                            yield sse("ask_user_question", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "message": tool_payload.get("question"), "options": tool_payload.get("options", []), "turn_index": round_index})
+                            yield sse(
+                                "ask_user_question",
+                                {
+                                    "tool_name": tool_name,
+                                    "tool_id": call_id,
+                                    "step_id": step_id,
+                                    "message": tool_payload.get("question"),
+                                    "options": tool_payload.get("options", []),
+                                    "turn_index": round_index,
+                                },
+                            )
                         if tool_name == "final" and tool_payload.get("accepted"):
                             forced_answer = str(tool_payload.get("answer") or "").strip()
-                            yield sse("agent_status", {"phase": "completed", "message": "All required work was verified.", "active_tools": []})
+                            yield sse(
+                                "agent_status",
+                                {
+                                    "phase": "completed",
+                                    "message": "All required work was verified.",
+                                    "active_tools": [],
+                                },
+                            )
                     else:
-                        yield sse("tool_error", {"tool_name": tool_name, "tool_id": call_id, "step_id": step_id, "error": output})
-                    conversation_messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
-                yield sse("agent_status", {"phase": "analyzing", "message": "Analyzing tool results and choosing the next safe step.", "active_tools": []})
-                if forced_answer is not None or awaiting_user is not None or awaiting_approval is not None:
+                        yield sse(
+                            "tool_error",
+                            {
+                                "tool_name": tool_name,
+                                "tool_id": call_id,
+                                "step_id": step_id,
+                                "error": output,
+                            },
+                        )
+                    conversation_messages.append(
+                        {"role": "tool", "tool_call_id": call_id, "content": output}
+                    )
+                yield sse(
+                    "agent_status",
+                    {
+                        "phase": "analyzing",
+                        "message": "Analyzing tool results and choosing the next safe step.",
+                        "active_tools": [],
+                    },
+                )
+                if (
+                    forced_answer is not None
+                    or awaiting_user is not None
+                    or awaiting_approval is not None
+                ):
                     break
         except ProviderRequestError as exc:
             terminal_status = "failed"
@@ -1412,10 +1738,19 @@ class DeepSpaceChatService:
                 self.runtime.finish(run_id=run_id, status=terminal_status, error="stream_failed")
             self.db.rollback()
             logger.exception("DeepSpace stream failed")
-            yield sse("error", {"code": "DEEPSPACE_STREAM_FAILED", "message": "DeepSpace could not complete this response."})
+            yield sse(
+                "error",
+                {
+                    "code": "DEEPSPACE_STREAM_FAILED",
+                    "message": "DeepSpace could not complete this response.",
+                },
+            )
             return
 
-        yield sse("agent_status", {"phase": "finalizing", "message": "Preparing the final answer.", "active_tools": []})
+        yield sse(
+            "agent_status",
+            {"phase": "finalizing", "message": "Preparing the final answer.", "active_tools": []},
+        )
         final_task_check = self.task_store.check_tasks(
             tenant_id=auth.tenant_id,
             user_id=auth.user_id,
@@ -1424,7 +1759,9 @@ class DeepSpaceChatService:
         raw_answer = (forced_answer or "".join(answer_parts)).strip()
         if awaiting_approval is not None:
             terminal_status = "awaiting_approval"
-            raw_answer = "DeepSpace is waiting for your approval before running the connected MCP action."
+            raw_answer = (
+                "DeepSpace is waiting for your approval before running the connected MCP action."
+            )
             yield sse(
                 "agent_status",
                 {
@@ -1436,9 +1773,23 @@ class DeepSpaceChatService:
             )
         elif awaiting_user is not None:
             terminal_status = "awaiting_user"
-            raw_answer = str(awaiting_user.get("question") or "Please provide the requested information.").strip()
-            yield sse("agent_status", {"phase": "awaiting_user", "message": "DeepSpace is waiting for your answer before continuing.", "active_tools": [], "options": awaiting_user.get("options", [])})
-        elif final_task_check["task_count"] and not final_task_check["complete"] and forced_answer is None:
+            raw_answer = str(
+                awaiting_user.get("question") or "Please provide the requested information."
+            ).strip()
+            yield sse(
+                "agent_status",
+                {
+                    "phase": "awaiting_user",
+                    "message": "DeepSpace is waiting for your answer before continuing.",
+                    "active_tools": [],
+                    "options": awaiting_user.get("options", []),
+                },
+            )
+        elif (
+            final_task_check["task_count"]
+            and not final_task_check["complete"]
+            and forced_answer is None
+        ):
             terminal_status = "blocked"
             raw_answer = (
                 "DeepSpace paused because the task list is not complete. "
@@ -1455,12 +1806,16 @@ class DeepSpaceChatService:
             )
         answer = self._append_citations(raw_answer, citations)
         if answer != raw_answer and answer.startswith(raw_answer):
-            yield sse("delta", {"text": answer[len(raw_answer):]})
+            yield sse("delta", {"text": answer[len(raw_answer) :]})
         metadata = {
             "status": (
                 "awaiting_approval"
                 if terminal_status == "awaiting_approval"
-                else ("awaiting_user" if terminal_status == "awaiting_user" else ("blocked" if terminal_status == "blocked" else "ready"))
+                else (
+                    "awaiting_user"
+                    if terminal_status == "awaiting_user"
+                    else ("blocked" if terminal_status == "blocked" else "ready")
+                )
             ),
             "surface": "deepspace",
             "provider_type": candidate.provider_type,
@@ -1490,7 +1845,10 @@ class DeepSpaceChatService:
                     },
                 )
             else:
-                self.runtime.finish(run_id=run_id, status=terminal_status if terminal_status != "running" else "ready")
+                self.runtime.finish(
+                    run_id=run_id,
+                    status=terminal_status if terminal_status != "running" else "ready",
+                )
         metrics = {
             "modelName": candidate.model_name,
             "providerType": candidate.provider_type,
@@ -1501,4 +1859,12 @@ class DeepSpaceChatService:
         if candidate.context_window_source:
             metrics["contextLimitSource"] = candidate.context_window_source
         yield sse("metrics", metrics)
-        yield sse("done", {"conversation_id": str(conversation_id), "message_id": str(assistant_message.id), "run_id": str(run_id) if run_id else None, "status": terminal_status if terminal_status != "running" else "ready"})
+        yield sse(
+            "done",
+            {
+                "conversation_id": str(conversation_id),
+                "message_id": str(assistant_message.id),
+                "run_id": str(run_id) if run_id else None,
+                "status": terminal_status if terminal_status != "running" else "ready",
+            },
+        )

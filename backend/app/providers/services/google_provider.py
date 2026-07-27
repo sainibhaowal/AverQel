@@ -26,9 +26,7 @@ from app.providers.services.types import (
 class GoogleProvider:
     provider_name = "google"
 
-    def __init__(
-        self, *, base_url: str | None = None, api_key: str | None = None
-    ) -> None:
+    def __init__(self, *, base_url: str | None = None, api_key: str | None = None) -> None:
         self.base_url = base_url.rstrip("/") if base_url else None
         self.api_key = api_key
 
@@ -46,12 +44,34 @@ class GoogleProvider:
         return importlib.import_module("httpx")
 
     @staticmethod
-    def _extract_candidate_parts(candidate: dict[str, Any]) -> tuple[str, str | None]:
+    def _extract_candidate_parts(
+        candidate: dict[str, Any],
+    ) -> tuple[str, str | None, list[dict[str, Any]]]:
         parts = candidate.get("content", {}).get("parts", [])
         text_parts: list[str] = []
         thinking_parts: list[str] = []
+        tool_calls: list[dict[str, Any]] = []
         for item in parts:
             if not isinstance(item, dict):
+                continue
+            function_call = item.get("functionCall")
+            if isinstance(function_call, dict):
+                name = function_call.get("name")
+                if isinstance(name, str) and name.strip():
+                    arguments = function_call.get("args", {})
+                    tool_calls.append(
+                        {
+                            "id": f"google_call_{len(tool_calls)}",
+                            "type": "function",
+                            "function": {
+                                "name": name.strip(),
+                                "arguments": json.dumps(
+                                    arguments if isinstance(arguments, dict) else {},
+                                    ensure_ascii=False,
+                                ),
+                            },
+                        }
+                    )
                 continue
             text = item.get("text")
             if not isinstance(text, str) or not text:
@@ -60,7 +80,156 @@ class GoogleProvider:
                 thinking_parts.append(text)
             else:
                 text_parts.append(text)
-        return "".join(text_parts), "".join(thinking_parts).strip() or None
+        return (
+            "".join(text_parts),
+            "".join(thinking_parts).strip() or None,
+            tool_calls,
+        )
+
+    @staticmethod
+    def _tool_declarations(request: ChatGenerateRequest) -> list[dict[str, Any]]:
+        declarations: list[dict[str, Any]] = []
+        for tool in request.tools or []:
+            function = tool.get("function") if isinstance(tool, dict) else None
+            if not isinstance(function, dict):
+                continue
+            name = function.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            declaration: dict[str, Any] = {"name": name.strip()}
+            description = function.get("description")
+            if isinstance(description, str) and description.strip():
+                declaration["description"] = description.strip()
+            parameters = function.get("parameters")
+            if isinstance(parameters, dict):
+                declaration["parameters"] = parameters
+            declarations.append(declaration)
+        return declarations
+
+    @staticmethod
+    def _tool_config(request: ChatGenerateRequest) -> dict[str, Any] | None:
+        if not request.tool_choice:
+            return None
+        choice = request.tool_choice
+        mode = "AUTO"
+        allowed: list[str] = []
+        if choice == "required":
+            mode = "ANY"
+        elif choice in {"none", "disabled"}:
+            mode = "NONE"
+        elif isinstance(choice, dict):
+            function = choice.get("function")
+            if isinstance(function, dict) and isinstance(function.get("name"), str):
+                allowed = [function["name"]]
+            if choice.get("mode") == "required":
+                mode = "ANY"
+        config: dict[str, Any] = {"mode": mode}
+        if allowed:
+            config["allowedFunctionNames"] = allowed
+        return {"functionCallingConfig": config}
+
+    @staticmethod
+    def _content_text(content: Any) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(
+                str(item.get("text"))
+                for item in content
+                if isinstance(item, dict) and isinstance(item.get("text"), str)
+            )
+        return "" if content is None else str(content)
+
+    @classmethod
+    def _build_contents(
+        cls, messages: list[dict[str, Any]]
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        system_parts: list[dict[str, str]] = []
+        contents: list[dict[str, Any]] = []
+        tool_names: dict[str, str] = {}
+        for message in messages:
+            role = str(message.get("role") or "user")
+            if role == "system":
+                text = cls._content_text(message.get("content"))
+                if text.strip():
+                    system_parts.append({"text": text})
+                continue
+            if role == "tool":
+                call_id = str(message.get("tool_call_id") or "").strip()
+                name = tool_names.get(call_id, call_id or "tool")
+                raw_content = message.get("content", "")
+                try:
+                    response = (
+                        json.loads(raw_content) if isinstance(raw_content, str) else raw_content
+                    )
+                except json.JSONDecodeError:
+                    response = {"output": raw_content}
+                if not isinstance(response, dict):
+                    response = {"output": response}
+                contents.append(
+                    {
+                        "role": "user",
+                        "parts": [{"functionResponse": {"name": name, "response": response}}],
+                    }
+                )
+                continue
+
+            parts: list[dict[str, Any]] = []
+            text = cls._content_text(message.get("content"))
+            if text.strip():
+                parts.append({"text": text})
+            if role == "assistant":
+                for call in message.get("tool_calls") or []:
+                    if not isinstance(call, dict):
+                        continue
+                    function = call.get("function")
+                    if not isinstance(function, dict):
+                        continue
+                    name = function.get("name")
+                    if not isinstance(name, str) or not name.strip():
+                        continue
+                    call_id = str(call.get("id") or f"google_call_{len(tool_names)}")
+                    tool_names[call_id] = name.strip()
+                    raw_arguments = function.get("arguments", "{}")
+                    try:
+                        arguments = (
+                            json.loads(raw_arguments)
+                            if isinstance(raw_arguments, str)
+                            else raw_arguments
+                        )
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    parts.append(
+                        {
+                            "functionCall": {
+                                "name": name.strip(),
+                                "args": arguments if isinstance(arguments, dict) else {},
+                            }
+                        }
+                    )
+            if parts:
+                contents.append(
+                    {"role": "model" if role == "assistant" else "user", "parts": parts}
+                )
+        system = {"parts": system_parts} if system_parts else None
+        return system, contents
+
+    @classmethod
+    def _build_payload(cls, request: ChatGenerateRequest) -> dict[str, Any]:
+        system, contents = cls._build_contents(request.messages)
+        payload: dict[str, Any] = {
+            "contents": contents or [{"role": "user", "parts": [{"text": ""}]}],
+            "generationConfig": cls._build_generation_config(request),
+        }
+        if system:
+            payload["systemInstruction"] = system
+        declarations = cls._tool_declarations(request)
+        if declarations:
+            payload["tools"] = [{"functionDeclarations": declarations}]
+            config = cls._tool_config(request)
+            if config:
+                payload["toolConfig"] = config
+        return payload
 
     @staticmethod
     def _raise_provider_error(response: Any) -> None:
@@ -103,19 +272,7 @@ class GoogleProvider:
 
     def generate(self, request: ChatGenerateRequest) -> ChatGenerateResponse:
         httpx_module = self._httpx()
-        user_parts = []
-        for msg in request.messages:
-            role = msg.get("role")
-            content = msg.get("content", "")
-            if role == "system":
-                user_parts.append(f"System: {content}")
-            else:
-                user_parts.append(content)
-        generation_config = self._build_generation_config(request)
-        payload: dict[str, Any] = {
-            "contents": [{"parts": [{"text": "\n\n".join(user_parts)}]}],
-            "generationConfig": generation_config,
-        }
+        payload = self._build_payload(request)
         api_key = request.api_key or ""
         model = quote(request.model, safe="")
         response = httpx_module.post(
@@ -130,11 +287,13 @@ class GoogleProvider:
         candidates = payload_obj.get("candidates", [])
         text = ""
         thinking_text: str | None = None
+        tool_calls: list[dict[str, Any]] = []
         if isinstance(candidates, list) and candidates:
-            text, thinking_text = self._extract_candidate_parts(candidates[0])
+            text, thinking_text, tool_calls = self._extract_candidate_parts(candidates[0])
         return ChatGenerateResponse(
             content=text,
             thinking_content=thinking_text,
+            tool_calls=tool_calls or None,
         )
 
     async def stream_generate(self, request: ChatGenerateRequest) -> AsyncIterator[str]:
@@ -146,21 +305,9 @@ class GoogleProvider:
 
     async def stream_generate_events(
         self, request: ChatGenerateRequest
-    ) -> AsyncIterator[dict[str, str]]:
+    ) -> AsyncIterator[dict[str, Any]]:
         httpx_module = self._httpx()
-        user_parts = []
-        for msg in request.messages:
-            role = msg.get("role")
-            content = msg.get("content", "")
-            if role == "system":
-                user_parts.append(f"System: {content}")
-            else:
-                user_parts.append(content)
-        generation_config = self._build_generation_config(request)
-        payload = {
-            "contents": [{"parts": [{"text": "\n\n".join(user_parts)}]}],
-            "generationConfig": generation_config,
-        }
+        payload = self._build_payload(request)
         api_key = request.api_key or ""
         model = quote(request.model, safe="")
         async with httpx_module.AsyncClient(
@@ -186,11 +333,13 @@ class GoogleProvider:
                     candidates = payload_obj.get("candidates", [])
                     if not isinstance(candidates, list) or not candidates:
                         continue
-                    text, thinking_text = self._extract_candidate_parts(candidates[0])
+                    text, thinking_text, tool_calls = self._extract_candidate_parts(candidates[0])
                     if thinking_text:
                         yield {"type": "thinking", "text": thinking_text}
                     if text:
                         yield {"type": "delta", "text": text}
+                    if tool_calls:
+                        yield {"type": "tool_calls_delta", "tool_calls": tool_calls}
 
     def stream_generate_sync(self, request: ChatGenerateRequest) -> Iterator[str]:
         result = self.generate(request)
@@ -199,19 +348,13 @@ class GoogleProvider:
 
     def list_models(self) -> Sequence[ProviderModelInfo]:
         if not self.base_url:
-            raise ProviderCapabilityError(
-                "google model listing requires a configured endpoint"
-            )
+            raise ProviderCapabilityError("google model listing requires a configured endpoint")
         httpx_module = self._httpx()
         next_page_token: str | None = None
         models: list[ProviderModelInfo] = []
         seen: set[str] = set()
         while True:
-            suffix = (
-                f"&pageToken={quote(next_page_token, safe='')}"
-                if next_page_token
-                else ""
-            )
+            suffix = f"&pageToken={quote(next_page_token, safe='')}" if next_page_token else ""
             response = httpx_module.get(
                 f"{self.base_url.rstrip('/')}/models?key={self.api_key or ''}{suffix}",
                 headers={"Content-Type": "application/json"},
@@ -243,9 +386,7 @@ class GoogleProvider:
                     model_name,
                     provider_type="google",
                 )
-                context_window = (
-                    live_context_window or verified_context_window.context_window
-                )
+                context_window = live_context_window or verified_context_window.context_window
                 context_window_source = (
                     "live_model"
                     if live_context_window is not None
@@ -269,9 +410,7 @@ class GoogleProvider:
                                 if context_window_source
                                 else {}
                             ),
-                            **reasoning_capabilities(
-                                "google", model_name, base_url=self.base_url
-                            ),
+                            **reasoning_capabilities("google", model_name, base_url=self.base_url),
                         },
                     )
                 )
@@ -281,9 +420,7 @@ class GoogleProvider:
         return models
 
     def list_embedding_models(self) -> Sequence[ProviderModelInfo]:
-        raise ProviderCapabilityError(
-            "google embeddings are not supported by this adapter"
-        )
+        raise ProviderCapabilityError("google embeddings are not supported by this adapter")
 
     def list_reranker_models(self) -> Sequence[ProviderModelInfo]:
         return []
@@ -292,9 +429,7 @@ class GoogleProvider:
         return reasoning_capabilities("google", model_name)
 
     def health_check(self) -> HealthCheckResult:
-        return HealthCheckResult(
-            status="healthy", metadata={"provider": self.provider_name}
-        )
+        return HealthCheckResult(status="healthy", metadata={"provider": self.provider_name})
 
     @staticmethod
     def _canonical_model_name(item: dict[str, Any]) -> str:

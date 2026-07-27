@@ -49,7 +49,14 @@ class _FakeTaskStore:
         self.tasks = []
 
     def check_tasks(self, **kwargs):
-        return {"complete": False, "task_count": 0, "completed_count": 0, "remaining_count": 0, "blocked_count": 0, "tasks": []}
+        return {
+            "complete": False,
+            "task_count": 0,
+            "completed_count": 0,
+            "remaining_count": 0,
+            "blocked_count": 0,
+            "tasks": [],
+        }
 
     def read_tasks(self, **kwargs):
         return []
@@ -170,6 +177,42 @@ class _ToolRegistry(_FakeRegistry):
         return _SearchProvider()
 
 
+class _GoogleToolCaptureProvider:
+    request = None
+
+    async def stream_generate_events(self, request):
+        _GoogleToolCaptureProvider.request = request
+        yield {"type": "delta", "text": "Google answer."}
+
+
+class _GoogleSelectionService(_FakeSelectionService):
+    def resolve_chat(self, **kwargs):
+        return SimpleNamespace(
+            candidates=[
+                SimpleNamespace(
+                    model_name="gemini-3.6-flash",
+                    provider_type="google",
+                    base_url="https://generativelanguage.googleapis.com/v1beta",
+                    api_key="test-key",
+                    context_window=1_000_000,
+                    context_window_source="live_model",
+                    metadata={},
+                )
+            ]
+        )
+
+    def resolve_web_search(self, **kwargs):
+        return SimpleNamespace(candidates=[SimpleNamespace(provider_type="searxng", metadata={})])
+
+
+class _GoogleToolCaptureRegistry(_FakeRegistry):
+    def get_chat_provider_from_selection(self, candidate):
+        return _GoogleToolCaptureProvider()
+
+    def get_web_search_provider_from_selection(self, candidate):
+        return SimpleNamespace(search=lambda request: None)
+
+
 @pytest.mark.asyncio
 async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
@@ -234,3 +277,33 @@ async def test_deepspace_runs_web_search_loop_and_citations(monkeypatch):
     assert done.startswith("event: done")
     assert "https://example.com/source" in _FakeRepository.completed_content
     assert any(frame.startswith("event: tool_delta") for frame in frames)
+
+
+@pytest.mark.asyncio
+async def test_deepspace_exposes_tools_to_google_models(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _GoogleSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _GoogleToolCaptureRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="search the latest news today",
+            thinking_enabled=False,
+        )
+    ]
+
+    assert any(frame.startswith("event: delta") for frame in frames)
+    assert _GoogleToolCaptureProvider.request is not None
+    names = {item["function"]["name"] for item in (_GoogleToolCaptureProvider.request.tools or [])}
+    assert {"todo_write", "web_search", "read", "write"}.issubset(names)
+    assert _GoogleToolCaptureProvider.request.tool_choice == "required"
