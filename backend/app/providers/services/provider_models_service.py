@@ -45,7 +45,11 @@ from app.system.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 
-_MODEL_DISCOVERY_GATE = threading.BoundedSemaphore(2)
+# Model discovery is network-bound and already runs in FastAPI's worker pool.
+# Allowing multiple refreshes at once lets refresh storms consume capacity
+# needed by ordinary API reads and writes. Concurrent refreshes fail fast with
+# the existing 409 response and continue to use cached models.
+_MODEL_DISCOVERY_GATE = threading.BoundedSemaphore(1)
 
 
 def acquire_model_discovery_slot(operation: str) -> None:

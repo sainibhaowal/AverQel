@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.rbac import require_permissions
@@ -215,7 +216,12 @@ async def run_query(
     _validate_top_k_bounds(top_k=payload.top_k, settings=settings)
 
     service = QueryService(db=db, settings=settings)
-    result = service.execute(
+    # QueryService.execute owns a synchronous SQLAlchemy session and a
+    # synchronous retrieval pipeline. Running it directly here blocks the
+    # event loop while provider or database work is in progress, causing
+    # unrelated health/auth/UI requests to time out.
+    result = await run_in_threadpool(
+        service.execute,
         auth=auth,
         query_text=payload.query,
         top_k=payload.top_k,
@@ -306,7 +312,7 @@ async def stream_query(
     response_model=ChatCapabilitiesResponse,
     dependencies=[Depends(require_permissions("queries:run"))],
 )
-async def get_chat_capabilities(
+def get_chat_capabilities(
     request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),

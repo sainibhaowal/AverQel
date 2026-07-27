@@ -55,8 +55,8 @@ export const getApiBaseUrl = () => {
 let refreshPromise: Promise<string | null> | null = null;
 let authSessionInvalidated = false;
 const ACCESS_TOKEN_REFRESH_BUFFER_MS = 60_000;
-const DEFAULT_API_TIMEOUT_MS = 10_000;
-const AUTH_API_TIMEOUT_MS = 5_000;
+const DEFAULT_API_TIMEOUT_MS = 30_000;
+const AUTH_API_TIMEOUT_MS = 15_000;
 const STREAM_API_TIMEOUT_MS = 120_000;
 const REFRESH_LOCK_KEY = "averqel_refresh_lock";
 const REFRESH_LOCK_TTL_MS = 15_000;
