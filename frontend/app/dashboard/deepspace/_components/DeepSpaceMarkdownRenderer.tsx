@@ -9,18 +9,29 @@ import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 
 import { normalizeMarkdown } from "../_lib/markdown";
+import { isMermaidErrorSvg } from "../../query/_lib/mermaid";
+import { sanitizeMermaidSyntax } from "../../query/_components/CodeBlock";
 
 function MermaidPreview({ source }: { source: string }) {
   const id = useId().replace(/:/g, "");
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const sanitizedSource = useMemo(() => sanitizeMermaidSyntax(source), [source]);
 
   useEffect(() => {
     let cancelled = false;
     void import("mermaid")
       .then(async ({ default: mermaid }) => {
-        mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "dark" });
-        const result = await mermaid.render(`deepspace-${id}`, source);
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          suppressErrorRendering: true,
+          theme: "dark",
+        });
+        const parsed = await mermaid.parse(sanitizedSource, { suppressErrors: true });
+        if (!parsed) throw new Error("Invalid Mermaid syntax.");
+        const result = await mermaid.render(`deepspace-${id}`, sanitizedSource);
+        if (isMermaidErrorSvg(result.svg)) throw new Error("Invalid Mermaid syntax.");
         if (!cancelled) setSvg(result.svg);
       })
       .catch(() => {
@@ -29,14 +40,14 @@ function MermaidPreview({ source }: { source: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, source]);
+  }, [id, sanitizedSource]);
 
   if (svg) {
     return <div className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/20 p-4" dangerouslySetInnerHTML={{ __html: svg }} />;
   }
   return (
     <pre className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-cyan-100">
-      <code>{error ? source : "Rendering diagram…"}</code>
+      <code>{error ? sanitizedSource : "Rendering diagram…"}</code>
     </pre>
   );
 }

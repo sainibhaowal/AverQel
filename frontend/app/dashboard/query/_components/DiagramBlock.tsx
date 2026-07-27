@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Eye, GitBranch, Minimize2, Sparkles } from "lucide-react";
 
 import type { StreamDiagramBlock } from "../_lib/stream-protocol";
+import { isMermaidErrorSvg } from "../_lib/mermaid";
 
 import CodeBlock, { sanitizeMermaidSyntax } from "./CodeBlock";
 import GraphBlock from "./GraphBlock";
@@ -136,6 +137,15 @@ export default function DiagramBlock({ block, isStreaming = false }: DiagramBloc
         }
 
         const rendered = await mermaid.render(elementId, sanitizedSyntax);
+
+        if (isMermaidErrorSvg(rendered.svg)) {
+          if (!cancelled && mountedRef.current) {
+            setSvg(null);
+            setError("Mermaid could not render this diagram. Showing the source instead.");
+            setIsRendering(false);
+          }
+          return;
+        }
 
         if (!cancelled && mountedRef.current) {
           setSvg(rendered.svg);

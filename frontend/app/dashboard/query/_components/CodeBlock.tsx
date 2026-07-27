@@ -14,6 +14,8 @@ import {
   GitBranch,
 } from "lucide-react";
 
+import { isMermaidErrorSvg } from "../_lib/mermaid";
+
 interface CodeBlockProps {
   language?: string;
   value: string;
@@ -2329,6 +2331,15 @@ export default function CodeBlock({
           // FIX: Uses stable diagramId — no new ID per render, no cache misses,
           // no orphaned SVG elements left in the DOM.
           const { svg } = await mermaid.render(diagramId, mermaidSource);
+
+          if (isMermaidErrorSvg(svg)) {
+            if (!cancelled && mountedRef.current) {
+              setRenderedSvg(null);
+              setRenderError("Mermaid could not render this diagram. Showing the source instead.");
+              setIsRendering(false);
+            }
+            return;
+          }
 
           if (!cancelled && mountedRef.current) {
             setRenderedSvg(normalizeRenderedSvg(svg, mermaidFamily));
