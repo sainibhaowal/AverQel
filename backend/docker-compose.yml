@@ -63,7 +63,7 @@ services:
     init: true
     stop_grace_period: 30s
     env_file:
-      - ${AVERQEL_ENV_FILE:-.env}
+      - .env.localprod
     environment:
       AKS_ENV: ${AKS_ENV:-development}
       AKS_API_WORKERS: ${AKS_API_WORKERS:-2}
@@ -120,7 +120,7 @@ services:
     stop_grace_period: 30s
     command: ["./scripts/start_inference.sh"]
     env_file:
-      - .env
+      - .env.localprod
     environment:
       AKS_LOCAL_MODELS_ROOT: /app/models
       AKS_LOCAL_INFERENCE_BASE_URL: http://inference:1011
@@ -169,7 +169,7 @@ services:
     init: true
     stop_grace_period: 30s
     env_file:
-      - ${AVERQEL_ENV_FILE:-.env}
+      - .env.localprod
     environment:
       AKS_ENV: ${AKS_ENV:-development}
       AKS_DATABASE_URL: postgresql+psycopg://${AVERQEL_POSTGRES_USER}:${AVERQEL_POSTGRES_PASSWORD}@postgres:5432/${AVERQEL_POSTGRES_DB:-knowledge}
@@ -211,7 +211,7 @@ services:
     stop_grace_period: 30s
     command: ["./scripts/start_scheduler.sh"]
     env_file:
-      - ${AVERQEL_ENV_FILE:-.env}
+      - .env.localprod
     environment:
       AKS_ENV: ${AKS_ENV:-development}
       AKS_DATABASE_URL: postgresql+psycopg://${AVERQEL_POSTGRES_USER}:${AVERQEL_POSTGRES_PASSWORD}@postgres:5432/${AVERQEL_POSTGRES_DB:-knowledge}
