@@ -2233,6 +2233,16 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
       ? (metadata.structured_answer as StructuredAnswerShape)
       : null;
   const content = normalizeMarkdown(message.content);
+  const persistedStatus = String(metadata.status ?? "");
+  const persistedError =
+    persistedStatus === "error" || (persistedStatus === "streaming" && !content.trim())
+      ? {
+          code: String(metadata.error_code ?? "STREAM_INCOMPLETE"),
+          message: content.trim()
+            ? content
+            : "This DeepSpace response ended before a usable answer was saved.",
+        }
+      : null;
   const metrics = rehydrateMetricsFromHistory(metadata, message.created_at);
   const agentSteps = normalizeHistoryAgentSteps(metadata.agent_steps);
   const compaction = readConversationCompactionState(metadata.conversation_compaction);
@@ -2311,7 +2321,7 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     content,
     rawContent: message.content,
     createdAt: message.created_at,
-    status: "ready",
+    status: persistedError ? "error" : "ready",
     blocks: Array.isArray(metadata.blocks) ? (metadata.blocks as StructuredBlock[]) : [],
     structured,
     thinkingContent: thinking || undefined,
@@ -2323,7 +2333,7 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     timeline,
     metrics,
     compaction,
-    error: null,
+    error: persistedError,
   };
 }
 
@@ -2413,7 +2423,21 @@ function reduceDeepSpaceThread(
             });
             return {
               ...m,
-              status: "ready",
+              status:
+                action.type === "stream_interrupted"
+                  ? "ready"
+                  : m.rawContent.trim() || m.thinkingContent?.trim()
+                    ? "ready"
+                    : "error",
+              error:
+                action.type === "stream_interrupted"
+                  ? null
+                  : m.rawContent.trim() || m.thinkingContent?.trim()
+                  ? m.error
+                  : {
+                      code: "STREAM_INCOMPLETE",
+                      message: "The chat stream ended before DeepSpace returned a response.",
+                    },
               agentSteps: nextSteps,
             };
           }
@@ -2446,7 +2470,8 @@ function reduceDeepSpaceThread(
             });
             return {
               ...m,
-              status: "ready",
+              status: "error",
+              error: action.error,
               agentSteps: nextSteps,
             };
           }

@@ -25,6 +25,31 @@ from app.providers.services.types import (
 
 class GoogleProvider:
     provider_name = "google"
+    _GEMINI_SCHEMA_TYPES = {
+        "string": "STRING",
+        "number": "NUMBER",
+        "integer": "INTEGER",
+        "boolean": "BOOLEAN",
+        "array": "ARRAY",
+        "object": "OBJECT",
+    }
+    _GEMINI_SCHEMA_KEYS = {
+        "type",
+        "format",
+        "title",
+        "description",
+        "nullable",
+        "enum",
+        "maxItems",
+        "minItems",
+        "properties",
+        "required",
+        "minProperties",
+        "maxProperties",
+        "items",
+        "anyOf",
+        "propertyOrdering",
+    }
 
     def __init__(self, *, base_url: str | None = None, api_key: str | None = None) -> None:
         self.base_url = base_url.rstrip("/") if base_url else None
@@ -59,19 +84,24 @@ class GoogleProvider:
                 name = function_call.get("name")
                 if isinstance(name, str) and name.strip():
                     arguments = function_call.get("args", {})
-                    tool_calls.append(
-                        {
-                            "id": f"google_call_{len(tool_calls)}",
-                            "type": "function",
-                            "function": {
-                                "name": name.strip(),
-                                "arguments": json.dumps(
-                                    arguments if isinstance(arguments, dict) else {},
-                                    ensure_ascii=False,
-                                ),
-                            },
-                        }
-                    )
+                    call: dict[str, Any] = {
+                        "id": f"google_call_{len(tool_calls)}",
+                        "type": "function",
+                        "function": {
+                            "name": name.strip(),
+                            "arguments": json.dumps(
+                                arguments if isinstance(arguments, dict) else {},
+                                ensure_ascii=False,
+                            ),
+                        },
+                    }
+                    # Gemini thinking models attach an opaque signature to the
+                    # function-call part. It must be replayed verbatim on the
+                    # next request in a tool loop.
+                    thought_signature = item.get("thoughtSignature")
+                    if isinstance(thought_signature, str) and thought_signature.strip():
+                        call["thought_signature"] = thought_signature.strip()
+                    tool_calls.append(call)
                 continue
             text = item.get("text")
             if not isinstance(text, str) or not text:
@@ -102,9 +132,39 @@ class GoogleProvider:
                 declaration["description"] = description.strip()
             parameters = function.get("parameters")
             if isinstance(parameters, dict):
-                declaration["parameters"] = parameters
+                declaration["parameters"] = GoogleProvider._gemini_schema(parameters)
             declarations.append(declaration)
         return declarations
+
+    @classmethod
+    def _gemini_schema(cls, schema: dict[str, Any]) -> dict[str, Any]:
+        """Convert an OpenAI JSON schema into Google's Schema JSON shape.
+
+        DeepSpace tools use provider-neutral JSON Schema. Gemini's REST API
+        accepts a narrower Schema representation, uses uppercase enum values
+        for types, and rejects OpenAI validation keywords such as
+        ``additionalProperties`` and ``minLength``.
+        """
+
+        result: dict[str, Any] = {}
+        for key, value in schema.items():
+            if key not in cls._GEMINI_SCHEMA_KEYS:
+                continue
+            if key == "type" and isinstance(value, str):
+                result[key] = cls._GEMINI_SCHEMA_TYPES.get(value.lower(), value.upper())
+            elif key == "properties" and isinstance(value, dict):
+                result[key] = {
+                    str(name): cls._gemini_schema(item)
+                    for name, item in value.items()
+                    if isinstance(item, dict)
+                }
+            elif key == "items" and isinstance(value, dict):
+                result[key] = cls._gemini_schema(value)
+            elif key == "anyOf" and isinstance(value, list):
+                result[key] = [cls._gemini_schema(item) for item in value if isinstance(item, dict)]
+            else:
+                result[key] = value
+        return result
 
     @staticmethod
     def _tool_config(request: ChatGenerateRequest) -> dict[str, Any] | None:
@@ -199,14 +259,18 @@ class GoogleProvider:
                         )
                     except json.JSONDecodeError:
                         arguments = {}
-                    parts.append(
-                        {
-                            "functionCall": {
-                                "name": name.strip(),
-                                "args": arguments if isinstance(arguments, dict) else {},
-                            }
+                    function_call_part: dict[str, Any] = {
+                        "functionCall": {
+                            "name": name.strip(),
+                            "args": arguments if isinstance(arguments, dict) else {},
                         }
+                    }
+                    thought_signature = call.get("thought_signature") or call.get(
+                        "thoughtSignature"
                     )
+                    if isinstance(thought_signature, str) and thought_signature.strip():
+                        function_call_part["thoughtSignature"] = thought_signature.strip()
+                    parts.append(function_call_part)
             if parts:
                 contents.append(
                     {"role": "model" if role == "assistant" else "user", "parts": parts}
@@ -232,22 +296,38 @@ class GoogleProvider:
         return payload
 
     @staticmethod
-    def _raise_provider_error(response: Any) -> None:
+    def _raise_provider_error(response: Any, body: bytes | str | None = None) -> None:
         message: str | None = None
-        try:
-            payload = response.json()
-        except Exception:  # noqa: BLE001
-            payload = None
+        text: str | None = None
+        if isinstance(body, bytes):
+            text = body.decode("utf-8", errors="replace")
+        elif isinstance(body, str):
+            text = body
+        if text is not None:
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                payload = None
+        else:
+            try:
+                payload = response.json()
+            except Exception:  # noqa: BLE001
+                payload = None
         if isinstance(payload, dict):
             error = payload.get("error")
             if isinstance(error, dict):
                 detail = error.get("message")
                 if isinstance(detail, str) and detail.strip():
                     message = detail.strip()
+        if not message and text and text.strip():
+            message = text.strip()
         if not message:
-            text = getattr(response, "text", None)
-            if isinstance(text, str) and text.strip():
-                message = text.strip()
+            try:
+                response_text = response.text
+            except Exception:  # noqa: BLE001
+                response_text = None
+            if isinstance(response_text, str) and response_text.strip():
+                message = response_text.strip()
         raise ProviderRequestError(
             provider_name="google",
             status_code=int(response.status_code),
@@ -320,7 +400,8 @@ class GoogleProvider:
                 json=payload,
             ) as response:
                 if response.status_code >= 400:
-                    self._raise_provider_error(response)
+                    body = await response.aread()
+                    self._raise_provider_error(response, body)
                 async for raw_line in response.aiter_lines():
                     line = raw_line.strip()
                     if not line or not line.startswith("data:"):

@@ -543,6 +543,9 @@ async def stream_deepspace_chat(
             auth=auth,
             conversation_id=conversation_id,
             prompt=prompt,
+            client_request_id=(
+                str(raw_payload.get("client_request_id") or "").strip() or None
+            ),
             thinking_enabled=bool(raw_payload.get("thinking_enabled", False)),
             request=request,
             resume_approval_id=(

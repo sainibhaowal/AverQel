@@ -78,9 +78,7 @@ function appendStructuredBlocks(content: string, blocks: StructuredBlock[] | und
 }
 
 function buildActiveAnswerContent(message: DeepSpaceMessage): string {
-  const activeVersion = message.versions?.find(
-    (version) => version.id === message.activeVersionId,
-  );
+  const activeVersion = message.versions?.find((version) => version.id === message.activeVersionId);
   return appendStructuredBlocks(
     getVersionContent(activeVersion) || message.rawContent || message.content || "",
     message.blocks,
@@ -117,12 +115,14 @@ export default function DeepSpaceScrollTracker({
           }
         });
 
-        if (bestId) setActiveMessageId(bestId);
+        if (bestId) {
+          setActiveMessageId((current) => (current === bestId ? current : bestId));
+        }
       },
       {
         root: container,
         rootMargin: "-15% 0px -40% 0px",
-        threshold: [0, 0.1, 0.3, 0.5, 0.8, 1],
+        threshold: [0.5],
       },
     );
 
@@ -149,9 +149,7 @@ export default function DeepSpaceScrollTracker({
 
   const jumpToMessage = (messageId: string) => {
     const container = scrollContainerRef.current;
-    const target = container?.querySelector<HTMLElement>(
-      "[data-message-id=\"" + messageId + "\"]",
-    );
+    const target = container?.querySelector<HTMLElement>('[data-message-id="' + messageId + '"]');
     if (!target) return;
 
     target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
@@ -163,7 +161,7 @@ export default function DeepSpaceScrollTracker({
     <div className="pointer-events-auto absolute top-20 right-0 bottom-48 z-20 flex min-h-0 flex-col items-center gap-3 p-0">
       <div
         aria-label="DeepSpace message navigation"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain pl-3 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pl-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="relative flex min-h-full flex-col items-center gap-1.5 py-1">
           <div
@@ -175,16 +173,10 @@ export default function DeepSpaceScrollTracker({
             const isUser = message.role === "user";
             const preview = message.content.trim().slice(0, 28);
             const label =
-              (isUser ? "Prompt" : "Answer") +
-              " " +
-              (index + 1) +
-              (preview ? ": " + preview : "");
+              (isUser ? "Prompt" : "Answer") + " " + (index + 1) + (preview ? ": " + preview : "");
 
             return (
-              <div
-                key={message.id}
-                className="group relative z-10 flex items-center justify-end"
-              >
+              <div key={message.id} className="group relative z-10 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => jumpToMessage(message.id)}
@@ -195,7 +187,7 @@ export default function DeepSpaceScrollTracker({
                 >
                   <span
                     className={[
-                      "block rounded-full transition-all duration-300",
+                      "block rounded-full transition-colors duration-150",
                       isUser
                         ? isActive
                           ? "h-3 w-2.5 bg-[#c8b6ff]"

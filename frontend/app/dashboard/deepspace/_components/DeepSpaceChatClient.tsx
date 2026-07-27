@@ -6,9 +6,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import {
-  AlertCircle,
-} from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 
 import ChatSidebar from "@/app/components/dashboard/ChatSidebar";
@@ -24,9 +22,7 @@ import {
 
 import { useDeepSpaceStream } from "../_hooks/useDeepSpaceStream";
 import { initialDeepSpaceThreadState, deepSpaceThreadReducer } from "../_lib/deepspace-thread";
-import type {
-  DeepSpaceHistoryMessage,
-} from "../_lib/deepspace-stream";
+import type { DeepSpaceHistoryMessage } from "../_lib/deepspace-stream";
 import { resolveLatestEditableMessageId } from "../_lib/edit-target";
 
 import DeepSpaceComposer from "./DeepSpaceComposer";
@@ -137,6 +133,7 @@ export default function DeepSpaceChatClient({
   const [selectedModelOverride, setSelectedModelOverride] = useState<string | null>(null);
   const modelSwitchRef = useRef<Promise<void> | null>(null);
   const modelSelectionVersionRef = useRef(0);
+  const submissionInFlightRef = useRef(false);
 
   const [sttActive, setSttActive] = useState(false);
   const [ttsActive, setTtsActive] = useState(false);
@@ -283,13 +280,15 @@ export default function DeepSpaceChatClient({
           const fallbackModels = chatProviders.flatMap((provider) => {
             const modelName = provider.default_chat_model?.trim();
             return modelName
-              ? [{
-                  providerId: provider.id,
-                  modelName,
-                  displayName: modelName,
-                  contextWindow: null,
-                  contextWindowSource: "provider_default",
-                }]
+              ? [
+                  {
+                    providerId: provider.id,
+                    modelName,
+                    displayName: modelName,
+                    contextWindow: null,
+                    contextWindowSource: "provider_default",
+                  },
+                ]
               : [];
           });
           if (chatAssignment?.model_name && chatAssignment.provider_config_id) {
@@ -320,61 +319,69 @@ export default function DeepSpaceChatClient({
     };
   }, []);
 
-  const handleModelSelect = useCallback((providerId: string, modelName: string) => {
-    const previousModel = selectedModelOverride;
-    const previousProvider = selectedProviderOverride;
-    const selectionVersion = ++modelSelectionVersionRef.current;
+  const handleModelSelect = useCallback(
+    (providerId: string, modelName: string) => {
+      const previousModel = selectedModelOverride;
+      const previousProvider = selectedProviderOverride;
+      const selectionVersion = ++modelSelectionVersionRef.current;
 
-    // Update the visible model and its context window before the network round trip.
-    setSelectedModelOverride(modelName);
-    setSelectedProviderOverride(providerId);
+      // Update the visible model and its context window before the network round trip.
+      setSelectedModelOverride(modelName);
+      setSelectedProviderOverride(providerId);
 
-    const waitForPrevious = modelSwitchRef.current ?? Promise.resolve();
-    const operation = waitForPrevious.catch(() => undefined).then(async () => {
-      const toastId = toast.loading("Switching model...");
-      try {
-        const assignmentsList = await listAssignments();
-        const chatAssignment = assignmentsList.find((a) => a.feature_scope === "chat");
+      const waitForPrevious = modelSwitchRef.current ?? Promise.resolve();
+      const operation = waitForPrevious
+        .catch(() => undefined)
+        .then(async () => {
+          const toastId = toast.loading("Switching model...");
+          try {
+            const assignmentsList = await listAssignments();
+            const chatAssignment = assignmentsList.find((a) => a.feature_scope === "chat");
 
-        if (chatAssignment) {
-          await updateAssignment(chatAssignment.id, {
-            provider_config_id: providerId,
-            model_name: modelName,
-            enabled: true,
-          });
-        } else {
-          await createAssignment({
-            feature_scope: "chat",
-            provider_config_id: providerId,
-            model_name: modelName,
-            enabled: true,
-          });
-        }
+            if (chatAssignment) {
+              await updateAssignment(chatAssignment.id, {
+                provider_config_id: providerId,
+                model_name: modelName,
+                enabled: true,
+              });
+            } else {
+              await createAssignment({
+                feature_scope: "chat",
+                provider_config_id: providerId,
+                model_name: modelName,
+                enabled: true,
+              });
+            }
 
-        toast.success(`Switched model to ${modelName}`, { id: toastId });
-      } catch (err) {
-        console.error("Failed to switch model", err);
-        if (selectionVersion === modelSelectionVersionRef.current) {
-          setSelectedModelOverride(previousModel);
-          setSelectedProviderOverride(previousProvider);
-        }
-        toast.error("Failed to switch model", { id: toastId });
-      }
-    });
+            toast.success(`Switched model to ${modelName}`, { id: toastId });
+          } catch (err) {
+            console.error("Failed to switch model", err);
+            if (selectionVersion === modelSelectionVersionRef.current) {
+              setSelectedModelOverride(previousModel);
+              setSelectedProviderOverride(previousProvider);
+            }
+            toast.error("Failed to switch model", { id: toastId });
+          }
+        });
 
-    modelSwitchRef.current = operation;
-    void operation.finally(() => {
-      if (modelSwitchRef.current === operation) modelSwitchRef.current = null;
-    });
-    return operation;
-  }, [selectedModelOverride, selectedProviderOverride]);
+      modelSwitchRef.current = operation;
+      void operation.finally(() => {
+        if (modelSwitchRef.current === operation) modelSwitchRef.current = null;
+      });
+      return operation;
+    },
+    [selectedModelOverride, selectedProviderOverride],
+  );
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const autoFollowRef = useRef(true);
   const pendingHistorySyncRef = useRef(false);
   const scrollMetricsRafRef = useRef<number | null>(null);
-  const pendingScrollMetricsRef = useRef<{ scrollTop: number; viewportHeight: number } | null>(null);
+  const pendingScrollMetricsRef = useRef<{ scrollTop: number; viewportHeight: number } | null>(
+    null,
+  );
   const lastScrollMetricsRef = useRef<{ scrollTop: number; viewportHeight: number } | null>(null);
+  const autoScrollRafRef = useRef<number | null>(null);
 
   const syncThreadScrollMetrics = useCallback((element: HTMLDivElement) => {
     pendingScrollMetricsRef.current = {
@@ -385,13 +392,37 @@ export default function DeepSpaceChatClient({
     scrollMetricsRafRef.current = window.requestAnimationFrame(() => {
       const next = pendingScrollMetricsRef.current;
       const previous = lastScrollMetricsRef.current;
-      if (next && (!previous || Math.abs(next.scrollTop - previous.scrollTop) > 1 || next.viewportHeight !== previous.viewportHeight)) {
+      if (
+        next &&
+        (!previous ||
+          Math.abs(next.scrollTop - previous.scrollTop) > 1 ||
+          next.viewportHeight !== previous.viewportHeight)
+      ) {
         lastScrollMetricsRef.current = next;
         setThreadScrollMetrics(next);
       }
       scrollMetricsRafRef.current = null;
     });
   }, []);
+
+  const scrollToBottomIfFollowing = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || !autoFollowRef.current) return;
+
+    const target = Math.max(0, container.scrollHeight - container.clientHeight);
+    if (Math.abs(container.scrollTop - target) > 1) {
+      container.scrollTop = target;
+    }
+    syncThreadScrollMetrics(container);
+  }, [syncThreadScrollMetrics]);
+
+  const scheduleScrollToBottom = useCallback(() => {
+    if (autoScrollRafRef.current !== null) return;
+    autoScrollRafRef.current = window.requestAnimationFrame(() => {
+      autoScrollRafRef.current = null;
+      scrollToBottomIfFollowing();
+    });
+  }, [scrollToBottomIfFollowing]);
 
   const stream = useDeepSpaceStream(
     useMemo(
@@ -478,6 +509,9 @@ export default function DeepSpaceChatClient({
       if (scrollMetricsRafRef.current !== null) {
         window.cancelAnimationFrame(scrollMetricsRafRef.current);
       }
+      if (autoScrollRafRef.current !== null) {
+        window.cancelAnimationFrame(autoScrollRafRef.current);
+      }
     },
     [],
   );
@@ -495,31 +529,31 @@ export default function DeepSpaceChatClient({
   const submitQuery = useCallback(
     async (nextQuery?: string) => {
       const effectiveQuery = (nextQuery ?? query).trim();
-      if (!effectiveQuery || state.isStreaming) return;
+      if (!effectiveQuery || state.isStreaming || submissionInFlightRef.current) return;
 
-      await modelSwitchRef.current;
+      submissionInFlightRef.current = true;
+      try {
+        await modelSwitchRef.current;
 
-      setQuery("");
-      autoFollowRef.current = true;
-      dispatch({ type: "submit_query", query: effectiveQuery });
-      pendingHistorySyncRef.current = true;
+        setQuery("");
+        autoFollowRef.current = true;
+        dispatch({ type: "submit_query", query: effectiveQuery });
+        pendingHistorySyncRef.current = true;
 
-      await stream.start({
-        endpoint: "/deepspace/chats/stream",
-        body: {
-          message: effectiveQuery,
-          conversation_id: state.currentConversationId,
-          thinking_enabled: thinkingEnabled,
-        },
-      });
+        await stream.start({
+          endpoint: "/deepspace/chats/stream",
+          body: {
+            message: effectiveQuery,
+            conversation_id: state.currentConversationId,
+            client_request_id: crypto.randomUUID(),
+            thinking_enabled: thinkingEnabled,
+          },
+        });
+      } finally {
+        submissionInFlightRef.current = false;
+      }
     },
-    [
-      query,
-      state.currentConversationId,
-      state.isStreaming,
-      stream,
-      thinkingEnabled,
-    ],
+    [query, state.currentConversationId, state.isStreaming, stream, thinkingEnabled],
   );
 
   const startNewChat = useCallback(() => {
@@ -761,19 +795,49 @@ export default function DeepSpaceChatClient({
     return "";
   })();
 
-  const effectiveModelName =
-    selectedModelOverride ?? state.lastModelName ?? null;
+  const effectiveModelName = selectedModelOverride ?? state.lastModelName ?? null;
   const selectedModel =
     availableModels.find(
       (model) =>
         model.modelName === effectiveModelName &&
         (!selectedProviderOverride || model.providerId === selectedProviderOverride),
     ) ?? availableModels.find((model) => model.modelName === effectiveModelName);
-  const latestAssistant = [...state.messages].reverse().find((message) => message.role === "assistant");
+  const latestAssistant = [...state.messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === "assistant" &&
+        (message.content.trim() ||
+          message.rawContent?.trim() ||
+          message.thinkingContent?.trim() ||
+          message.error ||
+          message.blocks?.length ||
+          message.agentSteps?.length ||
+          message.status === "streaming"),
+    );
+  const renderableMessages = useMemo(
+    () =>
+      state.messages.filter(
+        (message) =>
+          message.role === "user" ||
+          Boolean(
+            message.content.trim() ||
+            message.rawContent?.trim() ||
+            message.thinkingContent?.trim() ||
+            message.error ||
+            message.blocks?.length ||
+            message.agentSteps?.length ||
+            message.status === "streaming",
+          ),
+      ),
+    [state.messages],
+  );
   const contextUsedTokens =
     latestAssistant?.metrics?.contextUsedTokens ?? latestAssistant?.metrics?.totalTokens ?? null;
   const contextLimit =
-    selectedModel?.contextWindow ?? latestAssistant?.metrics?.contextLimit ?? state.lastContextLimit;
+    selectedModel?.contextWindow ??
+    latestAssistant?.metrics?.contextLimit ??
+    state.lastContextLimit;
 
   const handlePromptSelect = useCallback(
     (prompt: string) => {
@@ -784,32 +848,23 @@ export default function DeepSpaceChatClient({
   );
 
   useEffect(() => {
+    scheduleScrollToBottom();
+  }, [scheduleScrollToBottom, state.messages, state.isStreaming]);
+
+  useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container || !autoFollowRef.current) return;
-    const rafId = requestAnimationFrame(() => {
-      if (!autoFollowRef.current) return;
-      const target = Math.max(0, container.scrollHeight - container.clientHeight);
-      if (Math.abs(container.scrollTop - target) > 1) container.scrollTop = target;
-      syncThreadScrollMetrics(container);
-    });
+    if (!container || typeof ResizeObserver === "undefined") return;
 
-    if (typeof ResizeObserver === "undefined") {
-      return () => cancelAnimationFrame(rafId);
-    }
+    const threadRoot = container.querySelector<HTMLElement>("[data-deepspace-thread-root]");
+    if (!threadRoot) return;
+
     const observer = new ResizeObserver(() => {
-      if (!autoFollowRef.current) return;
-      const target = Math.max(0, container.scrollHeight - container.clientHeight);
-      if (Math.abs(container.scrollTop - target) > 1) container.scrollTop = target;
-      syncThreadScrollMetrics(container);
+      scheduleScrollToBottom();
     });
-    observer.observe(container);
-    if (container.firstElementChild) observer.observe(container.firstElementChild);
+    observer.observe(threadRoot);
 
-    return () => {
-      cancelAnimationFrame(rafId);
-      observer.disconnect();
-    };
-  }, [state.messages, state.isStreaming, syncThreadScrollMetrics]);
+    return () => observer.disconnect();
+  }, [scheduleScrollToBottom]);
 
   const handleUserScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
@@ -835,7 +890,7 @@ export default function DeepSpaceChatClient({
       <div className="relative min-w-0 flex-1 overflow-hidden bg-transparent">
         <div className="flex h-full min-h-0 min-w-0 flex-col bg-transparent">
           <DeepSpaceScrollTracker
-            messages={state.messages}
+            messages={renderableMessages}
             scrollContainerRef={scrollContainerRef}
             onInsertActiveAnswer={onInsertLatestAnswer}
           />
@@ -859,7 +914,7 @@ export default function DeepSpaceChatClient({
             ) : null}
 
             <DeepSpaceThread
-              messages={state.messages}
+              messages={renderableMessages}
               emptyPrompts={EMPTY_PROMPTS}
               scrollMetrics={threadScrollMetrics}
               onPromptSelect={handlePromptSelect}
@@ -934,8 +989,7 @@ export default function DeepSpaceChatClient({
                   setHistoryOpen(false);
                 }}
                 onClose={() => setHistoryOpen(false)}
-              >
-              </ChatSidebar>
+              ></ChatSidebar>
             </motion.div>
           </>
         )}

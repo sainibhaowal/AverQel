@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
+
 from app.providers.services.anthropic_provider import AnthropicProvider
+from app.providers.services.base import ProviderRequestError
 from app.providers.services.google_provider import GoogleProvider
 from app.providers.services.types import ChatGenerateRequest
 
@@ -45,8 +48,70 @@ def test_google_builds_native_function_declarations() -> None:
     declaration = payload["tools"][0]["functionDeclarations"][0]
     assert declaration["name"] == "web_search"
     assert declaration["parameters"]["required"] == ["query"]
+    assert declaration["parameters"]["type"] == "OBJECT"
     assert payload["toolConfig"]["functionCallingConfig"]["mode"] == "ANY"
     assert payload["systemInstruction"]["parts"][0]["text"] == "Use tools when needed."
+
+
+def test_google_strips_openai_only_schema_keywords_recursively() -> None:
+    request = _request(
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "todo_write",
+                    "parameters": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "tasks": {
+                                "type": "array",
+                                "maxItems": 4,
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "content": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 1000,
+                                        }
+                                    },
+                                },
+                            }
+                        },
+                    },
+                },
+            }
+        ]
+    )
+
+    parameters = GoogleProvider._build_payload(request)["tools"][0]["functionDeclarations"][0][
+        "parameters"
+    ]
+    assert parameters["type"] == "OBJECT"
+    assert "additionalProperties" not in parameters
+    assert parameters["properties"]["tasks"]["type"] == "ARRAY"
+    assert parameters["properties"]["tasks"]["items"]["type"] == "OBJECT"
+    assert "additionalProperties" not in parameters["properties"]["tasks"]["items"]
+    assert "minLength" not in parameters["properties"]["tasks"]["items"]["properties"]["content"]
+
+
+def test_google_stream_error_reads_and_preserves_provider_message() -> None:
+    class Response:
+        status_code = 400
+
+        def json(self) -> dict[str, Any]:
+            raise AssertionError("streaming errors must use the already-read body")
+
+        @property
+        def text(self) -> str:
+            raise AssertionError("streaming response text must not be accessed before read")
+
+    with pytest.raises(ProviderRequestError, match="Invalid tool schema"):
+        GoogleProvider._raise_provider_error(
+            Response(), b'{"error":{"message":"Invalid tool schema"}}'
+        )
 
 
 def test_google_converts_tool_history_to_function_response() -> None:
@@ -60,6 +125,7 @@ def test_google_converts_tool_history_to_function_response() -> None:
                     {
                         "id": "call-1",
                         "type": "function",
+                        "thought_signature": "sig-123",
                         "function": {"name": "web_search", "arguments": '{"query":"news"}'},
                     }
                 ],
@@ -69,6 +135,7 @@ def test_google_converts_tool_history_to_function_response() -> None:
     )
     _system, contents = GoogleProvider._build_contents(request.messages)
 
+    assert contents[1]["parts"][0]["thoughtSignature"] == "sig-123"
     assert contents[-1]["parts"][0]["functionResponse"]["name"] == "web_search"
     assert contents[-1]["parts"][0]["functionResponse"]["response"] == {"results": []}
 
@@ -77,7 +144,12 @@ def test_google_extracts_native_function_call() -> None:
     text, thinking, calls = GoogleProvider._extract_candidate_parts(
         {
             "content": {
-                "parts": [{"functionCall": {"name": "web_search", "args": {"query": "news"}}}]
+                "parts": [
+                    {
+                        "functionCall": {"name": "web_search", "args": {"query": "news"}},
+                        "thoughtSignature": "sig-123",
+                    }
+                ]
             }
         }
     )
@@ -86,6 +158,7 @@ def test_google_extracts_native_function_call() -> None:
     assert thinking is None
     assert calls[0]["function"]["name"] == "web_search"
     assert json.loads(calls[0]["function"]["arguments"]) == {"query": "news"}
+    assert calls[0]["thought_signature"] == "sig-123"
 
 
 def test_anthropic_translates_tools_and_tool_history() -> None:

@@ -21,11 +21,7 @@ function normalizeMarkdownText(content: string): string {
 
       const trimmed = line.trim();
       if (!trimmed.startsWith("|")) return [line];
-      return [
-        line
-          .replace(/\|\|/g, "|\n|")
-          .replace(/\|\s+\|(?=\s*:?-{2,})/g, "|\n|"),
-      ];
+      return [line.replace(/\|\|/g, "|\n|").replace(/\|\s+\|(?=\s*:?-{2,})/g, "|\n|")];
     })
     .join("\n");
 }
@@ -33,19 +29,19 @@ function normalizeMarkdownText(content: string): string {
 function recoverCompactTable(line: string): string | null {
   if (!line.trim().startsWith("|")) return null;
 
-  const separator = line.match(/(?:^|\|)\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?/);
-  if (!separator || separator.index === undefined) return null;
+  const cells = pipeCells(line);
+  const separatorIndex = cells.findIndex((cell) => /^:?-{2,}:?$/.test(cell));
+  if (separatorIndex < 2) return null;
 
-  const header = pipeCells(line.slice(0, separator.index));
-  if (header.length < 2) return null;
-
-  const remainder = pipeCells(line.slice(separator.index + separator[0].length));
+  const header = cells.slice(0, separatorIndex);
+  let remainderIndex = separatorIndex;
+  while (remainderIndex < cells.length && /^:?-{2,}:?$/.test(cells[remainderIndex])) {
+    remainderIndex += 1;
+  }
+  const remainder = cells.slice(remainderIndex);
   if (remainder.length > 0 && remainder.length % header.length !== 0) return null;
 
-  const rows = [
-    `| ${header.join(" | ")} |`,
-    `| ${header.map(() => "---").join(" | ")} |`,
-  ];
+  const rows = [`| ${header.join(" | ")} |`, `| ${header.map(() => "---").join(" | ")} |`];
   for (let index = 0; index < remainder.length; index += header.length) {
     rows.push(`| ${remainder.slice(index, index + header.length).join(" | ")} |`);
   }

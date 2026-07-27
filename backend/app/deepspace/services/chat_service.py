@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_RETRIES = 1
 DEFAULT_AGENT_TIMEOUT_SECONDS = 1800
+MAX_EMPTY_PROVIDER_RETRIES = 1
+
+
+class DeepSpaceEmptyResponseError(RuntimeError):
+    """Raised when a provider closes successfully without usable output."""
 WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
@@ -357,6 +362,9 @@ class DeepSpaceChatService:
                 arguments = json.dumps(arguments, ensure_ascii=False)
             if isinstance(arguments, str):
                 current["function"]["arguments"] += arguments
+            thought_signature = item.get("thought_signature") or item.get("thoughtSignature")
+            if isinstance(thought_signature, str) and thought_signature.strip():
+                current["thought_signature"] = thought_signature.strip()
 
     @staticmethod
     def _parse_tool_arguments(call: dict[str, Any]) -> dict[str, Any] | None:
@@ -786,17 +794,116 @@ class DeepSpaceChatService:
                 lines.append(f"[{item.get('id', '?')}] [{title}]({url})")
         return answer.rstrip() + "\n" + "\n".join(lines) if len(lines) > 2 else answer
 
+    def _persist_stream_failure(
+        self,
+        *,
+        assistant_message: Any,
+        auth: AuthContext,
+        conversation_id: uuid.UUID,
+        code: str,
+        message: str,
+        candidate: Any | None,
+    ) -> None:
+        """Never leave a committed blank assistant message after a failed stream."""
+        try:
+            self.db.rollback()
+            metadata: dict[str, Any] = {
+                "status": "error",
+                "surface": "deepspace",
+                "error_code": code,
+                "error_message": message,
+            }
+            if candidate is not None:
+                metadata.update(
+                    {
+                        "provider_type": str(getattr(candidate, "provider_type", "") or ""),
+                        "model_name": str(getattr(candidate, "model_name", "") or ""),
+                    }
+                )
+            self.chat.complete_assistant_message(
+                tenant_id=auth.tenant_id,
+                conversation_id=conversation_id,
+                message_id=assistant_message.id,
+                user_id=auth.user_id,
+                content=message,
+                metadata_json=metadata,
+            )
+            self.db.commit()
+        except Exception:  # noqa: BLE001
+            self.db.rollback()
+            logger.exception("Failed to persist DeepSpace stream failure")
+
+    async def _replay_existing_request(
+        self,
+        *,
+        conversation_id: uuid.UUID,
+        existing_turn: tuple[Any, Any],
+    ) -> AsyncIterator[str]:
+        _existing_user, existing_assistant = existing_turn
+        existing_content = str(
+            existing_assistant.active_version.content
+            if existing_assistant.active_version is not None
+            else existing_assistant.content
+        )
+        existing_metadata = (
+            existing_assistant.metadata_json
+            if isinstance(existing_assistant.metadata_json, dict)
+            else {}
+        )
+        existing_status = str(existing_metadata.get("status") or "streaming")
+        yield sse(
+            "start",
+            {
+                "conversation_id": str(conversation_id),
+                "message_id": str(existing_assistant.id),
+                "started_at": existing_assistant.created_at,
+                "replayed": True,
+            },
+        )
+        if existing_content.strip() and existing_status not in {"streaming", "error"}:
+            yield sse("replace", {"content": existing_content, "replayed": True})
+            yield sse(
+                "done",
+                {
+                    "conversation_id": str(conversation_id),
+                    "message_id": str(existing_assistant.id),
+                    "status": existing_status,
+                    "replayed": True,
+                },
+            )
+        elif existing_status == "error":
+            yield sse(
+                "error",
+                {
+                    "code": str(existing_metadata.get("error_code") or "LLM_REQUEST_FAILED"),
+                    "message": existing_content
+                    or "The original DeepSpace request failed safely; please retry.",
+                    "replayed": True,
+                },
+            )
+        else:
+            yield sse(
+                "error",
+                {
+                    "code": "DUPLICATE_REQUEST_IN_PROGRESS",
+                    "message": "This DeepSpace request is already running. Please wait for it to finish.",
+                    "replayed": True,
+                },
+            )
+
     async def stream_turn(
         self,
         *,
         auth: AuthContext,
         conversation_id: uuid.UUID | None,
         prompt: str,
+        client_request_id: str | None = None,
         thinking_enabled: bool = False,
         request: Any | None = None,
         resume_approval_id: str | None = None,
     ) -> AsyncIterator[str]:
         prompt = " ".join(prompt.strip().split())
+        client_request_id = str(client_request_id or "").strip() or None
         resume_approval_id = str(resume_approval_id or "").strip() or None
         resumed_pending: dict[str, Any] | None = None
         resume_denied = False
@@ -884,6 +991,25 @@ class DeepSpaceChatService:
             )
 
         if not resume_approval_id:
+            if client_request_id:
+                lock_request_id = getattr(self.chat, "lock_request_id", None)
+                if callable(lock_request_id):
+                    lock_request_id(client_request_id)
+                existing_turn = self.chat.find_turn_by_request_id(
+                    tenant_id=auth.tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=auth.user_id,
+                    request_id=client_request_id,
+                )
+                if existing_turn is not None:
+                    conversation_id = existing_turn[0].conversation_id
+                    async for frame in self._replay_existing_request(
+                        conversation_id=conversation_id,
+                        existing_turn=existing_turn,
+                    ):
+                        yield frame
+                    return
+
             if conversation_id is None:
                 conversation = self.chat.create_conversation(
                     tenant_id=auth.tenant_id,
@@ -906,19 +1032,47 @@ class DeepSpaceChatService:
                 )
                 return
 
+            if client_request_id:
+                existing_turn = self.chat.find_turn_by_request_id(
+                    tenant_id=auth.tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=auth.user_id,
+                    request_id=client_request_id,
+                )
+                if existing_turn is not None:
+                    async for frame in self._replay_existing_request(
+                        conversation_id=conversation_id,
+                        existing_turn=existing_turn,
+                    ):
+                        yield frame
+                    return
+
             previous = self._messages(auth=auth, conversation_id=conversation_id)
             self.chat.add_message(
                 tenant_id=auth.tenant_id,
                 conversation_id=conversation_id,
                 role="user",
                 content=prompt,
+                metadata_json=(
+                    {"client_request_id": client_request_id}
+                    if client_request_id
+                    else None
+                ),
             )
             assistant_message = self.chat.add_message(
                 tenant_id=auth.tenant_id,
                 conversation_id=conversation_id,
                 role="assistant",
                 content="",
-                metadata_json={"status": "streaming", "surface": "deepspace"},
+                metadata_json={
+                    "status": "streaming",
+                    "surface": "deepspace",
+                    **(
+                        {"client_request_id": client_request_id}
+                        if client_request_id
+                        else {}
+                    ),
+                },
             )
             self.db.commit()
 
@@ -946,16 +1100,39 @@ class DeepSpaceChatService:
                 # the production database always has them after the migration.
                 logger.debug("DeepSpace runtime persistence is unavailable in this test double.")
 
-        selection = self.providers.resolve_chat(
-            tenant_id=auth.tenant_id,
-            workspace_id=None,
-            actor_user_id=auth.user_id,
-        )
+        try:
+            selection = self.providers.resolve_chat(
+                tenant_id=auth.tenant_id,
+                workspace_id=None,
+                actor_user_id=auth.user_id,
+            )
+        except Exception:  # noqa: BLE001
+            message = "DeepSpace could not resolve an enabled chat provider. Check provider configuration and try again."
+            self._persist_stream_failure(
+                assistant_message=assistant_message,
+                auth=auth,
+                conversation_id=conversation_id,
+                code="LLM_PROVIDER_UNAVAILABLE",
+                message=message,
+                candidate=None,
+            )
+            logger.exception("DeepSpace chat provider resolution failed")
+            yield sse("error", {"code": "LLM_PROVIDER_UNAVAILABLE", "message": message})
+            return
         candidate = selection.candidates[0] if selection.candidates else None
         if candidate is None:
+            message = "No DeepSpace chat model is configured. Select an enabled chat model and try again."
+            self._persist_stream_failure(
+                assistant_message=assistant_message,
+                auth=auth,
+                conversation_id=conversation_id,
+                code="LLM_UNAVAILABLE",
+                message=message,
+                candidate=None,
+            )
             yield sse(
                 "error",
-                {"code": "LLM_UNAVAILABLE", "message": "No DeepSpace chat model is configured."},
+                {"code": "LLM_UNAVAILABLE", "message": message},
             )
             return
 
@@ -971,7 +1148,21 @@ class DeepSpaceChatService:
         if candidate.context_window_source:
             meta["context_limit_source"] = candidate.context_window_source
         yield sse("meta", meta)
-        provider = self.registry.get_chat_provider_from_selection(candidate)
+        try:
+            provider = self.registry.get_chat_provider_from_selection(candidate)
+        except Exception:  # noqa: BLE001
+            message = "DeepSpace could not initialize the selected chat provider. Please retry or choose another model."
+            self._persist_stream_failure(
+                assistant_message=assistant_message,
+                auth=auth,
+                conversation_id=conversation_id,
+                code="LLM_PROVIDER_INIT_FAILED",
+                message=message,
+                candidate=candidate,
+            )
+            logger.exception("DeepSpace chat provider initialization failed")
+            yield sse("error", {"code": "LLM_PROVIDER_INIT_FAILED", "message": message})
+            return
         # Tool access is a DeepSpace capability, not a provider allowlist.
         # Every registered chat adapter translates the common tool contract to
         # its native API (or its OpenAI-compatible interface). A future adapter
@@ -1002,14 +1193,22 @@ class DeepSpaceChatService:
         web_tools = (
             [WEB_SEARCH_TOOL] if web_candidate is not None and web_provider is not None else []
         )
-        mcp_bindings = (
-            self.mcp_bridge.tools_for_conversation(
-                auth=auth,
-                conversation_id=conversation_id,
+        try:
+            mcp_bindings = (
+                self.mcp_bridge.tools_for_conversation(
+                    auth=auth,
+                    conversation_id=conversation_id,
+                )
+                if provider_supports_tools
+                else {}
             )
-            if provider_supports_tools
-            else {}
-        )
+        except Exception:  # noqa: BLE001
+            # MCP discovery must not take down ordinary DeepSpace chat.
+            logger.warning(
+                "DeepSpace MCP tool discovery failed; continuing without MCP tools",
+                exc_info=True,
+            )
+            mcp_bindings = {}
         mcp_tools = [binding.definition for binding in mcp_bindings.values()]
         available_tools: list[dict[str, Any]] = [*productivity_tools, *web_tools, *mcp_tools]
         if available_tools:
@@ -1083,6 +1282,7 @@ class DeepSpaceChatService:
         )
         loop_deadline = time.monotonic() + max_runtime_seconds
         round_index = 0
+        empty_provider_retries = 0
         terminal_status = "running"
         try:
             if resume_denied:
@@ -1261,6 +1461,8 @@ class DeepSpaceChatService:
                     )
                     break
                 tool_calls: dict[int, dict[str, Any]] = {}
+                round_answer_start = len(answer_parts)
+                round_thinking_start = len(thinking_parts)
                 request_images = list(pending_images)
                 pending_images.clear()
                 request_payload = ChatGenerateRequest(
@@ -1386,6 +1588,26 @@ class DeepSpaceChatService:
                     )
 
                 normalized_calls = [tool_calls[index] for index in sorted(tool_calls)]
+                round_has_text = (
+                    len(answer_parts) > round_answer_start
+                    or len(thinking_parts) > round_thinking_start
+                )
+                if not normalized_calls and not round_has_text:
+                    if empty_provider_retries < MAX_EMPTY_PROVIDER_RETRIES:
+                        empty_provider_retries += 1
+                        yield sse(
+                            "agent_status",
+                            {
+                                "phase": "retrying",
+                                "message": "The provider returned no usable stream data; retrying safely.",
+                                "active_tools": [],
+                                "attempt": empty_provider_retries + 1,
+                            },
+                        )
+                        continue
+                    raise DeepSpaceEmptyResponseError(
+                        f"{candidate.provider_type}/{candidate.model_name} returned no answer, reasoning, or tool events."
+                    )
                 if not normalized_calls:
                     task_check = self.task_store.check_tasks(
                         tenant_id=auth.tenant_id,
@@ -1728,15 +1950,49 @@ class DeepSpaceChatService:
             terminal_status = "failed"
             if run_id is not None:
                 self.runtime.finish(run_id=run_id, status=terminal_status, error=str(exc))
-            self.db.rollback()
+            self._persist_stream_failure(
+                assistant_message=assistant_message,
+                auth=auth,
+                conversation_id=conversation_id,
+                code="LLM_REQUEST_FAILED",
+                message=str(exc),
+                candidate=candidate,
+            )
             logger.warning("DeepSpace provider request failed", exc_info=True)
             yield sse("error", {"code": "LLM_REQUEST_FAILED", "message": str(exc)})
+            return
+        except DeepSpaceEmptyResponseError as exc:
+            terminal_status = "failed"
+            if run_id is not None:
+                self.runtime.finish(
+                    run_id=run_id,
+                    status=terminal_status,
+                    error="empty_provider_response",
+                )
+            message = "The selected provider returned no usable response. Please retry or choose another model."
+            self._persist_stream_failure(
+                assistant_message=assistant_message,
+                auth=auth,
+                conversation_id=conversation_id,
+                code="LLM_EMPTY_RESPONSE",
+                message=message,
+                candidate=candidate,
+            )
+            logger.warning("DeepSpace provider returned an empty stream: %s", exc)
+            yield sse("error", {"code": "LLM_EMPTY_RESPONSE", "message": message})
             return
         except Exception:
             terminal_status = "failed"
             if run_id is not None:
                 self.runtime.finish(run_id=run_id, status=terminal_status, error="stream_failed")
-            self.db.rollback()
+            self._persist_stream_failure(
+                assistant_message=assistant_message,
+                auth=auth,
+                conversation_id=conversation_id,
+                code="DEEPSPACE_STREAM_FAILED",
+                message="DeepSpace could not complete this response. Please retry.",
+                candidate=candidate,
+            )
             logger.exception("DeepSpace stream failed")
             yield sse(
                 "error",

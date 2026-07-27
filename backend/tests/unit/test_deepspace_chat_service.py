@@ -18,6 +18,15 @@ class _FakeProvider:
         yield {"type": "delta", "text": "Final answer."}
 
 
+class _EmptyProvider:
+    calls = 0
+
+    async def stream_generate_events(self, request):
+        self.calls += 1
+        if False:
+            yield {"type": "delta", "text": "never"}
+
+
 class _FakeRepository:
     completed_metadata = None
     completed_content = None
@@ -100,6 +109,14 @@ class _FakeRegistry:
 
     def get_chat_provider_from_selection(self, candidate):
         return _FakeProvider()
+
+
+class _EmptyRegistry(_FakeRegistry):
+    def __init__(self, settings):
+        self.provider = _EmptyProvider()
+
+    def get_chat_provider_from_selection(self, candidate):
+        return self.provider
 
 
 class _ToolProvider:
@@ -246,6 +263,39 @@ async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
     assert json.loads(thinking_frames[-1].split("data: ", 1)[1].strip())["text"] == " Then answer."
     assert json.loads(delta_frames[-1].split("data: ", 1)[1].strip())["text"] == "Final answer."
     assert _FakeRepository.completed_metadata["thinking"]["content"] == "Plan first. Then answer."
+
+
+@pytest.mark.asyncio
+async def test_deepspace_rejects_empty_provider_stream_and_persists_failure(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _EmptyRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="Why did this fail?",
+            thinking_enabled=True,
+        )
+    ]
+
+    assert sum(frame.startswith("event: agent_status") for frame in frames) >= 2
+    error = next(frame for frame in frames if frame.startswith("event: error"))
+    payload = json.loads(error.split("data: ", 1)[1].strip())
+    assert payload["code"] == "LLM_EMPTY_RESPONSE"
+    assert not any(frame.startswith("event: done") for frame in frames)
+    assert _FakeRepository.completed_metadata["status"] == "error"
+    assert _FakeRepository.completed_metadata["error_code"] == "LLM_EMPTY_RESPONSE"
+    assert _FakeRepository.completed_content
 
 
 @pytest.mark.asyncio

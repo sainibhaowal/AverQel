@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import {
   ArrowLeftToLine,
   Bot,
@@ -32,7 +31,6 @@ import DeepSpaceThinkingPanel from "./DeepSpaceThinkingPanel";
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 
 import type { DeepSpaceMessage } from "../_lib/deepspace-stream";
-
 
 const LARGE_THREAD_THRESHOLD = 28;
 const RECENT_MESSAGE_WINDOW = 14;
@@ -106,7 +104,6 @@ const MessageBubble = memo(
       .find((step) => step.type === "permission_request" && step.status === "awaiting_approval");
     const pendingApprovalData = pendingApproval?.data ?? {};
     const pendingApprovalId = String(pendingApprovalData.approval_id ?? "").trim();
-
 
     useEffect(() => {
       function handleClickOutside(event: MouseEvent) {
@@ -303,12 +300,19 @@ const MessageBubble = memo(
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-amber-100">Approval required</div>
                       <p className="mt-1 text-xs leading-5 text-amber-100/70">
-                        {String(pendingApprovalData.message ?? "A connected MCP action needs your approval.")}
+                        {String(
+                          pendingApprovalData.message ??
+                            "A connected MCP action needs your approval.",
+                        )}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold tracking-[0.14em] text-amber-100/60 uppercase">
                         <span>{String(pendingApprovalData.mcp_server ?? "Connected MCP")}</span>
                         <span>•</span>
-                        <span>{String(pendingApprovalData.mcp_tool ?? pendingApproval.toolName ?? "Tool")}</span>
+                        <span>
+                          {String(
+                            pendingApprovalData.mcp_tool ?? pendingApproval.toolName ?? "Tool",
+                          )}
+                        </span>
                         <span>•</span>
                         <span>{String(pendingApprovalData.risk_level ?? "protected")}</span>
                       </div>
@@ -356,10 +360,7 @@ const MessageBubble = memo(
 
               <div className="prose-premium prose prose-invert max-w-none">
                 {message.status === "streaming" && message.content.trim() ? (
-                  <DeepSpaceMarkdownRenderer
-                    content={message.content}
-                    streaming={true}
-                  />
+                  <DeepSpaceMarkdownRenderer content={message.content} streaming={true} />
                 ) : message.status !== "streaming" ? (
                   <DeepSpaceMarkdownRenderer content={message.content} />
                 ) : null}
@@ -377,12 +378,14 @@ const MessageBubble = memo(
                   <p className="mt-1 font-mono text-[10px] text-red-400/50">{message.error.code}</p>
                 </div>
               ) : null}
-
             </div>
 
             {message.status !== "streaming" ? (
               <div className="text-foreground/30 mt-5 flex flex-wrap items-center gap-4 text-[10px] font-bold">
-                <div className="flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-2 py-1 backdrop-blur-sm" ref={exportMenuRef}>
+                <div
+                  className="flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-2 py-1 backdrop-blur-sm"
+                  ref={exportMenuRef}
+                >
                   {message.versionCount && message.versionCount > 1 && (
                     <div className="mr-3 flex items-center gap-3 border-r border-white/10 pr-3">
                       <button
@@ -427,14 +430,14 @@ const MessageBubble = memo(
                       onClick={() => submitFeedback(true)}
                       className={`flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 ${
                         feedbackState === "helpful"
-                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                          : "text-white/40 hover:text-white/80 hover:bg-white/5"
+                          ? "border border-emerald-500/30 bg-emerald-500/20 text-emerald-400"
+                          : "text-white/40 hover:bg-white/5 hover:text-white/80"
                       }`}
                     >
                       <ThumbsUp size={12} />
                     </button>
-                    <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 z-50 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
-                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
+                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                         Helpful
                       </div>
                     </div>
@@ -448,14 +451,14 @@ const MessageBubble = memo(
                       onClick={() => submitFeedback(false)}
                       className={`flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 ${
                         feedbackState === "unhelpful"
-                          ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                          : "text-white/40 hover:text-white/80 hover:bg-white/5"
+                          ? "border border-red-500/30 bg-red-500/20 text-red-400"
+                          : "text-white/40 hover:bg-white/5 hover:text-white/80"
                       }`}
                     >
                       <ThumbsDown size={12} />
                     </button>
-                    <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 z-50 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
-                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
+                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                         Needs Work
                       </div>
                     </div>
@@ -466,26 +469,26 @@ const MessageBubble = memo(
                     <button
                       type="button"
                       onClick={() => setShowExportMenu(!showExportMenu)}
-                      className={`flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 text-white/40 hover:text-white/80 hover:bg-white/5 ${
+                      className={`flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition-all duration-200 hover:bg-white/5 hover:text-white/80 ${
                         showExportMenu ? "bg-white/10 text-white" : ""
                       }`}
                     >
                       <Download size={12} />
                     </button>
-                    <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 z-50 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
-                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
+                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                         Export
                       </div>
                     </div>
 
                     {showExportMenu && (
-                      <div className="theme-panel-strong absolute bottom-full left-0 z-[60] mb-2 w-36 overflow-hidden rounded-xl border border-white/10 bg-black/90 shadow-2xl backdrop-blur-xl p-1">
+                      <div className="theme-panel-strong absolute bottom-full left-0 z-[60] mb-2 w-36 overflow-hidden rounded-xl border border-white/10 bg-black/90 p-1 shadow-2xl backdrop-blur-xl">
                         <button
                           onClick={() => {
                             exportToMarkdown(message.content);
                             setShowExportMenu(false);
                           }}
-                          className="text-foreground/80 hover:bg-white/5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] transition"
+                          className="text-foreground/80 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] transition hover:bg-white/5"
                         >
                           <FileCode size={12} className="text-cyan-400" /> Markdown
                         </button>
@@ -494,7 +497,7 @@ const MessageBubble = memo(
                             exportToPDF(message.content);
                             setShowExportMenu(false);
                           }}
-                          className="text-foreground/80 hover:bg-white/5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] transition"
+                          className="text-foreground/80 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] transition hover:bg-white/5"
                         >
                           <FileType size={12} className="text-rose-400" /> PDF
                         </button>
@@ -503,7 +506,7 @@ const MessageBubble = memo(
                             exportToDocx(message.content);
                             setShowExportMenu(false);
                           }}
-                          className="text-foreground/80 hover:bg-white/5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] transition"
+                          className="text-foreground/80 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] transition hover:bg-white/5"
                         >
                           <FileText size={12} className="text-indigo-400" /> DOCX
                         </button>
@@ -516,18 +519,18 @@ const MessageBubble = memo(
                     <button
                       type="button"
                       onClick={() => submitFeedback(false)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 text-white/40 hover:text-red-400 hover:bg-red-500/10"
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition-all duration-200 hover:bg-red-500/10 hover:text-red-400"
                     >
                       <Flag size={12} />
                     </button>
-                    <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 z-50 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
-                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
+                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                         Report
                       </div>
                     </div>
                   </div>
 
-                  <span className="h-4 w-[1px] bg-white/10 mx-1" aria-hidden="true" />
+                  <span className="mx-1 h-4 w-[1px] bg-white/10" aria-hidden="true" />
 
                   {/* 5. Copy */}
                   <div className="group relative">
@@ -535,12 +538,16 @@ const MessageBubble = memo(
                       type="button"
                       onClick={handleCopy}
                       aria-label={copied ? "Copied" : "Copy"}
-                      className="flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 text-white/40 hover:text-white/80 hover:bg-white/5"
+                      className="flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition-all duration-200 hover:bg-white/5 hover:text-white/80"
                     >
-                      {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      {copied ? (
+                        <Check size={12} className="text-emerald-400" />
+                      ) : (
+                        <Copy size={12} />
+                      )}
                     </button>
-                    <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 z-50 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
-                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
+                      <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                         {copied ? "Copied" : "Copy"}
                       </div>
                     </div>
@@ -552,12 +559,12 @@ const MessageBubble = memo(
                       <button
                         type="button"
                         onClick={() => onRegenerate(message.id)}
-                        className="flex h-7 w-7 items-center justify-center rounded-full transition-all duration-200 text-white/40 hover:text-white/80 hover:bg-white/5"
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition-all duration-200 hover:bg-white/5 hover:text-white/80"
                       >
                         <RotateCw size={12} />
                       </button>
-                      <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 z-50 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
-                        <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider text-white uppercase shadow-xl backdrop-blur-sm whitespace-nowrap">
+                      <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
+                        <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
                           Regenerate
                         </div>
                       </div>
@@ -825,7 +832,11 @@ export default function DeepSpaceThread({
   }
 
   return (
-    <div className="space-y-1 pt-5 pb-10 sm:pt-6" style={{ overflowAnchor: "none" }}>
+    <div
+      data-deepspace-thread-root="true"
+      className="space-y-1 pt-5 pb-10 sm:pt-6"
+      style={{ overflowAnchor: "none" }}
+    >
       {isCompactedHistory ? (
         <div className="mx-auto w-full max-w-[min(100%,74rem)] px-2 pt-2 sm:px-3">
           <div className="border-glass-border bg-surface-2/70 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-[11px] font-medium text-white/70">
@@ -854,8 +865,6 @@ export default function DeepSpaceThread({
 
       {windowedMessages.visibleMessages.map((message, index) => {
         const renderIndex = windowedMessages.startIndex + index;
-        const shouldAnimate =
-          renderIndex >= Math.max(windowedMessages.endIndex - 12, windowedMessages.startIndex);
         const bubble = (
           <MessageBubble
             message={message}
@@ -872,21 +881,7 @@ export default function DeepSpaceThread({
 
         return (
           <div key={message.id} data-message-id={message.id} data-role={message.role}>
-            {shouldAnimate ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20, scale: 0.99, filter: "blur(8px)" }}
-                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                transition={{
-                  duration: 0.4,
-                  delay: Math.min(index * 0.015, 0.08),
-                  ease: [0.23, 1, 0.32, 1], // Custom cubic-bezier for a liquid feel
-                }}
-              >
-                {bubble}
-              </motion.div>
-            ) : (
-              bubble
-            )}
+            <div>{bubble}</div>
           </div>
         );
       })}

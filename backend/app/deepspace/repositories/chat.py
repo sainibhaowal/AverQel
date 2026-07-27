@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.ids import generate_uuid7_with_fallback
@@ -160,6 +160,72 @@ class DeepSpaceChatRepository:
             if user_message.role == "user" and assistant_message.role == "assistant":
                 return user_message, assistant_message
         return None, None
+
+    def find_turn_by_request_id(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID | None,
+        user_id: uuid.UUID,
+        request_id: str,
+        kind: str = "deepspace",
+    ) -> tuple[Message, Message] | None:
+        """Return an existing turn for a client idempotency key."""
+        normalized_request_id = str(request_id or "").strip()
+        if not normalized_request_id:
+            return None
+        if conversation_id is None:
+            stmt = (
+                select(Message)
+                .join(Conversation, Conversation.id == Message.conversation_id)
+                .where(
+                    Conversation.tenant_id == tenant_id,
+                    Conversation.user_id == user_id,
+                    Conversation.kind == kind,
+                    Message.role == "user",
+                    Message.metadata_json["client_request_id"].astext == normalized_request_id,
+                )
+                .options(selectinload(Message.versions), selectinload(Message.active_version))
+                .order_by(Message.created_at.desc(), Message.id.desc())
+            )
+            user_message = self.db.execute(stmt).scalars().first()
+            if user_message is None:
+                return None
+            conversation_id = user_message.conversation_id
+            messages = list(
+                self.get_messages(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    kind=kind,
+                )
+            )
+        else:
+            messages = list(
+                self.get_messages(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    kind=kind,
+                )
+            )
+        for index, message in enumerate(messages[:-1]):
+            if message.role != "user":
+                continue
+            metadata = message.metadata_json if isinstance(message.metadata_json, dict) else {}
+            if str(metadata.get("client_request_id") or "").strip() != normalized_request_id:
+                continue
+            assistant = messages[index + 1]
+            if assistant.role == "assistant":
+                return message, assistant
+        return None
+
+    def lock_request_id(self, request_id: str) -> None:
+        """Serialize concurrent retries for one request key in PostgreSQL."""
+        self.db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:request_id))"),
+            {"request_id": str(request_id)},
+        )
 
     def delete_message(self, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID, message_id: uuid.UUID, user_id: uuid.UUID, kind: str = "deepspace") -> bool:
         message = self.get_message_by_conversation(tenant_id=tenant_id, conversation_id=conversation_id, message_id=message_id, user_id=user_id, kind=kind)

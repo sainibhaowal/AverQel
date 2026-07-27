@@ -114,6 +114,14 @@ export function useDeepSpaceStream({
 
             const decoder = new TextDecoder();
             let buffer = "";
+            let terminalEventReceived = false;
+            const dispatchEvents = (events: DeepSpaceStreamEvent[]) => {
+              if (events.some((event) => event.event === "done" || event.event === "error")) {
+                terminalEventReceived = true;
+              }
+              if (onEventsRef.current) onEventsRef.current(events);
+              else events.forEach((event) => onEventRef.current(event));
+            };
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
@@ -123,15 +131,24 @@ export function useDeepSpaceStream({
               buffer = parsed.remainder;
               if (parsed.events.length > 0) {
                 receivedAnyEvent = true;
-                if (onEventsRef.current) onEventsRef.current(parsed.events);
-                else parsed.events.forEach((event) => onEventRef.current(event));
+                dispatchEvents(parsed.events);
               }
             }
 
             if (buffer.trim()) {
               const parsed = parseSseFrames(`${buffer}\n\n`);
-              if (onEventsRef.current) onEventsRef.current(parsed.events);
-              else parsed.events.forEach((event) => onEventRef.current(event));
+              if (parsed.events.length > 0) {
+                receivedAnyEvent = true;
+                dispatchEvents(parsed.events);
+              }
+            }
+            if (!terminalEventReceived && !controller.signal.aborted) {
+              onTransportErrorRef.current({
+                code: "STREAM_INCOMPLETE",
+                message: receivedAnyEvent
+                  ? "The chat provider closed the stream before completing the response."
+                  : "The chat provider returned an empty stream.",
+              });
             }
             return;
           } catch (error) {

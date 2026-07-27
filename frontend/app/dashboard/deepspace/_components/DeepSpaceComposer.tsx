@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Bot, ChevronDown, Check, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 interface DeepSpaceComposerProps {
   query: string;
@@ -156,16 +156,43 @@ export default function DeepSpaceComposer({
   const borderHighlight = "border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.18)]";
 
   const shellPadding = "p-2.5 sm:p-3";
-  const composerShell = `bg-surface-1/35 backdrop-blur-md border ${borderHighlight} transition-all duration-300`;
+  const composerShell = `bg-surface-1/35 backdrop-blur-md border transition-all duration-300 ${
+    isStreaming ? "border-transparent shadow-[0_0_24px_rgba(34,211,238,0.12)]" : borderHighlight
+  }`;
   const textareaClass =
     "min-h-[52px] rounded-[1rem] bg-transparent px-3 py-2 text-[14px] leading-6";
   const pillClass =
     "theme-pill !rounded-[0.5rem] h-8 border-primary/15 bg-primary/5 px-2.5 text-[10px] font-semibold tracking-wide";
   return (
     <div className="border-glass-border/60 sticky bottom-0 z-20 w-full border-t bg-transparent px-3 pt-3 pb-0 sm:px-5">
-      <div
-        className={`mx-auto w-full max-w-[min(100%,74rem)] overflow-visible rounded-[1.2rem] shadow-xl transition-all ${composerShell} ${shellPadding}`}
-      >
+      <div className="relative mx-auto w-full max-w-[min(100%,74rem)] overflow-visible">
+        {isStreaming && (
+          <div
+            aria-hidden="true"
+            className="deepspace-composer-border-trace pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-[1.2rem] opacity-90 blur-[0.2px]"
+            style={
+              {
+                padding: "1.5px",
+                WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+                WebkitMaskComposite: "xor",
+                maskComposite: "exclude",
+              } as CSSProperties
+            }
+          >
+            <div
+              aria-hidden="true"
+              className="deepspace-composer-border-gradient absolute -inset-[200%]"
+              style={{
+                background:
+                  "conic-gradient(from 0deg, rgba(34,211,238,0.95), rgba(59,130,246,0.9), rgba(168,85,247,0.9), rgba(249,115,22,0.85), rgba(234,179,8,0.9), rgba(34,197,94,0.95), rgba(34,211,238,0.95))",
+              }}
+            />
+          </div>
+        )}
+
+        <div
+          className={`relative z-10 rounded-[1.2rem] shadow-xl ${composerShell} ${shellPadding}`}
+        >
           <textarea
             value={query}
             onChange={(event) => onQueryChange(event.target.value.slice(0, 4000))}
@@ -402,6 +429,7 @@ export default function DeepSpaceComposer({
               </motion.button>
             </div>
           </div>
+        </div>
       </div>
     </div>
   );

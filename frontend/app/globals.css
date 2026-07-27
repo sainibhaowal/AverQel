@@ -836,6 +836,23 @@ body {
   }
 }
 
+@keyframes deepspace-composer-border-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.deepspace-composer-border-gradient {
+  transform: translateZ(0);
+  transform-origin: center;
+  animation: deepspace-composer-border-spin 3.2s linear infinite;
+  will-change: transform;
+}
+
 .mesh-bg {
   background: linear-gradient(-45deg, #f8fafc, #f1f5f9, #e2e8f0, #f0f9ff, #f8fafc);
   background-size: 360% 360%;
