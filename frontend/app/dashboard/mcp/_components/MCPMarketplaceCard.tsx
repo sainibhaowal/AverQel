@@ -59,7 +59,7 @@ export default function MCPMarketplaceCard({ entry, connectedServer, onConnect, 
   const preview = entry.tool_preview || [];
   const connectable = entry.connectable;
   return (
-    <article className="flex h-full flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-lg shadow-black/10 transition hover:border-white/20 hover:bg-white/[0.07]">
+    <article className="flex h-full min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.07]">
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <MCPLogo entry={entry} />
