@@ -53,3 +53,16 @@ def test_ocr_service_dimension_guard(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_parse_confidences_filters_invalid_values() -> None:
     values = OcrService._parse_confidences(["92", "-1", "foo", 50])
     assert values == [0.92, 0.5]
+
+
+def test_parse_confidences_accepts_paddle_scores() -> None:
+    values = OcrService._parse_confidences([0.92, 0.5])
+    assert values == [0.92, 0.5]
+
+
+def test_extract_paddle_result_reads_text_and_scores() -> None:
+    texts, scores = OcrService._extract_paddle_result(
+        [{"res": {"rec_texts": ["Hello", "", "World"], "rec_scores": [0.9, 0.8]}}]
+    )
+    assert texts == ["Hello", "World"]
+    assert scores == [0.9, 0.8]

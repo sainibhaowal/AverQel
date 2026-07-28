@@ -24,7 +24,8 @@ python-docx==1.2.0
 python-pptx==1.0.2
 openpyxl==3.1.5
 pillow==12.1.1
-pytesseract==0.3.13
+paddlepaddle==3.3.1
+paddleocr==3.7.0
 pypdfium2==4.30.0
 pgvector==0.4.1
 tenacity==9.1.2

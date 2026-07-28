@@ -396,7 +396,9 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
 
     ocr_enabled: bool = True
-    ocr_engine: Literal["tesseract", "paddleocr"] = "tesseract"
+    ocr_engine: Literal["paddleocr"] = "paddleocr"
+    ocr_device: Literal["cpu", "gpu"] = "cpu"
+    ocr_enable_mkldnn: bool = False
     ocr_timeout_seconds: int = 20
     ocr_max_pages: int = 200
     ocr_min_confidence: float = 0.45

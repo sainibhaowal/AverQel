@@ -13,7 +13,7 @@ class _FakeOcrService:
             text="Detected text from image",
             confidence=0.88,
             warnings=["ocr_low_confidence"],
-            engine="tesseract",
+            engine="paddleocr",
         )
 
 

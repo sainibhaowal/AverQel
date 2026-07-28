@@ -15,7 +15,7 @@ class _FakeOcr:
             text="1. Overview\nColumn A | Column B\n10 | 20\nThe body paragraph is here.",
             confidence=0.74,
             warnings=[],
-            engine="tesseract",
+            engine="paddleocr",
         )
 
 
