@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -15,6 +16,8 @@ from app.platform.database.session import get_session_factory, set_db_tenant_con
 from app.system.models.audit_log import AuditLog
 from app.system.models.break_glass_grant import BreakGlassGrant
 from tests.conftest import SeededUser, _generate_test_collection_code
+
+pytestmark = pytest.mark.db_commit
 
 
 def _login(client: TestClient, seeded: SeededUser) -> str:

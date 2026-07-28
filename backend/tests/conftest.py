@@ -4,12 +4,14 @@ import base64
 import json
 import logging
 import os
+import re
 import secrets
 import socket
 import subprocess
 import sys
 import time
 from collections.abc import Callable, Iterator
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import SplitResult, urlsplit, urlunsplit
@@ -321,8 +323,18 @@ SOURCE_DATABASE_NAME = (
     if TEST_DATABASE_NAME.endswith("_test")
     else "knowledge"
 )
+TEST_TEMPLATE_DATABASE_NAME = f"{SOURCE_DATABASE_NAME}_test_template"
 RUNTIME_CACHE_DIR = Path(
     os.environ.get("AVERQEL_RUNTIME_CACHE_DIR", "/tmp/averqel/backend/cache")
+)
+_DATABASE_TEST_FIXTURE_NAMES = {"client", "db_session", "seed_user"}
+_DATABASE_SOURCE_TOKENS = (
+    "get_session_factory(",
+    "SessionLocal(",
+    "get_db(",
+    "create_engine(",
+    "sessionmaker(",
+    "app.platform.database",
 )
 
 
@@ -376,15 +388,23 @@ def _all_selected_tests_use_no_db_bootstrap(session: pytest.Session) -> bool:
 
 
 def _is_strict_test_bootstrap() -> bool:
-    return os.environ.get("CI", "").strip().lower() in {
+    if os.environ.get("AKS_TEST_ALLOW_BOOTSTRAP_SKIP", "").strip().lower() in {
         "1",
         "true",
         "yes",
-    } or os.environ.get("AKS_TEST_STRICT_BOOTSTRAP", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
+    }:
+        return False
+    # Database-backed runs must never silently become false-green runs. The
+    # explicit escape hatch above is reserved for local diagnosis.
+    return True
+
+
+def _database_identifier(name: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        raise TestDatabaseBootstrapUnavailableError(
+            f"unsafe PostgreSQL test database name: {name!r}"
+        )
+    return f'"{name}"'
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -417,8 +437,33 @@ def pytest_collection_modifyitems(
         path = str(getattr(item, "path", getattr(item, "fspath", ""))).replace(
             "\\", "/"
         )
-        if "/tests/integration/" in path or "/tests/e2e/" in path:
-            item.add_marker(pytest.mark.xdist_group("db_serial"))
+        if (
+            "/tests/unit/" in path
+            and item.get_closest_marker("unit_no_db") is None
+            and item.get_closest_marker("db") is None
+        ):
+            try:
+                source = Path(path).read_text(encoding="utf-8")
+            except OSError:
+                source = ""
+            fixture_names = set(getattr(item, "fixturenames", ()))
+            has_database_dependency = bool(
+                fixture_names & _DATABASE_TEST_FIXTURE_NAMES
+            ) or any(token in source for token in _DATABASE_SOURCE_TOKENS)
+            if not has_database_dependency:
+                # Conservative source-level classification for unit modules
+                # that use fakes/mocks only. A module can opt out with
+                # pytestmark = pytest.mark.db when it gains a database path.
+                item.add_marker(pytest.mark.unit_no_db)
+
+        if item.get_closest_marker("unit_no_db") is None:
+            item.add_marker(pytest.mark.db)
+        if "/tests/e2e/" in path:
+            item.add_marker(pytest.mark.e2e)
+            # E2E tests exercise shared object-storage/application workflows;
+            # keep those workflows serialized until they have explicit
+            # per-test storage namespaces.
+            item.add_marker(pytest.mark.xdist_group("e2e_serial"))
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -448,10 +493,44 @@ def clean_database(
         return
 
     get_settings.cache_clear()
-    _truncate_test_tables()
-    yield
-    _truncate_test_tables()
-    get_settings.cache_clear()
+    use_transaction = (
+        request.node.get_closest_marker("db_commit") is None
+        and request.node.get_closest_marker("e2e") is None
+    )
+    if not use_transaction:
+        try:
+            yield
+        finally:
+            _truncate_test_tables()
+            get_settings.cache_clear()
+        return
+
+    engine = get_engine()
+    connection = engine.connect()
+    transaction = connection.begin()
+    session_factory = get_session_factory()
+    # Every application/test session opened during this test joins the same
+    # worker-local outer transaction. SQLAlchemy uses SAVEPOINTs for commit()
+    # so existing tests retain real commit semantics while the outer rollback
+    # removes all state at test teardown.
+    session_factory.configure(
+        bind=connection,
+        join_transaction_mode="create_savepoint",
+    )
+    try:
+        yield
+    finally:
+        with suppress(Exception):
+            transaction.rollback()
+        with suppress(Exception):
+            session_factory.configure(bind=engine)
+        with suppress(Exception):
+            connection.close()
+        with suppress(Exception):
+            engine.dispose()
+        reset_db_state()
+        _reset_in_memory_and_redis_state()
+        get_settings.cache_clear()
 
 
 @pytest.fixture
@@ -633,12 +712,26 @@ def _grant_test_database_access(connection) -> None:
     )
 
 
+def _grant_database_access(test_url, database_name: str) -> None:
+    database_engine = create_engine(
+        test_url.set(database=database_name).render_as_string(hide_password=False),
+        pool_pre_ping=True,
+    )
+    try:
+        with database_engine.begin() as connection:
+            _grant_test_database_access(connection)
+    finally:
+        database_engine.dispose()
+
+
 def _reset_test_database_from_template() -> None:
-    # -----------------------------------------------------------------------
-    # When using xdist, 12 workers will try to run pg_dump simultaneously.
-    # Docker/PostgreSQL can hang or crash underneath this load, causing
-    # the test pipeline to deadlock. We enforce creation one-by-one safely.
-    # -----------------------------------------------------------------------
+    """Create the worker database from one migrated template.
+
+    The template is rebuilt only when the source Alembic revision changes.
+    Worker databases are then created with PostgreSQL's native TEMPLATE
+    operation, avoiding a pg_dump/restore and Alembic run for every xdist
+    worker.
+    """
     RUNTIME_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     lock_path = RUNTIME_CACHE_DIR / "pytest-postgres-clone.lock"
     with filelock.FileLock(str(lock_path)):
@@ -650,6 +743,7 @@ def _reset_test_database_from_template() -> None:
                 pool_pre_ping=True,
             )
             try:
+                _ensure_test_database_template(admin_engine, test_url)
                 for _ in range(3):
                     try:
                         with admin_engine.connect().execution_options(
@@ -663,10 +757,16 @@ def _reset_test_database_from_template() -> None:
                                 {"name": TEST_DATABASE_NAME},
                             )
                             connection.execute(
-                                text(f'DROP DATABASE IF EXISTS "{TEST_DATABASE_NAME}"')
+                                text(
+                                    f"DROP DATABASE IF EXISTS "
+                                    f"{_database_identifier(TEST_DATABASE_NAME)}"
+                                )
                             )
                             connection.execute(
-                                text(f'CREATE DATABASE "{TEST_DATABASE_NAME}"')
+                                text(
+                                    f"CREATE DATABASE {_database_identifier(TEST_DATABASE_NAME)} "
+                                    f"TEMPLATE {_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}"
+                                )
                             )
                         break
                     except OperationalError:
@@ -679,105 +779,122 @@ def _reset_test_database_from_template() -> None:
                 admin_engine.dispose()
 
             _wait_for_database(TEST_DATABASE_NAME)
-
-            schema_dump = subprocess.run(
-                [
-                     "docker",
-                     "exec",
-                     "averqel-postgres",
-                     "pg_dump",
-                     "-U",
-                     "postgres",
-                     "--schema-only",
-                     "--no-owner",
-                     SOURCE_DATABASE_NAME,
-                ],
-                check=True,
-                capture_output=True,
-            ).stdout
-            _restore_dump_into_database(TEST_DATABASE_NAME, schema_dump)
-
-            seed_dump = subprocess.run(
-                [
-                     "docker",
-                     "exec",
-                     "averqel-postgres",
-                     "pg_dump",
-                     "-U",
-                     "postgres",
-                     "--data-only",
-                     "--column-inserts",
-                     "--table=roles",
-                     "--table=alembic_version",
-                     SOURCE_DATABASE_NAME,
-                ],
-                check=True,
-                capture_output=True,
-            ).stdout
-            _restore_dump_into_database(TEST_DATABASE_NAME, seed_dump)
-            subprocess.run(
-                [*ALEMBIC_COMMAND, "upgrade", "heads"],
-                cwd=os.path.dirname(os.path.dirname(__file__)),
-                check=True,
-                env=os.environ.copy(),
-            )
-            with admin_engine.connect().execution_options(
-                isolation_level="AUTOCOMMIT"
-            ) as connection:
-                _grant_test_database_access(connection)
+            _grant_database_access(test_url, TEST_DATABASE_NAME)
         except Exception as exc:
-            logger.warning(
-                "Database clone reset failed; falling back to local Alembic bootstrap: %s",
-                exc,
-            )
-            _bootstrap_test_database_without_clone()
-    # The FileLock from the top will be released here.
+            raise TestDatabaseBootstrapUnavailableError(
+                "isolated PostgreSQL test bootstrap failed; refusing to run "
+                "against a shared or partially initialized database"
+            ) from exc
 
 
-def _bootstrap_test_database_without_clone() -> None:
-    """Best-effort test bootstrap when Docker clone/reset is unavailable."""
-    test_url = make_url(os.environ["AKS_DATABASE_URL"])
-    admin_url = test_url.set(database="postgres")
+def _database_revisions(engine, database_name: str) -> tuple[str, ...]:
+    database_engine = engine.execution_options(isolation_level="AUTOCOMMIT")
     try:
-        admin_engine = create_engine(
-            admin_url.render_as_string(hide_password=False),
+        with database_engine.connect() as connection:
+            return tuple(
+                str(value)
+                for value in connection.execute(
+                    text("SELECT version_num FROM alembic_version ORDER BY version_num")
+                ).scalars()
+            )
+    except (OperationalError, ProgrammingError):
+        return ()
+
+
+def _ensure_test_database_template(admin_engine, test_url) -> None:
+    template_exists = False
+    source_revisions: tuple[str, ...] = ()
+    try:
+        with admin_engine.connect() as connection:
+            template_exists = bool(
+                connection.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                    {"name": TEST_TEMPLATE_DATABASE_NAME},
+                ).scalar()
+            )
+        source_engine = create_engine(
+            test_url.set(database=SOURCE_DATABASE_NAME).render_as_string(
+                hide_password=False
+            ),
             pool_pre_ping=True,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("unable to initialize test database engine") from exc
+        source_revisions = _database_revisions(source_engine, SOURCE_DATABASE_NAME)
+        source_engine.dispose()
+    except Exception:
+        source_revisions = ()
 
-    try:
-        with admin_engine.connect().execution_options(
-            isolation_level="AUTOCOMMIT"
-        ) as connection:
-            exists = connection.execute(
-                text("SELECT 1 FROM pg_database WHERE datname = :name"),
-                {"name": TEST_DATABASE_NAME},
-            ).scalar()
-            if not exists:
-                connection.execute(text(f'CREATE DATABASE "{TEST_DATABASE_NAME}"'))
-    except Exception as exc:  # noqa: BLE001
-        raise TestDatabaseBootstrapUnavailableError(
-            f"could not create test database {TEST_DATABASE_NAME} via admin connection"
-        ) from exc
-    finally:
-        admin_engine.dispose()
-
-    try:
-        subprocess.run(
-            [*ALEMBIC_COMMAND, "upgrade", "head"],
-            cwd=os.path.dirname(os.path.dirname(__file__)),
-            check=True,
-            env=os.environ.copy(),
+    if template_exists and source_revisions:
+        template_engine = create_engine(
+            test_url.set(database=TEST_TEMPLATE_DATABASE_NAME).render_as_string(
+                hide_password=False
+            ),
+            pool_pre_ping=True,
         )
-        with admin_engine.connect().execution_options(
-            isolation_level="AUTOCOMMIT"
-        ) as connection:
-            _grant_test_database_access(connection)
-    except subprocess.CalledProcessError as exc:
-        raise TestDatabaseBootstrapUnavailableError(
-            "local Alembic bootstrap could not initialize the test database"
-        ) from exc
+        template_revisions = _database_revisions(
+            template_engine, TEST_TEMPLATE_DATABASE_NAME
+        )
+        template_engine.dispose()
+        if template_revisions == source_revisions:
+            return
+
+    with admin_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        connection.execute(
+            text(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = :name AND pid <> pg_backend_pid()"
+            ),
+            {"name": TEST_TEMPLATE_DATABASE_NAME},
+        )
+        connection.execute(
+            text(
+                f"DROP DATABASE IF EXISTS "
+                f"{_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}"
+            )
+        )
+        connection.execute(
+            text(f"CREATE DATABASE {_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}")
+        )
+
+    schema_dump = subprocess.run(
+        [
+            "docker", "exec", "averqel-postgres", "pg_dump", "-U", "postgres",
+            "--schema-only", "--no-owner", SOURCE_DATABASE_NAME,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=120,
+    ).stdout
+    _restore_dump_into_database(TEST_TEMPLATE_DATABASE_NAME, schema_dump)
+    seed_dump = subprocess.run(
+        [
+            "docker", "exec", "averqel-postgres", "pg_dump", "-U", "postgres",
+            "--data-only", "--column-inserts", "--table=roles",
+            "--table=alembic_version", SOURCE_DATABASE_NAME,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=120,
+    ).stdout
+    _restore_dump_into_database(TEST_TEMPLATE_DATABASE_NAME, seed_dump)
+    template_env = os.environ.copy()
+    template_env["AKS_DATABASE_URL"] = test_url.set(
+        database=TEST_TEMPLATE_DATABASE_NAME
+    ).render_as_string(hide_password=False)
+    subprocess.run(
+        [*ALEMBIC_COMMAND, "upgrade", "heads"],
+        cwd=os.path.dirname(os.path.dirname(__file__)),
+        check=True,
+        env=template_env,
+        timeout=120,
+    )
+    _grant_database_access(test_url, TEST_TEMPLATE_DATABASE_NAME)
+    with admin_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        connection.execute(
+            text(
+                f"ALTER DATABASE {_database_identifier(TEST_TEMPLATE_DATABASE_NAME)} "
+                "IS_TEMPLATE TRUE"
+            )
+        )
 
 
 def _wait_for_database(
@@ -799,10 +916,11 @@ def _wait_for_database(
                     "-tAc",
                     f"SELECT 1 FROM pg_database WHERE datname = '{database_name}'",
                 ],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
             if result.stdout.strip() == "1":
                 return
         except subprocess.CalledProcessError as exc:
@@ -839,6 +957,7 @@ def _restore_dump_into_database(
                 ],
                 input=dump_bytes,
                 check=True,
+                timeout=120,
             )
             return
         except subprocess.CalledProcessError as exc:

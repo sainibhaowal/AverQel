@@ -28,6 +28,10 @@ asyncio_default_fixture_loop_scope = "function"
 cache_dir = ".cache/pytest"
 markers = [
     "unit_no_db: tests that can run without the database bootstrap",
+    "db: tests that require the isolated PostgreSQL/Redis test fixtures",
+    "db_commit: database tests that require real commits and cleanup isolation",
+    "external: tests that require an explicitly enabled external service",
+    "e2e: end-to-end tests reserved for release validation",
     "xdist_group(name): assign a test to a named xdist loadgroup",
 ]
 filterwarnings = [

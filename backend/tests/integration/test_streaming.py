@@ -300,7 +300,7 @@ async def test_stream_execute_emits_thinking_events_when_supported(settings, see
 
 
 @pytest.mark.asyncio
-async def test_stream_execute_ignores_reasoning_chunks_when_thinking_disabled(
+async def test_stream_execute_forwards_reasoning_chunks_when_thinking_disabled(
     settings, seed_user
 ):
     user_data = seed_user(
@@ -390,7 +390,9 @@ async def test_stream_execute_ignores_reasoning_chunks_when_thinking_disabled(
 
         meta_payload = next(payload for event, payload in frames if event == "meta")
 
-        assert ("thinking", {"text": "Thinking..."}) not in frames
+        # Provider-emitted reasoning is always forwarded. The flag controls
+        # optional request capabilities, not receipt of provider deltas.
+        assert ("thinking", {"text": "Thinking..."}) in frames
         assert any(event == "trace" for event, _payload in frames)
         assert meta_payload.get("reasoning_trace") is not None
         assert ("delta", {"text": "Final"}) in frames

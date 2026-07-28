@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import text
 
 from app.deepspace.models.agent_activity import AgentActivity
@@ -13,6 +14,8 @@ from app.integrations.services.connector_orchestrator import ConnectorOrchestrat
 from app.integrations.services.health_utils import build_health_report, future_iso
 from app.platform.database.session import get_session_factory
 from app.system.models.audit_log import AuditLog
+
+pytestmark = pytest.mark.db_commit
 
 
 def _seed_connector(
