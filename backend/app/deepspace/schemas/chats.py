@@ -124,6 +124,27 @@ class MemoryFactSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
+class MemoryWriteRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=120)
+    value: str = Field(min_length=1, max_length=10000)
+    scope: str = Field(default="user", max_length=20)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    importance_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MemoryUpdateRequest(BaseModel):
+    value: str = Field(min_length=1, max_length=10000)
+    scope: str = Field(default="user", max_length=20)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    importance_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class MemoryRetentionQuerySchema(BaseModel):
     query: str
     matches: int

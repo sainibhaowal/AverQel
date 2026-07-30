@@ -242,6 +242,67 @@ NOTE_WRITE_TOOL = {
         },
     },
 }
+MEMORY_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "memory_search",
+        "description": "Search the user's tenant-scoped DeepSpace memories for relevant prior facts or preferences.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "query": {"type": "string", "minLength": 1, "maxLength": 1000},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 10},
+            },
+            "required": ["query"],
+        },
+    },
+}
+MEMORY_READ_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "memory_read",
+        "description": "Read one exact DeepSpace memory by key when the key is known.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 120}},
+            "required": ["key"],
+        },
+    },
+}
+MEMORY_WRITE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "memory_write",
+        "description": "Save a durable user fact or preference only when the user explicitly asks to remember it or clearly states a lasting preference.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "key": {"type": "string", "minLength": 1, "maxLength": 120},
+                "value": {"type": "string", "minLength": 1, "maxLength": 10000},
+                "scope": {"type": "string", "enum": ["user", "session"]},
+                "tags": {"type": "array", "items": {"type": "string", "maxLength": 60}, "maxItems": 20},
+                "importance_score": {"type": "number", "minimum": 0, "maximum": 1},
+            },
+            "required": ["key", "value"],
+        },
+    },
+}
+MEMORY_FORGET_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "memory_forget",
+        "description": "Remove a user or session memory only when the user explicitly asks to forget it.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 120}},
+            "required": ["key"],
+        },
+    },
+}
 FINAL_TOOL = {
     "type": "function",
     "function": {
@@ -267,6 +328,10 @@ PRODUCTIVITY_TOOLS = [
     ANALYZE_TOOL,
     NOTE_READ_TOOL,
     NOTE_WRITE_TOOL,
+    MEMORY_SEARCH_TOOL,
+    MEMORY_READ_TOOL,
+    MEMORY_WRITE_TOOL,
+    MEMORY_FORGET_TOOL,
     URL_READ_TOOL,
     IMAGE_READ_TOOL,
     ASK_USER_TOOL,
@@ -412,6 +477,10 @@ class DeepSpaceChatService:
             return "researching", "Reading the requested public URL safely."
         if tool_name == "image_read":
             return "researching", "Inspecting the requested image safely."
+        if tool_name in {"memory_search", "memory_read"}:
+            return "recalling", "Recalling relevant DeepSpace memory."
+        if tool_name in {"memory_write", "memory_forget"}:
+            return "memory", "Updating DeepSpace memory safely."
         if tool_name == "ask_user":
             return "awaiting_user", "Waiting for the information needed to continue."
         if tool_name == "final":
@@ -559,6 +628,49 @@ class DeepSpaceChatService:
                 markdown=str(arguments.get("markdown") or ""),
                 mode=str(arguments.get("mode") or "replace"),
             )
+        if tool_name == "memory_search":
+            from app.deepspace.memory.memory_service import MemoryService
+
+            return {
+                "memories": await MemoryService(self.db, self.settings).search_memories(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    query=str(arguments.get("query") or "")[:1000],
+                    limit=min(10, max(1, int(arguments.get("limit") or 5))),
+                )
+            }
+        if tool_name == "memory_read":
+            from app.deepspace.memory.memory_service import MemoryService
+
+            value = await MemoryService(self.db, self.settings).retrieve_fact(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                key=str(arguments.get("key") or "")[:120],
+            )
+            return {"key": str(arguments.get("key") or "")[:120], "value": value}
+        if tool_name == "memory_write":
+            from app.deepspace.memory.memory_service import MemoryService
+
+            memory_id = await MemoryService(self.db, self.settings).store_fact(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                key=str(arguments.get("key") or "")[:120],
+                value=str(arguments.get("value") or "")[:10000],
+                scope=str(arguments.get("scope") or "user"),
+                tags=[str(item)[:60] for item in (arguments.get("tags") or []) if str(item).strip()][:20],
+                importance_score=arguments.get("importance_score"),
+                metadata_json={"source": "deepspace_memory_tool", "conversation_id": str(conversation_id)},
+            )
+            return {"memory_id": memory_id, "status": "saved"}
+        if tool_name == "memory_forget":
+            from app.deepspace.memory.memory_service import MemoryService
+
+            deleted = await MemoryService(self.db, self.settings).forget_memory(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                key=str(arguments.get("key") or "")[:120],
+            )
+            return {"key": str(arguments.get("key") or "")[:120], "deleted": deleted}
         if tool_name == "web_search":
             if web_provider is None or web_candidate is None:
                 raise ValueError("No web search provider is configured.")
@@ -1247,6 +1359,10 @@ class DeepSpaceChatService:
                     "Use url_read for a specific public URL, image_read for a public image, and ask_user "
                     "only when required information is missing. Thinking/reasoning text is display-only "
                     "and never controls execution. "
+                    "Use memory_search or memory_read when prior user context is relevant. Use memory_write "
+                    "only for an explicit remember request or a clearly stated lasting preference; never store "
+                    "secrets, credentials, health data, or sensitive personal data without explicit user intent. "
+                    "Use memory_forget only when the user explicitly asks to remove a memory. "
                     "MCP tools may read or modify only the connected account named by the tool. Never "
                     "infer a missing account, scope, recipient, or destructive intent. If an MCP tool "
                     "requires human approval, stop and wait for the approval event; do not claim that "

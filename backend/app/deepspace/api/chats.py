@@ -38,6 +38,8 @@ from app.deepspace.schemas.chats import (
     ConversationUpdate,
     MemoryFactSchema,
     MemoryRetentionReportSchema,
+    MemoryUpdateRequest,
+    MemoryWriteRequest,
     MessageEditRequest,
     MessageSchema,
     MessageVersionSchema,
@@ -657,6 +659,69 @@ async def list_memories(
     return await MemoryService(db).list_all_memories(
         tenant_id=auth.tenant_id, user_id=auth.user_id
     )
+
+
+@router.post("/memory", response_model=MemoryFactSchema, status_code=201)
+async def write_memory(
+    payload: MemoryWriteRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    from app.deepspace.memory.memory_service import MemoryService
+
+    memory_id = await MemoryService(db).store_fact(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        key=payload.key,
+        value=payload.value,
+        scope=payload.scope,
+        tags=payload.tags,
+        importance_score=payload.importance_score,
+        metadata_json=payload.metadata,
+    )
+    memory = await MemoryService(db).get_memory(
+        tenant_id=auth.tenant_id, user_id=auth.user_id, memory_id=memory_id
+    )
+    if memory is None:
+        raise ApiError(code="MEMORY_NOT_FOUND", message="Memory was not available after saving.", status_code=500)
+    return memory
+
+
+@router.patch("/memory/{memory_id}", response_model=MemoryFactSchema)
+async def update_memory(
+    memory_id: str,
+    payload: MemoryUpdateRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    from app.deepspace.memory.memory_service import MemoryService
+
+    memory = await MemoryService(db).update_memory(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        memory_id=memory_id,
+        value=payload.value,
+        scope=payload.scope,
+        tags=payload.tags,
+        importance_score=payload.importance_score,
+        metadata_json=payload.metadata,
+    )
+    if memory is None:
+        raise ApiError(code="MEMORY_NOT_FOUND", message="Memory not found.", status_code=404)
+    return memory
+
+
+@router.delete("/memory/clear", status_code=204)
+async def clear_personal_memory(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> Response:
+    from app.deepspace.memory.memory_service import MemoryService
+
+    await MemoryService(db).clear_personal_memories(
+        tenant_id=auth.tenant_id, user_id=auth.user_id
+    )
+    return Response(status_code=204)
 
 
 @router.delete("/memory/{key}")

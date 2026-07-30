@@ -90,6 +90,51 @@ def test_deepspace_memory_list_delete_and_retrieve(
     assert after_memories[0]["key"] == "news_watch"
 
 
+def test_deepspace_memory_api_supports_write_update_and_clear_personal_memory(
+    client,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    seeded = seed_user(
+        "Memory Management Tenant",
+        "memory-management@example.com",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    headers = _auth_headers(seeded)
+
+    created = client.post(
+        "/api/v1/deepspace/chats/memory",
+        headers=headers,
+        json={
+            "key": "writing_style",
+            "value": "Prefer concise headings and practical examples.",
+            "scope": "user",
+            "tags": ["preference", "writing"],
+            "importance_score": 0.8,
+        },
+    )
+    assert created.status_code == 201
+    memory_id = created.json()["id"]
+    assert created.json()["scope"] == "user"
+
+    updated = client.patch(
+        f"/api/v1/deepspace/chats/memory/{memory_id}",
+        headers=headers,
+        json={
+            "value": "Prefer concise headings, practical examples, and Markdown tables.",
+            "scope": "user",
+            "tags": ["preference", "writing", "markdown"],
+            "importance_score": 0.9,
+        },
+    )
+    assert updated.status_code == 200
+    assert "Markdown tables" in updated.json()["value"]
+
+    cleared = client.delete("/api/v1/deepspace/chats/memory/clear", headers=headers)
+    assert cleared.status_code == 204
+    assert client.get("/api/v1/deepspace/chats/memory", headers=headers).json() == []
+
+
 def test_deepspace_memory_uses_real_embeddings_scoring_and_dedupes(
     db_session,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],

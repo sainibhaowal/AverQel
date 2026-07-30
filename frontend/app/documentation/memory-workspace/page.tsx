@@ -4,7 +4,7 @@ export default function MemoryWorkspaceDocsPage() {
   return (
     <DocsShell
       title="Memory & Workspace"
-      intro="AverQel keeps persistent user memory and conversation history available across sessions without requiring an IDE-style filesystem or background task system."
+      intro="DeepSpace keeps tenant-scoped memory available across sessions without requiring an IDE-style filesystem or a second memory manager in Settings."
     >
       <DocsCards
         items={[
@@ -38,7 +38,9 @@ export default function MemoryWorkspaceDocsPage() {
 
       <DocsSection title="What users notice">
         <ul className="list-disc space-y-2 pl-6">
-          <li>saved memories can be searched and removed</li>
+          <li>saved memories can be searched, edited, exported, and removed from DeepSpace</li>
+          <li>DeepSpace can save explicit remember requests and lasting preferences through its memory tools</li>
+          <li>retention, duplicate cleanup, embedding health, and personal-memory clearing stay in the DeepSpace memory workspace</li>
           <li>chat history survives page reloads</li>
           <li>there is no context meter, task ledger, proactive monitor, or runtime dashboard</li>
         </ul>

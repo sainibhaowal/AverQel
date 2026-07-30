@@ -549,6 +549,100 @@ class MemoryService:
         memories = self.db.execute(stmt).scalars().all()
         return [self._memory_to_dict(memory) for memory in memories]
 
+    async def get_memory(
+        self, *, tenant_id: str, user_id: str, memory_id: str
+    ) -> dict[str, Any] | None:
+        tenant_id = self._normalize_owner_id(tenant_id)
+        user_id = self._normalize_owner_id(user_id)
+        memory = self.db.execute(
+            select(AgentMemory).where(
+                AgentMemory.id == str(memory_id),
+                AgentMemory.tenant_id == tenant_id,
+                or_(AgentMemory.user_id == user_id, AgentMemory.scope == "global"),
+            )
+        ).scalar_one_or_none()
+        return self._memory_to_dict(memory) if memory is not None else None
+
+    async def update_memory(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        memory_id: str,
+        value: str,
+        scope: str = "user",
+        tags: list[str] | None = None,
+        importance_score: float | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Update an owned memory and regenerate its embedding safely."""
+        tenant_id = self._normalize_owner_id(tenant_id)
+        user_id = self._normalize_owner_id(user_id)
+        memory = self.db.execute(
+            select(AgentMemory).where(
+                AgentMemory.id == str(memory_id),
+                AgentMemory.tenant_id == tenant_id,
+                AgentMemory.user_id == user_id,
+            )
+        ).scalar_one_or_none()
+        if memory is None:
+            return None
+        normalized_value = value.strip()
+        normalized_scope = self._normalize_scope(scope)
+        if not normalized_value:
+            raise ValueError("value is required")
+        if normalized_scope == "global":
+            raise ValueError("Only explicitly shared memory may use global scope.")
+        normalized_tags = sorted(set(str(tag).strip() for tag in (tags or []) if str(tag).strip()))
+        content_hash = self._content_hash(
+            key=memory.key, value=normalized_value, scope=normalized_scope
+        )
+        duplicate = self.db.execute(
+            select(AgentMemory).where(
+                AgentMemory.tenant_id == tenant_id,
+                AgentMemory.content_hash == content_hash,
+                AgentMemory.id != str(memory_id),
+                AgentMemory.user_id == user_id,
+            )
+        ).scalar_one_or_none()
+        if duplicate is not None:
+            raise ValueError("An equivalent memory already exists.")
+        embedding, embedding_metadata = self._embed_text(
+            f"{memory.key}\n{normalized_value}", tenant_id=tenant_id, user_id=user_id
+        )
+        memory.value = normalized_value
+        memory.scope = normalized_scope
+        memory.tags = normalized_tags
+        memory.importance_score = self._importance_from_inputs(
+            key=memory.key,
+            value=normalized_value,
+            tags=normalized_tags,
+            explicit=importance_score,
+        )
+        memory.metadata_json = dict(metadata_json or {})
+        memory.embedding = embedding
+        memory.embedding_vector = embedding
+        memory.embedding_provider = embedding_metadata.get("provider")
+        memory.embedding_model = embedding_metadata.get("model")
+        memory.embedding_version = MEMORY_EMBEDDING_VERSION
+        memory.content_hash = content_hash
+        memory.updated_at = datetime.now(UTC)
+        self.db.commit()
+        return self._memory_to_dict(memory)
+
+    async def clear_personal_memories(self, *, tenant_id: str, user_id: str) -> int:
+        tenant_id = self._normalize_owner_id(tenant_id)
+        user_id = self._normalize_owner_id(user_id)
+        result = self.db.execute(
+            delete(AgentMemory).where(
+                AgentMemory.tenant_id == tenant_id,
+                AgentMemory.user_id == user_id,
+                AgentMemory.scope.in_(("user", "session")),
+            )
+        )
+        self.db.commit()
+        return int(result.rowcount or 0)
+
     async def forget_memory(self, *, tenant_id: str, user_id: str, key: str) -> bool:
         """User can explicitly delete memories by key."""
         tenant_id = self._normalize_owner_id(tenant_id)

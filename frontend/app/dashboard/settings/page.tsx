@@ -10,7 +10,6 @@ import {
   ArrowRight,
   MessageSquare,
   Sparkles,
-  Brain,
 } from "lucide-react";
 
 import { useAuth } from "@/app/context/AuthContext";
@@ -75,15 +74,6 @@ export default function SettingsPage() {
       accent: "text-success",
       accentBg: "bg-success/10 border-success/20",
       glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(var(--success),0.35)]",
-    },
-    {
-      title: "Autonomous Memory",
-      href: "/dashboard/settings/memory",
-      icon: <Brain size={20} />,
-      desc: "Audit and manage the persistent facts and knowledge AverQel has acquired.",
-      accent: "text-primary",
-      accentBg: "bg-primary/10 border-primary/20",
-      glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(var(--primary),0.35)]",
     },
   ];
 

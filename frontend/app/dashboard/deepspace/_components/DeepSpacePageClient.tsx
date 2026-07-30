@@ -20,6 +20,7 @@ import toast from "react-hot-toast";
 
 import DeepSpaceChatClient from "./DeepSpaceChatClient";
 import DeepSpaceEditor, { type DeepSpaceEditorHandle } from "./DeepSpaceEditor";
+import MemoryPanel from "./MemoryPanel";
 
 export interface DeepSpaceNote {
   id: string;
@@ -332,6 +333,7 @@ export default function DeepSpacePageClient() {
   const isStackedLayout = viewportWidth > 0 && viewportWidth < MOBILE_STACKED_BREAKPOINT;
   const showNotesPanel = panelMode === "split" || panelMode === "notes";
   const showChatPanel = panelMode === "split" || panelMode === "chat";
+  const showMemoryPanel = panelMode === "memory";
   const panelTransition: Transition = isStackedLayout
     ? { duration: 0.16, ease: "easeOut" }
     : { type: "spring", damping: 24, stiffness: 220 };
@@ -495,6 +497,18 @@ export default function DeepSpacePageClient() {
           ) : null}
 
           <AnimatePresence initial={false} mode="popLayout">
+            {showMemoryPanel ? (
+              <motion.section
+                key="memory-panel"
+                initial={{ opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 24 }}
+                transition={panelTransition}
+                className="h-full min-h-0 min-w-0 flex-1 overflow-hidden"
+              >
+                <MemoryPanel />
+              </motion.section>
+            ) : null}
             {showChatPanel ? (
               <motion.section
                 key="chat-panel"

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.deepspace.services.chat_service import DeepSpaceChatService
+from app.deepspace.services.chat_service import PRODUCTIVITY_TOOLS, DeepSpaceChatService
 from app.deepspace.services.runtime_policy import DeepSpaceToolPolicy
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.url_reader import validate_public_url
@@ -18,8 +18,21 @@ def test_deepspace_policy_blocks_ide_and_mcp_tools() -> None:
 
     assert policy.decide("url_read", {}).allowed
     assert policy.mode("write") == "write"
+    assert policy.mode("memory_search") == "read"
+    assert policy.mode("memory_write") == "write"
+    assert policy.mode("memory_forget") == "write"
     assert not policy.decide("terminal", {}).allowed
     assert not policy.decide("mcp_call", {}).allowed
+
+
+def test_deepspace_exposes_scoped_memory_tools() -> None:
+    names = {
+        item["function"]["name"]
+        for item in PRODUCTIVITY_TOOLS
+        if isinstance(item.get("function"), dict)
+    }
+
+    assert {"memory_search", "memory_read", "memory_write", "memory_forget"}.issubset(names)
 
 
 def test_url_reader_rejects_private_targets(monkeypatch: pytest.MonkeyPatch) -> None:
