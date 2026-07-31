@@ -14,7 +14,7 @@ export default function MemoryWorkspaceDocsPage() {
           },
           {
             title: "Conversation History",
-            body: "Saved conversations remain available through the chat history surface and can be reopened after a reload.",
+            body: "Saved conversations are the complete transcript. Memory never copies the whole chat, and conversations can be reopened after a reload.",
           },
           {
             title: "Search",
@@ -28,9 +28,9 @@ export default function MemoryWorkspaceDocsPage() {
       />
 
       <DocsSection title="Memory scopes">
-        <p>AverQel distinguishes between temporary conversation context and durable user memory.</p>
+        <p>AverQel keeps conversation history, temporary working memory, and durable memory separate so recalled context stays useful and small.</p>
         <ul className="list-disc space-y-2 pl-6">
-          <li>session context supports the current conversation</li>
+          <li>session memory is temporary, can be linked to a conversation, and expires automatically</li>
           <li>user memory stores durable user-specific facts and preferences</li>
           <li>memory access remains tenant-scoped and permission-checked</li>
         </ul>
@@ -40,6 +40,9 @@ export default function MemoryWorkspaceDocsPage() {
         <ul className="list-disc space-y-2 pl-6">
           <li>saved memories can be searched, edited, exported, and removed from DeepSpace</li>
           <li>DeepSpace can save explicit remember requests and lasting preferences through its memory tools</li>
+          <li>optional automatic capture creates small reviewable candidates from clear durable preferences; sensitive information is never auto-saved</li>
+          <li>only active, relevant memories are recalled, using a bounded relevance, importance, confidence, and freshness ranking</li>
+          <li>answers can identify the memories that were used, and inferred candidates can be approved or discarded</li>
           <li>retention, duplicate cleanup, embedding health, and personal-memory clearing stay in the DeepSpace memory workspace</li>
           <li>chat history survives page reloads</li>
           <li>there is no context meter, task ledger, proactive monitor, or runtime dashboard</li>

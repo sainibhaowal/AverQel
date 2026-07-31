@@ -7,12 +7,13 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, delete, or_, select
+from sqlalchemy import and_, case, delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.ids import generate_uuid7_with_fallback
 from app.deepspace.models.agent_memory import AgentMemory
+from app.deepspace.models.agent_memory_preferences import AgentMemoryPreferences
 from app.deepspace.models.agent_todo import AgentTodo
 from app.ingestion.services.embedding_service import EmbeddingService
 
@@ -21,6 +22,10 @@ logger = logging.getLogger(__name__)
 MEMORY_EMBEDDING_VERSION = "deepspace-memory-v1"
 SESSION_MEMORY_RETENTION_DAYS = 7
 MEMORY_DECAY_HALF_LIFE_DAYS = 120.0
+MAX_MEMORY_RETRIEVAL_ITEMS = 8
+MEMORY_STATUS_ACTIVE = "active"
+MEMORY_STATUS_PENDING = "pending"
+MEMORY_STATUS_ARCHIVED = "archived"
 
 
 class MemoryService:
@@ -41,6 +46,11 @@ class MemoryService:
             "scope": memory.scope,
             "tags": list(memory.tags or []),
             "importance_score": float(memory.importance_score or 0.0),
+            "confidence_score": float(memory.confidence_score or 0.0),
+            "status": str(memory.status or MEMORY_STATUS_ACTIVE),
+            "source": memory.source,
+            "conversation_id": memory.conversation_id,
+            "expires_at": memory.expires_at.isoformat() if memory.expires_at else None,
             "access_count": int(memory.access_count or 0),
             "last_accessed_at": (
                 memory.last_accessed_at.isoformat() if memory.last_accessed_at else None
@@ -53,6 +63,36 @@ class MemoryService:
             "decay_score": None,
             "created_at": memory.created_at.isoformat() if memory.created_at else None,
             "updated_at": memory.updated_at.isoformat() if memory.updated_at else None,
+        }
+
+    @staticmethod
+    def _active_memory_clause(*, now: datetime | None = None):
+        now = now or datetime.now(UTC)
+        return and_(
+            AgentMemory.status == MEMORY_STATUS_ACTIVE,
+            or_(AgentMemory.expires_at.is_(None), AgentMemory.expires_at > now),
+        )
+
+    @staticmethod
+    def _accessible_memory_clause(*, user_id: str, conversation_id: str | None = None):
+        user_scopes = AgentMemory.scope.in_(("user", "session"))
+        user_owned = and_(AgentMemory.user_id == user_id, user_scopes)
+        if conversation_id is not None:
+            user_owned = and_(
+                user_owned,
+                or_(
+                    AgentMemory.scope != "session",
+                    AgentMemory.conversation_id == str(conversation_id),
+                ),
+            )
+        return or_(user_owned, AgentMemory.scope == "global")
+
+    @staticmethod
+    def _preferences_to_dict(preferences: AgentMemoryPreferences) -> dict[str, bool]:
+        return {
+            "automatic_capture_enabled": bool(preferences.automatic_capture_enabled),
+            "review_inferred_memories": bool(preferences.review_inferred_memories),
+            "memory_retrieval_enabled": bool(preferences.memory_retrieval_enabled),
         }
 
     @staticmethod
@@ -218,6 +258,146 @@ class MemoryService:
         except (TypeError, ValueError):
             return None
 
+    async def get_preferences(self, *, tenant_id: str, user_id: str) -> dict[str, bool]:
+        tenant_id = self._normalize_owner_id(tenant_id)
+        user_id = self._normalize_owner_id(user_id)
+        preferences = self.db.execute(
+            select(AgentMemoryPreferences).where(
+                AgentMemoryPreferences.tenant_id == tenant_id,
+                AgentMemoryPreferences.user_id == user_id,
+            )
+        ).scalar_one_or_none()
+        if preferences is None:
+            preferences = AgentMemoryPreferences(tenant_id=tenant_id, user_id=user_id)
+            self.db.add(preferences)
+            self.db.commit()
+        return self._preferences_to_dict(preferences)
+
+    async def update_preferences(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        automatic_capture_enabled: bool | None = None,
+        review_inferred_memories: bool | None = None,
+        memory_retrieval_enabled: bool | None = None,
+    ) -> dict[str, bool]:
+        tenant_id = self._normalize_owner_id(tenant_id)
+        user_id = self._normalize_owner_id(user_id)
+        preferences = self.db.execute(
+            select(AgentMemoryPreferences).where(
+                AgentMemoryPreferences.tenant_id == tenant_id,
+                AgentMemoryPreferences.user_id == user_id,
+            )
+        ).scalar_one_or_none()
+        if preferences is None:
+            preferences = AgentMemoryPreferences(tenant_id=tenant_id, user_id=user_id)
+            self.db.add(preferences)
+        if automatic_capture_enabled is not None:
+            preferences.automatic_capture_enabled = bool(automatic_capture_enabled)
+        if review_inferred_memories is not None:
+            preferences.review_inferred_memories = bool(review_inferred_memories)
+        if memory_retrieval_enabled is not None:
+            preferences.memory_retrieval_enabled = bool(memory_retrieval_enabled)
+        preferences.updated_at = datetime.now(UTC)
+        self.db.commit()
+        return self._preferences_to_dict(preferences)
+
+    @staticmethod
+    def _is_sensitive_candidate(value: str) -> bool:
+        lowered = value.lower()
+        blocked_terms = (
+            "password",
+            "api key",
+            "access token",
+            "refresh token",
+            "secret key",
+            "private key",
+            "credential",
+            "credit card",
+            "social security",
+            "medical",
+            "diagnosis",
+            "health condition",
+        )
+        return any(term in lowered for term in blocked_terms)
+
+    @staticmethod
+    def _candidate_from_prompt(prompt: str) -> tuple[str, str, list[str], float] | None:
+        """Extract only a clear, durable preference/fact without an extra LLM call.
+
+        This deliberately ignores ordinary questions and full chat transcripts. It is a
+        bounded convenience feature, not self-training or hidden profile building.
+        """
+        normalized = " ".join(str(prompt or "").strip().split())
+        if len(normalized) < 12 or len(normalized) > 600:
+            return None
+        patterns = (
+            (r"\b(?:i|we)\s+prefer\s+(.+)", "preference", 0.9),
+            (r"\b(?:i|we)\s+(?:always|never)\s+(.+)", "workflow", 0.82),
+            (r"\bmy\s+([a-z][a-z0-9 _-]{1,50})\s+is\s+(.+)", "project_fact", 0.8),
+        )
+        for pattern, tag, confidence in patterns:
+            match = re.search(pattern, normalized, flags=re.IGNORECASE)
+            if match is None:
+                continue
+            if tag == "project_fact":
+                key = re.sub(r"[^a-z0-9]+", "_", match.group(1).lower()).strip("_")
+                value = f"My {match.group(1).strip()} is {match.group(2).strip()}"
+            else:
+                key = f"{tag}_{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:12]}"
+                value = normalized
+            return key[:120], value[:1000], [tag, "inferred"], confidence
+        return None
+
+    async def consolidate_turn(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        conversation_id: str,
+        prompt: str,
+    ) -> dict[str, Any] | None:
+        """Create at most one reviewable durable-memory candidate after a successful turn."""
+        preferences = await self.get_preferences(tenant_id=tenant_id, user_id=user_id)
+        if not preferences["automatic_capture_enabled"]:
+            return None
+        candidate = self._candidate_from_prompt(prompt)
+        if candidate is None:
+            return None
+        key, value, tags, confidence = candidate
+        if self._is_sensitive_candidate(value):
+            return {"status": "blocked_sensitive", "reason": "sensitive_content"}
+        tenant_id = self._normalize_owner_id(tenant_id)
+        user_id = self._normalize_owner_id(user_id)
+        existing = self.db.execute(
+            select(AgentMemory).where(
+                AgentMemory.tenant_id == tenant_id,
+                AgentMemory.user_id == user_id,
+                AgentMemory.content_hash == self._content_hash(key=key, value=value, scope="user"),
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return {"status": "duplicate", "memory_id": str(existing.id)}
+        memory_id = await self.store_fact(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            key=key,
+            value=value,
+            scope="user",
+            tags=tags,
+            importance_score=0.65,
+            confidence_score=confidence,
+            source="conversation_consolidation",
+            conversation_id=conversation_id,
+            status=(MEMORY_STATUS_PENDING if preferences["review_inferred_memories"] else MEMORY_STATUS_ACTIVE),
+            metadata_json={"inferred": True, "source_message": "latest_user_turn"},
+        )
+        return {
+            "status": "pending" if preferences["review_inferred_memories"] else "saved",
+            "memory_id": memory_id,
+        }
+
     async def store_fact(
         self,
         *,
@@ -228,6 +408,11 @@ class MemoryService:
         scope: str = "user",
         tags: list[str] | None = None,
         importance_score: float | None = None,
+        confidence_score: float | None = None,
+        source: str | None = None,
+        conversation_id: str | None = None,
+        status: str = MEMORY_STATUS_ACTIVE,
+        expires_at: datetime | None = None,
         metadata_json: dict[str, Any] | None = None,
     ) -> str:
         """Store a deduplicated, embedding-backed memory fact."""
@@ -246,6 +431,10 @@ class MemoryService:
                     "scope": scope,
                     "tags": tags,
                     "importance_score": importance_score,
+                    "confidence_score": confidence_score,
+                    "source": source,
+                    "conversation_id": conversation_id,
+                    "status": status,
                     "metadata_json": metadata_json,
                 },
                 channel=channel,
@@ -254,6 +443,11 @@ class MemoryService:
         normalized_key = key.strip()
         normalized_value = value.strip()
         normalized_scope = self._normalize_scope(scope)
+        normalized_status = (
+            status if status in {MEMORY_STATUS_ACTIVE, MEMORY_STATUS_PENDING} else MEMORY_STATUS_ACTIVE
+        )
+        if normalized_scope == "session" and expires_at is None:
+            expires_at = datetime.now(UTC) + timedelta(days=SESSION_MEMORY_RETENTION_DAYS)
         if not normalized_key:
             raise ValueError("key is required")
         if not normalized_value:
@@ -285,6 +479,14 @@ class MemoryService:
             existing.key = normalized_key
             existing.value = normalized_value
             existing.scope = normalized_scope
+            existing.status = normalized_status
+            existing.source = source or existing.source
+            existing.conversation_id = conversation_id or existing.conversation_id
+            existing.expires_at = expires_at or existing.expires_at
+            existing.confidence_score = max(
+                float(existing.confidence_score or 0.0),
+                max(0.0, min(1.0, float(confidence_score if confidence_score is not None else 1.0))),
+            )
             existing.content_hash = content_hash
             existing.importance_score = max(
                 float(existing.importance_score or 0.0), importance
@@ -298,6 +500,27 @@ class MemoryService:
                 existing.tags = sorted(set((existing.tags or []) + tags))
             mem_id = existing.id
         else:
+            if normalized_status == MEMORY_STATUS_ACTIVE and normalized_scope == "user" and source in {
+                "manual_memory",
+                "deepspace_memory_tool",
+                "user_edit",
+            }:
+                conflicting_memories = self.db.execute(
+                    select(AgentMemory).where(
+                        AgentMemory.tenant_id == tenant_id,
+                        AgentMemory.user_id == user_id,
+                        AgentMemory.scope == "user",
+                        AgentMemory.status == MEMORY_STATUS_ACTIVE,
+                        AgentMemory.key == normalized_key,
+                    )
+                ).scalars().all()
+                for conflicting in conflicting_memories:
+                    conflicting.status = MEMORY_STATUS_ARCHIVED
+                    conflicting.metadata_json = {
+                        **dict(conflicting.metadata_json or {}),
+                        "superseded_at": datetime.now(UTC).isoformat(),
+                        "superseded_by_key": normalized_key,
+                    }
             importance = self._importance_from_inputs(
                 key=normalized_key,
                 value=normalized_value,
@@ -322,6 +545,11 @@ class MemoryService:
                 embedding_version=MEMORY_EMBEDDING_VERSION,
                 content_hash=content_hash,
                 importance_score=importance,
+                confidence_score=max(0.0, min(1.0, float(confidence_score if confidence_score is not None else 1.0))),
+                status=normalized_status,
+                source=(str(source).strip()[:120] if source else None),
+                conversation_id=(str(conversation_id).strip()[:120] if conversation_id else None),
+                expires_at=expires_at,
                 access_count=0,
                 metadata_json={
                     **dict(metadata_json or {}),
@@ -339,7 +567,13 @@ class MemoryService:
         return mem_id
 
     async def search_memories(
-        self, *, tenant_id: str, user_id: str, query: str, limit: int = 5
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        query: str,
+        limit: int = 5,
+        conversation_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return semantically ranked memories scoped to the current tenant/user."""
         tenant_id = self._normalize_owner_id(tenant_id)
@@ -351,7 +585,7 @@ class MemoryService:
             return await client_proxy_registry.db_proxy_call(
                 str(tenant_id), str(user_id),
                 "db.memories.search_memories",
-                {"query": query, "limit": limit},
+                {"query": query, "limit": limit, "conversation_id": conversation_id},
                 channel=channel,
             )
 
@@ -366,17 +600,18 @@ class MemoryService:
             tenant_id=tenant_id,
             user_id=user_id,
             query_embedding=query_embedding,
-            limit=max(limit * 12, 50),
+            limit=max(min(limit, MAX_MEMORY_RETRIEVAL_ITEMS) * 12, 50),
+            conversation_id=conversation_id,
         )
         if candidates_with_distance is None:
             stmt = (
                 select(AgentMemory)
                 .where(
                     AgentMemory.tenant_id == tenant_id,
-                    or_(
-                        AgentMemory.user_id == user_id,
-                        AgentMemory.scope.in_(("session", "global")),
+                    self._accessible_memory_clause(
+                        user_id=user_id, conversation_id=conversation_id
                     ),
+                    self._active_memory_clause(),
                 )
                 .order_by(
                     self._scope_priority_clause(),
@@ -412,16 +647,18 @@ class MemoryService:
             )
             freshness = self._freshness_score(memory, now=now)
             importance = max(0.0, min(1.0, float(memory.importance_score or 0.0)))
+            confidence = max(0.0, min(1.0, float(memory.confidence_score or 0.0)))
             scope_bonus = {
                 "session": 0.1,
                 "user": 0.06,
                 "global": 0.03,
             }.get(str(memory.scope or "user"), 0.0)
             score = (
-                semantic * 0.56
-                + lexical * 0.22
+                semantic * 0.52
+                + lexical * 0.2
                 + importance * 0.1
-                + freshness * 0.08
+                + confidence * 0.1
+                + freshness * 0.04
                 + scope_bonus
             )
             if score > 0:
@@ -436,7 +673,7 @@ class MemoryService:
                 continue
             seen_dedupe_keys.add(dedupe_key)
             deduped.append(scored_item)
-        selected = deduped[: max(1, limit)]
+        selected = deduped[: min(MAX_MEMORY_RETRIEVAL_ITEMS, max(1, limit))]
         for _score, _semantic, _lexical, _freshness, memory in selected:
             memory.access_count = int(memory.access_count or 0) + 1
             memory.last_accessed_at = now
@@ -462,6 +699,7 @@ class MemoryService:
         user_id: str,
         query_embedding: list[float],
         limit: int,
+        conversation_id: str | None = None,
     ) -> list[tuple[AgentMemory, float | None]] | None:
         """Use native pgvector ranking when the database supports it."""
         try:
@@ -470,10 +708,10 @@ class MemoryService:
                 select(AgentMemory, distance.label("distance"))
                 .where(
                     AgentMemory.tenant_id == tenant_id,
-                    or_(
-                        AgentMemory.user_id == user_id,
-                        AgentMemory.scope.in_(("session", "global")),
+                    self._accessible_memory_clause(
+                        user_id=user_id, conversation_id=conversation_id
                     ),
+                    self._active_memory_clause(),
                     AgentMemory.embedding_vector.is_not(None),
                 )
                 .order_by(distance.asc())
@@ -493,7 +731,12 @@ class MemoryService:
         ]
 
     async def retrieve_fact(
-        self, *, tenant_id: str, user_id: str, key: str | None
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        key: str | None,
+        conversation_id: str | None = None,
     ) -> str | None:
         """Return the latest fact stored under the provided key."""
         tenant_id = self._normalize_owner_id(tenant_id)
@@ -506,10 +749,10 @@ class MemoryService:
             select(AgentMemory)
             .where(
                 AgentMemory.tenant_id == tenant_id,
-                or_(
-                    AgentMemory.user_id == user_id,
-                    AgentMemory.scope.in_(("session", "global")),
+                self._accessible_memory_clause(
+                    user_id=user_id, conversation_id=conversation_id
                 ),
+                self._active_memory_clause(),
                 AgentMemory.key == normalized_key,
             )
             .order_by(
@@ -526,20 +769,20 @@ class MemoryService:
         return memory.value if memory else None
 
     async def list_all_memories(
-        self, *, tenant_id: str, user_id: str
+        self, *, tenant_id: str, user_id: str, include_archived: bool = False
     ) -> list[dict[str, Any]]:
         """List all persisted memories accessible to the current tenant/user."""
         tenant_id = self._normalize_owner_id(tenant_id)
         user_id = self._normalize_owner_id(user_id)
+        filters = [
+            AgentMemory.tenant_id == tenant_id,
+            self._accessible_memory_clause(user_id=user_id),
+        ]
+        if not include_archived:
+            filters.append(AgentMemory.status != MEMORY_STATUS_ARCHIVED)
         stmt = (
             select(AgentMemory)
-            .where(
-                AgentMemory.tenant_id == tenant_id,
-                or_(
-                    AgentMemory.user_id == user_id,
-                    AgentMemory.scope.in_(("session", "global")),
-                ),
-            )
+            .where(*filters)
             .order_by(
                 self._scope_priority_clause(),
                 AgentMemory.updated_at.desc(),
@@ -558,7 +801,7 @@ class MemoryService:
             select(AgentMemory).where(
                 AgentMemory.id == str(memory_id),
                 AgentMemory.tenant_id == tenant_id,
-                or_(AgentMemory.user_id == user_id, AgentMemory.scope == "global"),
+                self._accessible_memory_clause(user_id=user_id),
             )
         ).scalar_one_or_none()
         return self._memory_to_dict(memory) if memory is not None else None
@@ -573,6 +816,7 @@ class MemoryService:
         scope: str = "user",
         tags: list[str] | None = None,
         importance_score: float | None = None,
+        confidence_score: float | None = None,
         metadata_json: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Update an owned memory and regenerate its embedding safely."""
@@ -583,6 +827,7 @@ class MemoryService:
                 AgentMemory.id == str(memory_id),
                 AgentMemory.tenant_id == tenant_id,
                 AgentMemory.user_id == user_id,
+                AgentMemory.status != MEMORY_STATUS_ARCHIVED,
             )
         ).scalar_one_or_none()
         if memory is None:
@@ -603,6 +848,7 @@ class MemoryService:
                 AgentMemory.content_hash == content_hash,
                 AgentMemory.id != str(memory_id),
                 AgentMemory.user_id == user_id,
+                AgentMemory.status == MEMORY_STATUS_ACTIVE,
             )
         ).scalar_one_or_none()
         if duplicate is not None:
@@ -619,6 +865,19 @@ class MemoryService:
             tags=normalized_tags,
             explicit=importance_score,
         )
+        memory.confidence_score = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    confidence_score
+                    if confidence_score is not None
+                    else memory.confidence_score or 1.0
+                ),
+            ),
+        )
+        memory.status = MEMORY_STATUS_ACTIVE
+        memory.source = "user_edit"
         memory.metadata_json = dict(metadata_json or {})
         memory.embedding = embedding
         memory.embedding_vector = embedding
@@ -629,6 +888,43 @@ class MemoryService:
         memory.updated_at = datetime.now(UTC)
         self.db.commit()
         return self._memory_to_dict(memory)
+
+    async def approve_memory_candidate(
+        self, *, tenant_id: str, user_id: str, memory_id: str
+    ) -> dict[str, Any] | None:
+        tenant_id = self._normalize_owner_id(tenant_id)
+        user_id = self._normalize_owner_id(user_id)
+        memory = self.db.execute(
+            select(AgentMemory).where(
+                AgentMemory.id == str(memory_id),
+                AgentMemory.tenant_id == tenant_id,
+                AgentMemory.user_id == user_id,
+                AgentMemory.status == MEMORY_STATUS_PENDING,
+            )
+        ).scalar_one_or_none()
+        if memory is None:
+            return None
+        memory.status = MEMORY_STATUS_ACTIVE
+        memory.source = "user_approved_consolidation"
+        memory.updated_at = datetime.now(UTC)
+        self.db.commit()
+        return self._memory_to_dict(memory)
+
+    async def reject_memory_candidate(
+        self, *, tenant_id: str, user_id: str, memory_id: str
+    ) -> bool:
+        tenant_id = self._normalize_owner_id(tenant_id)
+        user_id = self._normalize_owner_id(user_id)
+        result = self.db.execute(
+            delete(AgentMemory).where(
+                AgentMemory.id == str(memory_id),
+                AgentMemory.tenant_id == tenant_id,
+                AgentMemory.user_id == user_id,
+                AgentMemory.status == MEMORY_STATUS_PENDING,
+            )
+        )
+        self.db.commit()
+        return bool(result.rowcount)
 
     async def clear_personal_memories(self, *, tenant_id: str, user_id: str) -> int:
         tenant_id = self._normalize_owner_id(tenant_id)

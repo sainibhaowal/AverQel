@@ -135,6 +135,77 @@ def test_deepspace_memory_api_supports_write_update_and_clear_personal_memory(
     assert client.get("/api/v1/deepspace/chats/memory", headers=headers).json() == []
 
 
+def test_deepspace_memory_preferences_candidates_and_active_retrieval_boundaries(
+    client,
+    db_session,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    seeded = seed_user(
+        "Memory Lifecycle Tenant",
+        "memory-lifecycle@example.com",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    headers = _auth_headers(seeded)
+    preferences = client.patch(
+        "/api/v1/deepspace/chats/memory/preferences",
+        headers=headers,
+        json={"automatic_capture_enabled": True, "review_inferred_memories": True},
+    )
+    assert preferences.status_code == 200
+    assert preferences.json()["automatic_capture_enabled"] is True
+
+    service = MemoryService(db_session)
+    candidate = asyncio.run(
+        service.consolidate_turn(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            conversation_id="conversation-memory-lifecycle",
+            prompt="I prefer concise answers with practical examples.",
+        )
+    )
+    assert candidate is not None
+    assert candidate["status"] == "pending"
+    candidate_id = str(candidate["memory_id"])
+
+    # Pending inferred facts are visible for review but never influence retrieval.
+    pending_search = asyncio.run(
+        service.search_memories(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            query="concise practical examples",
+            conversation_id="conversation-memory-lifecycle",
+        )
+    )
+    assert pending_search == []
+
+    approved = client.post(
+        f"/api/v1/deepspace/chats/memory/{candidate_id}/approve", headers=headers
+    )
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "active"
+
+    active_search = asyncio.run(
+        service.search_memories(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            query="concise practical examples",
+            conversation_id="conversation-memory-lifecycle",
+        )
+    )
+    assert [item["id"] for item in active_search] == [candidate_id]
+
+    sensitive = asyncio.run(
+        service.consolidate_turn(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            conversation_id="conversation-memory-lifecycle",
+            prompt="I prefer my password to be remembered forever.",
+        )
+    )
+    assert sensitive == {"status": "blocked_sensitive", "reason": "sensitive_content"}
+
+
 def test_deepspace_memory_uses_real_embeddings_scoring_and_dedupes(
     db_session,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],

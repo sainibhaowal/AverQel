@@ -110,6 +110,11 @@ class MemoryFactSchema(BaseModel):
     scope: str
     tags: list[str] = Field(default_factory=list)
     importance_score: float | None = None
+    confidence_score: float | None = None
+    status: str = "active"
+    source: str | None = None
+    conversation_id: str | None = None
+    expires_at: datetime | None = None
     access_count: int | None = None
     last_accessed_at: datetime | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -130,6 +135,7 @@ class MemoryWriteRequest(BaseModel):
     scope: str = Field(default="user", max_length=20)
     tags: list[str] = Field(default_factory=list, max_length=20)
     importance_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
@@ -140,7 +146,24 @@ class MemoryUpdateRequest(BaseModel):
     scope: str = Field(default="user", max_length=20)
     tags: list[str] = Field(default_factory=list, max_length=20)
     importance_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    confidence_score: float | None = Field(default=None, ge=0.0, le=1.0)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MemoryPreferencesSchema(BaseModel):
+    automatic_capture_enabled: bool = False
+    review_inferred_memories: bool = True
+    memory_retrieval_enabled: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class MemoryPreferencesUpdateRequest(BaseModel):
+    automatic_capture_enabled: bool | None = None
+    review_inferred_memories: bool | None = None
+    memory_retrieval_enabled: bool | None = None
 
     model_config = ConfigDict(extra="forbid")
 

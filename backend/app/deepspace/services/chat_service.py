@@ -12,6 +12,7 @@ from typing import Any
 
 from app.auth.dependencies import AuthContext
 from app.core.config import Settings
+from app.deepspace.memory.memory_service import MemoryService
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
 from app.deepspace.services.mcp_bridge import DeepSpaceMCPBridge, DeepSpaceMCPTool
 from app.deepspace.services.runtime_policy import DeepSpaceToolPolicy
@@ -631,21 +632,35 @@ class DeepSpaceChatService:
         if tool_name == "memory_search":
             from app.deepspace.memory.memory_service import MemoryService
 
+            memory_service = MemoryService(self.db, self.settings)
+            preferences = await memory_service.get_preferences(
+                tenant_id=auth.tenant_id, user_id=auth.user_id
+            )
+            if not preferences["memory_retrieval_enabled"]:
+                return {"memories": [], "retrieval_disabled": True}
             return {
-                "memories": await MemoryService(self.db, self.settings).search_memories(
+                "memories": await memory_service.search_memories(
                     tenant_id=auth.tenant_id,
                     user_id=auth.user_id,
                     query=str(arguments.get("query") or "")[:1000],
                     limit=min(10, max(1, int(arguments.get("limit") or 5))),
+                    conversation_id=str(conversation_id),
                 )
             }
         if tool_name == "memory_read":
             from app.deepspace.memory.memory_service import MemoryService
 
-            value = await MemoryService(self.db, self.settings).retrieve_fact(
+            memory_service = MemoryService(self.db, self.settings)
+            preferences = await memory_service.get_preferences(
+                tenant_id=auth.tenant_id, user_id=auth.user_id
+            )
+            if not preferences["memory_retrieval_enabled"]:
+                return {"key": str(arguments.get("key") or "")[:120], "value": None, "retrieval_disabled": True}
+            value = await memory_service.retrieve_fact(
                 tenant_id=auth.tenant_id,
                 user_id=auth.user_id,
                 key=str(arguments.get("key") or "")[:120],
+                conversation_id=str(conversation_id),
             )
             return {"key": str(arguments.get("key") or "")[:120], "value": value}
         if tool_name == "memory_write":
@@ -659,6 +674,9 @@ class DeepSpaceChatService:
                 scope=str(arguments.get("scope") or "user"),
                 tags=[str(item)[:60] for item in (arguments.get("tags") or []) if str(item).strip()][:20],
                 importance_score=arguments.get("importance_score"),
+                confidence_score=1.0,
+                source="deepspace_memory_tool",
+                conversation_id=str(conversation_id),
                 metadata_json={"source": "deepspace_memory_tool", "conversation_id": str(conversation_id)},
             )
             return {"memory_id": memory_id, "status": "saved"}
@@ -1378,6 +1396,7 @@ class DeepSpaceChatService:
         answer_parts: list[str] = []
         thinking_parts: list[str] = []
         citations: list[dict[str, Any]] = []
+        used_memories: list[dict[str, Any]] = []
         forced_answer: str | None = None
         seen_tool_calls: dict[str, int] = {}
         pending_images: list[str] = []
@@ -1961,6 +1980,19 @@ class DeepSpaceChatService:
                             for citation in tool_payload.get("citations", []):
                                 if isinstance(citation, dict):
                                     citations.append({**citation, "id": len(citations) + 1})
+                        if tool_name == "memory_search":
+                            for memory in tool_payload.get("memories", []):
+                                if not isinstance(memory, dict) or not memory.get("id"):
+                                    continue
+                                memory_ref = {
+                                    "id": str(memory["id"]),
+                                    "key": str(memory.get("key") or "memory")[:120],
+                                    "source": str(memory.get("source") or "memory"),
+                                }
+                                if memory_ref not in used_memories:
+                                    used_memories.append(memory_ref)
+                            if used_memories:
+                                yield sse("memory_used", {"memories": used_memories})
                         output = json.dumps(tool_payload, ensure_ascii=False, separators=(",", ":"))
                     else:
                         output = str(result.get("error") or f"{tool_name} failed safely.")
@@ -2194,6 +2226,8 @@ class DeepSpaceChatService:
             "model_name": candidate.model_name,
             "task_check": final_task_check,
         }
+        if used_memories:
+            metadata["memory"] = {"used": used_memories[:8]}
         if thinking_parts:
             metadata["thinking"] = {"content": "".join(thinking_parts)}
         self.chat.complete_assistant_message(
@@ -2205,6 +2239,19 @@ class DeepSpaceChatService:
             metadata_json=metadata,
         )
         self.db.commit()
+        if terminal_status == "running" and answer.strip():
+            try:
+                consolidation = await MemoryService(self.db, self.settings).consolidate_turn(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=str(conversation_id),
+                    prompt=prompt,
+                )
+                if consolidation and consolidation.get("status") in {"pending", "saved"}:
+                    yield sse("memory_candidate", consolidation)
+            except Exception:  # noqa: BLE001
+                # Memory convenience work must never fail a completed chat response.
+                logger.warning("DeepSpace memory consolidation failed", exc_info=True)
         if run_id is not None:
             if terminal_status == "awaiting_approval":
                 self.runtime.update_checkpoint(

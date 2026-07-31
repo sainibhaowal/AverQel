@@ -37,6 +37,8 @@ from app.deepspace.schemas.chats import (
     ConversationSchema,
     ConversationUpdate,
     MemoryFactSchema,
+    MemoryPreferencesSchema,
+    MemoryPreferencesUpdateRequest,
     MemoryRetentionReportSchema,
     MemoryUpdateRequest,
     MemoryWriteRequest,
@@ -677,6 +679,8 @@ async def write_memory(
         scope=payload.scope,
         tags=payload.tags,
         importance_score=payload.importance_score,
+        confidence_score=payload.confidence_score,
+        source="manual_memory",
         metadata_json=payload.metadata,
     )
     memory = await MemoryService(db).get_memory(
@@ -685,6 +689,35 @@ async def write_memory(
     if memory is None:
         raise ApiError(code="MEMORY_NOT_FOUND", message="Memory was not available after saving.", status_code=500)
     return memory
+
+
+@router.get("/memory/preferences", response_model=MemoryPreferencesSchema)
+async def get_memory_preferences(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    from app.deepspace.memory.memory_service import MemoryService
+
+    return await MemoryService(db).get_preferences(
+        tenant_id=auth.tenant_id, user_id=auth.user_id
+    )
+
+
+@router.patch("/memory/preferences", response_model=MemoryPreferencesSchema)
+async def update_memory_preferences(
+    payload: MemoryPreferencesUpdateRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    from app.deepspace.memory.memory_service import MemoryService
+
+    return await MemoryService(db).update_preferences(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        automatic_capture_enabled=payload.automatic_capture_enabled,
+        review_inferred_memories=payload.review_inferred_memories,
+        memory_retrieval_enabled=payload.memory_retrieval_enabled,
+    )
 
 
 @router.patch("/memory/{memory_id}", response_model=MemoryFactSchema)
@@ -704,11 +737,44 @@ async def update_memory(
         scope=payload.scope,
         tags=payload.tags,
         importance_score=payload.importance_score,
+        confidence_score=payload.confidence_score,
         metadata_json=payload.metadata,
     )
     if memory is None:
         raise ApiError(code="MEMORY_NOT_FOUND", message="Memory not found.", status_code=404)
     return memory
+
+
+@router.post("/memory/{memory_id}/approve", response_model=MemoryFactSchema)
+async def approve_memory_candidate(
+    memory_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    from app.deepspace.memory.memory_service import MemoryService
+
+    memory = await MemoryService(db).approve_memory_candidate(
+        tenant_id=auth.tenant_id, user_id=auth.user_id, memory_id=memory_id
+    )
+    if memory is None:
+        raise ApiError(code="MEMORY_CANDIDATE_NOT_FOUND", message="Memory candidate not found.", status_code=404)
+    return memory
+
+
+@router.delete("/memory/{memory_id}/candidate", status_code=204)
+async def reject_memory_candidate(
+    memory_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> Response:
+    from app.deepspace.memory.memory_service import MemoryService
+
+    deleted = await MemoryService(db).reject_memory_candidate(
+        tenant_id=auth.tenant_id, user_id=auth.user_id, memory_id=memory_id
+    )
+    if not deleted:
+        raise ApiError(code="MEMORY_CANDIDATE_NOT_FOUND", message="Memory candidate not found.", status_code=404)
+    return Response(status_code=204)
 
 
 @router.delete("/memory/clear", status_code=204)

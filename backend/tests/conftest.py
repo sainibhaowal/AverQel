@@ -727,7 +727,7 @@ def _grant_database_access(test_url, database_name: str) -> None:
 def _reset_test_database_from_template() -> None:
     """Create the worker database from one migrated template.
 
-    The template is rebuilt only when the source Alembic revision changes.
+    The template is rebuilt when the source migration head changes.
     Worker databases are then created with PostgreSQL's native TEMPLATE
     operation, avoiding a pg_dump/restore and Alembic run for every xdist
     worker.
@@ -801,9 +801,29 @@ def _database_revisions(engine, database_name: str) -> tuple[str, ...]:
         return ()
 
 
+def _expected_alembic_heads() -> tuple[str, ...]:
+    """Read migration heads from source, not from a potentially stale dev database."""
+    try:
+        result = subprocess.run(
+            [*ALEMBIC_COMMAND, "heads"],
+            cwd=os.path.dirname(os.path.dirname(__file__)),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return ()
+    return tuple(
+        line.split(maxsplit=1)[0]
+        for line in result.stdout.splitlines()
+        if line.strip() and "(head)" in line
+    )
+
+
 def _ensure_test_database_template(admin_engine, test_url) -> None:
     template_exists = False
-    source_revisions: tuple[str, ...] = ()
+    expected_heads = _expected_alembic_heads()
     try:
         with admin_engine.connect() as connection:
             template_exists = bool(
@@ -812,18 +832,10 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
                     {"name": TEST_TEMPLATE_DATABASE_NAME},
                 ).scalar()
             )
-        source_engine = create_engine(
-            test_url.set(database=SOURCE_DATABASE_NAME).render_as_string(
-                hide_password=False
-            ),
-            pool_pre_ping=True,
-        )
-        source_revisions = _database_revisions(source_engine, SOURCE_DATABASE_NAME)
-        source_engine.dispose()
     except Exception:
-        source_revisions = ()
+        expected_heads = ()
 
-    if template_exists and source_revisions:
+    if template_exists and expected_heads:
         template_engine = create_engine(
             test_url.set(database=TEST_TEMPLATE_DATABASE_NAME).render_as_string(
                 hide_password=False
@@ -834,7 +846,7 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
             template_engine, TEST_TEMPLATE_DATABASE_NAME
         )
         template_engine.dispose()
-        if template_revisions == source_revisions:
+        if template_revisions == expected_heads:
             return
 
     with admin_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
@@ -845,6 +857,15 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
             ),
             {"name": TEST_TEMPLATE_DATABASE_NAME},
         )
+        if template_exists:
+            # PostgreSQL refuses to drop a database while it is marked as a clone
+            # template. Clear the marker before rebuilding for a newer migration head.
+            connection.execute(
+                text(
+                    f"ALTER DATABASE {_database_identifier(TEST_TEMPLATE_DATABASE_NAME)} "
+                    "IS_TEMPLATE FALSE"
+                )
+            )
         connection.execute(
             text(
                 f"DROP DATABASE IF EXISTS "

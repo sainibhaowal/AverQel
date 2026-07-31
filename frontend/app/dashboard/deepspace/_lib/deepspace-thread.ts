@@ -2246,6 +2246,24 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
   const metrics = rehydrateMetricsFromHistory(metadata, message.created_at);
   const agentSteps = normalizeHistoryAgentSteps(metadata.agent_steps);
   const compaction = readConversationCompactionState(metadata.conversation_compaction);
+  const memoryMetadata = metadata.memory;
+  const rawMemoryUsed =
+    memoryMetadata &&
+    typeof memoryMetadata === "object" &&
+    Array.isArray((memoryMetadata as Record<string, unknown>).used)
+      ? ((memoryMetadata as Record<string, unknown>).used as unknown[])
+      : null;
+  const memoryUsed =
+    rawMemoryUsed
+      ? rawMemoryUsed
+          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+          .map((item) => ({
+            id: String(item.id ?? ""),
+            key: String(item.key ?? "memory"),
+            ...(typeof item.source === "string" ? { source: item.source } : {}),
+          }))
+          .filter((item) => item.id)
+      : undefined;
   // Rehydrate timeline from agentSteps if timeline is not explicitly persisted
   let timeline: TimelineStep[] = [];
   if (agentSteps) {
@@ -2333,6 +2351,7 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     timeline,
     metrics,
     compaction,
+    memoryUsed,
     error: persistedError,
   };
 }

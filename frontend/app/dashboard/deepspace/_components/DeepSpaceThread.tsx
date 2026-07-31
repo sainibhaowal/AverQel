@@ -21,6 +21,7 @@ import {
   FileText,
   FileType,
   ShieldCheck,
+  Database,
 } from "lucide-react";
 import { memo, useMemo, useState, useEffect, useRef } from "react";
 
@@ -365,6 +366,18 @@ const MessageBubble = memo(
                   <DeepSpaceMarkdownRenderer content={message.content} />
                 ) : null}
               </div>
+
+              {message.memoryUsed?.length ? (
+                <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.04] px-3 py-2 text-[10px] text-cyan-100/70">
+                  <Database size={12} className="text-cyan-300" />
+                  <span className="font-semibold">Memory used</span>
+                  {message.memoryUsed.map((memory) => (
+                    <span key={memory.id} className="rounded-full border border-cyan-300/15 bg-black/10 px-2 py-0.5">
+                      {memory.key}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
 
               {message.error ? (
                 <div className="mt-6 mb-6 rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-sm shadow-lg shadow-red-500/5">

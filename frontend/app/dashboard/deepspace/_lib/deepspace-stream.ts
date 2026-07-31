@@ -394,6 +394,7 @@ export interface DeepSpaceMessage {
   compaction?: ConversationCompactionState | null;
   currentTurnText?: string;
   readFilesContents?: Record<string, string>;
+  memoryUsed?: Array<{ id: string; key: string; source?: string }>;
 }
 
 export interface AgentStep {

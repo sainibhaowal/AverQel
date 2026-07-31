@@ -30,6 +30,11 @@ type MemoryItem = {
   scope: MemoryScope;
   tags: string[];
   importance_score?: number | null;
+  confidence_score?: number | null;
+  status?: "active" | "pending" | "archived";
+  source?: string | null;
+  conversation_id?: string | null;
+  expires_at?: string | null;
   access_count?: number | null;
   last_accessed_at?: string | null;
   embedding_provider?: string | null;
@@ -53,6 +58,12 @@ type MemoryReport = {
   retention_risk_count: number;
 };
 
+type MemoryPreferences = {
+  automatic_capture_enabled: boolean;
+  review_inferred_memories: boolean;
+  memory_retrieval_enabled: boolean;
+};
+
 const MEMORY_ENDPOINT = "/deepspace/chats/memory";
 
 function displayDate(value?: string | null) {
@@ -69,6 +80,7 @@ function scopeLabel(scope: MemoryScope) {
 export default function MemoryPanel() {
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [report, setReport] = useState<MemoryReport | null>(null);
+  const [preferences, setPreferences] = useState<MemoryPreferences | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -79,18 +91,21 @@ export default function MemoryPanel() {
   const [scope, setScope] = useState<MemoryScope>("user");
   const [tags, setTags] = useState("");
   const [importance, setImportance] = useState("0.5");
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const load = async (query = "") => {
     setLoading(true);
     try {
-      const [memoryData, reportData] = await Promise.all([
+      const [memoryData, reportData, preferencesData] = await Promise.all([
         query.trim()
           ? apiV1.get<{ results: MemoryItem[] }>(`${MEMORY_ENDPOINT}/search?query=${encodeURIComponent(query.trim())}`)
           : apiV1.get<MemoryItem[]>(MEMORY_ENDPOINT),
         apiV1.get<MemoryReport>(`${MEMORY_ENDPOINT}/evaluation`),
+        apiV1.get<MemoryPreferences>(`${MEMORY_ENDPOINT}/preferences`),
       ]);
       setMemories(Array.isArray(memoryData) ? memoryData : memoryData.results || []);
       setReport(reportData);
+      setPreferences(preferencesData);
     } catch (error) {
       console.error("Failed to load DeepSpace memory", error);
       toast.error("Memory is temporarily unavailable.");
@@ -138,7 +153,13 @@ export default function MemoryPanel() {
         importance_score: Math.min(1, Math.max(0, Number(importance) || 0.5)),
       };
       if (editing) {
-        await apiV1.patch(`${MEMORY_ENDPOINT}/${encodeURIComponent(editing.id)}`, body);
+        const updateBody = {
+          value: body.value,
+          scope: body.scope,
+          tags: body.tags,
+          importance_score: body.importance_score,
+        };
+        await apiV1.patch(`${MEMORY_ENDPOINT}/${encodeURIComponent(editing.id)}`, updateBody);
         toast.success("Memory updated");
       } else {
         await apiV1.post(MEMORY_ENDPOINT, body);
@@ -184,15 +205,47 @@ export default function MemoryPanel() {
   };
 
   const clearPersonal = async () => {
-    if (!window.confirm("Clear all personal and session memories? Shared global memories will remain.")) return;
     setBusy(true);
     try {
       await apiV1.delete(`${MEMORY_ENDPOINT}/clear`);
       toast.success("Personal memory cleared");
       await load();
+      setConfirmClear(false);
     } catch (error) {
       console.error("Failed to clear memory", error);
       toast.error("Memory could not be cleared.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updatePreferences = async (patch: Partial<MemoryPreferences>) => {
+    setBusy(true);
+    try {
+      const updated = await apiV1.patch<MemoryPreferences>(`${MEMORY_ENDPOINT}/preferences`, patch);
+      setPreferences(updated);
+      toast.success("Memory preference updated");
+    } catch (error) {
+      console.error("Failed to update memory preferences", error);
+      toast.error("Memory preference could not be updated.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reviewCandidate = async (memory: MemoryItem, action: "approve" | "reject") => {
+    setBusy(true);
+    try {
+      if (action === "approve") {
+        await apiV1.post(`${MEMORY_ENDPOINT}/${encodeURIComponent(memory.id)}/approve`);
+      } else {
+        await apiV1.delete(`${MEMORY_ENDPOINT}/${encodeURIComponent(memory.id)}/candidate`);
+      }
+      toast.success(action === "approve" ? "Memory approved" : "Memory candidate discarded");
+      await load(searchQuery);
+    } catch (error) {
+      console.error("Failed to review memory candidate", error);
+      toast.error("Memory candidate could not be updated.");
     } finally {
       setBusy(false);
     }
@@ -209,6 +262,8 @@ export default function MemoryPanel() {
   };
 
   const visibleCount = useMemo(() => memories.length, [memories]);
+  const candidates = useMemo(() => memories.filter((memory) => memory.status === "pending"), [memories]);
+  const activeMemories = useMemo(() => memories.filter((memory) => memory.status !== "pending"), [memories]);
 
   return (
     <div className="bg-background/50 flex h-full min-h-0 flex-col overflow-hidden backdrop-blur-3xl">
@@ -239,21 +294,27 @@ export default function MemoryPanel() {
           <Search size={14} className="text-foreground/30 absolute top-1/2 left-4 -translate-y-1/2" />
           <input type="search" placeholder="Search memories..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void load(searchQuery); }} className="text-foreground/80 focus:border-primary/50 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pr-4 pl-10 text-xs focus:outline-none" />
         </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <PreferenceToggle label="Automatic capture" description="Create reviewable candidates from clear lasting preferences." checked={Boolean(preferences?.automatic_capture_enabled)} disabled={busy} onChange={(checked) => void updatePreferences({ automatic_capture_enabled: checked })} />
+          <PreferenceToggle label="Review inferred" description="Require approval before DeepSpace uses an inferred memory." checked={Boolean(preferences?.review_inferred_memories ?? true)} disabled={busy || !preferences?.automatic_capture_enabled} onChange={(checked) => void updatePreferences({ review_inferred_memories: checked })} />
+          <PreferenceToggle label="Use memory in chat" description="Allow relevant active memories to be recalled in answers." checked={Boolean(preferences?.memory_retrieval_enabled ?? true)} disabled={busy} onChange={(checked) => void updatePreferences({ memory_retrieval_enabled: checked })} />
+        </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         {showForm ? <MemoryForm editing={Boolean(editing)} keyValue={key} value={value} scope={scope} tags={tags} importance={importance} busy={busy} onKeyChange={setKey} onValueChange={setValue} onScopeChange={setScope} onTagsChange={setTags} onImportanceChange={setImportance} onSave={() => void saveMemory()} onCancel={resetForm} /> : null}
 
+        {confirmClear ? <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-400/25 bg-red-400/[0.06] p-3"><p className="text-xs text-red-100/80">Clear all personal and temporary memories? Shared memories remain protected.</p><div className="flex gap-2"><button type="button" onClick={() => setConfirmClear(false)} className="theme-chip rounded-lg px-3 py-1.5 text-xs">Cancel</button><button type="button" onClick={() => void clearPersonal()} disabled={busy} className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-100">Clear memories</button></div></div> : null}
         {loading ? <div className="flex min-h-48 items-center justify-center"><RefreshCw className="text-primary animate-spin" size={22} /></div> : memories.length === 0 ? (
           <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.02] text-center"><Database size={34} className="text-foreground/25" /><p className="text-foreground/60 mt-4 text-sm font-semibold">No memories yet</p><p className="text-foreground/35 mt-2 max-w-sm text-xs">Ask DeepSpace to remember a lasting preference, or save one manually.</p></div>
         ) : (
-          <AnimatePresence mode="popLayout"><div className="space-y-3">{memories.map((memory) => <motion.article key={memory.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="group rounded-xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-primary/30 hover:bg-white/[0.06]">
-            <div className="flex items-start justify-between gap-4"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-foreground/90 text-sm font-bold">{memory.key}</h3><span className="text-primary/80 bg-primary/10 border-primary/20 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase"><ScopeIcon scope={memory.scope} /> {scopeLabel(memory.scope)}</span></div><p className="text-foreground/65 mt-2 whitespace-pre-wrap text-sm leading-relaxed">{memory.value}</p><div className="text-foreground/35 mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px]"><span>{displayDate(memory.updated_at || memory.created_at)}</span><span>Used {memory.access_count ?? 0} times</span><span>Importance {Math.round((memory.importance_score ?? 0) * 100)}%</span><span>{memory.pgvector_ready ? "Vector ready" : "Embedding pending"}</span></div>{memory.tags.length ? <div className="mt-2 flex flex-wrap gap-1">{memory.tags.map((tag) => <span key={tag} className="text-foreground/40 rounded border border-white/10 px-1.5 py-0.5 text-[9px]">#{tag}</span>)}</div> : null}</div>{memory.scope !== "global" ? <div className="flex shrink-0 gap-1 opacity-60 transition group-hover:opacity-100"><button type="button" onClick={() => openEdit(memory)} className="theme-chip rounded-lg px-2 py-1.5 text-[10px]">Edit</button><button type="button" onClick={() => void forgetMemory(memory)} disabled={busy} aria-label="Forget memory" className="rounded-lg p-2 text-red-400/70 hover:bg-red-400/10 hover:text-red-400"><Trash2 size={14} /></button></div> : null}</div>
+          <AnimatePresence mode="popLayout"><div className="space-y-3">{candidates.length ? <section className="rounded-xl border border-amber-400/20 bg-amber-400/[0.04] p-3"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold text-amber-100">Review memory candidates</p><span className="text-[10px] text-amber-100/60">{candidates.length} pending</span></div><div className="space-y-2">{candidates.map((memory) => <CandidateCard key={memory.id} memory={memory} busy={busy} onReview={reviewCandidate} />)}</div></section> : null}{activeMemories.map((memory) => <motion.article key={memory.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="group rounded-xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-primary/30 hover:bg-white/[0.06]">
+            <div className="flex items-start justify-between gap-4"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-foreground/90 text-sm font-bold">{memory.key}</h3><span className="text-primary/80 bg-primary/10 border-primary/20 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase"><ScopeIcon scope={memory.scope} /> {scopeLabel(memory.scope)}</span></div><p className="text-foreground/65 mt-2 whitespace-pre-wrap text-sm leading-relaxed">{memory.value}</p><div className="text-foreground/35 mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px]"><span>{displayDate(memory.updated_at || memory.created_at)}</span><span>Used {memory.access_count ?? 0} times</span><span>Importance {Math.round((memory.importance_score ?? 0) * 100)}%</span><span>Confidence {Math.round((memory.confidence_score ?? 1) * 100)}%</span><span>{memory.pgvector_ready ? "Vector ready" : "Embedding pending"}</span>{memory.expires_at ? <span>Expires {displayDate(memory.expires_at)}</span> : null}</div>{memory.source ? <p className="text-foreground/30 mt-2 text-[10px]">Source: {memory.source.replace(/_/g, " ")}</p> : null}{memory.tags.length ? <div className="mt-2 flex flex-wrap gap-1">{memory.tags.map((tag) => <span key={tag} className="text-foreground/40 rounded border border-white/10 px-1.5 py-0.5 text-[9px]">#{tag}</span>)}</div> : null}</div>{memory.scope !== "global" ? <div className="flex shrink-0 gap-1 opacity-60 transition group-hover:opacity-100"><button type="button" onClick={() => openEdit(memory)} className="theme-chip rounded-lg px-2 py-1.5 text-[10px]">Edit</button><button type="button" onClick={() => void forgetMemory(memory)} disabled={busy} aria-label="Forget memory" className="rounded-lg p-2 text-red-400/70 hover:bg-red-400/10 hover:text-red-400"><Trash2 size={14} /></button></div> : null}</div>
           </motion.article>)}</div></AnimatePresence>
         )}
       </div>
 
-      <footer className="shrink-0 border-t border-white/5 bg-white/[0.03] p-4"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-foreground/40 max-w-2xl text-[10px] leading-relaxed"><span className="text-primary/80 font-bold">Privacy:</span> memories are tenant-scoped and DeepSpace only saves facts when you ask it to remember them or explicitly save them. Global memories are not removed by personal cleanup.</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => void runCleanup("duplicates")} disabled={busy} className="theme-chip rounded-lg px-2.5 py-1.5 text-[10px]">Clean duplicates</button><button type="button" onClick={() => void runCleanup("stale")} disabled={busy} className="theme-chip rounded-lg px-2.5 py-1.5 text-[10px]">Clean expired</button><button type="button" onClick={() => void clearPersonal()} disabled={busy} className="rounded-lg border border-red-400/20 px-2.5 py-1.5 text-[10px] text-red-300/80 hover:bg-red-400/10">Clear personal</button></div></div></footer>
+      <footer className="shrink-0 border-t border-white/5 bg-white/[0.03] p-4"><div className="flex flex-wrap items-center justify-between gap-3"><p className="text-foreground/40 max-w-2xl text-[10px] leading-relaxed"><span className="text-primary/80 font-bold">Privacy:</span> chat history remains separate. Inferred candidates never become active until approved when review is enabled. Sensitive personal data and connector credentials are never auto-saved.</p><div className="flex flex-wrap gap-2"><button type="button" onClick={() => void runCleanup("duplicates")} disabled={busy} className="theme-chip rounded-lg px-2.5 py-1.5 text-[10px]">Clean duplicates</button><button type="button" onClick={() => void runCleanup("stale")} disabled={busy} className="theme-chip rounded-lg px-2.5 py-1.5 text-[10px]">Clean expired</button><button type="button" onClick={() => setConfirmClear(true)} disabled={busy} className="rounded-lg border border-red-400/20 px-2.5 py-1.5 text-[10px] text-red-300/80 hover:bg-red-400/10">Clear personal</button></div></div></footer>
     </div>
   );
 }
@@ -264,6 +325,14 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
 
 function ScopeIcon({ scope }: { scope: MemoryScope }) {
   return scope === "global" ? <Globe size={10} className="inline" /> : <User size={10} className="inline" />;
+}
+
+function PreferenceToggle({ label, description, checked, disabled, onChange }: { label: string; description: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
+  return <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3"><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} className="mt-0.5 accent-cyan-400" /><span><span className="text-foreground/80 block text-[11px] font-semibold">{label}</span><span className="text-foreground/35 mt-1 block text-[10px] leading-relaxed">{description}</span></span></label>;
+}
+
+function CandidateCard({ memory, busy, onReview }: { memory: MemoryItem; busy: boolean; onReview: (memory: MemoryItem, action: "approve" | "reject") => Promise<void> }) {
+  return <div className="rounded-lg border border-amber-400/15 bg-black/10 p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-foreground/85 text-xs font-semibold">{memory.key}</p><p className="text-foreground/55 mt-1 text-xs leading-relaxed">{memory.value}</p><p className="mt-2 text-[10px] text-amber-100/55">Inferred from this conversation · Confidence {Math.round((memory.confidence_score ?? 0) * 100)}%</p></div><div className="flex shrink-0 gap-2"><button type="button" disabled={busy} onClick={() => void onReview(memory, "reject")} className="theme-chip rounded-lg px-2.5 py-1.5 text-[10px]">Discard</button><button type="button" disabled={busy} onClick={() => void onReview(memory, "approve")} className="rounded-lg bg-emerald-400/15 px-2.5 py-1.5 text-[10px] font-semibold text-emerald-100">Approve</button></div></div></div>;
 }
 
 function MemoryForm({ editing, keyValue, value, scope, tags, importance, busy, onKeyChange, onValueChange, onScopeChange, onTagsChange, onImportanceChange, onSave, onCancel }: { editing: boolean; keyValue: string; value: string; scope: MemoryScope; tags: string; importance: string; busy: boolean; onKeyChange: (value: string) => void; onValueChange: (value: string) => void; onScopeChange: (value: MemoryScope) => void; onTagsChange: (value: string) => void; onImportanceChange: (value: string) => void; onSave: () => void; onCancel: () => void }) {
