@@ -8,7 +8,6 @@ import {
   PanelRightClose,
   Bot,
   Database,
-  PanelLeftClose,
   History,
   RefreshCw,
 } from "lucide-react";
@@ -16,7 +15,6 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom";
 import { fetchWithAuth } from "@/lib/api";
 import type { Transition } from "framer-motion";
-import toast from "react-hot-toast";
 
 import DeepSpaceChatClient from "./DeepSpaceChatClient";
 import DeepSpaceEditor, { type DeepSpaceEditorHandle } from "./DeepSpaceEditor";
@@ -133,7 +131,6 @@ export default function DeepSpacePageClient() {
 
   const [leftWidth, setLeftWidth] = useState(48);
   const [isDragging, setIsDragging] = useState(false);
-  const [containerWidth, setContainerWidth] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(0);
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const activeDividerPointerIdRef = useRef<number | null>(null);
@@ -185,7 +182,6 @@ export default function DeepSpacePageClient() {
     return null;
   };
 
-  const activeNoteId = activeNote?.id ?? null;
 
   // ── Lifecycle & Migration ────────────────────────────────────────────────
 
@@ -275,16 +271,6 @@ export default function DeepSpacePageClient() {
   // ── Layout & Resizing ────────────────────────────────────────────────────
 
   useEffect(() => {
-    const container = splitContainerRef.current;
-    if (!container) return;
-    const updateWidth = () => setContainerWidth(container.getBoundingClientRect().width);
-    updateWidth();
-    const observer = new ResizeObserver(() => updateWidth());
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
     const updateViewport = () =>
       setViewportWidth(window.visualViewport?.width || window.innerWidth || 0);
     updateViewport();
@@ -342,10 +328,6 @@ export default function DeepSpacePageClient() {
   useEffect(() => {
     if (isStackedLayout && panelMode === "split") setPanelMode("chat");
   }, [isStackedLayout, panelMode]);
-
-  const collapseChat = () => {
-    setPanelMode("notes");
-  };
 
   if (isInitialLoading) {
     return (

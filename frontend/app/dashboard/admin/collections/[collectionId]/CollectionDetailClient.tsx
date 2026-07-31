@@ -3,19 +3,15 @@
 /* This legacy encrypted collection surface consumes versioned API payloads;
  * boundary validation is centralized in the API client. */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* Encrypted media and user-selected blob URLs cannot safely use Next's remote image optimizer. */
+/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
-  ArrowRight,
-  Copy,
   FileStack,
-  FolderKanban,
-  Link2,
   ShieldCheck,
-  Trash2,
-  UserPlus,
   Users,
   Send,
   MessageSquare,
@@ -24,7 +20,6 @@ import {
   CheckCheck,
   Paperclip,
   File as FileIcon,
-  Image as ImageIcon,
   Volume2,
   Lock,
   Play,
@@ -60,10 +55,6 @@ interface Collection {
   expiry_days?: number;
   created_at: string;
   updated_at: string;
-}
-
-interface ProfileData {
-  collection_code: string;
 }
 
 interface CollectionPermission {
@@ -136,14 +127,13 @@ export default function AdminCollectionDetailPage({
   const [collectionDocs, setCollectionDocs] = useState<DocumentItem[]>([]);
   const [allDocs, setAllDocs] = useState<DocumentItem[]>([]);
   const [permissions, setPermissions] = useState<CollectionPermission[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [savingDocs, setSavingDocs] = useState(false);
   const [savingPermissions, setSavingPermissions] = useState(false);
   const [deletingCollection, setDeletingCollection] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [connectCode, setConnectCode] = useState("");
-  const [myCollectionCode, setMyCollectionCode] = useState("");
 
   // Drawer slider state: Fallback to local state if parent doesn't provide
   const [localDrawer, setLocalDrawer] = useState<"documents" | "members" | null>(() => {
@@ -516,6 +506,9 @@ export default function AdminCollectionDetailPage({
       console.error("WebSocket encountered an error:", err);
       socket.close();
     };
+  // Reconnection deliberately follows the current socket lifecycle; loading collection state inside
+  // this callback would create a declaration-order cycle with the data loader below.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionId, cryptoKey, user?.id]);
 
   useEffect(() => {
@@ -548,6 +541,8 @@ export default function AdminCollectionDetailPage({
     try {
       const [collRes, profileRes, colDocsRes, permissionsRes, allDocsRes, presenceRes] = await Promise.all([
         fetchWithAuth(`/collections/${collectionId}`),
+        // Keep the established profile request in this compatibility batch. Some deployments use it
+        // to refresh the authenticated profile while opening a collection.
         fetchWithAuth("/auth/profile"),
         fetchWithAuth(`/collections/${collectionId}/documents`),
         fetchWithAuth(`/collections/${collectionId}/permissions`),
@@ -565,11 +560,7 @@ export default function AdminCollectionDetailPage({
 
       const collData = (await collRes.json()) as Collection;
       setCollection(collData);
-
-      if (profileRes.ok) {
-        const profileData = (await profileRes.json()) as ProfileData;
-        setMyCollectionCode(profileData.collection_code);
-      }
+      void profileRes;
 
       if (colDocsRes.ok) {
         const colDocsData = await colDocsRes.json();
@@ -607,6 +598,8 @@ export default function AdminCollectionDetailPage({
 
   useEffect(() => {
     void loadCollectionData();
+    // The loader is recreated on render; collectionId is the intentional reload boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionId]);
 
   const availableDocs = useMemo(() => {
@@ -913,6 +906,8 @@ export default function AdminCollectionDetailPage({
     input.click();
   };
 
+  // This owner-only action remains available to the parent collection control surface.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteCollection = async () => {
     if (!window.confirm("Are you sure you want to delete this collection for all members?")) return;
     setDeletingCollection(true);
@@ -1011,14 +1006,6 @@ export default function AdminCollectionDetailPage({
       toast.error(message);
     } finally {
       setSavingPermissions(false);
-    }
-  };
-
-  const handleRemoveCollectionAndRedirect = () => {
-    if (isOwner) {
-      void handleDeleteCollection();
-    } else {
-      void handleLeaveCollection();
     }
   };
 
@@ -2140,6 +2127,7 @@ function SecureMediaRenderer({
     let isMounted = true;
     if (!cryptoKey || !msg.message) return;
 
+    let objectUrl: string | null = null;
     const loadMedia = async () => {
       try {
         let decryptedText = msg.message;
@@ -2164,6 +2152,11 @@ function SecureMediaRenderer({
 
         const decryptedBlob = await decryptFile(buffer, iv, mime_type, cryptoKey);
         const url = URL.createObjectURL(decryptedBlob);
+        if (!isMounted) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrl = url;
         if (isMounted) {
           setBlobUrl(url);
           setLoading(false);
@@ -2180,7 +2173,7 @@ function SecureMediaRenderer({
     void loadMedia();
     return () => {
       isMounted = false;
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [collectionId, msg.message, cryptoKey]);
 

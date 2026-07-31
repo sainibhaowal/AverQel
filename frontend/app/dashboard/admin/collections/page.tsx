@@ -3,6 +3,8 @@
 /* The existing collection API has multiple server response versions; its
  * compatibility boundary is intentionally isolated to this page. */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* User avatars are remote or data URLs and must bypass Next's server image optimizer. */
+/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -18,13 +20,9 @@ import {
   X,
   FileStack,
   Trash2,
-  Calendar,
-  Sparkles,
-  Link2,
   ChevronLeft,
   PanelLeftClose,
   PanelLeftOpen,
-  Settings
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -50,10 +48,6 @@ interface Collection {
 interface Invitation extends Collection {
   inviter_user_id?: string | null;
   inviter_user_email?: string | null;
-}
-
-interface ProfileData {
-  collection_code: string;
 }
 
 export default function AdminCollectionsPage() {
@@ -1160,7 +1154,7 @@ export default function AdminCollectionsPage() {
                         previewAvatar === preset ? "border-amber-500 scale-105" : "border-white/5 hover:border-white/20"
                       }`}
                     >
-                      <img src={preset} className="w-full h-full object-cover" />
+                      <img src={preset} alt="Preset avatar" className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, Check, ChevronDown, Equal, Settings2 } from "lucide-react";
+import { Bot, Check, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface QueryComposerProps {
@@ -129,108 +129,14 @@ function StreamingIcon() {
   );
 }
 
-function TokenIndicator({ used, total }: { used: number; total: number | null }) {
-  const hasKnownTotal = typeof total === "number" && total > 0;
-  const percentage = hasKnownTotal ? Math.min(100, Math.max(0, (used / total) * 100)) : 0;
-  const remaining = hasKnownTotal ? Math.max(total - used, 0) : null;
-  const isWarning = percentage > 80;
-  const isCritical = percentage > 95;
-
-  return (
-    <div className="group relative flex items-center">
-      <div className="relative h-7 w-7 transition-transform group-hover:scale-110">
-        <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 32 32">
-          <circle
-            cx="16"
-            cy="16"
-            r="14"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            className="text-foreground/5"
-          />
-          <motion.circle
-            cx="16"
-            cy="16"
-            r="14"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeDasharray={88}
-            initial={{ strokeDashoffset: 88 }}
-            animate={{ strokeDashoffset: 88 - (88 * percentage) / 100 }}
-            transition={{ duration: 1, ease: "easeOut" }}
-            className={`${
-              isCritical ? "text-danger" : isWarning ? "text-warning" : "text-primary/60"
-            }`}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span
-            className={`text-[8px] font-bold ${isCritical ? "text-danger" : "text-foreground/40"}`}
-          >
-            {hasKnownTotal ? `${Math.round(percentage)}%` : "—"}
-          </span>
-        </div>
-      </div>
-
-      {/* Tooltip - positioned relative to right edge of container to prevent clipping */}
-      <div className="pointer-events-none absolute bottom-full right-0 mb-3 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-4 group-hover:opacity-100">
-        <div className="theme-panel border-glass-border bg-surface-0/95 min-w-[220px] border p-4 shadow-2xl backdrop-blur-xl rounded-2xl">
-          <div className="border-glass-border/40 mb-2 flex items-center justify-between border-b pb-2">
-            <span className="text-foreground/40 text-[10px] font-bold tracking-wider uppercase">
-              Context Usage
-            </span>
-            <span
-              className={`text-[10px] font-bold ${isCritical ? "text-danger" : "text-primary"}`}
-            >
-              {hasKnownTotal ? `${Math.round(percentage)}%` : "unknown"}
-            </span>
-          </div>
-          <div className="space-y-1.5 text-xs">
-            <div className="flex justify-between gap-4">
-              <span className="text-foreground/50">Used</span>
-              <span className="text-foreground font-mono font-medium">{used.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-foreground/50">Available</span>
-              <span className="text-foreground font-mono font-medium">
-                {typeof remaining === "number" ? remaining.toLocaleString() : "unknown"}
-              </span>
-            </div>
-            <div className="border-glass-border/20 flex justify-between gap-4 border-t pt-1.5">
-              <span className="text-foreground/50 font-semibold">Limit</span>
-              <span className="text-foreground/80 font-mono font-bold">
-                {hasKnownTotal ? total.toLocaleString() : "unknown"}
-              </span>
-            </div>
-          </div>
-          {isCritical && (
-            <div className="text-danger/80 mt-2 text-[9px] leading-tight italic">
-              Approaching limit. Older context may be truncated.
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function QueryComposer({
   mode = "query",
   query,
   searchMode,
-  selectedCollectionId,
-  collectionOptions,
-  collectionScopeLoading,
   isStreaming,
-  filtersOpen,
   supportsThinking,
   thinkingEnabled,
   onQueryChange,
-  onSearchModeChange,
-  onCollectionChange,
-  onToggleFilters,
   onThinkingChange,
   onSubmit,
   onStop,
@@ -241,11 +147,6 @@ export default function QueryComposer({
   contextLimit = null,
 }: QueryComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const scopeMenuRef = useRef<HTMLDivElement | null>(null);
-  const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
-  const selectedCollectionName =
-    collectionOptions.find((collection) => collection.id === selectedCollectionId)?.name ??
-    "All accessible documents";
   const isDeepSpace = mode === "deepspace";
 
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);

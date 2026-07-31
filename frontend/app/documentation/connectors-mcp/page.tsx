@@ -84,6 +84,11 @@ export default function ConnectorsMcpDocsPage() {
           before the remote side effect. Blocked tools are not offered to DeepSpace and cannot be
           executed through the MCP runtime.
         </p>
+        <p>
+          A connected server is not globally available. The MCP inspector shows scope-gated access:
+          the connection policy and an explicit enabled conversation override are both required,
+          and a DeepSpace mission needs its own enabled override as well.
+        </p>
       </DocsSection>
 
       <DocsSection title="Remote transport and current limits">

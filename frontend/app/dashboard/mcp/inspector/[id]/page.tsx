@@ -35,6 +35,9 @@ export default function MCPInspector({ params }: { params?: { id: string } }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [activeContext, setActiveContext] = useState<{ conversationId: string; deepSpaceId: string }>({ conversationId: "", deepSpaceId: "" });
   const [callbackMessage, setCallbackMessage] = useState<string | null>(null);
+  const conversationIdParam = searchParams.get("conversation_id");
+  const deepSpaceIdParam = searchParams.get("deepspace_id");
+  const mcpStatusParam = searchParams.get("mcp_status");
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -48,16 +51,16 @@ export default function MCPInspector({ params }: { params?: { id: string } }) {
   useEffect(() => { if (!id || typeof window === "undefined") return; void load(); if (process.env.NODE_ENV === "test") return; const timer = window.setInterval(() => void load(), 10000); return () => window.clearInterval(timer); }, [id, load]);
   useEffect(() => {
     const context = readMCPActiveContext();
-    const conversationId = searchParams.get("conversation_id") || context?.conversation_id || "";
-    const deepSpaceId = searchParams.get("deepspace_id") || context?.deepspace_id || "";
+    const conversationId = conversationIdParam || context?.conversation_id || "";
+    const deepSpaceId = deepSpaceIdParam || context?.deepspace_id || "";
     setActiveContext({ conversationId, deepSpaceId });
-    if (searchParams.get("mcp_status") === "connected") {
+    if (mcpStatusParam === "connected") {
       setCallbackMessage("Connected successfully. Your account, tools, and permissions are ready to configure.");
       const url = new URL(window.location.href);
       url.searchParams.delete("mcp_status");
       window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     }
-  }, [searchParams?.toString()]);
+  }, [conversationIdParam, deepSpaceIdParam, mcpStatusParam]);
 
   const refresh = async () => { setBusy("refresh"); try { await refreshMCPServer(id); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to refresh catalog."); } finally { setBusy(null); } };
   const reconnect = async () => { setBusy("reconnect"); try { const result = await startMCPServerOAuth(id); window.location.assign(result.authorization_url); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to start reconnect."); setBusy(null); } };

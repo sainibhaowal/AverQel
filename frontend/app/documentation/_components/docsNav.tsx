@@ -1,7 +1,6 @@
 import { ReactNode } from "react";
 import {
   BookOpen,
-  Cpu,
   Layers3,
   Network,
   Shield,

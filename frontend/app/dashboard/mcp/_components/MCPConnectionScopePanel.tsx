@@ -36,11 +36,13 @@ export default function MCPConnectionScopePanel({ serverId, initialConversationI
             <h2 className="text-lg font-semibold text-white">DeepSpace End-to-End Connectivity</h2>
           </div>
           <p className="mt-1 text-sm text-emerald-200/80">
-            This MCP connection is <strong>fully wired and active globally</strong> across all your DeepSpace chat sessions, agents, and conversations. You can ask DeepSpace to interact with this connector at any time.
+            Connection ownership is verified server-side. A connected MCP server remains unavailable to
+            DeepSpace until its connection policy and the current conversation scope are explicitly
+            enabled; DeepSpace missions also require their own enabled override.
           </p>
         </div>
         <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-          Global Duplex Wired
+          Scope-gated access
         </span>
       </div>
 
@@ -48,7 +50,7 @@ export default function MCPConnectionScopePanel({ serverId, initialConversationI
 
       <details className="mt-4 group border-t border-white/10 pt-3">
         <summary className="cursor-pointer text-xs text-white/50 hover:text-white/80">
-          Advanced: Inspect specific conversation or DeepSpace mission override
+          Configure a conversation or DeepSpace mission override
         </summary>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <ScopeControl label="Conversation override" value={conversationId} onChange={setConversationId} scope="conversation" current={conversation} loading={loading === "conversation"} onLoad={() => void loadScope("conversation", conversationId)} onToggle={(enabled) => void toggle("conversation", conversationId, enabled)} />

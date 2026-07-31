@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const externalBaseUrl = process.env.DEEPSPACE_E2E_BASE_URL;
+const localBaseUrl = "http://127.0.0.1:3103";
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -9,18 +12,21 @@ export default defineConfig({
   reporter: "line",
   timeout: 30_000,
   use: {
-    baseURL: process.env.DEEPSPACE_E2E_BASE_URL || "http://127.0.0.1:3103",
+    baseURL: externalBaseUrl || localBaseUrl,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  webServer: {
-    command:
-      'bash ./scripts/run-with-runtime-env.sh "/home/ravi/.nvm/versions/node/v22.22.0/bin/node ./node_modules/next/dist/bin/next dev --webpack -p 3103"',
-    url: "http://127.0.0.1:3103",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  // An explicit base URL targets a deployed/staging environment and must never spawn a second
+  // local server. Local runs use the Node resolved from PATH instead of a machine-specific NVM path.
+  webServer: externalBaseUrl
+    ? undefined
+    : {
+        command: 'bash ./scripts/run-with-runtime-env.sh "npx next dev --webpack -p 3103"',
+        url: localBaseUrl,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
   projects: [
     {
       name: "chromium",

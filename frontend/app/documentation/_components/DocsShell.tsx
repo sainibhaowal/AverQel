@@ -6,7 +6,7 @@ import { BookOpen, ChevronRight, Zap } from "lucide-react";
 import { Menu, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import ParticleBackground from "../../components/marketing/ParticleBackground";
-import { docsNav, docsNavGroups } from "./docsNav";
+import { docsNavGroups } from "./docsNav";
 
 export function DocsShell({
   title,

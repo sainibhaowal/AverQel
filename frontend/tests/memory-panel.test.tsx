@@ -14,6 +14,14 @@ vi.mock("framer-motion", () => ({
       delete domProps.layout;
       return <div {...domProps}>{children}</div>;
     },
+    article: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => {
+      const domProps = { ...props };
+      delete domProps.initial;
+      delete domProps.animate;
+      delete domProps.exit;
+      delete domProps.layout;
+      return <article {...domProps}>{children}</article>;
+    },
   },
   AnimatePresence: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
@@ -37,6 +45,7 @@ describe("MemoryPanel", () => {
             key: "workflow_note",
             value: "Prefer concise summaries before sending.",
             scope: "user",
+            tags: [],
             created_at: "2026-06-01T00:00:00.000Z",
           },
         ];
@@ -49,10 +58,31 @@ describe("MemoryPanel", () => {
               key: "search_note",
               value: "Urgent replies should be short.",
               scope: "user",
+              tags: [],
               relevance_score: 0.91,
               created_at: "2026-06-01T00:00:00.000Z",
             },
           ],
+        };
+      }
+      if (endpoint === "/deepspace/chats/memory/evaluation") {
+        return {
+          memory_count: 1,
+          embedded_count: 1,
+          pgvector_count: 1,
+          embedding_coverage: 1,
+          duplicate_count: 0,
+          stale_count: 0,
+          average_decay_score: 1,
+          memory_health_score: 100,
+          retention_risk_count: 0,
+        };
+      }
+      if (endpoint === "/deepspace/chats/memory/preferences") {
+        return {
+          automatic_capture_enabled: true,
+          review_inferred_memories: true,
+          memory_retrieval_enabled: true,
         };
       }
       throw new Error(`Unexpected endpoint: ${endpoint}`);
@@ -61,15 +91,15 @@ describe("MemoryPanel", () => {
     render(<MemoryPanel />);
 
     await waitFor(() => {
-      expect(screen.getByText("Universal Memory")).toBeInTheDocument();
+      expect(screen.getByText("DeepSpace Memory")).toBeInTheDocument();
     });
     expect(await screen.findByText(/Prefer concise summaries before sending\./i)).toBeInTheDocument();
 
-    const input = screen.getByPlaceholderText(/search across sessions/i);
+    const input = screen.getByPlaceholderText(/search memories/i);
     fireEvent.change(input, { target: { value: "urgent" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
 
     expect(await screen.findByText(/Urgent replies should be short\./i)).toBeInTheDocument();
-    expect(screen.getByText(/Score: 91%/i)).toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith("/deepspace/chats/memory/search?query=urgent");
   });
 });

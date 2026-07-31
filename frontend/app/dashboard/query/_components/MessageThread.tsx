@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Sparkles, Layers, GitCompare, FileText, ShieldCheck, Zap, Folder, RefreshCw, Shield } from "lucide-react";
+import { Sparkles, Layers, GitCompare, FileText, ShieldCheck, Folder, RefreshCw } from "lucide-react";
 
 import type { QueryThreadMessage } from "../_lib/stream-protocol";
 

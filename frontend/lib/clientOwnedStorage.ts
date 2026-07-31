@@ -188,6 +188,8 @@ export async function deleteClientOwnedRecord(namespace: string, key: string): P
   });
 }
 
+// Reserved for the desktop client-storage transport. The browser build currently uses REST only.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function websocketUrl(): string | null {
   if (typeof window === "undefined" || typeof WebSocket === "undefined") return null;
   try {
@@ -207,6 +209,9 @@ function websocketUrl(): string | null {
   }
 }
 
+// Reserved for the desktop client-storage transport. Keeping this adapter local prevents browser callers
+// from bypassing the authenticated API boundary.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function handleRpc(request: RpcRequest): Promise<unknown> {
   const params = request.params ?? {};
   const namespace = String(params.namespace ?? "");
