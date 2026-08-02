@@ -5,6 +5,7 @@ import {
   Activity,
   Brain,
   Check,
+  ChevronDown,
   Clock,
   Database,
   Download,
@@ -17,7 +18,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { apiV1 } from "@/lib/api";
 
@@ -336,5 +337,37 @@ function CandidateCard({ memory, busy, onReview }: { memory: MemoryItem; busy: b
 }
 
 function MemoryForm({ editing, keyValue, value, scope, tags, importance, busy, onKeyChange, onValueChange, onScopeChange, onTagsChange, onImportanceChange, onSave, onCancel }: { editing: boolean; keyValue: string; value: string; scope: MemoryScope; tags: string; importance: string; busy: boolean; onKeyChange: (value: string) => void; onValueChange: (value: string) => void; onScopeChange: (value: MemoryScope) => void; onTagsChange: (value: string) => void; onImportanceChange: (value: string) => void; onSave: () => void; onCancel: () => void }) {
-  return <div className="mb-5 rounded-xl border border-primary/20 bg-primary/[0.04] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-foreground/80 text-xs font-bold">{editing ? "Edit memory" : "Save memory"}</p><button type="button" onClick={onCancel} className="text-foreground/50 hover:text-foreground"><X size={15} /></button></div><div className="grid gap-3 md:grid-cols-2"><input value={keyValue} onChange={(event) => onKeyChange(event.target.value)} disabled={editing} placeholder="Key, e.g. writing_style" className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs disabled:opacity-50" /><select value={scope} onChange={(event) => onScopeChange(event.target.value as MemoryScope)} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs"><option value="user">Personal</option><option value="session">Session</option></select><textarea value={value} onChange={(event) => onValueChange(event.target.value)} placeholder="What should DeepSpace remember?" rows={3} className="md:col-span-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs" /><input value={tags} onChange={(event) => onTagsChange(event.target.value)} placeholder="Tags, comma separated" className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs" /><label className="text-foreground/50 flex items-center gap-2 text-xs">Importance <input type="number" min="0" max="1" step="0.05" value={importance} onChange={(event) => onImportanceChange(event.target.value)} className="w-20 rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs" /></label></div><div className="mt-3 flex justify-end gap-2"><button type="button" onClick={onCancel} className="theme-chip rounded-lg px-3 py-2 text-xs">Cancel</button><button type="button" onClick={onSave} disabled={busy} className="bg-primary text-primary-foreground inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold">{busy ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}{editing ? "Update" : "Save"}</button></div></div>;
+  return <div className="mb-5 rounded-xl border border-primary/20 bg-primary/[0.04] p-4"><div className="mb-3 flex items-center justify-between"><p className="text-foreground/80 text-xs font-bold">{editing ? "Edit memory" : "Save memory"}</p><button type="button" onClick={onCancel} className="text-foreground/50 hover:text-foreground"><X size={15} /></button></div><div className="grid gap-3 md:grid-cols-2"><input value={keyValue} onChange={(event) => onKeyChange(event.target.value)} disabled={editing} placeholder="Key, e.g. writing_style" className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs disabled:opacity-50" /><MemoryScopeSelect value={scope} onChange={onScopeChange} /><textarea value={value} onChange={(event) => onValueChange(event.target.value)} placeholder="What should DeepSpace remember?" rows={3} className="md:col-span-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs" /><input value={tags} onChange={(event) => onTagsChange(event.target.value)} placeholder="Tags, comma separated" className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs" /><label className="text-foreground/50 flex items-center gap-2 text-xs">Importance <input type="number" min="0" max="1" step="0.05" value={importance} onChange={(event) => onImportanceChange(event.target.value)} className="w-20 rounded-lg border border-white/10 bg-black/20 px-2 py-2 text-xs" /></label></div><div className="mt-3 flex justify-end gap-2"><button type="button" onClick={onCancel} className="theme-chip rounded-lg px-3 py-2 text-xs">Cancel</button><button type="button" onClick={onSave} disabled={busy} className="bg-primary text-primary-foreground inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold">{busy ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}{editing ? "Update" : "Save"}</button></div></div>;
+}
+
+function MemoryScopeSelect({ value, onChange }: { value: MemoryScope; onChange: (value: MemoryScope) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const options: Array<{ value: Extract<MemoryScope, "user" | "session">; label: string }> = [
+    { value: "user", label: "Personal" },
+    { value: "session", label: "Session" },
+  ];
+  const selected = options.find((option) => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  return <div ref={rootRef} className="relative"><button ref={buttonRef} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((current) => !current)} className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-xs transition-all ${open ? "border-cyan-300/45 bg-cyan-300/[0.08] text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.12)]" : "border-white/10 bg-black/20 text-foreground/85 hover:border-white/20 hover:bg-white/[0.05]"}`}><span>{selected.label}</span><ChevronDown size={15} className={`text-foreground/45 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" /></button>{open ? <div role="listbox" aria-label="Memory scope" className="absolute left-0 top-[calc(100%+0.45rem)] z-50 w-full overflow-hidden rounded-xl border border-white/15 bg-[#101713]/[0.98] p-1.5 shadow-[0_16px_36px_rgba(0,0,0,0.55)] backdrop-blur-xl">{options.map((option) => { const active = option.value === value; return <button key={option.value} type="button" role="option" aria-selected={active} onClick={() => { onChange(option.value); setOpen(false); buttonRef.current?.focus(); }} className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${active ? "bg-cyan-300/15 text-cyan-100" : "text-foreground/70 hover:bg-white/[0.08] hover:text-foreground"}`}><span>{option.label}</span>{active ? <Check size={13} className="text-cyan-300" aria-hidden="true" /> : null}</button>; })}</div> : null}</div>;
 }
