@@ -357,3 +357,14 @@ async def test_deepspace_exposes_tools_to_google_models(monkeypatch):
     names = {item["function"]["name"] for item in (_GoogleToolCaptureProvider.request.tools or [])}
     assert {"todo_write", "web_search", "read", "write"}.issubset(names)
     assert _GoogleToolCaptureProvider.request.tool_choice == "required"
+
+
+def test_explicit_gmail_request_requires_attached_mcp_tool() -> None:
+    binding = SimpleNamespace(server=SimpleNamespace(name="Google Gmail"))
+
+    assert DeepSpaceChatService._requires_connected_service_tool(
+        "check my Gmail with the MCP tool", {"gmail_search": binding}
+    )
+    assert not DeepSpaceChatService._requires_connected_service_tool(
+        "draft a message for my colleague", {"gmail_search": binding}
+    )

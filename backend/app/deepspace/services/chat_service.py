@@ -512,6 +512,50 @@ class DeepSpaceChatService:
         lowered = prompt.lower()
         return any(term in lowered for term in tool_intent_terms)
 
+    @staticmethod
+    def _requires_connected_service_tool(
+        prompt: str, mcp_bindings: dict[str, DeepSpaceMCPTool]
+    ) -> bool:
+        """Require a call when the user explicitly asks for an attached service.
+
+        A short request such as "check my Gmail" used to leave tool choice on
+        ``auto``. Some models then answered from their generic training rather
+        than calling the Gmail tool they had been given. Keep ordinary writing
+        requests conversational, but require a tool when the user names an
+        attached service or explicitly asks to use MCP.
+        """
+        if not mcp_bindings:
+            return False
+        lowered = prompt.casefold()
+        if "mcp" in lowered and any(token in lowered for token in ("tool", "call", "connect")):
+            return True
+
+        service_names = {
+            binding.server.name.casefold().strip()
+            for binding in mcp_bindings.values()
+            if binding.server.name.strip()
+        }
+        # Google Gmail is commonly requested simply as "Gmail" rather than
+        # its full marketplace connection name.
+        if any("gmail" in name for name in service_names):
+            service_names.add("gmail")
+
+        action_terms = (
+            "check",
+            "read",
+            "search",
+            "list",
+            "count",
+            "find",
+            "show",
+            "get",
+            "open",
+            "use",
+        )
+        return any(name and name in lowered for name in service_names) and any(
+            term in lowered for term in action_terms
+        )
+
     async def _execute_productivity_tool(
         self,
         *,
@@ -1348,6 +1392,9 @@ class DeepSpaceChatService:
             mcp_bindings = {}
         mcp_tools = [binding.definition for binding in mcp_bindings.values()]
         available_tools: list[dict[str, Any]] = [*productivity_tools, *web_tools, *mcp_tools]
+        connected_service_tool_required = self._requires_connected_service_tool(
+            prompt, mcp_bindings
+        )
         if available_tools:
             yield sse(
                 "agent_status",
@@ -1398,6 +1445,15 @@ class DeepSpaceChatService:
             },
             *previous,
         ]
+        if mcp_bindings:
+            attached_services = ", ".join(
+                sorted({binding.server.name for binding in mcp_bindings.values()})
+            )
+            conversation_messages[0]["content"] += (
+                f" The following MCP service connection(s) are attached to this conversation: "
+                f"{attached_services}. When the user explicitly requests one of these services, "
+                "call its provided MCP tool; do not claim that the connection is unavailable."
+            )
         if not resume_approval_id:
             conversation_messages.append({"role": "user", "content": prompt})
         answer_parts: list[str] = []
@@ -1622,7 +1678,10 @@ class DeepSpaceChatService:
                         "required"
                         if available_tools
                         and round_index == 1
-                        and self._requires_agent_tools(prompt)
+                        and (
+                            self._requires_agent_tools(prompt)
+                            or connected_service_tool_required
+                        )
                         else ("auto" if available_tools else None)
                     ),
                     metadata={
