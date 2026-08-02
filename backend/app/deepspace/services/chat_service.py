@@ -1236,7 +1236,14 @@ class DeepSpaceChatService:
                 workspace_id=None,
                 actor_user_id=auth.user_id,
             )
+            # Provider resolution can refresh the model metadata cache.  This
+            # method then enters a long-lived streaming response, so leave no
+            # transaction open while tokens or tool calls are in flight.
+            # Otherwise concurrent chats can wait on the cache row lock and
+            # eventually starve unrelated DeepSpace requests of DB connections.
+            self.db.commit()
         except Exception:  # noqa: BLE001
+            self.db.rollback()
             message = "DeepSpace could not resolve an enabled chat provider. Check provider configuration and try again."
             self._persist_stream_failure(
                 assistant_message=assistant_message,

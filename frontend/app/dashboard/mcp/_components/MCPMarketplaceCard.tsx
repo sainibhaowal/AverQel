@@ -2,6 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, ExternalLink } from "lucide-react";
+import type { CSSProperties } from "react";
 
 import type { MCPConnection, MCPMarketplaceEntry } from "@/lib/mcp-api";
 
@@ -11,6 +12,21 @@ const TRUSTED_LOGOS: Record<string, string> = {
   google: "/mcp/google.svg",
   github: "/mcp/github.svg",
 };
+
+const CARD_TINTS = [
+  "rgba(34, 197, 94, 0.62)",
+  "rgba(59, 130, 246, 0.62)",
+  "rgba(239, 68, 68, 0.58)",
+  "rgba(168, 85, 247, 0.58)",
+  "rgba(20, 184, 166, 0.58)",
+];
+
+function cardTint(entry: MCPMarketplaceEntry): string {
+  const key = `${entry.id}:${entry.provider_slug || entry.name}`;
+  let hash = 0;
+  for (const character of key) hash = (hash * 31 + character.charCodeAt(0)) | 0;
+  return CARD_TINTS[Math.abs(hash) % CARD_TINTS.length];
+}
 
 export function resolveTrustedLogoPath(key?: string | null): string | null {
   const normalized = String(key || "").trim().toLowerCase();
@@ -58,9 +74,22 @@ export default function MCPMarketplaceCard({ entry, connectedServer, onConnect, 
   const badges = entry.badges || {};
   const preview = entry.tool_preview || [];
   const connectable = entry.connectable;
+  const tintStyle = { "--card-tint": cardTint(entry) } as CSSProperties;
   return (
-    <article className="flex h-full min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.07]">
-      <div className="flex items-start justify-between gap-4">
+    <article
+      style={tintStyle}
+      className="group relative isolate flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111815] p-4 shadow-lg shadow-black/20 transition duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-2xl hover:shadow-black/35"
+    >
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute -inset-px z-0 rounded-[inherit] bg-[conic-gradient(from_0deg,rgba(34,197,94,.72),rgba(59,130,246,.72),rgba(239,68,68,.68),var(--card-tint),rgba(34,197,94,.72))] opacity-0 blur-[0.5px] transition-opacity duration-500 group-hover:opacity-100 group-focus-within:opacity-100 [animation:spin_9s_linear_infinite]"
+      />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-px z-0 rounded-[calc(1rem-1px)] bg-[#111815]/95"
+      />
+      <div className="relative z-10 flex h-full flex-col">
+        <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <MCPLogo entry={entry} />
           <div className="min-w-0">
@@ -71,7 +100,7 @@ export default function MCPMarketplaceCard({ entry, connectedServer, onConnect, 
         <div className="flex shrink-0 items-center gap-1 text-white/35" title="View provider details">
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </div>
-      </div>
+        </div>
 
       <div className="mt-3 flex min-h-7 flex-wrap gap-1.5">
         {entry.publisher_type === "community" || badges.community ? <Badge tone="amber">Community</Badge> : entry.official || badges.official ? <Badge tone="green">Official</Badge> : null}
@@ -95,6 +124,7 @@ export default function MCPMarketplaceCard({ entry, connectedServer, onConnect, 
         <button type="button" className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-sm font-medium text-sky-100 hover:bg-sky-400/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/35" disabled={!connectedServer && !connectable} onClick={() => connectedServer && onReconnect ? onReconnect(connectedServer) : onConnect(entry)}>
           <ExternalLink className="h-4 w-4" aria-hidden="true" />{connectedServer ? "Reconnect" : connectable ? "Connect" : "Setup pending"}
         </button>
+      </div>
       </div>
     </article>
   );

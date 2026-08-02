@@ -519,18 +519,6 @@ class IngestionService:
         if redis_client is None:
             return
         active_stage = self._normalize_pipeline_stage(status)
-        message = json.dumps(
-            {
-                "document_id": str(document_id),
-                "status": status,
-                "progress": progress,
-                "active_stage": active_stage,
-                "stage_progress": self._compute_stage_progress(
-                    active_stage=active_stage,
-                    overall_progress=progress,
-                ),
-            }
-        )
         try:
             document = self.documents.get_by_id(
                 tenant_id=tenant_id,
@@ -538,6 +526,28 @@ class IngestionService:
             )
             if document is None:
                 return
+        except Exception:
+            logger.warning("Failed to load document status for Redis update", exc_info=True)
+            return
+        published_status = document.status or status
+        published_progress = document.processing_progress
+        active_stage = self._normalize_pipeline_stage(published_status)
+        message = json.dumps(
+            {
+                "document_id": str(document_id),
+                "status": published_status,
+                "progress": published_progress,
+                "active_stage": active_stage,
+                "stage_progress": self._compute_stage_progress(
+                    active_stage=active_stage,
+                    overall_progress=published_progress,
+                ),
+                "updated_at": document.updated_at.isoformat()
+                if document.updated_at is not None
+                else None,
+            }
+        )
+        try:
             redis_client.publish(
                 f"document_updates:{tenant_id}:{document.uploaded_by_user_id}",
                 message,
@@ -943,6 +953,16 @@ class IngestionService:
         message: str,
         retryable: bool,
     ) -> None:
+        # A failure can happen after SQLAlchemy has already marked the
+        # transaction as failed (for example during a flush). Reset the
+        # session before reading or mutating ORM objects so failure handling
+        # can persist the retry/dead-letter state instead of raising a
+        # secondary PendingRollbackError and leaving the job queued forever.
+        try:
+            self.db.rollback()
+        except Exception:  # noqa: BLE001
+            logger.debug("Ingestion failure rollback failed.", exc_info=True)
+
         EXTRACTION_FAILURE_TOTAL.labels(code=code).inc()
         if retryable and job.attempt_count < job.max_attempts:
             self.jobs.set_status(

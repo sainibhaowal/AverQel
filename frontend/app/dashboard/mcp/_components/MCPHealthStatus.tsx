@@ -5,7 +5,7 @@ import type { MCPHealth } from "@/lib/mcp-api";
 function formatDate(value?: string | null): string {
   if (!value) return "Not verified yet";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Verification date unavailable" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+  return Number.isNaN(date.getTime()) ? "Verification date unavailable" : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" }).format(date);
 }
 export default function MCPHealthStatus({ health, compact = false }: { health?: MCPHealth | null; compact?: boolean }) {
   const status = String(health?.status || "not_checked").toLowerCase();

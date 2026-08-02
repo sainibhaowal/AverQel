@@ -15,13 +15,16 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { fetchWithAuth, getApiBaseUrl } from "@/lib/api";
 import UploadModal from "@/app/components/dashboard/documents/UploadModal";
 import DocumentInspector from "@/app/components/dashboard/documents/DocumentInspector";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
 import EmptyState from "@/app/components/ui/EmptyState";
 import { useHotkeys } from "@/app/hooks/useHotkeys";
 import { readApiErrorMessage } from "@/app/lib/api/documents";
+import toast from "react-hot-toast";
 
 interface Document {
   document_id: string;
@@ -38,6 +41,80 @@ interface Document {
   extraction_ocr_used?: boolean;
   extraction_vision_used?: boolean;
   extraction_warnings?: string[];
+  updated_at?: string;
+}
+
+interface DocumentStatusUpdate {
+  document_id: string;
+  status: string;
+  progress: number;
+  updated_at?: string | null;
+}
+
+const PIPELINE_STAGE_ORDER: Record<string, number> = {
+  queued: 0,
+  downloading: 1,
+  parsing: 2,
+  chunking: 3,
+  embedding: 4,
+  completed: 5,
+  indexed: 5,
+  failed: 5,
+  dead_lettered: 5,
+};
+
+const TERMINAL_DOCUMENT_STATUSES = new Set([
+  "completed",
+  "indexed",
+  "failed",
+  "dead_lettered",
+]);
+
+function mergeDocumentStatus(
+  current: Document,
+  incoming: DocumentStatusUpdate,
+): Document {
+  const currentTime = current.updated_at ? Date.parse(current.updated_at) : NaN;
+  const incomingTime = incoming.updated_at ? Date.parse(incoming.updated_at) : NaN;
+
+  // Redis events can arrive late. Never let an older event move a document
+  // backwards after the authoritative API has reported a newer state.
+  if (
+    Number.isFinite(currentTime) &&
+    Number.isFinite(incomingTime) &&
+    incomingTime < currentTime
+  ) {
+    return current;
+  }
+
+  const currentStatus = current.status.toLowerCase();
+  const incomingStatus = incoming.status.toLowerCase();
+  if (
+    !Number.isFinite(currentTime) &&
+    !Number.isFinite(incomingTime) &&
+    TERMINAL_DOCUMENT_STATUSES.has(currentStatus) &&
+    !TERMINAL_DOCUMENT_STATUSES.has(incomingStatus)
+  ) {
+    return current;
+  }
+
+  if (
+    incomingStatus !== currentStatus &&
+    (PIPELINE_STAGE_ORDER[incomingStatus] ?? 0) <
+      (PIPELINE_STAGE_ORDER[currentStatus] ?? 0)
+  ) {
+    return current;
+  }
+
+  return {
+    ...current,
+    status: incoming.status,
+    processing_progress:
+      incomingStatus === currentStatus
+        ? Math.max(current.processing_progress, incoming.progress)
+        : incoming.progress,
+    updated_at: incoming.updated_at ?? current.updated_at,
+  };
 }
 
 interface SupportedFormat {
@@ -52,6 +129,12 @@ interface SupportedFormatsResponse {
   legacy_conversion_enabled: boolean;
   items: SupportedFormat[];
 }
+
+type PendingDocumentAction = {
+  type: "delete" | "reingest";
+  id: string;
+  filename: string;
+};
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -68,14 +151,16 @@ export default function DocumentsPage() {
   const [viewerMode, setViewerMode] = useState<"raw" | "text">("raw");
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingDocumentAction | null>(null);
+  const [documentActionBusy, setDocumentActionBusy] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const fetchDocuments = async () => {
-    setLoading(true);
+  const fetchDocuments = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const res = (await fetchWithAuth("/documents")) as Response;
       if (res.ok) {
@@ -95,7 +180,7 @@ export default function DocumentsPage() {
       setDocuments([]);
       setError("Failed to load documents.");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -115,15 +200,11 @@ export default function DocumentsPage() {
 
     eventSource.onmessage = (event) => {
       try {
-        const update = JSON.parse(event.data);
+        const update = JSON.parse(event.data) as DocumentStatusUpdate;
         setDocuments((prev) =>
           prev.map((doc) => {
             if (doc.document_id === update.document_id) {
-              return {
-                ...doc,
-                status: update.status,
-                processing_progress: update.progress,
-              };
+              return mergeDocumentStatus(doc, update);
             }
             return doc;
           }),
@@ -140,6 +221,19 @@ export default function DocumentsPage() {
 
     return () => eventSource.close();
   }, []);
+
+  // SSE is the fast path, but this authoritative refresh repairs a missed or
+  // unauthorized stream without making the page appear stuck indefinitely.
+  const hasActiveDocuments = documents.some(
+    (doc) => !TERMINAL_DOCUMENT_STATUSES.has(doc.status.toLowerCase()),
+  );
+  useEffect(() => {
+    if (!hasActiveDocuments) return;
+    const intervalId = window.setInterval(() => {
+      void fetchDocuments(false);
+    }, 4000);
+    return () => window.clearInterval(intervalId);
+  }, [hasActiveDocuments]);
 
   useEffect(() => {
     const fetchSupportedFormats = async () => {
@@ -211,7 +305,7 @@ export default function DocumentsPage() {
             finalContent = `<p>${selection.text.replace(/\n/g, "<br/>")}</p>`;
             titlePrefix = "Highlight";
           } else {
-            alert("Please Copy (Ctrl+C) text from the PDF first!");
+            toast.error("Please copy the text from the PDF first.");
             setIsRawLoading(false);
             return;
           }
@@ -247,11 +341,13 @@ export default function DocumentsPage() {
           prev.map((d) => (d.document_id === rawViewerTarget.id ? { ...d, has_notes: true } : d)),
         );
         setSelection(null);
+        toast.success("Document content sent to DeepSpace Notes.");
       } else {
         throw new Error("Failed to save note");
       }
     } catch (err) {
       console.error("Failed to save note", err);
+      toast.error(err instanceof Error ? err.message : "Unable to send content to notes.");
     } finally {
       setIsRawLoading(false);
     }
@@ -286,40 +382,44 @@ export default function DocumentsPage() {
     setRawFileUrl(null);
   };
 
-  const deleteDocument = async (id: string, filename: string) => {
-    if (!confirm(`Are you sure you want to delete "${filename}"?`)) return;
-    try {
-      const res = (await fetchWithAuth(`/documents/${id}`, { method: "DELETE" })) as Response;
-      if (res.ok) {
-        setDocuments((prev) => prev.filter((d) => d.document_id !== id));
-      } else {
-        alert(await readApiErrorMessage(res, "Failed to delete document."));
-      }
-    } catch (err) {
-      console.error(err);
-      alert(err instanceof Error ? err.message : "Error deleting document.");
-    }
+  const deleteDocument = (id: string, filename: string) => {
+    setPendingAction({ type: "delete", id, filename });
   };
 
-  const reingestDocument = async (id: string, filename: string) => {
-    if (
-      !confirm(
-        `Are you sure you want to re-ingest "${filename}"? This will restart extraction from scratch.`,
-      )
-    )
-      return;
+  const reingestDocument = (id: string, filename: string) => {
+    setPendingAction({ type: "reingest", id, filename });
+  };
+
+  const executeDocumentAction = async () => {
+    if (!pendingAction) return;
+    const action = pendingAction;
+    setDocumentActionBusy(true);
     try {
-      const res = (await fetchWithAuth(`/documents/${id}/reingest`, {
-        method: "POST",
-      })) as Response;
-      if (res.ok) {
-        fetchDocuments(); // refresh state
+      if (action.type === "delete") {
+        const res = (await fetchWithAuth(`/documents/${action.id}`, { method: "DELETE" })) as Response;
+        if (res.ok) {
+          setDocuments((prev) => prev.filter((d) => d.document_id !== action.id));
+          toast.success(`"${action.filename}" deleted.`);
+        } else {
+          toast.error(await readApiErrorMessage(res, "Failed to delete document."));
+        }
       } else {
-        alert("Failed to reingest document.");
+        const res = (await fetchWithAuth(`/documents/${action.id}/reingest`, {
+          method: "POST",
+        })) as Response;
+        if (res.ok) {
+          await fetchDocuments();
+          toast.success(`"${action.filename}" queued for re-ingestion.`);
+        } else {
+          toast.error(await readApiErrorMessage(res, "Failed to re-ingest document."));
+        }
       }
     } catch (err) {
       console.error(err);
-      alert("Error reingesting document.");
+      toast.error(err instanceof Error ? err.message : "The document action failed.");
+    } finally {
+      setDocumentActionBusy(false);
+      setPendingAction(null);
     }
   };
 
@@ -372,7 +472,7 @@ export default function DocumentsPage() {
                 <span className="font-bold">Protocol Matrix</span>
               </button>
               <button
-                onClick={fetchDocuments}
+                onClick={() => fetchDocuments()}
                 disabled={loading}
                 className="bg-foreground/5 text-foreground/40 hover:text-primary hover:bg-primary/10 border-glass-border flex h-12 w-12 items-center justify-center rounded-2xl border transition-all hover:scale-105 disabled:opacity-50"
               >
@@ -436,9 +536,13 @@ export default function DocumentsPage() {
                           <FileText size={18} className="stroke-[2.5]" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-foreground truncate text-sm leading-tight font-bold">
+                          <Link
+                            href={`/dashboard/documents/${doc.document_id}`}
+                            className="text-foreground hover:text-primary focus-visible:ring-primary/50 block truncate text-sm leading-tight font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                            aria-label={`Open ${doc.filename}`}
+                          >
                             {doc.filename}
-                          </p>
+                          </Link>
                           <p className="text-foreground/35 mt-1 text-[10px] font-bold tracking-widest uppercase">
                             {doc.content_type.split("/")[1] || "DOC"}
                           </p>
@@ -548,9 +652,13 @@ export default function DocumentsPage() {
                       <FileText size={18} className="stroke-[2.5]" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-foreground truncate text-sm leading-tight font-bold">
+                      <Link
+                        href={`/dashboard/documents/${doc.document_id}`}
+                        className="text-foreground hover:text-primary focus-visible:ring-primary/50 block truncate text-sm leading-tight font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                        aria-label={`Open ${doc.filename}`}
+                      >
                         {doc.filename}
-                      </p>
+                      </Link>
                       <div className="mt-1 flex items-center gap-2">
                         <span className="text-foreground/35 text-[10px] font-bold tracking-widest uppercase">
                           {doc.content_type.split("/")[1] || "DOC"}
@@ -635,6 +743,23 @@ export default function DocumentsPage() {
           setDocuments((prev) => prev.filter((d) => d.document_id !== inspectorTarget?.id));
           setInspectorTarget(null);
         }}
+      />
+
+      <ConfirmationModal
+        isOpen={pendingAction !== null}
+        onClose={() => {
+          if (!documentActionBusy) setPendingAction(null);
+        }}
+        onConfirm={executeDocumentAction}
+        title={pendingAction?.type === "delete" ? "Delete document?" : "Re-ingest document?"}
+        message={
+          pendingAction?.type === "delete"
+            ? `Are you sure you want to delete “${pendingAction.filename}”? This removes it from the workspace.`
+            : `Re-ingest “${pendingAction?.filename ?? "this document"}”? Extraction and indexing will restart from the beginning.`
+        }
+        confirmLabel={pendingAction?.type === "delete" ? "Delete document" : "Re-ingest document"}
+        variant={pendingAction?.type === "delete" ? "danger" : "warning"}
+        loading={documentActionBusy}
       />
 
       {/* Raw Document Viewer Drawer */}

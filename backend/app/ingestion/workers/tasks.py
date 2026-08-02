@@ -12,7 +12,7 @@ from app.ingestion.services.ingestion_service import (
     IngestionService,
     RetryableIngestionError,
 )
-from app.platform.database.session import get_session_factory
+from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app  # type: ignore[attr-defined]
 from app.system.services.metrics_service import (
     WORKER_JOB_TRANSITIONS_TOTAL,
@@ -41,6 +41,7 @@ def process_ingestion_job(self: Task, job_id: str, tenant_id: str) -> str:
         try:
             parsed_tenant_id = uuid.UUID(tenant_id)
             parsed_job_id = uuid.UUID(job_id)
+            set_db_tenant_context(session, parsed_tenant_id)
             service.process_ingestion_job(
                 tenant_id=parsed_tenant_id,
                 job_id=parsed_job_id,
