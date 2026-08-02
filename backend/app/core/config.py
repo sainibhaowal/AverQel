@@ -198,6 +198,11 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
 
     database_url: str = DEFAULT_DATABASE_URL
+    database_pool_size: int = 8
+    database_max_overflow: int = 4
+    database_pool_timeout_seconds: float = 4.0
+    database_statement_timeout_seconds: float = 15.0
+    database_lock_timeout_seconds: float = 3.0
     redis_url: str = "redis://localhost:1010/0"
 
     minio_endpoint: str = "minio:9000"

@@ -190,6 +190,12 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
                 db.commit()
                 return {"status": "needs_auth"}
 
+            # Runtime construction reads encrypted OAuth metadata.  End that
+            # transaction before keeping the remote MCP session open for its
+            # 110-second notification lease; otherwise an idle worker session
+            # can retain DB resources and eventually starve ordinary UI reads.
+            db.commit()
+
             async def _hold() -> None:
                 async with runtime.session():
                     await anyio.sleep(110)

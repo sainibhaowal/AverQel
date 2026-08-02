@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +13,14 @@ from app.platform.database.base import Base
 
 class CollectionNotification(Base):
     __tablename__ = "collection_notifications"
+    __table_args__ = (
+        Index(
+            "ix_collection_notifications_recipient_created_id",
+            "recipient_user_id",
+            "created_at",
+            "id",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

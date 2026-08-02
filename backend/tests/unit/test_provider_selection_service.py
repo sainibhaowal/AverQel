@@ -499,7 +499,7 @@ def test_chat_auto_selects_enabled_provider_when_assignment_points_to_disabled_p
         session.close()
 
 
-def test_context_window_falls_back_to_live_discovery_when_cache_missing(
+def test_context_window_live_discovery_does_not_write_during_selection(
     settings,
     monkeypatch,
 ) -> None:
@@ -563,6 +563,7 @@ def test_context_window_falls_back_to_live_discovery_when_cache_missing(
                 tenant_id=tenant.id,
                 provider_config_id=provider.id,
                 model_name="qwen2.5-14b-instruct",
+                allow_live_model_discovery=True,
             )
         assert resolved == 131072
         assert source == "live_model"
@@ -574,7 +575,7 @@ def test_context_window_falls_back_to_live_discovery_when_cache_missing(
             model_kind="chat",
         )
         assert refreshed is not None
-        assert refreshed.context_window == 131072
+        assert refreshed.context_window == 24_576
     finally:
         session.rollback()
         session.close()

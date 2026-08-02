@@ -14,12 +14,37 @@ Available environment settings:
   waiting without limit. Defaults are 100 for development and 200 for
   production.
 - `AKS_API_KEEP_ALIVE_SECONDS`: idle HTTP keep-alive duration. Defaults to 5.
+- `AKS_DATABASE_POOL_SIZE` / `AKS_DATABASE_MAX_OVERFLOW`: database connections
+  available to each process. Production defaults are 8 + 4, deliberately
+  bounded so the API, worker, and scheduler cannot exhaust PostgreSQL's
+  connection budget together.
+- `AKS_DATABASE_POOL_TIMEOUT_SECONDS`: maximum wait for a database connection.
+  Defaults to 4 seconds, so pool exhaustion returns a traceable 503 rather
+  than becoming the browser's 30-second timeout.
+- `AKS_DATABASE_STATEMENT_TIMEOUT_SECONDS` / `AKS_DATABASE_LOCK_TIMEOUT_SECONDS`:
+  per-request PostgreSQL limits (15 and 3 seconds by default). They prevent a
+  blocked statement or row lock from monopolising request workers.
 
 `QueryService.execute` is synchronous because it uses the synchronous database
 session and retrieval pipeline. The HTTP endpoint dispatches that work to the
 framework worker pool so provider/database latency cannot block the async event
 loop. Provider model refresh is also guarded per process and fails fast with a
 cached-model fallback when another refresh is active.
+
+Ordinary provider selection and dashboard capability reads are side-effect free:
+they use configured and cached metadata and never refresh provider models or
+write the model cache. Only the explicit `POST /providers/{provider_id}/models/refresh`
+route contacts the provider and updates that cache. This prevents page loads
+from creating row-lock contention.
+
+The notification bell uses the composite
+`collection_notifications(recipient_user_id, created_at DESC, id DESC)` index.
+The corresponding Alembic migration creates it concurrently, so applying an
+upgrade does not block an existing notification feed.
+
+Long-lived MCP notification leases commit their initial metadata read before
+opening the remote session. This keeps the worker from retaining an idle
+database transaction during its 110-second network lease.
 
 After changing these settings, validate and restart only the API service:
 

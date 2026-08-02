@@ -465,7 +465,7 @@ export async function fetchWithAuth(
     );
   } catch (error) {
     if (error instanceof ApiRequestTimeoutError) {
-      toast.error("AverQel services are busy or temporarily unavailable. Please try again.", {
+      toast.error("This request took too long. No data was changed; please retry.", {
         id: "api-timeout-busy",
         duration: 4_000,
       });

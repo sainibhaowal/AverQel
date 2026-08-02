@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.providers.models.provider_assignment import ProviderAssignment
 from app.providers.models.provider_config import ProviderConfig
-from app.providers.models.provider_model_cache import ProviderModelCache
 from app.providers.repositories.provider_assignments import (
     ProviderAssignmentsRepository,
 )
@@ -21,7 +20,6 @@ from app.providers.repositories.provider_health_checks import (
 from app.providers.repositories.provider_model_cache import ProviderModelCacheRepository
 from app.providers.services.context_window import resolve_verified_context_window
 from app.providers.services.provider_secret_service import ProviderSecretService
-from app.providers.services.reasoning_capabilities import model_supports_reasoning
 from app.providers.services.registry import ProviderRegistry
 from app.providers.services.types import (
     ProviderSelectionCandidate,
@@ -67,7 +65,7 @@ class ProviderSelectionService:
         tenant_id: uuid.UUID,
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
-        allow_live_model_discovery: bool = True,
+        allow_live_model_discovery: bool = False,
     ) -> ProviderSelectionResult:
         return self._resolve(
             tenant_id=tenant_id,
@@ -130,7 +128,7 @@ class ProviderSelectionService:
         actor_user_id: uuid.UUID | None,
         feature_scope: str,
         fallback_scope: str,
-        allow_live_model_discovery: bool = True,
+        allow_live_model_discovery: bool = False,
     ) -> ProviderSelectionResult:
         notes: list[str] = []
         ordered_assignments: list[
@@ -286,7 +284,7 @@ class ProviderSelectionService:
         notes: list[str],
         candidates: list[ProviderSelectionCandidate],
         seen_provider_configs: set[uuid.UUID],
-        allow_live_model_discovery: bool = True,
+        allow_live_model_discovery: bool = False,
     ) -> None:
         scoped_providers = sorted(
             self._providers_in_resolution_scope(
@@ -733,7 +731,7 @@ class ProviderSelectionService:
         source: str,
         assignment: ProviderAssignment,
         notes: list[str],
-        allow_live_model_discovery: bool = True,
+        allow_live_model_discovery: bool = False,
     ) -> ProviderSelectionCandidate | None:
         config = (
             self.configs.get_accessible_by_id(
@@ -915,7 +913,7 @@ class ProviderSelectionService:
         tenant_id: uuid.UUID,
         provider_config_id: uuid.UUID,
         model_name: str,
-        allow_live_model_discovery: bool = True,
+        allow_live_model_discovery: bool = False,
     ) -> tuple[int | None, str | None]:
         provider = self.configs.get_by_id(
             tenant_id=tenant_id,
@@ -946,25 +944,6 @@ class ProviderSelectionService:
                 continue
             if isinstance(model.context_window, int) and model.context_window > 0:
                 context_window_source = model.context_window_source or "live_model"
-                self.model_cache.upsert_models(
-                    tenant_id=tenant_id,
-                    provider_config_id=provider_config_id,
-                    models=[
-                        ProviderModelCache(
-                            tenant_id=tenant_id,
-                            provider_config_id=provider_config_id,
-                            model_name=model_name,
-                            model_kind="chat",
-                            display_name=model.display_name or model.name,
-                            context_window=model.context_window,
-                            capabilities_json={
-                                **dict(model.capabilities),
-                                "context_window_source": context_window_source,
-                            },
-                            is_available=True,
-                        )
-                    ],
-                )
                 return model.context_window, context_window_source
             break
 
@@ -977,28 +956,6 @@ class ProviderSelectionService:
             and verified_context_window.context_window > 0
         ):
             context_window_source = verified_context_window.source or "verified_docs"
-            self.model_cache.upsert_models(
-                tenant_id=tenant_id,
-                provider_config_id=provider_config_id,
-                models=[
-                    ProviderModelCache(
-                        tenant_id=tenant_id,
-                        provider_config_id=provider_config_id,
-                        model_name=model_name,
-                        model_kind="chat",
-                        display_name=model_name,
-                        context_window=verified_context_window.context_window,
-                        capabilities_json={
-                            "context_window_source": context_window_source,
-                            "supports_reasoning": model_supports_reasoning(
-                                provider.provider_type,
-                                model_name,
-                            ),
-                        },
-                        is_available=True,
-                    )
-                ],
-            )
             return verified_context_window.context_window, context_window_source
 
         return None, None

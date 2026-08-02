@@ -89,7 +89,11 @@ def resolve_request_priority(path: str) -> str:
         return "BACKGROUND"
     if "/documents" in path and ("/documents/" not in path or "/documents/events" in path):
         return "BACKGROUND"
-    if "/overview" in path or "/metrics" in path or "/notifications" in path:
+    # These routes are visible, user-triggered UI reads.  Resource protection
+    # may slow background jobs, but must not reject the dashboard or alerts.
+    if "/overview" in path or "/notifications" in path:
+        return "INTERACTIVE"
+    if "/metrics" in path:
         return "BACKGROUND"
     return "INTERACTIVE"
 

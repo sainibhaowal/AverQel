@@ -32,9 +32,10 @@ def get_engine() -> Engine:
         settings.database_url,
         pool_pre_ping=True,
         pool_recycle=1800,
-        pool_size=10,
-        max_overflow=20,
-        pool_timeout=30,
+        pool_use_lifo=True,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+        pool_timeout=settings.database_pool_timeout_seconds,
     )
 
 
@@ -57,6 +58,7 @@ def SessionLocal() -> Session:  # noqa: N802
 @contextmanager
 def managed_db_session() -> Generator[Session, None, None]:
     """Provide a database session with the same safety boundary as ``get_db``."""
+    settings = get_settings()
     checkout_start = time.perf_counter()
     db = get_session_factory()()
     _observe_checkout_duration(time.perf_counter() - checkout_start)
@@ -66,6 +68,19 @@ def managed_db_session() -> Generator[Session, None, None]:
     try:
         db.execute(text("SET ROLE aks_app"))
         role_applied = True
+        # Bound only database waits.  This prevents one blocked row or query
+        # from consuming every worker and turning a normal UI read into the
+        # browser's 30-second client timeout.
+        db.execute(
+            text(
+                "SELECT set_config('statement_timeout', :timeout, true), "
+                "set_config('lock_timeout', :lock_timeout, true)"
+            ),
+            {
+                "timeout": f"{settings.database_statement_timeout_seconds}s",
+                "lock_timeout": f"{settings.database_lock_timeout_seconds}s",
+            },
+        )
         yield db
     finally:
         try:

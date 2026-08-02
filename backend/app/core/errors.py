@@ -7,6 +7,7 @@ from typing import Any, Final
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 
 from app.core.context import get_trace_id
 from app.system.schemas.errors import is_known_error_code
@@ -119,6 +120,18 @@ def _map_http_exception_code(status_code: int) -> str:
 
 def register_exception_handlers(app: FastAPI) -> None:
     """Register all application exception handlers."""
+
+    @app.exception_handler(SQLAlchemyTimeoutError)
+    async def database_pool_timeout_handler(
+        _: Request, exc: SQLAlchemyTimeoutError
+    ) -> JSONResponse:
+        logger.warning("Database connection pool wait exceeded its budget.", exc_info=exc)
+        return build_error_response(
+            code="SERVICE_OVERLOAD",
+            message="The database is briefly busy. Your request was not changed; retry now.",
+            status_code=503,
+            details={"retry_after_seconds": 1},
+        )
 
     @app.exception_handler(ApiError)
     async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:

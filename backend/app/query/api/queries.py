@@ -323,6 +323,7 @@ def get_chat_capabilities(
         tenant_id=auth.tenant_id,
         workspace_id=None,
         actor_user_id=auth.user_id,
+        allow_live_model_discovery=False,
     )
     candidate = selection.candidates[0] if selection.candidates else None
     if candidate is None:
