@@ -6,7 +6,6 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 
 import ChatSidebar from "@/app/components/dashboard/ChatSidebar";
@@ -958,16 +957,6 @@ export default function DeepSpaceChatClient({
               isMobileStacked ? "pb-24 sm:pr-12 sm:pl-4" : "sm:pr-12 sm:pl-4"
             }`}
           >
-            {state.streamError ? (
-              <div className="border-danger/20 bg-danger/5 text-danger mx-auto mt-6 flex max-w-5xl items-start gap-3 rounded-2xl border px-4 py-3 text-sm">
-                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                <div>
-                  <div className="font-semibold">{state.streamError.message}</div>
-                  <div className="text-muted-foreground mt-1 text-xs">{state.streamError.code}</div>
-                </div>
-              </div>
-            ) : null}
-
             <DeepSpaceThread
               messages={renderableMessages}
               emptyPrompts={EMPTY_PROMPTS}
