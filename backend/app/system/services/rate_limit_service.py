@@ -17,6 +17,8 @@ from app.core.errors import ApiError
 
 logger = logging.getLogger(__name__)
 EMAIL_KEY_SAFE_PATTERN = re.compile(r"[^a-z0-9_.@-]+")
+_REDIS_CONNECT_TIMEOUT_SECONDS = 2.0
+_REDIS_SOCKET_TIMEOUT_SECONDS = 2.0
 
 @dataclass
 class AdaptiveSystemMetrics:
@@ -124,7 +126,17 @@ class _InMemoryRateStore:
 @lru_cache(maxsize=1)
 def _get_redis_client() -> redis.Redis:
     settings = get_settings()
-    return redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    # Rate limiting is a guardrail and must never hold an authentication
+    # request open indefinitely when Redis is unhealthy.  The increment path
+    # already falls back to the in-memory store on errors, so bound both the
+    # connection and command waits to make that fallback reachable.
+    return redis.Redis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+        socket_connect_timeout=_REDIS_CONNECT_TIMEOUT_SECONDS,
+        socket_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
+        retry_on_timeout=False,
+    )
 
 
 def _safe_key(value: str | None) -> str:
