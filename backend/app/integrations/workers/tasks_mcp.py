@@ -102,6 +102,7 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
             db.commit()
             return {"status": "connected", "counts": {key: len(value) for key, value in catalog.items()}}
         except Exception as exc:  # noqa: BLE001
+            db.rollback()
             logger.exception("MCP catalog refresh failed for %s", server.id)
             server.status = "failed"
             server.last_error = f"{type(exc).__name__}: MCP catalog refresh failed"
@@ -178,6 +179,7 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
             db.commit()
             return {"status": "connected"}
         except Exception as exc:  # noqa: BLE001
+            db.rollback()
             server.status = "failed"
             server.last_error = str(exc)[:1000]
             server.reconnect_attempts = int(server.reconnect_attempts or 0) + 1

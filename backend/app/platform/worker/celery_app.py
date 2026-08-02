@@ -4,6 +4,7 @@ from celery import Celery  # type: ignore[import-untyped]
 from celery.schedules import crontab  # type: ignore[import-untyped]
 
 from app.core.config import get_settings
+from app.platform.database import model_registry  # noqa: F401
 
 settings = get_settings()
 
