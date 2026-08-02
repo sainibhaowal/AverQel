@@ -102,7 +102,7 @@ export default function MCPDashboard() {
   const categories = facets.categories.length ? facets.categories : FALLBACK_CATEGORIES;
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-[1700px] space-y-8 px-4 py-6 sm:px-6 lg:px-8 2xl:px-10">
+    <main className="w-full min-w-0 space-y-8 pb-10">
       <header className="space-y-5">
         <DashboardSectionHeader
           title="MCP Marketplace"
