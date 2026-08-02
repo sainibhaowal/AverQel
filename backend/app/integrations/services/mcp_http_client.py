@@ -19,11 +19,14 @@ class _PinnedAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
     """Connect to the exact public address resolved immediately before connect."""
 
     def __init__(self) -> None:
-        self._backend = (
-            httpcore.AsyncNetworkBackend()
-            if hasattr(httpcore, "AsyncNetworkBackend")
-            else getattr(httpcore, "AutoBackend", httpcore.AnyIOBackend)()
-        )
+        # ``AsyncNetworkBackend`` is an interface in httpcore 1.x.  It can be
+        # instantiated, but its ``connect_tcp`` implementation raises
+        # ``NotImplementedError``.  That made every async native-MCP request
+        # fail before it reached a public endpoint (including Google Gmail
+        # MCP).  Use the concrete AnyIO implementation instead, while this
+        # wrapper continues to pin every connection to a freshly validated
+        # public address.
+        self._backend = getattr(httpcore, "AnyIOBackend", httpcore.AsyncNetworkBackend)()
 
     async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
         errors: list[Exception] = []

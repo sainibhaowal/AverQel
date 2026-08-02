@@ -13,6 +13,7 @@ from app.integrations.services.mcp_http_client import (
     MCPRedirectRejectedError,
     SafeMCPAsyncClient,
     SafeMCPClient,
+    _PinnedAsyncNetworkBackend,
 )
 from app.integrations.services.mcp_runtime import (
     MCPConnectorRuntime,
@@ -57,6 +58,13 @@ def test_async_mcp_client_validates_and_rejects_redirects(monkeypatch: pytest.Mo
 
     anyio.run(run)
     assert checked == ["https://remote.example/mcp"]
+
+
+def test_pinned_async_backend_uses_a_concrete_httpcore_backend() -> None:
+    """Async MCP connections must not use httpcore's abstract interface."""
+    backend = _PinnedAsyncNetworkBackend()
+
+    assert type(backend._backend).__name__ != "AsyncNetworkBackend"
 
 
 def test_native_mcp_catalog_must_be_connected_and_fresh() -> None:
