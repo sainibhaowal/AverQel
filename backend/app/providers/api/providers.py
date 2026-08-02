@@ -12,7 +12,7 @@ from app.auth.rbac import require_permissions
 from app.auth.tenancy import require_request_tenant_id
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.platform.database.session import get_db
+from app.platform.database.session import get_db, managed_db_session
 from app.providers.models.provider_config import ProviderConfig
 from app.providers.schemas import (
     MaskedProviderSecretResponse,
@@ -205,32 +205,47 @@ async def list_providers(
     workspace_id: uuid.UUID | None = OPTIONAL_WORKSPACE_QUERY,
     request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
     auth: AuthContext = Depends(get_auth_context),
-    db: Session = Depends(get_db),
 ) -> ProviderConfigListResponse:
     _enforce_tenant_scope(request_tenant_id, auth)
-    from app.deepspace.integrations.client_proxy import client_proxy_registry
+    from app.deepspace.integrations.client_proxy import (
+        INTERACTIVE_STORAGE_RPC_TIMEOUT_SECONDS,
+        client_proxy_registry,
+    )
+
     if client_proxy_registry.is_client_connected(str(auth.tenant_id), str(auth.user_id)):
-        items_data = await client_proxy_registry.db_proxy_call(
-            str(auth.tenant_id), str(auth.user_id),
-            "db.providers.list_providers",
-            {"workspace_id": str(workspace_id) if workspace_id else None}
+        try:
+            items_data = await client_proxy_registry.db_proxy_call(
+                str(auth.tenant_id),
+                str(auth.user_id),
+                "db.providers.list_providers",
+                {"workspace_id": str(workspace_id) if workspace_id else None},
+                timeout=INTERACTIVE_STORAGE_RPC_TIMEOUT_SECONDS,
+            )
+            return ProviderConfigListResponse(
+                items=[ProviderConfigResponse.model_validate(item) for item in items_data]
+            )
+        except (TimeoutError, RuntimeError, OSError):
+            logger.warning(
+                "Client provider storage unavailable; using server-side provider data.",
+                extra={"tenant_id": str(auth.tenant_id), "user_id": str(auth.user_id)},
+            )
+
+    # Do not acquire a database connection until the client-owned storage
+    # branch is complete.  A suspended client must never occupy a pool slot
+    # while its RPC timeout elapses.
+    with managed_db_session() as db:
+        service = ProviderManagementService(db)
+        items = service.list_providers(
+            tenant_id=auth.tenant_id,
+            actor_user_id=auth.user_id,
+            workspace_id=workspace_id,
         )
         return ProviderConfigListResponse(
-            items=[ProviderConfigResponse.model_validate(item) for item in items_data]
+            items=[
+                _provider_config_response(service, tenant_id=auth.tenant_id, provider=item)
+                for item in items
+            ]
         )
-
-    service = ProviderManagementService(db)
-    items = service.list_providers(
-        tenant_id=auth.tenant_id,
-        actor_user_id=auth.user_id,
-        workspace_id=workspace_id,
-    )
-    return ProviderConfigListResponse(
-        items=[
-            _provider_config_response(service, tenant_id=auth.tenant_id, provider=item)
-            for item in items
-        ]
-    )
 
 
 @router.post(

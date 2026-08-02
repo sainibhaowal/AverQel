@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Generator
+from contextlib import contextmanager
 from functools import lru_cache
 from uuid import UUID
 
@@ -53,8 +54,9 @@ def SessionLocal() -> Session:  # noqa: N802
     return get_session_factory()()
 
 
-def get_db() -> Generator[Session, None, None]:
-    """Yield a request-scoped database session with role setup and cleanup."""
+@contextmanager
+def managed_db_session() -> Generator[Session, None, None]:
+    """Provide a database session with the same safety boundary as ``get_db``."""
     checkout_start = time.perf_counter()
     db = get_session_factory()()
     _observe_checkout_duration(time.perf_counter() - checkout_start)
@@ -89,6 +91,12 @@ def get_db() -> Generator[Session, None, None]:
             db.close()
         except Exception:  # noqa: BLE001
             logger.warning("Database session close failed.", exc_info=True)
+
+
+def get_db() -> Generator[Session, None, None]:
+    """Yield a request-scoped database session with role setup and cleanup."""
+    with managed_db_session() as db:
+        yield db
 
 
 def set_db_tenant_context(db: Session, tenant_id: UUID | str) -> None:

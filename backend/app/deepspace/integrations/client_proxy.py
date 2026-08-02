@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 STORAGE_REQUEST_PREFIX = "averqel:client-storage:request:"
 STORAGE_RESPONSE_PREFIX = "averqel:client-storage:response:"
 STORAGE_RPC_TTL_SECONDS = 90
+INTERACTIVE_STORAGE_RPC_TIMEOUT_SECONDS = 5.0
+
 
 class ClientProxyRegistry:
     """
@@ -123,8 +125,17 @@ class ClientProxyRegistry:
             if "error" in response and response["error"]:
                 raise RuntimeError(response["error"])
             return response.get("result")
-        except Exception as e:
-            raise e
+        except (TimeoutError, RuntimeError, OSError):
+            # A dead tab or suspended desktop client can leave its TCP socket in
+            # the registry.  Remove it immediately so future API requests use
+            # their normal server-side path instead of waiting for 30 seconds.
+            self.unregister_client(
+                tenant_id,
+                user_id,
+                channel=channel,
+                websocket=websocket,
+            )
+            raise
         finally:
             if req_id in self._pending_requests:
                 del self._pending_requests[req_id]

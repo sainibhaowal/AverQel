@@ -10,6 +10,29 @@ from app.documents.models.collection import (
     DocumentCollection,
 )
 from app.documents.models.document import Document
+from app.providers.services.types import ProviderSelectionResult
+
+
+class _DashboardProviderSelectionStub:
+    def __init__(self) -> None:
+        self.chat_options: dict[str, object] | None = None
+
+    def resolve_chat(self, **kwargs: object) -> ProviderSelectionResult:
+        self.chat_options = kwargs
+        return ProviderSelectionResult(feature_scope="chat", candidates=[], selection_notes=[])
+
+    def resolve_embeddings(self, **_kwargs: object) -> ProviderSelectionResult:
+        return ProviderSelectionResult(
+            feature_scope="embeddings", candidates=[], selection_notes=[]
+        )
+
+    def resolve_reranking(self, **_kwargs: object) -> ProviderSelectionResult:
+        return ProviderSelectionResult(feature_scope="reranking", candidates=[], selection_notes=[])
+
+    def resolve_web_search(self, **_kwargs: object) -> ProviderSelectionResult:
+        return ProviderSelectionResult(
+            feature_scope="web_search", candidates=[], selection_notes=[]
+        )
 
 
 def test_dashboard_service_get_overview(
@@ -93,3 +116,22 @@ def test_dashboard_service_get_overview(
     assert len(overview.collections) == 1
     assert overview.collections[0].collection_id == collection.id
     assert overview.collections[0].document_count == 1
+
+
+def test_dashboard_provider_runtime_uses_cached_chat_metadata(db_session, seed_user) -> None:
+    seeded = seed_user(
+        "tenant-dashboard-provider-runtime",
+        "dashboard-provider-runtime@tenant.example",
+        "StrongPass!1234",
+        ("editor",),
+    )
+    service = DashboardService(db_session)
+    selection = _DashboardProviderSelectionStub()
+    service.provider_selection = selection  # type: ignore[assignment]
+
+    service._get_provider_runtimes(tenant_id=seeded.tenant_id)
+
+    assert selection.chat_options == {
+        "tenant_id": seeded.tenant_id,
+        "allow_live_model_discovery": False,
+    }

@@ -160,7 +160,13 @@ class DashboardService:
 
         for scope in ("chat", "embeddings", "reranking", "web_search"):
             if scope == "chat":
-                selection = self.provider_selection.resolve_chat(tenant_id=tenant_id)
+                # Dashboard rendering must use cached provider metadata only.
+                # Live discovery can make this read-only request wait on an
+                # external provider while holding a database connection.
+                selection = self.provider_selection.resolve_chat(
+                    tenant_id=tenant_id,
+                    allow_live_model_discovery=False,
+                )
             elif scope == "embeddings":
                 selection = self.provider_selection.resolve_embeddings(
                     tenant_id=tenant_id
