@@ -215,6 +215,7 @@ class MCPConnectorRuntime:
     notification_handler: Any | None = None
     anonymous: bool = False
     headers: dict[str, str] = field(default_factory=dict)
+    token_expiry_time: float | None = None
 
     @classmethod
     def from_config(cls, config: dict[str, Any], *, on_tokens_updated: Any | None = None, message_handler: Any | None = None, notification_handler: Any | None = None) -> MCPConnectorRuntime | None:
@@ -283,6 +284,7 @@ class MCPConnectorRuntime:
         api_key = str(bundle.get("api_key") or "").strip()
         api_key_header = str(bundle.get("api_key_header") or "").strip()
         headers = {api_key_header: api_key} if api_key and api_key_header else {}
+        token_expiry_time = cls._token_expiry_time_from_bundle(bundle)
 
         return cls(
             server_url=server_url,
@@ -297,7 +299,32 @@ class MCPConnectorRuntime:
             notification_handler=notification_handler,
             anonymous=anonymous,
             headers=headers,
+            token_expiry_time=token_expiry_time,
         )
+
+    @staticmethod
+    def _token_expiry_time_from_bundle(bundle: dict[str, Any]) -> float | None:
+        """Return the persisted OAuth expiry as a Unix timestamp, if available.
+
+        The MCP SDK only calculates expiry when it receives a token during the
+        current process. Worker runtimes load an already-issued encrypted token,
+        so they must restore that timestamp to refresh an expired token before
+        making a remote request.
+        """
+        raw_expiry = bundle.get("token_expires_at")
+        if raw_expiry is None:
+            return None
+        try:
+            if isinstance(raw_expiry, datetime):
+                expires_at = raw_expiry
+            else:
+                expires_at = datetime.fromisoformat(str(raw_expiry).replace("Z", "+00:00"))
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+            return expires_at.timestamp()
+        except (TypeError, ValueError):
+            logger.warning("Ignoring invalid persisted MCP OAuth token expiry")
+            return None
 
     @staticmethod
     def _client_metadata_from_client_info(
@@ -462,12 +489,20 @@ class MCPConnectorRuntime:
             raise MCPRuntimeError("MCP SDK is not installed.")
         if self.anonymous:
             return None
-        return OAuthClientProvider(
+        provider = OAuthClientProvider(
             server_url=self.server_url,
             client_metadata=self.client_metadata,
             storage=self.storage,
             timeout=self.timeout,
         )
+        # The SDK's token storage does not retain an absolute expiry timestamp.
+        # Restore the trusted database value so a worker refreshes expired
+        # OAuth credentials before its first MCP request instead of starting an
+        # interactive authorization flow that has no browser callback handler.
+        provider.context.token_expiry_time = self.token_expiry_time
+        provider.context.oauth_metadata = self.oauth_metadata
+        provider.context.protected_resource_metadata = self.resource_metadata
+        return provider
 
     @asynccontextmanager
     async def _session_for_transport(self, transport: str) -> AsyncIterator[ClientSession]:
@@ -971,6 +1006,8 @@ def build_mcp_server_runtime(
     credentials["client_metadata"] = token_payload.get("client_metadata") or config.get("client_metadata")
     credentials["oauth_metadata"] = token_payload.get("oauth_metadata") or config.get("oauth_metadata")
     credentials["resource_metadata"] = token_payload.get("resource_metadata") or config.get("resource_metadata")
+    if token_record is not None and token_record.expires_at is not None:
+        credentials["token_expires_at"] = token_record.expires_at.isoformat()
 
     async def _persist(tokens: Any) -> None:
         if token_record is None:

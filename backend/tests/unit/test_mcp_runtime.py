@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 
@@ -85,6 +86,30 @@ def test_build_mcp_runtime_supports_streamable_sse_fallback() -> None:
     assert runtime is not None
     assert runtime.transport == "streamable_http"
     assert runtime.fallback_transport == "sse"
+
+
+def test_runtime_restores_persisted_oauth_expiry_for_worker_refresh() -> None:
+    expiry = datetime(2026, 8, 2, 12, 30, tzinfo=UTC)
+    runtime = mcp_runtime.build_mcp_runtime(
+        {
+            "auth_mode": "mcp",
+            "credentials": {
+                "server_url": "https://example.invalid/mcp",
+                "access_token": "access-token",
+                "refresh_token": "refresh-token",
+                "token_expires_at": expiry.isoformat(),
+                "client_info": {
+                    "redirect_uris": ["https://example.invalid/callback"],
+                    "client_name": "AverQel",
+                },
+            },
+        }
+    )
+
+    assert runtime is not None
+    provider = runtime._session_client()
+    assert provider is not None
+    assert provider.context.token_expiry_time == expiry.timestamp()
 
 
 def test_mcp_runtime_snapshot_formats_text_and_structured_payload(monkeypatch) -> None:
