@@ -22,6 +22,36 @@ from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
+
+async def _load_catalog(runtime: object) -> dict[str, object]:
+    """Load required tools and best-effort optional MCP catalog surfaces.
+
+    MCP servers are allowed to omit prompts, resources, or resource templates.
+    A server returning "method not found" for one of those optional methods
+    must not discard a successfully discovered tool catalog.
+    """
+    tools = await runtime.list_tools()  # type: ignore[attr-defined]
+
+    async def optional(name: str) -> list[object]:
+        loader = getattr(runtime, name)
+        try:
+            return await loader()
+        except Exception as exc:  # noqa: BLE001
+            logger.info(
+                "MCP server does not support optional catalog method %s: %s",
+                name,
+                type(exc).__name__,
+            )
+            return []
+
+    return {
+        "tools": tools,
+        "prompts": await optional("list_prompts"),
+        "resources": await optional("list_resources"),
+        "resource_templates": await optional("list_resource_templates"),
+    }
+
+
 @celery_app.task(name="mcp.refresh_server_catalog")
 def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
     """Refresh tools/prompts/resources and append a durable catalog event."""
@@ -63,15 +93,7 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
             return {"status": "failed", "error": server.last_error}
 
         try:
-            async def _load() -> dict[str, object]:
-                return {
-                    "tools": await runtime.list_tools(),
-                    "prompts": await runtime.list_prompts(),
-                    "resources": await runtime.list_resources(),
-                    "resource_templates": await runtime.list_resource_templates(),
-                }
-
-            catalog = anyio.run(_load)
+            catalog = anyio.run(_load_catalog, runtime)
             catalog["tools"] = [
                 {**item, "inputSchema": MCPCatalog.normalize_schema(item.get("inputSchema"))}
                 for item in catalog["tools"] if isinstance(item, dict)
