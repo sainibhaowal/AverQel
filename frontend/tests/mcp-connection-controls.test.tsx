@@ -102,6 +102,6 @@ describe("MCP connection controls", () => {
     fireEvent.click(screen.getAllByRole("checkbox")[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Save policy" }));
     await waitFor(() => expect(updateMCPPolicyMock).toHaveBeenCalledWith("server-1", expect.objectContaining({ default_enabled: true, read_only: true, risk_ceiling: "read" })));
-    expect(screen.getByText(/blocked or disabled tool is removed/i)).toBeInTheDocument();
+    expect(screen.getByText(/available automatically in every DeepSpace conversation/i)).toBeInTheDocument();
   });
 });

@@ -269,7 +269,10 @@ def _policy_defaults(server: MCPServer) -> MCPConnectionPolicy:
             "external_message": "needs_approval",
         },
         tool_modes={},
-        default_enabled=False,
+        # A user-authorized connection is available to that user's DeepSpace
+        # conversations by default. Tool-level policy and approvals remain
+        # enforced at execution time.
+        default_enabled=True,
         deepspace_overrides={},
         conversation_overrides={},
     )

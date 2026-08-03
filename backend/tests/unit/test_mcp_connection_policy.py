@@ -25,7 +25,7 @@ def test_mcp_connection_policy_has_conservative_fields_and_defaults() -> None:
         "updated_at",
     }.issubset(columns.keys())
     assert "true" in str(columns["read_only"].server_default.arg).lower()
-    assert "false" in str(columns["default_enabled"].server_default.arg).lower()
+    assert "true" in str(columns["default_enabled"].server_default.arg).lower()
     assert "read" in str(columns["risk_ceiling"].server_default.arg)
     assert "needs_approval" in str(columns["approval_rules"].server_default.arg)
 

@@ -1414,7 +1414,8 @@ class DeepSpaceChatService:
             logger.exception("DeepSpace chat provider initialization failed")
             yield sse("error", {"code": "LLM_PROVIDER_INIT_FAILED", "message": message})
             return
-        # Tool access is a DeepSpace capability, not a provider allowlist.
+        # Tool access is a connected-account capability, not a provider
+        # allowlist or manually entered conversation scope.
         # Every registered chat adapter translates the common tool contract to
         # its native API (or its OpenAI-compatible interface). A future adapter
         # can explicitly opt out with supports_tool_calling = False.

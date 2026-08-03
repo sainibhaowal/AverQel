@@ -87,7 +87,7 @@ def test_bridge_exposes_only_attached_fresh_mcp_tools() -> None:
     assert binding.definition["function"]["parameters"]["required"] == ["to"]
 
 
-def test_bridge_does_not_expose_unattached_mcp_tools() -> None:
+def test_bridge_exposes_connected_mcp_tools_without_manual_scope_override() -> None:
     tenant_id = uuid4()
     user_id = uuid4()
     conversation_id = uuid4()
@@ -121,4 +121,5 @@ def test_bridge_does_not_expose_unattached_mcp_tools() -> None:
         conversation_id=conversation_id,
     )
 
-    assert bindings == {}
+    assert len(bindings) == 1
+    assert next(iter(bindings.values())).raw_name == "read_mail"

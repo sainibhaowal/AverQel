@@ -831,7 +831,7 @@ def evaluate_mcp_tool_policy(
     expected_catalog_revision: int | None = None,
     max_age_seconds: int | None = None,
 ) -> MCPToolPolicyDecision:
-    """Evaluate native MCP access at planning and immediately before a call."""
+    """Evaluate connected-account MCP access before every remote call."""
     if server.tenant_id != tenant_id or server.user_id != user_id:
         return MCPToolPolicyDecision(False, reason="MCP connection ownership check failed.")
     if not server.enabled or server.status != "connected":
@@ -856,34 +856,9 @@ def evaluate_mcp_tool_policy(
     if not policy.default_enabled:
         return MCPToolPolicyDecision(False, reason="MCP connection is disabled by policy.")
 
-    from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
-    from app.query.models.conversation import Conversation
-
-    if not _scope_is_owned(
-        db,
-        model=Conversation,
-        id_column=Conversation.id,
-        raw_id=conversation_id,
-        tenant_id=tenant_id,
-        user_id=user_id,
-    ):
-        return MCPToolPolicyDecision(False, reason="MCP conversation scope is not owned by the current user.")
-    conversation_overrides = policy.conversation_overrides if isinstance(policy.conversation_overrides, dict) else {}
-    if conversation_overrides.get(str(conversation_id)) is not True:
-        return MCPToolPolicyDecision(False, reason="MCP connection is disabled for this conversation.")
-    if deepspace_id is not None:
-        if not _scope_is_owned(
-            db,
-            model=DeepSpaceMissionSnapshot,
-            id_column=DeepSpaceMissionSnapshot.mission_id,
-            raw_id=deepspace_id,
-            tenant_id=tenant_id,
-            user_id=user_id,
-        ):
-            return MCPToolPolicyDecision(False, reason="MCP DeepSpace scope is not owned by the current user.")
-        deepspace_overrides = policy.deepspace_overrides if isinstance(policy.deepspace_overrides, dict) else {}
-        if deepspace_overrides.get(str(deepspace_id)) is not True:
-            return MCPToolPolicyDecision(False, reason="MCP connection is disabled for this DeepSpace.")
+    # A connected account is user-scoped, not conversation-scoped. Tenant and
+    # user ownership were verified above; tool allow/deny, risk, read-only,
+    # and approval policy below remain enforced for every call.
 
     normalized_name = str(tool_name).strip()
     denied_tools = {str(value).strip() for value in (policy.denied_tools or [])}

@@ -10,7 +10,7 @@ export default function PrivacySecurityPage() {
         items={[
           { title: "Tenant + User Isolation", body: "MCP servers, OAuth tokens, policies, account identities, and events are queried with both tenant and user ownership checks." },
           { title: "Encrypted Credentials", body: "OAuth access and refresh tokens are encrypted at rest. The browser receives safe account labels and scope names, never credential material." },
-          { title: "Deny by Default", body: "A connection, conversation, or DeepSpace scope is unavailable until its policy permits it. Missing or stale scope overrides remain disabled." },
+          { title: "Connected-account scope", body: "Connected MCP accounts are available across the owning user’s DeepSpace conversations; ownership, catalog freshness, tool policy, risk limits, and approvals remain enforced." },
           { title: "Metadata-Only Inspection", body: "The inspector exposes safe status and redacted event summaries, not raw MCP responses, private content, headers, tokens, or server configuration." },
         ]}
       />

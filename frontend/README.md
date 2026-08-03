@@ -57,11 +57,11 @@ the user's provider password. OAuth access and refresh tokens remain encrypted o
 never returned to the browser, prompts, logs, or raw MCP events. Disconnect removes the local token
 record and requests provider revocation where supported.
 
-MCP connections are tenant- and user-scoped. Tool access is checked through connection ownership,
-provider approval, catalog freshness, conversation/DeepSpace enablement, read-only mode, risk ceiling,
+MCP connections are tenant- and user-scoped. Connected accounts are automatically available across
+the owner's DeepSpace conversations. Tool access is checked through connection ownership,
+provider approval, catalog freshness, read-only mode, risk ceiling,
 and per-tool mode. `Blocked` wins first; then allowlists and risk/read-only rules apply; `Needs
-approval` pauses risky actions; `Always allow` cannot bypass platform or tenant safety rules. Missing
-or stale conversation and DeepSpace overrides remain disabled.
+approval` pauses risky actions; `Always allow` cannot bypass platform or tenant safety rules.
 
 The marketplace distinguishes Official providers from reviewed Community providers. New, Trending, and
 Interactive are catalog review attributes, not automatic security approvals. Health and tool previews

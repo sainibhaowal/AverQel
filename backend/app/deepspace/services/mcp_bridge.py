@@ -2,8 +2,8 @@
 
 This module deliberately owns no OAuth or transport logic. MCP connection
 ownership, catalog freshness, policy, and remote execution remain in the MCP
-integration service; DeepSpace only discovers tools explicitly attached to the
-current conversation and forwards approved calls through that service.
+integration service; DeepSpace discovers tools from the user's connected MCP
+accounts and forwards approved calls through that service.
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ class DeepSpaceMCPTool:
 
 
 class DeepSpaceMCPBridge:
-    """Discover and execute only explicitly attached MCP tools."""
+    """Discover and execute tools from the user's connected MCP accounts."""
 
     MAX_SERVERS = 50
     MAX_TOOLS_PER_SERVER = 100
@@ -109,7 +109,6 @@ class DeepSpaceMCPBridge:
         ).scalars().all()
 
         bindings: dict[str, DeepSpaceMCPTool] = {}
-        conversation_key = str(conversation_id)
         max_age = int(getattr(self.settings, "mcp_catalog_max_age_seconds", 3600))
         for server in servers:
             provider_available, _reason = mcp_server_provider_available(self.db, server)
@@ -130,10 +129,6 @@ class DeepSpaceMCPBridge:
             ).scalar_one_or_none()
             if policy is None or not policy.default_enabled:
                 continue
-            overrides = policy.conversation_overrides if isinstance(policy.conversation_overrides, dict) else {}
-            if overrides.get(conversation_key) is not True:
-                continue
-
             for raw_tool in cached_tools[: self.MAX_TOOLS_PER_SERVER]:
                 if not isinstance(raw_tool, dict):
                     continue

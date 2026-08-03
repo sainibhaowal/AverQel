@@ -72,7 +72,7 @@ export default function ConnectorsMcpDocsPage() {
         <p>DeepSpace applies the most restrictive applicable rule. The effective order is:</p>
         <ol className="list-decimal space-y-2 pl-6">
           <li>Connection ownership, provider approval, enabled status, authentication, and catalog freshness.</li>
-          <li>Conversation and DeepSpace scope enablement. Missing or stale overrides are denied.</li>
+          <li>Connected-account availability across DeepSpace conversations.</li>
           <li>Explicit <strong>Blocked</strong> tool mode.</li>
           <li>Allowlist and denylist checks.</li>
           <li>Read-only mode and the connection risk ceiling.</li>
@@ -85,9 +85,9 @@ export default function ConnectorsMcpDocsPage() {
           executed through the MCP runtime.
         </p>
         <p>
-          A connected server is not globally available. The MCP inspector shows scope-gated access:
-          the connection policy and an explicit enabled conversation override are both required,
-          and a DeepSpace mission needs its own enabled override as well.
+          A connected server is automatically available to the owning user&apos;s DeepSpace
+          conversations. Ownership, connection status, catalog freshness, tool permissions, risk
+          limits, and approval rules are still checked before every remote call.
         </p>
       </DocsSection>
 

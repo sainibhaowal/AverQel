@@ -17,9 +17,9 @@ from app.platform.database.base import Base
 class MCPConnectionPolicy(Base):
     """Durable policy for one tenant/user-owned MCP server.
 
-    ``default_enabled=False`` and ``read_only=True`` are intentionally
-    conservative. Missing or stale per-DeepSpace/per-conversation overrides
-    must be treated as disabled by the runtime policy evaluator.
+    Connected MCP accounts are available across the owner's DeepSpace
+    conversations by default. Tool-level allow/deny, risk, read-only, and
+    approval policy remains enforced by the runtime evaluator.
     """
 
     __tablename__ = "mcp_connection_policies"
@@ -45,7 +45,7 @@ class MCPConnectionPolicy(Base):
         server_default=text("'{\"write\":\"needs_approval\",\"delete\":\"needs_approval\",\"external_message\":\"needs_approval\"}'::jsonb"),
     )
     tool_modes: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    default_enabled: Mapped[bool] = mapped_column(nullable=False, server_default=text("false"))
+    default_enabled: Mapped[bool] = mapped_column(nullable=False, server_default=text("true"))
     deepspace_overrides: Mapped[dict[str, bool]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     conversation_overrides: Mapped[dict[str, bool]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
