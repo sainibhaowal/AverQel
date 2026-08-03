@@ -17,7 +17,10 @@ import { fetchWithAuth } from "@/lib/api";
 import type { Transition } from "framer-motion";
 
 import DeepSpaceChatClient from "./DeepSpaceChatClient";
-import DeepSpaceEditor, { type DeepSpaceEditorHandle } from "./DeepSpaceEditor";
+import DeepSpaceEditor, {
+  type DeepSpaceAgentNotePreview,
+  type DeepSpaceEditorHandle,
+} from "./DeepSpaceEditor";
 import MemoryPanel from "./MemoryPanel";
 
 export interface DeepSpaceNote {
@@ -123,8 +126,12 @@ export default function DeepSpacePageClient() {
   const [activeNote, setActiveNote] = useState<DeepSpaceNote | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [agentNotePreview, setAgentNotePreview] = useState<DeepSpaceAgentNotePreview | null>(
+    null,
+  );
   const [panelMode, setPanelMode] = useState<"split" | "notes" | "chat" | "memory">("split");
   const editorRef = useRef<DeepSpaceEditorHandle>(null);
+  const agentPreviewBaseContentRef = useRef<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [serviceWarnings, setServiceWarnings] = useState<string[]>([]);
   const [serviceRetryKey, setServiceRetryKey] = useState(0);
@@ -238,6 +245,8 @@ export default function DeepSpacePageClient() {
     if (activeNote?.id) {
       window.localStorage.setItem(ACTIVE_NOTE_KEY, activeNote.id);
     }
+    agentPreviewBaseContentRef.current = null;
+    setAgentNotePreview(null);
   }, [activeNote?.id]);
 
   // ── Auto-save ────────────────────────────────────────────────────────────
@@ -267,6 +276,51 @@ export default function DeepSpacePageClient() {
       }
     }, 1500);
   };
+
+  const handleAgentNotePreview = useCallback(
+    (preview: DeepSpaceAgentNotePreview & { conversationId: string }) => {
+      if (preview.conversationId !== activeNote?.id) return;
+      if (agentPreviewBaseContentRef.current === null) {
+        agentPreviewBaseContentRef.current = activeNote?.content_html ?? "";
+      }
+      setAgentNotePreview({
+        markdown: preview.markdown,
+        mode: preview.mode,
+        status: preview.status,
+      });
+    },
+    [activeNote?.content_html, activeNote?.id],
+  );
+
+  const handleAgentNoteCommitted = useCallback(
+    async ({ conversationId, contentHtml }: { conversationId: string; contentHtml: string }) => {
+      if (conversationId !== activeNote?.id) return;
+      const currentContent = activeNote?.content_html ?? "";
+      if (
+        agentPreviewBaseContentRef.current !== null &&
+        agentPreviewBaseContentRef.current !== currentContent
+      ) {
+        setAgentNotePreview((previous) =>
+          previous ? { ...previous, status: "conflict" } : previous,
+        );
+        return;
+      }
+      agentPreviewBaseContentRef.current = null;
+      setAgentNotePreview(null);
+      setActiveNote((previous) =>
+        previous ? { ...previous, content_html: contentHtml } : previous,
+      );
+      setNotes((previous) =>
+        previous.map((note) =>
+          note.id === conversationId
+            ? { ...note, content_html: contentHtml, updated_at: new Date().toISOString() }
+            : note,
+        ),
+      );
+      await editorRef.current?.replaceHTML(contentHtml);
+    },
+    [activeNote?.content_html, activeNote?.id],
+  );
 
   // ── Layout & Resizing ────────────────────────────────────────────────────
 
@@ -440,6 +494,7 @@ export default function DeepSpacePageClient() {
                   onChange={handleEditorChange}
                   conversationId={activeNote?.id}
                   isSaving={isSaving}
+                  agentPreview={agentNotePreview}
                   showCollapseControls={false}
                   panelMode={panelMode}
                   onSetPanelMode={setPanelMode}
@@ -517,6 +572,8 @@ export default function DeepSpacePageClient() {
                     createNote();
                   }}
                   onInsertLatestAnswer={insertAnswer}
+                  onAgentNotePreview={handleAgentNotePreview}
+                  onAgentNoteCommitted={handleAgentNoteCommitted}
                   panelMode={panelMode}
                   onSetPanelMode={setPanelMode}
                   isHistoryOpen={isHistoryOpen}

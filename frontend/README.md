@@ -89,6 +89,12 @@ running immediately and completed when that real result arrives; the UI does not
 The browser keeps the detailed local sequence during the automatic post-stream history refresh, so a
 completed answer does not collapse the visible timeline into one combined thinking block.
 
+When an agent uses the DeepSpace `write` tool, the note panel also renders the real streamed Markdown
+arguments as an in-editor **AverQel is writing** preview. The preview is not persisted token by token:
+only the validated, tenant-scoped write-tool result replaces or appends the durable note. If a stream
+fails, the draft remains visibly marked as unsaved; if the user changes the note while the agent is
+writing, the user's newer local content is retained rather than being replaced automatically.
+
 The desktop/Tauri workspace proxy remains single-process because its client registry is process-local.
 Do not increase API worker count without first moving that registry to a shared transport.
 

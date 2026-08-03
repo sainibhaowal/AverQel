@@ -29,12 +29,20 @@ import {
 import { fetchWithAuth } from "@/lib/api";
 import { useTheme } from "@/app/context/ThemeContext";
 import { MathBlock } from "./MathBlock";
+import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
+
+export interface DeepSpaceAgentNotePreview {
+  markdown: string;
+  mode: "replace" | "append";
+  status: "streaming" | "failed" | "conflict";
+}
 
 export interface DeepSpaceEditorHandle {
   insertHTML: (html: string) => Promise<void>;
   insertMarkdown: (markdown: string) => Promise<void>;
   getHTML: () => Promise<string>;
   getMarkdown: () => Promise<string>;
+  replaceHTML: (html: string) => Promise<void>;
   clear: () => void;
 }
 
@@ -48,6 +56,7 @@ interface DeepSpaceEditorProps {
   showCollapseControls?: boolean;
   panelMode?: "split" | "notes" | "chat" | "memory";
   onSetPanelMode?: (mode: "split" | "notes" | "chat" | "memory") => void;
+  agentPreview?: DeepSpaceAgentNotePreview | null;
 }
 
 const getCustomTheme = (theme: "light" | "dark") => {
@@ -103,6 +112,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
       showCollapseControls = true,
       panelMode,
       onSetPanelMode,
+      agentPreview,
     },
     ref,
   ) => {
@@ -195,6 +205,10 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
       },
       getMarkdown: async () => {
         return await editor.blocksToMarkdownLossy(editor.document);
+      },
+      replaceHTML: async (html: string) => {
+        const blocks = await editor.tryParseHTMLToBlocks(html);
+        editor.replaceBlocks(editor.document, blocks);
       },
       clear: () => {
         editor.replaceBlocks(editor.document, []);
@@ -465,6 +479,41 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                   }
                 />
               </BlockNoteView>
+              {agentPreview?.markdown ? (
+                <section
+                  aria-live="polite"
+                  aria-label="AverQel live note draft"
+                  className={`mt-5 rounded-2xl border p-4 shadow-[0_14px_42px_-28px_rgba(34,211,238,0.7)] ${
+                    agentPreview.status !== "streaming"
+                      ? "border-amber-400/30 bg-amber-400/[0.06]"
+                      : "border-cyan-400/30 bg-cyan-400/[0.05]"
+                  }`}
+                  data-testid="deepspace-live-note-preview"
+                >
+                  <div className="mb-3 flex items-center gap-2 text-[10px] font-bold tracking-[0.14em] uppercase">
+                    <FileEdit
+                      size={14}
+                      className={
+                        agentPreview.status !== "streaming" ? "text-amber-300" : "text-cyan-300"
+                      }
+                    />
+                    <span className="text-foreground/80">
+                      {agentPreview.status === "streaming"
+                        ? "AverQel is writing in this note"
+                        : agentPreview.status === "conflict"
+                          ? "Your newer note edit was kept"
+                          : "AverQel draft was not saved"}
+                    </span>
+                    <span className="text-foreground/45 ml-auto normal-case">
+                      {agentPreview.mode === "append" ? "append" : "replace"}
+                    </span>
+                  </div>
+                  <DeepSpaceMarkdownRenderer
+                    content={agentPreview.markdown}
+                    streaming={agentPreview.status === "streaming"}
+                  />
+                </section>
+              ) : null}
             </div>
           </div>
         </div>

@@ -128,4 +128,70 @@ describe("DeepSpaceChatClient history sync", () => {
       expect(startMock).toHaveBeenCalled();
     });
   });
+
+  it("forwards streamed write-tool markdown to the live note preview and commits the saved note", async () => {
+    const onAgentNotePreview = vi.fn();
+    const onAgentNoteCommitted = vi.fn();
+    startMock.mockImplementationOnce(
+      async (options: {
+        onEvent: (event: Record<string, unknown>) => void;
+        onFinally?: () => void;
+      }) => {
+        options.onEvent({
+          event: "start",
+          data: { message_id: "assistant-1", conversation_id: "conv-1" },
+        });
+        options.onEvent({
+          event: "tool_delta",
+          data: {
+            step_id: "tool_stream_1_0",
+            tool_name: "write",
+            text: '{"markdown":"# Live',
+          },
+        });
+        options.onEvent({
+          event: "tool_delta",
+          data: {
+            step_id: "tool_stream_1_0",
+            tool_name: "write",
+            text: ' note","mode":"replace"}',
+          },
+        });
+        options.onEvent({
+          event: "tool_result",
+          data: {
+            step_id: "tool_stream_1_0",
+            tool_name: "write",
+            output: JSON.stringify({ content_html: "<h1>Live note</h1>" }),
+          },
+        });
+        options.onEvent({ event: "done", data: {} });
+        options.onFinally?.();
+      },
+    );
+
+    render(
+      <DeepSpaceChatClient
+        activeConversationId="conv-1"
+        onAgentNotePreview={onAgentNotePreview}
+        onAgentNoteCommitted={onAgentNoteCommitted}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Set Query" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit Query" }));
+
+    await waitFor(() => {
+      expect(onAgentNotePreview).toHaveBeenLastCalledWith({
+        conversationId: "conv-1",
+        markdown: "# Live note",
+        mode: "replace",
+        status: "streaming",
+      });
+      expect(onAgentNoteCommitted).toHaveBeenCalledWith({
+        conversationId: "conv-1",
+        contentHtml: "<h1>Live note</h1>",
+      });
+    });
+  });
 });

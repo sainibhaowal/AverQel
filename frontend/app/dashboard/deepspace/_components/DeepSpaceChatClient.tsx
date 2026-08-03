@@ -25,8 +25,60 @@ import type { DeepSpaceHistoryMessage } from "../_lib/deepspace-stream";
 import { resolveLatestEditableMessageId } from "../_lib/edit-target";
 
 import DeepSpaceComposer, { type DeepSpaceRuntimePhase } from "./DeepSpaceComposer";
+import type { DeepSpaceAgentNotePreview } from "./DeepSpaceEditor";
 import DeepSpaceThread from "./DeepSpaceThread";
 import DeepSpaceScrollTracker from "./DeepSpaceScrollTracker";
+
+function readPartialJsonStringValue(input: string, key: string): string | null {
+  const keyStart = input.indexOf(`"${key}"`);
+  if (keyStart < 0) return null;
+  const colon = input.indexOf(":", keyStart + key.length + 2);
+  if (colon < 0) return null;
+  const openingQuote = input.indexOf('"', colon + 1);
+  if (openingQuote < 0) return null;
+
+  let value = "";
+  for (let index = openingQuote + 1; index < input.length; index += 1) {
+    const character = input[index]!;
+    if (character === '"') return value;
+    if (character !== "\\") {
+      value += character;
+      continue;
+    }
+    const escaped = input[index + 1];
+    if (!escaped) break;
+    if (escaped === "u") {
+      const code = input.slice(index + 2, index + 6);
+      if (code.length < 4 || !/^[0-9a-f]{4}$/i.test(code)) break;
+      value += String.fromCharCode(Number.parseInt(code, 16));
+      index += 5;
+      continue;
+    }
+    const escapes: Record<string, string> = {
+      '"': '"',
+      "\\": "\\",
+      "/": "/",
+      b: "\b",
+      f: "\f",
+      n: "\n",
+      r: "\r",
+      t: "\t",
+    };
+    if (!(escaped in escapes)) break;
+    value += escapes[escaped]!;
+    index += 1;
+  }
+  return value;
+}
+
+function readWritePreview(input: string): { markdown: string; mode: "replace" | "append" } | null {
+  const markdown = readPartialJsonStringValue(input, "markdown");
+  if (markdown === null) return null;
+  return {
+    markdown,
+    mode: readPartialJsonStringValue(input, "mode") === "append" ? "append" : "replace",
+  };
+}
 const buildInitialPrompt = (messages: any[], currentContent?: string): string => {
   const wordsSet = new Set<string>([
     "AverQel",
@@ -74,6 +126,8 @@ const buildInitialPrompt = (messages: any[], currentContent?: string): string =>
 
 interface DeepSpaceChatClientProps {
   onInsertLatestAnswer?: (content: string) => void;
+  onAgentNotePreview?: (preview: DeepSpaceAgentNotePreview & { conversationId: string }) => void;
+  onAgentNoteCommitted?: (update: { conversationId: string; contentHtml: string }) => void;
   onSelectNote?: (noteId: string) => void;
   onNewNote?: () => void;
   onConversationRenamed?: (note: {
@@ -99,6 +153,8 @@ const EMPTY_PROMPTS = [
 ];
 export default function DeepSpaceChatClient({
   onInsertLatestAnswer,
+  onAgentNotePreview,
+  onAgentNoteCommitted,
   onSelectNote,
   onNewNote,
   onConversationRenamed,
@@ -150,6 +206,10 @@ export default function DeepSpaceChatClient({
   const typingIntervalRef = useRef<any>(null);
   const messagesRef = useRef(state.messages);
   const currentContentRef = useRef(currentContent);
+  const activeConversationIdRef = useRef(activeConversationId);
+  const notePreviewCallbackRef = useRef(onAgentNotePreview);
+  const noteCommitCallbackRef = useRef(onAgentNoteCommitted);
+  const noteArgumentBuffersRef = useRef(new Map<string, string>());
 
   useEffect(() => {
     queryRef.current = query;
@@ -162,6 +222,16 @@ export default function DeepSpaceChatClient({
   useEffect(() => {
     currentContentRef.current = currentContent;
   }, [currentContent]);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+    noteArgumentBuffersRef.current.clear();
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    notePreviewCallbackRef.current = onAgentNotePreview;
+    noteCommitCallbackRef.current = onAgentNoteCommitted;
+  }, [onAgentNoteCommitted, onAgentNotePreview]);
 
   useEffect(() => {
     return () => {
@@ -426,24 +496,90 @@ export default function DeepSpaceChatClient({
     });
   }, [scrollToBottomIfFollowing]);
 
+  const publishNotePreview = useCallback(
+    (callKey: string, status: DeepSpaceAgentNotePreview["status"] = "streaming") => {
+      const conversationId = activeConversationIdRef.current;
+      const rawArguments = noteArgumentBuffersRef.current.get(callKey);
+      if (!conversationId || !rawArguments) return;
+      const preview = readWritePreview(rawArguments);
+      if (!preview?.markdown) return;
+      notePreviewCallbackRef.current?.({ ...preview, status, conversationId });
+    },
+    [],
+  );
+
+  const markLiveNoteDraftsFailed = useCallback(() => {
+    for (const callKey of noteArgumentBuffersRef.current.keys()) {
+      publishNotePreview(callKey, "failed");
+    }
+  }, [publishNotePreview]);
+
+  const consumeNoteEvents = useCallback(
+    (events: Array<{ event: string; data: Record<string, unknown> }>) => {
+      for (const event of events) {
+        const toolName = String(event.data.tool_name ?? "");
+        const callKey = String(event.data.step_id ?? event.data.tool_id ?? "");
+        if (event.event === "tool_delta" && toolName === "write" && callKey) {
+          const fragment = String(event.data.text ?? "");
+          if (!fragment) continue;
+          noteArgumentBuffersRef.current.set(
+            callKey,
+            `${noteArgumentBuffersRef.current.get(callKey) ?? ""}${fragment}`,
+          );
+          publishNotePreview(callKey);
+          continue;
+        }
+        if (event.event === "tool_error" && toolName === "write" && callKey) {
+          publishNotePreview(callKey, "failed");
+          continue;
+        }
+        if (event.event === "tool_result" && toolName === "write" && callKey) {
+          try {
+            const payload = JSON.parse(String(event.data.output ?? "{}")) as Record<string, unknown>;
+            const contentHtml = payload.content_html;
+            const conversationId = activeConversationIdRef.current;
+            if (conversationId && typeof contentHtml === "string") {
+              noteCommitCallbackRef.current?.({ conversationId, contentHtml });
+            }
+          } catch {
+            // The normal tool timeline still displays any malformed result safely.
+          } finally {
+            noteArgumentBuffersRef.current.delete(callKey);
+          }
+          continue;
+        }
+        if (event.event === "error") markLiveNoteDraftsFailed();
+      }
+    },
+    [markLiveNoteDraftsFailed, publishNotePreview],
+  );
+
   const stream = useDeepSpaceStream(
     useMemo(
       () => ({
         onEvent: (event) => {
+          consumeNoteEvents([event]);
           dispatch({ type: "stream_event", event });
         },
         onEvents: (events) => {
+          consumeNoteEvents(events);
           dispatch({ type: "stream_events", events });
         },
-        onTransportError: (error) => dispatch({ type: "stream_failed", error }),
-        onUserCancel: () => dispatch({ type: "stream_interrupted" }),
+        onTransportError: (error) => {
+          markLiveNoteDraftsFailed();
+          dispatch({ type: "stream_failed", error });
+        },
+        onUserCancel: () => {
+          markLiveNoteDraftsFailed();
+          dispatch({ type: "stream_interrupted" });
+        },
         onFinally: () => {
           setCompletionPulse(true);
           window.setTimeout(() => setCompletionPulse(false), 950);
           dispatch({ type: "stream_finished" });
         },
       }),
-      [],
+      [consumeNoteEvents, markLiveNoteDraftsFailed],
     ),
   );
 
