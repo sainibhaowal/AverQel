@@ -433,7 +433,11 @@ class OpenCodeZenProvider:
             payload["tools"] = request.tools
         if request.tool_choice:
             payload["tool_choice"] = request.tool_choice
-        if request.reasoning_enabled and cls.model_supports_reasoning(request.model):
+        if (
+            request.reasoning_enabled
+            and request.tool_choice != "required"
+            and cls.model_supports_reasoning(request.model)
+        ):
             payload["reasoning"] = {"effort": request.reasoning_effort or "medium"}
         return payload
 

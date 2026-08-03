@@ -4,6 +4,7 @@ import importlib
 import json
 import time
 from collections.abc import AsyncIterator, Iterator, Sequence
+from dataclasses import replace
 from typing import Any, cast
 
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
@@ -668,8 +669,12 @@ class OpenAICompatibleProvider:
         messages = [dict(message) for message in request.messages]
         if not messages:
             return messages
-        if cls._uses_slash_think_controls(request):
-            command = "/think" if request.reasoning_enabled else "/no_think"
+        reasoning_enabled = cls._reasoning_enabled_for_request(request)
+        if (
+            cls._uses_slash_think_controls(request)
+            and request.metadata.get("reasoning_mode") != "auto"
+        ):
+            command = "/think" if reasoning_enabled else "/no_think"
             for index in range(len(messages) - 1, -1, -1):
                 if messages[index].get("role") != "user":
                     continue
@@ -716,7 +721,25 @@ class OpenAICompatibleProvider:
                     ],
                 ]
                 break
-        return cls._prepare_gemma_thinking(messages, request)
+        if reasoning_enabled == request.reasoning_enabled:
+            return cls._prepare_gemma_thinking(messages, request)
+        return cls._prepare_gemma_thinking(
+            messages, replace(request, reasoning_enabled=reasoning_enabled)
+        )
+
+    @staticmethod
+    def _reasoning_enabled_for_request(request: ChatGenerateRequest) -> bool:
+        """Avoid an unsupported forced-tool/reasoning combination.
+
+        OpenCode Zen currently rejects ``tool_choice=required`` when its
+        reasoning controls are present. Tool execution remains required; only
+        provider-side reasoning controls are omitted for that planning round.
+        Any reasoning or thinking events emitted naturally are still parsed.
+        """
+        provider_type = str(request.metadata.get("provider_type") or "").lower()
+        if provider_type == "opencode-zen" and request.tool_choice == "required":
+            return False
+        return request.reasoning_enabled
 
     @classmethod
     def _prepare_gemma_thinking(
@@ -751,8 +774,14 @@ class OpenAICompatibleProvider:
     def _apply_reasoning_request_settings(
         self, payload: dict[str, Any], request: ChatGenerateRequest
     ) -> None:
+        reasoning_enabled = self._reasoning_enabled_for_request(request)
+        if request.metadata.get("reasoning_mode") == "auto" and not reasoning_enabled:
+            # Auto mode observes provider-emitted reasoning without sending a
+            # provider-specific enable/disable switch. This preserves model
+            # defaults and avoids forcing unsupported thinking combinations.
+            return
         if self._uses_groq_reasoning_api(request):
-            if request.reasoning_enabled:
+            if reasoning_enabled:
                 payload["reasoning_effort"] = request.reasoning_effort or "medium"
                 payload["include_reasoning"] = True
             else:
@@ -762,12 +791,12 @@ class OpenAICompatibleProvider:
         if not self.model_supports_reasoning(request.model):
             return
         if self._uses_enable_thinking_controls(request):
-            payload["enable_thinking"] = bool(request.reasoning_enabled)
-            if request.reasoning_enabled:
+            payload["enable_thinking"] = bool(reasoning_enabled)
+            if reasoning_enabled:
                 payload["reasoning_effort"] = request.reasoning_effort or "medium"
             else:
                 payload.pop("reasoning_effort", None)
-        if not request.reasoning_enabled:
+        if not reasoning_enabled:
             return
         payload["reasoning"] = {"effort": request.reasoning_effort or "medium"}
 

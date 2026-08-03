@@ -114,7 +114,9 @@ export default function DeepSpaceChatClient({
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
   const historyOpen = isHistoryOpen !== undefined ? isHistoryOpen : localHistoryOpen;
   const setHistoryOpen = onSetHistoryOpen !== undefined ? onSetHistoryOpen : setLocalHistoryOpen;
-  const thinkingEnabled = true;
+  // DeepSpace observes provider-emitted reasoning deltas automatically. It
+  // does not force every model to enable a provider-specific thinking mode.
+  const thinkingEnabled = false;
   const [threadScrollMetrics, setThreadScrollMetrics] = useState<{
     scrollTop: number;
     viewportHeight: number;

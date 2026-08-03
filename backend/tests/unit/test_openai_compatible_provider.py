@@ -540,6 +540,28 @@ def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_nemotr
     assert "reasoning" not in payload
 
 
+def test_openai_compatible_provider_auto_reasoning_preserves_model_defaults() -> None:
+    payload: dict[str, object] = {}
+    request = ChatGenerateRequest(
+        model="nvidia/nemotron-3-nano-4b",
+        messages=[{"role": "user", "content": "Explain this."}],
+        temperature=0.1,
+        max_tokens=64,
+        base_url="http://host.docker.internal:1234/v1",
+        api_key="k",
+        reasoning_enabled=False,
+        tool_choice="required",
+        metadata={"provider_type": "opencode-zen", "reasoning_mode": "auto"},
+    )
+
+    provider = OpenAICompatibleProvider()
+    messages = provider._prepare_messages(request)
+    provider._apply_reasoning_request_settings(payload, request)
+
+    assert messages[-1]["content"] == "Explain this."
+    assert payload == {}
+
+
 def test_openai_compatible_provider_extracts_tagged_reasoning_content() -> None:
     thinking, answer = OpenAICompatibleProvider._extract_tagged_reasoning_content(
         "<think>Plan first.</think>Final answer.",

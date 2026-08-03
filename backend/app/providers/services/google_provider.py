@@ -340,7 +340,10 @@ class GoogleProvider:
             "temperature": request.temperature,
             "maxOutputTokens": request.max_tokens,
         }
-        if cls.model_supports_reasoning(request.model):
+        if (
+            cls.model_supports_reasoning(request.model)
+            and request.metadata.get("reasoning_mode") != "auto"
+        ):
             if request.reasoning_enabled:
                 generation_config["thinkingConfig"] = {"includeThoughts": True}
             else:

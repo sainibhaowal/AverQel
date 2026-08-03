@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -79,6 +80,18 @@ def _request(model: str, *, reasoning_enabled: bool = False) -> ChatGenerateRequ
         reasoning_enabled=reasoning_enabled,
         metadata={"timeout_seconds": 8.0, "read_timeout_seconds": 30.0},
     )
+
+
+def test_opencode_zen_omits_reasoning_payload_for_required_tools() -> None:
+    request = replace(
+        _request("nemotron-3-ultra-free", reasoning_enabled=True),
+        tool_choice="required",
+    )
+
+    payload = OpenCodeZenProvider._build_responses_payload(request, stream=True)
+
+    assert payload["tool_choice"] == "required"
+    assert "reasoning" not in payload
 
 
 def test_opencode_zen_provider_lists_models_and_parses_context_windows(monkeypatch):

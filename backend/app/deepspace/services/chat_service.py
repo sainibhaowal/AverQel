@@ -1732,6 +1732,7 @@ class DeepSpaceChatService:
                         "surface": "deepspace",
                         "conversation_id": str(conversation_id),
                         "provider_type": candidate.provider_type,
+                        "reasoning_mode": "explicit" if thinking_enabled else "auto",
                         "timeout_seconds": min(
                             15, int(getattr(self.settings, "llm_timeout_seconds", 15))
                         ),
