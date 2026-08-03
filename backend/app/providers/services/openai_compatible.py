@@ -735,13 +735,13 @@ class OpenAICompatibleProvider:
     def _reasoning_enabled_for_request(request: ChatGenerateRequest) -> bool:
         """Avoid an unsupported forced-tool/reasoning combination.
 
-        OpenCode Zen currently rejects ``tool_choice=required`` when its
-        reasoning controls are present. Tool execution remains required; only
-        provider-side reasoning controls are omitted for that planning round.
-        Any reasoning or thinking events emitted naturally are still parsed.
+        Some upstream OpenAI-compatible gateways reject
+        ``tool_choice=required`` when reasoning controls are present. Tool
+        execution remains required; only provider-side reasoning controls are
+        omitted for that planning round. Any reasoning or thinking events
+        emitted naturally are still parsed.
         """
-        provider_type = str(request.metadata.get("provider_type") or "").lower()
-        if provider_type == "opencode-zen" and request.tool_choice == "required":
+        if request.tool_choice == "required":
             return False
         return request.reasoning_enabled
 

@@ -234,6 +234,24 @@ def test_google_auto_reasoning_preserves_provider_defaults() -> None:
     assert "thinkingConfig" not in config
 
 
+def test_google_required_tools_suppress_explicit_thinking_controls() -> None:
+    request = ChatGenerateRequest(
+        model="gemini-2.5-pro",
+        messages=[{"role": "user", "content": "hi"}],
+        temperature=0,
+        max_tokens=256,
+        base_url="https://generativelanguage.googleapis.com/v1beta",
+        api_key="test",
+        reasoning_enabled=True,
+        tool_choice="required",
+        metadata={"reasoning_mode": "explicit"},
+    )
+
+    config = GoogleProvider._build_generation_config(request)
+
+    assert "thinkingConfig" not in config
+
+
 def test_openai_compatible_disable_thinking_omits_effort_for_local_controls() -> None:
     payload: dict[str, object] = {}
     request = ChatGenerateRequest(

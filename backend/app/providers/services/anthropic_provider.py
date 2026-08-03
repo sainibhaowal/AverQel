@@ -237,7 +237,11 @@ class AnthropicProvider:
             tool_choice = self._tool_choice_payload(request)
             if tool_choice:
                 payload["tool_choice"] = tool_choice
-        if request.reasoning_enabled and self.model_supports_reasoning(request.model):
+        if (
+            request.reasoning_enabled
+            and request.tool_choice != "required"
+            and self.model_supports_reasoning(request.model)
+        ):
             payload["thinking"] = self._build_thinking_payload(request.max_tokens)
         response = httpx_module.post(
             f"{request.base_url.rstrip('/')}/messages",
@@ -293,7 +297,11 @@ class AnthropicProvider:
             tool_choice = self._tool_choice_payload(request)
             if tool_choice:
                 payload["tool_choice"] = tool_choice
-        if request.reasoning_enabled and self.model_supports_reasoning(request.model):
+        if (
+            request.reasoning_enabled
+            and request.tool_choice != "required"
+            and self.model_supports_reasoning(request.model)
+        ):
             payload["thinking"] = self._build_thinking_payload(request.max_tokens)
         async with httpx_module.AsyncClient(
             timeout=float(request.metadata.get("timeout_seconds", 8.0))

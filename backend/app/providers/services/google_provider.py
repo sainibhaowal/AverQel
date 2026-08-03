@@ -343,6 +343,7 @@ class GoogleProvider:
         if (
             cls.model_supports_reasoning(request.model)
             and request.metadata.get("reasoning_mode") != "auto"
+            and request.tool_choice != "required"
         ):
             if request.reasoning_enabled:
                 generation_config["thinkingConfig"] = {"includeThoughts": True}

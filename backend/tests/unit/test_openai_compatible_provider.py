@@ -562,6 +562,25 @@ def test_openai_compatible_provider_auto_reasoning_preserves_model_defaults() ->
     assert payload == {}
 
 
+def test_openai_compatible_required_tools_suppress_reasoning_for_any_provider() -> None:
+    payload: dict[str, object] = {}
+    request = ChatGenerateRequest(
+        model="qwen3-14b",
+        messages=[{"role": "user", "content": "Explain this."}],
+        temperature=0.1,
+        max_tokens=64,
+        base_url="https://example.test/v1",
+        reasoning_enabled=True,
+        tool_choice="required",
+        metadata={"provider_type": "openrouter", "reasoning_mode": "explicit"},
+    )
+
+    provider = OpenAICompatibleProvider(provider_name="openrouter")
+    provider._apply_reasoning_request_settings(payload, request)
+
+    assert payload == {}
+
+
 def test_openai_compatible_auto_mode_observes_tagged_reasoning() -> None:
     request = ChatGenerateRequest(
         model="qwen3-14b",
