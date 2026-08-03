@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, ChevronDown, Check, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { Bot, ChevronDown, Check, Mic, MicOff, Play, Square, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 interface DeepSpaceComposerProps {
@@ -45,94 +45,13 @@ export type DeepSpaceRuntimePhase =
 
 function SendIcon() {
   return (
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2.5}
-        d="M13 5l7 7m0 0l-7 7m7-7H6"
-      />
-    </svg>
+    <Play className="h-[18px] w-[18px] translate-x-px fill-current" strokeWidth={2.5} />
   );
 }
 
-// High-fidelity Neural Pulsar animation for streaming state
-function StreamingIcon() {
+function StopIcon() {
   return (
-    <div className="relative flex h-6 w-6 items-center justify-center">
-      {/* Central Pulsar Core */}
-      <motion.div
-        className="relative z-10 h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_15px_rgba(255,255,255,0.8)]"
-        animate={{
-          scale: [1, 1.4, 1],
-          boxShadow: [
-            "0 0 10px rgba(255,255,255,0.5)",
-            "0 0 25px rgba(255,255,255,0.9), 0 0 45px rgba(255,255,255,0.4)",
-            "0 0 10px rgba(255,255,255,0.5)",
-          ],
-        }}
-        transition={{
-          duration: 1.2,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-
-      {/* Resonance Rings */}
-      {[0, 1, 2].map((i) => (
-        <motion.div
-          key={`ring-${i}`}
-          className="absolute rounded-full border border-white/40"
-          initial={{ width: 6, height: 6, opacity: 0 }}
-          animate={{
-            width: [6, 28],
-            height: [6, 28],
-            opacity: [0, 0.5, 0],
-          }}
-          transition={{
-            duration: 1.8,
-            repeat: Infinity,
-            delay: i * 0.6,
-            ease: "easeOut",
-          }}
-        />
-      ))}
-
-      {/* Orbital Data Particles */}
-      {[0, 1, 2, 3].map((i) => (
-        <motion.div
-          key={`particle-${i}`}
-          className="absolute h-1 w-1 rounded-full bg-white/80"
-          animate={{
-            rotate: [i * 90, i * 90 + 360],
-            scale: [0.8, 1.2, 0.8],
-          }}
-          transition={{
-            rotate: { duration: 2.5 + i * 0.5, repeat: Infinity, ease: "linear" },
-            scale: { duration: 1.5, repeat: Infinity, ease: "easeInOut" },
-          }}
-          style={{
-            originX: "50%",
-            originY: "50%",
-            paddingLeft: "11px", // Radius of orbit
-          }}
-        />
-      ))}
-
-      {/* Energy Field Glow */}
-      <motion.div
-        className="absolute inset-0 rounded-full bg-white/20 blur-xl"
-        animate={{
-          scale: [0.8, 1.5, 0.8],
-          opacity: [0.1, 0.4, 0.1],
-        }}
-        transition={{
-          duration: 2,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-    </div>
+    <Square className="h-4 w-4 fill-current" strokeWidth={2.5} />
   );
 }
 
@@ -448,21 +367,19 @@ export default function DeepSpaceComposer({
                 type="button"
                 onClick={isStreaming ? onStop : onSubmit}
                 disabled={!isStreaming && !query.trim()}
-                className="border-primary/40 from-primary/90 to-primary text-primary-foreground hover:border-primary/60 disabled:border-border-subtle disabled:bg-surface-2 disabled:text-muted-foreground relative flex h-10 w-10 items-center justify-center rounded-full border bg-gradient-to-br shadow-lg transition-all hover:scale-110 hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:shadow-none"
-                whileHover={!isStreaming ? { scale: 1.08 } : {}}
-                whileTap={!isStreaming ? { scale: 0.95 } : {}}
+                aria-label={isStreaming ? "Stop response" : "Send message"}
+                title={isStreaming ? "Stop response" : "Send message"}
+                className="border-primary/45 from-primary/95 to-primary text-primary-foreground hover:border-primary/70 disabled:border-border-subtle disabled:bg-surface-2 disabled:text-muted-foreground relative flex h-10 w-10 items-center justify-center rounded-xl border bg-gradient-to-br shadow-[0_8px_20px_rgba(var(--primary),0.25)] transition-[border-color,background-color,box-shadow,filter] hover:brightness-110 active:brightness-95 disabled:cursor-not-allowed disabled:shadow-none"
+                whileHover={{ scale: isStreaming ? 1.03 : 1.06 }}
+                whileTap={{ scale: 0.94 }}
                 animate={
                   isStreaming
                     ? {
-                        borderColor: [
-                          "rgba(var(--primary),0.4)",
-                          "rgba(var(--primary),0.9)",
-                          "rgba(var(--primary),0.4)",
-                        ],
+                        scale: [1, 1.025, 1],
                         boxShadow: [
-                          "0_0_12px_rgba(var(--primary),0.2)",
-                          "0_0_24px_rgba(var(--primary),0.5),0_0_40px_rgba(var(--primary),0.3)",
-                          "0_0_12px_rgba(var(--primary),0.2)",
+                          "0 8px 20px rgba(var(--primary),0.25)",
+                          "0 10px 28px rgba(var(--primary),0.48)",
+                          "0 8px 20px rgba(var(--primary),0.25)",
                         ],
                       }
                     : {}
@@ -477,21 +394,25 @@ export default function DeepSpaceComposer({
                     : {}
                 }
               >
-                {isStreaming ? <StreamingIcon /> : <SendIcon />}
+                <AnimatePresence initial={false} mode="wait">
+                  <motion.span
+                    key={isStreaming ? "stop" : "send"}
+                    initial={{ opacity: 0, scale: 0.65, rotate: isStreaming ? -18 : 18 }}
+                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                    exit={{ opacity: 0, scale: 0.65, rotate: isStreaming ? 18 : -18 }}
+                    transition={{ duration: 0.16, ease: "easeOut" }}
+                    className="relative z-10 flex items-center justify-center"
+                  >
+                    {isStreaming ? <StopIcon /> : <SendIcon />}
+                  </motion.span>
+                </AnimatePresence>
 
                 {isStreaming && (
-                  <>
-                    <motion.span
-                      className="border-primary/30 pointer-events-none absolute inset-[-6px] rounded-full border-2"
-                      animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.6, 0.3] }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                    />
-                    <motion.span
-                      className="border-primary/15 pointer-events-none absolute inset-[-12px] rounded-full border"
-                      animate={{ scale: [1, 1.25, 1], opacity: [0.1, 0.3, 0.1] }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
-                    />
-                  </>
+                  <motion.span
+                    className="border-primary/30 pointer-events-none absolute inset-[-4px] rounded-[14px] border"
+                    animate={{ opacity: [0.2, 0.65, 0.2], scale: [1, 1.06, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                  />
                 )}
               </motion.button>
             </div>
