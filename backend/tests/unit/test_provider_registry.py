@@ -56,6 +56,9 @@ def test_provider_registry_resolves_env_backed_chat_and_embedding_providers(
     assert isinstance(registry.get_chat_provider("anthropic"), AnthropicProvider)
     assert isinstance(registry.get_chat_provider("google"), GoogleProvider)
     assert isinstance(registry.get_chat_provider("opencode-zen"), OpenCodeZenProvider)
+    groq_provider = registry.get_chat_provider("groq")
+    assert isinstance(groq_provider, OpenAICompatibleProvider)
+    assert groq_provider.provider_name == "groq"
     assert isinstance(
         registry.get_model_discovery_provider("opencode-zen"), OpenCodeZenProvider
     )

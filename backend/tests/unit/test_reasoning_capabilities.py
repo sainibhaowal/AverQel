@@ -218,6 +218,22 @@ def test_google_build_generation_config_disables_thinking_explicitly() -> None:
     assert config["thinkingConfig"] == {"includeThoughts": False, "thinkingBudget": 0}
 
 
+def test_google_auto_reasoning_preserves_provider_defaults() -> None:
+    request = ChatGenerateRequest(
+        model="gemini-2.5-pro",
+        messages=[{"role": "user", "content": "hi"}],
+        temperature=0,
+        max_tokens=256,
+        base_url="https://generativelanguage.googleapis.com/v1beta",
+        api_key="test",
+        metadata={"reasoning_mode": "auto"},
+    )
+
+    config = GoogleProvider._build_generation_config(request)
+
+    assert "thinkingConfig" not in config
+
+
 def test_openai_compatible_disable_thinking_omits_effort_for_local_controls() -> None:
     payload: dict[str, object] = {}
     request = ChatGenerateRequest(

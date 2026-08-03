@@ -562,6 +562,27 @@ def test_openai_compatible_provider_auto_reasoning_preserves_model_defaults() ->
     assert payload == {}
 
 
+def test_openai_compatible_auto_mode_observes_tagged_reasoning() -> None:
+    request = ChatGenerateRequest(
+        model="qwen3-14b",
+        messages=[{"role": "user", "content": "Explain this."}],
+        temperature=0.1,
+        max_tokens=64,
+        base_url="http://host.docker.internal:1234/v1",
+        metadata={"provider_type": "ollama", "reasoning_mode": "auto"},
+    )
+
+    events, state = OpenAICompatibleProvider._split_stream_content_for_reasoning(
+        "<think>Plan first.</think>Final answer.",
+        state="answer",
+        enabled=OpenAICompatibleProvider._reasoning_observation_enabled(request),
+        model=request.model,
+    )
+
+    assert events == [("thinking", "Plan first."), ("delta", "Final answer.")]
+    assert state == "answer"
+
+
 def test_openai_compatible_provider_extracts_tagged_reasoning_content() -> None:
     thinking, answer = OpenAICompatibleProvider._extract_tagged_reasoning_content(
         "<think>Plan first.</think>Final answer.",

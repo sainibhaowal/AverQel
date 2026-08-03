@@ -40,7 +40,12 @@ class OpenAICompatibleProvider:
         supports_embeddings: bool = False,
         base_url: str | None = None,
         api_key: str | None = None,
+        provider_name: str | None = None,
     ) -> None:
+        # Registry-created instances use this to retain the concrete catalog
+        # provider (Groq, OpenRouter, vLLM, custom, …) while sharing the
+        # OpenAI-compatible transport and stream parser.
+        self.provider_name = provider_name or type(self).provider_name
         self.supports_embeddings = supports_embeddings
         self.base_url = resolve_provider_base_url(base_url)
         self.api_key = api_key
@@ -173,7 +178,7 @@ class OpenAICompatibleProvider:
             extracted_thinking, extracted_content = (
                 self._extract_tagged_reasoning_content(
                     content,
-                    enabled=request.reasoning_enabled,
+                    enabled=self._reasoning_observation_enabled(request),
                     model=request.model,
                 )
             )
@@ -290,7 +295,7 @@ class OpenAICompatibleProvider:
                             self._split_stream_content_for_reasoning(
                                 content,
                                 state=stream_state,
-                                enabled=request.reasoning_enabled,
+                                enabled=self._reasoning_observation_enabled(request),
                                 model=request.model,
                             )
                         )
@@ -420,7 +425,7 @@ class OpenAICompatibleProvider:
                         self._split_stream_content_for_reasoning(
                             content,
                             state=stream_state,
-                            enabled=request.reasoning_enabled,
+                            enabled=self._reasoning_observation_enabled(request),
                             model=request.model,
                         )
                     )
@@ -455,7 +460,7 @@ class OpenAICompatibleProvider:
             live_context_window = self._extract_context_window(item)
             verified_context_window = resolve_verified_context_window(
                 model_name,
-                provider_type="openai-compatible",
+                provider_type=self.provider_name,
             )
             context_window = (
                 live_context_window or verified_context_window.context_window
@@ -480,7 +485,7 @@ class OpenAICompatibleProvider:
                             else {}
                         ),
                         **reasoning_capabilities(
-                            "openai", model_name, base_url=self.base_url
+                            self.provider_name, model_name, base_url=self.base_url
                         ),
                     },
                 )
@@ -594,9 +599,8 @@ class OpenAICompatibleProvider:
             status="healthy", latency_ms=int((time.monotonic() - start) * 1000)
         )
 
-    @staticmethod
-    def model_supports_reasoning(model_name: str) -> bool:
-        return model_supports_reasoning("openai", model_name)
+    def model_supports_reasoning(self, model_name: str) -> bool:
+        return model_supports_reasoning(self.provider_name, model_name)
 
     @staticmethod
     def _extract_reasoning_text(payload: dict[str, Any]) -> str | None:
@@ -740,6 +744,14 @@ class OpenAICompatibleProvider:
         if provider_type == "opencode-zen" and request.tool_choice == "required":
             return False
         return request.reasoning_enabled
+
+    @staticmethod
+    def _reasoning_observation_enabled(request: ChatGenerateRequest) -> bool:
+        """Observe provider-emitted reasoning without forcing request controls."""
+        return bool(
+            request.reasoning_enabled
+            or request.metadata.get("reasoning_mode") == "auto"
+        )
 
     @classmethod
     def _prepare_gemma_thinking(

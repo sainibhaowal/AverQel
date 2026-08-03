@@ -66,6 +66,7 @@ class ProviderRegistry:
             return OpenAICompatibleProvider(
                 base_url=resolve_provider_base_url(base_url, provider_type=provider),
                 api_key=api_key,
+                provider_name=provider,
             )
         if provider == "ollama":
             return OllamaProvider().bind(base_url or "")
@@ -105,6 +106,7 @@ class ProviderRegistry:
                 supports_embeddings=True,
                 base_url=resolve_provider_base_url(base_url, provider_type=provider),
                 api_key=api_key,
+                provider_name=provider,
             )
         raise ValueError(f"Unsupported embedding provider: {provider}")
 
@@ -248,6 +250,7 @@ class ProviderRegistry:
                 supports_embeddings=True,
                 base_url=self.settings.llm_api_base_url,
                 api_key=self.settings.llm_api_key,
+                provider_name=provider_type,
             )
         raise ValueError(f"Unsupported discovery provider: {provider_type}")
 
@@ -291,6 +294,7 @@ class ProviderRegistry:
                 supports_embeddings=provider_config.supports_embeddings,
                 base_url=provider_config.api_base_url or self.settings.llm_api_base_url,
                 api_key=api_key,
+                provider_name=provider_config.provider_type,
             )
         if provider_config.provider_type == "anthropic":
             return AnthropicProvider().bind(

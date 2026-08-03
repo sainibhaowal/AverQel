@@ -207,6 +207,8 @@ _OPENAI_COMPATIBLE_PROVIDER_TYPES: Final[set[str]] = {
     "fireworks",
     "mistral",
     "perplexity",
+    "openrouter",
+    "vllm",
 }
 
 
