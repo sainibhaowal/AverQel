@@ -288,7 +288,16 @@ async def test_deepspace_rejects_empty_provider_stream_and_persists_failure(monk
         )
     ]
 
-    assert sum(frame.startswith("event: agent_status") for frame in frames) >= 2
+    status_payloads = [
+        json.loads(frame.split("data: ", 1)[1].strip())
+        for frame in frames
+        if frame.startswith("event: agent_status")
+    ]
+    assert any(payload["phase"] == "retrying" for payload in status_payloads)
+    assert not any(
+        payload.get("message") == "DeepSpace is ready to plan and execute this request safely."
+        for payload in status_payloads
+    )
     error = next(frame for frame in frames if frame.startswith("event: error"))
     payload = json.loads(error.split("data: ", 1)[1].strip())
     assert payload["code"] == "LLM_EMPTY_RESPONSE"

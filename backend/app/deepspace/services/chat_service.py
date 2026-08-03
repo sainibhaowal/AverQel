@@ -1476,23 +1476,6 @@ class DeepSpaceChatService:
         connected_service_tool_required = self._requires_connected_service_tool(
             prompt, mcp_bindings
         )
-        if available_tools:
-            yield sse(
-                "agent_status",
-                {
-                    "phase": "planning",
-                    "message": "DeepSpace is ready to plan and execute this request safely.",
-                    "active_tools": [str(item["function"]["name"]) for item in available_tools],
-                    "mcp_tools": [
-                        {
-                            "name": binding.exposed_name,
-                            "server": binding.server.name,
-                            "tool": binding.raw_name,
-                        }
-                        for binding in mcp_bindings.values()
-                    ],
-                },
-            )
 
         conversation_messages: list[dict[str, Any]] = [
             {
