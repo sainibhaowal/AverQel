@@ -61,6 +61,42 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(markdownRendererMock).toHaveBeenCalledTimes(1);
   });
 
+  it("shows tool activity in the same thinking panel even without model-thinking text", () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_tool_activity_1",
+            role: "assistant",
+            content: "",
+            rawContent: "",
+            createdAt: new Date().toISOString(),
+            status: "streaming",
+            agentSteps: [
+              {
+                id: "tool_step_1",
+                type: "tool_result",
+                toolName: "mcp_gmail_search_threads",
+                toolInput: { query: "in:inbox" },
+                toolOutput: "Found 13 threads",
+                status: "completed",
+                success: true,
+                startedAt: new Date().toISOString(),
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Thinking & activity…")).toBeInTheDocument();
+    expect(screen.getByText("mcp_gmail_search_threads")).toBeInTheDocument();
+    expect(screen.getByText("Found 13 threads")).toBeInTheDocument();
+  });
+
   it("does not rerun the markdown renderer when local copy state changes", () => {
     markdownRendererMock.mockClear();
     const message = {

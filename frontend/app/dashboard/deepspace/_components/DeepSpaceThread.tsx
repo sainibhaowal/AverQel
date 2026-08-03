@@ -285,10 +285,12 @@ const MessageBubble = memo(
 
           <div className="w-full min-w-0 flex-1">
             <div className="text-foreground/90 leading-relaxed">
-              {message.thinkingContent?.trim() ? (
+              {message.thinkingContent?.trim() ||
+              message.agentSteps?.some((step) => step.type !== "thinking") ? (
                 <DeepSpaceThinkingPanel
-                  content={message.thinkingContent}
+                  content={message.thinkingContent ?? ""}
                   isStreaming={message.status === "streaming"}
+                  agentSteps={message.agentSteps}
                 />
               ) : null}
 
@@ -372,7 +374,10 @@ const MessageBubble = memo(
                   <Database size={12} className="text-cyan-300" />
                   <span className="font-semibold">Memory used</span>
                   {message.memoryUsed.map((memory) => (
-                    <span key={memory.id} className="rounded-full border border-cyan-300/15 bg-black/10 px-2 py-0.5">
+                    <span
+                      key={memory.id}
+                      className="rounded-full border border-cyan-300/15 bg-black/10 px-2 py-0.5"
+                    >
                       {memory.key}
                     </span>
                   ))}
