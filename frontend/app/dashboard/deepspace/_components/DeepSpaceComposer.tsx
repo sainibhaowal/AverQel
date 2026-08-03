@@ -177,7 +177,7 @@ export default function DeepSpaceComposer({
         </div>
 
         <div
-          className={`relative z-10 rounded-[1.2rem] shadow-xl ${composerShell} ${shellPadding}`}
+          className={`relative rounded-[1.2rem] shadow-xl ${modelDropdownOpen ? "z-[60]" : "z-10"} ${composerShell} ${shellPadding}`}
         >
           <textarea
             value={query}
