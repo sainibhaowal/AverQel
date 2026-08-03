@@ -80,6 +80,15 @@ usable. Normal agent runtime selection uses verified or cached provider metadata
 discovery belongs to provider-management refresh flows so an unavailable provider catalog cannot hold
 the API request loop.
 
+### DeepSpace live activity timeline
+
+DeepSpace renders the streamed agent trajectory in the order it is received: reasoning segment,
+plan, tool call, tool result or observation, then the next reasoning segment. Function arguments are
+shown incrementally when a provider sends them. A tool that only returns a final response is shown as
+running immediately and completed when that real result arrives; the UI does not fabricate progress.
+The browser keeps the detailed local sequence during the automatic post-stream history refresh, so a
+completed answer does not collapse the visible timeline into one combined thinking block.
+
 The desktop/Tauri workspace proxy remains single-process because its client registry is process-local.
 Do not increase API worker count without first moving that registry to a shared transport.
 

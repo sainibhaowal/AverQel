@@ -355,6 +355,8 @@ export interface TimelineStep {
   durationMs?: number;
   toolName?: string;
   toolInput?: Record<string, unknown>;
+  /** Incremental provider-emitted function arguments, kept separate from the result. */
+  toolInputStream?: string;
   toolOutput?: string;
   toolId?: string;
   success?: boolean;

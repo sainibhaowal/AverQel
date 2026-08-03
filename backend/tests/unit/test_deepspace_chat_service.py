@@ -326,7 +326,14 @@ async def test_deepspace_runs_web_search_loop_and_citations(monkeypatch):
     done = next(frame for frame in frames if frame.startswith("event: done"))
     assert done.startswith("event: done")
     assert "https://example.com/source" in _FakeRepository.completed_content
-    assert any(frame.startswith("event: tool_delta") for frame in frames)
+    tool_delta = next(frame for frame in frames if frame.startswith("event: tool_delta"))
+    tool_start = next(frame for frame in frames if frame.startswith("event: tool_start"))
+    delta_payload = json.loads(tool_delta.split("data: ", 1)[1].strip())
+    start_payload = json.loads(tool_start.split("data: ", 1)[1].strip())
+    assert delta_payload["tool_name"] == "web_search"
+    assert delta_payload["tool_name"] != "pending_tool"
+    assert delta_payload["step_id"] == start_payload["step_id"]
+    assert delta_payload["text"] == '{"query":"latest research"}'
 
 
 @pytest.mark.asyncio

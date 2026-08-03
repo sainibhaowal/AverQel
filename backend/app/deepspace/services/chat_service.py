@@ -1715,6 +1715,11 @@ class DeepSpaceChatService:
                     )
                     break
                 tool_calls: dict[int, dict[str, Any]] = {}
+                # Providers can split a function call across many SSE chunks.
+                # Track exactly what has already been sent to the UI so the
+                # activity timeline can render real argument deltas without
+                # inventing progress or displaying an unnamed duplicate tool.
+                emitted_tool_argument_lengths: dict[int, int] = {}
                 round_answer_start = len(answer_parts)
                 round_thinking_start = len(thinking_parts)
                 request_images = list(pending_images)
@@ -1775,38 +1780,44 @@ class DeepSpaceChatService:
                             )
                             if isinstance(raw_deltas, dict):
                                 raw_deltas = [raw_deltas]
+                            self._tool_call_accumulator(tool_calls, raw_deltas)
                             if isinstance(raw_deltas, list):
                                 for position, item in enumerate(raw_deltas):
                                     if not isinstance(item, dict):
                                         continue
-                                    function = (
-                                        item.get("function")
-                                        if isinstance(item.get("function"), dict)
-                                        else item
-                                    )
-                                    if not isinstance(function, dict):
+                                    try:
+                                        call_index = int(item.get("index", position))
+                                    except (TypeError, ValueError):
+                                        call_index = position
+                                    current_call = tool_calls.get(call_index)
+                                    if not isinstance(current_call, dict):
                                         continue
-                                    fragment = function.get("arguments")
-                                    if isinstance(fragment, dict):
-                                        fragment = json.dumps(
-                                            fragment, ensure_ascii=False, separators=(",", ":")
-                                        )
-                                    name = str(function.get("name") or "").strip()
-                                    call_id = str(item.get("id") or f"tool_{position}")
-                                    if isinstance(fragment, str) and fragment:
-                                        yield sse(
-                                            "tool_delta",
-                                            {
-                                                "tool_name": name or "pending_tool",
-                                                "tool_id": call_id,
-                                                "step_id": f"tool_{round_index}_{call_id}",
-                                                "tool_input": {},
-                                                "text": fragment,
-                                                "stream": "arguments",
-                                                "turn_index": round_index,
-                                            },
-                                        )
-                            self._tool_call_accumulator(tool_calls, raw_deltas)
+                                    tool_name = self._tool_name(current_call).strip()
+                                    function = current_call.get("function")
+                                    arguments = (
+                                        function.get("arguments") if isinstance(function, dict) else None
+                                    )
+                                    if not tool_name or not isinstance(arguments, str):
+                                        # Do not surface a transient anonymous tool. We wait until the
+                                        # provider has named it, then send the accumulated real arguments.
+                                        continue
+                                    emitted_length = emitted_tool_argument_lengths.get(call_index, 0)
+                                    if len(arguments) <= emitted_length:
+                                        continue
+                                    call_id = str(current_call.get("id") or f"tool_{call_index}")
+                                    yield sse(
+                                        "tool_delta",
+                                        {
+                                            "tool_name": tool_name,
+                                            "tool_id": call_id,
+                                            "step_id": f"tool_stream_{round_index}_{call_index}",
+                                            "tool_input": {},
+                                            "text": arguments[emitted_length:],
+                                            "stream": "arguments",
+                                            "turn_index": round_index,
+                                        },
+                                    )
+                                    emitted_tool_argument_lengths[call_index] = len(arguments)
                             continue
                         text = provider_event.get("text")
                         if event_type not in {"thinking", "reasoning", "reasoning_delta"}:
@@ -1848,7 +1859,10 @@ class DeepSpaceChatService:
                         },
                     )
 
-                normalized_calls = [tool_calls[index] for index in sorted(tool_calls)]
+                normalized_call_items = [
+                    (index, tool_calls[index]) for index in sorted(tool_calls)
+                ]
+                normalized_calls = [call for _, call in normalized_call_items]
                 round_has_text = (
                     len(answer_parts) > round_answer_start
                     or len(thinking_parts) > round_thinking_start
@@ -1905,11 +1919,14 @@ class DeepSpaceChatService:
                     }
                 )
                 valid_calls: list[dict[str, Any]] = []
-                for call in normalized_calls:
+                for call_index, call in normalized_call_items:
                     call_id = str(call.get("id") or uuid.uuid4())
                     tool_name = self._tool_name(call)
                     arguments = self._parse_tool_arguments(call)
-                    step_id = f"{tool_name}_{round_index}_{call_id}"
+                    # Keep every lifecycle event for this provider function call
+                    # on one stable timeline entry, even if its provider call id
+                    # arrives after an earlier streamed argument fragment.
+                    step_id = f"tool_stream_{round_index}_{call_index}"
                     if arguments is None:
                         output = f"The {tool_name} arguments were invalid JSON."
                         yield sse(

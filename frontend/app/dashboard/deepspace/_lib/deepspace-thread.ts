@@ -1021,23 +1021,38 @@ function updateMissionCanvas(
 }
 
 function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): TimelineStep[] {
-  const index = timeline.findIndex(
-    (s) =>
-      s.type === incoming.type &&
-      (incoming.type === "thinking" ||
-        s.stepId === incoming.stepId ||
-        (s.toolId && incoming.toolId && s.toolId === incoming.toolId)),
-  );
+  // A thinking entry is an ordered stream segment, not one message-wide
+  // bucket. Only append to the immediately preceding active segment; a tool,
+  // plan, observation, or verification event deliberately starts the next
+  // thinking segment so users can see the real execution chain.
+  const lastIndex = timeline.length - 1;
+  const last = timeline[lastIndex];
+  const index =
+    incoming.type === "thinking"
+      ? last &&
+          last.type === "thinking" &&
+          last.status === "running" &&
+          last.turnIndex === incoming.turnIndex
+        ? lastIndex
+        : -1
+      : timeline.findIndex(
+          (step) =>
+            step.type === incoming.type &&
+            (step.stepId === incoming.stepId ||
+              (step.toolId && incoming.toolId && step.toolId === incoming.toolId)),
+        );
 
   let nextTimeline = [...timeline];
 
   if (index === -1) {
-    // If incoming step is running, mark all other running steps as completed
-    if (incoming.status === "running") {
-      nextTimeline = nextTimeline.map((s) =>
-        s.status === "running"
-          ? { ...s, status: "completed" as const, completedAt: incoming.startedAt }
-          : s,
+    // Any non-thinking event closes the preceding thought segment while a
+    // tool is prepared or executed. This preserves the visible order without
+    // incorrectly ending a running tool when a status update arrives.
+    if (incoming.type !== "thinking") {
+      nextTimeline = nextTimeline.map((step) =>
+        step.type === "thinking" && step.status === "running"
+          ? { ...step, status: "completed" as const, completedAt: incoming.startedAt }
+          : step,
       );
     }
     return [...nextTimeline, incoming];
@@ -1048,6 +1063,7 @@ function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): T
   nextTimeline[index] = {
     ...existing,
     ...incoming,
+    startedAt: existing.startedAt || incoming.startedAt,
     status:
       incoming.status === "running" &&
       (existing.status === "completed" || existing.status === "failed")
@@ -1056,6 +1072,9 @@ function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): T
     toolOutput: incoming.toolOutput
       ? appendStreamingText(existing.toolOutput, incoming.toolOutput)
       : existing.toolOutput,
+    toolInputStream: incoming.toolInputStream
+      ? appendStreamingText(existing.toolInputStream, incoming.toolInputStream)
+      : existing.toolInputStream,
     details:
       incoming.type === "thinking"
         ? appendStreamingText(existing.details, incoming.details ?? "")
@@ -1065,26 +1084,20 @@ function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): T
     success: incoming.success ?? existing.success,
   };
 
-  // If the updated step is now running, ensure all other steps are not running
-  if (nextTimeline[index].status === "running") {
-    for (let i = 0; i < nextTimeline.length; i++) {
-      if (i !== index && nextTimeline[i].status === "running") {
-        nextTimeline[i] = {
-          ...nextTimeline[i],
-          status: "completed",
-          completedAt: incoming.startedAt,
-        };
-      }
-    }
-  }
-
   return nextTimeline;
 }
+
+let timelineFallbackSequence = 0;
 
 function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | null {
   const data = event.data;
   const turnIndex = typeof data.turn_index === "number" ? data.turn_index : 0;
-  const stepId = String(data.step_id ?? data.stepNumber ?? Date.now());
+  // Status/observation events do not all have a backend step id. A monotonic
+  // client fallback prevents two adjacent events received in the same
+  // millisecond from being merged into one timeline row.
+  const stepId = String(
+    data.step_id ?? data.stepNumber ?? `${event.event}_${++timelineFallbackSequence}`,
+  );
   const phase = (data.phase as AgentPhase) || "exploring";
   const timestamp = String(data.timestamp || new Date().toISOString());
 
@@ -1123,7 +1136,7 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         toolName,
         toolInput: (data.tool_input as Record<string, unknown>) ?? {},
         toolId: String(data.tool_id ?? ""),
-        toolOutput: event.event === "tool_delta" ? String(data.text ?? "") : undefined,
+        toolInputStream: event.event === "tool_delta" ? String(data.text ?? "") : undefined,
       };
     }
     case "tool_result": {
@@ -1169,6 +1182,39 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         details: String(data.text ?? ""),
         durationMs: typeof data.duration_ms === "number" ? data.duration_ms : undefined,
       };
+    case "agent_status": {
+      const status = String(data.phase ?? "working").replace(/_/g, " ");
+      const message = String(data.message ?? "").trim();
+      if (!message) return null;
+      return {
+        id: `status_${turnIndex}_${stepId}`,
+        stepId,
+        turnIndex,
+        phase,
+        type: "observation",
+        title: status,
+        status: data.phase === "awaiting_approval" ? "awaiting_approval" : "completed",
+        startedAt: timestamp,
+        completedAt: timestamp,
+        details: message,
+      };
+    }
+    case "observing":
+      return {
+        id: `observe_${data.tool_id ?? stepId}`,
+        stepId,
+        turnIndex,
+        phase,
+        type: "observation",
+        title: "Observation",
+        status: data.success === false ? "failed" : "completed",
+        startedAt: timestamp,
+        completedAt: timestamp,
+        toolName: String(data.tool_name ?? ""),
+        toolId: String(data.tool_id ?? ""),
+        success: data.success !== false,
+        details: String(data.summary ?? data.message ?? "Tool result received."),
+      };
     case "permission_request":
     case "ask_user_question":
       return {
@@ -1182,6 +1228,23 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         startedAt: timestamp,
         toolName: String(data.tool_name ?? ""),
         toolInput: (data.tool_input as Record<string, unknown>) ?? {},
+        toolId: String(data.tool_id ?? ""),
+        details: String(data.message ?? ""),
+        data: event.data,
+      };
+    case "permission_granted":
+    case "permission_denied":
+      return {
+        id: `perm_${data.tool_id ?? stepId}`,
+        stepId,
+        turnIndex,
+        phase,
+        type: "permission",
+        title: event.event === "permission_granted" ? "Approval granted" : "Approval denied",
+        status: event.event === "permission_granted" ? "running" : "failed",
+        startedAt: timestamp,
+        completedAt: event.event === "permission_denied" ? timestamp : undefined,
+        toolName: String(data.tool_name ?? ""),
         toolId: String(data.tool_id ?? ""),
         details: String(data.message ?? ""),
         data: event.data,
@@ -1233,6 +1296,33 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         toolName: String(data.tool_name ?? ""),
         toolOutput: String(data.error ?? "Unknown error"),
         toolId: String(data.tool_id ?? ""),
+      };
+    case "error":
+      return {
+        id: `error_${stepId}`,
+        stepId,
+        turnIndex,
+        phase: "exploring",
+        type: "error",
+        title: "Execution fault",
+        status: "failed",
+        startedAt: timestamp,
+        completedAt: timestamp,
+        details: String(data.message ?? data.code ?? "DeepSpace could not complete this step."),
+        data: event.data,
+      };
+    case "done":
+      return {
+        id: `final_${stepId}`,
+        stepId,
+        turnIndex,
+        phase: "completed",
+        type: "observation",
+        title: "Finalized",
+        status: "completed",
+        startedAt: timestamp,
+        completedAt: timestamp,
+        details: "The response stream completed.",
       };
     default:
       return null;
@@ -2361,10 +2451,26 @@ function reduceDeepSpaceThread(
   action: DeepSpaceThreadAction,
 ): DeepSpaceThreadState {
   switch (action.type) {
-    case "load_history":
+    case "load_history": {
+      const incomingMessages = action.messages.map(fromHistoryMessage);
+      const localMessagesById = new Map(state.messages.map((message) => [message.id, message]));
+      const messages = incomingMessages.map((message) => {
+        const local = localMessagesById.get(message.id);
+        // The server persists the final answer, while the browser has the
+        // exact ordered SSE trajectory for the just-finished turn. Preserve
+        // that local trajectory during the automatic post-stream refresh so
+        // the timeline does not collapse into a single thought block.
+        if (message.role !== "assistant" || !local?.timeline?.length) return message;
+        return {
+          ...message,
+          timeline: local.timeline,
+          agentSteps: local.agentSteps?.length ? local.agentSteps : message.agentSteps,
+          thinkingContent: local.thinkingContent ?? message.thinkingContent,
+        };
+      });
       return {
         ...state,
-        messages: action.messages.map(fromHistoryMessage),
+        messages,
         currentConversationId: action.conversationId,
         activeAssistantId: null,
         isStreaming: false,
@@ -2385,6 +2491,7 @@ function reduceDeepSpaceThread(
               {}) as Record<string, unknown>,
           ) || null,
       };
+    }
     case "reset_thread":
       return initialDeepSpaceThreadState;
     case "submit_query": {
@@ -2846,6 +2953,11 @@ function reduceDeepSpaceThread(
           }
           return s;
         });
+        nextTimeline = nextTimeline.map((step) =>
+          step.status === "running" || step.status === "awaiting_approval"
+            ? { ...step, status: "failed" as const, completedAt: nowIso() }
+            : step,
+        );
         nextMessages[index] = {
           ...current,
           status: "error",
@@ -2876,6 +2988,11 @@ function reduceDeepSpaceThread(
           }
           return s;
         });
+        nextTimeline = nextTimeline.map((step) =>
+          step.status === "running"
+            ? { ...step, status: "completed" as const, completedAt: finishedAt }
+            : step,
+        );
         nextMessages[index] = {
           ...current,
           status: "ready",

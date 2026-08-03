@@ -286,11 +286,13 @@ const MessageBubble = memo(
           <div className="w-full min-w-0 flex-1">
             <div className="text-foreground/90 leading-relaxed">
               {message.thinkingContent?.trim() ||
-              message.agentSteps?.some((step) => step.type !== "thinking") ? (
+              message.agentSteps?.some((step) => step.type !== "thinking") ||
+              message.timeline?.length ? (
                 <DeepSpaceThinkingPanel
                   content={message.thinkingContent ?? ""}
                   isStreaming={message.status === "streaming"}
                   agentSteps={message.agentSteps}
+                  timeline={message.timeline}
                 />
               ) : null}
 

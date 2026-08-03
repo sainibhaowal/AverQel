@@ -139,6 +139,75 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(screen.getByText("todo_write")).toBeInTheDocument();
   });
 
+  it("renders the live activity timeline in its actual streamed order", () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_timeline_1",
+            role: "assistant",
+            content: "Finished answer",
+            rawContent: "Finished answer",
+            createdAt: new Date().toISOString(),
+            status: "ready",
+            timeline: [
+              {
+                id: "think_1",
+                stepId: "think_1",
+                turnIndex: 1,
+                phase: "thinking",
+                type: "thinking",
+                title: "Internal Thought",
+                status: "completed",
+                startedAt: new Date().toISOString(),
+                details: "I will create the list.",
+              },
+              {
+                id: "tool_1",
+                stepId: "tool_1",
+                turnIndex: 1,
+                phase: "modifying",
+                type: "tool_call",
+                title: "Write tasks",
+                status: "completed",
+                startedAt: new Date().toISOString(),
+                toolName: "todo_write",
+                toolInputStream: '{"tasks":[',
+                toolOutput: "10 tasks saved",
+              },
+              {
+                id: "think_2",
+                stepId: "think_2",
+                turnIndex: 2,
+                phase: "thinking",
+                type: "thinking",
+                title: "Internal Thought",
+                status: "completed",
+                startedAt: new Date().toISOString(),
+                details: "I can now summarize it.",
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    const steps = screen.getAllByTestId("deepspace-timeline-step");
+    expect(steps.map((step) => step.textContent)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("I will create the list."),
+        expect.stringContaining("todo_write"),
+        expect.stringContaining("I can now summarize it."),
+      ]),
+    );
+    expect(steps[0]?.textContent).toContain("I will create the list.");
+    expect(steps[1]?.textContent).toContain("todo_write");
+    expect(steps[2]?.textContent).toContain("I can now summarize it.");
+  });
+
   it("does not rerun the markdown renderer when local copy state changes", () => {
     markdownRendererMock.mockClear();
     const message = {

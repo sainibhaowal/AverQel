@@ -172,4 +172,93 @@ describe("TimelineStep Model", () => {
     expect(step.success).toBe(false);
     expect(step.toolOutput).toBe("tests failed");
   });
+
+  test("keeps thinking, tool activity, and the next thought in streamed order", () => {
+    let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "submit_query",
+      query: "Create a task list",
+    });
+
+    const assistantId = state.activeAssistantId;
+    if (!assistantId) throw new Error("No active assistant");
+
+    const events: DeepSpaceStreamEvent[] = [
+      {
+        event: "thinking",
+        data: { step_id: "think-1", turn_index: 1, text: "I will plan the task list." },
+      },
+      {
+        event: "tool_delta",
+        data: {
+          step_id: "tool_stream_1_0",
+          tool_id: "call-todo-1",
+          tool_name: "todo_write",
+          turn_index: 1,
+          text: '{"tasks":[',
+        },
+      },
+      {
+        event: "tool_start",
+        data: {
+          step_id: "tool_stream_1_0",
+          tool_id: "call-todo-1",
+          tool_name: "todo_write",
+          tool_input: { tasks: [] },
+          turn_index: 1,
+        },
+      },
+      {
+        event: "tool_result",
+        data: {
+          step_id: "tool_stream_1_0",
+          tool_id: "call-todo-1",
+          tool_name: "todo_write",
+          output: "10 tasks saved",
+          success: true,
+          turn_index: 1,
+        },
+      },
+      {
+        event: "observing",
+        data: {
+          step_id: "tool_stream_1_0_observe",
+          tool_id: "call-todo-1",
+          tool_name: "todo_write",
+          summary: "Task list saved; checking completion.",
+          success: true,
+          turn_index: 1,
+        },
+      },
+      {
+        event: "thinking",
+        data: { step_id: "think-2", turn_index: 2, text: "I can now summarize the plan." },
+      },
+      { event: "done", data: { step_id: "final-1", turn_index: 2 } },
+    ];
+
+    state = events.reduce(
+      (current, event) => deepSpaceThreadReducer(current, { type: "stream_event", event }),
+      state,
+    );
+
+    const timeline = state.messages.find((message) => message.id === assistantId)?.timeline;
+    expect(timeline?.map((step) => step.type)).toEqual([
+      "thinking",
+      "tool_call",
+      "observation",
+      "thinking",
+      "observation",
+    ]);
+    expect(timeline?.[0]).toMatchObject({ details: "I will plan the task list.", status: "completed" });
+    expect(timeline?.[1]).toMatchObject({
+      toolName: "todo_write",
+      toolInputStream: '{"tasks":[',
+      toolOutput: "10 tasks saved",
+      status: "completed",
+    });
+    expect(timeline?.[3]).toMatchObject({
+      details: "I can now summarize the plan.",
+      status: "completed",
+    });
+  });
 });
