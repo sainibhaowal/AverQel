@@ -138,32 +138,49 @@ class DeepSpaceTaskLoopStore:
         if len(tasks) > MAX_TASKS:
             raise ValueError(f"A DeepSpace plan may contain at most {MAX_TASKS} tasks.")
         existing = {str(task.id): task for task in self._tasks(tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id)}
+        # AgentTodo.id is a global primary key, while models commonly emit
+        # short local ids such as "1" or "2". Always allocate UUIDs for new
+        # rows and translate dependencies through the request-local ids so a
+        # plan can never collide with another conversation's task ledger.
+        requested_id_map: dict[str, str] = {}
         retained: set[str] = set()
         requested_ids: set[str] = set()
         result: list[dict[str, Any]] = []
+        normalized_tasks: list[tuple[dict[str, Any], str]] = []
         for index, raw in enumerate(tasks):
             if not isinstance(raw, dict):
                 raise ValueError(f"Task {index + 1} must be an object.")
-            content = str(raw.get("content") or "").strip()[:MAX_TASK_TEXT]
-            if not content:
-                raise ValueError(f"Task {index + 1} is empty.")
-            status = str(raw.get("status") or "pending")
-            if status not in TASK_STATUSES:
-                status = "pending"
             task_id = str(raw.get("id") or "")
             if task_id:
                 task_id = task_id[:120]
                 if task_id in requested_ids:
                     raise ValueError(f"Task id '{task_id}' is duplicated.")
                 requested_ids.add(task_id)
-            task = existing.get(task_id)
+                requested_id_map.setdefault(
+                    task_id,
+                    task_id if task_id in existing else str(uuid.uuid4()),
+                )
+            normalized_tasks.append((raw, task_id))
+
+        for index, (raw, requested_id) in enumerate(normalized_tasks):
+            content = str(raw.get("content") or "").strip()[:MAX_TASK_TEXT]
+            if not content:
+                raise ValueError(f"Task {index + 1} is empty.")
+            status = str(raw.get("status") or "pending")
+            if status not in TASK_STATUSES:
+                status = "pending"
+            task_id = requested_id_map.get(requested_id, "") if requested_id else ""
+            # Existing task ids are stable handles for updates. New tasks use
+            # the request-local UUID allocated above, never a model id.
+            existing_task_id = requested_id if requested_id in existing else task_id
+            task = existing.get(existing_task_id)
             try:
                 priority = max(0, min(int(raw.get("priority") or 0), 1000))
             except (TypeError, ValueError):
                 priority = 0
             if task is None:
                 task = AgentTodo(
-                    id=(task_id[:120] if task_id else str(uuid.uuid4())),
+                    id=task_id or str(uuid.uuid4()),
                     tenant_id=str(tenant_id),
                     user_id=str(user_id),
                     thread_id=self._thread_id(conversation_id),
@@ -182,7 +199,11 @@ class DeepSpaceTaskLoopStore:
                 task.priority = priority
             metadata = dict(task.metadata_json or {})
             dependencies = raw.get("dependencies") or raw.get("depends_on") or []
-            metadata["dependencies"] = [str(item) for item in dependencies if str(item).strip()][:MAX_TASKS]
+            metadata["dependencies"] = [
+                requested_id_map.get(str(item), str(item))
+                for item in dependencies
+                if str(item).strip()
+            ][:MAX_TASKS]
             if isinstance(raw.get("evidence"), list):
                 metadata["evidence"] = [str(item)[:1000] for item in raw["evidence"][:10]]
             task.metadata_json = metadata

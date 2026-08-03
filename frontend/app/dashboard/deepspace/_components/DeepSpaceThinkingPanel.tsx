@@ -158,7 +158,12 @@ export default function DeepSpaceThinkingPanel({
   isStreaming: boolean;
   agentSteps?: AgentStep[];
 }) {
-  const activitySteps = agentSteps.filter((step) => step.type !== "thinking");
+  // Providers may emit argument fragments before the function name. The
+  // backend labels that transient fragment `pending_tool`; it is not a
+  // second execution and must not appear as a failed duplicate row.
+  const activitySteps = agentSteps.filter(
+    (step) => step.type !== "thinking" && step.toolName !== "pending_tool",
+  );
   if (!content.trim() && activitySteps.length === 0 && !isStreaming) return null;
   return (
     <details open={isStreaming} className="mb-4 rounded-lg border border-white/5 bg-white/[0.02]">

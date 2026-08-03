@@ -97,6 +97,48 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(screen.getByText("Found 13 threads")).toBeInTheDocument();
   });
 
+  it("does not show the provider's transient pending_tool fragment as a duplicate", () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_pending_tool_1",
+            role: "assistant",
+            content: "",
+            rawContent: "",
+            createdAt: new Date().toISOString(),
+            status: "error",
+            agentSteps: [
+              {
+                id: "pending_step",
+                type: "tool_error",
+                toolName: "pending_tool",
+                toolOutput: "transient argument fragment",
+                status: "failed",
+                startedAt: new Date().toISOString(),
+              },
+              {
+                id: "resolved_step",
+                type: "tool_result",
+                toolName: "todo_write",
+                toolOutput: "10 tasks saved",
+                status: "completed",
+                success: true,
+                startedAt: new Date().toISOString(),
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText("pending_tool")).not.toBeInTheDocument();
+    expect(screen.getByText("todo_write")).toBeInTheDocument();
+  });
+
   it("does not rerun the markdown renderer when local copy state changes", () => {
     markdownRendererMock.mockClear();
     const message = {

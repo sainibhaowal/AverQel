@@ -48,3 +48,60 @@ def test_note_markdown_is_escaped_and_supports_safe_blocks() -> None:
     assert "<li>item</li>" in rendered
     assert "&lt;x&gt;" in rendered
     assert "<script" not in rendered
+
+
+def test_replace_tasks_namespaces_model_ids_and_rewrites_dependencies() -> None:
+    class _Db:
+        def __init__(self) -> None:
+            self.rows: list[object] = []
+
+        def add(self, row: object) -> None:
+            self.rows.append(row)
+
+        def commit(self) -> None:
+            return None
+
+    db = _Db()
+    store = DeepSpaceTaskLoopStore(db)  # type: ignore[arg-type]
+    store._tasks = lambda **kwargs: list(db.rows)  # type: ignore[method-assign]
+
+    result = store.replace_tasks(
+        tenant_id=uuid4(),
+        user_id=uuid4(),
+        conversation_id=uuid4(),
+        tasks=[
+            {"id": "1", "content": "Study chapter one"},
+            {"id": "2", "content": "Review notes", "dependencies": ["1"]},
+        ],
+    )
+
+    assert len(result) == 2
+    assert result[0]["id"] != "1"
+    assert result[1]["id"] != "2"
+    assert result[1]["dependencies"] == [result[0]["id"]]
+
+
+def test_replace_tasks_preserves_existing_ids_for_updates() -> None:
+    class _Db:
+        def __init__(self) -> None:
+            self.rows = [_task("1", "pending")]
+
+        def add(self, row: object) -> None:
+            self.rows.append(row)
+
+        def commit(self) -> None:
+            return None
+
+    db = _Db()
+    store = DeepSpaceTaskLoopStore(db)  # type: ignore[arg-type]
+    store._tasks = lambda **kwargs: list(db.rows)  # type: ignore[method-assign]
+
+    result = store.replace_tasks(
+        tenant_id=uuid4(),
+        user_id=uuid4(),
+        conversation_id=uuid4(),
+        tasks=[{"id": "1", "content": "Updated task"}],
+    )
+
+    assert result[0]["id"] == "1"
+    assert result[0]["content"] == "Updated task"

@@ -949,6 +949,16 @@ class DeepSpaceChatService:
                     return {"success": True, "payload": payload}
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("DeepSpace tool failed: %s", tool_name, exc_info=True)
+                    # A failed SQLAlchemy write leaves the session in a
+                    # pending-rollback state. Recover before retrying or
+                    # checking the task ledger so one tool failure cannot
+                    # terminate the whole SSE stream.
+                    rollback = getattr(self.db, "rollback", None)
+                    if callable(rollback):
+                        try:
+                            rollback()
+                        except Exception:  # noqa: BLE001
+                            logger.warning("DeepSpace tool rollback failed", exc_info=True)
                     if attempt >= MAX_TOOL_RETRIES:
                         return {"success": False, "error": f"{tool_name} failed safely: {exc}"}
         return {"success": False, "error": f"{tool_name} failed safely."}
@@ -2271,11 +2281,37 @@ class DeepSpaceChatService:
             "agent_status",
             {"phase": "finalizing", "message": "Preparing the final answer.", "active_tools": []},
         )
-        final_task_check = self.task_store.check_tasks(
-            tenant_id=auth.tenant_id,
-            user_id=auth.user_id,
-            conversation_id=conversation_id,
-        )
+        try:
+            final_task_check = self.task_store.check_tasks(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+            )
+        except Exception:  # noqa: BLE001
+            rollback = getattr(self.db, "rollback", None)
+            if callable(rollback):
+                try:
+                    rollback()
+                except Exception:  # noqa: BLE001
+                    logger.warning("DeepSpace final task-check rollback failed", exc_info=True)
+            terminal_status = "failed"
+            self._persist_stream_failure(
+                assistant_message=assistant_message,
+                auth=auth,
+                conversation_id=conversation_id,
+                code="DEEPSPACE_TASK_STATE_FAILED",
+                message="DeepSpace could not read the task plan safely. Please retry.",
+                candidate=candidate,
+            )
+            logger.exception("DeepSpace final task check failed")
+            yield sse(
+                "error",
+                {
+                    "code": "DEEPSPACE_TASK_STATE_FAILED",
+                    "message": "DeepSpace could not read the task plan safely. Please retry.",
+                },
+            )
+            return
         raw_answer = (forced_answer or "".join(answer_parts)).strip()
         if awaiting_approval is not None:
             terminal_status = "awaiting_approval"
