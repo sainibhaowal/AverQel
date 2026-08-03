@@ -581,6 +581,20 @@ def test_openai_compatible_required_tools_suppress_reasoning_for_any_provider() 
     assert payload == {}
 
 
+def test_openai_compatible_downgrades_deepseek_v4_forced_tool_choice() -> None:
+    request = ChatGenerateRequest(
+        model="deepseek-v4-flash",
+        messages=[{"role": "user", "content": "Check my inbox."}],
+        temperature=0.1,
+        max_tokens=64,
+        base_url="https://opencode.ai/zen/v1",
+        tool_choice="required",
+        metadata={"provider_type": "opencode-zen"},
+    )
+
+    assert OpenAICompatibleProvider._effective_tool_choice(request) == "auto"
+
+
 def test_openai_compatible_auto_mode_observes_tagged_reasoning() -> None:
     request = ChatGenerateRequest(
         model="qwen3-14b",

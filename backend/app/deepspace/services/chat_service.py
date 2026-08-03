@@ -21,6 +21,7 @@ from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore, summarize_t
 from app.deepspace.services.url_reader import read_image, read_url
 from app.providers.services import ChatGenerateRequest, ProviderRegistry
 from app.providers.services.base import ProviderRequestError
+from app.providers.services.reasoning_capabilities import supports_required_tool_choice
 from app.providers.services.selection_service import ProviderSelectionService
 from app.providers.services.types import WebSearchRequest, WebSearchResponse
 from app.system.services.rate_limit_service import RateLimitService
@@ -1725,6 +1726,9 @@ class DeepSpaceChatService:
                         and (
                             self._requires_agent_tools(prompt)
                             or connected_service_tool_required
+                        )
+                        and supports_required_tool_choice(
+                            candidate.provider_type, candidate.model_name
                         )
                         else ("auto" if available_tools else None)
                     ),

@@ -15,6 +15,7 @@ from app.providers.services.context_window import (
 from app.providers.services.reasoning_capabilities import (
     model_supports_reasoning,
     reasoning_capabilities,
+    supports_required_tool_choice,
     uses_enable_thinking_controls,
     uses_gemma_think_trigger,
     uses_groq_reasoning_api,
@@ -151,8 +152,9 @@ class OpenAICompatibleProvider:
         }
         if request.tools:
             payload["tools"] = request.tools
-        if request.tool_choice:
-            payload["tool_choice"] = request.tool_choice
+        effective_tool_choice = self._effective_tool_choice(request)
+        if effective_tool_choice:
+            payload["tool_choice"] = effective_tool_choice
 
         self._apply_reasoning_request_settings(payload, request)
         response = httpx_module.post(
@@ -225,8 +227,9 @@ class OpenAICompatibleProvider:
         }
         if request.tools:
             payload["tools"] = request.tools
-        if request.tool_choice:
-            payload["tool_choice"] = request.tool_choice
+        effective_tool_choice = self._effective_tool_choice(request)
+        if effective_tool_choice:
+            payload["tool_choice"] = effective_tool_choice
         self._apply_reasoning_request_settings(payload, request)
         timeout = httpx_module.Timeout(
             timeout=float(request.metadata.get("timeout_seconds", 8.0)),
@@ -368,8 +371,9 @@ class OpenAICompatibleProvider:
         }
         if request.tools:
             payload["tools"] = request.tools
-        if request.tool_choice:
-            payload["tool_choice"] = request.tool_choice
+        effective_tool_choice = self._effective_tool_choice(request)
+        if effective_tool_choice:
+            payload["tool_choice"] = effective_tool_choice
         self._apply_reasoning_request_settings(payload, request)
         timeout = httpx_module.Timeout(
             timeout=float(request.metadata.get("timeout_seconds", 8.0)),
@@ -752,6 +756,20 @@ class OpenAICompatibleProvider:
             request.reasoning_enabled
             or request.metadata.get("reasoning_mode") == "auto"
         )
+
+    @staticmethod
+    def _effective_tool_choice(request: ChatGenerateRequest) -> str | dict[str, Any] | None:
+        choice = request.tool_choice
+        if (
+            choice == "required"
+            and not supports_required_tool_choice(
+                str(request.metadata.get("provider_type") or ""), request.model
+            )
+        ):
+            # DeepSeek V4 rejects forced choice in its always-thinking mode;
+            # keep the tools available and let the model select them.
+            return "auto"
+        return choice
 
     @classmethod
     def _prepare_gemma_thinking(

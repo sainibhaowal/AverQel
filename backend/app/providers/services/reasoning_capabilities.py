@@ -461,6 +461,21 @@ def model_supports_reasoning(provider_type: str | None, model_name: str | None) 
     return resolve_reasoning_profile(provider_type, model_name).supports_reasoning
 
 
+def supports_required_tool_choice(
+    provider_type: str | None, model_name: str | None
+) -> bool:
+    """Return whether a model can accept a forced tool choice.
+
+    DeepSeek V4 models are thinking-first models at the upstream API and
+    reject ``tool_choice=required`` (the rejection is independent of whether
+    AverQel sends an explicit reasoning option).  ``auto`` still permits the
+    model to call the supplied tools and is the only compatible negotiation.
+    """
+    del provider_type  # The limitation is model/API-family based.
+    normalized = (model_name or "").lower().replace("_", "-")
+    return "deepseek-v4" not in normalized
+
+
 def reasoning_capabilities(
     provider_type: str | None,
     model_name: str | None,

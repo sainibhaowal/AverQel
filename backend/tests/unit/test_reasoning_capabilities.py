@@ -10,6 +10,7 @@ from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.providers.services.reasoning_capabilities import (
     model_supports_reasoning,
     resolve_reasoning_profile,
+    supports_required_tool_choice,
 )
 from app.providers.services.types import (
     ChatGenerateRequest,
@@ -36,6 +37,12 @@ def test_reasoning_capabilities_cover_supported_providers() -> None:
     assert model_supports_reasoning("google", "gemma-4-26b-a4b-it")
     assert not model_supports_reasoning("openai", "gpt-4o-mini")
     assert not model_supports_reasoning("google", "gemini-1.5-flash")
+
+
+def test_deepseek_v4_does_not_support_forced_tool_choice() -> None:
+    assert not supports_required_tool_choice("opencode-zen", "deepseek-v4-flash")
+    assert not supports_required_tool_choice("openrouter", "deepseek-v4-pro")
+    assert supports_required_tool_choice("opencode-zen", "qwen3.6-plus")
 
 
 def test_reasoning_profile_tracks_dynamic_controls_for_local_qwen() -> None:
