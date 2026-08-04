@@ -112,7 +112,9 @@ note remains in its single existing editor and is not duplicated in the drawer. 
 CodeMirror workspace with line numbers, bracket matching, folding, autocomplete, and language-aware
 editing for private Markdown, plain-text, JSON, JavaScript/TypeScript, Python, and Git diff/patch files.
 Diff files render added lines in green, removed lines in red, and hunk/header lines distinctly. Markdown
-has Edit, Split, and Preview modes, including tables, math, and Mermaid diagrams. The Library does not
+has Edit, Split, and Preview modes with CommonMark/GFM headings, emphasis, links, lists, task checkboxes,
+tables, blockquotes, rules, fenced code, diff fences, math, Mermaid diagrams, charts, and standard images.
+Raw HTML stays disabled in previews as a security boundary. The Library does not
 accept arbitrary binary uploads: provider-generated image, video,
 and audio remain authenticated artifacts rather than being exposed through a public file URL. The
 `workspace_write` tool can create or update the same visible files when a separate file genuinely helps

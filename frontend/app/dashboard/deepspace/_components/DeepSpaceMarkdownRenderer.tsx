@@ -92,6 +92,35 @@ function ChartPreview({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
+function DiffPreview({ source }: { source: string }) {
+  return (
+    <pre className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/30 py-3 text-xs leading-6">
+      <code className="block min-w-max font-mono">
+        {source.split("\n").map((line, index) => {
+          const tone =
+            line.startsWith("+++") ||
+            line.startsWith("---") ||
+            line.startsWith("diff ") ||
+            line.startsWith("index ")
+              ? "text-violet-200"
+              : line.startsWith("@@")
+                ? "bg-cyan-300/10 text-cyan-100"
+                : line.startsWith("+")
+                  ? "bg-emerald-300/10 text-emerald-100"
+                  : line.startsWith("-")
+                    ? "bg-rose-300/10 text-rose-100"
+                    : "text-cyan-100";
+          return (
+            <span key={`${index}-${line}`} className={`block min-h-6 px-4 ${tone}`}>
+              {line || " "}
+            </span>
+          );
+        })}
+      </code>
+    </pre>
+  );
+}
+
 export default function DeepSpaceMarkdownRenderer({
   content,
   streaming = false,
@@ -117,6 +146,7 @@ export default function DeepSpaceMarkdownRenderer({
         // fences. The plain code block is stable until the provider is done.
         if (!streaming && language === "mermaid" && value.trim())
           return <MermaidPreview source={value} />;
+        if (language === "diff" || language === "patch") return <DiffPreview source={value} />;
         if (!streaming && language === "chart") {
           try {
             const parsed = JSON.parse(value) as unknown;
@@ -140,6 +170,30 @@ export default function DeepSpaceMarkdownRenderer({
           <table className="w-full border-collapse text-left">{children}</table>
         </div>
       ),
+      h1: ({ children }) => (
+        <h1 className="mt-8 mb-4 border-b border-cyan-300/20 pb-3 text-3xl font-bold tracking-tight text-cyan-50">
+          {children}
+        </h1>
+      ),
+      h2: ({ children }) => (
+        <h2 className="mt-7 mb-3 text-2xl font-semibold tracking-tight text-cyan-100">
+          {children}
+        </h2>
+      ),
+      h3: ({ children }) => (
+        <h3 className="text-foreground mt-6 mb-2 text-xl font-semibold">{children}</h3>
+      ),
+      h4: ({ children }) => (
+        <h4 className="text-foreground mt-5 mb-2 text-base font-semibold">{children}</h4>
+      ),
+      h5: ({ children }) => (
+        <h5 className="text-foreground mt-4 mb-2 text-sm font-semibold">{children}</h5>
+      ),
+      h6: ({ children }) => (
+        <h6 className="text-foreground/75 mt-4 mb-2 text-xs font-semibold tracking-wider uppercase">
+          {children}
+        </h6>
+      ),
       th: ({ children }) => (
         <th className="border-b border-white/10 bg-white/5 px-4 py-3 text-xs uppercase">
           {children}
@@ -148,13 +202,51 @@ export default function DeepSpaceMarkdownRenderer({
       td: ({ children }) => (
         <td className="text-foreground/80 border-b border-white/5 px-4 py-3 text-sm">{children}</td>
       ),
-      p: ({ children }) => <p className="text-foreground/90 leading-8">{children}</p>,
+      p: ({ children }) => <p className="text-foreground/90 my-3 leading-8">{children}</p>,
+      a: ({ href, children }) => (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="font-medium text-cyan-300 underline decoration-cyan-300/40 underline-offset-4 hover:text-cyan-100"
+        >
+          {children}
+        </a>
+      ),
+      strong: ({ children }) => <strong className="font-semibold text-cyan-50">{children}</strong>,
+      em: ({ children }) => <em className="text-foreground/90">{children}</em>,
+      del: ({ children }) => <del className="text-foreground/50">{children}</del>,
+      hr: () => <hr className="my-7 border-white/10" />,
       ul: ({ children }) => <ul className="my-2 list-disc space-y-2 pl-5">{children}</ul>,
       ol: ({ children }) => <ol className="my-2 list-decimal space-y-2 pl-5">{children}</ol>,
+      li: ({ children }) => (
+        <li className="text-foreground/85 pl-1 marker:text-cyan-300">{children}</li>
+      ),
+      input: ({ checked, ...props }) =>
+        typeof checked === "boolean" ? (
+          <input
+            {...props}
+            type="checkbox"
+            checked={checked}
+            readOnly
+            className="mr-2 accent-cyan-400"
+          />
+        ) : (
+          <input {...props} />
+        ),
       blockquote: ({ children }) => (
         <blockquote className="my-3 border-l-2 border-cyan-400/50 bg-cyan-400/5 px-4 py-3">
           {children}
         </blockquote>
+      ),
+      img: ({ src, alt }) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={alt || "Markdown image"}
+          loading="lazy"
+          className="my-4 max-h-[34rem] max-w-full rounded-xl border border-white/10 bg-black/20 object-contain"
+        />
       ),
     }),
     [streaming],
