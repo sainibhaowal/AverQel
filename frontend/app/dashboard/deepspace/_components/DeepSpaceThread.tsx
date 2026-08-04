@@ -367,7 +367,7 @@ const MessageBubble = memo(
               <DeepSpaceMediaArtifacts
                 artifacts={message.artifacts}
                 status={message.mediaStatus}
-                onRegenerate={isLast ? () => onRegenerate(message.id) : undefined}
+                onRegenerate={() => onRegenerate(message.id)}
               />
 
               <div className="prose-premium prose prose-invert max-w-none">
