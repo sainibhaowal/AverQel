@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
 
-import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
+import DeepSpaceLibraryFileWorkspace from "./DeepSpaceLibraryFileWorkspace";
 
 type LibraryFile = {
   id: string;
@@ -48,9 +48,6 @@ export default function DeepSpaceLibraryDrawer({
   const [renameValue, setRenameValue] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  const selectedIsMarkdown =
-    selected?.content_type === "text/markdown" || selected?.name.endsWith(".md");
 
   const refresh = async () => {
     if (!conversationId) return;
@@ -257,24 +254,12 @@ export default function DeepSpaceLibraryDrawer({
       </header>
       {selected ? (
         <section className="custom-scrollbar min-h-0 flex-1 overflow-auto p-3">
-          <textarea
+          <DeepSpaceLibraryFileWorkspace
+            name={selected.name}
+            contentType={selected.content_type}
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            spellCheck={false}
-            className="text-foreground/85 min-h-56 w-full resize-y rounded-xl border border-white/10 bg-black/20 p-3 font-mono text-xs leading-6 outline-none focus:border-cyan-300/35"
+            onChange={setDraft}
           />
-          <div className="mt-4 border-t border-white/8 pt-3">
-            <div className="text-foreground/40 mb-2 text-[10px] font-semibold tracking-[0.14em] uppercase">
-              Preview
-            </div>
-            {selectedIsMarkdown ? (
-              <DeepSpaceMarkdownRenderer content={draft} />
-            ) : (
-              <pre className="overflow-auto rounded-xl border border-white/10 bg-black/25 p-3 text-xs leading-6 text-cyan-100">
-                <code>{draft}</code>
-              </pre>
-            )}
-          </div>
         </section>
       ) : (
         <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
