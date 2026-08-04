@@ -1,6 +1,17 @@
 "use client";
 
-import { ArrowLeft, FileCode2, FileText, FolderOpen, Loader2, Save, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  FileCode2,
+  FileText,
+  FolderOpen,
+  Loader2,
+  Pencil,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
@@ -33,6 +44,10 @@ export default function DeepSpaceLibraryDrawer({
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState("");
   const [drawerWidth, setDrawerWidth] = useState(320);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const selectedIsMarkdown =
     selected?.content_type === "text/markdown" || selected?.name.endsWith(".md");
@@ -106,6 +121,69 @@ export default function DeepSpaceLibraryDrawer({
       await refresh();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startRename = (file: LibraryFile) => {
+    setActionError(null);
+    setRenamingId(file.id);
+    setRenameValue(file.name);
+  };
+
+  const renameFile = async (file: LibraryFile) => {
+    const name = renameValue.trim();
+    if (!conversationId || !name) return;
+    if (!name.includes(".")) {
+      setActionError("Include a file extension, for example notes.md.");
+      return;
+    }
+
+    setSaving(true);
+    setActionError(null);
+    try {
+      const response = (await fetchWithAuth(
+        `/deepspace/library/${conversationId}/files/${file.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name }),
+        },
+      )) as Response;
+      if (!response.ok) {
+        setActionError("That name could not be saved. Choose a different valid filename.");
+        return;
+      }
+      const renamed = (await response.json()) as LibraryFile;
+      setSelected((current) => (current?.id === renamed.id ? { ...current, ...renamed } : current));
+      setRenamingId(null);
+      await refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteFile = async (file: LibraryFile) => {
+    if (!conversationId) return;
+    const confirmed = window.confirm(`Delete ${file.name}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeletingId(file.id);
+    setActionError(null);
+    try {
+      const response = (await fetchWithAuth(
+        `/deepspace/library/${conversationId}/files/${file.id}`,
+        { method: "DELETE" },
+      )) as Response;
+      if (!response.ok) {
+        setActionError("The file could not be deleted. Please try again.");
+        return;
+      }
+      if (selected?.id === file.id) {
+        setSelected(null);
+        setDraft("");
+      }
+      await refresh();
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -210,22 +288,89 @@ export default function DeepSpaceLibraryDrawer({
               Save a named copy from the note editor, or ask DeepSpace to create a named file.
             </p>
           ) : null}
+          {actionError ? (
+            <p className="mb-2 rounded-lg border border-rose-300/15 bg-rose-300/[0.06] px-2 py-1.5 text-[10px] leading-4 text-rose-200">
+              {actionError}
+            </p>
+          ) : null}
           {files.map((file) => (
-            <button
-              key={file.id}
-              type="button"
-              onClick={() => void selectFile(file)}
-              className="text-foreground/65 mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] transition hover:bg-white/[0.045] hover:text-cyan-50"
-            >
-              {file.name.endsWith(".py") ||
-              file.name.endsWith(".ts") ||
-              file.name.endsWith(".js") ? (
-                <FileCode2 size={14} className="shrink-0 text-violet-300" />
-              ) : (
-                <FileText size={14} className="shrink-0 text-cyan-300/80" />
-              )}
-              <span className="min-w-0 flex-1 truncate">{file.name}</span>
-            </button>
+            <div key={file.id} className="mb-1 rounded-lg hover:bg-white/[0.045]">
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => void selectFile(file)}
+                  className="text-foreground/65 flex min-w-0 flex-1 items-center gap-2 rounded-l-lg px-2 py-2 text-left text-[11px] transition hover:text-cyan-50"
+                >
+                  {file.name.endsWith(".py") ||
+                  file.name.endsWith(".ts") ||
+                  file.name.endsWith(".js") ? (
+                    <FileCode2 size={14} className="shrink-0 text-violet-300" />
+                  ) : (
+                    <FileText size={14} className="shrink-0 text-cyan-300/80" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{file.name}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startRename(file)}
+                  aria-label={`Rename ${file.name}`}
+                  title="Rename file"
+                  className="text-foreground/40 rounded-md p-1.5 transition hover:bg-cyan-300/10 hover:text-cyan-100"
+                >
+                  <Pencil size={12} />
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingId === file.id}
+                  onClick={() => void deleteFile(file)}
+                  aria-label={`Delete ${file.name}`}
+                  title="Delete file"
+                  className="text-foreground/40 mr-1 rounded-md p-1.5 transition hover:bg-rose-300/10 hover:text-rose-200 disabled:opacity-40"
+                >
+                  {deletingId === file.id ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={12} />
+                  )}
+                </button>
+              </div>
+              {renamingId === file.id ? (
+                <form
+                  className="flex gap-1 px-2 pb-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void renameFile(file);
+                  }}
+                >
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    onChange={(event) => setRenameValue(event.target.value)}
+                    aria-label="New file name"
+                    className="min-w-0 flex-1 rounded-md border border-cyan-300/25 bg-black/25 px-2 py-1 text-[11px] text-cyan-50 outline-none focus:border-cyan-300/60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    aria-label="Save new file name"
+                    className="rounded-md border border-emerald-300/20 bg-emerald-300/[0.08] p-1 text-emerald-100 disabled:opacity-50"
+                  >
+                    <Check size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRenamingId(null);
+                      setActionError(null);
+                    }}
+                    aria-label="Cancel rename"
+                    className="text-foreground/45 hover:text-foreground rounded-md p-1 hover:bg-white/5"
+                  >
+                    <X size={13} />
+                  </button>
+                </form>
+              ) : null}
+            </div>
           ))}
         </div>
       )}
