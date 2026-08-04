@@ -18,6 +18,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
 
+import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
+
 import DeepSpaceLibraryFileWorkspace from "./DeepSpaceLibraryFileWorkspace";
 
 type LibraryFile = {
@@ -54,6 +56,7 @@ export default function DeepSpaceLibraryDrawer({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LibraryFile | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -186,10 +189,8 @@ export default function DeepSpaceLibraryDrawer({
     }
   };
 
-  const deleteFile = async (file: LibraryFile) => {
-    if (!conversationId) return;
-    const confirmed = window.confirm(`Delete ${file.name}? This cannot be undone.`);
-    if (!confirmed) return;
+  const deleteFile = async (file: LibraryFile): Promise<boolean> => {
+    if (!conversationId) return false;
 
     setDeletingId(file.id);
     setActionError(null);
@@ -200,13 +201,14 @@ export default function DeepSpaceLibraryDrawer({
       )) as Response;
       if (!response.ok) {
         setActionError("The file could not be deleted. Please try again.");
-        return;
+        return false;
       }
       if (selected?.id === file.id) {
         setSelected(null);
         setDraft("");
       }
       await refresh();
+      return true;
     } finally {
       setDeletingId(null);
     }
@@ -262,7 +264,7 @@ export default function DeepSpaceLibraryDrawer({
             <button
               type="button"
               disabled={deletingId === file.id}
-              onClick={() => void deleteFile(file)}
+              onClick={() => setDeleteTarget(file)}
               aria-label={`Delete ${file.name}`}
               title="Delete file"
               className="text-foreground/40 mr-1 rounded-md p-1.5 transition hover:bg-rose-300/10 hover:text-rose-200 disabled:opacity-40"
@@ -440,6 +442,25 @@ export default function DeepSpaceLibraryDrawer({
       ) : (
         fileList
       )}
+      <ConfirmationModal
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          const deleted = await deleteFile(deleteTarget);
+          if (deleted) setDeleteTarget(null);
+        }}
+        title="Delete library file?"
+        message={
+          deleteTarget
+            ? `Delete “${deleteTarget.name}”? This file and its contents cannot be recovered.`
+            : ""
+        }
+        confirmLabel="Delete file"
+        cancelLabel="Keep file"
+        variant="danger"
+        loading={deleteTarget !== null && deletingId === deleteTarget.id}
+      />
     </div>
   );
 }
