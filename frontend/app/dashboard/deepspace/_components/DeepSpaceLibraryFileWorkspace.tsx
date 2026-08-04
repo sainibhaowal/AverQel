@@ -1,16 +1,29 @@
 "use client";
 
+import { cpp } from "@codemirror/lang-cpp";
+import { css } from "@codemirror/lang-css";
+import { go } from "@codemirror/lang-go";
+import { java } from "@codemirror/lang-java";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
+import { rust } from "@codemirror/lang-rust";
+import { sql } from "@codemirror/lang-sql";
+import { xml } from "@codemirror/lang-xml";
+import { yaml } from "@codemirror/lang-yaml";
 import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
 import { Code2, Eye, PanelLeft, PencilLine } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
+import { LibraryPreview } from "./DeepSpaceLibraryPreview";
+import {
+  libraryFileKind,
+  libraryKindSupportsEditor,
+  libraryKindSupportsPreview,
+} from "./DeepSpaceLibraryFormats";
 
 type PreviewMode = "edit" | "split" | "preview";
 
@@ -63,6 +76,16 @@ function languageForFile(name: string, contentType: string): Extension[] {
   if (contentType === "application/json" || extension === "json") return [json()];
   if (contentType === "text/x-python" || extension === "py") return [python()];
   if (extension === "diff" || extension === "patch") return diffHighlighting;
+  if (extension === "yaml" || extension === "yml") return [yaml()];
+  if (extension === "sql" || contentType === "text/sql" || contentType === "application/sql") {
+    return [sql()];
+  }
+  if (extension === "xml" || ["html", "htm"].includes(extension ?? "")) return [xml()];
+  if (extension === "css" || extension === "scss") return [css()];
+  if (["java"].includes(extension ?? "")) return [java()];
+  if (["c", "h", "cc", "cpp", "cxx", "hpp"].includes(extension ?? "")) return [cpp()];
+  if (extension === "go") return [go()];
+  if (extension === "rs") return [rust()];
   if (["js", "mjs", "cjs", "ts", "tsx", "jsx"].includes(extension ?? "")) {
     return [javascript({ typescript: ["ts", "tsx"].includes(extension ?? "") })];
   }
@@ -85,11 +108,15 @@ export default function DeepSpaceLibraryFileWorkspace({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const isMarkdown = contentType === "text/markdown" || name.endsWith(".md");
-  const [mode, setMode] = useState<PreviewMode>(isMarkdown ? "split" : "edit");
+  const kind = libraryFileKind(name, contentType);
+  const editorSupported = libraryKindSupportsEditor(kind);
+  const previewSupported = libraryKindSupportsPreview(kind);
+  const defaultMode: PreviewMode =
+    editorSupported && previewSupported ? "split" : editorSupported ? "edit" : "preview";
+  const [mode, setMode] = useState<PreviewMode>(defaultMode);
   const extensions = useMemo(() => languageForFile(name, contentType), [contentType, name]);
-  const editorVisible = !isMarkdown || mode !== "preview";
-  const previewVisible = isMarkdown && mode !== "edit";
+  const editorVisible = editorSupported && mode !== "preview";
+  const previewVisible = previewSupported && mode !== "edit";
 
   return (
     <section className="border-glass-border bg-surface-1/40 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border">
@@ -101,7 +128,7 @@ export default function DeepSpaceLibraryFileWorkspace({
             {languageLabel(name, contentType)}
           </span>
         </div>
-        {isMarkdown ? (
+        {editorSupported && previewSupported ? (
           <div className="border-glass-border bg-surface-0/70 flex items-center rounded-lg border p-0.5 text-[10px]">
             {(
               [
@@ -156,7 +183,7 @@ export default function DeepSpaceLibraryFileWorkspace({
         ) : null}
         {previewVisible ? (
           <div className="custom-scrollbar bg-surface-0 min-h-0 min-w-0 flex-1 overflow-auto p-4 text-sm">
-            <DeepSpaceMarkdownRenderer content={value} />
+            <LibraryPreview kind={kind} contentType={contentType} value={value} />
           </div>
         ) : null}
       </div>

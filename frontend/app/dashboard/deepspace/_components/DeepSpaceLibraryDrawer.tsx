@@ -12,6 +12,7 @@ import {
   Pencil,
   Save,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -56,6 +57,7 @@ export default function DeepSpaceLibraryDrawer({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<LibraryFile | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -214,12 +216,89 @@ export default function DeepSpaceLibraryDrawer({
     }
   };
 
+  const importFile = async (file: File) => {
+    if (!conversationId) return;
+    const maxBytes = 4 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setActionError("Files must be 4 MB or smaller for secure Library preview.");
+      return;
+    }
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const fallbackTypes: Record<string, string> = {
+      md: "text/markdown",
+      csv: "text/csv",
+      json: "application/json",
+      yaml: "application/yaml",
+      yml: "application/yaml",
+      diff: "text/x-diff",
+      patch: "text/x-diff",
+      svg: "image/svg+xml",
+      pdf: "application/pdf",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      zip: "application/zip",
+    };
+    const contentType = file.type || fallbackTypes[extension] || "text/plain";
+    const isText = contentType.startsWith("text/") || ["json", "yaml", "yml"].includes(extension);
+    setImporting(true);
+    setActionError(null);
+    try {
+      const content = isText
+        ? await file.text()
+        : await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result ?? ""));
+            reader.onerror = () => reject(new Error("The file could not be read."));
+            reader.readAsDataURL(file);
+          });
+      const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/files`, {
+        method: "POST",
+        body: JSON.stringify({ name: file.name, content, content_type: contentType }),
+      })) as Response;
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        setActionError(
+          String(
+            payload?.detail?.message ??
+              payload?.error?.message ??
+              "The file could not be imported.",
+          ),
+        );
+        return;
+      }
+      const created = (await response.json()) as LibraryFile;
+      setSelected(created);
+      setDraft(created.content ?? content);
+      await refresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "The file could not be imported.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const selectedLabel = useMemo(
     () => (embedded ? "DeepSpace Library" : (selected?.name ?? "DeepSpace Library")),
     [embedded, selected],
   );
   const fileList = (
     <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="mb-2 flex items-center justify-end">
+        <label className="border-glass-border bg-surface-1 text-muted-foreground hover:bg-surface-2 hover:text-primary inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-semibold transition">
+          {importing ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+          Import file
+          <input
+            type="file"
+            className="sr-only"
+            disabled={importing}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void importFile(file);
+            }}
+          />
+        </label>
+      </div>
       {loading && !files.length ? (
         <div className="flex justify-center p-5">
           <Loader2 size={16} className="text-primary animate-spin" />
@@ -227,7 +306,8 @@ export default function DeepSpaceLibraryDrawer({
       ) : null}
       {files.length === 0 && !loading ? (
         <p className="text-foreground/45 px-2 py-4 text-center text-[11px] leading-5">
-          Save a named copy from the note editor, or ask DeepSpace to create a named file.
+          Import a file, save a named copy from the note editor, or ask DeepSpace to create a named
+          file.
         </p>
       ) : null}
       {actionError ? (
@@ -418,6 +498,7 @@ export default function DeepSpaceLibraryDrawer({
           <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
             {selected ? (
               <DeepSpaceLibraryFileWorkspace
+                key={selected.id}
                 name={selected.name}
                 contentType={selected.content_type}
                 value={draft}
@@ -433,6 +514,7 @@ export default function DeepSpaceLibraryDrawer({
       ) : selected ? (
         <section className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
           <DeepSpaceLibraryFileWorkspace
+            key={selected.id}
             name={selected.name}
             contentType={selected.content_type}
             value={draft}

@@ -21,12 +21,45 @@ from app.platform.database.session import get_db
 
 router = APIRouter(prefix="/deepspace/library", tags=["deepspace-library"])
 _SAFE_FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,254}$")
-_TEXT_TYPES = {
+_MAX_LIBRARY_CONTENT_LENGTH = 8_000_000
+_LIBRARY_CONTENT_TYPES = {
+    "text/css",
+    "text/csv",
+    "text/html",
+    "text/javascript",
     "text/markdown",
     "text/plain",
+    "text/sql",
+    "text/x-csv",
+    "text/x-diff",
+    "text/x-java",
     "text/x-python",
-    "text/javascript",
+    "text/x-yaml",
+    "text/xml",
+    "application/javascript",
     "application/json",
+    "application/sql",
+    "application/xml",
+    "application/yaml",
+    "application/x-yaml",
+    "application/pdf",
+    "application/zip",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.oasis.opendocument.spreadsheet",
+    "image/svg+xml",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+    "audio/mpeg",
+    "audio/wav",
+    "audio/ogg",
+    "audio/mp4",
 }
 
 
@@ -45,7 +78,7 @@ class WorkspaceFileSchema(BaseModel):
 
 class WorkspaceFileCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    content: str = Field(default="", max_length=100_000)
+    content: str = Field(default="", max_length=_MAX_LIBRARY_CONTENT_LENGTH)
     content_type: str = Field(default="text/markdown", max_length=127)
 
     model_config = ConfigDict(extra="forbid")
@@ -62,16 +95,16 @@ class WorkspaceFileCreate(BaseModel):
 
     @field_validator("content_type")
     @classmethod
-    def text_content_type(cls, value: str) -> str:
+    def allowed_content_type(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in _TEXT_TYPES:
-            raise ValueError("Only safe text file types can be created in the DeepSpace Library.")
+        if normalized not in _LIBRARY_CONTENT_TYPES:
+            raise ValueError("This file type is not supported in the DeepSpace Library.")
         return normalized
 
 
 class WorkspaceFileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    content: str | None = Field(default=None, max_length=100_000)
+    content: str | None = Field(default=None, max_length=_MAX_LIBRARY_CONTENT_LENGTH)
 
     model_config = ConfigDict(extra="forbid")
 

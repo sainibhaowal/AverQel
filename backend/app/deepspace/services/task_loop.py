@@ -22,6 +22,49 @@ MAX_WORKSPACE_FILE_LENGTH = 100_000
 _SAFE_WORKSPACE_FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,254}$")
 
 
+def _workspace_content_type(filename: str) -> str:
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return {
+        "md": "text/markdown",
+        "mdx": "text/markdown",
+        "json": "application/json",
+        "csv": "text/csv",
+        "yaml": "application/yaml",
+        "yml": "application/yaml",
+        "xml": "application/xml",
+        "html": "text/html",
+        "htm": "text/html",
+        "css": "text/css",
+        "sql": "text/sql",
+        "py": "text/x-python",
+        "js": "text/javascript",
+        "mjs": "text/javascript",
+        "ts": "text/javascript",
+        "tsx": "text/javascript",
+        "diff": "text/x-diff",
+        "patch": "text/x-diff",
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xls": "application/vnd.ms-excel",
+        "ods": "application/vnd.oasis.opendocument.spreadsheet",
+        "svg": "image/svg+xml",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "webp": "image/webp",
+        "gif": "image/gif",
+        "mp4": "video/mp4",
+        "webm": "video/webm",
+        "mov": "video/quicktime",
+        "mp3": "audio/mpeg",
+        "wav": "audio/wav",
+        "ogg": "audio/ogg",
+        "m4a": "audio/mp4",
+        "zip": "application/zip",
+    }.get(extension, "text/plain")
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -404,7 +447,7 @@ class DeepSpaceTaskLoopStore:
                 user_id=user_id,
                 conversation_id=conversation_id,
                 name=normalized_name,
-                content_type="text/markdown" if normalized_name.endswith(".md") else "text/plain",
+                content_type=_workspace_content_type(normalized_name),
                 content=content,
                 source="agent",
                 size_bytes=len(content.encode("utf-8")),
