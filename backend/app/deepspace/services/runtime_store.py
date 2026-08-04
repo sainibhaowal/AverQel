@@ -122,6 +122,52 @@ class DeepSpaceRuntimeStore:
         ).scalar_one_or_none()
         return bool(run)
 
+    def history_steps_for_message(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        assistant_message_id: uuid.UUID,
+    ) -> list[dict[str, object]]:
+        """Return the durable, UI-safe tool trajectory for one assistant turn."""
+        run = self.db.execute(
+            select(DeepSpaceAgentRun).where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.assistant_message_id == assistant_message_id,
+            )
+        ).scalar_one_or_none()
+        if run is None:
+            return []
+        steps = self.db.execute(
+            select(DeepSpaceAgentStep)
+            .where(DeepSpaceAgentStep.run_id == run.id)
+            .order_by(DeepSpaceAgentStep.sequence.asc())
+        ).scalars().all()
+        result: list[dict[str, object]] = []
+        for step in steps:
+            if step.step_type not in {"tool_start", "tool_result", "approval_requested"}:
+                continue
+            payload = dict(step.result_json or {})
+            success = bool(payload.get("success", step.status == "completed"))
+            result.append(
+                {
+                    "type": "tool_start" if step.step_type == "tool_start" else ("tool_result" if success else "tool_error"),
+                    "step_id": f"runtime_{step.sequence}",
+                    "tool_id": step.tool_call_id,
+                    "tool_name": step.tool_name,
+                    "tool_input": dict(step.input_json or {}),
+                    "output": str(payload.get("output") or ""),
+                    "success": success,
+                    "status": step.status,
+                    "started_at": step.created_at.isoformat(),
+                    "completed_at": (step.completed_at or step.created_at).isoformat(),
+                }
+            )
+        return result
+
     def get_run_for_approval(
         self,
         *,

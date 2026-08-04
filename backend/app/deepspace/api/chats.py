@@ -281,7 +281,24 @@ async def get_chat_history(
         user_id=auth.user_id,
         kind=CONVERSATION_KIND,
     )
-    return ChatHistoryResponse(messages=[_serialize_message(item) for item in messages])
+    runtime = DeepSpaceRuntimeStore(db)
+    serialized_messages: list[MessageSchema] = []
+    for item in messages:
+        serialized = _serialize_message(item)
+        if item.role == "assistant":
+            durable_steps = runtime.history_steps_for_message(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                assistant_message_id=item.id,
+            )
+            if durable_steps:
+                serialized.metadata_json = {
+                    **serialized.metadata_json,
+                    "agent_steps": durable_steps,
+                }
+        serialized_messages.append(serialized)
+    return ChatHistoryResponse(messages=serialized_messages)
 
 
 @router.patch(

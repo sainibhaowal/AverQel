@@ -486,6 +486,38 @@ class DeepSpaceChatService:
         normalized = model_name.lower()
         return any(marker in normalized for marker in ("-image", "imagegen", "nano-banana"))
 
+    async def _cancellable_provider_stream(
+        self, iterable: Any, *, run_id: uuid.UUID | None
+    ) -> AsyncIterator[Any]:
+        """Poll a provider stream without leaving generation alive after Stop.
+
+        Provider reads can wait indefinitely for their next SSE chunk. Shield
+        that read in a task and poll the durable cancellation flag so a browser
+        Stop action is honored even after its HTTP stream is disconnected.
+        """
+        iterator = aiter(iterable)
+        pending = asyncio.create_task(anext(iterator))
+        try:
+            while True:
+                done, _ = await asyncio.wait({pending}, timeout=0.5)
+                if not done:
+                    if run_id is not None and self.runtime.is_cancel_requested(run_id=run_id):
+                        pending.cancel()
+                        await asyncio.gather(pending, return_exceptions=True)
+                        yield {"type": "runtime_cancelled"}
+                        return
+                    continue
+                try:
+                    item = pending.result()
+                except StopAsyncIteration:
+                    return
+                yield item
+                pending = asyncio.create_task(anext(iterator))
+        finally:
+            if not pending.done():
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+
     def _messages(
         self,
         *,
@@ -1907,11 +1939,17 @@ class DeepSpaceChatService:
                     },
                 )
                 stream_events = getattr(provider, "stream_generate_events", None)
+                cancelled_during_provider_stream = False
                 if callable(stream_events):
-                    async for provider_event in stream_events(request_payload):
+                    async for provider_event in self._cancellable_provider_stream(
+                        stream_events(request_payload), run_id=run_id
+                    ):
                         if not isinstance(provider_event, dict):
                             continue
                         event_type = str(provider_event.get("type") or "")
+                        if event_type == "runtime_cancelled":
+                            cancelled_during_provider_stream = True
+                            break
                         if event_type == "media":
                             raw_media = provider_event.get("media")
                             if not isinstance(raw_media, list):
@@ -2060,11 +2098,22 @@ class DeepSpaceChatService:
                             answer_parts.append(text)
                             yield sse("delta", {"text": text})
                 else:
-                    async for chunk in provider.stream_generate(request_payload):
+                    async for chunk in self._cancellable_provider_stream(
+                        provider.stream_generate(request_payload), run_id=run_id
+                    ):
+                        if isinstance(chunk, dict) and chunk.get("type") == "runtime_cancelled":
+                            cancelled_during_provider_stream = True
+                            break
                         if not chunk:
                             continue
                         answer_parts.append(chunk)
                         yield sse("delta", {"text": chunk})
+
+                if cancelled_during_provider_stream:
+                    terminal_status = "cancelled"
+                    if run_id is not None:
+                        self.runtime.finish(run_id=run_id, status="cancelled", error="user_cancelled")
+                    break
 
                 if run_id is not None:
                     self.runtime.record_step(
@@ -2110,9 +2159,14 @@ class DeepSpaceChatService:
                             )
                             continue
                         terminal_status = "blocked"
-                        forced_answer = (
-                            "DeepSpace could not continue the managed task because the selected model did not "
-                            "emit the required tool call. No task was marked complete without evidence."
+                        # Do not manufacture a tool call or mark work complete.
+                        # If the model did provide a useful prose response, keep
+                        # it visible while the durable plan remains paused; this
+                        # avoids turning an adapter capability mismatch into a
+                        # synthetic system fault.
+                        forced_answer = "".join(answer_parts[round_answer_start:]).strip() or (
+                            "DeepSpace paused this task because the selected model did not return the "
+                            "required structured tool call. The plan and its unfinished work remain saved."
                         )
                         break
                     task_check = self.task_store.check_tasks(
@@ -2345,6 +2399,19 @@ class DeepSpaceChatService:
 
                 for item in valid_calls:
                     tool_name = str(item["tool_name"])
+                    if run_id is not None:
+                        self.runtime.record_step(
+                            run_id=run_id,
+                            tenant_id=auth.tenant_id,
+                            user_id=auth.user_id,
+                            conversation_id=conversation_id,
+                            step_type="tool_start",
+                            status="running",
+                            tool_name=tool_name,
+                            tool_call_id=str(item["call_id"]),
+                            input_json=item["arguments"],
+                            result_json={"turn_index": round_index},
+                        )
                     yield sse(
                         "tool_start",
                         {
@@ -2631,6 +2698,8 @@ class DeepSpaceChatService:
                 awaiting_user.get("question") or "Please provide the requested information."
             ).strip()
         elif (
+            terminal_status != "cancelled"
+            and
             final_task_check["task_count"]
             and not final_task_check["complete"]
             and forced_answer is None
@@ -2645,12 +2714,16 @@ class DeepSpaceChatService:
             yield sse("delta", {"text": answer[len(raw_answer) :]})
         metadata = {
             "status": (
-                "awaiting_approval"
-                if terminal_status == "awaiting_approval"
+                "cancelled"
+                if terminal_status == "cancelled"
                 else (
-                    "awaiting_user"
-                    if terminal_status == "awaiting_user"
-                    else ("blocked" if terminal_status == "blocked" else "ready")
+                    "awaiting_approval"
+                    if terminal_status == "awaiting_approval"
+                    else (
+                        "awaiting_user"
+                        if terminal_status == "awaiting_user"
+                        else ("blocked" if terminal_status == "blocked" else "ready")
+                    )
                 )
             ),
             "surface": "deepspace",
@@ -2664,6 +2737,15 @@ class DeepSpaceChatService:
             metadata["thinking"] = {"content": "".join(thinking_parts)}
         if generated_artifacts:
             metadata["artifacts"] = generated_artifacts
+        if run_id is not None:
+            durable_steps = self.runtime.history_steps_for_message(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                assistant_message_id=assistant_message.id,
+            )
+            if durable_steps:
+                metadata["agent_steps"] = durable_steps
         self.chat.complete_assistant_message(
             tenant_id=auth.tenant_id,
             conversation_id=conversation_id,

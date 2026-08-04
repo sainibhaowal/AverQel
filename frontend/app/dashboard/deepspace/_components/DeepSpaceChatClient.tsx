@@ -535,7 +535,10 @@ export default function DeepSpaceChatClient({
         }
         if (event.event === "tool_result" && toolName === "write" && callKey) {
           try {
-            const payload = JSON.parse(String(event.data.output ?? "{}")) as Record<string, unknown>;
+            const payload = JSON.parse(String(event.data.output ?? "{}")) as Record<
+              string,
+              unknown
+            >;
             const contentHtml = payload.content_html;
             const conversationId = activeConversationIdRef.current;
             if (conversationId && typeof contentHtml === "string") {
@@ -708,12 +711,15 @@ export default function DeepSpaceChatClient({
   }, [stream, onNewNote]);
 
   const stopStreaming = useCallback(() => {
-    stream.cancel();
     if (state.currentConversationId) {
-      fetchWithAuth(`/deepspace/chats/${state.currentConversationId}/cancel`, {
+      // Start the server-side cancellation request before closing the browser
+      // stream. A provider may continue generating after the client socket is
+      // gone, so the durable run flag is the authoritative stop signal.
+      void fetchWithAuth(`/deepspace/chats/${state.currentConversationId}/cancel`, {
         method: "POST",
       }).catch((err) => console.error("Failed to cancel active mission:", err));
     }
+    stream.cancel();
   }, [stream, state.currentConversationId]);
 
   const syncVoiceSession = useCallback(
@@ -972,8 +978,7 @@ export default function DeepSpaceChatClient({
     );
     const activeTimelineTool = (latestAssistant?.timeline ?? []).find(
       (step) =>
-        step.status === "running" &&
-        (step.type === "tool_call" || step.type === "observation"),
+        step.status === "running" && (step.type === "tool_call" || step.type === "observation"),
     );
 
     let phase: DeepSpaceRuntimePhase = "idle";

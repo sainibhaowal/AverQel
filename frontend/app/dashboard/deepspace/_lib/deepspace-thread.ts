@@ -2297,7 +2297,7 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
   const content = normalizeMarkdown(message.content);
   const persistedStatus = String(metadata.status ?? "");
   const persistedError =
-    persistedStatus === "error" || (persistedStatus === "streaming" && !content.trim())
+    persistedStatus === "error"
       ? {
           code: String(metadata.error_code ?? "STREAM_INCOMPLETE"),
           message: content.trim()
