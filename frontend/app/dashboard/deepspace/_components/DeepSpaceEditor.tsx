@@ -19,6 +19,7 @@ import {
   PanelLeftClose,
   PanelRightClose,
   Maximize2,
+  Save,
 } from "lucide-react";
 import {
   BlockNoteSchema,
@@ -120,6 +121,12 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
     const [isExporting, setIsExporting] = useState(false);
     const [showWidthMenu, setShowWidthMenu] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [showLibrarySave, setShowLibrarySave] = useState(false);
+    const [libraryFilename, setLibraryFilename] = useState("untitled.md");
+    const [librarySaveState, setLibrarySaveState] = useState<"idle" | "saving" | "saved" | "error">(
+      "idle",
+    );
+    const [librarySaveMessage, setLibrarySaveMessage] = useState("");
     const [marginSize, setMarginSize] = useState<"narrow" | "medium" | "wide" | "full">("medium");
     const marginClasses = {
       narrow: "max-w-[600px] px-4 sm:px-8 lg:px-24",
@@ -255,6 +262,54 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
       }
     };
 
+    const saveToLibrary = async () => {
+      const filename = libraryFilename.trim();
+      if (!conversationId) {
+        setLibrarySaveState("error");
+        setLibrarySaveMessage("Save the workspace before creating a Library file.");
+        return;
+      }
+      if (!filename.includes(".")) {
+        setLibrarySaveState("error");
+        setLibrarySaveMessage("Add a filename extension, for example study-plan.md.");
+        return;
+      }
+      const extension = filename.split(".").pop()?.toLowerCase();
+      const contentType =
+        extension === "md"
+          ? "text/markdown"
+          : extension === "json"
+            ? "application/json"
+            : extension === "py"
+              ? "text/x-python"
+              : extension === "js" || extension === "mjs"
+                ? "text/javascript"
+                : "text/plain";
+      setLibrarySaveState("saving");
+      setLibrarySaveMessage("");
+      try {
+        const content = await editor.blocksToMarkdownLossy(editor.document);
+        const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/files`, {
+          method: "POST",
+          body: JSON.stringify({ name: filename, content, content_type: contentType }),
+        })) as Response;
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(
+            String(payload?.error?.message ?? "A file with that name may already exist."),
+          );
+        }
+        setLibrarySaveState("saved");
+        setLibrarySaveMessage(`${filename} saved to DeepSpace Library.`);
+        window.dispatchEvent(new CustomEvent("deepspace-library-changed"));
+      } catch (error) {
+        setLibrarySaveState("error");
+        setLibrarySaveMessage(
+          error instanceof Error ? error.message : "Could not save this file to the Library.",
+        );
+      }
+    };
+
     return (
       <div className="flex h-full w-full flex-col overflow-hidden bg-transparent">
         <div className="border-glass-border bg-surface-1/40 flex flex-col gap-3 border-b p-3 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
@@ -273,6 +328,19 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              disabled={!conversationId}
+              onClick={() => {
+                setLibrarySaveState("idle");
+                setLibrarySaveMessage("");
+                setShowLibrarySave(true);
+              }}
+              className="border-glass-border bg-surface-1 text-muted-foreground hover:border-primary/40 hover:bg-surface-2 hover:text-primary inline-flex h-9 items-center gap-2 rounded-xl border px-3.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-45"
+              title="Save a named copy to DeepSpace Library"
+            >
+              <Save size={13} className="text-primary/75" /> Save to Library
+            </button>
             {showCollapseControls && onSetPanelMode && (
               <div className="border-glass-border bg-surface-0/40 mr-2 flex items-center gap-1 rounded-xl border p-1">
                 <button
@@ -459,6 +527,60 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
           </div>
         </div>
         <div className="relative flex flex-1 flex-col overflow-hidden">
+          {showLibrarySave ? (
+            <div className="absolute inset-0 z-40 flex items-start justify-center bg-black/45 p-5 pt-20 backdrop-blur-sm">
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="library-save-title"
+                className="border-glass-border bg-surface-0 w-full max-w-md rounded-2xl border p-5 shadow-2xl"
+              >
+                <h2 id="library-save-title" className="text-foreground text-sm font-semibold">
+                  Save to DeepSpace Library
+                </h2>
+                <p className="text-muted-foreground mt-1 text-xs leading-5">
+                  Save a Markdown copy of this note as a separate private file. Choose the filename
+                  and extension yourself.
+                </p>
+                <input
+                  autoFocus
+                  value={libraryFilename}
+                  onChange={(event) => setLibraryFilename(event.target.value)}
+                  placeholder="example: research-notes.md"
+                  className="border-glass-border bg-surface-1 focus:border-primary/50 mt-4 w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                />
+                {librarySaveMessage ? (
+                  <p
+                    className={`mt-2 text-xs ${librarySaveState === "error" ? "text-rose-300" : "text-emerald-300"}`}
+                  >
+                    {librarySaveMessage}
+                  </p>
+                ) : null}
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowLibrarySave(false)}
+                    className="text-muted-foreground rounded-xl px-3 py-2 text-xs font-semibold hover:bg-white/5"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    disabled={librarySaveState === "saving"}
+                    onClick={() => void saveToLibrary()}
+                    className="bg-primary text-primary-foreground inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold disabled:opacity-50"
+                  >
+                    {librarySaveState === "saving" ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <Save size={13} />
+                    )}{" "}
+                    Save file
+                  </button>
+                </div>
+              </section>
+            </div>
+          ) : null}
           <div className="custom-scrollbar scrollbar-hide w-full flex-1 overflow-y-auto">
             <div
               className={`mx-auto min-h-full transition-all duration-300 ${marginClasses[marginSize]} py-5 sm:py-8`}

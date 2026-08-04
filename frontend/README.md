@@ -114,6 +114,11 @@ preview, and save private Markdown, plain-text, JSON, JavaScript, and Python fil
 the user’s request; it is tenant-, user-, and conversation-scoped and never accesses the host
 filesystem.
 
+The note editor's **Save to Library** action exports the current editor document as Markdown and asks
+the user for a filename with an extension before creating a separate Library file. It does not replace
+the editor's existing continuous conversation-note save path, so current notes remain safe while a
+future source-of-truth file migration is designed and rolled out.
+
 Provider-produced image, video, and audio data is persisted as a private DeepSpace artifact before it
 is rendered in chat. Artifact bytes are stored in the configured object store, while PostgreSQL keeps
 the authorization metadata and immutable storage locator. The browser fetches the artifact through an

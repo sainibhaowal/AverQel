@@ -68,6 +68,14 @@ export default function DeepSpaceLibraryDrawer({
     if (open) void refresh();
   }, [open, conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const handleLibraryChanged = () => {
+      if (open) void refresh();
+    };
+    window.addEventListener("deepspace-library-changed", handleLibraryChanged);
+    return () => window.removeEventListener("deepspace-library-changed", handleLibraryChanged);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const selectFile = async (file: LibraryFile) => {
     setSelected(file);
     if (!conversationId) {
