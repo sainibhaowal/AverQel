@@ -12,11 +12,14 @@ from sqlalchemy.orm import Session
 
 from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.conversation import Conversation
+from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 
 TASK_STATUSES = {"pending", "in_progress", "completed", "blocked", "failed"}
 MAX_TASKS = 40
 MAX_TASK_TEXT = 1000
 MAX_NOTE_LENGTH = 100_000
+MAX_WORKSPACE_FILE_LENGTH = 100_000
+_SAFE_WORKSPACE_FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,254}$")
 
 
 def _now() -> datetime:
@@ -96,7 +99,9 @@ class DeepSpaceTaskLoopStore:
     def _thread_id(conversation_id: uuid.UUID) -> str:
         return str(conversation_id)
 
-    def _tasks(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID) -> list[AgentTodo]:
+    def _tasks(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> list[AgentTodo]:
         stmt = (
             select(AgentTodo)
             .where(
@@ -124,8 +129,15 @@ class DeepSpaceTaskLoopStore:
             "updated_at": task.updated_at.isoformat() if task.updated_at else None,
         }
 
-    def read_tasks(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID) -> list[dict[str, Any]]:
-        return [self._serialize(task) for task in self._tasks(tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id)]
+    def read_tasks(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> list[dict[str, Any]]:
+        return [
+            self._serialize(task)
+            for task in self._tasks(
+                tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+            )
+        ]
 
     def replace_tasks(
         self,
@@ -137,7 +149,12 @@ class DeepSpaceTaskLoopStore:
     ) -> list[dict[str, Any]]:
         if len(tasks) > MAX_TASKS:
             raise ValueError(f"A DeepSpace plan may contain at most {MAX_TASKS} tasks.")
-        existing = {str(task.id): task for task in self._tasks(tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id)}
+        existing = {
+            str(task.id): task
+            for task in self._tasks(
+                tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+            )
+        }
         # AgentTodo.id is a global primary key, while models commonly emit
         # short local ids such as "1" or "2". Always allocate UUIDs for new
         # rows and translate dependencies through the request-local ids so a
@@ -185,7 +202,9 @@ class DeepSpaceTaskLoopStore:
                     user_id=str(user_id),
                     thread_id=self._thread_id(conversation_id),
                     content=content,
-                    active_form=str(raw.get("active_form") or raw.get("activeForm") or content).strip()[:MAX_TASK_TEXT],
+                    active_form=str(
+                        raw.get("active_form") or raw.get("activeForm") or content
+                    ).strip()[:MAX_TASK_TEXT],
                     status=status,
                     priority=priority,
                     metadata_json={},
@@ -194,7 +213,9 @@ class DeepSpaceTaskLoopStore:
                 self.db.add(task)
             else:
                 task.content = content
-                task.active_form = str(raw.get("active_form") or raw.get("activeForm") or content).strip()[:MAX_TASK_TEXT]
+                task.active_form = str(
+                    raw.get("active_form") or raw.get("activeForm") or content
+                ).strip()[:MAX_TASK_TEXT]
                 task.status = status
                 task.priority = priority
             metadata = dict(task.metadata_json or {})
@@ -213,7 +234,9 @@ class DeepSpaceTaskLoopStore:
             if task_id not in retained:
                 task.status = "deleted"
         self.db.commit()
-        return self.read_tasks(tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id)
+        return self.read_tasks(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
 
     def mark_task(
         self,
@@ -234,10 +257,16 @@ class DeepSpaceTaskLoopStore:
         if status in {"in_progress", "completed"}:
             task_map = {str(item.id): item for item in tasks}
             dependencies = list((task.metadata_json or {}).get("dependencies") or [])
-            incomplete = [dependency for dependency in dependencies if dependency not in task_map or task_map[dependency].status != "completed"]
+            incomplete = [
+                dependency
+                for dependency in dependencies
+                if dependency not in task_map or task_map[dependency].status != "completed"
+            ]
             if incomplete:
                 raise ValueError(f"Task dependencies are incomplete: {', '.join(incomplete[:5])}")
-        if status == "completed" and not (evidence or list((task.metadata_json or {}).get("evidence") or [])):
+        if status == "completed" and not (
+            evidence or list((task.metadata_json or {}).get("evidence") or [])
+        ):
             raise ValueError("Completed tasks require evidence.")
         task.status = status
         metadata = dict(task.metadata_json or {})
@@ -249,7 +278,9 @@ class DeepSpaceTaskLoopStore:
         self.db.commit()
         return self._serialize(task)
 
-    def check_tasks(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID) -> dict[str, Any]:
+    def check_tasks(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> dict[str, Any]:
         tasks = self._tasks(tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id)
         task_map = {str(item.id): item for item in tasks}
         serialized = [self._serialize(item) for item in tasks]
@@ -275,7 +306,9 @@ class DeepSpaceTaskLoopStore:
             "tasks": serialized,
         }
 
-    def read_note(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID) -> dict[str, Any]:
+    def read_note(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> dict[str, Any]:
         conversation = self.db.execute(
             select(Conversation).where(
                 Conversation.id == conversation_id,
@@ -287,7 +320,11 @@ class DeepSpaceTaskLoopStore:
         if conversation is None:
             raise ValueError("DeepSpace conversation not found.")
         content = conversation.content_html or ""
-        return {"conversation_id": str(conversation_id), "content_html": content, "length": len(content)}
+        return {
+            "conversation_id": str(conversation_id),
+            "content_html": content,
+            "length": len(content),
+        }
 
     def write_note(
         self,
@@ -321,6 +358,73 @@ class DeepSpaceTaskLoopStore:
         conversation.updated_at = _now()
         self.db.commit()
         return self.read_note(tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id)
+
+    def write_workspace_file(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        filename: str,
+        content: str,
+        mode: str = "replace",
+    ) -> dict[str, Any]:
+        """Create or update a text file in the visible DeepSpace Library."""
+        normalized_name = filename.strip()
+        if not _SAFE_WORKSPACE_FILE_NAME.fullmatch(normalized_name) or normalized_name in {
+            ".",
+            "..",
+        }:
+            raise ValueError("Workspace file name is invalid.")
+        if not isinstance(content, str) or len(content) > MAX_WORKSPACE_FILE_LENGTH:
+            raise ValueError("Workspace file content is invalid or too large.")
+        if mode not in {"replace", "append"}:
+            raise ValueError("Workspace file mode must be replace or append.")
+        conversation = self.db.execute(
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.tenant_id == tenant_id,
+                Conversation.user_id == user_id,
+                Conversation.kind == "deepspace",
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise ValueError("DeepSpace conversation not found.")
+        file = self.db.execute(
+            select(DeepSpaceWorkspaceFile).where(
+                DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+                DeepSpaceWorkspaceFile.user_id == user_id,
+                DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+                DeepSpaceWorkspaceFile.name == normalized_name,
+            )
+        ).scalar_one_or_none()
+        if file is None:
+            file = DeepSpaceWorkspaceFile(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                name=normalized_name,
+                content_type="text/markdown" if normalized_name.endswith(".md") else "text/plain",
+                content=content,
+                source="agent",
+                size_bytes=len(content.encode("utf-8")),
+            )
+            self.db.add(file)
+        else:
+            file.content = (
+                f"{file.content}\n{content}" if mode == "append" and file.content else content
+            )
+            file.size_bytes = len(file.content.encode("utf-8"))
+            file.source = "agent"
+            file.updated_at = _now()
+        self.db.commit()
+        return {
+            "id": str(file.id),
+            "name": file.name,
+            "content_type": file.content_type,
+            "size_bytes": file.size_bytes,
+            "source": file.source,
+        }
 
 
 def summarize_tasks(tasks: Iterable[dict[str, Any]]) -> str:

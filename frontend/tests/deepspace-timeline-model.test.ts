@@ -31,6 +31,37 @@ describe("TimelineStep Model", () => {
     expect(message?.content).toBe("The user wants");
   });
 
+  test("keeps a real streamed media artifact on the assistant message", () => {
+    let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "submit_query",
+      query: "Generate an image",
+    });
+    const assistantId = state.activeAssistantId;
+    if (!assistantId) throw new Error("No active assistant");
+
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: {
+        event: "artifact",
+        data: {
+          artifact: {
+            id: "artifact-1",
+            kind: "image",
+            status: "ready",
+            title: "Generated image",
+            content_type: "image/png",
+            size_bytes: 42,
+            url: "/api/v1/deepspace/artifacts/artifact-1/content",
+          },
+        },
+      },
+    });
+
+    expect(state.messages.find((message) => message.id === assistantId)?.artifacts).toEqual([
+      expect.objectContaining({ id: "artifact-1", kind: "image" }),
+    ]);
+  });
+
   test("should expose live write-file diff stats before tool_result", () => {
     let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "submit_query",

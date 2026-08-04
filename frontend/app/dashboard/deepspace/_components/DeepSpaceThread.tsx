@@ -30,6 +30,7 @@ import { exportToDocx, exportToMarkdown, exportToPDF } from "@/lib/exportUtils";
 
 import DeepSpaceThinkingPanel from "./DeepSpaceThinkingPanel";
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
+import DeepSpaceMediaArtifacts from "./DeepSpaceMediaArtifacts";
 
 import type { DeepSpaceMessage } from "../_lib/deepspace-stream";
 
@@ -362,6 +363,8 @@ const MessageBubble = memo(
                   </div>
                 </div>
               ) : null}
+
+              <DeepSpaceMediaArtifacts artifacts={message.artifacts} />
 
               <div className="prose-premium prose prose-invert max-w-none">
                 {message.status === "streaming" && message.content.trim() ? (

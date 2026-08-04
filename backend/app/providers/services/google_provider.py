@@ -71,11 +71,12 @@ class GoogleProvider:
     @staticmethod
     def _extract_candidate_parts(
         candidate: dict[str, Any],
-    ) -> tuple[str, str | None, list[dict[str, Any]]]:
+    ) -> tuple[str, str | None, list[dict[str, Any]], list[dict[str, str]]]:
         parts = candidate.get("content", {}).get("parts", [])
         text_parts: list[str] = []
         thinking_parts: list[str] = []
         tool_calls: list[dict[str, Any]] = []
+        media: list[dict[str, str]] = []
         for item in parts:
             if not isinstance(item, dict):
                 continue
@@ -103,6 +104,13 @@ class GoogleProvider:
                         call["thought_signature"] = thought_signature.strip()
                     tool_calls.append(call)
                 continue
+            inline_data = item.get("inlineData") or item.get("inline_data")
+            if isinstance(inline_data, dict):
+                content_type = inline_data.get("mimeType") or inline_data.get("mime_type")
+                data = inline_data.get("data")
+                if isinstance(content_type, str) and isinstance(data, str) and data:
+                    media.append({"content_type": content_type, "data_base64": data})
+                continue
             text = item.get("text")
             if not isinstance(text, str) or not text:
                 continue
@@ -114,6 +122,7 @@ class GoogleProvider:
             "".join(text_parts),
             "".join(thinking_parts).strip() or None,
             tool_calls,
+            media,
         )
 
     @staticmethod
@@ -373,7 +382,7 @@ class GoogleProvider:
         thinking_text: str | None = None
         tool_calls: list[dict[str, Any]] = []
         if isinstance(candidates, list) and candidates:
-            text, thinking_text, tool_calls = self._extract_candidate_parts(candidates[0])
+            text, thinking_text, tool_calls, _media = self._extract_candidate_parts(candidates[0])
         return ChatGenerateResponse(
             content=text,
             thinking_content=thinking_text,
@@ -418,13 +427,17 @@ class GoogleProvider:
                     candidates = payload_obj.get("candidates", [])
                     if not isinstance(candidates, list) or not candidates:
                         continue
-                    text, thinking_text, tool_calls = self._extract_candidate_parts(candidates[0])
+                    text, thinking_text, tool_calls, media = self._extract_candidate_parts(
+                        candidates[0]
+                    )
                     if thinking_text:
                         yield {"type": "thinking", "text": thinking_text}
                     if text:
                         yield {"type": "delta", "text": text}
                     if tool_calls:
                         yield {"type": "tool_calls_delta", "tool_calls": tool_calls}
+                    if media:
+                        yield {"type": "media", "media": media}
 
     def stream_generate_sync(self, request: ChatGenerateRequest) -> Iterator[str]:
         result = self.generate(request)

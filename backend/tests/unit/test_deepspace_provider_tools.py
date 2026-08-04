@@ -141,7 +141,7 @@ def test_google_converts_tool_history_to_function_response() -> None:
 
 
 def test_google_extracts_native_function_call() -> None:
-    text, thinking, calls = GoogleProvider._extract_candidate_parts(
+    text, thinking, calls, media = GoogleProvider._extract_candidate_parts(
         {
             "content": {
                 "parts": [
@@ -159,6 +159,22 @@ def test_google_extracts_native_function_call() -> None:
     assert calls[0]["function"]["name"] == "web_search"
     assert json.loads(calls[0]["function"]["arguments"]) == {"query": "news"}
     assert calls[0]["thought_signature"] == "sig-123"
+    assert media == []
+
+
+def test_google_extracts_native_inline_media() -> None:
+    _text, _thinking, calls, media = GoogleProvider._extract_candidate_parts(
+        {
+            "content": {
+                "parts": [
+                    {"inlineData": {"mimeType": "image/png", "data": "aGVsbG8="}},
+                ]
+            }
+        }
+    )
+
+    assert calls == []
+    assert media == [{"content_type": "image/png", "data_base64": "aGVsbG8="}]
 
 
 def test_anthropic_translates_tools_and_tool_history() -> None:

@@ -27,6 +27,7 @@ class DeepSpaceToolPolicy:
         "todo_write": "write",
         "todo_mark": "write",
         "write": "write",
+        "workspace_write": "write",
         "memory_write": "write",
         "memory_forget": "write",
         "memory_search": "read",

@@ -18,6 +18,7 @@ def test_deepspace_policy_blocks_ide_and_mcp_tools() -> None:
 
     assert policy.decide("url_read", {}).allowed
     assert policy.mode("write") == "write"
+    assert policy.mode("workspace_write") == "write"
     assert policy.mode("memory_search") == "read"
     assert policy.mode("memory_write") == "write"
     assert policy.mode("memory_forget") == "write"
@@ -33,6 +34,7 @@ def test_deepspace_exposes_scoped_memory_tools() -> None:
     }
 
     assert {"memory_search", "memory_read", "memory_write", "memory_forget"}.issubset(names)
+    assert "workspace_write" in names
 
 
 def test_url_reader_rejects_private_targets(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -15,6 +15,7 @@ from app.core.config import Settings
 from app.deepspace.memory.memory_service import MemoryService
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
 from app.deepspace.services.mcp_bridge import DeepSpaceMCPBridge, DeepSpaceMCPTool
+from app.deepspace.services.media_artifacts import DeepSpaceMediaArtifactService
 from app.deepspace.services.runtime_policy import DeepSpaceToolPolicy
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore, summarize_tasks
@@ -64,6 +65,10 @@ Planning and execution
 - After meaningful work, verify the important result before reporting success.
 - Keep users informed with concise progress updates for tasks that take noticeable time; do not expose private reasoning.
 
+Workspace files and generated media
+- The active note remains the primary document. Use workspace_write only when the user asks for a separate named text or code file, an exportable artifact, or a file would materially improve the work.
+- If the selected model produces image, video, or audio output, it is saved as a private DeepSpace artifact and shown to the user. Never claim media was generated unless the provider returned it.
+
 MCP connected services
 - MCP tools operate only on the connected account and current authorized conversation scope provided by the runtime.
 - Use an MCP tool when the user explicitly asks to inspect, search, retrieve, create, update, or act on a connected service.
@@ -108,6 +113,8 @@ Response quality
 
 class DeepSpaceEmptyResponseError(RuntimeError):
     """Raised when a provider closes successfully without usable output."""
+
+
 WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
@@ -317,6 +324,23 @@ NOTE_WRITE_TOOL = {
         },
     },
 }
+WORKSPACE_WRITE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "workspace_write",
+        "description": "Create or update a visible text or code file in this conversation's DeepSpace Library. This never accesses the operating system.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "filename": {"type": "string", "minLength": 1, "maxLength": 255},
+                "content": {"type": "string", "maxLength": 100000},
+                "mode": {"type": "string", "enum": ["replace", "append"]},
+            },
+            "required": ["filename", "content"],
+        },
+    },
+}
 MEMORY_SEARCH_TOOL = {
     "type": "function",
     "function": {
@@ -358,7 +382,11 @@ MEMORY_WRITE_TOOL = {
                 "key": {"type": "string", "minLength": 1, "maxLength": 120},
                 "value": {"type": "string", "minLength": 1, "maxLength": 10000},
                 "scope": {"type": "string", "enum": ["user", "session"]},
-                "tags": {"type": "array", "items": {"type": "string", "maxLength": 60}, "maxItems": 20},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 60},
+                    "maxItems": 20,
+                },
                 "importance_score": {"type": "number", "minimum": 0, "maximum": 1},
             },
             "required": ["key", "value"],
@@ -403,6 +431,7 @@ PRODUCTIVITY_TOOLS = [
     ANALYZE_TOOL,
     NOTE_READ_TOOL,
     NOTE_WRITE_TOOL,
+    WORKSPACE_WRITE_TOOL,
     MEMORY_SEARCH_TOOL,
     MEMORY_READ_TOOL,
     MEMORY_WRITE_TOOL,
@@ -433,6 +462,7 @@ class DeepSpaceChatService:
         self.providers = ProviderSelectionService(db, settings)
         self.registry = ProviderRegistry(settings)
         self.task_store = DeepSpaceTaskLoopStore(db)
+        self.media_artifacts = DeepSpaceMediaArtifactService(db, settings)
         self.mcp_bridge = DeepSpaceMCPBridge(db, settings)
         self.runtime = DeepSpaceRuntimeStore(
             db,
@@ -443,6 +473,18 @@ class DeepSpaceChatService:
     @staticmethod
     def _now() -> str:
         return datetime.now(UTC).isoformat()
+
+    @staticmethod
+    def _is_native_media_model(model_name: str) -> bool:
+        """Whether a model is selected primarily for native media generation.
+
+        Gemini image models reject function declarations.  Keeping the choice
+        local to this capability avoids affecting normal chat or every other
+        provider adapter.
+        """
+
+        normalized = model_name.lower()
+        return any(marker in normalized for marker in ("-image", "imagegen", "nano-banana"))
 
     def _messages(
         self,
@@ -820,6 +862,15 @@ class DeepSpaceChatService:
                 markdown=str(arguments.get("markdown") or ""),
                 mode=str(arguments.get("mode") or "replace"),
             )
+        if tool_name == "workspace_write":
+            return self.task_store.write_workspace_file(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                filename=str(arguments.get("filename") or ""),
+                content=str(arguments.get("content") or ""),
+                mode=str(arguments.get("mode") or "replace"),
+            )
         if tool_name == "memory_search":
             from app.deepspace.memory.memory_service import MemoryService
 
@@ -846,7 +897,11 @@ class DeepSpaceChatService:
                 tenant_id=auth.tenant_id, user_id=auth.user_id
             )
             if not preferences["memory_retrieval_enabled"]:
-                return {"key": str(arguments.get("key") or "")[:120], "value": None, "retrieval_disabled": True}
+                return {
+                    "key": str(arguments.get("key") or "")[:120],
+                    "value": None,
+                    "retrieval_disabled": True,
+                }
             value = await memory_service.retrieve_fact(
                 tenant_id=auth.tenant_id,
                 user_id=auth.user_id,
@@ -863,12 +918,17 @@ class DeepSpaceChatService:
                 key=str(arguments.get("key") or "")[:120],
                 value=str(arguments.get("value") or "")[:10000],
                 scope=str(arguments.get("scope") or "user"),
-                tags=[str(item)[:60] for item in (arguments.get("tags") or []) if str(item).strip()][:20],
+                tags=[
+                    str(item)[:60] for item in (arguments.get("tags") or []) if str(item).strip()
+                ][:20],
                 importance_score=arguments.get("importance_score"),
                 confidence_score=1.0,
                 source="deepspace_memory_tool",
                 conversation_id=str(conversation_id),
-                metadata_json={"source": "deepspace_memory_tool", "conversation_id": str(conversation_id)},
+                metadata_json={
+                    "source": "deepspace_memory_tool",
+                    "conversation_id": str(conversation_id),
+                },
             )
             return {"memory_id": memory_id, "status": "saved"}
         if tool_name == "memory_forget":
@@ -1391,9 +1451,7 @@ class DeepSpaceChatService:
                 role="user",
                 content=prompt,
                 metadata_json=(
-                    {"client_request_id": client_request_id}
-                    if client_request_id
-                    else None
+                    {"client_request_id": client_request_id} if client_request_id else None
                 ),
             )
             assistant_message = self.chat.add_message(
@@ -1404,11 +1462,7 @@ class DeepSpaceChatService:
                 metadata_json={
                     "status": "streaming",
                     "surface": "deepspace",
-                    **(
-                        {"client_request_id": client_request_id}
-                        if client_request_id
-                        else {}
-                    ),
+                    **({"client_request_id": client_request_id} if client_request_id else {}),
                 },
             )
             self.db.commit()
@@ -1465,7 +1519,9 @@ class DeepSpaceChatService:
             return
         candidate = selection.candidates[0] if selection.candidates else None
         if candidate is None:
-            message = "No DeepSpace chat model is configured. Select an enabled chat model and try again."
+            message = (
+                "No DeepSpace chat model is configured. Select an enabled chat model and try again."
+            )
             self._persist_stream_failure(
                 assistant_message=assistant_message,
                 auth=auth,
@@ -1513,6 +1569,7 @@ class DeepSpaceChatService:
         # its native API (or its OpenAI-compatible interface). A future adapter
         # can explicitly opt out with supports_tool_calling = False.
         provider_supports_tools = bool(getattr(provider, "supports_tool_calling", True))
+        native_media_model = self._is_native_media_model(candidate.model_name)
         web_candidate = None
         web_provider = None
         if provider_supports_tools:
@@ -1534,9 +1591,16 @@ class DeepSpaceChatService:
                 )
                 web_candidate = None
                 web_provider = None
-        productivity_tools = PRODUCTIVITY_TOOLS if provider_supports_tools else []
+        # Native image models (for example Gemini Nano Banana) produce media
+        # directly and do not accept function declarations.  Do not weaken the
+        # normal chat tool path; only omit tools for that selected media model.
+        productivity_tools = (
+            PRODUCTIVITY_TOOLS if provider_supports_tools and not native_media_model else []
+        )
         web_tools = (
-            [WEB_SEARCH_TOOL] if web_candidate is not None and web_provider is not None else []
+            [WEB_SEARCH_TOOL]
+            if not native_media_model and web_candidate is not None and web_provider is not None
+            else []
         )
         try:
             mcp_bindings = (
@@ -1544,7 +1608,7 @@ class DeepSpaceChatService:
                     auth=auth,
                     conversation_id=conversation_id,
                 )
-                if provider_supports_tools
+                if provider_supports_tools and not native_media_model
                 else {}
             )
         except Exception:  # noqa: BLE001
@@ -1567,7 +1631,11 @@ class DeepSpaceChatService:
         # A task ledger is entered only when a previous real todo_write exists.
         # The model—not keyword matching—decides whether a new request merits
         # planning, direct answer, research, observation, or a question.
-        managed_task_run = provider_supports_tools and bool(initial_task_check.get("task_count"))
+        managed_task_run = (
+            provider_supports_tools
+            and not native_media_model
+            and bool(initial_task_check.get("task_count"))
+        )
         task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(initial_task_check)
         task_has_work_evidence = False
         task_lifecycle_prompt_retries = 0
@@ -1592,6 +1660,7 @@ class DeepSpaceChatService:
             conversation_messages.append({"role": "user", "content": prompt})
         answer_parts: list[str] = []
         thinking_parts: list[str] = []
+        generated_artifacts: list[dict[str, Any]] = []
         citations: list[dict[str, Any]] = []
         used_memories: list[dict[str, Any]] = []
         forced_answer: str | None = None
@@ -1776,6 +1845,7 @@ class DeepSpaceChatService:
                 emitted_tool_argument_lengths: dict[int, int] = {}
                 round_answer_start = len(answer_parts)
                 round_thinking_start = len(thinking_parts)
+                round_artifact_start = len(generated_artifacts)
                 request_images = list(pending_images)
                 pending_images.clear()
                 tools_for_round = available_tools
@@ -1833,6 +1903,46 @@ class DeepSpaceChatService:
                         if not isinstance(provider_event, dict):
                             continue
                         event_type = str(provider_event.get("type") or "")
+                        if event_type == "media":
+                            raw_media = provider_event.get("media")
+                            if not isinstance(raw_media, list):
+                                continue
+                            for media in raw_media:
+                                if not isinstance(media, dict):
+                                    continue
+                                content_type = media.get("content_type") or media.get("mime_type")
+                                data_base64 = media.get("data_base64") or media.get("data")
+                                if not isinstance(content_type, str) or not isinstance(
+                                    data_base64, str
+                                ):
+                                    continue
+                                try:
+                                    artifact = self.media_artifacts.persist_base64(
+                                        tenant_id=auth.tenant_id,
+                                        user_id=auth.user_id,
+                                        conversation_id=conversation_id,
+                                        message_id=assistant_message.id,
+                                        content_type=content_type,
+                                        data_base64=data_base64,
+                                        provider_type=candidate.provider_type,
+                                        model_name=candidate.model_name,
+                                        title=media.get("title")
+                                        if isinstance(media.get("title"), str)
+                                        else None,
+                                        metadata={"turn_index": round_index},
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    logger.warning(
+                                        "DeepSpace provider media could not be persisted safely",
+                                        exc_info=True,
+                                        extra={"conversation_id": str(conversation_id)},
+                                    )
+                                    continue
+                                generated_artifacts.append(artifact)
+                                yield sse(
+                                    "artifact", {"artifact": artifact, "turn_index": round_index}
+                                )
+                            continue
                         if event_type in {
                             "tool_calls_delta",
                             "tool_call_delta",
@@ -1862,13 +1972,17 @@ class DeepSpaceChatService:
                                     tool_name = self._tool_name(current_call).strip()
                                     function = current_call.get("function")
                                     arguments = (
-                                        function.get("arguments") if isinstance(function, dict) else None
+                                        function.get("arguments")
+                                        if isinstance(function, dict)
+                                        else None
                                     )
                                     if not tool_name or not isinstance(arguments, str):
                                         # Do not surface a transient anonymous tool. We wait until the
                                         # provider has named it, then send the accumulated real arguments.
                                         continue
-                                    emitted_length = emitted_tool_argument_lengths.get(call_index, 0)
+                                    emitted_length = emitted_tool_argument_lengths.get(
+                                        call_index, 0
+                                    )
                                     if len(arguments) <= emitted_length:
                                         continue
                                     call_id = str(current_call.get("id") or f"tool_{call_index}")
@@ -1926,13 +2040,12 @@ class DeepSpaceChatService:
                         },
                     )
 
-                normalized_call_items = [
-                    (index, tool_calls[index]) for index in sorted(tool_calls)
-                ]
+                normalized_call_items = [(index, tool_calls[index]) for index in sorted(tool_calls)]
                 normalized_calls = [call for _, call in normalized_call_items]
                 round_has_text = (
                     len(answer_parts) > round_answer_start
                     or len(thinking_parts) > round_thinking_start
+                    or len(generated_artifacts) > round_artifact_start
                 )
                 if not normalized_calls and not round_has_text:
                     if empty_provider_retries < MAX_EMPTY_PROVIDER_RETRIES:
@@ -2045,10 +2158,13 @@ class DeepSpaceChatService:
                                     "'in_progress'."
                                 )
                         elif task_lifecycle_stage == "work" and tool_name == "todo_mark":
-                            if (
-                                str(arguments.get("task_id") or "") != str(active_task_id or "")
-                                or str(arguments.get("status") or "") not in {"completed", "blocked", "failed"}
-                            ):
+                            if str(arguments.get("task_id") or "") != str(
+                                active_task_id or ""
+                            ) or str(arguments.get("status") or "") not in {
+                                "completed",
+                                "blocked",
+                                "failed",
+                            }:
                                 lifecycle_error = (
                                     "Only the active task may be marked terminal at this stage; use todo_mark with its "
                                     "persisted task ID and status 'completed', 'blocked', or 'failed'."
@@ -2071,7 +2187,11 @@ class DeepSpaceChatService:
                                 },
                             )
                             conversation_messages.append(
-                                {"role": "tool", "tool_call_id": call_id, "content": lifecycle_error}
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": call_id,
+                                    "content": lifecycle_error,
+                                }
                             )
                             continue
                     signature = hashlib.sha256(
@@ -2284,7 +2404,10 @@ class DeepSpaceChatService:
                                     task_lifecycle_stage = "verify_task"
                                 elif tool_name != "ask_user":
                                     task_has_work_evidence = True
-                            elif task_lifecycle_stage in {"verify_task", "verify_final"} and tool_name == "todo_check":
+                            elif (
+                                task_lifecycle_stage in {"verify_task", "verify_final"}
+                                and tool_name == "todo_check"
+                            ):
                                 task_check = tool_payload
                                 task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(
                                     task_check
@@ -2446,6 +2569,8 @@ class DeepSpaceChatService:
             )
             return
         raw_answer = (forced_answer or "".join(answer_parts)).strip()
+        if not raw_answer and generated_artifacts and forced_answer is None:
+            raw_answer = "Your generated media is ready."
         if awaiting_approval is not None:
             terminal_status = "awaiting_approval"
             raw_answer = (
@@ -2488,6 +2613,8 @@ class DeepSpaceChatService:
             metadata["memory"] = {"used": used_memories[:8]}
         if thinking_parts:
             metadata["thinking"] = {"content": "".join(thinking_parts)}
+        if generated_artifacts:
+            metadata["artifacts"] = generated_artifacts
         self.chat.complete_assistant_message(
             tenant_id=auth.tenant_id,
             conversation_id=conversation_id,

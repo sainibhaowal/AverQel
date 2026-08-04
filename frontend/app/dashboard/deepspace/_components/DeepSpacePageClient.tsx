@@ -10,6 +10,7 @@ import {
   Database,
   History,
   RefreshCw,
+  FolderOpen,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -22,6 +23,7 @@ import DeepSpaceEditor, {
   type DeepSpaceEditorHandle,
 } from "./DeepSpaceEditor";
 import MemoryPanel from "./MemoryPanel";
+import DeepSpaceLibraryDrawer from "./DeepSpaceLibraryDrawer";
 
 export interface DeepSpaceNote {
   id: string;
@@ -133,6 +135,7 @@ export default function DeepSpacePageClient() {
   const editorRef = useRef<DeepSpaceEditorHandle>(null);
   const agentPreviewBaseContentRef = useRef<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [serviceWarnings, setServiceWarnings] = useState<string[]>([]);
   const [serviceRetryKey, setServiceRetryKey] = useState(0);
 
@@ -458,6 +461,12 @@ export default function DeepSpacePageClient() {
                   onClick={() => setPanelMode("notes")}
                 />
                 <IconTooltipButton
+                  label="Library"
+                  active={isLibraryOpen}
+                  icon={<FolderOpen size={16} />}
+                  onClick={() => setIsLibraryOpen((value) => !value)}
+                />
+                <IconTooltipButton
                   label="History"
                   active={isHistoryOpen}
                   icon={<History size={16} />}
@@ -471,7 +480,7 @@ export default function DeepSpacePageClient() {
           return null;
         })()}
 
-        <div
+      <div
           ref={splitContainerRef}
           className={`relative flex h-full max-h-full min-h-0 flex-1 overflow-hidden ${isStackedLayout ? "flex-col" : "flex-row"}`}
         >
@@ -585,6 +594,11 @@ export default function DeepSpacePageClient() {
         </div>
 
       </div>
+      <DeepSpaceLibraryDrawer
+        open={isLibraryOpen}
+        conversationId={activeNote?.id ?? null}
+        onClose={() => setIsLibraryOpen(false)}
+      />
     </div>
   );
 }

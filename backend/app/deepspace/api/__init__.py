@@ -1,5 +1,5 @@
 """DeepSpace API routes."""
 
-from app.deepspace.api import chats, client_storage, export
+from app.deepspace.api import artifacts, chats, client_storage, export, library
 
-__all__ = ["chats", "client_storage", "export"]
+__all__ = ["artifacts", "chats", "client_storage", "export", "library"]

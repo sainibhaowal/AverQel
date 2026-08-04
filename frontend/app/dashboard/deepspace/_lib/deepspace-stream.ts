@@ -73,6 +73,7 @@ export interface DeepSpaceStreamEvent {
     | "chart"
     | "card"
     | "diagram"
+    | "artifact"
     | "followups"
     | "metrics"
     | "done"
@@ -397,6 +398,17 @@ export interface DeepSpaceMessage {
   currentTurnText?: string;
   readFilesContents?: Record<string, string>;
   memoryUsed?: Array<{ id: string; key: string; source?: string }>;
+  artifacts?: DeepSpaceMediaArtifact[];
+}
+
+export interface DeepSpaceMediaArtifact {
+  id: string;
+  kind: "image" | "video" | "audio";
+  status: "ready" | "pending" | "failed";
+  title: string;
+  content_type: string;
+  size_bytes: number;
+  url: string;
 }
 
 export interface AgentStep {

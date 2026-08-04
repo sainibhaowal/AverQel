@@ -10,6 +10,7 @@ import {
   type MissionLaneVisual,
   type MissionRuntimeState,
   type DeepSpaceMessage,
+  type DeepSpaceMediaArtifact,
   type DeepSpaceStreamEvent,
   type TimelineStep,
   type AgentPhase,
@@ -1030,9 +1031,9 @@ function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): T
   const index =
     incoming.type === "thinking"
       ? last &&
-          last.type === "thinking" &&
-          last.status === "running" &&
-          last.turnIndex === incoming.turnIndex
+        last.type === "thinking" &&
+        last.status === "running" &&
+        last.turnIndex === incoming.turnIndex
         ? lastIndex
         : -1
       : timeline.findIndex(
@@ -2314,17 +2315,36 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     Array.isArray((memoryMetadata as Record<string, unknown>).used)
       ? ((memoryMetadata as Record<string, unknown>).used as unknown[])
       : null;
-  const memoryUsed =
-    rawMemoryUsed
-      ? rawMemoryUsed
-          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
-          .map((item) => ({
+  const memoryUsed = rawMemoryUsed
+    ? rawMemoryUsed
+        .filter(
+          (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
+        )
+        .map((item) => ({
+          id: String(item.id ?? ""),
+          key: String(item.key ?? "memory"),
+          ...(typeof item.source === "string" ? { source: item.source } : {}),
+        }))
+        .filter((item) => item.id)
+    : undefined;
+  const artifacts = Array.isArray(metadata.artifacts)
+    ? metadata.artifacts
+        .filter(
+          (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
+        )
+        .map(
+          (item): DeepSpaceMediaArtifact => ({
             id: String(item.id ?? ""),
-            key: String(item.key ?? "memory"),
-            ...(typeof item.source === "string" ? { source: item.source } : {}),
-          }))
-          .filter((item) => item.id)
-      : undefined;
+            kind: item.kind === "video" || item.kind === "audio" ? item.kind : "image",
+            status: item.status === "pending" || item.status === "failed" ? item.status : "ready",
+            title: String(item.title ?? "Generated media"),
+            content_type: String(item.content_type ?? "application/octet-stream"),
+            size_bytes: typeof item.size_bytes === "number" ? item.size_bytes : 0,
+            url: String(item.url ?? ""),
+          }),
+        )
+        .filter((item) => item.id && item.url)
+    : undefined;
   // Rehydrate timeline from agentSteps if timeline is not explicitly persisted
   let timeline: TimelineStep[] = [];
   if (agentSteps) {
@@ -2413,6 +2433,7 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     metrics,
     compaction,
     memoryUsed,
+    artifacts,
     error: persistedError,
   };
 }
@@ -2530,11 +2551,11 @@ function reduceDeepSpaceThread(
                 action.type === "stream_interrupted"
                   ? null
                   : m.rawContent.trim() || m.thinkingContent?.trim()
-                  ? m.error
-                  : {
-                      code: "STREAM_INCOMPLETE",
-                      message: "The chat stream ended before DeepSpace returned a response.",
-                    },
+                    ? m.error
+                    : {
+                        code: "STREAM_INCOMPLETE",
+                        message: "The chat stream ended before DeepSpace returned a response.",
+                      },
               agentSteps: nextSteps,
             };
           }
@@ -2822,6 +2843,38 @@ function reduceDeepSpaceThread(
           content: normalizeMarkdown(extracted.text),
           structured: (event.data.structured as StructuredAnswerShape | null | undefined) ?? null,
           status: state.isStreaming ? "streaming" : "ready",
+          timeline: nextTimeline,
+          mission: nextMission,
+          compaction: nextCompaction,
+        };
+      } else if (event.event === "artifact") {
+        const rawArtifact =
+          event.data.artifact && typeof event.data.artifact === "object"
+            ? (event.data.artifact as Record<string, unknown>)
+            : null;
+        if (!rawArtifact) return state;
+        const artifact: DeepSpaceMediaArtifact = {
+          id: String(rawArtifact.id ?? ""),
+          kind:
+            rawArtifact.kind === "video" || rawArtifact.kind === "audio"
+              ? rawArtifact.kind
+              : "image",
+          status:
+            rawArtifact.status === "pending" || rawArtifact.status === "failed"
+              ? rawArtifact.status
+              : "ready",
+          title: String(rawArtifact.title ?? "Generated media"),
+          content_type: String(rawArtifact.content_type ?? "application/octet-stream"),
+          size_bytes: typeof rawArtifact.size_bytes === "number" ? rawArtifact.size_bytes : 0,
+          url: String(rawArtifact.url ?? ""),
+        };
+        if (!artifact.id || !artifact.url) return state;
+        nextMessages[index] = {
+          ...current,
+          artifacts: [
+            ...(current.artifacts ?? []).filter((item) => item.id !== artifact.id),
+            artifact,
+          ],
           timeline: nextTimeline,
           mission: nextMission,
           compaction: nextCompaction,
@@ -3268,7 +3321,9 @@ function reduceDeepSpaceThread(
           if (!matchesApproval && !matchesTool) return step;
           return {
             ...step,
-            status: (event.event === "permission_granted" ? "running" : "failed") as AgentStep["status"],
+            status: (event.event === "permission_granted"
+              ? "running"
+              : "failed") as AgentStep["status"],
             completedAt: event.event === "permission_denied" ? new Date().toISOString() : undefined,
           };
         });

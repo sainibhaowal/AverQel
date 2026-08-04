@@ -13,9 +13,11 @@ from app.deepspace.models.agent_memory import AgentMemory
 from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceAgentStep
 from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.conversation import Conversation
+from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
 from app.deepspace.models.message import Message
 from app.deepspace.models.message_version import MessageVersion
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
+from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.collection import (
     CollectionChatMessage,
@@ -91,6 +93,8 @@ __all__ = [
     "Conversation",
     "Message",
     "MessageVersion",
+    "DeepSpaceMediaArtifact",
+    "DeepSpaceWorkspaceFile",
     "Feedback",
     "PinnedFinding",
     "Comment",

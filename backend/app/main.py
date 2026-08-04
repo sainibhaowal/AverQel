@@ -9,9 +9,11 @@ from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
+from app.deepspace.api import artifacts as deepspace_artifacts
 from app.deepspace.api import chats as deepspace_chats
 from app.deepspace.api import client_storage
 from app.deepspace.api import export as deepspace_export
+from app.deepspace.api import library as deepspace_library
 from app.documents.api import collections, documents
 from app.integrations.api import integrations, mcp
 from app.integrations.api import voice as voice_routes
@@ -86,7 +88,7 @@ def create_app() -> FastAPI:
                 "http.request.method": request.method,
                 "url.path": request.url.path,
                 "server.address": request.url.hostname,
-            }
+            },
         ) as span:
             try:
                 response = await call_next(request)
@@ -116,6 +118,8 @@ def create_app() -> FastAPI:
     app.include_router(chats.router, prefix=settings.api_prefix)
     app.include_router(deepspace_chats.router, prefix=settings.api_prefix)
     app.include_router(deepspace_export.router, prefix=settings.api_prefix)
+    app.include_router(deepspace_library.router, prefix=settings.api_prefix)
+    app.include_router(deepspace_artifacts.router, prefix=settings.api_prefix)
     app.include_router(admin.router, prefix=settings.api_prefix)
     app.include_router(dashboard.router, prefix=settings.api_prefix)
     app.include_router(integrations.router, prefix=settings.api_prefix)

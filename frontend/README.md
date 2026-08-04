@@ -105,6 +105,25 @@ only the validated, tenant-scoped write-tool result replaces or appends the dura
 fails, the draft remains visibly marked as unsaved; if the user changes the note while the agent is
 writing, the user's newer local content is retained rather than being replaced automatically.
 
+### DeepSpace Library and generated media
+
+Each DeepSpace conversation has a **DeepSpace Library** drawer. It exposes the existing active note as
+a read-only default document and lets users create, edit, preview, and save private Markdown,
+plain-text, JSON, JavaScript, and Python files. The `workspace_write` tool can create or update the
+same visible files when a separate file genuinely helps the user’s request; it is tenant-, user-, and
+conversation-scoped and never accesses the host filesystem.
+
+Provider-produced image, video, and audio data is persisted as a private DeepSpace artifact before it
+is rendered in chat. Artifact bytes are stored in the configured object store, while PostgreSQL keeps
+the authorization metadata and immutable storage locator. The browser fetches the artifact through an
+authenticated API endpoint; it never receives a provider URL or object-storage credential. Image,
+video, and audio cards support native preview and authenticated download; audio cards draw a waveform
+from the actual decoded media samples when the browser supports the codec. Video and audio delivery
+supports byte ranges for normal browser seeking. Generation itself remains provider-dependent: Gemini
+native image responses (including image-capable Gemini/Nano Banana models) are normalized today; a
+future video or audio provider only needs to emit the same typed media event. No synthetic generation
+progress or media result is shown when a provider did not actually return one.
+
 The desktop/Tauri workspace proxy remains single-process because its client registry is process-local.
 Do not increase API worker count without first moving that registry to a shared transport.
 
