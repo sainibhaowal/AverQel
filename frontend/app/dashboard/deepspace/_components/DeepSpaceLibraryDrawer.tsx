@@ -186,7 +186,108 @@ export default function DeepSpaceLibraryDrawer({
     }
   };
 
-  const selectedLabel = useMemo(() => selected?.name ?? "DeepSpace Library", [selected]);
+  const selectedLabel = useMemo(
+    () => (embedded ? "DeepSpace Library" : (selected?.name ?? "DeepSpace Library")),
+    [embedded, selected],
+  );
+  const fileList = (
+    <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
+      {loading && !files.length ? (
+        <div className="flex justify-center p-5">
+          <Loader2 size={16} className="animate-spin text-cyan-300" />
+        </div>
+      ) : null}
+      {files.length === 0 && !loading ? (
+        <p className="text-foreground/45 px-2 py-4 text-center text-[11px] leading-5">
+          Save a named copy from the note editor, or ask DeepSpace to create a named file.
+        </p>
+      ) : null}
+      {actionError ? (
+        <p className="mb-2 rounded-lg border border-rose-300/15 bg-rose-300/[0.06] px-2 py-1.5 text-[10px] leading-4 text-rose-200">
+          {actionError}
+        </p>
+      ) : null}
+      {files.map((file) => (
+        <div key={file.id} className="mb-1 rounded-lg hover:bg-white/[0.045]">
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => void selectFile(file)}
+              className="text-foreground/65 flex min-w-0 flex-1 items-center gap-2 rounded-l-lg px-2 py-2 text-left text-[11px] transition hover:text-cyan-50"
+            >
+              {file.name.endsWith(".py") ||
+              file.name.endsWith(".ts") ||
+              file.name.endsWith(".js") ? (
+                <FileCode2 size={14} className="shrink-0 text-violet-300" />
+              ) : (
+                <FileText size={14} className="shrink-0 text-cyan-300/80" />
+              )}
+              <span className="min-w-0 flex-1 truncate">{file.name}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => startRename(file)}
+              aria-label={`Rename ${file.name}`}
+              title="Rename file"
+              className="text-foreground/40 rounded-md p-1.5 transition hover:bg-cyan-300/10 hover:text-cyan-100"
+            >
+              <Pencil size={12} />
+            </button>
+            <button
+              type="button"
+              disabled={deletingId === file.id}
+              onClick={() => void deleteFile(file)}
+              aria-label={`Delete ${file.name}`}
+              title="Delete file"
+              className="text-foreground/40 mr-1 rounded-md p-1.5 transition hover:bg-rose-300/10 hover:text-rose-200 disabled:opacity-40"
+            >
+              {deletingId === file.id ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Trash2 size={12} />
+              )}
+            </button>
+          </div>
+          {renamingId === file.id ? (
+            <form
+              className="flex gap-1 px-2 pb-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void renameFile(file);
+              }}
+            >
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+                aria-label="New file name"
+                className="min-w-0 flex-1 rounded-md border border-cyan-300/25 bg-black/25 px-2 py-1 text-[11px] text-cyan-50 outline-none focus:border-cyan-300/60"
+              />
+              <button
+                type="submit"
+                disabled={saving}
+                aria-label="Save new file name"
+                className="rounded-md border border-emerald-300/20 bg-emerald-300/[0.08] p-1 text-emerald-100 disabled:opacity-50"
+              >
+                <Check size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRenamingId(null);
+                  setActionError(null);
+                }}
+                aria-label="Cancel rename"
+                className="text-foreground/45 hover:text-foreground rounded-md p-1 hover:bg-white/5"
+              >
+                <X size={13} />
+              </button>
+            </form>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
   if (!open) return null;
 
   return (
@@ -222,7 +323,7 @@ export default function DeepSpaceLibraryDrawer({
       ) : null}
       <header className="flex items-center justify-between border-b border-white/8 px-3 py-3">
         <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-cyan-50">
-          {selected ? (
+          {selected && !embedded ? (
             <button
               type="button"
               onClick={() => {
@@ -260,8 +361,31 @@ export default function DeepSpaceLibraryDrawer({
           </button>
         </div>
       </header>
-      {selected ? (
-        <section className="custom-scrollbar min-h-0 flex-1 overflow-auto p-3">
+      {embedded ? (
+        <div className="flex min-h-0 flex-1">
+          <aside className="flex min-h-0 w-[min(30%,18rem)] max-w-[18rem] min-w-[13rem] flex-col border-r border-white/8">
+            <div className="text-foreground/50 border-b border-white/8 px-3 py-2 text-[10px] font-semibold tracking-[0.16em] uppercase">
+              Files
+            </div>
+            {fileList}
+          </aside>
+          <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
+            {selected ? (
+              <DeepSpaceLibraryFileWorkspace
+                name={selected.name}
+                contentType={selected.content_type}
+                value={draft}
+                onChange={setDraft}
+              />
+            ) : (
+              <div className="text-foreground/45 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-xs">
+                Select a file to edit and preview it here.
+              </div>
+            )}
+          </section>
+        </div>
+      ) : selected ? (
+        <section className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
           <DeepSpaceLibraryFileWorkspace
             name={selected.name}
             contentType={selected.content_type}
@@ -270,102 +394,7 @@ export default function DeepSpaceLibraryDrawer({
           />
         </section>
       ) : (
-        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
-          {loading && !files.length ? (
-            <div className="flex justify-center p-5">
-              <Loader2 size={16} className="animate-spin text-cyan-300" />
-            </div>
-          ) : null}
-          {files.length === 0 && !loading ? (
-            <p className="text-foreground/45 px-2 py-4 text-center text-[11px] leading-5">
-              Save a named copy from the note editor, or ask DeepSpace to create a named file.
-            </p>
-          ) : null}
-          {actionError ? (
-            <p className="mb-2 rounded-lg border border-rose-300/15 bg-rose-300/[0.06] px-2 py-1.5 text-[10px] leading-4 text-rose-200">
-              {actionError}
-            </p>
-          ) : null}
-          {files.map((file) => (
-            <div key={file.id} className="mb-1 rounded-lg hover:bg-white/[0.045]">
-              <div className="flex items-center gap-0.5">
-                <button
-                  type="button"
-                  onClick={() => void selectFile(file)}
-                  className="text-foreground/65 flex min-w-0 flex-1 items-center gap-2 rounded-l-lg px-2 py-2 text-left text-[11px] transition hover:text-cyan-50"
-                >
-                  {file.name.endsWith(".py") ||
-                  file.name.endsWith(".ts") ||
-                  file.name.endsWith(".js") ? (
-                    <FileCode2 size={14} className="shrink-0 text-violet-300" />
-                  ) : (
-                    <FileText size={14} className="shrink-0 text-cyan-300/80" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate">{file.name}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startRename(file)}
-                  aria-label={`Rename ${file.name}`}
-                  title="Rename file"
-                  className="text-foreground/40 rounded-md p-1.5 transition hover:bg-cyan-300/10 hover:text-cyan-100"
-                >
-                  <Pencil size={12} />
-                </button>
-                <button
-                  type="button"
-                  disabled={deletingId === file.id}
-                  onClick={() => void deleteFile(file)}
-                  aria-label={`Delete ${file.name}`}
-                  title="Delete file"
-                  className="text-foreground/40 mr-1 rounded-md p-1.5 transition hover:bg-rose-300/10 hover:text-rose-200 disabled:opacity-40"
-                >
-                  {deletingId === file.id ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <Trash2 size={12} />
-                  )}
-                </button>
-              </div>
-              {renamingId === file.id ? (
-                <form
-                  className="flex gap-1 px-2 pb-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void renameFile(file);
-                  }}
-                >
-                  <input
-                    autoFocus
-                    value={renameValue}
-                    onChange={(event) => setRenameValue(event.target.value)}
-                    aria-label="New file name"
-                    className="min-w-0 flex-1 rounded-md border border-cyan-300/25 bg-black/25 px-2 py-1 text-[11px] text-cyan-50 outline-none focus:border-cyan-300/60"
-                  />
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    aria-label="Save new file name"
-                    className="rounded-md border border-emerald-300/20 bg-emerald-300/[0.08] p-1 text-emerald-100 disabled:opacity-50"
-                  >
-                    <Check size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRenamingId(null);
-                      setActionError(null);
-                    }}
-                    aria-label="Cancel rename"
-                    className="text-foreground/45 hover:text-foreground rounded-md p-1 hover:bg-white/5"
-                  >
-                    <X size={13} />
-                  </button>
-                </form>
-              ) : null}
-            </div>
-          ))}
-        </div>
+        fileList
       )}
     </div>
   );
