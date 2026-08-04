@@ -364,7 +364,11 @@ const MessageBubble = memo(
                 </div>
               ) : null}
 
-              <DeepSpaceMediaArtifacts artifacts={message.artifacts} />
+              <DeepSpaceMediaArtifacts
+                artifacts={message.artifacts}
+                status={message.mediaStatus}
+                onRegenerate={isLast ? () => onRegenerate(message.id) : undefined}
+              />
 
               <div className="prose-premium prose prose-invert max-w-none">
                 {message.status === "streaming" && message.content.trim() ? (

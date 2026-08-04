@@ -137,6 +137,12 @@ native image responses (including image-capable Gemini/Nano Banana models) are n
 future video or audio provider only needs to emit the same typed media event. No synthetic generation
 progress or media result is shown when a provider did not actually return one.
 
+Native media turns stream truthful lifecycle states to the chat card: `queued`, `generating`,
+`uploading`, `ready`, or `failed`. The UI never invents a percentage when a provider does not report
+one. Each ready artifact offers **Regenerate variation**, which reruns the exact source user turn as a
+new authenticated DeepSpace request; it preserves the original artifact and re-applies normal model,
+tenant, quota, moderation, and policy checks.
+
 The desktop/Tauri workspace proxy remains single-process because its client registry is process-local.
 Do not increase API worker count without first moving that registry to a shared transport.
 

@@ -74,6 +74,7 @@ export interface DeepSpaceStreamEvent {
     | "card"
     | "diagram"
     | "artifact"
+    | "media_status"
     | "followups"
     | "metrics"
     | "done"
@@ -399,6 +400,7 @@ export interface DeepSpaceMessage {
   readFilesContents?: Record<string, string>;
   memoryUsed?: Array<{ id: string; key: string; source?: string }>;
   artifacts?: DeepSpaceMediaArtifact[];
+  mediaStatus?: DeepSpaceMediaStatus;
 }
 
 export interface DeepSpaceMediaArtifact {
@@ -409,6 +411,12 @@ export interface DeepSpaceMediaArtifact {
   content_type: string;
   size_bytes: number;
   url: string;
+}
+
+export interface DeepSpaceMediaStatus {
+  phase: "queued" | "generating" | "uploading" | "ready" | "failed";
+  message: string;
+  artifactId?: string;
 }
 
 export interface AgentStep {

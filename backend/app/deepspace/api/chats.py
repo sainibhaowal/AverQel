@@ -575,20 +575,39 @@ async def regenerate_message_stream(
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     repo = DeepSpaceChatRepository(db)
-    user_message, _assistant_message = repo.get_latest_turn_pair(
+    source_message = repo.get_message_by_conversation(
         tenant_id=auth.tenant_id,
         conversation_id=conversation_id,
+        message_id=message_id,
         user_id=auth.user_id,
     )
-    if user_message is None:
+    if source_message is None or source_message.role != "assistant":
         raise ApiError(code="MESSAGE_NOT_FOUND", message="DeepSpace turn not found.", status_code=404)
+    messages = list(
+        repo.get_messages(
+            tenant_id=auth.tenant_id,
+            conversation_id=conversation_id,
+            user_id=auth.user_id,
+        )
+    )
+    source_index = next((index for index, item in enumerate(messages) if item.id == message_id), -1)
+    if source_index < 0:
+        raise ApiError(code="MESSAGE_NOT_FOUND", message="DeepSpace turn not found.", status_code=404)
+    user_message = next(
+        (item for item in reversed(messages[:source_index]) if item.role == "user"), None
+    )
+    if user_message is None:
+        raise ApiError(code="MESSAGE_NOT_FOUND", message="DeepSpace source prompt not found.", status_code=404)
+    source_prompt = (
+        user_message.active_version.content if user_message.active_version is not None else user_message.content
+    )
     service = DeepSpaceChatService(db=db, settings=settings)
 
     async def iterator() -> AsyncIterator[str]:
         async for chunk in service.stream_turn(
             auth=auth,
             conversation_id=conversation_id,
-            prompt=user_message.content,
+            prompt=source_prompt,
             thinking_enabled=payload.thinking_enabled,
             request=request,
         ):

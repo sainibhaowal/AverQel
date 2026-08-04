@@ -2879,6 +2879,26 @@ function reduceDeepSpaceThread(
           mission: nextMission,
           compaction: nextCompaction,
         };
+      } else if (event.event === "media_status") {
+        const phase = String(event.data.phase ?? "");
+        if (
+          !(["queued", "generating", "uploading", "ready", "failed"] as string[]).includes(phase)
+        ) {
+          return state;
+        }
+        nextMessages[index] = {
+          ...current,
+          mediaStatus: {
+            phase: phase as "queued" | "generating" | "uploading" | "ready" | "failed",
+            message: String(event.data.message ?? "Working with media."),
+            ...(typeof event.data.artifact_id === "string"
+              ? { artifactId: event.data.artifact_id }
+              : {}),
+          },
+          timeline: nextTimeline,
+          mission: nextMission,
+          compaction: nextCompaction,
+        };
       } else if (
         event.event === "table" ||
         event.event === "chart" ||

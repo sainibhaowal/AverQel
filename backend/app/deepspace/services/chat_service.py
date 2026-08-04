@@ -1563,6 +1563,15 @@ class DeepSpaceChatService:
             logger.exception("DeepSpace chat provider initialization failed")
             yield sse("error", {"code": "LLM_PROVIDER_INIT_FAILED", "message": message})
             return
+        # Media providers do not share a progress API. Emit only lifecycle
+        # states we know to be true; never invent a percentage for a provider
+        # that only returns a completed binary result.
+        if self._is_native_media_model(candidate.model_name):
+            yield sse("media_status", {"phase": "queued", "message": "Media request accepted."})
+            yield sse(
+                "media_status",
+                {"phase": "generating", "message": "Generating media with the selected model."},
+            )
         # Tool access is a connected-account capability, not a provider
         # allowlist or manually entered conversation scope.
         # Every registered chat adapter translates the common tool contract to
@@ -1916,6 +1925,13 @@ class DeepSpaceChatService:
                                     data_base64, str
                                 ):
                                     continue
+                                yield sse(
+                                    "media_status",
+                                    {
+                                        "phase": "uploading",
+                                        "message": "Saving generated media securely.",
+                                    },
+                                )
                                 try:
                                     artifact = self.media_artifacts.persist_base64(
                                         tenant_id=auth.tenant_id,
@@ -1929,7 +1945,17 @@ class DeepSpaceChatService:
                                         title=media.get("title")
                                         if isinstance(media.get("title"), str)
                                         else None,
-                                        metadata={"turn_index": round_index},
+                                        metadata={
+                                            "turn_index": round_index,
+                                            "generation": {
+                                                # The user-provided prompt is persisted only with
+                                                # this tenant/user-owned artifact. It contains no
+                                                # provider credentials or connection secrets.
+                                                "prompt": prompt[:8_000],
+                                                "provider_type": candidate.provider_type,
+                                                "model_name": candidate.model_name,
+                                            },
+                                        },
                                     )
                                 except Exception:  # noqa: BLE001
                                     logger.warning(
@@ -1937,8 +1963,23 @@ class DeepSpaceChatService:
                                         exc_info=True,
                                         extra={"conversation_id": str(conversation_id)},
                                     )
+                                    yield sse(
+                                        "media_status",
+                                        {
+                                            "phase": "failed",
+                                            "message": "Generated media could not be saved securely.",
+                                        },
+                                    )
                                     continue
                                 generated_artifacts.append(artifact)
+                                yield sse(
+                                    "media_status",
+                                    {
+                                        "phase": "ready",
+                                        "message": "Generated media is ready.",
+                                        "artifact_id": artifact["id"],
+                                    },
+                                )
                                 yield sse(
                                     "artifact", {"artifact": artifact, "turn_index": round_index}
                                 )
@@ -2568,6 +2609,14 @@ class DeepSpaceChatService:
                 },
             )
             return
+        if native_media_model and not generated_artifacts:
+            yield sse(
+                "media_status",
+                {
+                    "phase": "failed",
+                    "message": "The selected media model did not return usable media.",
+                },
+            )
         raw_answer = (forced_answer or "".join(answer_parts)).strip()
         if not raw_answer and generated_artifacts and forced_answer is None:
             raw_answer = "Your generated media is ready."

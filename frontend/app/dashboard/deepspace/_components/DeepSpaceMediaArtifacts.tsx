@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
 
-import type { DeepSpaceMediaArtifact } from "../_lib/deepspace-stream";
+import type { DeepSpaceMediaArtifact, DeepSpaceMediaStatus } from "../_lib/deepspace-stream";
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "Private artifact";
@@ -141,10 +141,14 @@ function AudioPreview({ source }: { source: string }) {
 
 export default function DeepSpaceMediaArtifacts({
   artifacts,
+  status,
+  onRegenerate,
 }: {
   artifacts?: DeepSpaceMediaArtifact[];
+  status?: DeepSpaceMediaStatus;
+  onRegenerate?: () => void;
 }) {
-  if (!artifacts?.length) return null;
+  if (!artifacts?.length && !status) return null;
   const download = async (artifact: DeepSpaceMediaArtifact) => {
     const response = (await fetchWithAuth(artifact.url, { timeoutMs: 30_000 })) as Response;
     if (!response.ok) return;
@@ -160,7 +164,22 @@ export default function DeepSpaceMediaArtifacts({
   };
   return (
     <div className="mt-4 grid gap-3">
-      {artifacts.map((artifact) => {
+      {status && status.phase !== "ready" ? (
+        <section className="flex items-center gap-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/[0.05] px-4 py-3 text-xs text-cyan-50">
+          {status.phase === "failed" ? (
+            <RefreshCw size={15} className="shrink-0 text-rose-300" />
+          ) : (
+            <Loader2 size={15} className="shrink-0 animate-spin text-cyan-300" />
+          )}
+          <div>
+            <div className="font-semibold">
+              {status.phase === "uploading" ? "Saving private media" : "Media generation"}
+            </div>
+            <div className="text-foreground/55 mt-0.5 text-[10px]">{status.message}</div>
+          </div>
+        </section>
+      ) : null}
+      {(artifacts ?? []).map((artifact) => {
         const Icon =
           artifact.kind === "image" ? ImageIcon : artifact.kind === "video" ? PlaySquare : Music2;
         return (
@@ -192,7 +211,20 @@ export default function DeepSpaceMediaArtifacts({
               <ArtifactSource artifact={artifact} />
             </div>
             <footer className="text-foreground/45 flex items-center gap-1.5 border-t border-white/10 px-3 py-2 text-[10px]">
-              <RefreshCw size={11} /> Regenerate by asking DeepSpace to generate another variation.
+              {onRegenerate ? (
+                <button
+                  type="button"
+                  onClick={onRegenerate}
+                  className="inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-cyan-300/10 hover:text-cyan-100"
+                  title="Generate another variation from the original request"
+                >
+                  <RefreshCw size={11} /> Regenerate variation
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  <RefreshCw size={11} /> Regenerate is unavailable for this message.
+                </span>
+              )}
             </footer>
           </section>
         );
