@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
+import redis.asyncio as aioredis
 from fastapi import (
     APIRouter,
     Depends,
@@ -47,11 +50,23 @@ from app.deepspace.schemas.chats import (
     MessageVersionSchema,
     RegenerateRequest,
 )
-from app.deepspace.services.chat_service import DeepSpaceChatService
+from app.deepspace.services.chat_service import DeepSpaceChatService, sse
+from app.deepspace.services.run_events import (
+    cancellation_key,
+    channel_name,
+    decode_live_event,
+    event_name_from_frame,
+    frames_after,
+    is_terminal_event,
+    load_events,
+)
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
+from app.deepspace.workers.tasks import run_deepspace_task
 from app.platform.database.session import get_db
+from app.system.services.rate_limit_service import RateLimitService
 
 router = APIRouter(prefix="/deepspace/chats", tags=["deepspace-chats"])
+logger = logging.getLogger(__name__)
 CONVERSATION_KIND = "deepspace"
 SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
@@ -364,15 +379,55 @@ async def delete_conversation(
 )
 async def cancel_deepspace_chat(
     conversation_id: uuid.UUID,
+    request: Request,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> Response:
+    request_id = ""
+    try:
+        payload = await request.json()
+        request_id = str(payload.get("client_request_id") or "").strip()
+    except Exception:  # noqa: BLE001
+        pass
+    if request_id:
+        cancel_client = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            await cancel_client.set(
+                cancellation_key(auth.tenant_id, auth.user_id, request_id),
+                "1",
+                ex=60 * 60 * 24,
+            )
+        finally:
+            await cancel_client.close()
     cancelled = DeepSpaceRuntimeStore(db).request_cancel(
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
         conversation_id=conversation_id,
     )
     return Response(status_code=204, headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"})
+
+
+@router.post(
+    "/queued/{client_request_id}/cancel",
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def cancel_queued_deepspace_run(
+    client_request_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Cancel a queued run before its worker has created a conversation run row."""
+    client = aioredis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        await client.set(
+            cancellation_key(auth.tenant_id, auth.user_id, client_request_id),
+            "1",
+            ex=60 * 60 * 24,
+        )
+    finally:
+        await client.close()
+    return Response(status_code=204, headers={"X-DeepSpace-Cancel-Requested": "1"})
 
 
 @router.post(
@@ -557,25 +612,106 @@ async def stream_deepspace_chat(
     prompt = str(raw_payload.get("message", ""))
     conversation_id_raw = raw_payload.get("conversation_id")
     conversation_id = uuid.UUID(str(conversation_id_raw)) if conversation_id_raw else None
-    service = DeepSpaceChatService(db=db, settings=settings)
+    if not prompt.strip() and not raw_payload.get("resume_approval_id"):
+        async def empty_stream() -> AsyncIterator[str]:
+            yield sse("error", {"code": "EMPTY_MESSAGE", "message": "Message cannot be empty."})
 
-    return StreamingResponse(
-        service.stream_turn(
-            auth=auth,
-            conversation_id=conversation_id,
-            prompt=prompt,
-            client_request_id=(
-                str(raw_payload.get("client_request_id") or "").strip() or None
-            ),
-            thinking_enabled=bool(raw_payload.get("thinking_enabled", False)),
+        return StreamingResponse(empty_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
+    client_request_id = str(raw_payload.get("client_request_id") or "").strip() or str(uuid.uuid4())
+    reconnect = bool(raw_payload.get("reconnect", False))
+    try:
+        after_sequence = max(0, int(raw_payload.get("after_sequence") or 0))
+    except (TypeError, ValueError):
+        after_sequence = 0
+    thinking_enabled = bool(raw_payload.get("thinking_enabled", False))
+    resume_approval_id = str(raw_payload.get("resume_approval_id") or "").strip() or None
+    if not reconnect and not resume_approval_id:
+        RateLimitService(settings).enforce_deepspace_user_limit(
             request=request,
-            resume_approval_id=(
-                str(raw_payload.get("resume_approval_id") or "").strip() or None
-            ),
-        ),
-        media_type="text/event-stream",
-        headers=SSE_HEADERS,
-    )
+            user_id=str(auth.user_id),
+        )
+
+    async def iterator() -> AsyncIterator[str]:
+        redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
+        pubsub = redis_client.pubsub()
+        last_sequence = after_sequence
+        try:
+            await pubsub.subscribe(channel_name(client_request_id))
+            if not reconnect:
+                try:
+                    run_deepspace_task.apply_async(
+                        kwargs={
+                            "tenant_id": str(auth.tenant_id),
+                            "user_id": str(auth.user_id),
+                            "roles": sorted(auth.roles),
+                            "permissions": sorted(auth.permissions),
+                            "conversation_id": str(conversation_id) if conversation_id else None,
+                            "prompt": prompt,
+                            "client_request_id": client_request_id,
+                            "thinking_enabled": thinking_enabled,
+                            "resume_approval_id": resume_approval_id,
+                        }
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception("Failed to enqueue detached DeepSpace run")
+                    yield sse(
+                        "error",
+                        {
+                            "code": "DEEPSPACE_QUEUE_UNAVAILABLE",
+                            "message": "DeepSpace could not start this response. Please retry.",
+                        },
+                    )
+                    return
+
+            terminal = False
+            while not terminal:
+                # PostgreSQL is the replay source of truth. This also closes
+                # the small race between queue submission and Redis subscribe.
+                if conversation_id is not None:
+                    db.rollback()
+                    stored = load_events(
+                        db,
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        client_request_id=client_request_id,
+                        after_sequence=last_sequence,
+                    )
+                    for sequence, frame in frames_after(stored, after_sequence=last_sequence):
+                        last_sequence = sequence
+                        yield frame
+                        terminal = is_terminal_event(event_name_from_frame(frame))
+                        if terminal:
+                            break
+                    if terminal:
+                        return
+
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=1.0,
+                )
+                if message is None:
+                    yield ": keep-alive\n\n"
+                    await asyncio.sleep(0)
+                    continue
+                decoded = decode_live_event(str(message.get("data") or ""))
+                if decoded is None:
+                    continue
+                sequence, frame = decoded
+                if sequence <= last_sequence:
+                    continue
+                last_sequence = sequence
+                yield frame
+                terminal = is_terminal_event(event_name_from_frame(frame))
+        finally:
+            try:
+                await pubsub.unsubscribe(channel_name(client_request_id))
+                await pubsub.close()
+                await redis_client.close()
+            except Exception:  # noqa: BLE001
+                logger.debug("DeepSpace detached stream cleanup failed", exc_info=True)
+
+    return StreamingResponse(iterator(), media_type="text/event-stream", headers=SSE_HEADERS)
 
 
 @router.post(

@@ -210,6 +210,8 @@ export default function DeepSpaceChatClient({
   const notePreviewCallbackRef = useRef(onAgentNotePreview);
   const noteCommitCallbackRef = useRef(onAgentNoteCommitted);
   const noteArgumentBuffersRef = useRef(new Map<string, string>());
+  const resumedRunRef = useRef<string | null>(null);
+  const activeRequestIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     queryRef.current = query;
@@ -226,6 +228,7 @@ export default function DeepSpaceChatClient({
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
     noteArgumentBuffersRef.current.clear();
+    resumedRunRef.current = null;
   }, [activeConversationId]);
 
   useEffect(() => {
@@ -585,6 +588,8 @@ export default function DeepSpaceChatClient({
       [consumeNoteEvents, markLiveNoteDraftsFailed],
     ),
   );
+  const streamStartRef = useRef(stream.start);
+  streamStartRef.current = stream.start;
 
   const resolveMCPApproval = useCallback(
     async (approvalId: string, decision: "approved" | "denied") => {
@@ -625,6 +630,40 @@ export default function DeepSpaceChatClient({
         if (response.ok) {
           const payload = (await response.json()) as { messages: DeepSpaceHistoryMessage[] };
           dispatch({ type: "load_history", conversationId, messages: payload.messages });
+          // Reattach to a still-running worker after navigation or refresh.
+          // The reconnect flag is read-only: it never starts a second run.
+          const messages = payload.messages;
+          const activeAssistant = [...messages]
+            .map((message, index) => ({ message, index }))
+            .reverse()
+            .find(
+              ({ message }) =>
+                message.role === "assistant" &&
+                message.metadata_json?.status === "streaming" &&
+                typeof message.metadata_json?.client_request_id === "string",
+            );
+          if (activeAssistant) {
+            const requestId = String(
+              activeAssistant.message.metadata_json?.client_request_id ?? "",
+            );
+            const source = [...messages.slice(0, activeAssistant.index)]
+              .reverse()
+              .find((message) => message.role === "user");
+            if (requestId && source && resumedRunRef.current !== requestId) {
+              resumedRunRef.current = requestId;
+              activeRequestIdRef.current = requestId;
+              void streamStartRef.current({
+                endpoint: "/deepspace/chats/stream",
+                body: {
+                  message: source.content,
+                  conversation_id: conversationId,
+                  client_request_id: requestId,
+                  reconnect: true,
+                  thinking_enabled: thinkingEnabled,
+                },
+              });
+            }
+          }
           return;
         }
         if (response.status === 404) {
@@ -638,7 +677,7 @@ export default function DeepSpaceChatClient({
       }
       await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
     }
-  }, []);
+  }, [thinkingEnabled]);
 
   useEffect(() => {
     saveMCPActiveContext({ conversation_id: activeConversationId });
@@ -664,9 +703,15 @@ export default function DeepSpaceChatClient({
   useEffect(() => {
     if (!state.isStreaming && pendingHistorySyncRef.current && state.currentConversationId) {
       pendingHistorySyncRef.current = false;
-      if (state.streamError) {
+      const transportInterrupted =
+        state.streamError?.code === "STREAM_INCOMPLETE" ||
+        state.streamError?.code === "STREAM_TRANSPORT_ERROR" ||
+        state.streamError?.code === "STREAM_HTTP_ERROR";
+      if (state.streamError && !transportInterrupted) {
         return;
       }
+      // A broken browser connection is not a cancelled run. Reload the
+      // durable history so loadConversation can reattach to its worker.
       void loadConversation(state.currentConversationId);
     }
   }, [loadConversation, state.currentConversationId, state.isStreaming, state.streamError]);
@@ -685,13 +730,15 @@ export default function DeepSpaceChatClient({
         autoFollowRef.current = true;
         dispatch({ type: "submit_query", query: effectiveQuery });
         pendingHistorySyncRef.current = true;
+        const requestId = crypto.randomUUID();
+        activeRequestIdRef.current = requestId;
 
         await stream.start({
           endpoint: "/deepspace/chats/stream",
           body: {
             message: effectiveQuery,
             conversation_id: state.currentConversationId,
-            client_request_id: crypto.randomUUID(),
+            client_request_id: requestId,
             thinking_enabled: thinkingEnabled,
           },
         });
@@ -717,7 +764,13 @@ export default function DeepSpaceChatClient({
       // gone, so the durable run flag is the authoritative stop signal.
       void fetchWithAuth(`/deepspace/chats/${state.currentConversationId}/cancel`, {
         method: "POST",
+        body: JSON.stringify({ client_request_id: activeRequestIdRef.current }),
       }).catch((err) => console.error("Failed to cancel active mission:", err));
+    } else if (activeRequestIdRef.current) {
+      void fetchWithAuth(
+        `/deepspace/chats/queued/${encodeURIComponent(activeRequestIdRef.current)}/cancel`,
+        { method: "POST" },
+      ).catch((err) => console.error("Failed to cancel queued mission:", err));
     }
     stream.cancel();
   }, [stream, state.currentConversationId]);

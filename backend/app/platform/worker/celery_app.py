@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.integrations.workers.tasks_connectors",
         "app.integrations.workers.tasks_mcp",
         "app.integrations.workers.tasks_mcp_catalog",
+        "app.deepspace.workers.tasks",
     ],
 )
 
@@ -39,6 +40,7 @@ celery_app.conf.update(
         "maintenance.heartbeat": {"queue": "maintenance"},
         "app.integrations.workers.tasks_connectors.*": {"queue": "maintenance"},
         "mcp.sync_official_catalog": {"queue": "maintenance"},
+        "deepspace.run": {"queue": "deepspace"},
     },
     beat_schedule={
         "maintenance-heartbeat": {

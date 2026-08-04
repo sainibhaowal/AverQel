@@ -81,6 +81,14 @@ def retention_cleanup() -> dict[str, int]:
                     """),
                 {"tenant_id": str(tenant_id), "cutoff": transient_cutoff},
             )
+            run_events_result = session.execute(
+                text("""
+                    DELETE FROM deepspace_run_events
+                    WHERE tenant_id = :tenant_id
+                      AND created_at < :cutoff
+                    """),
+                {"tenant_id": str(tenant_id), "cutoff": transient_cutoff},
+            )
 
             idempotency_deleted = (
                 int(idempotency_result.rowcount or 0)
@@ -92,7 +100,12 @@ def retention_cleanup() -> dict[str, int]:
                 if isinstance(deletion_result, CursorResult)
                 else 0
             )
-            cleaned_transient_total += idempotency_deleted + deletions_deleted
+            run_events_deleted = (
+                int(run_events_result.rowcount or 0)
+                if isinstance(run_events_result, CursorResult)
+                else 0
+            )
+            cleaned_transient_total += idempotency_deleted + deletions_deleted + run_events_deleted
 
         session.commit()
         MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="retention_cleanup", status="ok").inc()
