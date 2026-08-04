@@ -12,7 +12,10 @@ from app.providers.services.types import WebSearchResponse, WebSearchResultItem
 
 
 class _FakeProvider:
+    requests = []
+
     async def stream_generate_events(self, request):
+        _FakeProvider.requests.append(request)
         yield {"type": "thinking", "text": "Plan first."}
         yield {"type": "thinking", "text": " Then answer."}
         yield {"type": "delta", "text": "Final answer."}
@@ -251,6 +254,7 @@ class _LifecycleTaskStore:
 class _LifecycleProvider:
     calls = 0
     received_tool_sets: list[set[str]] = []
+    received_tool_choices: list[str | None] = []
     _calls = [
         ("todo_write", '{"tasks":[{"id":"task-1","content":"Draft the verified result","priority":1}]}'),
         ("todo_read", "{}"),
@@ -266,6 +270,7 @@ class _LifecycleProvider:
         _LifecycleProvider.received_tool_sets.append(
             {item["function"]["name"] for item in request.tools or []}
         )
+        _LifecycleProvider.received_tool_choices.append(request.tool_choice)
         tool_name, arguments = self._calls[_LifecycleProvider.calls]
         _LifecycleProvider.calls += 1
         yield {"type": "thinking", "text": f"Calling {tool_name}."}
@@ -429,13 +434,14 @@ async def test_deepspace_runs_web_search_loop_and_citations(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_complex_work_uses_only_real_task_lifecycle_tools(monkeypatch):
+async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
     monkeypatch.setattr(chat_service_module, "ProviderRegistry", _LifecycleRegistry)
     monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _LifecycleTaskStore)
     _LifecycleProvider.calls = 0
     _LifecycleProvider.received_tool_sets = []
+    _LifecycleProvider.received_tool_choices = []
 
     service = DeepSpaceChatService(
         db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
@@ -470,12 +476,43 @@ async def test_complex_work_uses_only_real_task_lifecycle_tools(monkeypatch):
     ]
     assert not any(frame.startswith("event: agent_status") for frame in frames)
     assert not any(frame.startswith("event: observing") for frame in frames)
-    assert _LifecycleProvider.received_tool_sets[0] == {"todo_write"}
+    assert {"todo_write", "todo_read", "todo_mark", "analyze", "read", "write", "final"}.issubset(
+        _LifecycleProvider.received_tool_sets[0]
+    )
+    assert _LifecycleProvider.received_tool_choices[0] == "auto"
     assert _LifecycleProvider.received_tool_sets[1] == {"todo_read"}
     assert _LifecycleProvider.received_tool_sets[2] == {"todo_mark"}
     assert _LifecycleProvider.received_tool_sets[6] == {"todo_check"}
     assert _LifecycleProvider.received_tool_sets[7] == {"final"}
     assert _FakeRepository.completed_content == "The verified result is ready."
+
+
+@pytest.mark.asyncio
+async def test_model_can_answer_a_complex_looking_prompt_without_a_forced_plan(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _FakeRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+    _FakeProvider.requests = []
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+            conversation_id=None,
+            prompt="Create a detailed academic case study with a verified plan and current sources.",
+            thinking_enabled=True,
+        )
+    ]
+
+    assert _FakeProvider.requests[0].tool_choice == "auto"
+    assert not any(frame.startswith("event: tool_start") for frame in frames)
+    assert any(frame.startswith("event: delta") for frame in frames)
 
 
 @pytest.mark.asyncio
@@ -505,7 +542,7 @@ async def test_deepspace_exposes_tools_to_google_models(monkeypatch):
     assert _GoogleToolCaptureProvider.request is not None
     names = {item["function"]["name"] for item in (_GoogleToolCaptureProvider.request.tools or [])}
     assert {"todo_write", "web_search", "read", "write"}.issubset(names)
-    assert _GoogleToolCaptureProvider.request.tool_choice == "required"
+    assert _GoogleToolCaptureProvider.request.tool_choice == "auto"
 
 
 def test_explicit_gmail_request_requires_attached_mcp_tool() -> None:

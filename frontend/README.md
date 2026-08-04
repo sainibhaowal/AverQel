@@ -88,12 +88,14 @@ backend status prose is not rendered as an agent step. Function arguments are sh
 a provider sends them. A tool that only returns a final response is shown as running immediately and
 completed when that real result arrives; the UI does not fabricate progress.
 
-For complex agent-owned work, DeepSpace uses a verified task lifecycle: `todo_write`, `todo_read`,
-`todo_mark(in_progress)`, the appropriate real work tools, `observe` or `analyze`,
-`todo_mark(completed, evidence)`, `todo_check`, then `final`. The visible task-progress card is derived
-from actual todo tool results; it is not a synthetic status. Simple conversation remains tool-free
-unless a real tool is needed. A task may be completed only with evidence and after its dependencies are
-complete.
+The model chooses whether a request needs a direct answer, workspace inspection, research, a connected
+service, a clarification, or a task plan. It creates a plan with `todo_write` only when a multi-step,
+agent-owned outcome benefits from one. Once a real plan exists, DeepSpace enforces its verified lifecycle:
+`todo_read`, `todo_mark(in_progress)`, appropriate work tools, `todo_mark(completed, evidence)`,
+`todo_check`, then `final`. `observe` and `analyze` remain optional real inspection tools, chosen when
+the model needs workspace or evidence state. The visible task-progress card is derived from actual todo
+tool results; it is not a synthetic status. A task may be completed only with evidence and after its
+dependencies are complete.
 The browser keeps the detailed local sequence during the automatic post-stream history refresh, so a
 completed answer does not collapse the visible timeline into one combined thinking block.
 

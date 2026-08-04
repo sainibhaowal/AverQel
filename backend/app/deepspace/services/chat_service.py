@@ -32,8 +32,6 @@ MAX_TOOL_RETRIES = 1
 DEFAULT_AGENT_TIMEOUT_SECONDS = 1800
 MAX_EMPTY_PROVIDER_RETRIES = 1
 
-_TASK_REVIEW_TOOL_NAMES = {"observe", "analyze"}
-
 DEEPSPACE_AGENT_POLICY = """
 You are AverQel’s intelligent workspace assistant, operating inside the DeepSpace workspace.
 
@@ -55,8 +53,9 @@ Capability boundaries
 
 Planning and execution
 - For a simple question, answer directly without unnecessary planning or tools.
-- For a complex request with multiple meaningful agent-owned steps, create a concise task plan with todo_write before doing work. The plan must contain only work that you can perform, not tasks the user must perform.
-- For a managed task plan, use real tools in this order: todo_write, todo_read, todo_mark(in_progress), the appropriate work tools, observe or analyze when evidence needs review, todo_mark(completed, evidence), todo_check, then final after all tasks are verified.
+- Decide from the user's request and the available tools whether to answer directly, ask a necessary question, inspect workspace state, research, use a connected service, or create a task plan. Do not call a tool merely to appear active.
+- Create a concise todo_write plan only when it materially improves a substantial multi-step, agent-owned outcome. The plan must contain only work that you can perform, not tasks the user must perform.
+- Once you create or resume a managed task plan, follow its real persisted lifecycle: todo_read, todo_mark(in_progress), appropriate work tools, todo_mark(completed, evidence), todo_check, then final after verification. Use observe or analyze when the workspace state or evidence needs inspection.
 - Do not describe a plan, a check, an observation, or an analysis as having happened unless you actually called the corresponding tool and received its result.
 - Choose the work tools dynamically from the user's request and the real evidence. Do not repeat a tool without a concrete reason.
 - Start independent read-only checks concurrently when safe.
@@ -286,7 +285,7 @@ ANALYZE_TOOL = {
     "type": "function",
     "function": {
         "name": "analyze",
-        "description": "Evaluate current task evidence and identify the next safe task; do not claim completion without evidence.",
+        "description": "Inspect the current persisted task and note evidence for the supplied focus. Use it when that state helps decide the next safe action; it does not modify anything.",
         "parameters": {
             "type": "object",
             "additionalProperties": False,
@@ -540,73 +539,6 @@ class DeepSpaceChatService:
             return False
 
     @staticmethod
-    def _requires_agent_tools(prompt: str) -> bool:
-        words = prompt.split()
-        if len(words) >= 12:
-            return True
-        tool_intent_terms = (
-            "search",
-            "latest",
-            "internet",
-            "research",
-            "case study",
-            "references",
-            "citations",
-            "diagram",
-            "table",
-            "write",
-            "analyze",
-            "compare",
-            "plan",
-            "checklist",
-        )
-        lowered = prompt.lower()
-        return any(term in lowered for term in tool_intent_terms)
-
-    @staticmethod
-    def _requires_structured_task_plan(prompt: str) -> bool:
-        """Use a ledger for substantial agent work, not ordinary conversation.
-
-        This is deliberately narrower than ``_requires_agent_tools``: asking for
-        one source or a short answer can use a tool without creating a task
-        ledger that would later block ordinary chat.
-        """
-
-        lowered = prompt.casefold()
-        words = [word for word in lowered.split() if word]
-        explicit_complex_patterns = (
-            "case study",
-            "research report",
-            "academic report",
-            "literature review",
-            "project plan",
-            "implementation plan",
-            "step by step",
-            "end to end",
-            "todo list",
-            "to-do list",
-            "checklist",
-            "roadmap",
-            "thesis",
-        )
-        if any(pattern in lowered for pattern in explicit_complex_patterns):
-            return True
-        complexity_signals = (
-            "research",
-            "sources",
-            "citations",
-            "compare",
-            "analyse",
-            "analyze",
-            "build",
-            "write",
-            "search",
-            "latest",
-            "verify",
-        )
-        return len(words) >= 24 and sum(signal in lowered for signal in complexity_signals) >= 2
-
-    @staticmethod
     def _next_actionable_task(task_check: dict[str, Any]) -> dict[str, Any] | None:
         tasks = task_check.get("tasks")
         if not isinstance(tasks, list):
@@ -634,7 +566,7 @@ class DeepSpaceChatService:
     @classmethod
     def _task_lifecycle_stage(cls, task_check: dict[str, Any]) -> tuple[str, str | None]:
         if not task_check.get("task_count"):
-            return "plan", None
+            return "final", None
         if task_check.get("complete"):
             return "verify_final", None
         task = cls._next_actionable_task(task_check)
@@ -663,9 +595,7 @@ class DeepSpaceChatService:
         all_tools: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         allowed_names: set[str]
-        if stage == "plan":
-            allowed_names = {"todo_write"}
-        elif stage == "read_plan":
+        if stage == "read_plan":
             allowed_names = {"todo_read"}
         elif stage == "start_task":
             allowed_names = {"todo_mark"}
@@ -692,11 +622,6 @@ class DeepSpaceChatService:
 
     @staticmethod
     def _task_lifecycle_instruction(*, stage: str, task_id: str | None) -> str:
-        if stage == "plan":
-            return (
-                "This is a managed complex task. Call todo_write now with a short, ordered plan of "
-                "agent-owned tasks. Do not do research or draft output before the plan is saved."
-            )
         if stage == "read_plan":
             return "The plan was saved. Call todo_read now and use the persisted task IDs and statuses."
         if stage == "start_task":
@@ -1639,13 +1564,12 @@ class DeepSpaceChatService:
             user_id=auth.user_id,
             conversation_id=conversation_id,
         )
-        managed_task_run = provider_supports_tools and (
-            self._requires_structured_task_plan(prompt)
-            or bool(initial_task_check.get("task_count"))
-        )
+        # A task ledger is entered only when a previous real todo_write exists.
+        # The model—not keyword matching—decides whether a new request merits
+        # planning, direct answer, research, observation, or a question.
+        managed_task_run = provider_supports_tools and bool(initial_task_check.get("task_count"))
         task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(initial_task_check)
         task_has_work_evidence = False
-        task_has_reviewed_evidence = False
         task_lifecycle_prompt_retries = 0
 
         conversation_messages: list[dict[str, Any]] = [
@@ -1884,13 +1808,7 @@ class DeepSpaceChatService:
                         if tools_for_round
                         and (
                             managed_task_run
-                            or (
-                                round_index == 1
-                                and (
-                                    self._requires_agent_tools(prompt)
-                                    or connected_service_tool_required
-                                )
-                            )
+                            or (round_index == 1 and connected_service_tool_required)
                         )
                         and supports_required_tool_choice(
                             candidate.provider_type, candidate.model_name
@@ -2071,6 +1989,9 @@ class DeepSpaceChatService:
                 valid_calls: list[dict[str, Any]] = []
                 permitted_tool_names = self._tool_names(tools_for_round)
                 first_call_index = normalized_call_items[0][0]
+                starts_managed_plan = not managed_task_run and any(
+                    self._tool_name(call) == "todo_write" for _, call in normalized_call_items
+                )
                 for call_index, call in normalized_call_items:
                     call_id = str(call.get("id") or uuid.uuid4())
                     tool_name = self._tool_name(call)
@@ -2094,8 +2015,15 @@ class DeepSpaceChatService:
                             {"role": "tool", "tool_call_id": call_id, "content": output}
                         )
                         continue
-                    if managed_task_run:
-                        lifecycle_error: str | None = None
+                    lifecycle_error: str | None = None
+                    if starts_managed_plan and (
+                        call_index != first_call_index or tool_name != "todo_write"
+                    ):
+                        lifecycle_error = (
+                            "A new managed plan must begin with one todo_write call. Wait for its persisted "
+                            "result before selecting the next tool."
+                        )
+                    elif managed_task_run:
                         if call_index != first_call_index:
                             lifecycle_error = (
                                 "Managed task execution accepts one real tool call per step so task state and "
@@ -2127,10 +2055,10 @@ class DeepSpaceChatService:
                                 )
                             elif not str(arguments.get("evidence") or "").strip():
                                 lifecycle_error = "A terminal task status requires concise evidence from the real work."
-                            elif not task_has_reviewed_evidence:
+                            elif not task_has_work_evidence:
                                 lifecycle_error = (
-                                    "Call the real observe or analyze tool after the work before marking this task "
-                                    "completed."
+                                    "Use at least one real work, research, workspace, or connected-service tool before "
+                                    "marking this task completed."
                                 )
                         if lifecycle_error:
                             yield sse(
@@ -2323,11 +2251,21 @@ class DeepSpaceChatService:
                                     used_memories.append(memory_ref)
                             if used_memories:
                                 yield sse("memory_used", {"memories": used_memories})
-                        if managed_task_run:
-                            if task_lifecycle_stage == "plan" and tool_name == "todo_write":
+                        if not managed_task_run and tool_name == "todo_write":
+                            task_check = self.task_store.check_tasks(
+                                tenant_id=auth.tenant_id,
+                                user_id=auth.user_id,
+                                conversation_id=conversation_id,
+                            )
+                            if task_check.get("task_count"):
+                                # The model has chosen a real persisted plan.
+                                # From the next turn onward the lifecycle guard
+                                # protects its order, evidence, and completion.
+                                managed_task_run = True
                                 task_lifecycle_stage = "read_plan"
                                 active_task_id = None
-                            elif task_lifecycle_stage == "read_plan" and tool_name == "todo_read":
+                        elif managed_task_run:
+                            if task_lifecycle_stage == "read_plan" and tool_name == "todo_read":
                                 task_check = tool_payload.get("task_check")
                                 if not isinstance(task_check, dict):
                                     task_check = self.task_store.check_tasks(
@@ -2341,15 +2279,11 @@ class DeepSpaceChatService:
                             elif task_lifecycle_stage == "start_task" and tool_name == "todo_mark":
                                 task_lifecycle_stage = "work"
                                 task_has_work_evidence = False
-                                task_has_reviewed_evidence = False
                             elif task_lifecycle_stage == "work":
-                                if tool_name in _TASK_REVIEW_TOOL_NAMES:
-                                    task_has_reviewed_evidence = task_has_work_evidence
-                                elif tool_name == "todo_mark":
+                                if tool_name == "todo_mark":
                                     task_lifecycle_stage = "verify_task"
                                 elif tool_name != "ask_user":
                                     task_has_work_evidence = True
-                                    task_has_reviewed_evidence = False
                             elif task_lifecycle_stage in {"verify_task", "verify_final"} and tool_name == "todo_check":
                                 task_check = tool_payload
                                 task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(
