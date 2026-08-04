@@ -14,7 +14,6 @@ type LibraryFile = {
   source: string;
   size_bytes: number;
   content?: string | null;
-  virtual?: boolean;
 };
 
 type DeepSpaceLibraryDrawerProps = {
@@ -71,10 +70,6 @@ export default function DeepSpaceLibraryDrawer({
 
   const selectFile = async (file: LibraryFile) => {
     setSelected(file);
-    if (file.virtual) {
-      setDraft(file.content ?? "");
-      return;
-    }
     if (!conversationId) {
       setDraft("");
       return;
@@ -120,7 +115,7 @@ export default function DeepSpaceLibraryDrawer({
   };
 
   const saveFile = async () => {
-    if (!conversationId || !selected || selected.virtual) return;
+    if (!conversationId || !selected) return;
     setSaving(true);
     try {
       const response = (await fetchWithAuth(
@@ -176,6 +171,11 @@ export default function DeepSpaceLibraryDrawer({
               <Loader2 size={16} className="animate-spin text-cyan-300" />
             </div>
           ) : null}
+          {files.length === 0 && !loading ? (
+            <p className="text-foreground/45 px-2 py-4 text-center text-[11px] leading-5">
+              No separate files yet. Create one here, or ask DeepSpace to create a named file.
+            </p>
+          ) : null}
           {files.map((file) => (
             <button
               key={file.id}
@@ -191,9 +191,6 @@ export default function DeepSpaceLibraryDrawer({
                 <FileText size={14} className="shrink-0 text-cyan-300/80" />
               )}
               <span className="min-w-0 flex-1 truncate">{file.name}</span>
-              {file.virtual ? (
-                <span className="text-foreground/35 text-[8px] tracking-wider uppercase">Note</span>
-              ) : null}
             </button>
           ))}
         </div>
@@ -203,7 +200,7 @@ export default function DeepSpaceLibraryDrawer({
           <div className="text-foreground/85 min-w-0 truncate text-xs font-semibold">
             {selectedLabel}
           </div>
-          {selected && !selected.virtual ? (
+          {selected ? (
             <button
               type="button"
               disabled={saving}
@@ -259,20 +256,7 @@ export default function DeepSpaceLibraryDrawer({
           </div>
         ) : null}
         <div className="custom-scrollbar min-h-0 flex-1 overflow-auto p-4">
-          {selected?.virtual ? (
-            <div className="space-y-3">
-              <div className="text-foreground/70 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.04] p-3 text-xs leading-5">
-                This is the active DeepSpace note. It is saved continuously by the existing editor
-                and is read-only here.
-              </div>
-              <iframe
-                title="Active DeepSpace note preview"
-                sandbox=""
-                srcDoc={draft}
-                className="min-h-[28rem] w-full rounded-xl border border-white/10 bg-[#07100d] p-4"
-              />
-            </div>
-          ) : selected ? (
+          {selected ? (
             <>
               <textarea
                 value={draft}

@@ -107,11 +107,12 @@ writing, the user's newer local content is retained rather than being replaced a
 
 ### DeepSpace Library and generated media
 
-Each DeepSpace conversation has a **DeepSpace Library** drawer. It exposes the existing active note as
-a read-only default document and lets users create, edit, preview, and save private Markdown,
-plain-text, JSON, JavaScript, and Python files. The `workspace_write` tool can create or update the
-same visible files when a separate file genuinely helps the user’s request; it is tenant-, user-, and
-conversation-scoped and never accesses the host filesystem.
+Each DeepSpace conversation has a **DeepSpace Library** drawer for separate files only. The active
+note remains in its single existing editor and is not duplicated in the drawer. Users can create, edit,
+preview, and save private Markdown, plain-text, JSON, JavaScript, and Python files. The
+`workspace_write` tool can create or update the same visible files when a separate file genuinely helps
+the user’s request; it is tenant-, user-, and conversation-scoped and never accesses the host
+filesystem.
 
 Provider-produced image, video, and audio data is persisted as a private DeepSpace artifact before it
 is rendered in chat. Artifact bytes are stored in the configured object store, while PostgreSQL keeps

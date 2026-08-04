@@ -39,7 +39,6 @@ class WorkspaceFileSchema(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     content: str | None = None
-    virtual: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
@@ -125,19 +124,7 @@ async def list_workspace_files(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> list[WorkspaceFileSchema]:
-    conversation = _conversation(db=db, auth=auth, conversation_id=conversation_id)
-    note_name = f"{(conversation.title or 'Untitled Note')[:220]}.md"
-    virtual_note = WorkspaceFileSchema(
-        id=f"note:{conversation.id}",
-        name=note_name,
-        content_type="text/html",
-        source="note",
-        size_bytes=len((conversation.content_html or "").encode("utf-8")),
-        created_at=conversation.created_at,
-        updated_at=conversation.updated_at,
-        content=conversation.content_html or "",
-        virtual=True,
-    )
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
     files = (
         db.execute(
             select(DeepSpaceWorkspaceFile)
@@ -153,7 +140,7 @@ async def list_workspace_files(
         .scalars()
         .all()
     )
-    return [virtual_note, *[_serialize_file(file) for file in files]]
+    return [_serialize_file(file) for file in files]
 
 
 @router.get(
