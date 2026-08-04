@@ -29,12 +29,14 @@ type LibraryFile = {
 
 type DeepSpaceLibraryDrawerProps = {
   open: boolean;
+  embedded?: boolean;
   conversationId: string | null;
   onClose: () => void;
 };
 
 export default function DeepSpaceLibraryDrawer({
   open,
+  embedded = false,
   conversationId,
   onClose,
 }: DeepSpaceLibraryDrawerProps) {
@@ -189,29 +191,35 @@ export default function DeepSpaceLibraryDrawer({
 
   return (
     <div
-      className="absolute inset-y-0 left-0 z-50 flex max-w-[92vw] min-w-[16rem] flex-col border-r border-cyan-300/15 bg-[#07100d]/95 shadow-[24px_0_70px_rgba(0,0,0,0.45)] backdrop-blur-xl"
-      style={{ width: drawerWidth }}
+      className={
+        embedded
+          ? "relative flex h-full w-full min-w-0 flex-col overflow-hidden bg-[#07100d]/95"
+          : "absolute inset-y-0 left-0 z-50 flex max-w-[92vw] min-w-[16rem] flex-col border-r border-cyan-300/15 bg-[#07100d]/95 shadow-[24px_0_70px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+      }
+      style={embedded ? undefined : { width: drawerWidth }}
     >
-      <div
-        role="separator"
-        aria-label="Resize DeepSpace Library"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          const startX = event.clientX;
-          const startWidth = drawerWidth;
-          const resize = (move: PointerEvent) => {
-            const maximum = Math.min(680, Math.floor(window.innerWidth * 0.92));
-            setDrawerWidth(Math.max(256, Math.min(maximum, startWidth + move.clientX - startX)));
-          };
-          const stop = () => {
-            window.removeEventListener("pointermove", resize);
-            window.removeEventListener("pointerup", stop);
-          };
-          window.addEventListener("pointermove", resize);
-          window.addEventListener("pointerup", stop);
-        }}
-        className="absolute inset-y-0 right-0 z-10 w-1 cursor-col-resize bg-cyan-300/0 transition hover:bg-cyan-300/40"
-      />
+      {!embedded ? (
+        <div
+          role="separator"
+          aria-label="Resize DeepSpace Library"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            const startX = event.clientX;
+            const startWidth = drawerWidth;
+            const resize = (move: PointerEvent) => {
+              const maximum = Math.min(680, Math.floor(window.innerWidth * 0.92));
+              setDrawerWidth(Math.max(256, Math.min(maximum, startWidth + move.clientX - startX)));
+            };
+            const stop = () => {
+              window.removeEventListener("pointermove", resize);
+              window.removeEventListener("pointerup", stop);
+            };
+            window.addEventListener("pointermove", resize);
+            window.addEventListener("pointerup", stop);
+          }}
+          className="absolute inset-y-0 right-0 z-10 w-1 cursor-col-resize bg-cyan-300/0 transition hover:bg-cyan-300/40"
+        />
+      ) : null}
       <header className="flex items-center justify-between border-b border-white/8 px-3 py-3">
         <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-cyan-50">
           {selected ? (

@@ -128,14 +128,13 @@ export default function DeepSpacePageClient() {
   const [activeNote, setActiveNote] = useState<DeepSpaceNote | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [agentNotePreview, setAgentNotePreview] = useState<DeepSpaceAgentNotePreview | null>(
-    null,
-  );
+  const [agentNotePreview, setAgentNotePreview] = useState<DeepSpaceAgentNotePreview | null>(null);
   const [panelMode, setPanelMode] = useState<"split" | "notes" | "chat" | "memory">("split");
   const editorRef = useRef<DeepSpaceEditorHandle>(null);
   const agentPreviewBaseContentRef = useRef<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [workspacePanel, setWorkspacePanel] = useState<"notes" | "library">("notes");
+  const [isLibraryOnly, setIsLibraryOnly] = useState(false);
   const [serviceWarnings, setServiceWarnings] = useState<string[]>([]);
   const [serviceRetryKey, setServiceRetryKey] = useState(0);
 
@@ -191,7 +190,6 @@ export default function DeepSpacePageClient() {
     }
     return null;
   };
-
 
   // ── Lifecycle & Migration ────────────────────────────────────────────────
 
@@ -374,8 +372,11 @@ export default function DeepSpacePageClient() {
   };
 
   const isStackedLayout = viewportWidth > 0 && viewportWidth < MOBILE_STACKED_BREAKPOINT;
-  const showNotesPanel = panelMode === "split" || panelMode === "notes";
-  const showChatPanel = panelMode === "split" || panelMode === "chat";
+  const showNotesPanel =
+    !isLibraryOnly &&
+    (panelMode === "notes" || (panelMode === "split" && workspacePanel === "notes"));
+  const showLibraryPanel = isLibraryOnly || (panelMode === "split" && workspacePanel === "library");
+  const showChatPanel = !isLibraryOnly && (panelMode === "split" || panelMode === "chat");
   const showMemoryPanel = panelMode === "memory";
   const panelTransition: Transition = isStackedLayout
     ? { duration: 0.16, ease: "easeOut" }
@@ -383,8 +384,8 @@ export default function DeepSpacePageClient() {
   const shellTransitionClass = isStackedLayout ? "duration-150" : "duration-300";
 
   useEffect(() => {
-    if (isStackedLayout && panelMode === "split") setPanelMode("chat");
-  }, [isStackedLayout, panelMode]);
+    if (isStackedLayout && panelMode === "split" && !isLibraryOnly) setPanelMode("chat");
+  }, [isLibraryOnly, isStackedLayout, panelMode]);
 
   if (isInitialLoading) {
     return (
@@ -440,31 +441,48 @@ export default function DeepSpacePageClient() {
                   label="Chat"
                   active={panelMode === "chat"}
                   icon={<Bot size={18} />}
-                  onClick={() => setPanelMode("chat")}
+                  onClick={() => {
+                    setIsLibraryOnly(false);
+                    setPanelMode("chat");
+                  }}
                 />
                 <IconTooltipButton
                   label="Memory"
                   active={panelMode === "memory"}
                   icon={<Database size={18} />}
-                  onClick={() => setPanelMode("memory")}
+                  onClick={() => {
+                    setIsLibraryOnly(false);
+                    setPanelMode("memory");
+                  }}
                 />
                 <IconTooltipButton
                   label="Split view"
-                  active={panelMode === "split"}
+                  active={panelMode === "split" && !isLibraryOnly}
                   icon={<Columns2 size={15} />}
-                  onClick={() => setPanelMode("split")}
+                  onClick={() => {
+                    setIsLibraryOnly(false);
+                    setPanelMode("split");
+                  }}
                 />
                 <IconTooltipButton
                   label="Notes only"
                   active={panelMode === "notes"}
                   icon={<PanelRightClose size={15} />}
-                  onClick={() => setPanelMode("notes")}
+                  onClick={() => {
+                    setIsLibraryOnly(false);
+                    setWorkspacePanel("notes");
+                    setPanelMode("notes");
+                  }}
                 />
                 <IconTooltipButton
                   label="Library"
-                  active={isLibraryOpen}
+                  active={isLibraryOnly || (workspacePanel === "library" && panelMode === "split")}
                   icon={<FolderOpen size={16} />}
-                  onClick={() => setIsLibraryOpen((value) => !value)}
+                  onClick={() => {
+                    setWorkspacePanel("library");
+                    setIsLibraryOnly(true);
+                    setPanelMode("split");
+                  }}
                 />
                 <IconTooltipButton
                   label="History"
@@ -480,7 +498,7 @@ export default function DeepSpacePageClient() {
           return null;
         })()}
 
-      <div
+        <div
           ref={splitContainerRef}
           className={`relative flex h-full max-h-full min-h-0 flex-1 overflow-hidden ${isStackedLayout ? "flex-col" : "flex-row"}`}
         >
@@ -510,9 +528,32 @@ export default function DeepSpacePageClient() {
                 />
               </motion.section>
             ) : null}
+            {showLibraryPanel ? (
+              <motion.section
+                key="library-panel"
+                initial={{ opacity: 0, x: isStackedLayout ? 0 : -24, y: isStackedLayout ? -24 : 0 }}
+                animate={{ opacity: 1, x: 0, y: 0 }}
+                exit={{ opacity: 0, x: isStackedLayout ? 0 : -24, y: isStackedLayout ? -24 : 0 }}
+                transition={panelTransition}
+                className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden ${isStackedLayout ? "h-full w-full flex-[1_1_auto]" : showChatPanel ? "h-full flex-[0_0_auto]" : "h-full w-full"}`}
+                style={
+                  !isStackedLayout && showChatPanel ? { flexBasis: `${leftWidth}%` } : undefined
+                }
+              >
+                <DeepSpaceLibraryDrawer
+                  open
+                  embedded
+                  conversationId={activeNote?.id ?? null}
+                  onClose={() => {
+                    setIsLibraryOnly(false);
+                    setPanelMode("chat");
+                  }}
+                />
+              </motion.section>
+            ) : null}
           </AnimatePresence>
 
-          {showNotesPanel && showChatPanel && !isStackedLayout ? (
+          {(showNotesPanel || showLibraryPanel) && showChatPanel && !isStackedLayout ? (
             <div
               role="separator"
               aria-label="Resize deepspace panels"
@@ -592,13 +633,7 @@ export default function DeepSpacePageClient() {
             ) : null}
           </AnimatePresence>
         </div>
-
       </div>
-      <DeepSpaceLibraryDrawer
-        open={isLibraryOpen}
-        conversationId={activeNote?.id ?? null}
-        onClose={() => setIsLibraryOpen(false)}
-      />
     </div>
   );
 }
