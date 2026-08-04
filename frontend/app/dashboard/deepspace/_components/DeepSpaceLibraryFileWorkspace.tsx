@@ -92,8 +92,8 @@ export default function DeepSpaceLibraryFileWorkspace({
   const previewVisible = isMarkdown && mode !== "edit";
 
   return (
-    <section className="border-glass-border bg-surface-1/40 min-h-0 flex-1 overflow-hidden rounded-xl border">
-      <header className="border-glass-border bg-surface-1/60 flex flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
+    <section className="border-glass-border bg-surface-1/40 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border">
+      <header className="border-glass-border bg-surface-1/60 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <Code2 size={13} className="text-primary shrink-0" />
           <span className="text-foreground truncate font-mono text-[10px]">{name}</span>
@@ -128,17 +128,17 @@ export default function DeepSpaceLibraryFileWorkspace({
         ) : null}
       </header>
       <div
-        className={`min-h-[26rem] ${
+        className={`flex min-h-0 flex-1 ${
           editorVisible && previewVisible
-            ? "divide-glass-border grid grid-cols-1 divide-y lg:grid-cols-2 lg:divide-x lg:divide-y-0"
+            ? "divide-glass-border grid grid-cols-1 grid-rows-2 divide-y lg:grid-cols-2 lg:grid-rows-1 lg:divide-x lg:divide-y-0"
             : ""
         }`}
       >
         {editorVisible ? (
-          <div className="bg-surface-0 min-w-0">
+          <div className="bg-surface-0 min-h-0 min-w-0 flex-1">
             <CodeMirror
               value={value}
-              height="26rem"
+              height="100%"
               extensions={extensions}
               onChange={onChange}
               basicSetup={{
@@ -155,7 +155,7 @@ export default function DeepSpaceLibraryFileWorkspace({
           </div>
         ) : null}
         {previewVisible ? (
-          <div className="custom-scrollbar bg-surface-0 max-h-[26rem] min-w-0 overflow-auto p-4 text-sm">
+          <div className="custom-scrollbar bg-surface-0 min-h-0 min-w-0 flex-1 overflow-auto p-4 text-sm">
             <DeepSpaceMarkdownRenderer content={value} />
           </div>
         ) : null}
