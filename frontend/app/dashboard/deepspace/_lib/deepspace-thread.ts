@@ -1182,39 +1182,11 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         details: String(data.text ?? ""),
         durationMs: typeof data.duration_ms === "number" ? data.duration_ms : undefined,
       };
-    case "agent_status": {
-      const status = String(data.phase ?? "working").replace(/_/g, " ");
-      const message = String(data.message ?? "").trim();
-      if (!message) return null;
-      return {
-        id: `status_${turnIndex}_${stepId}`,
-        stepId,
-        turnIndex,
-        phase,
-        type: "observation",
-        title: status,
-        status: data.phase === "awaiting_approval" ? "awaiting_approval" : "completed",
-        startedAt: timestamp,
-        completedAt: timestamp,
-        details: message,
-      };
-    }
+    // These legacy server events contain fixed descriptive text, not a model
+    // function call or a real tool result. Keep them out of the agent timeline.
+    case "agent_status":
     case "observing":
-      return {
-        id: `observe_${data.tool_id ?? stepId}`,
-        stepId,
-        turnIndex,
-        phase,
-        type: "observation",
-        title: "Observation",
-        status: data.success === false ? "failed" : "completed",
-        startedAt: timestamp,
-        completedAt: timestamp,
-        toolName: String(data.tool_name ?? ""),
-        toolId: String(data.tool_id ?? ""),
-        success: data.success !== false,
-        details: String(data.summary ?? data.message ?? "Tool result received."),
-      };
+      return null;
     case "permission_request":
     case "ask_user_question":
       return {
@@ -1312,18 +1284,9 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         data: event.data,
       };
     case "done":
-      return {
-        id: `final_${stepId}`,
-        stepId,
-        turnIndex,
-        phase: "completed",
-        type: "observation",
-        title: "Finalized",
-        status: "completed",
-        startedAt: timestamp,
-        completedAt: timestamp,
-        details: "The response stream completed.",
-      };
+      // Stream completion is transport state, not model reasoning or a tool
+      // execution. The real final tool call and answer remain visible.
+      return null;
     default:
       return null;
   }
@@ -1797,12 +1760,20 @@ function normalizeHistoryAgentSteps(raw: unknown): AgentStep[] | undefined {
 
   const steps = compactAgentSteps(
     raw
+      .filter(
+        (item) =>
+          !(
+            item &&
+            typeof item === "object" &&
+            (item as Record<string, unknown>).type === "observing"
+          ),
+      )
       .map((item) =>
         item && typeof item === "object"
           ? normalizeHistoryAgentStep(item as Record<string, unknown>)
           : null,
       )
-      .filter((item): item is AgentStep => item !== null),
+      .filter((item): item is AgentStep => item !== null && item.type !== "observing"),
   );
 
   // Older persisted turns stored every provider thinking delta as a separate
@@ -3048,49 +3019,10 @@ function reduceDeepSpaceThread(
           compaction: nextCompaction,
         };
       } else if (event.event === "agent_status") {
-        const activeTools = Array.isArray(event.data.active_tools)
-          ? (event.data.active_tools as string[])
-          : [];
-        const contextMeta = event.data as Record<string, unknown>;
-        const contextUsedTokens = readPositiveInteger(contextMeta.context_used_tokens);
-        const contextLimit = readContextLimit(contextMeta);
-        const contextUsage =
-          typeof contextMeta.context_usage === "number" &&
-          Number.isFinite(contextMeta.context_usage)
-            ? contextMeta.context_usage
-            : undefined;
-        const modelName =
-          typeof contextMeta.model_name === "string" ? contextMeta.model_name : undefined;
-        const providerType =
-          typeof contextMeta.provider_type === "string" ? contextMeta.provider_type : undefined;
-        nextMessages[index] = {
-          ...current,
-          currentTurnText: "",
-          metrics: {
-            ...current.metrics,
-            activeTools,
-            contextLimit: contextLimit ?? undefined,
-            contextUsedTokens: contextUsedTokens ?? undefined,
-            contextRemainingTokens:
-              contextLimit !== null && contextUsedTokens !== null
-                ? Math.max(contextLimit - contextUsedTokens, 0)
-                : undefined,
-            contextUsage: contextUsage ?? current.metrics?.contextUsage,
-            modelName: modelName ?? current.metrics?.modelName,
-            providerType: providerType ?? current.metrics?.providerType,
-            totalTokens: contextUsedTokens ?? current.metrics?.totalTokens ?? 0,
-          },
-          timeline: nextTimeline,
-          mission: nextMission,
-          compaction: nextCompaction,
-        };
-        return {
-          ...state,
-          messages: nextMessages,
-          lastModelName: modelName || state.lastModelName,
-          lastProviderType: providerType || state.lastProviderType,
-          lastContextLimit: contextLimit ?? null,
-        };
+        // Legacy backend status strings are not execution evidence. Real tool
+        // calls/results, provider thinking, approvals, and errors have their
+        // own event types and remain visible in the timeline.
+        return state;
       } else if (event.event === "agent_plan") {
         const step: AgentStep = {
           id: `step_${Date.now()}`,
@@ -3307,28 +3239,9 @@ function reduceDeepSpaceThread(
           compaction: nextCompaction,
         };
       } else if (event.event === "observing") {
-        const step: AgentStep = {
-          id: `step_${Date.now()}`,
-          type: "observing",
-          stepId: String(event.data.step_id ?? ""),
-          toolName: String(event.data.tool_name ?? ""),
-          toolInput: (event.data.tool_input as Record<string, unknown>) ?? {},
-          toolOutput: String(event.data.summary ?? event.data.message ?? ""),
-          success: Boolean(event.data.success ?? true),
-          status: "completed",
-          startedAt: String(event.data.observed_at ?? new Date().toISOString()),
-          completedAt: String(event.data.observed_at ?? new Date().toISOString()),
-          step_id: String(event.data.step_id ?? ""),
-          tool_id: String(event.data.tool_id ?? ""),
-          turnIndex: typeof event.data.turn_index === "number" ? event.data.turn_index : undefined,
-        };
-        nextMessages[index] = {
-          ...current,
-          agentSteps: upsertAgentStep(current.agentSteps ?? [], step),
-          timeline: nextTimeline,
-          mission: nextMission,
-          compaction: nextCompaction,
-        };
+        // `observing` was a descriptive companion event for a different tool,
+        // not a call to the real `observe` function. Ignore it entirely.
+        return state;
       } else if (event.event === "tool_error") {
         const step: AgentStep = {
           id: `step_${Date.now()}`,

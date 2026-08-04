@@ -105,7 +105,7 @@ class DeepSpaceTaskLoopStore:
                 AgentTodo.thread_id == self._thread_id(conversation_id),
                 AgentTodo.status != "deleted",
             )
-            .order_by(AgentTodo.priority.desc(), AgentTodo.created_at.asc())
+            .order_by(AgentTodo.priority.asc(), AgentTodo.created_at.asc())
         )
         return list(self.db.execute(stmt).scalars().all())
 
@@ -231,12 +231,14 @@ class DeepSpaceTaskLoopStore:
         task = next((item for item in tasks if str(item.id) == task_id), None)
         if task is None:
             raise ValueError("Task not found in this DeepSpace conversation.")
-        if status == "completed":
+        if status in {"in_progress", "completed"}:
             task_map = {str(item.id): item for item in tasks}
             dependencies = list((task.metadata_json or {}).get("dependencies") or [])
             incomplete = [dependency for dependency in dependencies if dependency not in task_map or task_map[dependency].status != "completed"]
             if incomplete:
                 raise ValueError(f"Task dependencies are incomplete: {', '.join(incomplete[:5])}")
+        if status == "completed" and not (evidence or list((task.metadata_json or {}).get("evidence") or [])):
+            raise ValueError("Completed tasks require evidence.")
         task.status = status
         metadata = dict(task.metadata_json or {})
         if evidence and evidence.strip():

@@ -32,6 +32,8 @@ MAX_TOOL_RETRIES = 1
 DEFAULT_AGENT_TIMEOUT_SECONDS = 1800
 MAX_EMPTY_PROVIDER_RETRIES = 1
 
+_TASK_REVIEW_TOOL_NAMES = {"observe", "analyze"}
+
 DEEPSPACE_AGENT_POLICY = """
 You are AverQel’s intelligent workspace assistant, operating inside the DeepSpace workspace.
 
@@ -53,7 +55,10 @@ Capability boundaries
 
 Planning and execution
 - For a simple question, answer directly without unnecessary planning or tools.
-- For work with multiple meaningful steps, form a short internal plan and use available planning/task tools when they improve accuracy, visibility, or recovery.
+- For a complex request with multiple meaningful agent-owned steps, create a concise task plan with todo_write before doing work. The plan must contain only work that you can perform, not tasks the user must perform.
+- For a managed task plan, use real tools in this order: todo_write, todo_read, todo_mark(in_progress), the appropriate work tools, observe or analyze when evidence needs review, todo_mark(completed, evidence), todo_check, then final after all tasks are verified.
+- Do not describe a plan, a check, an observation, or an analysis as having happened unless you actually called the corresponding tool and received its result.
+- Choose the work tools dynamically from the user's request and the real evidence. Do not repeat a tool without a concrete reason.
 - Start independent read-only checks concurrently when safe.
 - Keep dependent operations ordered.
 - Prefer observing or reading before changing anything.
@@ -535,30 +540,6 @@ class DeepSpaceChatService:
             return False
 
     @staticmethod
-    def _tool_phase(tool_name: str) -> tuple[str, str]:
-        if tool_name == "todo_write":
-            return "planning", "Creating the task plan."
-        if tool_name in {"todo_read", "todo_check", "observe"}:
-            return "checking", "Checking the current workspace state."
-        if tool_name == "analyze":
-            return "analyzing", "Analyzing evidence and choosing the next task."
-        if tool_name == "web_search":
-            return "searching", "Searching the configured web provider."
-        if tool_name == "url_read":
-            return "researching", "Reading the requested public URL safely."
-        if tool_name == "image_read":
-            return "researching", "Inspecting the requested image safely."
-        if tool_name in {"memory_search", "memory_read"}:
-            return "recalling", "Recalling relevant DeepSpace memory."
-        if tool_name in {"memory_write", "memory_forget"}:
-            return "memory", "Updating DeepSpace memory safely."
-        if tool_name == "ask_user":
-            return "awaiting_user", "Waiting for the information needed to continue."
-        if tool_name == "final":
-            return "finalizing", "Verifying the work before the final answer."
-        return "working", f"Working with {tool_name}."
-
-    @staticmethod
     def _requires_agent_tools(prompt: str) -> bool:
         words = prompt.split()
         if len(words) >= 12:
@@ -581,6 +562,161 @@ class DeepSpaceChatService:
         )
         lowered = prompt.lower()
         return any(term in lowered for term in tool_intent_terms)
+
+    @staticmethod
+    def _requires_structured_task_plan(prompt: str) -> bool:
+        """Use a ledger for substantial agent work, not ordinary conversation.
+
+        This is deliberately narrower than ``_requires_agent_tools``: asking for
+        one source or a short answer can use a tool without creating a task
+        ledger that would later block ordinary chat.
+        """
+
+        lowered = prompt.casefold()
+        words = [word for word in lowered.split() if word]
+        explicit_complex_patterns = (
+            "case study",
+            "research report",
+            "academic report",
+            "literature review",
+            "project plan",
+            "implementation plan",
+            "step by step",
+            "end to end",
+            "todo list",
+            "to-do list",
+            "checklist",
+            "roadmap",
+            "thesis",
+        )
+        if any(pattern in lowered for pattern in explicit_complex_patterns):
+            return True
+        complexity_signals = (
+            "research",
+            "sources",
+            "citations",
+            "compare",
+            "analyse",
+            "analyze",
+            "build",
+            "write",
+            "search",
+            "latest",
+            "verify",
+        )
+        return len(words) >= 24 and sum(signal in lowered for signal in complexity_signals) >= 2
+
+    @staticmethod
+    def _next_actionable_task(task_check: dict[str, Any]) -> dict[str, Any] | None:
+        tasks = task_check.get("tasks")
+        if not isinstance(tasks, list):
+            return None
+        for task in tasks:
+            if not isinstance(task, dict):
+                continue
+            if task.get("status") == "in_progress":
+                return task
+        completed_ids = {
+            str(task.get("id"))
+            for task in tasks
+            if isinstance(task, dict) and task.get("status") == "completed"
+        }
+        for task in tasks:
+            if not isinstance(task, dict) or task.get("status") != "pending":
+                continue
+            dependencies = task.get("dependencies")
+            if not isinstance(dependencies, list) or all(
+                str(dependency) in completed_ids for dependency in dependencies
+            ):
+                return task
+        return None
+
+    @classmethod
+    def _task_lifecycle_stage(cls, task_check: dict[str, Any]) -> tuple[str, str | None]:
+        if not task_check.get("task_count"):
+            return "plan", None
+        if task_check.get("complete"):
+            return "verify_final", None
+        task = cls._next_actionable_task(task_check)
+        if task is None:
+            # There is no ready task left only when the persisted ledger is
+            # terminal (for example, a task was blocked).  The model must
+            # report that real blocker through final rather than repeatedly
+            # calling todo_check forever.
+            return "final", None
+        task_id = str(task.get("id") or "").strip() or None
+        return ("work" if task.get("status") == "in_progress" else "start_task"), task_id
+
+    @staticmethod
+    def _tool_names(tools: list[dict[str, Any]]) -> set[str]:
+        return {
+            str(item.get("function", {}).get("name") or "")
+            for item in tools
+            if isinstance(item.get("function"), dict)
+        }
+
+    @classmethod
+    def _tools_for_task_lifecycle(
+        cls,
+        *,
+        stage: str,
+        all_tools: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        allowed_names: set[str]
+        if stage == "plan":
+            allowed_names = {"todo_write"}
+        elif stage == "read_plan":
+            allowed_names = {"todo_read"}
+        elif stage == "start_task":
+            allowed_names = {"todo_mark"}
+        elif stage == "verify_task" or stage == "verify_final":
+            allowed_names = {"todo_check"}
+        elif stage == "final":
+            allowed_names = {"final"}
+        else:
+            # The model chooses the appropriate real work and review tools.
+            # It cannot silently replace the plan, skip verification, or finalise
+            # while an agent-owned task is in progress.
+            allowed_names = cls._tool_names(all_tools) - {
+                "todo_write",
+                "todo_read",
+                "todo_check",
+                "final",
+            }
+        return [
+            item
+            for item in all_tools
+            if isinstance(item.get("function"), dict)
+            and str(item["function"].get("name") or "") in allowed_names
+        ]
+
+    @staticmethod
+    def _task_lifecycle_instruction(*, stage: str, task_id: str | None) -> str:
+        if stage == "plan":
+            return (
+                "This is a managed complex task. Call todo_write now with a short, ordered plan of "
+                "agent-owned tasks. Do not do research or draft output before the plan is saved."
+            )
+        if stage == "read_plan":
+            return "The plan was saved. Call todo_read now and use the persisted task IDs and statuses."
+        if stage == "start_task":
+            return (
+                f"Start the next ready task by calling todo_mark with task_id {task_id!r} and "
+                "status 'in_progress'."
+            )
+        if stage == "verify_task":
+            return "The current task was marked complete. Call todo_check now to verify it and choose the next ready task."
+        if stage == "verify_final":
+            return "Call todo_check now. Do not finalise until the persisted ledger confirms every task is complete."
+        if stage == "final":
+            return (
+                "The persisted ledger was checked. Call final with the user-facing answer and a concise, "
+                "truthful completion summary, or clearly explain the recorded blocker if no task is ready."
+            )
+        return (
+            f"Work only on the active task {task_id!r}. Use the appropriate real work tools. Before marking it "
+            "completed, call observe or analyze after gathering evidence, then call todo_mark with completion evidence."
+        )
 
     @staticmethod
     def _requires_connected_service_tool(
@@ -671,7 +807,15 @@ class DeepSpaceChatService:
                 user_id=auth.user_id,
                 conversation_id=conversation_id,
             )
-            return {"tasks": tasks, "summary": summarize_tasks(tasks)}
+            return {
+                "tasks": tasks,
+                "summary": summarize_tasks(tasks),
+                "task_check": self.task_store.check_tasks(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                ),
+            }
         if tool_name == "todo_check":
             return self.task_store.check_tasks(
                 tenant_id=auth.tenant_id,
@@ -691,7 +835,15 @@ class DeepSpaceChatService:
                 status=status,
                 evidence=str(arguments.get("evidence") or "")[:1000],
             )
-            return {"task": task, "summary": "Task status updated."}
+            return {
+                "task": task,
+                "summary": "Task status updated.",
+                "task_check": self.task_store.check_tasks(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                ),
+            }
         if tool_name == "observe":
             tasks = self.task_store.check_tasks(
                 tenant_id=auth.tenant_id,
@@ -704,7 +856,7 @@ class DeepSpaceChatService:
                 conversation_id=conversation_id,
             )
             return {
-                "tasks": tasks,
+                "task_check": tasks,
                 "note": {"length": note["length"], "conversation_id": note["conversation_id"]},
             }
         if tool_name == "analyze":
@@ -882,12 +1034,18 @@ class DeepSpaceChatService:
                 user_id=auth.user_id,
                 conversation_id=conversation_id,
             )
-            if check["task_count"] and not check["complete"]:
+            active_tasks = [
+                task
+                for task in check.get("tasks", [])
+                if isinstance(task, dict) and task.get("status") in {"pending", "in_progress"}
+            ]
+            if check["task_count"] and active_tasks:
                 return {"accepted": False, "reason": "todo_check_required", "task_check": check}
             return {
                 "accepted": True,
                 "answer": str(arguments.get("answer") or "").strip(),
                 "summary": str(arguments.get("summary") or "").strip()[:1000],
+                "outcome": "completed" if check["complete"] else "blocked",
                 "task_check": check,
             }
         raise ValueError(f"Tool '{tool_name}' is not available in DeepSpace.")
@@ -1476,6 +1634,19 @@ class DeepSpaceChatService:
         connected_service_tool_required = self._requires_connected_service_tool(
             prompt, mcp_bindings
         )
+        initial_task_check = self.task_store.check_tasks(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+        )
+        managed_task_run = provider_supports_tools and (
+            self._requires_structured_task_plan(prompt)
+            or bool(initial_task_check.get("task_count"))
+        )
+        task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(initial_task_check)
+        task_has_work_evidence = False
+        task_has_reviewed_evidence = False
+        task_lifecycle_prompt_retries = 0
 
         conversation_messages: list[dict[str, Any]] = [
             {
@@ -1661,14 +1832,6 @@ class DeepSpaceChatService:
                         self.runtime.finish(
                             run_id=run_id, status="blocked", error="runtime_timeout"
                         )
-                    yield sse(
-                        "agent_status",
-                        {
-                            "phase": "blocked",
-                            "message": "DeepSpace reached its safe runtime policy timeout.",
-                            "active_tools": [],
-                        },
-                    )
                     break
                 if await self._request_disconnected(request):
                     terminal_status = "cancelled"
@@ -1676,26 +1839,10 @@ class DeepSpaceChatService:
                         self.runtime.finish(
                             run_id=run_id, status="cancelled", error="client_disconnected"
                         )
-                    yield sse(
-                        "agent_status",
-                        {
-                            "phase": "blocked",
-                            "message": "DeepSpace run cancelled because the client disconnected.",
-                            "active_tools": [],
-                        },
-                    )
                     break
                 if run_id is not None and self.runtime.is_cancel_requested(run_id=run_id):
                     terminal_status = "cancelled"
                     self.runtime.finish(run_id=run_id, status="cancelled", error="user_cancelled")
-                    yield sse(
-                        "agent_status",
-                        {
-                            "phase": "blocked",
-                            "message": "DeepSpace run cancelled by the user.",
-                            "active_tools": [],
-                        },
-                    )
                     break
                 tool_calls: dict[int, dict[str, Any]] = {}
                 # Providers can split a function call across many SSE chunks.
@@ -1707,9 +1854,23 @@ class DeepSpaceChatService:
                 round_thinking_start = len(thinking_parts)
                 request_images = list(pending_images)
                 pending_images.clear()
+                tools_for_round = available_tools
+                lifecycle_instruction: str | None = None
+                if managed_task_run:
+                    tools_for_round = self._tools_for_task_lifecycle(
+                        stage=task_lifecycle_stage,
+                        all_tools=available_tools,
+                    )
+                    lifecycle_instruction = self._task_lifecycle_instruction(
+                        stage=task_lifecycle_stage,
+                        task_id=active_task_id,
+                    )
+                request_messages = list(conversation_messages)
+                if lifecycle_instruction:
+                    request_messages.append({"role": "system", "content": lifecycle_instruction})
                 request_payload = ChatGenerateRequest(
                     model=candidate.model_name,
-                    messages=conversation_messages,
+                    messages=request_messages,
                     temperature=self.settings.llm_temperature,
                     max_tokens=self.settings.llm_max_tokens_per_request,
                     base_url=candidate.base_url or "",
@@ -1717,19 +1878,24 @@ class DeepSpaceChatService:
                     stream=True,
                     reasoning_enabled=thinking_enabled,
                     images=request_images or None,
-                    tools=available_tools or None,
+                    tools=tools_for_round or None,
                     tool_choice=(
                         "required"
-                        if available_tools
-                        and round_index == 1
+                        if tools_for_round
                         and (
-                            self._requires_agent_tools(prompt)
-                            or connected_service_tool_required
+                            managed_task_run
+                            or (
+                                round_index == 1
+                                and (
+                                    self._requires_agent_tools(prompt)
+                                    or connected_service_tool_required
+                                )
+                            )
                         )
                         and supports_required_tool_choice(
                             candidate.provider_type, candidate.model_name
                         )
-                        else ("auto" if available_tools else None)
+                        else ("auto" if tools_for_round else None)
                     ),
                     metadata={
                         "surface": "deepspace",
@@ -1853,35 +2019,36 @@ class DeepSpaceChatService:
                 if not normalized_calls and not round_has_text:
                     if empty_provider_retries < MAX_EMPTY_PROVIDER_RETRIES:
                         empty_provider_retries += 1
-                        yield sse(
-                            "agent_status",
-                            {
-                                "phase": "retrying",
-                                "message": "The provider returned no usable stream data; retrying safely.",
-                                "active_tools": [],
-                                "attempt": empty_provider_retries + 1,
-                            },
-                        )
                         continue
                     raise DeepSpaceEmptyResponseError(
                         f"{candidate.provider_type}/{candidate.model_name} returned no answer, reasoning, or tool events."
                     )
                 if not normalized_calls:
+                    if managed_task_run:
+                        task_lifecycle_prompt_retries += 1
+                        if task_lifecycle_prompt_retries <= MAX_EMPTY_PROVIDER_RETRIES + 1:
+                            conversation_messages.append(
+                                {
+                                    "role": "system",
+                                    "content": self._task_lifecycle_instruction(
+                                        stage=task_lifecycle_stage,
+                                        task_id=active_task_id,
+                                    ),
+                                }
+                            )
+                            continue
+                        terminal_status = "blocked"
+                        forced_answer = (
+                            "DeepSpace could not continue the managed task because the selected model did not "
+                            "emit the required tool call. No task was marked complete without evidence."
+                        )
+                        break
                     task_check = self.task_store.check_tasks(
                         tenant_id=auth.tenant_id,
                         user_id=auth.user_id,
                         conversation_id=conversation_id,
                     )
                     if available_tools and task_check["task_count"] and not task_check["complete"]:
-                        yield sse(
-                            "agent_status",
-                            {
-                                "phase": "retrying",
-                                "message": "The task plan is unfinished; requesting the next structured tool step.",
-                                "active_tools": [],
-                                "attempt": round_index + 1,
-                            },
-                        )
                         conversation_messages.append(
                             {
                                 "role": "user",
@@ -1902,6 +2069,8 @@ class DeepSpaceChatService:
                     }
                 )
                 valid_calls: list[dict[str, Any]] = []
+                permitted_tool_names = self._tool_names(tools_for_round)
+                first_call_index = normalized_call_items[0][0]
                 for call_index, call in normalized_call_items:
                     call_id = str(call.get("id") or uuid.uuid4())
                     tool_name = self._tool_name(call)
@@ -1925,6 +2094,58 @@ class DeepSpaceChatService:
                             {"role": "tool", "tool_call_id": call_id, "content": output}
                         )
                         continue
+                    if managed_task_run:
+                        lifecycle_error: str | None = None
+                        if call_index != first_call_index:
+                            lifecycle_error = (
+                                "Managed task execution accepts one real tool call per step so task state and "
+                                "evidence remain ordered."
+                            )
+                        elif tool_name not in permitted_tool_names:
+                            lifecycle_error = (
+                                f"The current managed-task stage requires a different tool; {tool_name!r} is not "
+                                "available for this step."
+                            )
+                        elif task_lifecycle_stage == "start_task":
+                            if (
+                                tool_name != "todo_mark"
+                                or str(arguments.get("task_id") or "") != str(active_task_id or "")
+                                or str(arguments.get("status") or "") != "in_progress"
+                            ):
+                                lifecycle_error = (
+                                    "Start the current task with todo_mark using the persisted task ID and status "
+                                    "'in_progress'."
+                                )
+                        elif task_lifecycle_stage == "work" and tool_name == "todo_mark":
+                            if (
+                                str(arguments.get("task_id") or "") != str(active_task_id or "")
+                                or str(arguments.get("status") or "") not in {"completed", "blocked", "failed"}
+                            ):
+                                lifecycle_error = (
+                                    "Only the active task may be marked terminal at this stage; use todo_mark with its "
+                                    "persisted task ID and status 'completed', 'blocked', or 'failed'."
+                                )
+                            elif not str(arguments.get("evidence") or "").strip():
+                                lifecycle_error = "A terminal task status requires concise evidence from the real work."
+                            elif not task_has_reviewed_evidence:
+                                lifecycle_error = (
+                                    "Call the real observe or analyze tool after the work before marking this task "
+                                    "completed."
+                                )
+                        if lifecycle_error:
+                            yield sse(
+                                "tool_error",
+                                {
+                                    "tool_name": tool_name,
+                                    "tool_id": call_id,
+                                    "step_id": step_id,
+                                    "error": lifecycle_error,
+                                },
+                            )
+                            conversation_messages.append(
+                                {"role": "tool", "tool_call_id": call_id, "content": lifecycle_error}
+                            )
+                            continue
                     signature = hashlib.sha256(
                         json.dumps(
                             {"name": tool_name, "arguments": arguments},
@@ -2032,18 +2253,9 @@ class DeepSpaceChatService:
                         )
                     yield sse("permission_request", awaiting_approval)
                     yield sse("approval_request", awaiting_approval)
-                    yield sse(
-                        "agent_status",
-                        {
-                            "phase": "awaiting_approval",
-                            "message": str(awaiting_approval["message"]),
-                            "active_tools": [str(awaiting_approval["tool_name"])],
-                        },
-                    )
 
                 for item in valid_calls:
                     tool_name = str(item["tool_name"])
-                    phase, phase_message = self._tool_phase(tool_name)
                     yield sse(
                         "tool_start",
                         {
@@ -2054,14 +2266,6 @@ class DeepSpaceChatService:
                             "permission_level": "auto",
                             "turn_index": round_index,
                             "started_at": self._now(),
-                        },
-                    )
-                    yield sse(
-                        "agent_status",
-                        {
-                            "phase": phase,
-                            "message": phase_message,
-                            "active_tools": [str(entry["tool_name"]) for entry in valid_calls],
                         },
                     )
 
@@ -2119,6 +2323,40 @@ class DeepSpaceChatService:
                                     used_memories.append(memory_ref)
                             if used_memories:
                                 yield sse("memory_used", {"memories": used_memories})
+                        if managed_task_run:
+                            if task_lifecycle_stage == "plan" and tool_name == "todo_write":
+                                task_lifecycle_stage = "read_plan"
+                                active_task_id = None
+                            elif task_lifecycle_stage == "read_plan" and tool_name == "todo_read":
+                                task_check = tool_payload.get("task_check")
+                                if not isinstance(task_check, dict):
+                                    task_check = self.task_store.check_tasks(
+                                        tenant_id=auth.tenant_id,
+                                        user_id=auth.user_id,
+                                        conversation_id=conversation_id,
+                                    )
+                                task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(
+                                    task_check
+                                )
+                            elif task_lifecycle_stage == "start_task" and tool_name == "todo_mark":
+                                task_lifecycle_stage = "work"
+                                task_has_work_evidence = False
+                                task_has_reviewed_evidence = False
+                            elif task_lifecycle_stage == "work":
+                                if tool_name in _TASK_REVIEW_TOOL_NAMES:
+                                    task_has_reviewed_evidence = task_has_work_evidence
+                                elif tool_name == "todo_mark":
+                                    task_lifecycle_stage = "verify_task"
+                                elif tool_name != "ask_user":
+                                    task_has_work_evidence = True
+                                    task_has_reviewed_evidence = False
+                            elif task_lifecycle_stage in {"verify_task", "verify_final"} and tool_name == "todo_check":
+                                task_check = tool_payload
+                                task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(
+                                    task_check
+                                )
+                                if task_check.get("complete"):
+                                    task_lifecycle_stage = "final"
                         output = json.dumps(tool_payload, ensure_ascii=False, separators=(",", ":"))
                     else:
                         output = str(result.get("error") or f"{tool_name} failed safely.")
@@ -2149,27 +2387,6 @@ class DeepSpaceChatService:
                                 "completed_at": self._now(),
                             },
                         )
-                        yield sse(
-                            "observing",
-                            {
-                                "tool_name": tool_name,
-                                "tool_id": call_id,
-                                "step_id": step_id,
-                                "summary": "Tool result received; analyzing the next step.",
-                                "success": True,
-                                "turn_index": round_index,
-                            },
-                        )
-                        if isinstance(tool_payload.get("tasks"), list):
-                            yield sse(
-                                "agent_status",
-                                {
-                                    "phase": "checking",
-                                    "message": summarize_tasks(tool_payload["tasks"]),
-                                    "active_tools": [],
-                                    "task_summary": tool_payload,
-                                },
-                            )
                         if tool_name == "ask_user" and tool_payload.get("awaiting_user"):
                             awaiting_user = tool_payload
                             yield sse(
@@ -2185,14 +2402,8 @@ class DeepSpaceChatService:
                             )
                         if tool_name == "final" and tool_payload.get("accepted"):
                             forced_answer = str(tool_payload.get("answer") or "").strip()
-                            yield sse(
-                                "agent_status",
-                                {
-                                    "phase": "completed",
-                                    "message": "All required work was verified.",
-                                    "active_tools": [],
-                                },
-                            )
+                            if tool_payload.get("outcome") == "blocked":
+                                terminal_status = "blocked"
                     else:
                         yield sse(
                             "tool_error",
@@ -2206,14 +2417,6 @@ class DeepSpaceChatService:
                     conversation_messages.append(
                         {"role": "tool", "tool_call_id": call_id, "content": output}
                     )
-                yield sse(
-                    "agent_status",
-                    {
-                        "phase": "analyzing",
-                        "message": "Analyzing tool results and choosing the next safe step.",
-                        "active_tools": [],
-                    },
-                )
                 if (
                     forced_answer is not None
                     or awaiting_user is not None
@@ -2277,10 +2480,6 @@ class DeepSpaceChatService:
             )
             return
 
-        yield sse(
-            "agent_status",
-            {"phase": "finalizing", "message": "Preparing the final answer.", "active_tools": []},
-        )
         try:
             final_task_check = self.task_store.check_tasks(
                 tenant_id=auth.tenant_id,
@@ -2318,29 +2517,11 @@ class DeepSpaceChatService:
             raw_answer = (
                 "DeepSpace is waiting for your approval before running the connected MCP action."
             )
-            yield sse(
-                "agent_status",
-                {
-                    "phase": "awaiting_approval",
-                    "message": raw_answer,
-                    "active_tools": [str(awaiting_approval.get("tool_name") or "")],
-                    "approval_id": awaiting_approval.get("approval_id"),
-                },
-            )
         elif awaiting_user is not None:
             terminal_status = "awaiting_user"
             raw_answer = str(
                 awaiting_user.get("question") or "Please provide the requested information."
             ).strip()
-            yield sse(
-                "agent_status",
-                {
-                    "phase": "awaiting_user",
-                    "message": "DeepSpace is waiting for your answer before continuing.",
-                    "active_tools": [],
-                    "options": awaiting_user.get("options", []),
-                },
-            )
         elif (
             final_task_check["task_count"]
             and not final_task_check["complete"]
@@ -2350,15 +2531,6 @@ class DeepSpaceChatService:
             raw_answer = (
                 "DeepSpace paused because the task list is not complete. "
                 "The remaining work is persisted and can continue from your next message."
-            )
-            yield sse(
-                "agent_status",
-                {
-                    "phase": "blocked",
-                    "message": "Final output held because todo_check found unfinished work.",
-                    "active_tools": [],
-                    "task_summary": final_task_check,
-                },
             )
         answer = self._append_citations(raw_answer, citations)
         if answer != raw_answer and answer.startswith(raw_answer):

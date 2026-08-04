@@ -367,7 +367,7 @@ describe("deepSpaceThreadReducer tool streaming", () => {
     expect(selfCorrectSteps[0]?.toolOutput).toContain("Self-correction triggered.");
   });
 
-  it("merges approval, execution, and observation lifecycle events into one card", () => {
+  it("keeps only approval and real execution events in a tool card", () => {
     let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "stream_event",
       event: {
@@ -465,10 +465,10 @@ describe("deepSpaceThreadReducer tool streaming", () => {
     expect(steps[0]?.type).toBe("tool_result");
     expect(steps[0]?.toolOutput).toContain("searching");
     expect(steps[0]?.toolOutput).toContain("alpha result");
-    expect(steps[0]?.toolOutput).toContain("[system] Observation confirmed.");
+    expect(steps[0]?.toolOutput).not.toContain("Observation confirmed.");
   });
 
-  it("compacts merged lifecycle events from history loading", () => {
+  it("does not rehydrate synthetic observation history as a tool result", () => {
     const state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "load_history",
       conversationId: "conv-history",
@@ -565,6 +565,6 @@ describe("deepSpaceThreadReducer tool streaming", () => {
     expect(steps[0]?.type).toBe("tool_result");
     expect(steps[0]?.status).toBe("completed");
     expect(steps[0]?.toolOutput).toContain("history result");
-    expect(steps[0]?.toolOutput).toContain("[system] Confirmed from history.");
+    expect(steps[0]?.toolOutput).not.toContain("Confirmed from history.");
   });
 });

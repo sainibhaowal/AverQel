@@ -173,7 +173,7 @@ describe("TimelineStep Model", () => {
     expect(step.toolOutput).toBe("tests failed");
   });
 
-  test("keeps thinking, tool activity, and the next thought in streamed order", () => {
+  test("keeps only real thinking and tool activity in streamed order", () => {
     let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "submit_query",
       query: "Create a task list",
@@ -219,17 +219,6 @@ describe("TimelineStep Model", () => {
         },
       },
       {
-        event: "observing",
-        data: {
-          step_id: "tool_stream_1_0_observe",
-          tool_id: "call-todo-1",
-          tool_name: "todo_write",
-          summary: "Task list saved; checking completion.",
-          success: true,
-          turn_index: 1,
-        },
-      },
-      {
         event: "thinking",
         data: { step_id: "think-2", turn_index: 2, text: "I can now summarize the plan." },
       },
@@ -245,9 +234,7 @@ describe("TimelineStep Model", () => {
     expect(timeline?.map((step) => step.type)).toEqual([
       "thinking",
       "tool_call",
-      "observation",
       "thinking",
-      "observation",
     ]);
     expect(timeline?.[0]).toMatchObject({ details: "I will plan the task list.", status: "completed" });
     expect(timeline?.[1]).toMatchObject({
@@ -256,7 +243,7 @@ describe("TimelineStep Model", () => {
       toolOutput: "10 tasks saved",
       status: "completed",
     });
-    expect(timeline?.[3]).toMatchObject({
+    expect(timeline?.[2]).toMatchObject({
       details: "I can now summarize the plan.",
       status: "completed",
     });

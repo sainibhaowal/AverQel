@@ -22,7 +22,7 @@ def _task(task_id: str, status: str, dependencies: list[str] | None = None) -> S
 
 
 def test_task_check_reports_dependency_issues() -> None:
-    store = DeepSpaceTaskLoopStore(SimpleNamespace())
+    store = DeepSpaceTaskLoopStore(SimpleNamespace(commit=lambda: None))
     first = _task("first", "pending")
     second = _task("second", "pending", ["first"])
     store._tasks = lambda **kwargs: [first, second]  # type: ignore[method-assign]
@@ -39,6 +39,40 @@ def test_task_check_reports_dependency_issues() -> None:
             task_id="second",
             status="completed",
         )
+    with pytest.raises(ValueError, match="dependencies are incomplete"):
+        store.mark_task(
+            tenant_id=uuid4(),
+            user_id=uuid4(),
+            conversation_id=uuid4(),
+            task_id="second",
+            status="in_progress",
+        )
+
+
+def test_completed_task_requires_evidence() -> None:
+    store = DeepSpaceTaskLoopStore(SimpleNamespace(commit=lambda: None))
+    task = _task("task-1", "in_progress")
+    store._tasks = lambda **kwargs: [task]  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="require evidence"):
+        store.mark_task(
+            tenant_id=uuid4(),
+            user_id=uuid4(),
+            conversation_id=uuid4(),
+            task_id="task-1",
+            status="completed",
+        )
+
+    completed = store.mark_task(
+        tenant_id=uuid4(),
+        user_id=uuid4(),
+        conversation_id=uuid4(),
+        task_id="task-1",
+        status="completed",
+        evidence="The note was written and checked.",
+    )
+    assert completed["status"] == "completed"
+    assert completed["evidence"] == ["The note was written and checked."]
 
 
 def test_note_markdown_is_escaped_and_supports_safe_blocks() -> None:

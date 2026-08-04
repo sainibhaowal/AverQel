@@ -194,6 +194,98 @@ class _ToolRegistry(_FakeRegistry):
         return _SearchProvider()
 
 
+class _LifecycleTaskStore:
+    def __init__(self, db):
+        self.tasks: list[dict[str, object]] = []
+        self.note = ""
+
+    def _check(self):
+        completed = [task for task in self.tasks if task["status"] == "completed"]
+        return {
+            "complete": bool(self.tasks) and len(completed) == len(self.tasks),
+            "task_count": len(self.tasks),
+            "completed_count": len(completed),
+            "remaining_count": len(self.tasks) - len(completed),
+            "blocked_count": 0,
+            "dependency_issues": [],
+            "tasks": [dict(task) for task in self.tasks],
+        }
+
+    def check_tasks(self, **kwargs):
+        return self._check()
+
+    def read_tasks(self, **kwargs):
+        return [dict(task) for task in self.tasks]
+
+    def replace_tasks(self, **kwargs):
+        self.tasks = [
+            {
+                "id": str(item.get("id") or f"task-{index + 1}"),
+                "content": str(item["content"]),
+                "active_form": str(item.get("active_form") or item["content"]),
+                "status": str(item.get("status") or "pending"),
+                "priority": int(item.get("priority") or index + 1),
+                "dependencies": list(item.get("dependencies") or []),
+                "evidence": [],
+            }
+            for index, item in enumerate(kwargs["tasks"])
+        ]
+        return self.read_tasks()
+
+    def mark_task(self, **kwargs):
+        task = next(task for task in self.tasks if task["id"] == kwargs["task_id"])
+        task["status"] = kwargs["status"]
+        evidence = str(kwargs.get("evidence") or "")
+        if evidence:
+            task["evidence"] = [evidence]
+        return dict(task)
+
+    def read_note(self, **kwargs):
+        return {"conversation_id": str(kwargs["conversation_id"]), "content_html": self.note, "length": len(self.note)}
+
+    def write_note(self, **kwargs):
+        self.note = str(kwargs["markdown"])
+        return self.read_note(**kwargs)
+
+
+class _LifecycleProvider:
+    calls = 0
+    received_tool_sets: list[set[str]] = []
+    _calls = [
+        ("todo_write", '{"tasks":[{"id":"task-1","content":"Draft the verified result","priority":1}]}'),
+        ("todo_read", "{}"),
+        ("todo_mark", '{"task_id":"task-1","status":"in_progress"}'),
+        ("write", '{"markdown":"# Verified result","mode":"replace"}'),
+        ("analyze", '{"focus":"Verify the drafted result"}'),
+        ("todo_mark", '{"task_id":"task-1","status":"completed","evidence":"The result was written to the active note."}'),
+        ("todo_check", "{}"),
+        ("final", '{"answer":"The verified result is ready.","summary":"One task completed."}'),
+    ]
+
+    async def stream_generate_events(self, request):
+        _LifecycleProvider.received_tool_sets.append(
+            {item["function"]["name"] for item in request.tools or []}
+        )
+        tool_name, arguments = self._calls[_LifecycleProvider.calls]
+        _LifecycleProvider.calls += 1
+        yield {"type": "thinking", "text": f"Calling {tool_name}."}
+        yield {
+            "type": "tool_calls_delta",
+            "tool_calls": [
+                {
+                    "index": 0,
+                    "id": f"call_{_LifecycleProvider.calls}",
+                    "function": {"name": tool_name, "arguments": arguments},
+                }
+            ],
+        }
+
+
+class _LifecycleRegistry(_FakeRegistry):
+    def get_chat_provider_from_selection(self, candidate):
+        return _LifecycleProvider()
+
+
 class _GoogleToolCaptureProvider:
     request = None
 
@@ -288,16 +380,7 @@ async def test_deepspace_rejects_empty_provider_stream_and_persists_failure(monk
         )
     ]
 
-    status_payloads = [
-        json.loads(frame.split("data: ", 1)[1].strip())
-        for frame in frames
-        if frame.startswith("event: agent_status")
-    ]
-    assert any(payload["phase"] == "retrying" for payload in status_payloads)
-    assert not any(
-        payload.get("message") == "DeepSpace is ready to plan and execute this request safely."
-        for payload in status_payloads
-    )
+    assert not any(frame.startswith("event: agent_status") for frame in frames)
     error = next(frame for frame in frames if frame.startswith("event: error"))
     payload = json.loads(error.split("data: ", 1)[1].strip())
     assert payload["code"] == "LLM_EMPTY_RESPONSE"
@@ -343,6 +426,56 @@ async def test_deepspace_runs_web_search_loop_and_citations(monkeypatch):
     assert delta_payload["tool_name"] != "pending_tool"
     assert delta_payload["step_id"] == start_payload["step_id"]
     assert delta_payload["text"] == '{"query":"latest research"}'
+
+
+@pytest.mark.asyncio
+async def test_complex_work_uses_only_real_task_lifecycle_tools(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _LifecycleRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _LifecycleTaskStore)
+    _LifecycleProvider.calls = 0
+    _LifecycleProvider.received_tool_sets = []
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="Create a detailed academic case study with a verified plan, evidence, and final result.",
+            thinking_enabled=True,
+        )
+    ]
+
+    tool_starts = [
+        json.loads(frame.split("data: ", 1)[1].strip())["tool_name"]
+        for frame in frames
+        if frame.startswith("event: tool_start")
+    ]
+    assert tool_starts == [
+        "todo_write",
+        "todo_read",
+        "todo_mark",
+        "write",
+        "analyze",
+        "todo_mark",
+        "todo_check",
+        "final",
+    ]
+    assert not any(frame.startswith("event: agent_status") for frame in frames)
+    assert not any(frame.startswith("event: observing") for frame in frames)
+    assert _LifecycleProvider.received_tool_sets[0] == {"todo_write"}
+    assert _LifecycleProvider.received_tool_sets[1] == {"todo_read"}
+    assert _LifecycleProvider.received_tool_sets[2] == {"todo_mark"}
+    assert _LifecycleProvider.received_tool_sets[6] == {"todo_check"}
+    assert _LifecycleProvider.received_tool_sets[7] == {"final"}
+    assert _FakeRepository.completed_content == "The verified result is ready."
 
 
 @pytest.mark.asyncio

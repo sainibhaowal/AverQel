@@ -18,6 +18,18 @@ import type { AgentStep, TimelineStep } from "../_lib/deepspace-stream";
 
 const MAX_DETAIL_LENGTH = 2400;
 
+type PersistedTask = {
+  id: string;
+  content: string;
+  status: string;
+  active_form?: string;
+};
+
+type TaskProgress = {
+  tasks: PersistedTask[];
+  completed: number;
+};
+
 function truncateDetail(value: string, limit = MAX_DETAIL_LENGTH): string {
   if (value.length <= limit) return value;
   return `${value.slice(0, limit)}\n… (${value.length - limit} more characters)`;
@@ -60,6 +72,88 @@ function formatDetail(value: unknown): string | null {
   } catch {
     return "[detail unavailable]";
   }
+}
+
+function taskProgressFromTimeline(timeline: TimelineStep[]): TaskProgress | null {
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const step = timeline[index];
+    if (!step?.toolName || !["todo_write", "todo_read", "todo_mark", "todo_check"].includes(step.toolName)) {
+      continue;
+    }
+    try {
+      const payload = JSON.parse(step.toolOutput || "") as Record<string, unknown>;
+      const taskCheck =
+        payload.task_check && typeof payload.task_check === "object"
+          ? (payload.task_check as Record<string, unknown>)
+          : payload;
+      const rawTasks = taskCheck.tasks;
+      if (!Array.isArray(rawTasks)) continue;
+      const tasks = rawTasks
+        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+        .map((item) => ({
+          id: String(item.id ?? ""),
+          content: String(item.content ?? "Untitled task"),
+          status: String(item.status ?? "pending"),
+          active_form: typeof item.active_form === "string" ? item.active_form : undefined,
+        }));
+      if (!tasks.length) continue;
+      return {
+        tasks,
+        completed:
+          typeof taskCheck.completed_count === "number"
+            ? taskCheck.completed_count
+            : tasks.filter((task) => task.status === "completed").length,
+      };
+    } catch {
+      // Tool output is displayed verbatim elsewhere; an invalid payload simply
+      // cannot provide a reliable task-progress view.
+    }
+  }
+  return null;
+}
+
+function TaskProgressCard({ progress }: { progress: TaskProgress }) {
+  const total = progress.tasks.length;
+  const completed = Math.min(Math.max(progress.completed, 0), total);
+  const percentage = total ? Math.round((completed / total) * 100) : 0;
+
+  return (
+    <section
+      aria-label="Verified task progress"
+      data-testid="deepspace-task-progress"
+      className="rounded-lg border border-cyan-300/15 bg-cyan-300/[0.035] px-3 py-2.5"
+    >
+      <div className="flex items-center justify-between gap-3 text-[10px] font-semibold tracking-[0.12em] text-cyan-100/75 uppercase">
+        <span>Verified task progress</span>
+        <span className="tabular-nums normal-case">{completed}/{total} complete</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/35">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-400 transition-[width] duration-300"
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <ol className="mt-2 space-y-1.5">
+        {progress.tasks.map((task, index) => (
+          <li key={task.id || `${task.content}-${index}`} className="flex items-start gap-2 text-[11px]">
+            <span
+              className={
+                task.status === "completed"
+                  ? "text-emerald-300"
+                  : task.status === "in_progress"
+                    ? "text-cyan-300"
+                    : "text-foreground/35"
+              }
+            >
+              {task.status === "completed" ? "✓" : task.status === "in_progress" ? "◉" : "○"}
+            </span>
+            <span className="text-foreground/70 min-w-0 flex-1">{task.active_form || task.content}</span>
+            <span className="text-foreground/35 shrink-0 text-[9px] uppercase">{task.status.replace(/_/g, " ")}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
 }
 
 function stepTitle(step: AgentStep): string {
@@ -271,6 +365,7 @@ export default function DeepSpaceThinkingPanel({
     (step) => step.type !== "thinking" && step.toolName !== "pending_tool",
   );
   const orderedTimeline = timeline.filter((step) => step.toolName !== "pending_tool");
+  const taskProgress = taskProgressFromTimeline(orderedTimeline);
   if (!content.trim() && activitySteps.length === 0 && orderedTimeline.length === 0 && !isStreaming) {
     return null;
   }
@@ -281,6 +376,7 @@ export default function DeepSpaceThinkingPanel({
         {isStreaming ? "Thinking & activity…" : "Thinking & activity"}
       </summary>
       <div className="text-foreground/60 space-y-3 border-t border-white/5 px-4 py-3 text-xs">
+        {taskProgress ? <TaskProgressCard progress={taskProgress} /> : null}
         {orderedTimeline.length ? (
           <ol className="space-y-3" aria-label="Live agent timeline">
             {orderedTimeline.map((step, index) => (

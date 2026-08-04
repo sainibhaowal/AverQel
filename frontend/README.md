@@ -82,10 +82,18 @@ the API request loop.
 
 ### DeepSpace live activity timeline
 
-DeepSpace renders the streamed agent trajectory in the order it is received: reasoning segment,
-plan, tool call, tool result or observation, then the next reasoning segment. Function arguments are
-shown incrementally when a provider sends them. A tool that only returns a final response is shown as
-running immediately and completed when that real result arrives; the UI does not fabricate progress.
+DeepSpace renders only real streamed evidence in order: provider reasoning, an actual function-tool
+call, its streamed arguments, its real result, approval/input requests, and genuine errors. Fixed
+backend status prose is not rendered as an agent step. Function arguments are shown incrementally when
+a provider sends them. A tool that only returns a final response is shown as running immediately and
+completed when that real result arrives; the UI does not fabricate progress.
+
+For complex agent-owned work, DeepSpace uses a verified task lifecycle: `todo_write`, `todo_read`,
+`todo_mark(in_progress)`, the appropriate real work tools, `observe` or `analyze`,
+`todo_mark(completed, evidence)`, `todo_check`, then `final`. The visible task-progress card is derived
+from actual todo tool results; it is not a synthetic status. Simple conversation remains tool-free
+unless a real tool is needed. A task may be completed only with evidence and after its dependencies are
+complete.
 The browser keeps the detailed local sequence during the automatic post-stream history refresh, so a
 completed answer does not collapse the visible timeline into one combined thinking block.
 
