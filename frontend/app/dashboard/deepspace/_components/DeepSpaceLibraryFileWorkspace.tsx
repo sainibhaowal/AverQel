@@ -4,7 +4,8 @@ import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
-import type { Extension } from "@codemirror/state";
+import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
+import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
 import { Code2, Eye, PanelLeft, PencilLine } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -13,6 +14,47 @@ import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 
 type PreviewMode = "edit" | "split" | "preview";
 
+function buildDiffDecorations(doc: {
+  lines: number;
+  line: (number: number) => { from: number; text: string };
+}) {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (let number = 1; number <= doc.lines; number += 1) {
+    const line = doc.line(number);
+    const className =
+      line.text.startsWith("+++") ||
+      line.text.startsWith("---") ||
+      line.text.startsWith("diff ") ||
+      line.text.startsWith("index ")
+        ? "cm-diff-header"
+        : line.text.startsWith("@@")
+          ? "cm-diff-hunk"
+          : line.text.startsWith("+")
+            ? "cm-diff-added"
+            : line.text.startsWith("-")
+              ? "cm-diff-removed"
+              : null;
+    if (className)
+      builder.add(line.from, line.from, Decoration.line({ attributes: { class: className } }));
+  }
+  return builder.finish();
+}
+
+const diffHighlighting: Extension[] = [
+  StateField.define<DecorationSet>({
+    create: (state) => buildDiffDecorations(state.doc),
+    update: (decorations, transaction) =>
+      transaction.docChanged ? buildDiffDecorations(transaction.state.doc) : decorations,
+    provide: (field) => EditorView.decorations.from(field),
+  }),
+  EditorView.baseTheme({
+    ".cm-diff-added": { backgroundColor: "rgba(52, 211, 153, 0.12)", color: "#bbf7d0" },
+    ".cm-diff-removed": { backgroundColor: "rgba(251, 113, 133, 0.12)", color: "#fecdd3" },
+    ".cm-diff-hunk": { backgroundColor: "rgba(34, 211, 238, 0.1)", color: "#a5f3fc" },
+    ".cm-diff-header": { color: "#c4b5fd", fontWeight: "600" },
+  }),
+];
+
 function languageForFile(name: string, contentType: string): Extension[] {
   const extension = name.split(".").pop()?.toLowerCase();
   if (contentType === "text/markdown" || extension === "md" || extension === "mdx") {
@@ -20,6 +62,7 @@ function languageForFile(name: string, contentType: string): Extension[] {
   }
   if (contentType === "application/json" || extension === "json") return [json()];
   if (contentType === "text/x-python" || extension === "py") return [python()];
+  if (extension === "diff" || extension === "patch") return diffHighlighting;
   if (["js", "mjs", "cjs", "ts", "tsx", "jsx"].includes(extension ?? "")) {
     return [javascript({ typescript: ["ts", "tsx"].includes(extension ?? "") })];
   }

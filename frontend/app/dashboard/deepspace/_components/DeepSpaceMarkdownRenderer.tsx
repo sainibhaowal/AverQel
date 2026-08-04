@@ -156,18 +156,6 @@ export default function DeepSpaceMarkdownRenderer({
           {children}
         </blockquote>
       ),
-      img: ({ src, alt }) => (
-        // GIFs retain native animation in the browser. This renders the URL
-        // explicitly present in the Markdown; private generated artifacts use
-        // the separate authenticated artifact viewer instead.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={alt || "Markdown image"}
-          loading="lazy"
-          className="my-4 max-h-[34rem] max-w-full rounded-xl border border-white/10 bg-black/20 object-contain"
-        />
-      ),
     }),
     [streaming],
   );

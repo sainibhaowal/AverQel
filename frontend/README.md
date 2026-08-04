@@ -110,9 +110,10 @@ writing, the user's newer local content is retained rather than being replaced a
 Each DeepSpace conversation has a **DeepSpace Library** drawer for separate files only. The active
 note remains in its single existing editor and is not duplicated in the drawer. The Library uses a
 CodeMirror workspace with line numbers, bracket matching, folding, autocomplete, and language-aware
-editing for private Markdown, plain-text, JSON, JavaScript/TypeScript, and Python files. Markdown has
-Edit, Split, and Preview modes, including tables, math, Mermaid diagrams, and normal browser-rendered
-image/GIF links. The Library does not accept arbitrary binary uploads: provider-generated image, video,
+editing for private Markdown, plain-text, JSON, JavaScript/TypeScript, Python, and Git diff/patch files.
+Diff files render added lines in green, removed lines in red, and hunk/header lines distinctly. Markdown
+has Edit, Split, and Preview modes, including tables, math, and Mermaid diagrams. The Library does not
+accept arbitrary binary uploads: provider-generated image, video,
 and audio remain authenticated artifacts rather than being exposed through a public file URL. The
 `workspace_write` tool can create or update the same visible files when a separate file genuinely helps
 the user’s request; it is tenant-, user-, and conversation-scoped and never accesses the host
