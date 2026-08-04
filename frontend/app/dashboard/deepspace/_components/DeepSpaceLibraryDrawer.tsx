@@ -7,6 +7,8 @@ import {
   FileText,
   FolderOpen,
   Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Save,
   Trash2,
@@ -34,6 +36,8 @@ type DeepSpaceLibraryDrawerProps = {
   onClose: () => void;
 };
 
+const LIBRARY_FILES_COLLAPSED_KEY = "deepspace.library.files.collapsed";
+
 export default function DeepSpaceLibraryDrawer({
   open,
   embedded = false,
@@ -46,10 +50,32 @@ export default function DeepSpaceLibraryDrawer({
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState("");
   const [drawerWidth, setDrawerWidth] = useState(320);
+  const [isFilesCollapsed, setIsFilesCollapsed] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!embedded) return;
+    try {
+      setIsFilesCollapsed(window.localStorage.getItem(LIBRARY_FILES_COLLAPSED_KEY) === "true");
+    } catch {
+      // Storage can be unavailable in privacy-restricted browser contexts.
+    }
+  }, [embedded]);
+
+  const toggleFilesCollapsed = () => {
+    setIsFilesCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(LIBRARY_FILES_COLLAPSED_KEY, String(next));
+      } catch {
+        // Keep the in-memory toggle working when storage is unavailable.
+      }
+      return next;
+    });
+  };
 
   const refresh = async () => {
     if (!conversationId) return;
@@ -194,7 +220,7 @@ export default function DeepSpaceLibraryDrawer({
     <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
       {loading && !files.length ? (
         <div className="flex justify-center p-5">
-          <Loader2 size={16} className="animate-spin text-cyan-300" />
+          <Loader2 size={16} className="text-primary animate-spin" />
         </div>
       ) : null}
       {files.length === 0 && !loading ? (
@@ -208,19 +234,19 @@ export default function DeepSpaceLibraryDrawer({
         </p>
       ) : null}
       {files.map((file) => (
-        <div key={file.id} className="mb-1 rounded-lg hover:bg-white/[0.045]">
+        <div key={file.id} className="hover:bg-surface-2 mb-1 rounded-lg">
           <div className="flex items-center gap-0.5">
             <button
               type="button"
               onClick={() => void selectFile(file)}
-              className="text-foreground/65 flex min-w-0 flex-1 items-center gap-2 rounded-l-lg px-2 py-2 text-left text-[11px] transition hover:text-cyan-50"
+              className="text-foreground/65 hover:bg-surface-2 hover:text-primary flex min-w-0 flex-1 items-center gap-2 rounded-l-lg px-2 py-2 text-left text-[11px] transition"
             >
               {file.name.endsWith(".py") ||
               file.name.endsWith(".ts") ||
               file.name.endsWith(".js") ? (
-                <FileCode2 size={14} className="shrink-0 text-violet-300" />
+                <FileCode2 size={14} className="text-primary shrink-0" />
               ) : (
-                <FileText size={14} className="shrink-0 text-cyan-300/80" />
+                <FileText size={14} className="text-primary shrink-0 opacity-80" />
               )}
               <span className="min-w-0 flex-1 truncate">{file.name}</span>
             </button>
@@ -229,7 +255,7 @@ export default function DeepSpaceLibraryDrawer({
               onClick={() => startRename(file)}
               aria-label={`Rename ${file.name}`}
               title="Rename file"
-              className="text-foreground/40 rounded-md p-1.5 transition hover:bg-cyan-300/10 hover:text-cyan-100"
+              className="text-foreground/40 hover:bg-surface-2 hover:text-primary rounded-md p-1.5 transition"
             >
               <Pencil size={12} />
             </button>
@@ -261,13 +287,13 @@ export default function DeepSpaceLibraryDrawer({
                 value={renameValue}
                 onChange={(event) => setRenameValue(event.target.value)}
                 aria-label="New file name"
-                className="min-w-0 flex-1 rounded-md border border-cyan-300/25 bg-black/25 px-2 py-1 text-[11px] text-cyan-50 outline-none focus:border-cyan-300/60"
+                className="border-glass-border bg-surface-0 text-foreground focus:border-primary/60 min-w-0 flex-1 rounded-md border px-2 py-1 text-[11px] outline-none"
               />
               <button
                 type="submit"
                 disabled={saving}
                 aria-label="Save new file name"
-                className="rounded-md border border-emerald-300/20 bg-emerald-300/[0.08] p-1 text-emerald-100 disabled:opacity-50"
+                className="border-glass-border bg-surface-2 text-primary rounded-md border p-1 disabled:opacity-50"
               >
                 <Check size={13} />
               </button>
@@ -278,7 +304,7 @@ export default function DeepSpaceLibraryDrawer({
                   setActionError(null);
                 }}
                 aria-label="Cancel rename"
-                className="text-foreground/45 hover:text-foreground rounded-md p-1 hover:bg-white/5"
+                className="text-foreground/45 hover:bg-surface-2 hover:text-foreground rounded-md p-1"
               >
                 <X size={13} />
               </button>
@@ -294,8 +320,8 @@ export default function DeepSpaceLibraryDrawer({
     <div
       className={
         embedded
-          ? "relative flex h-full w-full min-w-0 flex-col overflow-hidden bg-[#07100d]/95"
-          : "absolute inset-y-0 left-0 z-50 flex max-w-[92vw] min-w-[16rem] flex-col border-r border-cyan-300/15 bg-[#07100d]/95 shadow-[24px_0_70px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+          ? "bg-surface-0 relative flex h-full w-full min-w-0 flex-col overflow-hidden"
+          : "bg-surface-0 border-glass-border absolute inset-y-0 left-0 z-50 flex max-w-[92vw] min-w-[16rem] flex-col border-r shadow-[24px_0_70px_rgba(0,0,0,0.45)] backdrop-blur-xl"
       }
       style={embedded ? undefined : { width: drawerWidth }}
     >
@@ -318,11 +344,11 @@ export default function DeepSpaceLibraryDrawer({
             window.addEventListener("pointermove", resize);
             window.addEventListener("pointerup", stop);
           }}
-          className="absolute inset-y-0 right-0 z-10 w-1 cursor-col-resize bg-cyan-300/0 transition hover:bg-cyan-300/40"
+          className="bg-primary/0 hover:bg-primary/40 absolute inset-y-0 right-0 z-10 w-1 cursor-col-resize transition"
         />
       ) : null}
-      <header className="flex items-center justify-between border-b border-white/8 px-3 py-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-cyan-50">
+      <header className="border-glass-border bg-surface-1/40 flex items-center justify-between border-b px-3 py-3">
+        <div className="text-foreground flex min-w-0 items-center gap-2 text-xs font-semibold">
           {selected && !embedded ? (
             <button
               type="button"
@@ -331,12 +357,12 @@ export default function DeepSpaceLibraryDrawer({
                 setDraft("");
               }}
               aria-label="Back to files"
-              className="text-foreground/60 rounded-md p-1 hover:bg-white/5 hover:text-cyan-100"
+              className="text-foreground/60 hover:bg-surface-2 hover:text-primary rounded-md p-1"
             >
               <ArrowLeft size={14} />
             </button>
           ) : (
-            <FolderOpen size={15} className="shrink-0 text-cyan-300" />
+            <FolderOpen size={15} className="text-primary shrink-0" />
           )}
           <span className="truncate">{selectedLabel}</span>
         </div>
@@ -346,7 +372,7 @@ export default function DeepSpaceLibraryDrawer({
               type="button"
               disabled={saving}
               onClick={() => void saveFile()}
-              className="inline-flex items-center gap-1 rounded-lg border border-emerald-300/20 bg-emerald-300/[0.08] px-2 py-1 text-[10px] font-semibold text-emerald-100 disabled:opacity-50"
+              className="border-glass-border bg-surface-2 text-primary inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-semibold disabled:opacity-50"
             >
               <Save size={12} /> Save
             </button>
@@ -355,7 +381,7 @@ export default function DeepSpaceLibraryDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close library"
-            className="text-foreground/50 hover:text-foreground rounded-md p-1 hover:bg-white/5"
+            className="text-foreground/50 hover:bg-surface-2 hover:text-foreground rounded-md p-1"
           >
             <X size={15} />
           </button>
@@ -363,11 +389,29 @@ export default function DeepSpaceLibraryDrawer({
       </header>
       {embedded ? (
         <div className="flex min-h-0 flex-1">
-          <aside className="flex min-h-0 w-[min(30%,18rem)] max-w-[18rem] min-w-[13rem] flex-col border-r border-white/8">
-            <div className="text-foreground/50 border-b border-white/8 px-3 py-2 text-[10px] font-semibold tracking-[0.16em] uppercase">
-              Files
+          <aside
+            className={`border-glass-border flex min-h-0 shrink-0 flex-col border-r transition-[width] duration-200 ease-out ${
+              isFilesCollapsed ? "w-11" : "w-[min(30%,18rem)] max-w-[18rem] min-w-[13rem]"
+            }`}
+          >
+            <div
+              className={`border-glass-border text-foreground/50 flex items-center border-b py-2 text-[10px] font-semibold tracking-[0.16em] uppercase ${
+                isFilesCollapsed ? "justify-center px-1" : "justify-between px-3"
+              }`}
+            >
+              {!isFilesCollapsed ? <span>Files</span> : null}
+              <button
+                type="button"
+                onClick={toggleFilesCollapsed}
+                aria-expanded={!isFilesCollapsed}
+                aria-label={isFilesCollapsed ? "Expand files" : "Collapse files"}
+                title={isFilesCollapsed ? "Expand files" : "Collapse files"}
+                className="text-foreground/55 hover:bg-surface-2 hover:text-primary rounded-md p-1 transition"
+              >
+                {isFilesCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+              </button>
             </div>
-            {fileList}
+            {!isFilesCollapsed ? fileList : null}
           </aside>
           <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
             {selected ? (
@@ -378,7 +422,7 @@ export default function DeepSpaceLibraryDrawer({
                 onChange={setDraft}
               />
             ) : (
-              <div className="text-foreground/45 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-white/10 bg-black/10 px-6 text-center text-xs">
+              <div className="border-glass-border bg-surface-1/40 text-foreground/45 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed px-6 text-center text-xs">
                 Select a file to edit and preview it here.
               </div>
             )}

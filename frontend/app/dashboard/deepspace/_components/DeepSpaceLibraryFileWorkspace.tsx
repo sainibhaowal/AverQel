@@ -92,17 +92,17 @@ export default function DeepSpaceLibraryFileWorkspace({
   const previewVisible = isMarkdown && mode !== "edit";
 
   return (
-    <section className="min-h-0 flex-1 overflow-hidden rounded-xl border border-white/10 bg-black/15">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-white/8 bg-white/[0.025] px-2.5 py-2">
+    <section className="border-glass-border bg-surface-1/40 min-h-0 flex-1 overflow-hidden rounded-xl border">
+      <header className="border-glass-border bg-surface-1/60 flex flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Code2 size={13} className="shrink-0 text-cyan-300" />
-          <span className="truncate font-mono text-[10px] text-cyan-50">{name}</span>
-          <span className="text-foreground/45 rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.1em] uppercase">
+          <Code2 size={13} className="text-primary shrink-0" />
+          <span className="text-foreground truncate font-mono text-[10px]">{name}</span>
+          <span className="border-glass-border bg-surface-0 text-foreground/45 rounded border px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.1em] uppercase">
             {languageLabel(name, contentType)}
           </span>
         </div>
         {isMarkdown ? (
-          <div className="flex items-center rounded-lg border border-white/10 bg-black/20 p-0.5 text-[10px]">
+          <div className="border-glass-border bg-surface-0/70 flex items-center rounded-lg border p-0.5 text-[10px]">
             {(
               [
                 ["edit", PencilLine, "Edit"],
@@ -117,7 +117,7 @@ export default function DeepSpaceLibraryFileWorkspace({
                 aria-pressed={mode === nextMode}
                 className={`inline-flex items-center gap-1 rounded-md px-2 py-1 transition ${
                   mode === nextMode
-                    ? "bg-cyan-300/15 text-cyan-100"
+                    ? "bg-primary/15 text-primary"
                     : "text-foreground/50 hover:text-foreground"
                 }`}
               >
@@ -130,12 +130,12 @@ export default function DeepSpaceLibraryFileWorkspace({
       <div
         className={`min-h-[26rem] ${
           editorVisible && previewVisible
-            ? "grid grid-cols-1 divide-y divide-white/10 lg:grid-cols-2 lg:divide-x lg:divide-y-0"
+            ? "divide-glass-border grid grid-cols-1 divide-y lg:grid-cols-2 lg:divide-x lg:divide-y-0"
             : ""
         }`}
       >
         {editorVisible ? (
-          <div className="min-w-0 bg-[#06100d]">
+          <div className="bg-surface-0 min-w-0">
             <CodeMirror
               value={value}
               height="26rem"
@@ -150,12 +150,12 @@ export default function DeepSpaceLibraryFileWorkspace({
                 closeBrackets: true,
               }}
               theme="dark"
-              className="h-full text-xs [&_.cm-editor]:h-full [&_.cm-editor]:outline-none [&_.cm-gutters]:border-r-white/10 [&_.cm-gutters]:bg-black/20"
+              className="[&_.cm-gutters]:border-r-glass-border [&_.cm-gutters]:bg-surface-1 h-full text-xs [&_.cm-editor]:h-full [&_.cm-editor]:outline-none"
             />
           </div>
         ) : null}
         {previewVisible ? (
-          <div className="custom-scrollbar max-h-[26rem] min-w-0 overflow-auto bg-[#08120f] p-4 text-sm">
+          <div className="custom-scrollbar bg-surface-0 max-h-[26rem] min-w-0 overflow-auto p-4 text-sm">
             <DeepSpaceMarkdownRenderer content={value} />
           </div>
         ) : null}
