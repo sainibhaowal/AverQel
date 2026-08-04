@@ -480,7 +480,9 @@ export default function DeepSpacePageClient() {
                   icon={<FolderOpen size={16} />}
                   onClick={() => {
                     setWorkspacePanel("library");
-                    setIsLibraryOnly(true);
+                    // From Split, switch the workspace side directly to the
+                    // Library. From Chat-only, open the Library by itself.
+                    setIsLibraryOnly(panelMode !== "split" || isLibraryOnly);
                     setPanelMode("split");
                   }}
                 />
