@@ -299,12 +299,8 @@ class AuthService:
         return user
 
     def _assign_initial_role(self, *, user: User) -> None:
-        role_name = (
-            "admin" if self._is_bootstrap_super_admin_email(user.email) else "user"
-        )
-        self._replace_user_roles(
-            tenant_id=user.tenant_id, user_id=user.id, role_name=role_name
-        )
+        role_name = "admin" if self._is_bootstrap_super_admin_email(user.email) else "user"
+        self._replace_user_roles(tenant_id=user.tenant_id, user_id=user.id, role_name=role_name)
 
     def complete_external_login(self, *, user: User) -> LoginResult:
         """Issue the same session/2FA result as password login for a verified identity."""
@@ -321,7 +317,9 @@ class AuthService:
         if user.totp_enabled:
             pending_token = self._mint_pending_2fa_token(user_id=user.id, tenant_id=user.tenant_id)
             self.db.commit()
-            return LoginResult(user=user, roles=sorted(role_names), requires_2fa=True, pending_token=pending_token)
+            return LoginResult(
+                user=user, roles=sorted(role_names), requires_2fa=True, pending_token=pending_token
+            )
 
         access_token = create_access_token(
             user_id=user.id,
@@ -336,7 +334,9 @@ class AuthService:
                 id=generate_uuid7_with_fallback(),
                 tenant_id=user.tenant_id,
                 user_id=user.id,
-                token_hash=hash_refresh_token(raw_refresh_token, self.settings.refresh_token_hash_secret),
+                token_hash=hash_refresh_token(
+                    raw_refresh_token, self.settings.refresh_token_hash_secret
+                ),
                 token_family_id=generate_uuid7_with_fallback(),
                 expires_at=self._refresh_expiry(),
             )
@@ -397,9 +397,7 @@ class AuthService:
         )
 
     def _is_bootstrap_super_admin_email(self, email: str) -> bool:
-        return is_platform_admin_email(
-            email, self.settings.bootstrap_super_admin_emails
-        )
+        return is_platform_admin_email(email, self.settings.bootstrap_super_admin_emails)
 
     def change_password(
         self,
@@ -523,9 +521,7 @@ class AuthService:
                 "user_id": str(user.id),
                 "tenant_id": str(user.tenant_id),
                 "email": user.email,
-                "roles": sorted(
-                    self.roles.get_role_names_for_user(auth.tenant_id, user.id)
-                ),
+                "roles": sorted(self.roles.get_role_names_for_user(auth.tenant_id, user.id)),
                 "status": "active" if user.is_active else "disabled",
                 "totp_enabled": bool(user.totp_enabled),
                 "created_at": user.created_at,
@@ -892,9 +888,7 @@ class AuthService:
                     token_id=auth.token_id,
                     reason=reason,
                     expires_at=datetime.now(tz=UTC)
-                    + timedelta(
-                        minutes=self.settings.jwt_access_ttl_minutes, seconds=30
-                    ),
+                    + timedelta(minutes=self.settings.jwt_access_ttl_minutes, seconds=30),
                 )
             )
         self._denylist_access_token(auth.token_id)
@@ -962,9 +956,7 @@ class AuthService:
     # Pending 2FA token (short-lived JWT for the 2FA challenge step)
     # ------------------------------------------------------------------
 
-    def _mint_pending_2fa_token(
-        self, *, user_id: uuid.UUID, tenant_id: uuid.UUID
-    ) -> str:
+    def _mint_pending_2fa_token(self, *, user_id: uuid.UUID, tenant_id: uuid.UUID) -> str:
         import jwt as pyjwt  # noqa: PLC0415
 
         now = datetime.now(tz=UTC)
@@ -1095,9 +1087,7 @@ class AuthService:
         """Generate a new TOTP secret (does NOT enable 2FA yet)."""
         user = self.users.get_by_id(auth.tenant_id, auth.user_id)
         if user is None:
-            raise ApiError(
-                code="USER_NOT_FOUND", message="User not found.", status_code=404
-            )
+            raise ApiError(code="USER_NOT_FOUND", message="User not found.", status_code=404)
 
         if user.totp_enabled:
             raise ApiError(
@@ -1123,9 +1113,7 @@ class AuthService:
         """Verify the TOTP code works and activate 2FA. Returns backup codes."""
         user = self.users.get_by_id(auth.tenant_id, auth.user_id)
         if user is None:
-            raise ApiError(
-                code="USER_NOT_FOUND", message="User not found.", status_code=404
-            )
+            raise ApiError(code="USER_NOT_FOUND", message="User not found.", status_code=404)
 
         if user.totp_enabled:
             raise ApiError(
@@ -1151,8 +1139,7 @@ class AuthService:
 
         # Generate backup codes
         raw_codes = [
-            secrets.token_hex(_TOTP_BACKUP_CODE_LENGTH // 2)
-            for _ in range(_TOTP_BACKUP_CODE_COUNT)
+            secrets.token_hex(_TOTP_BACKUP_CODE_LENGTH // 2) for _ in range(_TOTP_BACKUP_CODE_COUNT)
         ]
         hashed_codes = [hashlib.sha256(c.encode()).hexdigest() for c in raw_codes]
         user.totp_backup_codes = json.dumps(hashed_codes)
@@ -1166,9 +1153,7 @@ class AuthService:
         """Disable 2FA after verifying the user's password."""
         user = self.users.get_by_id(auth.tenant_id, auth.user_id)
         if user is None:
-            raise ApiError(
-                code="USER_NOT_FOUND", message="User not found.", status_code=404
-            )
+            raise ApiError(code="USER_NOT_FOUND", message="User not found.", status_code=404)
 
         if not user.totp_enabled:
             raise ApiError(

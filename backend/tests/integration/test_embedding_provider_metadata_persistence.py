@@ -98,9 +98,7 @@ def test_embed_many_with_metadata_returns_selected_provider_metadata(
         get_settings.cache_clear()
 
 
-def test_embedding_errors_surface_redacted_provider_failure_context(
-    seed_user, monkeypatch
-) -> None:
+def test_embedding_errors_surface_redacted_provider_failure_context(seed_user, monkeypatch) -> None:
     seeded = seed_user(
         "Phase7 Embed Error Tenant",
         "phase7-embed-error@example.com",

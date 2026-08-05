@@ -22,8 +22,14 @@ describe("provider Markdown normalization", () => {
   it("pads a malformed separator row to the header column count", () => {
     const result = normalizeQueryMarkdown(malformedFourColumnTable);
 
-    expect(result).toContain("| Non-Ideality | Wave Theory / Circuit Origin | Impact on Audio | Mitigation Strategy |");
-    expect(result).toContain("| **Clock Jitter (t_j)** | Aperture uncertainty | Noise floor modulation | PLL with < 100fs RMS jitter |");
-    expect(result).toContain("| **Capacitor Mismatch** | Thermal noise kT/C | Gain error | Large unit caps |");
+    expect(result).toContain(
+      "| Non-Ideality | Wave Theory / Circuit Origin | Impact on Audio | Mitigation Strategy |",
+    );
+    expect(result).toContain(
+      "| **Clock Jitter (t_j)** | Aperture uncertainty | Noise floor modulation | PLL with < 100fs RMS jitter |",
+    );
+    expect(result).toContain(
+      "| **Capacitor Mismatch** | Thermal noise kT/C | Gain error | Large unit caps |",
+    );
   });
 });

@@ -188,23 +188,17 @@ def test_enabling_managed_server_embeddings_clears_lmstudio_embedding_default() 
         )
         session.commit()
 
-        refreshed = service.get_provider(
-            tenant_id=tenant.id, provider_config_id=lmstudio.id
-        )
+        refreshed = service.get_provider(tenant_id=tenant.id, provider_config_id=lmstudio.id)
         assert refreshed.default_embedding_model is None
     finally:
         session.rollback()
         session.close()
 
 
-def test_updating_lmstudio_while_managed_embeddings_enabled_clears_embedding_default() -> (
-    None
-):
+def test_updating_lmstudio_while_managed_embeddings_enabled_clears_embedding_default() -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Provider Update Tenant"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Provider Update Tenant")
         session.add(tenant)
         session.flush()
         set_db_tenant_context(session, tenant.id)
@@ -279,14 +273,10 @@ def test_updating_lmstudio_while_managed_embeddings_enabled_clears_embedding_def
         session.close()
 
 
-def test_delete_provider_removes_active_assignments_when_no_replacement_exists() -> (
-    None
-):
+def test_delete_provider_removes_active_assignments_when_no_replacement_exists() -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Provider Delete Tenant"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Provider Delete Tenant")
         session.add(tenant)
         session.flush()
         set_db_tenant_context(session, tenant.id)
@@ -349,30 +339,20 @@ def test_delete_provider_removes_active_assignments_when_no_replacement_exists()
 
         assert status == "deleted"
         assert (
-            service.configs.get_by_id(
-                tenant_id=tenant.id, provider_config_id=provider.id
-            )
-            is None
+            service.configs.get_by_id(tenant_id=tenant.id, provider_config_id=provider.id) is None
         )
         assert (
-            service.assignments.get_by_id(
-                tenant_id=tenant.id, assignment_id=assignment.id
-            )
-            is None
+            service.assignments.get_by_id(tenant_id=tenant.id, assignment_id=assignment.id) is None
         )
     finally:
         session.rollback()
         session.close()
 
 
-def test_delete_managed_sentence_transformer_provider_disables_instead_of_recreating() -> (
-    None
-):
+def test_delete_managed_sentence_transformer_provider_disables_instead_of_recreating() -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Managed Provider Delete Tenant"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Managed Provider Delete Tenant")
         session.add(tenant)
         session.flush()
         set_db_tenant_context(session, tenant.id)
@@ -436,26 +416,16 @@ def test_delete_managed_sentence_transformer_provider_disables_instead_of_recrea
         session.commit()
 
         assert status == "disabled"
-        refreshed = service.get_provider(
-            tenant_id=tenant.id, provider_config_id=provider.id
-        )
+        refreshed = service.get_provider(tenant_id=tenant.id, provider_config_id=provider.id)
         assert refreshed.enabled is False
         assert (
-            service.assignments.get_by_id(
-                tenant_id=tenant.id, assignment_id=assignment.id
-            )
-            is None
+            service.assignments.get_by_id(tenant_id=tenant.id, assignment_id=assignment.id) is None
         )
 
         listed = service.list_providers(tenant_id=tenant.id)
+        assert sum(1 for row in listed if row.display_name == "AverQel Server Embeddings") == 1
         assert (
-            sum(1 for row in listed if row.display_name == "AverQel Server Embeddings")
-            == 1
-        )
-        assert (
-            next(
-                row for row in listed if row.display_name == "AverQel Server Embeddings"
-            ).enabled
+            next(row for row in listed if row.display_name == "AverQel Server Embeddings").enabled
             is False
         )
     finally:
@@ -466,9 +436,7 @@ def test_delete_managed_sentence_transformer_provider_disables_instead_of_recrea
 def test_disconnect_provider_disables_runtime_and_revokes_tokens() -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Disconnect Provider Tenant"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Disconnect Provider Tenant")
         session.add(tenant)
         session.flush()
         set_db_tenant_context(session, tenant.id)
@@ -549,9 +517,7 @@ def test_disconnect_provider_disables_runtime_and_revokes_tokens() -> None:
 def test_list_providers_collapses_duplicate_managed_sentence_transformer_rows() -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Managed Provider Dedupe Tenant"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Managed Provider Dedupe Tenant")
         session.add(tenant)
         session.flush()
         set_db_tenant_context(session, tenant.id)
@@ -649,30 +615,18 @@ def test_list_providers_collapses_duplicate_managed_sentence_transformer_rows() 
         service = ProviderManagementService(session)
         rows = service.list_providers(tenant_id=tenant.id)
 
-        assert (
-            len(
-                [row for row in rows if row.display_name == "AverQel Server Embeddings"]
-            )
-            == 1
-        )
-        assert (
-            len([row for row in rows if row.display_name == "AverQel Server ReRanker"])
-            == 1
-        )
+        assert len([row for row in rows if row.display_name == "AverQel Server Embeddings"]) == 1
+        assert len([row for row in rows if row.display_name == "AverQel Server ReRanker"]) == 1
         assert len(rows) == 2
     finally:
         session.rollback()
         session.close()
 
 
-def test_update_split_sentence_transformer_provider_allows_default_model_changes() -> (
-    None
-):
+def test_update_split_sentence_transformer_provider_allows_default_model_changes() -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Managed Provider Update Tenant"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Managed Provider Update Tenant")
         session.add(tenant)
         session.flush()
         set_db_tenant_context(session, tenant.id)
@@ -750,14 +704,8 @@ def test_update_split_sentence_transformer_provider_allows_default_model_changes
             values={"default_reranker_model": "cross-encoder/ms-marco-MiniLM-L-12-v2"},
         )
 
-        assert (
-            updated_embeddings.default_embedding_model
-            == "intfloat/multilingual-e5-small"
-        )
-        assert (
-            updated_reranker.default_reranker_model
-            == "cross-encoder/ms-marco-MiniLM-L-12-v2"
-        )
+        assert updated_embeddings.default_embedding_model == "intfloat/multilingual-e5-small"
+        assert updated_reranker.default_reranker_model == "cross-encoder/ms-marco-MiniLM-L-12-v2"
     finally:
         session.rollback()
         session.close()
@@ -768,9 +716,7 @@ def test_sentence_transformers_embedding_assignment_uses_static_dimension(
 ) -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Provider Assignment Tenant"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Provider Assignment Tenant")
         session.add(tenant)
         session.flush()
         set_db_tenant_context(session, tenant.id)

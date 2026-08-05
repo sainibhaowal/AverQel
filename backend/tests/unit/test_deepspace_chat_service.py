@@ -244,7 +244,11 @@ class _LifecycleTaskStore:
         return dict(task)
 
     def read_note(self, **kwargs):
-        return {"conversation_id": str(kwargs["conversation_id"]), "content_html": self.note, "length": len(self.note)}
+        return {
+            "conversation_id": str(kwargs["conversation_id"]),
+            "content_html": self.note,
+            "length": len(self.note),
+        }
 
     def write_note(self, **kwargs):
         self.note = str(kwargs["markdown"])
@@ -256,12 +260,18 @@ class _LifecycleProvider:
     received_tool_sets: list[set[str]] = []
     received_tool_choices: list[str | None] = []
     _calls = [
-        ("todo_write", '{"tasks":[{"id":"task-1","content":"Draft the verified result","priority":1}]}'),
+        (
+            "todo_write",
+            '{"tasks":[{"id":"task-1","content":"Draft the verified result","priority":1}]}',
+        ),
         ("todo_read", "{}"),
         ("todo_mark", '{"task_id":"task-1","status":"in_progress"}'),
         ("write", '{"markdown":"# Verified result","mode":"replace"}'),
         ("analyze", '{"focus":"Verify the drafted result"}'),
-        ("todo_mark", '{"task_id":"task-1","status":"completed","evidence":"The result was written to the active note."}'),
+        (
+            "todo_mark",
+            '{"task_id":"task-1","status":"completed","evidence":"The result was written to the active note."}',
+        ),
         ("todo_check", "{}"),
         ("final", '{"answer":"The verified result is ready.","summary":"One task completed."}'),
     ]

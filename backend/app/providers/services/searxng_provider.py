@@ -214,7 +214,7 @@ class SearXNGProvider:
             )
 
         results: list[WebSearchResultItem] = []
-        blocked_domains = payload_metadata = request.metadata
+        payload_metadata = request.metadata
         allowed_domains = payload_metadata.get("allowed_domains")
         blocked_domains = payload_metadata.get("blocked_domains")
         for item in payload.get("results", []):
@@ -238,10 +238,25 @@ class SearXNGProvider:
                 continue
             if isinstance(blocked_domains, list) and _domain_matches(host, blocked_domains):
                 continue
-            safe_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", urlencode(parse_qsl(parsed.query, keep_blank_values=True)), ""))
+            safe_url = urlunparse(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    parsed.path,
+                    "",
+                    urlencode(parse_qsl(parsed.query, keep_blank_values=True)),
+                    "",
+                )
+            )
             engines = item.get("engines")
-            source = ", ".join(str(engine).strip() for engine in engines[:4] if str(engine).strip()) if isinstance(engines, list) else None
-            published_date = item.get("publishedDate") or item.get("published_date") or item.get("date")
+            source = (
+                ", ".join(str(engine).strip() for engine in engines[:4] if str(engine).strip())
+                if isinstance(engines, list)
+                else None
+            )
+            published_date = (
+                item.get("publishedDate") or item.get("published_date") or item.get("date")
+            )
             score = item.get("score")
             results.append(
                 WebSearchResultItem(
@@ -258,7 +273,12 @@ class SearXNGProvider:
                 break
         return WebSearchResponse(
             query=query,
-            answer=_clean_text(payload.get("answers", [None])[0] if isinstance(payload.get("answers"), list) and payload.get("answers") else None) or None,
+            answer=_clean_text(
+                payload.get("answers", [None])[0]
+                if isinstance(payload.get("answers"), list) and payload.get("answers")
+                else None
+            )
+            or None,
             results=results,
             response_time=None,
             request_id=None,

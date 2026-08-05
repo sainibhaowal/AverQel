@@ -28,7 +28,12 @@ def upgrade() -> None:
         sa.Column("sequence", sa.Integer(), nullable=False),
         sa.Column("frame", sa.Text(), nullable=False),
         sa.Column("event_name", sa.String(length=80), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     for column in ("tenant_id", "user_id", "conversation_id", "client_request_id"):

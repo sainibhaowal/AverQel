@@ -22,6 +22,7 @@ interface DeepSpaceComposerProps {
   voiceState?: "idle" | "listening" | "thinking" | "speaking";
   contextUsedTokens?: number | null;
   contextLimit?: number | null;
+  contextUsageSource?: string | null;
   sttActive?: boolean;
   ttsActive?: boolean;
   onSttToggle?: () => void;
@@ -44,15 +45,11 @@ export type DeepSpaceRuntimePhase =
   | "error";
 
 function SendIcon() {
-  return (
-    <Play className="h-[18px] w-[18px] translate-x-px fill-current" strokeWidth={2.5} />
-  );
+  return <Play className="h-[18px] w-[18px] translate-x-px fill-current" strokeWidth={2.5} />;
 }
 
 function StopIcon() {
-  return (
-    <Square className="h-4 w-4 fill-current" strokeWidth={2.5} />
-  );
+  return <Square className="h-4 w-4 fill-current" strokeWidth={2.5} />;
 }
 
 export default function DeepSpaceComposer({
@@ -67,6 +64,7 @@ export default function DeepSpaceComposer({
   voiceState = "idle",
   contextUsedTokens = null,
   contextLimit = null,
+  contextUsageSource = null,
   sttActive = false,
   ttsActive = false,
   onSttToggle,
@@ -98,10 +96,10 @@ export default function DeepSpaceComposer({
   const toolKind = /search|web|searx|browse/i.test(activeToolName ?? "")
     ? "web"
     : /note[_-]?read|read|fetch|load|inspect/i.test(activeToolName ?? "")
-        ? "read"
-        : /note[_-]?write|write|insert|update|append/i.test(activeToolName ?? "")
-          ? "write"
-          : "default";
+      ? "read"
+      : /note[_-]?write|write|insert|update|append/i.test(activeToolName ?? "")
+        ? "write"
+        : "default";
   const contextRatio =
     contextLimit && contextLimit > 0
       ? Math.min(1, Math.max(0, (contextUsedTokens ?? 0) / contextLimit))
@@ -195,7 +193,16 @@ export default function DeepSpaceComposer({
 
           {contextLimit && contextLimit > 0 ? (
             <div className="mt-1 flex items-center gap-2 px-2 text-[9px] text-white/40">
-              <span className="shrink-0 tracking-[0.14em] uppercase">Context</span>
+              <span
+                className="shrink-0 tracking-[0.14em] uppercase"
+                title={
+                  contextUsageSource === "estimated_local"
+                    ? "Estimated from the serialized prompt; the provider's tokenizer may differ slightly."
+                    : "Context tokens used by the selected model."
+                }
+              >
+                Context{contextUsageSource === "estimated_local" ? " (est.)" : ""}
+              </span>
               <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
                 <div
                   className={`h-full rounded-full transition-all ${

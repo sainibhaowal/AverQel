@@ -5,9 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT_PATH = (
-    Path(__file__).resolve().parents[2] / "scripts" / "benchmark_week5_ingestion.py"
-)
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "benchmark_week5_ingestion.py"
 
 
 def test_dry_run_reports_status_worker_profile() -> None:

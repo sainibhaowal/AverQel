@@ -38,11 +38,7 @@ class UsersRepository(BaseRepository):
 
     def list_by_tenant(self, tenant_id: uuid.UUID) -> list[User]:
         self.apply_tenant_scope(tenant_id)
-        query = (
-            select(User)
-            .where(User.tenant_id == tenant_id)
-            .order_by(User.created_at.asc())
-        )
+        query = select(User).where(User.tenant_id == tenant_id).order_by(User.created_at.asc())
         return list(self.db.execute(query).scalars().all())
 
     def list_all(self) -> list[User]:
@@ -62,9 +58,7 @@ class UsersRepository(BaseRepository):
 
     def count_by_tenant(self, tenant_id: uuid.UUID) -> int:
         self.apply_tenant_scope(tenant_id)
-        query = (
-            select(func.count()).select_from(User).where(User.tenant_id == tenant_id)
-        )
+        query = select(func.count()).select_from(User).where(User.tenant_id == tenant_id)
         return int(self.db.execute(query).scalar_one() or 0)
 
     def register_failed_login(
@@ -78,9 +72,7 @@ class UsersRepository(BaseRepository):
         self.apply_tenant_scope(tenant_id)
         user.failed_login_attempts += 1
         if user.failed_login_attempts >= max_failed_attempts:
-            user.locked_until = datetime.now(tz=UTC) + timedelta(
-                minutes=lockout_minutes
-            )
+            user.locked_until = datetime.now(tz=UTC) + timedelta(minutes=lockout_minutes)
 
     def register_successful_login(self, *, tenant_id: uuid.UUID, user: User) -> None:
         self.apply_tenant_scope(tenant_id)

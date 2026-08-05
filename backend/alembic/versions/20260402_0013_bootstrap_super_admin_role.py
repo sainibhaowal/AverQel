@@ -81,9 +81,7 @@ def upgrade() -> None:
     )
 
     role_rows = connection.execute(
-        sa.select(roles.c.id, roles.c.name).where(
-            roles.c.name.in_(["super_admin", "editor"])
-        )
+        sa.select(roles.c.id, roles.c.name).where(roles.c.name.in_(["super_admin", "editor"]))
     ).all()
     role_ids = {row.name: row.id for row in role_rows}
     super_admin_role_id = role_ids.get("super_admin")
@@ -91,9 +89,7 @@ def upgrade() -> None:
     if super_admin_role_id is None or editor_role_id is None:
         return
 
-    target_users = connection.execute(
-        sa.select(users.c.id, users.c.tenant_id, users.c.email)
-    ).all()
+    target_users = connection.execute(sa.select(users.c.id, users.c.tenant_id, users.c.email)).all()
     for user in target_users:
         normalized_email = str(user.email).strip().lower()
         desired_role_id = (

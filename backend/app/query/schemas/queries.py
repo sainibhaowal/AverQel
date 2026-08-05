@@ -26,9 +26,7 @@ class QueryFilters(BaseModel):
             and self.created_at_to is not None
             and self.created_at_from > self.created_at_to
         ):
-            raise ValueError(
-                "created_at_from must be less than or equal to created_at_to"
-            )
+            raise ValueError("created_at_from must be less than or equal to created_at_to")
         if (
             self.min_extraction_coverage is not None
             and self.max_extraction_coverage is not None

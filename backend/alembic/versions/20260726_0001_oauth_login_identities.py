@@ -23,28 +23,40 @@ def upgrade() -> None:
         sa.Column("subject", sa.String(length=512), nullable=False),
         sa.Column("email", sa.String(length=320), nullable=False),
         sa.Column("avatar_url", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("provider", "subject", name="uq_oauth_identities_provider_subject"),
-        sa.UniqueConstraint("tenant_id", "provider", "user_id", name="uq_oauth_identities_tenant_provider_user"),
+        sa.UniqueConstraint(
+            "tenant_id", "provider", "user_id", name="uq_oauth_identities_tenant_provider_user"
+        ),
     )
-    op.create_index("ix_oauth_identities_tenant_id", "oauth_identities", ["tenant_id"], unique=False)
+    op.create_index(
+        "ix_oauth_identities_tenant_id", "oauth_identities", ["tenant_id"], unique=False
+    )
     op.create_index("ix_oauth_identities_user_id", "oauth_identities", ["user_id"], unique=False)
     op.create_index("ix_oauth_identities_provider", "oauth_identities", ["provider"], unique=False)
     op.execute("ALTER TABLE oauth_identities ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE oauth_identities FORCE ROW LEVEL SECURITY")
-    op.execute(
-        """
+    op.execute("""
         CREATE POLICY tenant_isolation_oauth_identities ON oauth_identities
         USING (current_setting('app.tenant_id', true) = 'bypass'
           OR tenant_id = NULLIF(current_setting('app.tenant_id', true), 'bypass')::uuid)
         WITH CHECK (current_setting('app.tenant_id', true) = 'bypass'
           OR tenant_id = NULLIF(current_setting('app.tenant_id', true), 'bypass')::uuid)
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

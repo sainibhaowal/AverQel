@@ -192,15 +192,12 @@ def test_delete_provider_clears_assignments_and_removes_provider(
 
     providers_response = client.get("/api/v1/providers", headers=headers)
     assert providers_response.status_code == 200
-    assert not any(
-        item["id"] == provider_id for item in providers_response.json()["items"]
-    )
+    assert not any(item["id"] == provider_id for item in providers_response.json()["items"])
 
     assignments_response = client.get("/api/v1/providers/assignments", headers=headers)
     assert assignments_response.status_code == 200
     assert all(
-        item["provider_config_id"] != provider_id
-        for item in assignments_response.json()["items"]
+        item["provider_config_id"] != provider_id for item in assignments_response.json()["items"]
     )
 
 
@@ -335,7 +332,5 @@ def test_provider_configs_are_private_between_users_in_same_tenant(
     )
     assert other_update.status_code == 404
 
-    other_models = client.get(
-        f"/api/v1/providers/{provider_id}/models", headers=other_headers
-    )
+    other_models = client.get(f"/api/v1/providers/{provider_id}/models", headers=other_headers)
     assert other_models.status_code == 404

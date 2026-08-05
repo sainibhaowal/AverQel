@@ -23,19 +23,13 @@ def test_followup_service_wraps_answer_service_output(monkeypatch) -> None:
         provider_candidates=[],
     )
 
-    assert payload == FollowupSuggestions(
-        follow_ups=["What changed next?", "Show the evidence."]
-    )
+    assert payload == FollowupSuggestions(follow_ups=["What changed next?", "Show the evidence."])
 
 
 def test_followup_service_metadata_payload_normalizes_items() -> None:
-    payload = FollowupService.as_metadata(
-        ["  What changed next?  ", "", "Show the evidence."]
-    )
+    payload = FollowupService.as_metadata(["  What changed next?  ", "", "Show the evidence."])
 
-    assert payload == {
-        "follow_up_suggestions": ["What changed next?", "Show the evidence."]
-    }
+    assert payload == {"follow_up_suggestions": ["What changed next?", "Show the evidence."]}
 
 
 def test_answer_service_followups_extracts_suggestions_block_from_answer_text() -> None:
@@ -170,7 +164,9 @@ def test_answer_service_followups_fallback_avoids_echoing_long_noisy_prompt() ->
 def test_answer_service_followups_filters_echoed_candidates_before_fallback() -> None:
     service = AnswerService("no-result")
 
-    query_text = "Fix this Parse error on line 3 in the Mermaid graph and show the corrected diagram"
+    query_text = (
+        "Fix this Parse error on line 3 in the Mermaid graph and show the corrected diagram"
+    )
 
     followups = service.generate_followups(
         query_text=query_text,

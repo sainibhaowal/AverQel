@@ -98,9 +98,7 @@ def build_synthesis_matrix(
         doc_map.setdefault(doc_key, []).append(chunk)
 
     documents = sorted(doc_map.keys())
-    normalized_findings = [
-        finding.strip() for finding in key_findings if finding.strip()
-    ]
+    normalized_findings = [finding.strip() for finding in key_findings if finding.strip()]
     cells: list[MatrixCell] = []
 
     for finding in normalized_findings:
@@ -125,9 +123,7 @@ def build_synthesis_matrix(
 
                 if score > best_score:
                     best_score = score
-                    best_snippet = SnippetService.clean(
-                        chunk.content, MAX_EVIDENCE_CHARS
-                    )
+                    best_snippet = SnippetService.clean(chunk.content, MAX_EVIDENCE_CHARS)
 
             status = _status_from_score(best_score)
 

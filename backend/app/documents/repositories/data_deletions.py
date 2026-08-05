@@ -18,9 +18,7 @@ class DataDeletionsRepository(BaseRepository):
         self.db.flush()
         return row
 
-    def get_by_id(
-        self, *, tenant_id: uuid.UUID, deletion_id: uuid.UUID
-    ) -> DataDeletion | None:
+    def get_by_id(self, *, tenant_id: uuid.UUID, deletion_id: uuid.UUID) -> DataDeletion | None:
         self.apply_tenant_scope(tenant_id)
         statement = select(DataDeletion).where(
             DataDeletion.tenant_id == tenant_id,
@@ -41,9 +39,7 @@ class DataDeletionsRepository(BaseRepository):
         )
         return self.db.execute(statement).scalar_one_or_none()
 
-    def list_by_tenant(
-        self, *, tenant_id: uuid.UUID, limit: int = 20
-    ) -> list[DataDeletion]:
+    def list_by_tenant(self, *, tenant_id: uuid.UUID, limit: int = 20) -> list[DataDeletion]:
         self.apply_tenant_scope(tenant_id)
         safe_limit = max(1, min(limit, 100))
         statement = (

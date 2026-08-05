@@ -65,9 +65,11 @@ class AnthropicProvider:
                                 {
                                     "type": "tool_result",
                                     "tool_use_id": call_id,
-                                    "content": content
-                                    if isinstance(content, str)
-                                    else json.dumps(content, ensure_ascii=False),
+                                    "content": (
+                                        content
+                                        if isinstance(content, str)
+                                        else json.dumps(content, ensure_ascii=False)
+                                    ),
                                 }
                             ],
                         }
@@ -127,9 +129,11 @@ class AnthropicProvider:
                 {
                     "name": name.strip(),
                     "description": str(function.get("description") or "").strip(),
-                    "input_schema": parameters
-                    if isinstance(parameters, dict)
-                    else {"type": "object", "properties": {}},
+                    "input_schema": (
+                        parameters
+                        if isinstance(parameters, dict)
+                        else {"type": "object", "properties": {}}
+                    ),
                 }
             )
         return tools
@@ -198,9 +202,11 @@ class AnthropicProvider:
                             "function": {
                                 "name": name.strip(),
                                 "arguments": json.dumps(
-                                    item.get("input")
-                                    if isinstance(item.get("input"), dict)
-                                    else {},
+                                    (
+                                        item.get("input")
+                                        if isinstance(item.get("input"), dict)
+                                        else {}
+                                    ),
                                     ensure_ascii=False,
                                 ),
                             },
@@ -387,11 +393,11 @@ class AnthropicProvider:
                                         "id": current_tool_id,
                                         "function": {
                                             "name": tool_names.get(current_tool_id, ""),
-                                            "arguments": json.dumps(
-                                                initial_input, ensure_ascii=False
-                                            )
-                                            if isinstance(initial_input, dict) and initial_input
-                                            else "",
+                                            "arguments": (
+                                                json.dumps(initial_input, ensure_ascii=False)
+                                                if isinstance(initial_input, dict) and initial_input
+                                                else ""
+                                            ),
                                         },
                                     }
                                 ],

@@ -207,9 +207,7 @@ async def run_query(
 ) -> QueryResponse:
     _enforce_tenant_scope(request_tenant_id, auth)
 
-    RateLimitService(settings).enforce_query_user_limit(
-        request=request, user_id=str(auth.user_id)
-    )
+    RateLimitService(settings).enforce_query_user_limit(request=request, user_id=str(auth.user_id))
 
     raw_payload = await request.json()
     payload = _validate_query_payload(raw_payload)
@@ -269,9 +267,7 @@ async def stream_query(
 ) -> StreamingResponse:
     _enforce_tenant_scope(request_tenant_id, auth)
 
-    RateLimitService(settings).enforce_query_user_limit(
-        request=request, user_id=str(auth.user_id)
-    )
+    RateLimitService(settings).enforce_query_user_limit(request=request, user_id=str(auth.user_id))
 
     raw_payload = await request.json()
     payload = _validate_query_payload(raw_payload)
@@ -354,9 +350,7 @@ def get_chat_capabilities(
         provider_type=candidate.provider_type,
         model_name=candidate.model_name,
         context_limit=(
-            candidate.context_window
-            if isinstance(candidate.context_window, int)
-            else None
+            candidate.context_window if isinstance(candidate.context_window, int) else None
         ),
         context_limit_source=(
             candidate.context_window_source
@@ -365,31 +359,21 @@ def get_chat_capabilities(
             else None
         ),
         supports_thinking=bool(capabilities_payload.get("supports_reasoning")),
-        supports_thinking_toggle=bool(
-            capabilities_payload.get("supports_thinking_toggle")
-        ),
-        reasoning_visibility=str(
-            capabilities_payload.get("reasoning_visibility") or "hidden"
-        ),
+        supports_thinking_toggle=bool(capabilities_payload.get("supports_thinking_toggle")),
+        reasoning_visibility=str(capabilities_payload.get("reasoning_visibility") or "hidden"),
         request_controls_on=[
             str(item)
-            for item in cast(
-                list[Any], capabilities_payload.get("request_controls_on", [])
-            )
+            for item in cast(list[Any], capabilities_payload.get("request_controls_on", []))
             if isinstance(item, str)
         ],
         request_controls_off=[
             str(item)
-            for item in cast(
-                list[Any], capabilities_payload.get("request_controls_off", [])
-            )
+            for item in cast(list[Any], capabilities_payload.get("request_controls_off", []))
             if isinstance(item, str)
         ],
         supported_reasoning_efforts=[
             str(item)
-            for item in cast(
-                list[Any], capabilities_payload.get("supported_reasoning_efforts", [])
-            )
+            for item in cast(list[Any], capabilities_payload.get("supported_reasoning_efforts", []))
             if isinstance(item, str)
         ],
     )

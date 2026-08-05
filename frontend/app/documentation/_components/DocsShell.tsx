@@ -70,7 +70,9 @@ export function DocsShell({
           <nav className="theme-panel docs-scrollbar bg-background/50 flex h-[calc(100%-4rem)] flex-col gap-4 overflow-x-hidden overflow-y-auto rounded-2xl border p-4 backdrop-blur-xl">
             {docsNavGroups.map((group) => (
               <div key={group.group} className="space-y-1">
-                <h4 className="px-4 text-[9px] font-black uppercase tracking-wider text-muted-foreground/50 mb-1">{group.group}</h4>
+                <h4 className="text-muted-foreground/50 mb-1 px-4 text-[9px] font-black tracking-wider uppercase">
+                  {group.group}
+                </h4>
                 {group.items.map((item) => {
                   const hasSubItems = item.items && item.items.length > 0;
                   return (
@@ -80,7 +82,9 @@ export function DocsShell({
                         className="text-muted-foreground hover:bg-primary/10 hover:text-primary group flex w-full items-center justify-between rounded-xl px-4 py-2.5 text-xs font-bold transition-all"
                       >
                         <div className="flex items-center gap-3">
-                          {item.icon && <span className="opacity-40 group-hover:opacity-100">{item.icon}</span>}
+                          {item.icon && (
+                            <span className="opacity-40 group-hover:opacity-100">{item.icon}</span>
+                          )}
                           {item.title}
                         </div>
                         {!hasSubItems && (
@@ -91,12 +95,12 @@ export function DocsShell({
                         )}
                       </Link>
                       {hasSubItems && (
-                        <div className="pl-9 pr-2 py-1 border-l border-white/[0.05] ml-5 space-y-1">
+                        <div className="ml-5 space-y-1 border-l border-white/[0.05] py-1 pr-2 pl-9">
                           {item.items!.map((subItem) => (
                             <Link
                               key={subItem.href}
                               href={subItem.href}
-                              className="text-[11px] font-semibold text-slate-500 hover:text-primary block py-1.5 transition-colors"
+                              className="hover:text-primary block py-1.5 text-[11px] font-semibold text-slate-500 transition-colors"
                             >
                               {subItem.title}
                             </Link>
@@ -195,7 +199,9 @@ export function DocsShell({
               <nav className="docs-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
                 {docsNavGroups.map((group) => (
                   <div key={group.group} className="space-y-1">
-                    <h4 className="px-4 text-[9px] font-black uppercase tracking-wider text-muted-foreground/50 mb-1">{group.group}</h4>
+                    <h4 className="text-muted-foreground/50 mb-1 px-4 text-[9px] font-black tracking-wider uppercase">
+                      {group.group}
+                    </h4>
                     {group.items.map((item) => {
                       const hasSubItems = item.items && item.items.length > 0;
                       return (
@@ -212,13 +218,13 @@ export function DocsShell({
                             {!hasSubItems && <ChevronRight size={12} className="opacity-40" />}
                           </Link>
                           {hasSubItems && (
-                            <div className="pl-10 pr-2 py-1 border-l border-white/[0.05] ml-6 space-y-1">
+                            <div className="ml-6 space-y-1 border-l border-white/[0.05] py-1 pr-2 pl-10">
                               {item.items!.map((subItem) => (
                                 <Link
                                   key={subItem.href}
                                   href={subItem.href}
                                   onClick={() => setMenuOpen(false)}
-                                  className="text-[11px] font-semibold text-slate-500 hover:text-primary block py-1.5 transition-colors"
+                                  className="hover:text-primary block py-1.5 text-[11px] font-semibold text-slate-500 transition-colors"
                                 >
                                   {subItem.title}
                                 </Link>

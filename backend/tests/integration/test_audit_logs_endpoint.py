@@ -22,9 +22,7 @@ def test_admin_audit_logs_endpoint_returns_tenant_scoped_items(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    seeded = seed_user(
-        "tenant-audit", "admin-audit@tenant.example", "StrongPass!1234", ("admin",)
-    )
+    seeded = seed_user("tenant-audit", "admin-audit@tenant.example", "StrongPass!1234", ("admin",))
     get_settings().bootstrap_super_admin_emails = [seeded.email]
     token = _login(client, seeded)
 

@@ -79,9 +79,7 @@ def _fake_httpx_module(lines: list[str]):
 
 @pytest.mark.asyncio
 async def test_stream_execute_flow(settings, seed_user):
-    user_data = seed_user(
-        "Stream Tenant", "stream@example.com", "StrongPass!1234", ("reader",)
-    )
+    user_data = seed_user("Stream Tenant", "stream@example.com", "StrongPass!1234", ("reader",))
     settings.llm_provider = "openai"
     settings.ai_integration_scope = "embeddings_and_generation"
     settings.llm_api_key = "test"
@@ -166,9 +164,7 @@ async def test_stream_execute_flow(settings, seed_user):
         assert "meta" in event_names
         assert "trace" in event_names
         assert "citation" in event_names
-        assert (
-            "delta" in event_names
-        ), f"Expected 'delta' event, but got error: {error_frames}"
+        assert "delta" in event_names, f"Expected 'delta' event, but got error: {error_frames}"
         assert "replace" in event_names
         assert "done" in event_names
         assert event_names[-1] == "status"
@@ -185,9 +181,7 @@ async def test_stream_execute_flow(settings, seed_user):
         assert meta_payload["trace_id"]
         assert meta_payload["source_count"] == 1
 
-        delta_text = "".join(
-            payload.get("text", "") for name, payload in frames if name == "delta"
-        )
+        delta_text = "".join(payload.get("text", "") for name, payload in frames if name == "delta")
         assert delta_text == "Hello world"
 
         replace_payload = next(payload for name, payload in frames if name == "replace")
@@ -213,9 +207,7 @@ async def test_stream_execute_flow(settings, seed_user):
 
 @pytest.mark.asyncio
 async def test_stream_execute_emits_thinking_events_when_supported(settings, seed_user):
-    user_data = seed_user(
-        "Thinking Tenant", "thinking@example.com", "StrongPass!1234", ("reader",)
-    )
+    user_data = seed_user("Thinking Tenant", "thinking@example.com", "StrongPass!1234", ("reader",))
     settings.llm_provider = "openai"
     settings.ai_integration_scope = "embeddings_and_generation"
     settings.llm_api_key = "test"
@@ -300,9 +292,7 @@ async def test_stream_execute_emits_thinking_events_when_supported(settings, see
 
 
 @pytest.mark.asyncio
-async def test_stream_execute_forwards_reasoning_chunks_when_thinking_disabled(
-    settings, seed_user
-):
+async def test_stream_execute_forwards_reasoning_chunks_when_thinking_disabled(settings, seed_user):
     user_data = seed_user(
         "Thinking Off Tenant",
         "thinking-off@example.com",
@@ -404,9 +394,7 @@ async def test_stream_execute_forwards_reasoning_chunks_when_thinking_disabled(
 async def test_stream_execute_falls_back_to_grounded_text_when_llm_usage_is_denied(
     settings, seed_user
 ):
-    user_data = seed_user(
-        "Fallback Tenant", "fallback@example.com", "StrongPass!1234", ("reader",)
-    )
+    user_data = seed_user("Fallback Tenant", "fallback@example.com", "StrongPass!1234", ("reader",))
     settings.llm_provider = "openai"
     settings.ai_integration_scope = "embeddings_and_generation"
     settings.llm_api_key = "test"
@@ -486,12 +474,8 @@ async def test_stream_execute_falls_back_to_grounded_text_when_llm_usage_is_deni
 
 
 @pytest.mark.asyncio
-async def test_stream_execute_emits_diagram_event_for_structured_answer(
-    settings, seed_user
-):
-    user_data = seed_user(
-        "Diagram Tenant", "diagram@example.com", "StrongPass!1234", ("reader",)
-    )
+async def test_stream_execute_emits_diagram_event_for_structured_answer(settings, seed_user):
+    user_data = seed_user("Diagram Tenant", "diagram@example.com", "StrongPass!1234", ("reader",))
     settings.llm_provider = "openai"
     settings.ai_integration_scope = "embeddings_and_generation"
     settings.llm_api_key = "test"
@@ -595,16 +579,12 @@ async def test_stream_execute_emits_diagram_event_for_structured_answer(
 
         event_names = [name for name, _ in frames]
         error_frames = [payload for name, payload in frames if name == "error"]
-        assert (
-            "diagram" in event_names
-        ), f"Expected 'diagram' event, but got error: {error_frames}"
+        assert "diagram" in event_names, f"Expected 'diagram' event, but got error: {error_frames}"
         assert "followups" in event_names
         diagram_payload = next(payload for name, payload in frames if name == "diagram")
         assert diagram_payload["diagram_type"] == "mermaid_flowchart"
         assert "flowchart LR" in diagram_payload["syntax"]
-        followups_payload = next(
-            payload for name, payload in frames if name == "followups"
-        )
+        followups_payload = next(payload for name, payload in frames if name == "followups")
         assert followups_payload["items"] == ["What are the retrieval bottlenecks?"]
     finally:
         db_session.close()

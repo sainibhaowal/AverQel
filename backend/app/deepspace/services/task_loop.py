@@ -7,12 +7,13 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
 
 TASK_STATUSES = {"pending", "in_progress", "completed", "blocked", "failed"}
 MAX_TASKS = 40
@@ -137,6 +138,25 @@ class DeepSpaceTaskLoopStore:
 
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def _assert_conversation(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> Conversation:
+        conversation = self.db.execute(
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.tenant_id == tenant_id,
+                Conversation.user_id == user_id,
+                Conversation.kind == "deepspace",
+            )
+        ).scalar_one_or_none()
+        if conversation is None:
+            raise ValueError("DeepSpace conversation not found.")
+        return conversation
 
     @staticmethod
     def _thread_id(conversation_id: uuid.UUID) -> str:
@@ -411,6 +431,7 @@ class DeepSpaceTaskLoopStore:
         filename: str,
         content: str,
         mode: str = "replace",
+        parent_folder_id: str | None = None,
     ) -> dict[str, Any]:
         """Create or update a text file in the visible DeepSpace Library."""
         normalized_name = filename.strip()
@@ -433,12 +454,25 @@ class DeepSpaceTaskLoopStore:
         ).scalar_one_or_none()
         if conversation is None:
             raise ValueError("DeepSpace conversation not found.")
+        parent_id = None
+        if parent_folder_id:
+            try:
+                parent_id = uuid.UUID(parent_folder_id)
+            except ValueError as exc:
+                raise ValueError("Workspace parent_folder_id is invalid.") from exc
+            self._owned_folder(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                folder_id=parent_id,
+            )
         file = self.db.execute(
             select(DeepSpaceWorkspaceFile).where(
                 DeepSpaceWorkspaceFile.tenant_id == tenant_id,
                 DeepSpaceWorkspaceFile.user_id == user_id,
                 DeepSpaceWorkspaceFile.conversation_id == conversation_id,
                 DeepSpaceWorkspaceFile.name == normalized_name,
+                DeepSpaceWorkspaceFile.parent_folder_id == parent_id,
             )
         ).scalar_one_or_none()
         if file is None:
@@ -446,6 +480,7 @@ class DeepSpaceTaskLoopStore:
                 tenant_id=tenant_id,
                 user_id=user_id,
                 conversation_id=conversation_id,
+                parent_folder_id=parent_id,
                 name=normalized_name,
                 content_type=_workspace_content_type(normalized_name),
                 content=content,
@@ -467,7 +502,353 @@ class DeepSpaceTaskLoopStore:
             "content_type": file.content_type,
             "size_bytes": file.size_bytes,
             "source": file.source,
+            "parent_folder_id": str(file.parent_folder_id) if file.parent_folder_id else None,
         }
+
+    def _owned_folder(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        folder_id: uuid.UUID,
+    ) -> DeepSpaceWorkspaceFolder:
+        folder = self.db.execute(
+            select(DeepSpaceWorkspaceFolder).where(
+                DeepSpaceWorkspaceFolder.id == folder_id,
+                DeepSpaceWorkspaceFolder.tenant_id == tenant_id,
+                DeepSpaceWorkspaceFolder.user_id == user_id,
+                DeepSpaceWorkspaceFolder.conversation_id == conversation_id,
+            )
+        ).scalar_one_or_none()
+        if folder is None:
+            raise ValueError("DeepSpace Library folder not found.")
+        return folder
+
+    def list_workspace_entries(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        parent_folder_id: str | None = None,
+    ) -> dict[str, Any]:
+        self._assert_conversation(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        parsed_parent = None
+        if parent_folder_id:
+            try:
+                parsed_parent = uuid.UUID(parent_folder_id)
+            except ValueError as exc:
+                raise ValueError("Workspace parent_folder_id is invalid.") from exc
+            self._owned_folder(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                folder_id=parsed_parent,
+            )
+        folders = (
+            self.db.execute(
+                select(DeepSpaceWorkspaceFolder)
+                .where(
+                    DeepSpaceWorkspaceFolder.tenant_id == tenant_id,
+                    DeepSpaceWorkspaceFolder.user_id == user_id,
+                    DeepSpaceWorkspaceFolder.conversation_id == conversation_id,
+                    DeepSpaceWorkspaceFolder.parent_folder_id == parsed_parent,
+                )
+                .order_by(DeepSpaceWorkspaceFolder.name.asc())
+            )
+            .scalars()
+            .all()
+        )
+        files = (
+            self.db.execute(
+                select(DeepSpaceWorkspaceFile)
+                .where(
+                    DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+                    DeepSpaceWorkspaceFile.user_id == user_id,
+                    DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+                    DeepSpaceWorkspaceFile.parent_folder_id == parsed_parent,
+                )
+                .order_by(DeepSpaceWorkspaceFile.name.asc())
+            )
+            .scalars()
+            .all()
+        )
+        return {
+            "parent_folder_id": str(parsed_parent) if parsed_parent else None,
+            "folders": [
+                {
+                    "id": str(item.id),
+                    "name": item.name,
+                    "parent_folder_id": (
+                        str(item.parent_folder_id) if item.parent_folder_id else None
+                    ),
+                }
+                for item in folders
+            ],
+            "files": [
+                {
+                    "id": str(item.id),
+                    "name": item.name,
+                    "content_type": item.content_type,
+                    "size_bytes": item.size_bytes,
+                    "parent_folder_id": (
+                        str(item.parent_folder_id) if item.parent_folder_id else None
+                    ),
+                }
+                for item in files
+            ],
+        }
+
+    def create_workspace_folder(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        name: str,
+        parent_folder_id: str | None = None,
+    ) -> dict[str, Any]:
+        self._assert_conversation(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        if not _SAFE_WORKSPACE_FILE_NAME.fullmatch(name.strip()):
+            raise ValueError("Workspace folder name is invalid.")
+        parent_id = None
+        if parent_folder_id:
+            parent_id = uuid.UUID(parent_folder_id)
+            self._owned_folder(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                folder_id=parent_id,
+            )
+        folder = DeepSpaceWorkspaceFolder(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            parent_folder_id=parent_id,
+            name=name.strip(),
+        )
+        self.db.add(folder)
+        try:
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            raise ValueError("A Library folder with that name already exists here.") from exc
+        return {
+            "id": str(folder.id),
+            "name": folder.name,
+            "parent_folder_id": str(parent_id) if parent_id else None,
+        }
+
+    def read_workspace_file(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        file_id: str | None = None,
+        filename: str | None = None,
+    ) -> dict[str, Any]:
+        """Read one authorized Library file by id or exact name."""
+        self._assert_conversation(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        statement = select(DeepSpaceWorkspaceFile).where(
+            DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+            DeepSpaceWorkspaceFile.user_id == user_id,
+            DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+        )
+        if file_id:
+            try:
+                statement = statement.where(DeepSpaceWorkspaceFile.id == uuid.UUID(file_id))
+            except ValueError as exc:
+                raise ValueError("Library file_id is invalid.") from exc
+        elif filename:
+            statement = statement.where(DeepSpaceWorkspaceFile.name == filename.strip())
+        else:
+            raise ValueError("Library read requires file_id or filename.")
+        file = self.db.execute(statement).scalar_one_or_none()
+        if file is None:
+            raise ValueError("DeepSpace Library file not found.")
+        return {
+            "id": str(file.id),
+            "name": file.name,
+            "content_type": file.content_type,
+            "content": file.content if not file.is_binary else (file.extracted_text or ""),
+            "size_bytes": file.size_bytes,
+            "source": file.source,
+            "parent_folder_id": str(file.parent_folder_id) if file.parent_folder_id else None,
+            "version": file.version,
+            "is_binary": file.is_binary,
+            "checksum_sha256": file.checksum_sha256,
+            "updated_at": file.updated_at.isoformat() if file.updated_at else None,
+        }
+
+    def find_workspace_files(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        query: str,
+        limit: int = 10,
+        parent_folder_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Search authorized Library file names and text content."""
+        self._assert_conversation(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        normalized_query = query.strip()
+        if not normalized_query:
+            raise ValueError("Library search requires a query.")
+        pattern = f"%{normalized_query[:200]}%"
+        parsed_parent = None
+        if parent_folder_id:
+            try:
+                parsed_parent = uuid.UUID(parent_folder_id)
+            except ValueError as exc:
+                raise ValueError("Workspace parent_folder_id is invalid.") from exc
+            self._owned_folder(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                folder_id=parsed_parent,
+            )
+        files = (
+            self.db.execute(
+                select(DeepSpaceWorkspaceFile)
+                .where(
+                    DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+                    DeepSpaceWorkspaceFile.user_id == user_id,
+                    DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+                    (DeepSpaceWorkspaceFile.name.ilike(pattern))
+                    | (DeepSpaceWorkspaceFile.content.ilike(pattern)),
+                    DeepSpaceWorkspaceFile.parent_folder_id == parsed_parent,
+                )
+                .order_by(DeepSpaceWorkspaceFile.updated_at.desc())
+                .limit(max(1, min(limit, 50)))
+            )
+            .scalars()
+            .all()
+        )
+        return [
+            {
+                "id": str(file.id),
+                "name": file.name,
+                "content_type": file.content_type,
+                "size_bytes": file.size_bytes,
+                "source": file.source,
+                "updated_at": file.updated_at.isoformat() if file.updated_at else None,
+                "parent_folder_id": str(file.parent_folder_id) if file.parent_folder_id else None,
+            }
+            for file in files
+        ]
+
+    def edit_workspace_file(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        file_id: str,
+        name: str | None = None,
+        content: str | None = None,
+        mode: str = "replace",
+        parent_folder_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Update an authorized Library file without changing its ownership."""
+        self._assert_conversation(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        try:
+            parsed_id = uuid.UUID(file_id)
+        except ValueError as exc:
+            raise ValueError("Library file_id is invalid.") from exc
+        file = self.db.execute(
+            select(DeepSpaceWorkspaceFile).where(
+                DeepSpaceWorkspaceFile.id == parsed_id,
+                DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+                DeepSpaceWorkspaceFile.user_id == user_id,
+                DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+            )
+        ).scalar_one_or_none()
+        if file is None:
+            raise ValueError("DeepSpace Library file not found.")
+        if file.is_binary and content is not None:
+            raise ValueError("Binary Library files must be replaced through file upload.")
+        if name is not None:
+            normalized_name = name.strip()
+            if not _SAFE_WORKSPACE_FILE_NAME.fullmatch(normalized_name):
+                raise ValueError("Workspace file name is invalid.")
+            file.name = normalized_name
+            if not file.is_binary:
+                file.content_type = _workspace_content_type(normalized_name)
+        if parent_folder_id is not None:
+            parent_id = uuid.UUID(parent_folder_id) if parent_folder_id else None
+            if parent_id:
+                self._owned_folder(
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    folder_id=parent_id,
+                )
+            file.parent_folder_id = parent_id
+        if content is not None:
+            if len(content) > MAX_WORKSPACE_FILE_LENGTH:
+                raise ValueError("Workspace file content is too large.")
+            if mode == "append" and file.content:
+                file.content = f"{file.content}\n{content}"
+            elif mode in {"replace", "move"}:
+                file.content = content
+            elif mode != "move":
+                raise ValueError("Library edit mode must be replace or append.")
+            file.size_bytes = len(file.content.encode("utf-8"))
+        file.source = "agent"
+        file.updated_at = _now()
+        self.db.commit()
+        return self.read_workspace_file(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            file_id=str(file.id),
+        )
+
+    def delete_workspace_file(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        file_id: str,
+    ) -> dict[str, Any]:
+        """Delete one authorized Library file; recursive/path deletes are impossible."""
+        self._assert_conversation(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        try:
+            parsed_id = uuid.UUID(file_id)
+        except ValueError as exc:
+            raise ValueError("Library file_id is invalid.") from exc
+        file = self.db.execute(
+            select(DeepSpaceWorkspaceFile).where(
+                DeepSpaceWorkspaceFile.id == parsed_id,
+                DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+                DeepSpaceWorkspaceFile.user_id == user_id,
+                DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+            )
+        ).scalar_one_or_none()
+        if file is None:
+            raise ValueError("DeepSpace Library file not found.")
+        name = file.name
+        self.db.execute(
+            delete(DeepSpaceWorkspaceFile).where(DeepSpaceWorkspaceFile.id == parsed_id)
+        )
+        self.db.commit()
+        return {"id": file_id, "name": name, "deleted": True}
 
 
 def summarize_tasks(tasks: Iterable[dict[str, Any]]) -> str:

@@ -55,9 +55,7 @@ def test_structured_post_stream_events_emit_replace_and_done() -> None:
         "}"
     )
 
-    events = list(
-        service._emit_post_stream_events(structured_json, QueryType.ANALYTICAL)
-    )
+    events = list(service._emit_post_stream_events(structured_json, QueryType.ANALYTICAL))
     names = [event.event for event in events]
 
     assert names == ["replace", "done"]
@@ -96,9 +94,7 @@ def test_async_stream_provider_failure_emits_error_without_fallback_text(
     monkeypatch.setattr(service, "_llm_generation_enabled", lambda **kwargs: True)
     monkeypatch.setattr(service, "_llm_is_circuit_open", lambda: False)
     monkeypatch.setattr(service, "_allow_llm_usage", lambda **kwargs: True)
-    monkeypatch.setattr(
-        service, "_build_prompt_context", lambda chunks: "Context block"
-    )
+    monkeypatch.setattr(service, "_build_prompt_context", lambda chunks: "Context block")
     monkeypatch.setattr(service, "_estimate_tokens", lambda text: 10)
     monkeypatch.setattr(service, "_astream_provider_text", _raise_provider_failure)
 

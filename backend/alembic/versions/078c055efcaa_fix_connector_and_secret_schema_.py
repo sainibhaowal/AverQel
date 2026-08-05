@@ -31,9 +31,7 @@ def upgrade() -> None:
         "connector_secrets",
         sa.Column("secret_ciphertext", sa.LargeBinary(), nullable=False),
     )
-    op.add_column(
-        "connector_secrets", sa.Column("secret_nonce", sa.LargeBinary(), nullable=False)
-    )
+    op.add_column("connector_secrets", sa.Column("secret_nonce", sa.LargeBinary(), nullable=False))
     op.add_column(
         "connector_secrets",
         sa.Column("secret_kid", sa.String(length=128), nullable=False),

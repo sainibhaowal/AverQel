@@ -101,9 +101,7 @@ export default function AdminCollectionsPage() {
     const host = window.location.host;
 
     const activeBgIds = new Set(
-      collections
-        .filter((c) => c.id !== activeCollectionId)
-        .map((c) => c.id)
+      collections.filter((c) => c.id !== activeCollectionId).map((c) => c.id),
     );
 
     // 1. Terminate sockets that are no longer needed
@@ -270,7 +268,7 @@ export default function AdminCollectionsPage() {
         if (pendingItems.length > 0 && !notifiedPendingRef.current) {
           toast(
             `${pendingItems.length} collection invitation${pendingItems.length > 1 ? "s" : ""} waiting`,
-            { icon: "📨" }
+            { icon: "📨" },
           );
           notifiedPendingRef.current = true;
         }
@@ -334,7 +332,9 @@ export default function AdminCollectionsPage() {
       }
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Failed to establish direct connection.");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to establish direct connection.",
+      );
     } finally {
       setLoading(false);
     }
@@ -368,7 +368,7 @@ export default function AdminCollectionsPage() {
           fetchWithAuth(`/collections/${newColl.id}/permissions`, {
             method: "POST",
             body: JSON.stringify({ connection_code: code }),
-          })
+          }),
         );
         await Promise.all(invitePromises);
       }
@@ -410,10 +410,16 @@ export default function AdminCollectionsPage() {
     try {
       let finalAvatarUrl = previewAvatar;
       // If it is a custom uploaded image, crop it with the zoom!
-      if (previewAvatar && previewAvatar.startsWith("data:image/") && !previewAvatar.includes("svg+xml")) {
+      if (
+        previewAvatar &&
+        previewAvatar.startsWith("data:image/") &&
+        !previewAvatar.includes("svg+xml")
+      ) {
         const img = new Image();
         img.src = previewAvatar;
-        await new Promise((resolve) => { img.onload = resolve; });
+        await new Promise((resolve) => {
+          img.onload = resolve;
+        });
         const canvas = document.createElement("canvas");
         canvas.width = 150;
         canvas.height = 150;
@@ -525,24 +531,22 @@ export default function AdminCollectionsPage() {
     window.history.pushState(null, "", pathname);
   };
 
-  const filteredCollections = collections.filter((c) =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredCollections = collections.filter(
+    (c) =>
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.description?.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const activeCollection = collections.find((c) => c.id === activeCollectionId);
 
   return (
-    <div className="w-full h-full flex flex-col min-h-0 space-y-4 text-foreground">
-
+    <div className="text-foreground flex h-full min-h-0 w-full flex-col space-y-4">
       {/* A. Global Top Header Bar (Outside the right-side chat container) */}
-      <div className="flex flex-row items-center justify-between gap-3 p-4 rounded-[1.6rem] border border-foreground/10 dark:border-white/5 bg-background/50 backdrop-blur-lg shadow-none relative overflow-visible shrink-0">
-
+      <div className="border-foreground/10 bg-background/50 relative flex shrink-0 flex-row items-center justify-between gap-3 overflow-visible rounded-[1.6rem] border p-4 shadow-none backdrop-blur-lg dark:border-white/5">
         {/* Left Side: Info context & Navigation */}
-        <div className="flex items-center gap-3 min-w-0">
-
+        <div className="flex min-w-0 items-center gap-3">
           {/* Back/Menu Navigation Button Container */}
-          <div className="h-10 w-10 flex-shrink-0 flex items-center justify-center relative">
+          <div className="relative flex h-10 w-10 flex-shrink-0 items-center justify-center">
             <AnimatePresence mode="wait">
               {activeCollection ? (
                 <motion.button
@@ -552,7 +556,7 @@ export default function AdminCollectionsPage() {
                   exit={{ opacity: 0, scale: 0.9, rotate: -12 }}
                   transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                   onClick={handleBackToStandby}
-                  className="ui-tooltip ui-tooltip-start h-10 w-10 rounded-xl border border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground flex items-center justify-center transition-all cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+                  className="ui-tooltip ui-tooltip-start border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-all hover:scale-[1.02] active:scale-95"
                   data-tooltip="Back to Workspace Home"
                 >
                   <ChevronLeft size={18} />
@@ -565,7 +569,7 @@ export default function AdminCollectionsPage() {
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                   onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                  className="ui-tooltip ui-tooltip-start h-10 w-10 rounded-xl border border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground flex items-center justify-center transition-all cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+                  className="ui-tooltip ui-tooltip-start border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-all hover:scale-[1.02] active:scale-95"
                   data-tooltip={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
                 >
                   {isSidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
@@ -575,17 +579,21 @@ export default function AdminCollectionsPage() {
           </div>
 
           {/* AverQel Folder Logo Box or Partner Avatar */}
-          <div className="h-11 w-11 rounded-2xl overflow-hidden flex items-center justify-center flex-shrink-0 border border-amber-500/20 bg-amber-500/10">
+          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-500/20 bg-amber-500/10">
             {activeCollection?.other_member_avatar ? (
-              <img src={activeCollection.other_member_avatar} alt="Partner" className="h-full w-full object-cover" />
+              <img
+                src={activeCollection.other_member_avatar}
+                alt="Partner"
+                className="h-full w-full object-cover"
+              />
             ) : (
-              <div className="text-amber-500 flex items-center justify-center h-full w-full">
+              <div className="flex h-full w-full items-center justify-center text-amber-500">
                 <FolderKanban size={17} />
               </div>
             )}
           </div>
 
-          <div className="min-w-0 h-10 flex flex-col justify-center">
+          <div className="flex h-10 min-w-0 flex-col justify-center">
             <AnimatePresence mode="wait">
               {activeCollection ? (
                 <motion.div
@@ -596,10 +604,12 @@ export default function AdminCollectionsPage() {
                   transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest leading-none">Active Bridge</span>
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[10px] leading-none font-bold tracking-widest text-amber-500 uppercase">
+                      Active Bridge
+                    </span>
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
                   </div>
-                  <h1 className="text-sm sm:text-lg font-black tracking-tight mt-0.5 truncate max-w-[8rem] sm:max-w-none text-foreground leading-tight">
+                  <h1 className="text-foreground mt-0.5 max-w-[8rem] truncate text-sm leading-tight font-black tracking-tight sm:max-w-none sm:text-lg">
                     {activeCollection.name}
                   </h1>
                 </motion.div>
@@ -611,8 +621,12 @@ export default function AdminCollectionsPage() {
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 >
-                  <span className="text-[10px] text-slate-550 dark:text-slate-500 font-bold uppercase tracking-widest leading-none">AverQel Connect</span>
-                  <h1 className="text-sm sm:text-lg font-black tracking-tight mt-0.5 text-foreground leading-tight">Document Bridge Control</h1>
+                  <span className="text-slate-550 text-[10px] leading-none font-bold tracking-widest uppercase dark:text-slate-500">
+                    AverQel Connect
+                  </span>
+                  <h1 className="text-foreground mt-0.5 text-sm leading-tight font-black tracking-tight sm:text-lg">
+                    Document Bridge Control
+                  </h1>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -620,11 +634,11 @@ export default function AdminCollectionsPage() {
         </div>
 
         {/* Right Side: Shared Documents & Bridge Members buttons placed outside the chat area */}
-        <div className="flex items-center gap-2 flex-shrink-0 justify-end min-h-[40px]">
+        <div className="flex min-h-[40px] flex-shrink-0 items-center justify-end gap-2">
           {/* Permanent Profile Settings Button */}
           <button
             onClick={() => setShowProfileSettings(true)}
-            className="ui-tooltip h-10 w-10 border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 rounded-xl flex items-center justify-center active:scale-95 transition-all cursor-pointer shrink-0 overflow-hidden"
+            className="ui-tooltip border-foreground/10 bg-foreground/5 hover:bg-foreground/10 flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border transition-all active:scale-95"
             data-tooltip="Profile Settings"
           >
             {userProfile?.avatar ? (
@@ -648,7 +662,7 @@ export default function AdminCollectionsPage() {
                 <button
                   onClick={() => setShowCreate(true)}
                   aria-label="+ New Collection"
-                  className="ui-tooltip h-10 w-10 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center justify-center active:scale-95 transition-all cursor-pointer border border-emerald-500/20 shrink-0"
+                  className="ui-tooltip flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-600 text-white transition-all hover:bg-emerald-500 active:scale-95"
                   data-tooltip="Start New Connection"
                 >
                   <Plus size={18} />
@@ -657,9 +671,9 @@ export default function AdminCollectionsPage() {
                 {/* Document Drawer Toggle Button */}
                 <button
                   onClick={() => setActiveDrawer(activeDrawer === "documents" ? null : "documents")}
-                  className={`ui-tooltip ui-tooltip-end flex items-center gap-2 p-2.5 sm:px-4 sm:py-2.5 rounded-xl border text-xs font-bold uppercase tracking-widest cursor-pointer transition-all hover:scale-[1.02] active:scale-95 ${
+                  className={`ui-tooltip ui-tooltip-end flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 text-xs font-bold tracking-widest uppercase transition-all hover:scale-[1.02] active:scale-95 sm:px-4 sm:py-2.5 ${
                     activeDrawer === "documents"
-                      ? "bg-amber-500 border-amber-500 text-slate-950 font-black"
+                      ? "border-amber-500 bg-amber-500 font-black text-slate-950"
                       : "border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground"
                   }`}
                   data-tooltip="Shared Documents"
@@ -671,9 +685,9 @@ export default function AdminCollectionsPage() {
                 {/* Members Drawer Toggle Button */}
                 <button
                   onClick={() => setActiveDrawer(activeDrawer === "members" ? null : "members")}
-                  className={`ui-tooltip ui-tooltip-end flex items-center gap-2 p-2.5 sm:px-4 sm:py-2.5 rounded-xl border text-xs font-bold uppercase tracking-widest cursor-pointer transition-all hover:scale-[1.02] active:scale-95 ${
+                  className={`ui-tooltip ui-tooltip-end flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 text-xs font-bold tracking-widest uppercase transition-all hover:scale-[1.02] active:scale-95 sm:px-4 sm:py-2.5 ${
                     activeDrawer === "members"
-                      ? "bg-amber-500 border-amber-500 text-slate-950 font-black"
+                      ? "border-amber-500 bg-amber-500 font-black text-slate-950"
                       : "border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground"
                   }`}
                   data-tooltip="Bridge Members"
@@ -686,9 +700,17 @@ export default function AdminCollectionsPage() {
                 <button
                   onClick={() => void handleLeaveOrDelete(activeCollection)}
                   disabled={mutatingId === activeCollection.id}
-                  aria-label={activeCollection.requester_access_role === "owner" ? "Delete Collection" : "Leave Collection"}
-                  className="ui-tooltip ui-tooltip-end h-10 w-10 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-500 flex items-center justify-center transition-all hover:scale-[1.02] active:scale-95 cursor-pointer flex-shrink-0"
-                  data-tooltip={activeCollection.requester_access_role === "owner" ? "Delete Collection" : "Leave Collection"}
+                  aria-label={
+                    activeCollection.requester_access_role === "owner"
+                      ? "Delete Collection"
+                      : "Leave Collection"
+                  }
+                  className="ui-tooltip ui-tooltip-end flex h-10 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-xl border border-red-500/20 bg-red-500/5 text-red-500 transition-all hover:scale-[1.02] hover:bg-red-500/10 active:scale-95"
+                  data-tooltip={
+                    activeCollection.requester_access_role === "owner"
+                      ? "Delete Collection"
+                      : "Leave Collection"
+                  }
                 >
                   <Trash2 size={15} />
                 </button>
@@ -702,7 +724,7 @@ export default function AdminCollectionsPage() {
                 transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 onClick={() => setShowCreate(true)}
                 aria-label="+ New Collection"
-                className="ui-tooltip ui-tooltip-end h-10 w-10 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center justify-center active:scale-95 transition-all cursor-pointer border border-emerald-500/20 shrink-0"
+                className="ui-tooltip ui-tooltip-end flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-600 text-white transition-all hover:bg-emerald-500 active:scale-95"
                 data-tooltip="Start New Connection"
               >
                 <Plus size={18} />
@@ -713,27 +735,27 @@ export default function AdminCollectionsPage() {
       </div>
 
       {/* B. App Shell Workspace Container */}
-      <div className="flex flex-1 min-h-0 w-full overflow-hidden rounded-[1.8rem] border border-foreground/10 dark:border-white/5 bg-background/30 backdrop-blur-md shadow-none">
-
+      <div className="border-foreground/10 bg-background/30 flex min-h-0 w-full flex-1 overflow-hidden rounded-[1.8rem] border shadow-none backdrop-blur-md dark:border-white/5">
         {/* Sidebar (Left Column) */}
         <div
-          className={`h-full flex-shrink-0 flex-col border-r border-foreground/10 dark:border-white/5 bg-foreground/[0.015] dark:bg-slate-950/20 transition-all duration-300 ${
+          className={`border-foreground/10 bg-foreground/[0.015] h-full flex-shrink-0 flex-col border-r transition-all duration-300 dark:border-white/5 dark:bg-slate-950/20 ${
             isSidebarCollapsed ? "w-0 overflow-hidden border-r-0" : "w-full md:w-[24rem]"
           } ${activeCollectionId ? "hidden md:flex" : "flex"}`}
         >
           {/* Sidebar Top: User search and connections */}
-          <div className="p-4 border-b border-foreground/10 dark:border-white/5 flex flex-col gap-3.5 bg-foreground/[0.01]">
-
+          <div className="border-foreground/10 bg-foreground/[0.01] flex flex-col gap-3.5 border-b p-4 dark:border-white/5">
             {/* My Connection ID Area */}
             {myCollectionCode && (
-              <div className="bg-foreground/[0.02] border border-foreground/10 dark:border-white/5 flex items-center justify-between rounded-xl px-3 py-2.5 text-[10px]">
+              <div className="bg-foreground/[0.02] border-foreground/10 flex items-center justify-between rounded-xl border px-3 py-2.5 text-[10px] dark:border-white/5">
                 <div className="flex flex-col">
-                  <span className="text-slate-500 font-bold uppercase tracking-wider">My Code</span>
-                  <span className="font-mono text-foreground font-black tracking-widest mt-0.5">{myCollectionCode}</span>
+                  <span className="font-bold tracking-wider text-slate-500 uppercase">My Code</span>
+                  <span className="text-foreground mt-0.5 font-mono font-black tracking-widest">
+                    {myCollectionCode}
+                  </span>
                 </div>
                 <button
                   onClick={() => void handleCopyCollectionCode(myCollectionCode)}
-                  className="bg-white/[0.04] hover:bg-white/[0.08] text-foreground px-2 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition border border-foreground/10 dark:border-white/5"
+                  className="text-foreground border-foreground/10 flex items-center gap-1.5 rounded-lg border bg-white/[0.04] px-2 py-1.5 font-bold transition hover:bg-white/[0.08] dark:border-white/5"
                 >
                   <Copy size={10} /> Copy
                 </button>
@@ -742,40 +764,46 @@ export default function AdminCollectionsPage() {
 
             {/* Search Input bar */}
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
+              <Search className="absolute top-2.5 left-3 h-3.5 w-3.5 text-slate-500" />
               <input
                 type="text"
                 placeholder="Search chats or documents..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-background/80 border border-foreground/10 dark:border-white/5 rounded-xl pl-9 pr-4 py-2 text-xs text-foreground placeholder-slate-500 outline-none focus:border-amber-500/30 transition"
+                className="bg-background/80 border-foreground/10 text-foreground w-full rounded-xl border py-2 pr-4 pl-9 text-xs placeholder-slate-500 transition outline-none focus:border-amber-500/30 dark:border-white/5"
               />
             </div>
           </div>
 
           {/* Sidebar Chat List Tiles (Scrollable) */}
-          <div className="flex-1 overflow-y-auto divide-y divide-foreground/5 dark:divide-white/5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden p-2 space-y-1.5">
-
+          <div className="divide-foreground/5 flex-1 space-y-1.5 divide-y overflow-y-auto p-2 [scrollbar-width:none] dark:divide-white/5 [&::-webkit-scrollbar]:hidden">
             {/* Inline Pending Invitations Segment */}
             {invitations.length > 0 && (
-              <div className="bg-amber-500/5 rounded-xl p-3 space-y-2 border border-amber-500/10">
-                <span className="text-[9px] text-amber-400 font-bold uppercase tracking-widest block">Pending invites</span>
+              <div className="space-y-2 rounded-xl border border-amber-500/10 bg-amber-500/5 p-3">
+                <span className="block text-[9px] font-bold tracking-widest text-amber-400 uppercase">
+                  Pending invites
+                </span>
                 {invitations.map((inv) => (
-                  <div key={inv.id} className="bg-background/80 p-2.5 rounded-lg border border-foreground/10 dark:border-white/5 flex items-center justify-between gap-3 text-xs">
+                  <div
+                    key={inv.id}
+                    className="bg-background/80 border-foreground/10 flex items-center justify-between gap-3 rounded-lg border p-2.5 text-xs dark:border-white/5"
+                  >
                     <div className="min-w-0">
-                      <p className="font-bold text-foreground truncate">{inv.name}</p>
-                      <p className="text-[9px] text-slate-500 truncate mt-0.5">From: {inv.inviter_user_email || "User"}</p>
+                      <p className="text-foreground truncate font-bold">{inv.name}</p>
+                      <p className="mt-0.5 truncate text-[9px] text-slate-500">
+                        From: {inv.inviter_user_email || "User"}
+                      </p>
                     </div>
-                    <div className="flex gap-1.5 flex-shrink-0">
+                    <div className="flex flex-shrink-0 gap-1.5">
                       <button
                         onClick={() => void handleRespondToInvitation(inv.id, "deny")}
-                        className="h-6 w-6 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 flex items-center justify-center transition border border-red-500/20"
+                        className="flex h-6 w-6 items-center justify-center rounded-md border border-red-500/20 bg-red-500/10 text-red-400 transition hover:bg-red-500/20"
                       >
                         <X size={12} />
                       </button>
                       <button
                         onClick={() => void handleRespondToInvitation(inv.id, "approve")}
-                        className="h-6 w-6 rounded-md bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 flex items-center justify-center transition border border-emerald-500/20"
+                        className="flex h-6 w-6 items-center justify-center rounded-md border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 transition hover:bg-emerald-500/20"
                       >
                         <Check size={12} />
                       </button>
@@ -787,9 +815,11 @@ export default function AdminCollectionsPage() {
 
             {/* Normal Chats styled as premium obsidian glass cards */}
             {loading ? (
-              <div className="p-4 text-xs text-slate-500 animate-pulse text-center">Loading tiles...</div>
+              <div className="animate-pulse p-4 text-center text-xs text-slate-500">
+                Loading tiles...
+              </div>
             ) : filteredCollections.length === 0 ? (
-              <div className="p-8 text-xs text-slate-500 text-center">No active bridges found.</div>
+              <div className="p-8 text-center text-xs text-slate-500">No active bridges found.</div>
             ) : (
               filteredCollections.map((col) => {
                 const isSelected = col.id === activeCollectionId;
@@ -799,20 +829,28 @@ export default function AdminCollectionsPage() {
                   <div
                     key={col.id}
                     onClick={() => handleSelectCollection(col.id)}
-                    className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer rounded-xl transition-all border ${
+                    className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3.5 transition-all ${
                       isSelected
-                        ? "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
-                        : "bg-foreground/[0.01] hover:bg-foreground/[0.03] dark:bg-white/[0.01] dark:hover:bg-white/[0.03] border-foreground/[0.04] dark:border-white/5 hover:border-foreground/10 dark:hover:border-white/10"
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                        : "bg-foreground/[0.01] hover:bg-foreground/[0.03] border-foreground/[0.04] hover:border-foreground/10 dark:border-white/5 dark:bg-white/[0.01] dark:hover:border-white/10 dark:hover:bg-white/[0.03]"
                     }`}
                   >
                     {/* Avatar Tile Icon */}
-                    <div className="h-9 w-9 rounded-xl overflow-hidden shrink-0 flex items-center justify-center border border-foreground/10 dark:border-white/5">
+                    <div className="border-foreground/10 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border dark:border-white/5">
                       {col.other_member_avatar ? (
-                        <img src={col.other_member_avatar} alt="Avatar" className="h-full w-full object-cover" />
+                        <img
+                          src={col.other_member_avatar}
+                          alt="Avatar"
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
-                        <div className={`h-full w-full flex items-center justify-center text-xs font-black tracking-widest ${
-                          isSelected ? "bg-amber-500 text-slate-950" : "bg-foreground/[0.04] dark:bg-slate-900 text-slate-400"
-                        }`}>
+                        <div
+                          className={`flex h-full w-full items-center justify-center text-xs font-black tracking-widest ${
+                            isSelected
+                              ? "bg-amber-500 text-slate-950"
+                              : "bg-foreground/[0.04] text-slate-400 dark:bg-slate-900"
+                          }`}
+                        >
                           {initials}
                         </div>
                       )}
@@ -820,30 +858,39 @@ export default function AdminCollectionsPage() {
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className={`font-bold text-xs truncate ${isSelected ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>{col.name}</span>
+                        <span
+                          className={`truncate text-xs font-bold ${isSelected ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}
+                        >
+                          {col.name}
+                        </span>
                         {col.requester_access_role === "pending" && (
-                          <span className="bg-amber-500/15 text-amber-400 border border-amber-500/25 text-[8px] font-bold uppercase rounded px-1">
+                          <span className="rounded border border-amber-500/25 bg-amber-500/15 px-1 text-[8px] font-bold text-amber-400 uppercase">
                             Pending
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate mt-1">
+                      <p className="mt-1 truncate text-[11px] text-slate-500">
                         {col.description || "No description provided."}
                       </p>
                       <Link
                         href={`${collectionsBasePath}/${col.id}?section=documents`}
                         onClick={(event) => event.stopPropagation()}
-                        className="mt-1 inline-flex text-[9px] font-black uppercase tracking-wider text-amber-500 hover:text-amber-400"
+                        className="mt-1 inline-flex text-[9px] font-black tracking-wider text-amber-500 uppercase hover:text-amber-400"
                       >
                         Manage Collection
                       </Link>
                     </div>
 
-                    <div className="flex flex-col items-end shrink-0 text-[10px] text-slate-500 gap-1.5">
-                      <span>{new Date(col.created_at).toLocaleDateString([], { month: "short", day: "numeric" })}</span>
+                    <div className="flex shrink-0 flex-col items-end gap-1.5 text-[10px] text-slate-500">
+                      <span>
+                        {new Date(col.created_at).toLocaleDateString([], {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
                       <div className="flex items-center gap-1.5">
                         {unreadCounts[col.id] > 0 && (
-                          <span className="bg-emerald-600 text-white font-extrabold text-[8px] h-4.5 min-w-[1.125rem] px-1 rounded-full flex items-center justify-center animate-pulse">
+                          <span className="flex h-4.5 min-w-[1.125rem] animate-pulse items-center justify-center rounded-full bg-emerald-600 px-1 text-[8px] font-extrabold text-white">
                             {unreadCounts[col.id]}
                           </span>
                         )}
@@ -854,12 +901,16 @@ export default function AdminCollectionsPage() {
                       </div>
                       <button
                         type="button"
-                        aria-label={col.requester_access_role === "owner" ? "Delete Collection" : "Leave Collection"}
+                        aria-label={
+                          col.requester_access_role === "owner"
+                            ? "Delete Collection"
+                            : "Leave Collection"
+                        }
                         onClick={(event) => {
                           event.stopPropagation();
                           void handleLeaveOrDelete(col);
                         }}
-                        className="text-[9px] font-black uppercase tracking-wider text-red-400 hover:text-red-300"
+                        className="text-[9px] font-black tracking-wider text-red-400 uppercase hover:text-red-300"
                       >
                         {col.requester_access_role === "owner" ? "Delete" : "Leave"}
                       </button>
@@ -872,13 +923,11 @@ export default function AdminCollectionsPage() {
         </div>
 
         {/* Active Chat Pane (Right Column) */}
-        <div className={`flex-1 h-full relative overflow-hidden bg-foreground/[0.005] ${
-          !activeCollectionId
-            ? isSidebarCollapsed
-              ? "flex"
-              : "hidden md:flex"
-            : "flex"
-        }`}>
+        <div
+          className={`bg-foreground/[0.005] relative h-full flex-1 overflow-hidden ${
+            !activeCollectionId ? (isSidebarCollapsed ? "flex" : "hidden md:flex") : "flex"
+          }`}
+        >
           <AnimatePresence mode="wait">
             {activeCollectionId ? (
               <motion.div
@@ -887,7 +936,7 @@ export default function AdminCollectionsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -12 }}
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full h-full flex flex-col min-h-0 bg-transparent relative overflow-hidden"
+                className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent"
               >
                 <CollectionDetailClient
                   key={activeCollectionId}
@@ -908,56 +957,69 @@ export default function AdminCollectionsPage() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-slate-950/[0.01] relative overflow-hidden select-none"
+                className="relative flex flex-1 flex-col items-center justify-center overflow-hidden bg-slate-950/[0.01] p-8 text-center select-none"
               >
                 {/* Giant conversation icon watermark backdrop */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-amber-500/[0.015] pointer-events-none select-none">
+                <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-amber-500/[0.015] select-none">
                   <MessageSquare size={380} className="stroke-[1px]" />
                 </div>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(245,158,11,0.015),transparent_70%)] pointer-events-none" />
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(245,158,11,0.015),transparent_70%)]" />
 
                 <div className="relative z-10 flex flex-col items-center">
-                  <div className="h-16 w-16 bg-amber-500/[0.03] text-amber-500/60 border border-amber-500/10 rounded-[1.4rem] flex items-center justify-center mb-5">
+                  <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-[1.4rem] border border-amber-500/10 bg-amber-500/[0.03] text-amber-500/60">
                     <MessageSquare size={26} />
                   </div>
 
-                  <h3 className="text-sm font-black tracking-widest text-foreground/40 uppercase">AverQel Connect</h3>
+                  <h3 className="text-foreground/40 text-sm font-black tracking-widest uppercase">
+                    AverQel Connect
+                  </h3>
 
-                  <p className="text-[11px] text-slate-500 mt-2.5 max-w-xs leading-relaxed">
-                    Select a bridge channel tile on the left to view shared documents, manage members, and chat in isolated end-to-end synchronized environments.
+                  <p className="mt-2.5 max-w-xs text-[11px] leading-relaxed text-slate-500">
+                    Select a bridge channel tile on the left to view shared documents, manage
+                    members, and chat in isolated end-to-end synchronized environments.
                   </p>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
-
       </div>
 
       {/* New Connection Modal Flow */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-[1.8rem] border border-white/5 p-6 space-y-4 shadow-none bg-slate-900 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-md space-y-4 rounded-[1.8rem] border border-white/5 bg-slate-900 p-6 shadow-none">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-emerald-500" />
             <div className="flex items-center justify-between border-b border-white/5 pb-3">
-              <h2 className="text-xs font-black tracking-widest uppercase text-slate-300">New Connection Bridge</h2>
-              <button onClick={() => setShowCreate(false)} className="text-slate-500 hover:text-white transition">✕</button>
+              <h2 className="text-xs font-black tracking-widest text-slate-300 uppercase">
+                New Connection Bridge
+              </h2>
+              <button
+                onClick={() => setShowCreate(false)}
+                className="text-slate-500 transition hover:text-white"
+              >
+                ✕
+              </button>
             </div>
 
             {/* Modal Tabs */}
-            <div className="flex bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+            <div className="flex rounded-xl border border-slate-800 bg-slate-950/60 p-1">
               <button
                 onClick={() => setCreateMode("direct")}
-                className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${
-                  createMode === "direct" ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-slate-200"
+                className={`flex-1 rounded-lg py-2 text-xs font-bold tracking-wider uppercase transition ${
+                  createMode === "direct"
+                    ? "bg-amber-500 font-black text-slate-950"
+                    : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 1:1 Connection
               </button>
               <button
                 onClick={() => setCreateMode("group")}
-                className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${
-                  createMode === "group" ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-slate-200"
+                className={`flex-1 rounded-lg py-2 text-xs font-bold tracking-wider uppercase transition ${
+                  createMode === "group"
+                    ? "bg-amber-500 font-black text-slate-950"
+                    : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 Group Chat
@@ -966,39 +1028,44 @@ export default function AdminCollectionsPage() {
 
             {createMode === "direct" ? (
               <div className="space-y-4">
-                <p className="text-[11px] text-slate-500 leading-normal">
-                  Enter another user&apos;s permanent **Collection ID** below to establish a direct 1:1 chat bridge. Once they approve, the connection becomes active.
+                <p className="text-[11px] leading-normal text-slate-500">
+                  Enter another user&apos;s permanent **Collection ID** below to establish a direct
+                  1:1 chat bridge. Once they approve, the connection becomes active.
                 </p>
-                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Connection Name (Optional)</label>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                    Connection Name (Optional)
+                  </label>
                   <input
                     type="text"
                     value={directName}
                     onChange={(e) => setDirectName(e.target.value)}
                     placeholder="E.g., Chat with John (defaults to Direct Chat)"
-                    className="w-full bg-slate-950 border border-white/5 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-amber-500/30 transition"
+                    className="w-full rounded-xl border border-white/5 bg-slate-950 px-4 py-3 text-xs text-white transition outline-none focus:border-amber-500/30"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Target Connection ID</label>
+                  <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                    Target Connection ID
+                  </label>
                   <input
                     type="text"
                     value={directCode}
                     onChange={(e) => setDirectCode(e.target.value.toUpperCase())}
                     placeholder="E.g., Z7X9Y2W1"
-                    className="w-full bg-slate-950 border border-white/5 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-amber-500/30 transition"
+                    className="w-full rounded-xl border border-white/5 bg-slate-950 px-4 py-3 text-xs text-white transition outline-none focus:border-amber-500/30"
                   />
                 </div>
                 <div className="flex justify-end gap-2.5 pt-2">
                   <button
                     onClick={() => setShowCreate(false)}
-                    className="bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 px-4 py-2.5 rounded-xl text-xs font-bold transition border border-white/5"
+                    className="rounded-xl border border-white/5 bg-white/[0.04] px-4 py-2.5 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08]"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleCreateDirectChat}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition active:scale-95 border border-emerald-500/20"
+                    className="rounded-xl border border-emerald-500/20 bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-500 active:scale-95"
                   >
                     Send Request
                   </button>
@@ -1006,50 +1073,57 @@ export default function AdminCollectionsPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                <p className="text-[11px] text-slate-500 leading-normal">
-                  Create a shared group bridge room. Input the Group Name, details, and multiple Connection IDs to invite them together.
+                <p className="text-[11px] leading-normal text-slate-500">
+                  Create a shared group bridge room. Input the Group Name, details, and multiple
+                  Connection IDs to invite them together.
                 </p>
                 <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Group Name</label>
+                    <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                      Group Name
+                    </label>
                     <input
                       type="text"
                       value={groupName}
                       onChange={(e) => setGroupName(e.target.value)}
                       placeholder="Collection name (e.g., Dev Team)"
-                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-amber-500/30 transition"
+                      className="w-full rounded-xl border border-white/5 bg-slate-950 px-4 py-3 text-xs text-white transition outline-none focus:border-amber-500/30"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Description (Optional)</label>
+                    <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                      Description (Optional)
+                    </label>
                     <input
                       type="text"
                       value={groupDesc}
                       onChange={(e) => setGroupDesc(e.target.value)}
                       placeholder="Description (e.g., Shared workspace for development docs)"
-                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-amber-500/30 transition"
+                      className="w-full rounded-xl border border-white/5 bg-slate-950 px-4 py-3 text-xs text-white transition outline-none focus:border-amber-500/30"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Invite Connection IDs (Comma Separated)</label>
+                    <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                      Invite Connection IDs (Comma Separated)
+                    </label>
                     <textarea
                       value={groupCodes}
                       onChange={(e) => setGroupCodes(e.target.value)}
                       placeholder="Z7X9Y2W1, X8Y9Z0W1"
-                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-amber-500/30 transition h-20 resize-none"
+                      className="h-20 w-full resize-none rounded-xl border border-white/5 bg-slate-950 px-4 py-3 text-xs text-white transition outline-none focus:border-amber-500/30"
                     />
                   </div>
                 </div>
                 <div className="flex justify-end gap-2.5 pt-2">
                   <button
                     onClick={() => setShowCreate(false)}
-                    className="bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 px-4 py-2.5 rounded-xl text-xs font-bold transition border border-white/5"
+                    className="rounded-xl border border-white/5 bg-white/[0.04] px-4 py-2.5 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08]"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleCreateGroupChat}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition active:scale-95 border border-emerald-500/20"
+                    className="rounded-xl border border-emerald-500/20 bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-500 active:scale-95"
                   >
                     Create Group
                   </button>
@@ -1062,13 +1136,15 @@ export default function AdminCollectionsPage() {
 
       {/* Profile Settings Modal */}
       {showProfileSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl space-y-6">
+        <div className="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md space-y-6 rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-extrabold uppercase tracking-widest text-slate-100">Profile Settings</h3>
+              <h3 className="text-sm font-extrabold tracking-widest text-slate-100 uppercase">
+                Profile Settings
+              </h3>
               <button
                 onClick={() => setShowProfileSettings(false)}
-                className="text-slate-400 hover:text-white transition cursor-pointer"
+                className="cursor-pointer text-slate-400 transition hover:text-white"
               >
                 <X size={18} />
               </button>
@@ -1076,15 +1152,21 @@ export default function AdminCollectionsPage() {
 
             <div className="space-y-4">
               {/* Account Details */}
-              <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl space-y-2 text-xs">
+              <div className="space-y-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">Email Address</span>
-                  <span className="text-slate-200 font-semibold">{userProfile?.email}</span>
+                  <span className="text-[9px] font-bold tracking-wider text-slate-500 uppercase">
+                    Email Address
+                  </span>
+                  <span className="font-semibold text-slate-200">{userProfile?.email}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[9px]">My Connection Code</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-bold tracking-wider text-slate-500 uppercase">
+                    My Connection Code
+                  </span>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-amber-500 font-mono font-bold tracking-wider">{userProfile?.collection_code}</span>
+                    <span className="font-mono font-bold tracking-wider text-amber-500">
+                      {userProfile?.collection_code}
+                    </span>
                     <button
                       onClick={() => {
                         if (userProfile?.collection_code) {
@@ -1092,7 +1174,7 @@ export default function AdminCollectionsPage() {
                           toast.success("Copied connection code!");
                         }
                       }}
-                      className="text-slate-400 hover:text-white transition p-0.5"
+                      className="p-0.5 text-slate-400 transition hover:text-white"
                     >
                       <Copy size={11} />
                     </button>
@@ -1102,19 +1184,19 @@ export default function AdminCollectionsPage() {
 
               {/* Avatar Live Preview */}
               <div className="flex flex-col items-center justify-center space-y-3 pt-2">
-                <div className="relative w-28 h-28 rounded-full overflow-hidden border-2 border-amber-500/50 bg-slate-950 flex items-center justify-center shadow-lg">
+                <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-2 border-amber-500/50 bg-slate-950 shadow-lg">
                   <img
                     src={previewAvatar || DEFAULT_AVATAR_SVG}
                     alt="Preview"
                     style={{ transform: `scale(${zoom})` }}
-                    className="w-full h-full object-cover transition-transform duration-100"
+                    className="h-full w-full object-cover transition-transform duration-100"
                   />
                 </div>
 
                 {/* Crop/Zoom Slider */}
                 {previewAvatar && !previewAvatar.includes("svg+xml") && (
                   <div className="w-full max-w-[200px] space-y-1.5">
-                    <div className="flex justify-between text-[9px] text-slate-500 font-bold uppercase tracking-wider">
+                    <div className="flex justify-between text-[9px] font-bold tracking-wider text-slate-500 uppercase">
                       <span>Adjust Size</span>
                       <span className="text-amber-500">{Math.round(zoom * 100)}%</span>
                     </div>
@@ -1125,7 +1207,7 @@ export default function AdminCollectionsPage() {
                       step="0.05"
                       value={zoom}
                       onChange={(e) => setZoom(parseFloat(e.target.value))}
-                      className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                      className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-800 accent-amber-500"
                     />
                   </div>
                 )}
@@ -1133,8 +1215,10 @@ export default function AdminCollectionsPage() {
 
               {/* Preset Avatar Picker */}
               <div className="space-y-2">
-                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block">Choose Preset Avatar</label>
-                <div className="flex gap-3 justify-center flex-wrap max-w-[280px] mx-auto">
+                <label className="block text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                  Choose Preset Avatar
+                </label>
+                <div className="mx-auto flex max-w-[280px] flex-wrap justify-center gap-3">
                   {[
                     DEFAULT_AVATAR_SVG,
                     `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="bg1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%231e1b4b"/><stop offset="100%" stop-color="%23311042"/></linearGradient><linearGradient id="vis" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="%23f59e0b"/><stop offset="100%" stop-color="%23ea580c"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23bg1)"/><circle cx="50" cy="45" r="22" fill="%23e2e8f0"/><path d="M36 45c0-10 6-18 14-18s14 8 14 18H36z" fill="%23cbd5e1"/><ellipse cx="50" cy="43" rx="16" ry="11" fill="url(%23vis)"/><ellipse cx="46" cy="38" rx="4" ry="2" fill="%23fff" opacity="0.4"/><path d="M28 72c0-8 8-14 22-14s22 6 22 14v10H28V72z" fill="%23e2e8f0"/><rect x="42" y="58" width="16" height="6" rx="2" fill="%2394a3b8"/></svg>`,
@@ -1142,7 +1226,7 @@ export default function AdminCollectionsPage() {
                     `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23ea580c"/><stop offset="100%" stop-color="%23facc15"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23bg3)"/><path d="M50 24L34 44h32L50 24z" fill="%231e1b4b"/><path d="M34 44l16 32 16-32H34z" fill="%232e1065"/><path d="M34 44l-6 10h12l-6-10z" fill="%234438ca"/><path d="M66 44l6 10H60l6-10z" fill="%234438ca"/><path d="M42 38l8 12 8-12H42z" fill="%23facc15"/><circle cx="45" cy="46" r="2" fill="%23fff"/><circle cx="55" cy="46" r="2" fill="%23fff"/></svg>`,
                     `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="bg4" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23b91c1c"/><stop offset="100%" stop-color="%23f97316"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23bg4)"/><path d="M50 20L32 45h36L50 20z" fill="%23fef08a"/><path d="M50 80L32 45h36L50 80z" fill="%23ca8a04"/><path d="M22 45c10-5 20-5 28 0-8 5-18 5-28 0z" fill="%23facc15"/><path d="M78 45c-10-5-20-5-28 0 8 5 18 5 28 0z" fill="%23facc15"/><path d="M46 36l4 9 4-9-4 2-4-2z" fill="%231e293b"/></svg>`,
                     `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="bg5" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%234c1d95"/><stop offset="100%" stop-color="%232563eb"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23bg5)"/><path d="M50 22l24 10v22c0 15-10 27-24 32-14-5-24-17-24-32V32l24-10z" fill="%2310b981"/><path d="M50 28l18 8v16c0 11-8 21-18 25-10-4-18-14-18-25V36l18-8z" fill="%23047857"/><path d="M45 42l4 4 8-8" stroke="%23fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`,
-                    `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="bg6" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="%23ec4899"/><stop offset="100%" stop-color="%238b5cf6"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23bg6)"/><circle cx="50" cy="46" r="24" fill="%23f59e0b"/><path d="M26 46h48v2H26zM26 50h48v2H26zM26 55h48v2H26zM26 61h48v2H26zM26 68h48v2H26z" fill="url(%23bg6)"/><path d="M15 75l10-15h50l10 15H15z" fill="%231e1b4b"/><path d="M20 75L35 60M35 75L45 60M50 75L50 60M65 75L55 60M80 75L65 60" stroke="%2306b6d4" stroke-width="1.5"/></svg>`
+                    `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="bg6" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="%23ec4899"/><stop offset="100%" stop-color="%238b5cf6"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23bg6)"/><circle cx="50" cy="46" r="24" fill="%23f59e0b"/><path d="M26 46h48v2H26zM26 50h48v2H26zM26 55h48v2H26zM26 61h48v2H26zM26 68h48v2H26z" fill="url(%23bg6)"/><path d="M15 75l10-15h50l10 15H15z" fill="%231e1b4b"/><path d="M20 75L35 60M35 75L45 60M50 75L50 60M65 75L55 60M80 75L65 60" stroke="%2306b6d4" stroke-width="1.5"/></svg>`,
                   ].map((preset, idx) => (
                     <button
                       key={idx}
@@ -1150,11 +1234,17 @@ export default function AdminCollectionsPage() {
                         setPreviewAvatar(preset);
                         setZoom(1);
                       }}
-                      className={`w-10 h-10 rounded-full overflow-hidden border-2 transition active:scale-95 ${
-                        previewAvatar === preset ? "border-amber-500 scale-105" : "border-white/5 hover:border-white/20"
+                      className={`h-10 w-10 overflow-hidden rounded-full border-2 transition active:scale-95 ${
+                        previewAvatar === preset
+                          ? "scale-105 border-amber-500"
+                          : "border-white/5 hover:border-white/20"
                       }`}
                     >
-                      <img src={preset} alt="Preset avatar" className="w-full h-full object-cover" />
+                      <img
+                        src={preset}
+                        alt="Preset avatar"
+                        className="h-full w-full object-cover"
+                      />
                     </button>
                   ))}
                 </div>
@@ -1162,12 +1252,16 @@ export default function AdminCollectionsPage() {
 
               {/* Upload Custom DM Photo */}
               <div className="space-y-2">
-                <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block">Upload Personal DM Photo</label>
-                <div className="flex items-center justify-center w-full">
-                  <label className="flex flex-col items-center justify-center w-full h-20 border border-dashed border-white/10 rounded-xl cursor-pointer hover:bg-white/[0.02] hover:border-white/20 transition">
+                <label className="block text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                  Upload Personal DM Photo
+                </label>
+                <div className="flex w-full items-center justify-center">
+                  <label className="flex h-20 w-full cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/10 transition hover:border-white/20 hover:bg-white/[0.02]">
                     <div className="flex flex-col items-center justify-center pt-3 pb-3">
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Choose File</p>
-                      <p className="text-[9px] text-slate-500 mt-1">PNG, JPG or WEBP (Max 2MB)</p>
+                      <p className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                        Choose File
+                      </p>
+                      <p className="mt-1 text-[9px] text-slate-500">PNG, JPG or WEBP (Max 2MB)</p>
                     </div>
                     <input
                       type="file"
@@ -1183,13 +1277,13 @@ export default function AdminCollectionsPage() {
             <div className="flex justify-end gap-2.5 pt-2">
               <button
                 onClick={() => setShowProfileSettings(false)}
-                className="bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 px-4 py-2.5 rounded-xl text-xs font-bold transition border border-white/5 cursor-pointer"
+                className="cursor-pointer rounded-xl border border-white/5 bg-white/[0.04] px-4 py-2.5 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveProfile}
-                className="bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-2.5 rounded-xl text-xs font-black transition active:scale-95 cursor-pointer"
+                className="cursor-pointer rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-black text-slate-950 transition hover:bg-amber-400 active:scale-95"
               >
                 Save Changes
               </button>

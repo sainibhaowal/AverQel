@@ -22,6 +22,7 @@ class ClientProxyRegistry:
     This channel is limited to encrypted chat, memory, and provider persistence
     RPCs. Local filesystem and shell proxying are intentionally unsupported.
     """
+
     def __init__(self):
         self._clients: dict[tuple[str, str], WebSocket] = {}
         self._pending_requests: dict[str, asyncio.Future[Any]] = {}
@@ -43,8 +44,8 @@ class ClientProxyRegistry:
         if previous is not None and previous is not websocket:
             try:
                 await previous.close(code=4002, reason="Replaced by a newer client channel")
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:  # noqa: BLE001, B110 - replacing a stale socket is best effort
+                logger.debug("Previous client proxy close failed", exc_info=True)
         self._clients[key] = websocket
         logger.info("Registered client proxy connection for %s/%s", key[0], key[1])
 
@@ -113,12 +114,9 @@ class ClientProxyRegistry:
 
         try:
             # Send RPC packet
-            await websocket.send_json({
-                "event": "rpc_request",
-                "id": req_id,
-                "method": method,
-                "params": params
-            })
+            await websocket.send_json(
+                {"event": "rpc_request", "id": req_id, "method": method, "params": params}
+            )
 
             # Wait for response from client
             response = await asyncio.wait_for(future, timeout=timeout)
@@ -162,6 +160,7 @@ class ClientProxyRegistry:
             timeout=timeout,
             channel=channel,
         )
+
 
 client_proxy_registry = ClientProxyRegistry()
 

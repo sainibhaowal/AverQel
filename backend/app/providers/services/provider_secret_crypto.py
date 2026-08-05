@@ -58,9 +58,7 @@ class ProviderSecretCrypto:
         try:
             payload = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            raise ProviderSecretCryptoError(
-                "provider secret keyring is not valid JSON"
-            ) from exc
+            raise ProviderSecretCryptoError("provider secret keyring is not valid JSON") from exc
 
         if not isinstance(payload, dict) or not payload:
             raise ProviderSecretCryptoError(
@@ -70,9 +68,7 @@ class ProviderSecretCrypto:
         keyring: dict[str, bytes] = {}
         for kid, encoded_key in payload.items():
             if not isinstance(kid, str) or not kid.strip():
-                raise ProviderSecretCryptoError(
-                    "provider secret key ids must be non-empty strings"
-                )
+                raise ProviderSecretCryptoError("provider secret key ids must be non-empty strings")
             if not isinstance(encoded_key, str) or not encoded_key.strip():
                 raise ProviderSecretCryptoError(
                     "provider secret keys must be non-empty base64 strings"
@@ -99,16 +95,12 @@ class ProviderSecretCrypto:
             plaintext_bytes = plaintext
 
         if not plaintext_bytes:
-            raise ProviderSecretCryptoError(
-                "provider secret plaintext must not be empty"
-            )
+            raise ProviderSecretCryptoError("provider secret plaintext must not be empty")
 
         if self._backend == "aws_kms":
             key_id = self.settings.provider_secret_aws_kms_key_id
             if not key_id or self._kms_client is None:
-                raise ProviderSecretCryptoError(
-                    "aws kms provider secret backend is not configured"
-                )
+                raise ProviderSecretCryptoError("aws kms provider secret backend is not configured")
             try:
                 response = self._kms_client.encrypt(
                     KeyId=key_id,
@@ -121,9 +113,7 @@ class ProviderSecretCrypto:
                 ) from exc
             ciphertext = response.get("CiphertextBlob")
             if not isinstance(ciphertext, bytes | bytearray):
-                raise ProviderSecretCryptoError(
-                    "aws kms did not return a ciphertext blob"
-                )
+                raise ProviderSecretCryptoError("aws kms did not return a ciphertext blob")
             return EncryptedProviderSecret(
                 ciphertext=bytes(ciphertext),
                 nonce=b"",
@@ -131,21 +121,15 @@ class ProviderSecretCrypto:
             )
 
         if not self._active_kid:
-            raise ProviderSecretCryptoError(
-                "no active provider secret key id configured"
-            )
+            raise ProviderSecretCryptoError("no active provider secret key id configured")
         key = self._keyring.get(self._active_kid)
         if key is None:
-            raise ProviderSecretCryptoError(
-                "active provider secret key id is not in the keyring"
-            )
+            raise ProviderSecretCryptoError("active provider secret key id is not in the keyring")
 
         cipher = AESGCM(key)
         nonce = os.urandom(12)
         ciphertext = cipher.encrypt(nonce, plaintext_bytes, aad)
-        return EncryptedProviderSecret(
-            ciphertext=ciphertext, nonce=nonce, kid=self._active_kid
-        )
+        return EncryptedProviderSecret(ciphertext=ciphertext, nonce=nonce, kid=self._active_kid)
 
     def decrypt(
         self,
@@ -157,9 +141,7 @@ class ProviderSecretCrypto:
     ) -> bytes:
         if self._backend == "aws_kms":
             if self._kms_client is None:
-                raise ProviderSecretCryptoError(
-                    "aws kms provider secret backend is not configured"
-                )
+                raise ProviderSecretCryptoError("aws kms provider secret backend is not configured")
             try:
                 response = self._kms_client.decrypt(
                     CiphertextBlob=ciphertext,
@@ -177,13 +159,9 @@ class ProviderSecretCrypto:
 
         key = self._keyring.get(kid)
         if key is None:
-            raise ProviderSecretCryptoError(
-                "secret key id is not available for decryption"
-            )
+            raise ProviderSecretCryptoError("secret key id is not available for decryption")
         try:
             cipher = AESGCM(key)
             return cipher.decrypt(nonce, ciphertext, aad)
         except Exception as exc:  # pragma: no cover - defensive
-            raise ProviderSecretCryptoError(
-                "provider secret decryption failed"
-            ) from exc
+            raise ProviderSecretCryptoError("provider secret decryption failed") from exc

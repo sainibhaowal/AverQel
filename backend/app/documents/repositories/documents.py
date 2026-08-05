@@ -27,9 +27,7 @@ class DocumentsRepository(BaseRepository):
             self.db.flush()
         return document
 
-    def get_by_id(
-        self, *, tenant_id: uuid.UUID, document_id: uuid.UUID
-    ) -> Document | None:
+    def get_by_id(self, *, tenant_id: uuid.UUID, document_id: uuid.UUID) -> Document | None:
         self.apply_tenant_scope(tenant_id)
         query = select(Document).where(
             Document.tenant_id == tenant_id,
@@ -57,9 +55,7 @@ class DocumentsRepository(BaseRepository):
             return None
         return self.get_by_id(tenant_id=tenant_id, document_id=document_id)
 
-    def set_status(
-        self, *, tenant_id: uuid.UUID, document: Document, status: str
-    ) -> None:
+    def set_status(self, *, tenant_id: uuid.UUID, document: Document, status: str) -> None:
         self.apply_tenant_scope(tenant_id)
         with observe_db_query("documents.set_status"):
             document.status = status
@@ -291,9 +287,7 @@ class DocumentsRepository(BaseRepository):
 
         root = target
         while root.parent_document_id:
-            parent = self.get_by_id(
-                tenant_id=tenant_id, document_id=root.parent_document_id
-            )
+            parent = self.get_by_id(tenant_id=tenant_id, document_id=root.parent_document_id)
             if not parent:
                 break
             root = parent
@@ -401,9 +395,7 @@ class DocumentsRepository(BaseRepository):
         with observe_db_query("documents.list_by_ids_global"):
             return list(self.db.execute(query).scalars().all())
 
-    def soft_delete_batch(
-        self, *, tenant_id: uuid.UUID, document_ids: list[uuid.UUID]
-    ) -> None:
+    def soft_delete_batch(self, *, tenant_id: uuid.UUID, document_ids: list[uuid.UUID]) -> None:
         self.apply_tenant_scope(tenant_id)
         if not document_ids:
             return

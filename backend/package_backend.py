@@ -7,9 +7,7 @@ import PyInstaller.__main__
 
 def get_target_triple() -> str | None:
     try:
-        output = subprocess.check_output(
-            ["rustc", "-vV"], stderr=subprocess.STDOUT
-        ).decode()
+        output = subprocess.check_output(["rustc", "-vV"], stderr=subprocess.STDOUT).decode()
         for line in output.splitlines():
             if line.startswith("host:"):
                 return line.split(":")[1].strip()

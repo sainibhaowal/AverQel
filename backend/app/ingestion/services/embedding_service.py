@@ -96,8 +96,7 @@ class EmbeddingService:
                 )
             except TypeError as exc:
                 if not any(
-                    token in str(exc)
-                    for token in ("tenant_id", "workspace_id", "actor_user_id")
+                    token in str(exc) for token in ("tenant_id", "workspace_id", "actor_user_id")
                 ):
                     raise
                 # Preserve compatibility with older test doubles patched against
@@ -296,9 +295,9 @@ class EmbeddingService:
             last_message = "embedding provider request failed"
             last_non_retryable = False
             for candidate in selection_candidates:
-                provider = ProviderRegistry(
-                    self.settings
-                ).get_embedding_provider_from_selection(candidate)
+                provider = ProviderRegistry(self.settings).get_embedding_provider_from_selection(
+                    candidate
+                )
                 try:
                     response = provider.embed_many(
                         EmbeddingRequest(
@@ -329,8 +328,7 @@ class EmbeddingService:
                         model=candidate.model_name,
                         provider_config_id=candidate.provider_config_id,
                         source=candidate.source,
-                        fallback_used=candidate.source
-                        in {"workspace_fallback", "tenant_fallback"},
+                        fallback_used=candidate.source in {"workspace_fallback", "tenant_fallback"},
                     )
                     return vectors
                 except RuntimeError as exc:

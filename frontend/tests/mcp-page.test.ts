@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildMarketplaceQuery } from "../app/dashboard/mcp/page";
+import { buildMarketplaceQuery } from "../lib/mcp-api";
 import { safeExternalUrl } from "../lib/mcp-api";
 
 describe("buildMarketplaceQuery", () => {
@@ -33,17 +33,21 @@ describe("buildMarketplaceQuery", () => {
   });
 
   it("serializes dynamic auth, trust, and sort filters", () => {
-    expect(buildMarketplaceQuery({
-      q: "",
-      category: "Productivity",
-      transport: "streamable_http",
-      official: null,
-      verified: null,
-      authType: "oauth",
-      trustStatus: "approved",
-      sort: "popular",
-      page: 2,
-    })).toBe("/mcp/marketplace?category=Productivity&transport=streamable_http&auth_type=oauth&trust_status=approved&sort=popular&page=2");
+    expect(
+      buildMarketplaceQuery({
+        q: "",
+        category: "Productivity",
+        transport: "streamable_http",
+        official: null,
+        verified: null,
+        authType: "oauth",
+        trustStatus: "approved",
+        sort: "popular",
+        page: 2,
+      }),
+    ).toBe(
+      "/mcp/marketplace?category=Productivity&transport=streamable_http&auth_type=oauth&trust_status=approved&sort=popular&page=2",
+    );
   });
 });
 

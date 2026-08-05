@@ -64,10 +64,7 @@ def resolve_verified_context_window(
 ) -> ContextWindowResolution:
     normalized_model = _normalize_context_key(model_name)
     normalized_provider = _normalize_context_key(provider_type or "")
-    if (
-        normalized_provider
-        and normalized_provider not in _VERIFIED_CONTEXT_WINDOW_PROVIDER_TYPES
-    ):
+    if normalized_provider and normalized_provider not in _VERIFIED_CONTEXT_WINDOW_PROVIDER_TYPES:
         return ContextWindowResolution(None, None)
 
     for predicate, limit, source in _VERIFIED_CONTEXT_WINDOW_RULES:
@@ -91,6 +88,7 @@ _VERIFIED_CONTEXT_WINDOW_PROVIDER_TYPES = {
     "opencodezen",
     "openai",
     "openaicompatible",
+    "openrouter",
     "perplexity",
     "together",
     "vllm",
@@ -103,14 +101,12 @@ _VERIFIED_CONTEXT_WINDOW_RULES: tuple[tuple[Callable[[str], bool], int, str], ..
         "official_docs:minimax",
     ),
     (
-        lambda model: model.startswith("nemotron3super")
-        or model.startswith("nemotron4"),
+        lambda model: model.startswith("nemotron3super") or model.startswith("nemotron4"),
         1_048_576,
         "official_docs:nvidia",
     ),
     (
-        lambda model: model.startswith("qwen3coder480b")
-        or model.startswith("qwen25coder"),
+        lambda model: model.startswith("qwen3coder480b") or model.startswith("qwen25coder"),
         256_000,
         "official_docs:qwen",
     ),
@@ -125,8 +121,7 @@ _VERIFIED_CONTEXT_WINDOW_RULES: tuple[tuple[Callable[[str], bool], int, str], ..
         "official_docs:deepseek",
     ),
     (
-        lambda model: model.startswith("deepseekv25")
-        or model.startswith("deepseekcoder"),
+        lambda model: model.startswith("deepseekv25") or model.startswith("deepseekcoder"),
         128_000,
         "official_docs:deepseek",
     ),
@@ -202,9 +197,7 @@ _VERIFIED_CONTEXT_WINDOW_RULES: tuple[tuple[Callable[[str], bool], int, str], ..
         "official_docs:openai",
     ),
     (
-        lambda model: model.startswith("o1")
-        or model.startswith("o3")
-        or model.startswith("o4"),
+        lambda model: model.startswith("o1") or model.startswith("o3") or model.startswith("o4"),
         200_000,
         "official_docs:openai",
     ),
@@ -221,8 +214,7 @@ _VERIFIED_CONTEXT_WINDOW_RULES: tuple[tuple[Callable[[str], bool], int, str], ..
         "official_docs:meta",
     ),
     (
-        lambda model: model.startswith("mistrallarge")
-        or model.startswith("mistralreasoning"),
+        lambda model: model.startswith("mistrallarge") or model.startswith("mistralreasoning"),
         128_000,
         "official_docs:mistral",
     ),

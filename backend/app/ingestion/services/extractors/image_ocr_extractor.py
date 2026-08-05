@@ -32,9 +32,7 @@ class ImageOcrExtractor(BaseExtractor):
         }
     )
 
-    def __init__(
-        self, settings: Settings, *, ocr_service: OcrClient | None = None
-    ) -> None:
+    def __init__(self, settings: Settings, *, ocr_service: OcrClient | None = None) -> None:
         self.settings = settings
         self.ocr_service = ocr_service or OcrService(settings)
 

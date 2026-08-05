@@ -16,4 +16,3 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_constraint("uq_mcp_events_server_sequence", "mcp_events", type_="unique")
-

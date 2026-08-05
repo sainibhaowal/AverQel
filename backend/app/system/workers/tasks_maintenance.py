@@ -125,9 +125,7 @@ def retention_cleanup() -> dict[str, int]:
         }
 
     except Exception:  # noqa: BLE001
-        MAINTENANCE_JOB_EVENTS_TOTAL.labels(
-            job="retention_cleanup", status="error"
-        ).inc()
+        MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="retention_cleanup", status="error").inc()
         logger.exception("Maintenance retention cleanup failed.")
         raise
 
@@ -144,9 +142,7 @@ def retention_cleanup() -> dict[str, int]:
             try:
                 session.rollback()
             except Exception:  # noqa: BLE001
-                logger.debug(
-                    "Maintenance rollback after role reset failed.", exc_info=True
-                )
+                logger.debug("Maintenance rollback after role reset failed.", exc_info=True)
 
         session.close()
 
@@ -164,15 +160,11 @@ def process_data_deletion(self: Task, deletion_id: str, tenant_id: str) -> str:
             deletion_id=uuid.UUID(deletion_id),
             tenant_id=uuid.UUID(tenant_id),
         )
-        MAINTENANCE_JOB_EVENTS_TOTAL.labels(
-            job="process_data_deletion", status="ok"
-        ).inc()
+        MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="process_data_deletion", status="ok").inc()
         return "ok"
 
     except Exception:  # noqa: BLE001
-        MAINTENANCE_JOB_EVENTS_TOTAL.labels(
-            job="process_data_deletion", status="error"
-        ).inc()
+        MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="process_data_deletion", status="error").inc()
         logger.exception(
             "Maintenance data deletion task failed.",
             extra={

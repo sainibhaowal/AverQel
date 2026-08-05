@@ -140,13 +140,9 @@ class IngestionService:
             {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
         ),
         ".pptx": frozenset(
-            {
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            }
+            {"application/vnd.openxmlformats-officedocument.presentationml.presentation"}
         ),
-        ".xlsx": frozenset(
-            {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
-        ),
+        ".xlsx": frozenset({"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
     }
     _LEGACY_OFFICE_EXTENSIONS = frozenset({".doc", ".ppt", ".xls"})
     _ZIP_MIME_TYPES = frozenset(
@@ -211,9 +207,7 @@ class IngestionService:
         payload: bytes,
         connector_id: uuid.UUID | None = None,
     ) -> UploadResult:
-        self._validate_upload(
-            filename=filename, content_type=content_type, payload=payload
-        )
+        self._validate_upload(filename=filename, content_type=content_type, payload=payload)
         payload_sha256 = hashlib.sha256(payload).hexdigest()
         request_fingerprint = self.idempotency.compute_fingerprint(
             payload_sha256=payload_sha256,
@@ -230,9 +224,7 @@ class IngestionService:
             return UploadResult(
                 document_id=uuid.UUID(str(replay.response_body["document_id"])),
                 status=str(replay.response_body["status"]),
-                ingestion_job_id=uuid.UUID(
-                    str(replay.response_body["ingestion_job_id"])
-                ),
+                ingestion_job_id=uuid.UUID(str(replay.response_body["ingestion_job_id"])),
             )
 
         # Content Deduplication
@@ -382,12 +374,8 @@ class IngestionService:
         )
 
         self.db.commit()
-        self._enqueue_ingestion(
-            job_id=job_id, tenant_id=auth.tenant_id, queue=queue_name
-        )
-        return UploadResult(
-            document_id=document_id, status="queued", ingestion_job_id=job_id
-        )
+        self._enqueue_ingestion(job_id=job_id, tenant_id=auth.tenant_id, queue=queue_name)
+        return UploadResult(document_id=document_id, status="queued", ingestion_job_id=job_id)
 
     def get_document(
         self,
@@ -458,19 +446,13 @@ class IngestionService:
             extraction_ocr_used=document.extraction_ocr_used,
             extraction_vision_used=document.extraction_vision_used,
             extraction_warnings=list(document.extraction_warnings or []),
-            extraction_confidence_band=confidence_band(
-                document.extraction_coverage_score
-            ),
+            extraction_confidence_band=confidence_band(document.extraction_coverage_score),
             embedding_provider=(
                 embedding_summary.provider if embedding_summary is not None else None
             ),
-            embedding_model=(
-                embedding_summary.model if embedding_summary is not None else None
-            ),
+            embedding_model=(embedding_summary.model if embedding_summary is not None else None),
             embedded_chunk_count=(
-                embedding_summary.embedded_chunk_count
-                if embedding_summary is not None
-                else 0
+                embedding_summary.embedded_chunk_count if embedding_summary is not None else 0
             ),
             active_stage=active_stage,
             stage_progress=self._compute_stage_progress(
@@ -542,9 +524,9 @@ class IngestionService:
                     active_stage=active_stage,
                     overall_progress=published_progress,
                 ),
-                "updated_at": document.updated_at.isoformat()
-                if document.updated_at is not None
-                else None,
+                "updated_at": (
+                    document.updated_at.isoformat() if document.updated_at is not None else None
+                ),
             }
         )
         try:
@@ -561,9 +543,7 @@ class IngestionService:
         if job is None:
             logger.warning("ingestion job not found", extra={"job_id": str(job_id)})
             return
-        document = self.documents.get_by_id(
-            tenant_id=tenant_id, document_id=job.document_id
-        )
+        document = self.documents.get_by_id(tenant_id=tenant_id, document_id=job.document_id)
         if document is None:
             self.jobs.set_status(
                 tenant_id=tenant_id,
@@ -575,9 +555,7 @@ class IngestionService:
             self.db.commit()
             return
 
-        latest_job = self.jobs.get_by_document_id(
-            tenant_id=tenant_id, document_id=document.id
-        )
+        latest_job = self.jobs.get_by_document_id(tenant_id=tenant_id, document_id=document.id)
         if latest_job is not None and latest_job.id != job.id:
             self.jobs.set_status(
                 tenant_id=tenant_id,
@@ -616,9 +594,7 @@ class IngestionService:
             WORKER_STAGE_DURATION_SECONDS.labels(stage="downloading").observe(
                 time.perf_counter() - stage_start
             )
-            WORKER_JOB_TRANSITIONS_TOTAL.labels(
-                stage="downloading", status="success"
-            ).inc()
+            WORKER_JOB_TRANSITIONS_TOTAL.labels(stage="downloading", status="success").inc()
 
             stage_start = time.perf_counter()
             self.jobs.set_status(tenant_id=tenant_id, job=job, status="parsing")
@@ -660,9 +636,7 @@ class IngestionService:
                 # Detect language based on first 5000 characters to save CPU
                 document.language = langdetect.detect(extraction.text[:5000])
             except Exception as e:
-                logger.warning(
-                    f"Language detection failed for document {document.id}: {e}"
-                )
+                logger.warning(f"Language detection failed for document {document.id}: {e}")
                 document.language = "unknown"
             self._set_progress(
                 tenant_id=tenant_id,
@@ -765,9 +739,7 @@ class IngestionService:
             WORKER_STAGE_DURATION_SECONDS.labels(stage="chunking").observe(
                 time.perf_counter() - stage_start
             )
-            WORKER_JOB_TRANSITIONS_TOTAL.labels(
-                stage="chunking", status="success"
-            ).inc()
+            WORKER_JOB_TRANSITIONS_TOTAL.labels(stage="chunking", status="success").inc()
 
             stage_start = time.perf_counter()
             self.jobs.set_status(tenant_id=tenant_id, job=job, status="embedding")
@@ -809,9 +781,7 @@ class IngestionService:
                         ),
                     )
             except TypeError as exc:
-                if not any(
-                    token in str(exc) for token in ("tenant_id", "actor_user_id")
-                ):
+                if not any(token in str(exc) for token in ("tenant_id", "actor_user_id")):
                     raise
                 # Preserve compatibility with older test doubles patched against
                 # intermediate embed_many_with_metadata(texts, tenant_id=...) and
@@ -826,9 +796,7 @@ class IngestionService:
                 except TypeError as fallback_exc:
                     if "tenant_id" not in str(fallback_exc):
                         raise
-                    vectors = self.embedding.embed_many(
-                        [row.content for row in chunk_rows]
-                    )
+                    vectors = self.embedding.embed_many([row.content for row in chunk_rows])
                     embedding_metadata = None
 
             embedding_rows: list[ChunkEmbedding] = []
@@ -862,17 +830,13 @@ class IngestionService:
             WORKER_STAGE_DURATION_SECONDS.labels(stage="embedding").observe(
                 time.perf_counter() - stage_start
             )
-            WORKER_JOB_TRANSITIONS_TOTAL.labels(
-                stage="embedding", status="success"
-            ).inc()
+            WORKER_JOB_TRANSITIONS_TOTAL.labels(stage="embedding", status="success").inc()
 
             # ── Yield & Quarantine Calculation ──────────────────────────
             total_detected = len(parts) if parts else 1
             successfully_embedded = len(embedding_rows)
             coverage = extraction.coverage_score if extraction.coverage_score else 1.0
-            information_yield = round(
-                (successfully_embedded / total_detected) * coverage * 100, 2
-            )
+            information_yield = round((successfully_embedded / total_detected) * coverage * 100, 2)
             document.information_yield = information_yield
             document.processing_progress = 100
             if information_yield < 50.0:
@@ -897,9 +861,7 @@ class IngestionService:
                 time.perf_counter() - overall_start
             )
         except StorageServiceError as exc:
-            WORKER_JOB_TRANSITIONS_TOTAL.labels(
-                stage="downloading", status="error"
-            ).inc()
+            WORKER_JOB_TRANSITIONS_TOTAL.labels(stage="downloading", status="error").inc()
             self._handle_failure(
                 tenant_id=tenant_id,
                 document=document,
@@ -972,9 +934,7 @@ class IngestionService:
                 error_code=code,
                 error_message=message,
             )
-            self.documents.set_status(
-                tenant_id=tenant_id, document=document, status="failed"
-            )
+            self.documents.set_status(tenant_id=tenant_id, document=document, status="failed")
             self.db.commit()
             self._publish_update(
                 tenant_id,
@@ -1094,18 +1054,14 @@ class IngestionService:
             return normalized
         return "queued"
 
-    def _compute_stage_progress(
-        self, *, active_stage: str, overall_progress: int
-    ) -> int:
+    def _compute_stage_progress(self, *, active_stage: str, overall_progress: int) -> int:
         start, end = self._STAGE_PROGRESS_RANGES.get(active_stage, (0, 100))
         if end <= start:
             return 100 if active_stage == "indexed" else 0
         normalized = max(start, min(overall_progress, end))
         return round(((normalized - start) / (end - start)) * 100)
 
-    def _validate_upload(
-        self, *, filename: str, content_type: str, payload: bytes
-    ) -> None:
+    def _validate_upload(self, *, filename: str, content_type: str, payload: bytes) -> None:
         if not filename.strip():
             raise ApiError(
                 code="INVALID_UPLOAD_FILENAME",
@@ -1114,9 +1070,7 @@ class IngestionService:
             )
 
         extension = Path(filename).suffix.lower()
-        if extension not in {
-            ext.lower() for ext in self.settings.upload_allowed_extensions
-        }:
+        if extension not in {ext.lower() for ext in self.settings.upload_allowed_extensions}:
             raise ApiError(
                 code="INVALID_UPLOAD_TYPE",
                 message="Uploaded file extension is not allowed.",
@@ -1166,9 +1120,7 @@ class IngestionService:
 
         ArchiveSecurityService().validate_payload(filename=filename, payload=payload)
 
-    def _is_mime_compatible_with_extension(
-        self, *, extension: str, mime_type: str | None
-    ) -> bool:
+    def _is_mime_compatible_with_extension(self, *, extension: str, mime_type: str | None) -> bool:
         normalized = (mime_type or "").strip().lower()
         if not normalized:
             return False
@@ -1198,10 +1150,8 @@ class IngestionService:
             )
 
         if extension in self._OOXML_EXTENSIONS:
-            return (
-                normalized
-                in self._ZIP_MIME_TYPES
-                | self._OOXML_EXTENSION_MIME_TYPES.get(extension, frozenset())
+            return normalized in self._ZIP_MIME_TYPES | self._OOXML_EXTENSION_MIME_TYPES.get(
+                extension, frozenset()
             )
 
         if extension in self._LEGACY_OFFICE_EXTENSIONS:
@@ -1215,9 +1165,7 @@ class IngestionService:
         from app.ingestion.workers.tasks import process_ingestion_job
 
         try:
-            process_ingestion_job.apply_async(
-                args=(str(job_id), str(tenant_id)), queue=queue
-            )
+            process_ingestion_job.apply_async(args=(str(job_id), str(tenant_id)), queue=queue)
         except Exception as exc:  # noqa: BLE001
             raise ApiError(
                 code="INGESTION_QUEUE_UNAVAILABLE",
@@ -1318,8 +1266,6 @@ class IngestionService:
         return "prose"
 
 
-def make_storage_key(
-    *, tenant_id: uuid.UUID, document_id: uuid.UUID, filename: str
-) -> str:
+def make_storage_key(*, tenant_id: uuid.UUID, document_id: uuid.UUID, filename: str) -> str:
     safe_name = os.path.basename(filename)
     return f"{tenant_id}/{document_id}/{safe_name}"

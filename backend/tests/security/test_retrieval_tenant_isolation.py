@@ -56,12 +56,8 @@ def test_cross_tenant_retrieval_has_no_leakage(
 ) -> None:
     _patch_storage(monkeypatch)
 
-    tenant_a = seed_user(
-        "tenant-r-a", "editor-a@tenant.example", "StrongPass!1234", ("editor",)
-    )
-    tenant_b = seed_user(
-        "tenant-r-b", "reader-b@tenant.example", "StrongPass!1234", ("reader",)
-    )
+    tenant_a = seed_user("tenant-r-a", "editor-a@tenant.example", "StrongPass!1234", ("editor",))
+    tenant_b = seed_user("tenant-r-b", "reader-b@tenant.example", "StrongPass!1234", ("reader",))
 
     token_a = _login(client, tenant_a)
     token_b = _login(client, tenant_b)
@@ -73,9 +69,7 @@ def test_cross_tenant_retrieval_has_no_leakage(
             "X-Tenant-Id": str(tenant_a.tenant_id),
             "Idempotency-Key": "idem-isolation-a",
         },
-        files={
-            "file": ("tenant-a.txt", b"Tenant A private policy content", "text/plain")
-        },
+        files={"file": ("tenant-a.txt", b"Tenant A private policy content", "text/plain")},
     )
     assert upload.status_code == 200
 
@@ -98,12 +92,8 @@ def test_query_tenant_scope_mismatch_rejected(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    tenant_a = seed_user(
-        "tenant-r-c", "reader-c@tenant.example", "StrongPass!1234", ("reader",)
-    )
-    tenant_b = seed_user(
-        "tenant-r-d", "reader-d@tenant.example", "StrongPass!1234", ("reader",)
-    )
+    tenant_a = seed_user("tenant-r-c", "reader-c@tenant.example", "StrongPass!1234", ("reader",))
+    tenant_b = seed_user("tenant-r-d", "reader-d@tenant.example", "StrongPass!1234", ("reader",))
 
     token_a = _login(client, tenant_a)
     response = client.post(

@@ -46,12 +46,8 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        op.f("ix_comments_target_id"), "comments", ["target_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_comments_tenant_id"), "comments", ["tenant_id"], unique=False
-    )
+    op.create_index(op.f("ix_comments_target_id"), "comments", ["target_id"], unique=False)
+    op.create_index(op.f("ix_comments_tenant_id"), "comments", ["tenant_id"], unique=False)
     op.create_index(op.f("ix_comments_user_id"), "comments", ["user_id"], unique=False)
     op.create_table(
         "pinned_findings",

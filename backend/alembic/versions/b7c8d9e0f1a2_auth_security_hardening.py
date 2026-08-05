@@ -21,9 +21,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "users",
-        sa.Column(
-            "access_token_version", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("access_token_version", sa.Integer(), nullable=False, server_default="0"),
     )
     op.create_table(
         "revoked_access_tokens",
@@ -75,17 +73,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_revoked_access_tokens_expires_at", table_name="revoked_access_tokens"
-    )
-    op.drop_index(
-        "ix_revoked_access_tokens_token_id", table_name="revoked_access_tokens"
-    )
-    op.drop_index(
-        "ix_revoked_access_tokens_user_id", table_name="revoked_access_tokens"
-    )
-    op.drop_index(
-        "ix_revoked_access_tokens_tenant_id", table_name="revoked_access_tokens"
-    )
+    op.drop_index("ix_revoked_access_tokens_expires_at", table_name="revoked_access_tokens")
+    op.drop_index("ix_revoked_access_tokens_token_id", table_name="revoked_access_tokens")
+    op.drop_index("ix_revoked_access_tokens_user_id", table_name="revoked_access_tokens")
+    op.drop_index("ix_revoked_access_tokens_tenant_id", table_name="revoked_access_tokens")
     op.drop_table("revoked_access_tokens")
     op.drop_column("users", "access_token_version")

@@ -25,9 +25,7 @@ def test_provider_registry_resolves_env_backed_chat_and_embedding_providers(
     get_settings.cache_clear()
     registry = ProviderRegistry(get_settings())
     assert isinstance(registry.get_chat_provider(), OpenAICompatibleProvider)
-    assert isinstance(
-        registry.get_embedding_provider(), LocalDeterministicEmbeddingProvider
-    )
+    assert isinstance(registry.get_embedding_provider(), LocalDeterministicEmbeddingProvider)
 
     monkeypatch.setenv("AKS_LLM_PROVIDER", "ollama")
     monkeypatch.setenv("AKS_LLM_API_BASE_URL", "http://localhost:11434/v1")
@@ -59,9 +57,7 @@ def test_provider_registry_resolves_env_backed_chat_and_embedding_providers(
     groq_provider = registry.get_chat_provider("groq")
     assert isinstance(groq_provider, OpenAICompatibleProvider)
     assert groq_provider.provider_name == "groq"
-    assert isinstance(
-        registry.get_model_discovery_provider("opencode-zen"), OpenCodeZenProvider
-    )
+    assert isinstance(registry.get_model_discovery_provider("opencode-zen"), OpenCodeZenProvider)
     get_settings.cache_clear()
 
 

@@ -28,9 +28,7 @@ def _crypto() -> ProviderSecretCrypto:
 def test_provider_secret_service_encrypts_masks_rotates_and_revokes() -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Tenant Provider Secret Service"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Tenant Provider Secret Service")
         session.add(tenant)
         session.flush()
 
@@ -133,9 +131,7 @@ def test_provider_secret_service_encrypts_masks_rotates_and_revokes() -> None:
 def test_provider_secret_service_disconnects_all_provider_tokens() -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Tenant OAuth Secret Service"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Tenant OAuth Secret Service")
         session.add(tenant)
         session.flush()
 

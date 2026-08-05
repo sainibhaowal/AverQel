@@ -18,23 +18,27 @@ def test_deepspace_policy_blocks_ide_and_mcp_tools() -> None:
 
     assert policy.decide("url_read", {}).allowed
     assert policy.mode("write") == "write"
-    assert policy.mode("workspace_write") == "write"
-    assert policy.mode("memory_search") == "read"
-    assert policy.mode("memory_write") == "write"
-    assert policy.mode("memory_forget") == "write"
+    assert policy.mode("workspace_write") is None
+    assert policy.mode("memory_search") is None
+    assert policy.mode("memory_read") is None
+    assert policy.mode("memory_write") is None
+    assert policy.mode("memory_forget") is None
+    assert not policy.decide("workspace_write", {}).allowed
+    assert not policy.decide("memory_search", {}).allowed
     assert not policy.decide("terminal", {}).allowed
     assert not policy.decide("mcp_call", {}).allowed
 
 
-def test_deepspace_exposes_scoped_memory_tools() -> None:
+def test_deepspace_exposes_universal_workspace_tools() -> None:
     names = {
         item["function"]["name"]
         for item in PRODUCTIVITY_TOOLS
         if isinstance(item.get("function"), dict)
     }
 
-    assert {"memory_search", "memory_read", "memory_write", "memory_forget"}.issubset(names)
-    assert "workspace_write" in names
+    assert {"read", "find", "write", "edit", "delete"}.issubset(names)
+    assert "workspace_write" not in names
+    assert "memory_search" not in names
 
 
 def test_url_reader_rejects_private_targets(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -29,7 +29,9 @@ export default function ProfileDocsPage() {
 
       <DocsSection title="Managing Connection Credentials">
         <p>
-          Your Profile configuration serves as the base for establishing E2EE Collections. Here, you can find your permanent Connection ID. If you change your connection name/nickname, it immediately updates across all active collection topologies for your connected peers.
+          Your Profile configuration serves as the base for establishing E2EE Collections. Here, you
+          can find your permanent Connection ID. If you change your connection name/nickname, it
+          immediately updates across all active collection topologies for your connected peers.
         </p>
       </DocsSection>
     </DocsShell>

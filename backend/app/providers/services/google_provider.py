@@ -254,9 +254,10 @@ class GoogleProvider:
                     function = call.get("function")
                     if not isinstance(function, dict):
                         continue
-                    name = function.get("name")
-                    if not isinstance(name, str) or not name.strip():
+                    raw_name = function.get("name")
+                    if not isinstance(raw_name, str) or not raw_name.strip():
                         continue
+                    name = raw_name
                     call_id = str(call.get("id") or f"google_call_{len(tool_names)}")
                     tool_names[call_id] = name.strip()
                     raw_arguments = function.get("arguments", "{}")

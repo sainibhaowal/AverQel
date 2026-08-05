@@ -56,9 +56,7 @@ def _serialize_message(message: Any) -> MessageSchema:
     return MessageSchema(
         id=message.id,
         role=message.role,
-        content=(
-            active_version.content if active_version is not None else message.content
-        ),
+        content=(active_version.content if active_version is not None else message.content),
         metadata_json=(
             dict(active_version.metadata_json)
             if active_version is not None
@@ -66,9 +64,7 @@ def _serialize_message(message: Any) -> MessageSchema:
         ),
         created_at=message.created_at,
         active_version_id=message.active_version_id,
-        active_version_index=(
-            active_version.version_index if active_version is not None else 1
-        ),
+        active_version_index=(active_version.version_index if active_version is not None else 1),
         version_count=max(len(versions), 1),
         versions=versions,
     )
@@ -86,9 +82,11 @@ async def list_conversations(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ConversationListResponse:
     from app.deepspace.integrations.client_proxy import client_proxy_registry
+
     if client_proxy_registry.is_storage_connected(str(auth.tenant_id), str(auth.user_id)):
         items_data = await client_proxy_registry.db_proxy_call(
-            str(auth.tenant_id), str(auth.user_id),
+            str(auth.tenant_id),
+            str(auth.user_id),
             "db.chats.list_conversations",
             {"limit": limit, "offset": offset, "user_id": str(auth.user_id)},
             channel="storage",
@@ -109,6 +107,8 @@ async def list_conversations(
         items=[ConversationSchema.model_validate(item) for item in items],
         total=len(items),
     )
+
+
 @router.get(
     "/{conversation_id}/messages",
     response_model=ChatHistoryResponse,
@@ -120,15 +120,19 @@ async def get_chat_history(
     db: Session = Depends(get_db),
 ) -> ChatHistoryResponse:
     from app.deepspace.integrations.client_proxy import client_proxy_registry
+
     if client_proxy_registry.is_storage_connected(str(auth.tenant_id), str(auth.user_id)):
         messages_data = await client_proxy_registry.db_proxy_call(
-            str(auth.tenant_id), str(auth.user_id),
+            str(auth.tenant_id),
+            str(auth.user_id),
             "db.chats.get_chat_history",
             {"conversation_id": str(conversation_id), "user_id": str(auth.user_id)},
             channel="storage",
         )
         # In proxy mode, messages_data is already formatted correctly as MessageSchema
-        return ChatHistoryResponse(messages=[MessageSchema.model_validate(item) for item in messages_data])
+        return ChatHistoryResponse(
+            messages=[MessageSchema.model_validate(item) for item in messages_data]
+        )
 
     repo = ChatRepository(db)
     conversation = repo.get_conversation(
@@ -304,11 +308,7 @@ async def edit_message(
         user_id=auth.user_id,
         conversation_id=conversation_id,
     )
-    if (
-        user_message is None
-        or assistant_message is None
-        or user_message.id != message_id
-    ):
+    if user_message is None or assistant_message is None or user_message.id != message_id:
         raise ApiError(
             code="MESSAGE_EDIT_NOT_ALLOWED",
             message="Only the latest user message can be edited.",
@@ -401,13 +401,9 @@ async def regenerate_message_stream(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
-    RateLimitService(settings).enforce_query_user_limit(
-        request=request, user_id=str(auth.user_id)
-    )
+    RateLimitService(settings).enforce_query_user_limit(request=request, user_id=str(auth.user_id))
     payload = RegenerateRequest.model_validate(
-        await request.json()
-        if request.headers.get("content-length") not in (None, "0")
-        else {}
+        await request.json() if request.headers.get("content-length") not in (None, "0") else {}
     )
     _validate_top_k_bounds(top_k=payload.top_k, settings=settings)
     service = QueryService(db=db, settings=settings)
@@ -445,9 +441,7 @@ async def edit_and_regenerate_stream(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
-    RateLimitService(settings).enforce_query_user_limit(
-        request=request, user_id=str(auth.user_id)
-    )
+    RateLimitService(settings).enforce_query_user_limit(request=request, user_id=str(auth.user_id))
     raw_payload = await request.json()
     content = str(raw_payload.get("content", ""))
     top_k = int(raw_payload.get("top_k", 5))

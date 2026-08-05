@@ -7,16 +7,12 @@ from pathlib import Path
 
 import httpx
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:1000")
 ADMIN_EMAIL = "admin@vaultrun.com"
-ADMIN_PASSWORD = (
-    "super-secret-password-12345678"  # Should match test fixtures or local db
-)
+ADMIN_PASSWORD = "super-secret-password-12345678"  # Should match test fixtures or local db
 
 # Example vision costs per page
 VISION_COST_PER_PAGE_USD = 0.005
@@ -34,9 +30,7 @@ async def get_auth_token(client: httpx.AsyncClient) -> str:
     return response.json()["access_token"]
 
 
-async def process_document(
-    client: httpx.AsyncClient, token: str, file_path: Path
-) -> dict:
+async def process_document(client: httpx.AsyncClient, token: str, file_path: Path) -> dict:
     start_time = time.perf_counter()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -59,9 +53,7 @@ async def process_document(
     while attempts < 60:
         await asyncio.sleep(2)
         attempts += 1
-        res = await client.get(
-            f"{API_BASE_URL}/api/v1/documents/{doc_id}/status", headers=headers
-        )
+        res = await client.get(f"{API_BASE_URL}/api/v1/documents/{doc_id}/status", headers=headers)
         if res.status_code == 200:
             data = res.json()
             if data["status"] in ("indexed", "failed", "dead_lettered"):
@@ -131,9 +123,7 @@ async def main():
     logger.info(f"Documents requiring OCR    : {ocr_hit}")
     logger.info(f"Documents requiring Vision : {vision_hit}")
     if success_count > 0:
-        logger.info(
-            f"Average Pipeline Latency : {total_latency / success_count:.2f} seconds/doc"
-        )
+        logger.info(f"Average Pipeline Latency : {total_latency / success_count:.2f} seconds/doc")
     logger.info(f"Estimated Extraction Cost: ${total_cost:.4f}")
     logger.info("=========================================")
 

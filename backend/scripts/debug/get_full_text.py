@@ -1,8 +1,6 @@
 import psycopg2  # type: ignore[import-untyped]
 
-conn = psycopg2.connect(
-    "dbname=averqel_db user=admin password=admin host=localhost port=1005"
-)
+conn = psycopg2.connect("dbname=averqel_db user=admin password=admin host=localhost port=1005")
 cur = conn.cursor()
 
 cur.execute("""

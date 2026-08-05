@@ -29,9 +29,7 @@ class IntegrationRepository:
         result = self.session.execute(stmt)
         return list(result.scalars().all())
 
-    def get_connector(
-        self, tenant_id: uuid.UUID, connector_id: uuid.UUID
-    ) -> Connector | None:
+    def get_connector(self, tenant_id: uuid.UUID, connector_id: uuid.UUID) -> Connector | None:
         stmt = (
             select(Connector)
             .options(selectinload(Connector.integration))
@@ -39,9 +37,7 @@ class IntegrationRepository:
         )
         return self.session.execute(stmt).scalars().first()
 
-    def get_connector_by_slug(
-        self, tenant_id: uuid.UUID, slug: str
-    ) -> Connector | None:
+    def get_connector_by_slug(self, tenant_id: uuid.UUID, slug: str) -> Connector | None:
         stmt = (
             select(Connector)
             .options(selectinload(Connector.integration))

@@ -38,9 +38,7 @@ class _RetryError(Exception):
 def test_rate_store_increment_and_ttl_path(monkeypatch: pytest.MonkeyPatch) -> None:
     store = _InMemoryRateStore()
     time_seq = iter([1000.0, 1001.0, 1007.5])
-    monkeypatch.setattr(
-        "app.system.services.rate_limit_service.time.time", lambda: next(time_seq)
-    )
+    monkeypatch.setattr("app.system.services.rate_limit_service.time.time", lambda: next(time_seq))
 
     count1, ttl1 = store.increment(key="k", window_seconds=5)
     count2, ttl2 = store.increment(key="k", window_seconds=5)
@@ -59,9 +57,7 @@ def test_rate_limit_service_redis_fallback(monkeypatch: pytest.MonkeyPatch) -> N
     def _boom():
         raise RuntimeError("redis down")
 
-    monkeypatch.setattr(
-        "app.system.services.rate_limit_service._get_redis_client", _boom
-    )
+    monkeypatch.setattr("app.system.services.rate_limit_service._get_redis_client", _boom)
     count, ttl = service._increment_counter(key="k", window_seconds=5)
     assert count >= 1
     assert ttl >= 0
@@ -79,9 +75,7 @@ def test_embed_many_retry_error_path(monkeypatch: pytest.MonkeyPatch) -> None:
         raise _RetryError("retry exhausted")
 
     monkeypatch.setattr(service, "_embed_with_retry", _raise_retry)
-    monkeypatch.setattr(
-        embedding_module, "EMBEDDING_PROVIDER_FAILURES_TOTAL", _DummyMetric()
-    )
+    monkeypatch.setattr(embedding_module, "EMBEDDING_PROVIDER_FAILURES_TOTAL", _DummyMetric())
 
     with pytest.raises(ApiError) as exc:
         service.embed_many(["x"])
@@ -94,9 +88,7 @@ def test_embed_many_unexpected_error_path(monkeypatch: pytest.MonkeyPatch) -> No
     service._state.failures = 0
     service._state.opened_until = None
 
-    monkeypatch.setattr(
-        embedding_module, "EMBEDDING_PROVIDER_FAILURES_TOTAL", _DummyMetric()
-    )
+    monkeypatch.setattr(embedding_module, "EMBEDDING_PROVIDER_FAILURES_TOTAL", _DummyMetric())
     monkeypatch.setattr(
         service,
         "_embed_with_retry",
@@ -189,9 +181,7 @@ def test_sentence_transformers_error_timeout_and_dimension(
         "get_embedding_provider",
         lambda self, provider_type=None: _ProviderOK(),
     )
-    monkeypatch.setattr(
-        embedding_module, "EMBEDDING_PROVIDER_LATENCY_SECONDS", _DummyMetric()
-    )
+    monkeypatch.setattr(embedding_module, "EMBEDDING_PROVIDER_LATENCY_SECONDS", _DummyMetric())
 
     times = iter([0.0, 2.0, 2.0])
     monkeypatch.setattr(

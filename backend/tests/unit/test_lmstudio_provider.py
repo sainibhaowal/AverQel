@@ -96,9 +96,7 @@ def test_lmstudio_provider_prefers_native_models_metadata_for_context_window(
                         {
                             "modelKey": "qwen2.5-14b-instruct",
                             "displayName": "Qwen2.5 14B Instruct",
-                            "loaded_instances": [
-                                {"config": {"context_length": 131072}}
-                            ],
+                            "loaded_instances": [{"config": {"context_length": 131072}}],
                             "owned_by": "lmstudio",
                         }
                     ]
@@ -152,9 +150,7 @@ def test_lmstudio_provider_falls_back_to_buffered_chunks_when_async_streaming_fa
             yield ""  # pragma: no cover
         raise RuntimeError("provider status 500")
 
-    monkeypatch.setattr(
-        OpenAICompatibleProvider, "stream_generate", fake_stream_generate
-    )
+    monkeypatch.setattr(OpenAICompatibleProvider, "stream_generate", fake_stream_generate)
     monkeypatch.setattr(
         LMStudioProvider,
         "generate",
@@ -219,9 +215,9 @@ def test_lmstudio_provider_falls_back_to_buffered_events_when_async_streaming_fa
     events = asyncio.run(collect())
 
     assert events[0]["type"] == "thinking"
-    assert "".join(
-        event["text"] for event in events if event["type"] == "thinking"
-    ) == ("Visible reasoning summary.")
+    assert "".join(event["text"] for event in events if event["type"] == "thinking") == (
+        "Visible reasoning summary."
+    )
     assert "".join(event["text"] for event in events if event["type"] == "delta") == (
         "Visible fallback answer."
     )

@@ -31,11 +31,7 @@ class ArchiveSecurityService:
                     path_str = info.filename
 
                     # 1. Zip-Slip Check
-                    if (
-                        path_str.startswith("/")
-                        or path_str.startswith("\\")
-                        or ".." in path_str
-                    ):
+                    if path_str.startswith("/") or path_str.startswith("\\") or ".." in path_str:
                         raise ApiError(
                             code="ZIP_SLIP_DETECTED",
                             message="Malicious archive path detected.",

@@ -35,9 +35,7 @@ class PptxExtractor(BaseExtractor):
 
         lines: list[str] = []
         slide_count = 0
-        for slide_index, slide in enumerate(
-            getattr(presentation, "slides", []), start=1
-        ):
+        for slide_index, slide in enumerate(getattr(presentation, "slides", []), start=1):
             slide_count += 1
             slide_lines: list[str] = []
             for shape in getattr(slide, "shapes", []):
@@ -49,9 +47,7 @@ class PptxExtractor(BaseExtractor):
             notes_slide = getattr(slide, "notes_slide", None)
             if notes_slide is not None:
                 notes_text_frame = getattr(notes_slide, "notes_text_frame", None)
-                notes = sanitize_document_text(
-                    getattr(notes_text_frame, "text", "")
-                ).strip()
+                notes = sanitize_document_text(getattr(notes_text_frame, "text", "")).strip()
                 if notes:
                     slide_lines.append(f"[notes] {notes}")
 

@@ -145,8 +145,6 @@ def test_embedding_provider_routing_prefers_assignment(
             "X-Tenant-Id": str(seeded.tenant_id),
             "Idempotency-Key": "phase10-embedding-routing",
         },
-        files={
-            "file": ("phase10.txt", b"embedding routing content\n" * 8, "text/plain")
-        },
+        files={"file": ("phase10.txt", b"embedding routing content\n" * 8, "text/plain")},
     )
     assert upload.status_code == 200

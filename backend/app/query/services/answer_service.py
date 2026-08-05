@@ -101,9 +101,7 @@ _OPEN_CHAT_CODE_QUERY_RE = re.compile(
 
 def _unwrap_structured_json_candidate(text: str) -> str:
     candidate = text.strip()
-    fenced = re.match(
-        r"^```(?:json)?\s*([\s\S]*?)\s*```$", candidate, flags=re.IGNORECASE
-    )
+    fenced = re.match(r"^```(?:json)?\s*([\s\S]*?)\s*```$", candidate, flags=re.IGNORECASE)
     if fenced:
         return fenced.group(1).strip()
     prefixed = re.match(
@@ -123,9 +121,7 @@ def _salvage_loose_chart_payload(
         return None
 
     raw_type = str(chart.get("chart_type", "") or "").strip().lower()
-    chart_type = (
-        raw_type if raw_type in {"line", "bar", "pie", "area", "scatter"} else "bar"
-    )
+    chart_type = raw_type if raw_type in {"line", "bar", "pie", "area", "scatter"} else "bar"
     extracted: list[dict[str, float | str]] = []
 
     def push_point(point: Any) -> None:
@@ -249,9 +245,7 @@ class AnswerService:
     _limit_state = _InMemoryCounterState()
     _limit_lock = threading.Lock()
 
-    def __init__(
-        self, no_result_answer_text: str, settings: Settings | None = None
-    ) -> None:
+    def __init__(self, no_result_answer_text: str, settings: Settings | None = None) -> None:
         self.no_result_answer_text = no_result_answer_text
         self.settings = settings
 
@@ -287,9 +281,7 @@ class AnswerService:
         citations = self._build_citations(ranked)
         local_answer = self._build_local_fallback_answer(ranked)
 
-        answer: str | StructuredAnswerResponse = (
-            local_answer or self.no_result_answer_text
-        )
+        answer: str | StructuredAnswerResponse = local_answer or self.no_result_answer_text
 
         if (
             self._llm_generation_enabled(provider_candidates=provider_candidates)
@@ -303,7 +295,9 @@ class AnswerService:
                     context_str,
                     previous_messages,
                     query_type,
-                )[0]["content"]
+                )[
+                    0
+                ]["content"]
                 + context_str
                 + query_text
             )
@@ -369,9 +363,7 @@ class AnswerService:
                     last_retryable = True
                     continue
                 except NonRetryableLlmError:
-                    logger.info(
-                        "Non-retryable LLM failure; trying next provider candidate if any."
-                    )
+                    logger.info("Non-retryable LLM failure; trying next provider candidate if any.")
                     continue
             if last_retryable:
                 self._record_llm_failure()
@@ -405,16 +397,12 @@ class AnswerService:
                 return sanitized
         extracted = self._extract_markdown_suggestions(answer_text)
         if extracted:
-            sanitized = self._sanitize_followup_candidates(
-                extracted, query_text=query_text
-            )
+            sanitized = self._sanitize_followup_candidates(extracted, query_text=query_text)
             if sanitized:
                 return sanitized
         extracted = self._extract_followups_from_text(answer_text)
         if extracted:
-            sanitized = self._sanitize_followup_candidates(
-                extracted, query_text=query_text
-            )
+            sanitized = self._sanitize_followup_candidates(extracted, query_text=query_text)
             if sanitized:
                 return sanitized
         return self._fallback_followups(query_text=query_text, answer_text=answer_text)
@@ -473,11 +461,7 @@ class AnswerService:
         query = query.strip("`\"'").rstrip("?.! ")
         if not query:
             return None
-        if (
-            len(query) > 80
-            or "\n" in query_text
-            or _FOLLOWUP_NOISY_QUERY_RE.search(query)
-        ):
+        if len(query) > 80 or "\n" in query_text or _FOLLOWUP_NOISY_QUERY_RE.search(query):
             return None
 
         subject = _FOLLOWUP_DIRECTIVE_PREFIX_RE.sub("", query).strip()
@@ -506,9 +490,7 @@ class AnswerService:
         )
 
     @staticmethod
-    def _sanitize_followup_candidates(
-        items: list[str], *, query_text: str
-    ) -> list[str]:
+    def _sanitize_followup_candidates(items: list[str], *, query_text: str) -> list[str]:
         cleaned: list[str] = []
         seen: set[str] = set()
 
@@ -518,9 +500,7 @@ class AnswerService:
                 continue
             if len(normalized) > 160:
                 continue
-            if AnswerService._should_drop_followup_candidate(
-                normalized, query_text=query_text
-            ):
+            if AnswerService._should_drop_followup_candidate(normalized, query_text=query_text):
                 continue
 
             dedupe_key = normalized.casefold()
@@ -650,9 +630,7 @@ class AnswerService:
 
         if self._llm_is_circuit_open():
             logger.info("LLM circuit open during streaming.")
-            fallback_text = (
-                self._build_local_fallback_answer(ranked) or self.no_result_answer_text
-            )
+            fallback_text = self._build_local_fallback_answer(ranked) or self.no_result_answer_text
             yield from self._emit_buffered_text_with_events(fallback_text, query_type)
             return
 
@@ -679,9 +657,7 @@ class AnswerService:
                 "Streaming LLM usage denied by budget/rate guard.",
                 extra={"tenant_id": str(tenant_id)},
             )
-            fallback_text = (
-                self._build_local_fallback_answer(ranked) or self.no_result_answer_text
-            )
+            fallback_text = self._build_local_fallback_answer(ranked) or self.no_result_answer_text
             yield from self._emit_buffered_text_with_events(fallback_text, query_type)
             return
 
@@ -706,9 +682,7 @@ class AnswerService:
                         if chunk:
                             emitted_any = True
                             full_text += chunk
-                            yield StreamEvent(
-                                event=STREAM_EVENT_DELTA, data={"text": chunk}
-                            )
+                            yield StreamEvent(event=STREAM_EVENT_DELTA, data={"text": chunk})
                     break
                 except (RetryableLlmError, NonRetryableLlmError):
                     failed_candidate = candidate
@@ -730,9 +704,7 @@ class AnswerService:
                 return
 
             self._record_llm_success()
-            yield from self._emit_post_stream_events(
-                full_text, query_type, emit_done=True
-            )
+            yield from self._emit_post_stream_events(full_text, query_type, emit_done=True)
         except RetryableLlmError as exc:
             self._record_llm_failure()
             yield StreamEvent(
@@ -796,12 +768,8 @@ class AnswerService:
 
         if self._llm_is_circuit_open():
             logger.info("LLM circuit open during async streaming.")
-            fallback_text = (
-                self._build_local_fallback_answer(ranked) or self.no_result_answer_text
-            )
-            for event in self._emit_buffered_text_with_events(
-                fallback_text, query_type
-            ):
+            fallback_text = self._build_local_fallback_answer(ranked) or self.no_result_answer_text
+            for event in self._emit_buffered_text_with_events(fallback_text, query_type):
                 yield event
             return
 
@@ -828,12 +796,8 @@ class AnswerService:
                 "Async streaming LLM usage denied by budget/rate guard.",
                 extra={"tenant_id": str(tenant_id)},
             )
-            fallback_text = (
-                self._build_local_fallback_answer(ranked) or self.no_result_answer_text
-            )
-            for event in self._emit_buffered_text_with_events(
-                fallback_text, query_type
-            ):
+            fallback_text = self._build_local_fallback_answer(ranked) or self.no_result_answer_text
+            for event in self._emit_buffered_text_with_events(fallback_text, query_type):
                 yield event
             return
 
@@ -876,9 +840,7 @@ class AnswerService:
                             continue
                         full_text += chunk
 
-                        yield StreamEvent(
-                            event=STREAM_EVENT_DELTA, data={"text": chunk}
-                        )
+                        yield StreamEvent(event=STREAM_EVENT_DELTA, data={"text": chunk})
 
                         for event in self._emit_progressive_rich_events(
                             full_text=full_text,
@@ -1012,14 +974,10 @@ class AnswerService:
                             continue
                         emitted_any = True
                         if event_type == "thinking":
-                            yield StreamEvent(
-                                event=STREAM_EVENT_THINKING, data={"text": chunk}
-                            )
+                            yield StreamEvent(event=STREAM_EVENT_THINKING, data={"text": chunk})
                             continue
                         full_text += chunk
-                        yield StreamEvent(
-                            event=STREAM_EVENT_DELTA, data={"text": chunk}
-                        )
+                        yield StreamEvent(event=STREAM_EVENT_DELTA, data={"text": chunk})
                         for event in self._emit_progressive_rich_events(
                             full_text=full_text,
                             emitted_payloads=emitted_payloads,
@@ -1039,9 +997,7 @@ class AnswerService:
                         "provider_type": (
                             failed_candidate.provider_type if failed_candidate else None
                         ),
-                        "model_name": (
-                            failed_candidate.model_name if failed_candidate else None
-                        ),
+                        "model_name": (failed_candidate.model_name if failed_candidate else None),
                     },
                 )
                 for event in self._emit_buffered_text_with_events(
@@ -1061,18 +1017,14 @@ class AnswerService:
                 yield event
         except RetryableLlmError:
             self._record_llm_failure()
-            logger.warning(
-                "Open chat retryable provider failure; falling back.", exc_info=True
-            )
+            logger.warning("Open chat retryable provider failure; falling back.", exc_info=True)
             for event in self._emit_buffered_text_with_events(
                 self._build_open_chat_fallback_answer(query_text),
                 QueryType.FACTUAL,
             ):
                 yield event
         except NonRetryableLlmError:
-            logger.warning(
-                "Open chat non-retryable provider failure; falling back.", exc_info=True
-            )
+            logger.warning("Open chat non-retryable provider failure; falling back.", exc_info=True)
             for event in self._emit_buffered_text_with_events(
                 self._build_open_chat_fallback_answer(query_text),
                 QueryType.FACTUAL,
@@ -1092,8 +1044,7 @@ class AnswerService:
         Backward-compatible plain-text wrapper around the richer streaming API.
         """
         local_answer = (
-            self._build_local_fallback_answer(ranked_chunks)
-            or self.no_result_answer_text
+            self._build_local_fallback_answer(ranked_chunks) or self.no_result_answer_text
         )
 
         if self._llm_is_circuit_open():
@@ -1172,9 +1123,7 @@ class AnswerService:
                     "content": final_content,
                     "format": "structured" if structured is not None else "markdown",
                     "structured": (
-                        structured.model_dump(mode="json")
-                        if structured is not None
-                        else None
+                        structured.model_dump(mode="json") if structured is not None else None
                     ),
                 },
             )
@@ -1205,9 +1154,7 @@ class AnswerService:
             else self._extract_diagram_payloads(final_content)
         )
         for diagram_payload in diagram_payloads:
-            if not self._should_emit_payload(
-                emitted_payloads, "diagram", diagram_payload
-            ):
+            if not self._should_emit_payload(emitted_payloads, "diagram", diagram_payload):
                 continue
             yield StreamEvent(event=STREAM_EVENT_DIAGRAM, data=diagram_payload)
 
@@ -1273,13 +1220,9 @@ class AnswerService:
         return StreamRenderHints(
             has_table_markdown="|" in text and "---" in text,
             has_code_block="```" in text,
-            has_chart_hint=("chart data" in lowered)
-            or ("graph" in lowered)
-            or ("plot" in lowered),
+            has_chart_hint=("chart data" in lowered) or ("graph" in lowered) or ("plot" in lowered),
             has_bullets=("\n-" in text) or ("\n*" in text) or ("\n1." in text),
-            query_type=(
-                query_type.value if hasattr(query_type, "value") else str(query_type)
-            ),
+            query_type=(query_type.value if hasattr(query_type, "value") else str(query_type)),
         )
 
     @staticmethod
@@ -1306,11 +1249,7 @@ class AnswerService:
 
         payload: dict[str, Any] = {
             "key_findings": (
-                [
-                    str(item).strip()
-                    for item in parsed.get("key_findings", [])
-                    if str(item).strip()
-                ]
+                [str(item).strip() for item in parsed.get("key_findings", []) if str(item).strip()]
                 if isinstance(parsed.get("key_findings"), list)
                 else []
             ),
@@ -1336,9 +1275,7 @@ class AnswerService:
                     comparison_table
                 )
             except Exception:  # noqa: BLE001
-                logger.debug(
-                    "Discarding invalid salvaged comparison_table.", exc_info=True
-                )
+                logger.debug("Discarding invalid salvaged comparison_table.", exc_info=True)
 
         chart = parsed.get("chart")
         if isinstance(chart, dict):
@@ -1409,9 +1346,7 @@ class AnswerService:
             syntax = re.sub(r"(subgraph)(\S)", r"\1 \2", syntax, flags=re.MULTILINE)
 
             # Absolute Top Placement
-            sections.append(
-                f"### {answer.diagram.title or 'Diagram'}\n\n```mermaid\n{syntax}\n```"
-            )
+            sections.append(f"### {answer.diagram.title or 'Diagram'}\n\n```mermaid\n{syntax}\n```")
 
             # STRIP inline duplicates from detailed_analysis to prevent "jumping down"
             # We look for any mermaid code block that matches the core syntax signature
@@ -1433,8 +1368,7 @@ class AnswerService:
 
         if answer.key_findings:
             sections.append(
-                "### Key Findings\n"
-                + "\n".join(f"- {item}" for item in answer.key_findings)
+                "### Key Findings\n" + "\n".join(f"- {item}" for item in answer.key_findings)
             )
         if analysis_text.strip():
             sections.append(analysis_text.strip())
@@ -1512,9 +1446,7 @@ class AnswerService:
             else self._extract_diagram_payloads(full_text)
         )
         for diagram_payload in diagram_payloads:
-            if not self._should_emit_payload(
-                emitted_payloads, "diagram", diagram_payload
-            ):
+            if not self._should_emit_payload(emitted_payloads, "diagram", diagram_payload):
                 continue
             yield StreamEvent(event=STREAM_EVENT_DIAGRAM, data=diagram_payload)
 
@@ -1620,9 +1552,7 @@ class AnswerService:
         if payloads:
             return payloads
 
-        incomplete_match = re.search(
-            r"```mermaid\s+([\s\S]*)$", text, flags=re.IGNORECASE
-        )
+        incomplete_match = re.search(r"```mermaid\s+([\s\S]*)$", text, flags=re.IGNORECASE)
         if not incomplete_match:
             return payloads
 
@@ -1821,8 +1751,7 @@ class AnswerService:
         if settings.env == "test" and provider_candidates:
             return True
         if provider_candidates and any(
-            self._is_local_provider_candidate(candidate)
-            for candidate in provider_candidates
+            self._is_local_provider_candidate(candidate) for candidate in provider_candidates
         ):
             return True
         if estimated_input_tokens > settings.llm_max_tokens_per_request:
@@ -1862,9 +1791,7 @@ class AnswerService:
             client.expire(budget_key, 35 * 24 * 3600, nx=True)
             return True
         except Exception:  # noqa: BLE001
-            logger.warning(
-                "LLM usage guard Redis unavailable; using in-memory fallback."
-            )
+            logger.warning("LLM usage guard Redis unavailable; using in-memory fallback.")
             with self._limit_lock:
                 now = time.time()
                 rpm_current = self._limit_state.requests.get(rpm_key)
@@ -1884,9 +1811,7 @@ class AnswerService:
                 ):
                     return False
 
-                self._limit_state.cost_micros[budget_key] = (
-                    existing_micros + estimated_cost_micros
-                )
+                self._limit_state.cost_micros[budget_key] = existing_micros + estimated_cost_micros
                 return True
 
     @classmethod
@@ -1904,10 +1829,7 @@ class AnswerService:
         if self.settings is None:
             return
         self._llm_circuit.failures += 1
-        if (
-            self._llm_circuit.failures
-            >= self.settings.provider_circuit_breaker_threshold
-        ):
+        if self._llm_circuit.failures >= self.settings.provider_circuit_breaker_threshold:
             self._llm_circuit.opened_until = datetime.now(tz=UTC) + timedelta(
                 seconds=self.settings.provider_circuit_breaker_reset_seconds,
             )
@@ -2035,18 +1957,14 @@ class AnswerService:
         )
 
     @staticmethod
-    def _build_structured_output_instruction(
-        *, query: str, query_type: QueryType
-    ) -> str:
+    def _build_structured_output_instruction(*, query: str, query_type: QueryType) -> str:
         normalized = query.strip()
         if not normalized:
             return ""
 
         lowered = normalized.lower()
         wants_graph_canvas = bool(_GRAPH_CANVAS_QUERY_RE.search(normalized))
-        wants_diagram = (
-            bool(_ARCHITECTURE_QUERY_RE.search(normalized)) or wants_graph_canvas
-        )
+        wants_diagram = bool(_ARCHITECTURE_QUERY_RE.search(normalized)) or wants_graph_canvas
         wants_chart = bool(_CHART_QUERY_RE.search(normalized))
         wants_table = query_type == QueryType.COMPARISON or wants_chart
         wants_cards = query_type in {
@@ -2055,11 +1973,7 @@ class AnswerService:
             QueryType.VERIFICATION,
         }
         wants_structured = (
-            wants_cards
-            or wants_graph_canvas
-            or wants_diagram
-            or wants_chart
-            or wants_table
+            wants_cards or wants_graph_canvas or wants_diagram or wants_chart or wants_table
         )
 
         if not wants_structured:
@@ -2094,17 +2008,11 @@ class AnswerService:
             preferred_diagram_type = "mermaid_mindmap"
             preferred_mermaid_starter = "mindmap"
         elif (
-            "pie chart" in lowered
-            or lowered.startswith("pie ")
-            or "distribution share" in lowered
+            "pie chart" in lowered or lowered.startswith("pie ") or "distribution share" in lowered
         ):
             preferred_diagram_type = "mermaid_pie"
             preferred_mermaid_starter = "pie"
-        elif (
-            "git graph" in lowered
-            or "commit graph" in lowered
-            or "branch history" in lowered
-        ):
+        elif "git graph" in lowered or "commit graph" in lowered or "branch history" in lowered:
             preferred_diagram_type = "mermaid_gitgraph"
             preferred_mermaid_starter = "gitGraph"
         elif "quadrant" in lowered:
@@ -2116,11 +2024,7 @@ class AnswerService:
         elif "xy chart" in lowered or "xychart" in lowered:
             preferred_diagram_type = "mermaid_xychart"
             preferred_mermaid_starter = "xychart-beta"
-        elif (
-            "c4" in lowered
-            or "container diagram" in lowered
-            or "component diagram" in lowered
-        ):
+        elif "c4" in lowered or "container diagram" in lowered or "component diagram" in lowered:
             preferred_diagram_type = "mermaid_c4"
             preferred_mermaid_starter = "C4Context"
         elif "architecture-beta" in lowered or "architecture diagram" in lowered:
@@ -2343,14 +2247,11 @@ class AnswerService:
             ),
             base_url=(
                 provider_override.base_url
-                if provider_override is not None
-                and provider_override.base_url is not None
+                if provider_override is not None and provider_override.base_url is not None
                 else settings.llm_api_base_url
             ),
             api_key=(
-                provider_override.api_key
-                if provider_override is not None
-                else settings.llm_api_key
+                provider_override.api_key if provider_override is not None else settings.llm_api_key
             ),
             reasoning_enabled=thinking_enabled,
             reasoning_effort="medium" if thinking_enabled else None,
@@ -2383,9 +2284,7 @@ class AnswerService:
             ):
                 raise RetryableLlmError(f"LLM provider retryable {message}") from exc
             if "status 4" in message:
-                raise NonRetryableLlmError(
-                    f"LLM provider non-retryable {message}"
-                ) from exc
+                raise NonRetryableLlmError(f"LLM provider non-retryable {message}") from exc
             raise RetryableLlmError("LLM provider request failed.") from exc
         finally:
             self._observe_provider_latency(start, provider_override=provider_override)
@@ -2434,14 +2333,11 @@ class AnswerService:
             ),
             base_url=(
                 provider_override.base_url
-                if provider_override is not None
-                and provider_override.base_url is not None
+                if provider_override is not None and provider_override.base_url is not None
                 else settings.llm_api_base_url
             ),
             api_key=(
-                provider_override.api_key
-                if provider_override is not None
-                else settings.llm_api_key
+                provider_override.api_key if provider_override is not None else settings.llm_api_key
             ),
             stream=True,
             reasoning_enabled=thinking_enabled,
@@ -2481,9 +2377,7 @@ class AnswerService:
             ):
                 raise RetryableLlmError(f"LLM provider retryable {message}") from exc
             if "status 4" in message:
-                raise NonRetryableLlmError(
-                    f"LLM provider non-retryable {message}"
-                ) from exc
+                raise NonRetryableLlmError(f"LLM provider non-retryable {message}") from exc
             if isinstance(exc, RetryableLlmError | NonRetryableLlmError):
                 raise
             raise RetryableLlmError(f"Streaming request failed: {message}") from exc
@@ -2529,14 +2423,11 @@ class AnswerService:
             ),
             base_url=(
                 provider_override.base_url
-                if provider_override is not None
-                and provider_override.base_url is not None
+                if provider_override is not None and provider_override.base_url is not None
                 else settings.llm_api_base_url
             ),
             api_key=(
-                provider_override.api_key
-                if provider_override is not None
-                else settings.llm_api_key
+                provider_override.api_key if provider_override is not None else settings.llm_api_key
             ),
             stream=True,
             reasoning_enabled=thinking_enabled,
@@ -2576,9 +2467,7 @@ class AnswerService:
             ):
                 raise RetryableLlmError(f"LLM provider retryable {message}") from exc
             if "status 4" in message:
-                raise NonRetryableLlmError(
-                    f"LLM provider non-retryable {message}"
-                ) from exc
+                raise NonRetryableLlmError(f"LLM provider non-retryable {message}") from exc
             raise RetryableLlmError("LLM provider request failed.") from exc
         finally:
             self._observe_provider_latency(start, provider_override=provider_override)
@@ -2653,14 +2542,11 @@ class AnswerService:
             ),
             base_url=(
                 provider_override.base_url
-                if provider_override is not None
-                and provider_override.base_url is not None
+                if provider_override is not None and provider_override.base_url is not None
                 else settings.llm_api_base_url
             ),
             api_key=(
-                provider_override.api_key
-                if provider_override is not None
-                else settings.llm_api_key
+                provider_override.api_key if provider_override is not None else settings.llm_api_key
             ),
             stream=True,
             reasoning_enabled=thinking_enabled,
@@ -2690,9 +2576,7 @@ class AnswerService:
             ):
                 raise RetryableLlmError(f"LLM provider retryable {message}") from exc
             if "status 4" in message:
-                raise NonRetryableLlmError(
-                    f"LLM provider non-retryable {message}"
-                ) from exc
+                raise NonRetryableLlmError(f"LLM provider non-retryable {message}") from exc
 
             if isinstance(exc, RetryableLlmError | NonRetryableLlmError):
                 raise

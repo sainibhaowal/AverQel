@@ -59,9 +59,7 @@ def upgrade() -> None:
         "break_glass_grants",
         ["target_user_id"],
     )
-    op.create_index(
-        "ix_break_glass_grants_tenant_id", "break_glass_grants", ["tenant_id"]
-    )
+    op.create_index("ix_break_glass_grants_tenant_id", "break_glass_grants", ["tenant_id"])
     op.create_index(
         "ix_break_glass_grants_resource_type",
         "break_glass_grants",
@@ -70,15 +68,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_break_glass_grants_resource_type", table_name="break_glass_grants"
-    )
+    op.drop_index("ix_break_glass_grants_resource_type", table_name="break_glass_grants")
     op.drop_index("ix_break_glass_grants_tenant_id", table_name="break_glass_grants")
-    op.drop_index(
-        "ix_break_glass_grants_target_user_id", table_name="break_glass_grants"
-    )
+    op.drop_index("ix_break_glass_grants_target_user_id", table_name="break_glass_grants")
     op.drop_index("ix_break_glass_grants_status", table_name="break_glass_grants")
-    op.drop_index(
-        "ix_break_glass_grants_actor_user_id", table_name="break_glass_grants"
-    )
+    op.drop_index("ix_break_glass_grants_actor_user_id", table_name="break_glass_grants")
     op.drop_table("break_glass_grants")

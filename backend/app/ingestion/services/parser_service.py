@@ -31,21 +31,15 @@ def sanitize_document_text(value: str) -> str:
 
 
 class ParserService:
-    def __init__(
-        self, *, max_pdf_pages: int = 1000, max_text_chars: int = 5_000_000
-    ) -> None:
+    def __init__(self, *, max_pdf_pages: int = 1000, max_text_chars: int = 5_000_000) -> None:
         self.max_pdf_pages = max_pdf_pages
         self.max_text_chars = max_text_chars
 
-    def parse_bytes(
-        self, *, filename: str, content_type: str, payload: bytes
-    ) -> ParsedDocument:
+    def parse_bytes(self, *, filename: str, content_type: str, payload: bytes) -> ParsedDocument:
         lowered = filename.lower()
         if content_type == "application/pdf" or lowered.endswith(".pdf"):
             return self._parse_pdf(payload)
-        if content_type in {"text/plain", "text/markdown"} or lowered.endswith(
-            (".txt", ".md")
-        ):
+        if content_type in {"text/plain", "text/markdown"} or lowered.endswith((".txt", ".md")):
             return self._parse_text(payload)
         raise ApiError(
             code="UNSUPPORTED_DOCUMENT_TYPE",

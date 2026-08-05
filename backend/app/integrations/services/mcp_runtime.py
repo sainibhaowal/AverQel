@@ -144,7 +144,11 @@ class MCPCatalog:
     def _replace_named(self, field_name: str, server: str, items: Iterable[dict[str, Any]]) -> None:
         current = getattr(self, field_name)
         prefix = f"{server}_"
-        setattr(self, field_name, {key: value for key, value in current.items() if not key.startswith(prefix)})
+        setattr(
+            self,
+            field_name,
+            {key: value for key, value in current.items() if not key.startswith(prefix)},
+        )
         target = getattr(self, field_name)
         for item in items:
             name = str(item.get("name") or item.get("uri") or item.get("uriTemplate") or "").strip()
@@ -218,7 +222,14 @@ class MCPConnectorRuntime:
     token_expiry_time: float | None = None
 
     @classmethod
-    def from_config(cls, config: dict[str, Any], *, on_tokens_updated: Any | None = None, message_handler: Any | None = None, notification_handler: Any | None = None) -> MCPConnectorRuntime | None:
+    def from_config(
+        cls,
+        config: dict[str, Any],
+        *,
+        on_tokens_updated: Any | None = None,
+        message_handler: Any | None = None,
+        notification_handler: Any | None = None,
+    ) -> MCPConnectorRuntime | None:
         if not MCP_SDK_AVAILABLE:
             return None
 
@@ -230,19 +241,22 @@ class MCPConnectorRuntime:
         if not bundle:
             return None
 
-        server_url = str(
-            bundle.get("server_url") or config.get("mcp_server_url") or ""
-        ).strip()
-        transport = str(bundle.get("transport") or config.get("mcp_transport") or "streamable_http").strip().lower()
-        fallback_transport = str(
-            bundle.get("fallback_transport")
-            or config.get("mcp_fallback_transport")
-            or (
-                "sse"
-                if config.get("mcp_sse_fallback", transport == "streamable_http")
-                else ""
+        server_url = str(bundle.get("server_url") or config.get("mcp_server_url") or "").strip()
+        transport = (
+            str(bundle.get("transport") or config.get("mcp_transport") or "streamable_http")
+            .strip()
+            .lower()
+        )
+        fallback_transport = (
+            str(
+                bundle.get("fallback_transport")
+                or config.get("mcp_fallback_transport")
+                or ("sse" if config.get("mcp_sse_fallback", transport == "streamable_http") else "")
             )
-        ).strip().lower() or None
+            .strip()
+            .lower()
+            or None
+        )
         if transport not in {"streamable_http", "sse"}:
             raise MCPRuntimeError(f"Unsupported MCP transport: {transport}")
         if fallback_transport == transport:
@@ -252,7 +266,9 @@ class MCPConnectorRuntime:
         if not server_url:
             return None
 
-        anonymous = str(bundle.get("oauth_mode") or config.get("oauth_mode") or "").lower() == "none"
+        anonymous = (
+            str(bundle.get("oauth_mode") or config.get("oauth_mode") or "").lower() == "none"
+        )
         client_info = None
         tokens = None
         client_metadata = None
@@ -270,9 +286,7 @@ class MCPConnectorRuntime:
             if tokens is None:
                 return None
             client_metadata = cls._client_metadata_from_client_info(client_info)
-        oauth_metadata = cls._metadata_from_bundle(
-            bundle.get("oauth_metadata"), OAuthMetadata
-        )
+        oauth_metadata = cls._metadata_from_bundle(bundle.get("oauth_metadata"), OAuthMetadata)
         resource_metadata = cls._metadata_from_bundle(
             bundle.get("resource_metadata"), ProtectedResourceMetadata
         )
@@ -289,7 +303,9 @@ class MCPConnectorRuntime:
         return cls(
             server_url=server_url,
             client_metadata=client_metadata,
-            storage=_InMemoryTokenStorage(tokens=tokens, client_info=client_info, on_tokens_updated=on_tokens_updated),
+            storage=_InMemoryTokenStorage(
+                tokens=tokens, client_info=client_info, on_tokens_updated=on_tokens_updated
+            ),
             oauth_metadata=oauth_metadata,
             resource_metadata=resource_metadata,
             declared_tools=declared_tools,
@@ -339,14 +355,12 @@ class MCPConnectorRuntime:
         ):
             payload.pop(key, None)
         if not payload.get("token_endpoint_auth_method"):
-            payload["token_endpoint_auth_method"] = "none"
+            payload["token_endpoint_auth_method"] = "none"  # nosec B105
         return OAuthClientMetadata.model_validate(payload)
 
     @staticmethod
     def _tokens_from_bundle(bundle: dict[str, Any]) -> OAuthToken | None:
-        access_token = str(
-            bundle.get("access_token") or bundle.get("token") or ""
-        ).strip()
+        access_token = str(bundle.get("access_token") or bundle.get("token") or "").strip()
         refresh_token = str(bundle.get("refresh_token") or "").strip() or None
         if not access_token and not refresh_token:
             return None
@@ -361,9 +375,7 @@ class MCPConnectorRuntime:
         if isinstance(scope, str) and scope.strip():
             payload["scope"] = scope.strip()
         elif isinstance(bundle.get("scopes"), list):
-            scopes = [
-                str(item).strip() for item in bundle["scopes"] if str(item).strip()
-            ]
+            scopes = [str(item).strip() for item in bundle["scopes"] if str(item).strip()]
             if scopes:
                 payload["scope"] = " ".join(scopes)
         return OAuthToken.model_validate(payload)
@@ -508,6 +520,7 @@ class MCPConnectorRuntime:
     async def _session_for_transport(self, transport: str) -> AsyncIterator[ClientSession]:
         if not MCP_SDK_AVAILABLE:
             raise MCPRuntimeError("MCP SDK is not installed.")
+
         async def _handle_message(message: Any) -> None:
             raw = getattr(getattr(message, "message", message), "root", None)
             raw = raw or getattr(message, "message", message)
@@ -520,14 +533,21 @@ class MCPConnectorRuntime:
                 if hasattr(result, "__await__"):
                     await result
             from mcp.client.session import _default_message_handler
+
             await _default_message_handler(message)
 
         if transport == "sse":
             auth = self._session_client()
-            async with build_safe_async_client(headers=self.headers or None, auth=auth) as http_client:
+            async with build_safe_async_client(
+                headers=self.headers or None, auth=auth
+            ) as http_client:
                 async with sse_client(self.server_url, http_client=http_client) as streams:
                     read_stream, write_stream = streams
-                    async with ClientSession(read_stream, write_stream, message_handler=self.message_handler or _handle_message) as session:
+                    async with ClientSession(
+                        read_stream,
+                        write_stream,
+                        message_handler=self.message_handler or _handle_message,
+                    ) as session:
                         await session.initialize()
                         yield session
             return
@@ -536,7 +556,11 @@ class MCPConnectorRuntime:
         async with build_safe_async_client(headers=self.headers or None, auth=auth) as http_client:
             async with streamable_http_client(self.server_url, http_client=http_client) as streams:
                 read_stream, write_stream, _session_id = streams
-                async with ClientSession(read_stream, write_stream, message_handler=self.message_handler or _handle_message) as session:
+                async with ClientSession(
+                    read_stream,
+                    write_stream,
+                    message_handler=self.message_handler or _handle_message,
+                ) as session:
                     await session.initialize()
                     yield session
 
@@ -612,7 +636,9 @@ class MCPConnectorRuntime:
             cursor = None
             for _ in range(100):
                 result = await session.list_resources(cursor=cursor)
-                items.extend(MCPConnectorRuntime._dump_json_value(item) for item in result.resources)
+                items.extend(
+                    MCPConnectorRuntime._dump_json_value(item) for item in result.resources
+                )
                 cursor = getattr(result, "nextCursor", None)
                 if not cursor:
                     break
@@ -626,7 +652,9 @@ class MCPConnectorRuntime:
             cursor = None
             for _ in range(100):
                 result = await session.list_resource_templates(cursor=cursor)
-                items.extend(MCPConnectorRuntime._dump_json_value(item) for item in result.resourceTemplates)
+                items.extend(
+                    MCPConnectorRuntime._dump_json_value(item) for item in result.resourceTemplates
+                )
                 cursor = getattr(result, "nextCursor", None)
                 if not cursor:
                     break
@@ -740,9 +768,20 @@ class MCPConnectorRuntime:
         }
 
 
-def build_mcp_runtime(config: dict[str, Any], *, on_tokens_updated: Any | None = None, message_handler: Any | None = None, notification_handler: Any | None = None) -> MCPConnectorRuntime | None:
+def build_mcp_runtime(
+    config: dict[str, Any],
+    *,
+    on_tokens_updated: Any | None = None,
+    message_handler: Any | None = None,
+    notification_handler: Any | None = None,
+) -> MCPConnectorRuntime | None:
     try:
-        return MCPConnectorRuntime.from_config(config, on_tokens_updated=on_tokens_updated, message_handler=message_handler, notification_handler=notification_handler)
+        return MCPConnectorRuntime.from_config(
+            config,
+            on_tokens_updated=on_tokens_updated,
+            message_handler=message_handler,
+            notification_handler=notification_handler,
+        )
     except MCPRuntimeError as exc:
         logger.warning("Unable to build MCP runtime: %s", exc)
         return None
@@ -789,7 +828,10 @@ def infer_mcp_tool_risk(tool_name: str, tool: dict[str, Any] | None = None) -> M
         return "delete"
     if any(word in normalized for word in ("send", "post", "message", "comment", "respond")):
         return "external_message"
-    if any(word in normalized for word in ("create", "update", "write", "upload", "append", "modify", "move", "copy")):
+    if any(
+        word in normalized
+        for word in ("create", "update", "write", "upload", "append", "modify", "move", "copy")
+    ):
         return "write"
     return "read"
 
@@ -809,13 +851,16 @@ def _scope_is_owned(
         scope_id = raw_id if isinstance(raw_id, uuid.UUID) else uuid.UUID(str(raw_id))
     except (TypeError, ValueError, AttributeError):
         return False
-    return db.execute(
-        select(id_column).where(
-            id_column == scope_id,
-            model.tenant_id == tenant_id,
-            model.user_id == user_id,
-        )
-    ).scalar_one_or_none() is not None
+    return (
+        db.execute(
+            select(id_column).where(
+                id_column == scope_id,
+                model.tenant_id == tenant_id,
+                model.user_id == user_id,
+            )
+        ).scalar_one_or_none()
+        is not None
+    )
 
 
 def evaluate_mcp_tool_policy(
@@ -839,10 +884,16 @@ def evaluate_mcp_tool_policy(
     provider_available, provider_reason = mcp_server_provider_available(db, server)
     if not provider_available:
         return MCPToolPolicyDecision(False, reason=provider_reason or "MCP provider is disabled.")
-    if max_age_seconds is not None and not mcp_catalog_is_fresh(server, max_age_seconds=max_age_seconds):
+    if max_age_seconds is not None and not mcp_catalog_is_fresh(
+        server, max_age_seconds=max_age_seconds
+    ):
         return MCPToolPolicyDecision(False, reason="MCP tool catalog is stale.")
-    if expected_catalog_revision is not None and int(server.catalog_revision or 0) != int(expected_catalog_revision):
-        return MCPToolPolicyDecision(False, reason="MCP tool catalog changed; refresh the tool list.")
+    if expected_catalog_revision is not None and int(server.catalog_revision or 0) != int(
+        expected_catalog_revision
+    ):
+        return MCPToolPolicyDecision(
+            False, reason="MCP tool catalog changed; refresh the tool list."
+        )
 
     policy = db.execute(
         select(MCPConnectionPolicy).where(
@@ -870,13 +921,27 @@ def evaluate_mcp_tool_policy(
 
     risk_level = infer_mcp_tool_risk(normalized_name, tool)
     risk_ceiling = str(policy.risk_ceiling or "read").strip().lower()
-    if risk_level not in _MCP_RISK_RANK or _MCP_RISK_RANK[risk_level] > _MCP_RISK_RANK.get(risk_ceiling, 0):
-        return MCPToolPolicyDecision(False, risk_level=risk_level, reason="MCP tool exceeds the connection risk ceiling.")
+    if risk_level not in _MCP_RISK_RANK or _MCP_RISK_RANK[risk_level] > _MCP_RISK_RANK.get(
+        risk_ceiling, 0
+    ):
+        return MCPToolPolicyDecision(
+            False, risk_level=risk_level, reason="MCP tool exceeds the connection risk ceiling."
+        )
     if policy.read_only and risk_level != "read":
-        return MCPToolPolicyDecision(False, risk_level=risk_level, reason="MCP tool is blocked by read-only mode.")
+        return MCPToolPolicyDecision(
+            False, risk_level=risk_level, reason="MCP tool is blocked by read-only mode."
+        )
 
-    approval_rule = (policy.approval_rules or {}).get(risk_level) if isinstance(policy.approval_rules, dict) else None
-    configured_mode = (policy.tool_modes or {}).get(normalized_name) if isinstance(policy.tool_modes, dict) else None
+    approval_rule = (
+        (policy.approval_rules or {}).get(risk_level)
+        if isinstance(policy.approval_rules, dict)
+        else None
+    )
+    configured_mode = (
+        (policy.tool_modes or {}).get(normalized_name)
+        if isinstance(policy.tool_modes, dict)
+        else None
+    )
     if approval_rule == "blocked":
         return MCPToolPolicyDecision(
             False,
@@ -884,11 +949,22 @@ def evaluate_mcp_tool_policy(
             risk_level=risk_level,
             reason="MCP tool is blocked by its risk-level policy.",
         )
-    mode = configured_mode if configured_mode in {"always_allow", "needs_approval", "blocked"} else (
-        approval_rule if approval_rule in {"always_allow", "needs_approval", "blocked"} else "needs_approval"
+    mode = (
+        configured_mode
+        if configured_mode in {"always_allow", "needs_approval", "blocked"}
+        else (
+            approval_rule
+            if approval_rule in {"always_allow", "needs_approval", "blocked"}
+            else "needs_approval"
+        )
     )
     if mode == "blocked":
-        return MCPToolPolicyDecision(False, mode=mode, risk_level=risk_level, reason="MCP tool is blocked by its per-tool policy.")
+        return MCPToolPolicyDecision(
+            False,
+            mode=mode,
+            risk_level=risk_level,
+            reason="MCP tool is blocked by its per-tool policy.",
+        )
     approval_requirement: Literal["auto", "human", "block"] = "human"
     if mode == "always_allow" and risk_level == "read":
         approval_requirement = "auto"
@@ -900,7 +976,11 @@ def evaluate_mcp_tool_policy(
         mode=mode,
         risk_level=risk_level,
         approval_requirement=approval_requirement,
-        reason="MCP tool allowed by connection policy." if approval_requirement == "auto" else "MCP tool requires approval by policy.",
+        reason=(
+            "MCP tool allowed by connection policy."
+            if approval_requirement == "auto"
+            else "MCP tool requires approval by policy."
+        ),
     )
 
 
@@ -978,37 +1058,54 @@ def build_mcp_server_runtime(
     credentials["transport"] = server.transport
     credentials["server_url"] = config.get("server_url")
     credentials["client_info"] = token_payload.get("client_info") or config.get("oauth_client_info")
-    credentials["client_metadata"] = token_payload.get("client_metadata") or config.get("client_metadata")
-    credentials["oauth_metadata"] = token_payload.get("oauth_metadata") or config.get("oauth_metadata")
-    credentials["resource_metadata"] = token_payload.get("resource_metadata") or config.get("resource_metadata")
+    credentials["client_metadata"] = token_payload.get("client_metadata") or config.get(
+        "client_metadata"
+    )
+    credentials["oauth_metadata"] = token_payload.get("oauth_metadata") or config.get(
+        "oauth_metadata"
+    )
+    credentials["resource_metadata"] = token_payload.get("resource_metadata") or config.get(
+        "resource_metadata"
+    )
     if token_record is not None and token_record.expires_at is not None:
         credentials["token_expires_at"] = token_record.expires_at.isoformat()
 
     async def _persist(tokens: Any) -> None:
         if token_record is None:
             return
-        refreshed = tokens.model_dump(mode="json", exclude_none=True) if hasattr(tokens, "model_dump") else dict(vars(tokens))
+        refreshed = (
+            tokens.model_dump(mode="json", exclude_none=True)
+            if hasattr(tokens, "model_dump")
+            else dict(vars(tokens))
+        )
         payload = dict(token_payload)
         payload.update(refreshed)
-        encrypted = crypto.encrypt(json.dumps(payload, separators=(",", ":")), aad=str(server.tenant_id).encode())
+        encrypted = crypto.encrypt(
+            json.dumps(payload, separators=(",", ":")), aad=str(server.tenant_id).encode()
+        )
         token_record.secret_ciphertext = encrypted.ciphertext
         token_record.secret_nonce = encrypted.nonce
         token_record.secret_kid = encrypted.kid
         expires_in = payload.get("expires_in")
         if expires_in is not None:
             from datetime import UTC, datetime, timedelta
+
             try:
                 token_record.expires_at = datetime.now(UTC) + timedelta(seconds=int(expires_in))
             except (TypeError, ValueError):
                 pass
         db.add(token_record)
         from app.integrations.repositories.mcp_events import MCPEventsRepository
+
         MCPEventsRepository(db).append(
             tenant_id=server.tenant_id,
             server_id=server.id,
             user_id=server.user_id,
             event_type="oauth_token_refreshed",
-            payload={"has_refresh_token": bool(payload.get("refresh_token")), "expires_in": payload.get("expires_in")},
+            payload={
+                "has_refresh_token": bool(payload.get("refresh_token")),
+                "expires_in": payload.get("expires_in"),
+            },
         )
         db.commit()
 
@@ -1050,7 +1147,9 @@ async def execute_mcp_server_tool(
             "error_code": "stale_catalog",
             "is_error": True,
         }
-    cached_tools = config.get("mcp_tools_cache") if isinstance(config.get("mcp_tools_cache"), list) else []
+    cached_tools = (
+        config.get("mcp_tools_cache") if isinstance(config.get("mcp_tools_cache"), list) else []
+    )
     catalog_tool = next(
         (item for item in cached_tools if isinstance(item, dict) and item.get("name") == tool_name),
         None,
@@ -1155,9 +1254,7 @@ def serialize_mcp_result(result: Any) -> dict[str, Any]:
         dumped = model_dump(mode="json", exclude_none=True)
         payload = dumped if isinstance(dumped, dict) else {"result": dumped}
     elif hasattr(result, "__dict__"):
-        payload = {
-            key: value for key, value in vars(result).items() if not key.startswith("_")
-        }
+        payload = {key: value for key, value in vars(result).items() if not key.startswith("_")}
     else:
         payload = {"result": result}
     payload["rendered_text"] = render_mcp_result_text(result)
@@ -1213,9 +1310,7 @@ async def validate_mcp_runtime(
     expected_tools: Iterable[str],
 ) -> dict[str, Any]:
     try:
-        return await runtime.validate_tools(
-            provider=provider, expected_tools=expected_tools
-        )
+        return await runtime.validate_tools(provider=provider, expected_tools=expected_tools)
     except Exception as exc:  # noqa: BLE001
         status, error_code = classify_health_status(exception=exc, message=str(exc))
         return build_health_report(
@@ -1230,14 +1325,10 @@ async def validate_mcp_runtime(
         )
 
 
-async def sync_google_drive(
-    runtime: MCPConnectorRuntime, config: dict[str, Any]
-) -> dict[str, Any]:
+async def sync_google_drive(runtime: MCPConnectorRuntime, config: dict[str, Any]) -> dict[str, Any]:
     folder_id = str(resolve_config_value(config, "folder_id") or "").strip() or None
     page_size = max(1, min(int(resolve_config_value(config, "page_size") or 50), 100))
-    max_files = max(
-        1, min(int(resolve_config_value(config, "max_files") or page_size * 4), 250)
-    )
+    max_files = max(1, min(int(resolve_config_value(config, "max_files") or page_size * 4), 250))
     arguments: dict[str, Any] = {
         "page_size": page_size,
         "max_results": max_files,
@@ -1263,19 +1354,13 @@ async def sync_google_drive(
     )
     if result.get("status") != "success":
         return result
-    result["message"] = (
-        f"Successfully ingested MCP snapshot from Google Drive ({scope_label})."
-    )
+    result["message"] = f"Successfully ingested MCP snapshot from Google Drive ({scope_label})."
     return result
 
 
-async def sync_gmail(
-    runtime: MCPConnectorRuntime, config: dict[str, Any]
-) -> dict[str, Any]:
+async def sync_gmail(runtime: MCPConnectorRuntime, config: dict[str, Any]) -> dict[str, Any]:
     query = str(resolve_config_value(config, "query") or "newer_than:30d").strip()
-    max_results = max(
-        1, min(int(resolve_config_value(config, "max_results") or 25), 50)
-    )
+    max_results = max(1, min(int(resolve_config_value(config, "max_results") or 25), 50))
     result = await runtime.snapshot_from_tool_call(
         provider="gmail",
         tool_name="search_threads",
@@ -1296,9 +1381,7 @@ async def sync_google_calendar(
     config: dict[str, Any],
 ) -> dict[str, Any]:
     time_min = str(resolve_config_value(config, "time_min") or "").strip() or None
-    max_results = max(
-        1, min(int(resolve_config_value(config, "max_results") or 20), 50)
-    )
+    max_results = max(1, min(int(resolve_config_value(config, "max_results") or 20), 50))
     result = await runtime.snapshot_from_tool_call(
         provider="google-calendar",
         tool_name="list_events",
@@ -1316,9 +1399,7 @@ async def sync_google_calendar(
     return result
 
 
-async def sync_github(
-    runtime: MCPConnectorRuntime, config: dict[str, Any]
-) -> dict[str, Any]:
+async def sync_github(runtime: MCPConnectorRuntime, config: dict[str, Any]) -> dict[str, Any]:
     repo_owner = str(resolve_config_value(config, "repo_owner") or "").strip()
     repo_name = str(resolve_config_value(config, "repo_name") or "").strip()
     repo_url = str(resolve_config_value(config, "repo_url") or "").strip()
@@ -1335,8 +1416,8 @@ async def sync_github(
                 if len(parts) >= 2:
                     repo_owner = repo_owner or parts[0]
                     repo_name = repo_name or parts[1].removesuffix(".git")
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:  # noqa: BLE001, B110 - malformed optional repository URL is ignored
+                logger.debug("Unable to parse optional repository URL", exc_info=True)
     if not repo_owner or not repo_name:
         raise MCPRuntimeError("GitHub repository owner and name are required.")
 
@@ -1355,8 +1436,7 @@ async def sync_github(
         tool_name="search",
         arguments={"query": search_terms, "max_results": 20},
         title="GitHub MCP Sync",
-        scope_label=f"{repo_owner}/{repo_name}@{branch}"
-        + (f" path {path}" if path else ""),
+        scope_label=f"{repo_owner}/{repo_name}@{branch}" + (f" path {path}" if path else ""),
         filename=f"github_{repo_name}_{branch}.md",
         metadata={
             "repo_owner": repo_owner,
@@ -1374,9 +1454,7 @@ async def sync_github(
     return result
 
 
-async def sync_slack(
-    runtime: MCPConnectorRuntime, config: dict[str, Any]
-) -> dict[str, Any]:
+async def sync_slack(runtime: MCPConnectorRuntime, config: dict[str, Any]) -> dict[str, Any]:
     channel_id = str(resolve_config_value(config, "channel_id") or "").strip()
     limit = max(1, min(int(resolve_config_value(config, "limit") or 100), 200))
     if not channel_id:
@@ -1393,15 +1471,11 @@ async def sync_slack(
     )
     if result.get("status") != "success":
         return result
-    result["message"] = (
-        f"Successfully ingested MCP snapshot from Slack channel {channel_id}."
-    )
+    result["message"] = f"Successfully ingested MCP snapshot from Slack channel {channel_id}."
     return result
 
 
-async def sync_notion(
-    runtime: MCPConnectorRuntime, config: dict[str, Any]
-) -> dict[str, Any]:
+async def sync_notion(runtime: MCPConnectorRuntime, config: dict[str, Any]) -> dict[str, Any]:
     page_id = str(resolve_config_value(config, "page_id", "workspace_id") or "").strip()
     if not page_id:
         raise MCPRuntimeError("Notion page_id is required.")
@@ -1418,9 +1492,7 @@ async def sync_notion(
     )
     if result.get("status") != "success":
         return result
-    result["message"] = (
-        f"Successfully ingested MCP snapshot from Notion page {clean_page_id}."
-    )
+    result["message"] = f"Successfully ingested MCP snapshot from Notion page {clean_page_id}."
     return result
 
 
@@ -1442,7 +1514,8 @@ async def execute_mcp_tool(
 
     stmt = select(ConnectorSecret).where(
         ConnectorSecret.connector_id == connector.id,
-        ConnectorSecret.secret_type == "credentials",
+        ConnectorSecret.secret_type
+        == "credentials",  # nosec B105 - storage record type, not a credential value
     )
     secret = db.execute(stmt).scalars().first()
     if not secret:
@@ -1481,9 +1554,7 @@ async def execute_mcp_tool(
     config = {
         "auth_mode": "mcp",
         "credentials": credentials,
-        "mcp_server_url": (
-            connector.config.get("mcp_server_url") if connector.config else None
-        ),
+        "mcp_server_url": (connector.config.get("mcp_server_url") if connector.config else None),
     }
 
     # 3. Build runtime

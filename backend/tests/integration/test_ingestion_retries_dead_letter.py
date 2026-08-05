@@ -102,9 +102,7 @@ def test_retry_and_dead_letter_path_for_retryable_failures(
         assert final_job.attempt_count == settings.ingestion_max_attempts
         assert final_job.last_error_code == "EMBEDDING_PROVIDER_UNAVAILABLE"
 
-        final_doc = service.documents.get_by_id(
-            tenant_id=seeded.tenant_id, document_id=document_id
-        )
+        final_doc = service.documents.get_by_id(tenant_id=seeded.tenant_id, document_id=document_id)
         assert final_doc is not None
         assert final_doc.status == "dead_lettered"
     finally:

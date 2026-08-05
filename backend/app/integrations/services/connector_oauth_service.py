@@ -138,9 +138,7 @@ class ConnectorOAuthService:
                 "provider_key": integration.slug,
             }
 
-        provider_config = self._provider_oauth_client_config_for_integration(
-            integration
-        )
+        provider_config = self._provider_oauth_client_config_for_integration(integration)
         if provider_config is None:
             return {
                 "configured": False,
@@ -202,9 +200,7 @@ class ConnectorOAuthService:
                 status_code=400,
             )
 
-        provider_config = self._provider_oauth_client_config_for_integration(
-            integration
-        )
+        provider_config = self._provider_oauth_client_config_for_integration(integration)
         if provider_config is None or provider_config.missing:
             missing = list(provider_config.missing if provider_config else [])
             if not missing:
@@ -231,16 +227,14 @@ class ConnectorOAuthService:
             )
 
         try:
-            resource_metadata, oauth_metadata = self._discover_mcp_metadata(
-                profile.server_url
-            )
+            resource_metadata, oauth_metadata = self._discover_mcp_metadata(profile.server_url)
             scope = get_client_metadata_scopes(None, resource_metadata, oauth_metadata)
             if not scope and profile.default_scopes:
                 scope = " ".join(profile.default_scopes)
 
             client_metadata = OAuthClientMetadata(
                 redirect_uris=[redirect_uri],
-                token_endpoint_auth_method="client_secret_post",
+                token_endpoint_auth_method="client_secret_post",  # nosec B106 - OAuth protocol metadata, not a credential
                 scope=scope,
                 client_name=APP_BRAND_NAME,
                 client_uri=self._public_origin(),
@@ -300,9 +294,7 @@ class ConnectorOAuthService:
             "integration_slug": integration.slug,
             "resource_metadata": resource_metadata.model_dump(mode="json"),
             "oauth_metadata": oauth_metadata.model_dump(mode="json"),
-            "client_metadata": client_metadata.model_dump(
-                mode="json", exclude_none=True
-            ),
+            "client_metadata": client_metadata.model_dump(mode="json", exclude_none=True),
             "client_info": client_info.model_dump(mode="json", exclude_none=True),
         }
         self._upsert_secret(
@@ -363,13 +355,9 @@ class ConnectorOAuthService:
 
         oauth_metadata = OAuthMetadata.model_validate(pending["oauth_metadata"])
         client_info = OAuthClientInformationFull.model_validate(pending["client_info"])
-        resource_metadata = ProtectedResourceMetadata.model_validate(
-            pending["resource_metadata"]
-        )
+        resource_metadata = ProtectedResourceMetadata.model_validate(pending["resource_metadata"])
         code_verifier = str(pending["code_verifier"] or "")
-        redirect_uri = str(
-            pending["redirect_uri"] or self._connector_redirect_uri() or ""
-        )
+        redirect_uri = str(pending["redirect_uri"] or self._connector_redirect_uri() or "")
         if not redirect_uri:
             raise ApiError(
                 code="CONNECTOR_OAUTH_INVALID",
@@ -436,9 +424,7 @@ class ConnectorOAuthService:
                 # Store only names in the legacy list for backward compatibility
                 config["mcp_tools"] = [t.get("name") for t in tools]
             except Exception as exc:
-                logger.warning(
-                    f"Failed to cache tools for connector {connector.id}: {exc}"
-                )
+                logger.warning(f"Failed to cache tools for connector {connector.id}: {exc}")
 
         connector.config = config
         # ------------------------------------------------
@@ -478,11 +464,7 @@ class ConnectorOAuthService:
         return value or None
 
     def _connector_frontend_redirect_uri(self) -> str | None:
-        value = (
-            (self.settings.connector_oauth_frontend_redirect_uri or "")
-            .strip()
-            .rstrip("/")
-        )
+        value = (self.settings.connector_oauth_frontend_redirect_uri or "").strip().rstrip("/")
         if not value:
             origin = self._public_origin()
             if origin:
@@ -490,9 +472,7 @@ class ConnectorOAuthService:
         return value or None
 
     def _profile_for_integration(self, integration: Integration) -> MCPProfile | None:
-        ui_metadata = (
-            integration.ui_metadata if isinstance(integration.ui_metadata, dict) else {}
-        )
+        ui_metadata = integration.ui_metadata if isinstance(integration.ui_metadata, dict) else {}
         auth_mode = str(ui_metadata.get("auth_mode") or "").strip().lower()
         server_url = str(ui_metadata.get("mcp_server_url") or "").strip()
         tools = tuple(
@@ -538,17 +518,13 @@ class ConnectorOAuthService:
         ).strip()
         if not provider_key:
             return None
-        provider_label = str(
-            ui_metadata.get("oauth_provider_label") or integration.name
-        )
+        provider_label = str(ui_metadata.get("oauth_provider_label") or integration.name)
 
         client_id_attr = f"connector_{provider_key}_oauth_client_id"
         client_secret_attr = f"connector_{provider_key}_oauth_client_secret"
 
         client_id = str(getattr(self.settings, client_id_attr, "") or "").strip()
-        client_secret = str(
-            getattr(self.settings, client_secret_attr, "") or ""
-        ).strip()
+        client_secret = str(getattr(self.settings, client_secret_attr, "") or "").strip()
 
         missing: list[str] = []
         if not client_id:
@@ -666,9 +642,7 @@ class ConnectorOAuthService:
     ) -> str:
         auth_endpoint = str(oauth_metadata.authorization_endpoint)
         redirect_uri = (
-            str(client_metadata.redirect_uris[0])
-            if client_metadata.redirect_uris
-            else ""
+            str(client_metadata.redirect_uris[0]) if client_metadata.redirect_uris else ""
         )
         if not redirect_uri:
             raise ApiError(
@@ -753,9 +727,7 @@ class ConnectorOAuthService:
     # Secret storage helpers
     # ------------------------------------------------------------------
 
-    def _load_connector(
-        self, connector_id: uuid.UUID, tenant_id: uuid.UUID
-    ) -> Connector | None:
+    def _load_connector(self, connector_id: uuid.UUID, tenant_id: uuid.UUID) -> Connector | None:
         connector = self.session.get(Connector, connector_id)
         if connector and connector.tenant_id == tenant_id:
             return connector
@@ -764,9 +736,7 @@ class ConnectorOAuthService:
     def _load_integration(self, integration_id: uuid.UUID) -> Integration | None:
         return self.session.get(Integration, integration_id)
 
-    def _load_secret_payload(
-        self, connector: Connector, secret_type: str
-    ) -> dict[str, Any] | None:
+    def _load_secret_payload(self, connector: Connector, secret_type: str) -> dict[str, Any] | None:
         stmt = select(ConnectorSecret).where(
             ConnectorSecret.connector_id == connector.id,
             ConnectorSecret.secret_type == secret_type,
@@ -803,12 +773,8 @@ class ConnectorOAuthService:
         secret_type: str,
         payload: dict[str, Any],
     ) -> None:
-        plaintext = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
-        encrypted = self.crypto.encrypt(
-            plaintext, aad=str(connector.tenant_id).encode()
-        )
+        plaintext = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        encrypted = self.crypto.encrypt(plaintext, aad=str(connector.tenant_id).encode())
         stmt = select(ConnectorSecret).where(
             ConnectorSecret.connector_id == connector.id,
             ConnectorSecret.secret_type == secret_type,
@@ -824,9 +790,7 @@ class ConnectorOAuthService:
                 secret_type=secret_type,
                 metadata_json={
                     "auth_mode": "mcp",
-                    "provider_key": (
-                        connector.integration.slug if connector.integration else None
-                    ),
+                    "provider_key": (connector.integration.slug if connector.integration else None),
                 },
             )
             self.session.add(secret)
@@ -836,9 +800,7 @@ class ConnectorOAuthService:
             secret.secret_kid = encrypted.kid
             secret.metadata_json = {
                 "auth_mode": "mcp",
-                "provider_key": (
-                    connector.integration.slug if connector.integration else None
-                ),
+                "provider_key": (connector.integration.slug if connector.integration else None),
             }
 
     def _delete_secret(self, connector: Connector, secret_type: str) -> None:
@@ -866,9 +828,7 @@ class ConnectorOAuthService:
             "mcp_tools": list(pending.get("mcp_tools") or []),
             "authorization_endpoint": str(oauth_metadata.authorization_endpoint),
             "token_uri": str(oauth_metadata.token_endpoint),
-            "resource": (
-                str(resource_metadata.resource) if resource_metadata.resource else None
-            ),
+            "resource": (str(resource_metadata.resource) if resource_metadata.resource else None),
             "client_id": client_info.client_id,
             "client_secret": client_info.client_secret,
             "client_name": client_info.client_name,
@@ -882,9 +842,7 @@ class ConnectorOAuthService:
             "redirect_uri": redirect_uri,
             "client_info": client_info.model_dump(mode="json", exclude_none=True),
             "oauth_metadata": oauth_metadata.model_dump(mode="json", exclude_none=True),
-            "resource_metadata": resource_metadata.model_dump(
-                mode="json", exclude_none=True
-            ),
+            "resource_metadata": resource_metadata.model_dump(mode="json", exclude_none=True),
         }
 
     # ------------------------------------------------------------------
@@ -892,16 +850,12 @@ class ConnectorOAuthService:
     # ------------------------------------------------------------------
 
     def _state_secret(self) -> str:
-        return (
-            self.settings.refresh_token_hash_secret or self.settings.jwt_secret
-        ).strip()
+        return (self.settings.refresh_token_hash_secret or self.settings.jwt_secret).strip()
 
     def _sign_state(self, payload: dict[str, Any]) -> str:
         encoded = (
             base64.urlsafe_b64encode(
-                json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
-                    "utf-8"
-                )
+                json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
             )
             .decode("utf-8")
             .rstrip("=")
@@ -939,9 +893,7 @@ class ConnectorOAuthService:
 
         padded = encoded + "=" * (-len(encoded) % 4)
         try:
-            payload = json.loads(
-                base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8")
-            )
+            payload = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
         except Exception as exc:  # noqa: BLE001
             raise ApiError(
                 code="CONNECTOR_OAUTH_INVALID",
@@ -970,6 +922,4 @@ class ConnectorOAuthService:
     @staticmethod
     def _base_origin(server_url: str) -> str:
         parsed = httpx.URL(server_url)
-        return (
-            f"{parsed.scheme}://{parsed.host}{f':{parsed.port}' if parsed.port else ''}"
-        )
+        return f"{parsed.scheme}://{parsed.host}{f':{parsed.port}' if parsed.port else ''}"

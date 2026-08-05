@@ -25,9 +25,7 @@ class _FakeRedis:
 
 def test_query_cache_get_and_set_paths(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     fake = _FakeRedis()
-    monkeypatch.setattr(
-        "app.system.services.cache_service.get_redis_client", lambda: fake
-    )
+    monkeypatch.setattr("app.system.services.cache_service.get_redis_client", lambda: fake)
 
     service = QueryCacheService()
     assert service.get("missing") is None
@@ -50,9 +48,7 @@ def test_query_cache_get_and_set_paths(monkeypatch) -> None:  # type: ignore[no-
 
 def test_query_cache_handles_redis_errors(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     fake = _FakeRedis()
-    monkeypatch.setattr(
-        "app.system.services.cache_service.get_redis_client", lambda: fake
-    )
+    monkeypatch.setattr("app.system.services.cache_service.get_redis_client", lambda: fake)
     service = QueryCacheService()
 
     fake.raise_on_get = True

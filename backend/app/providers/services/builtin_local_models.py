@@ -12,9 +12,7 @@ _BUILTIN_EMBEDDING_MODELS: dict[str, tuple[str, int]] = {
 
 _BUILTIN_RERANKER_MODELS: dict[str, str] = {
     "BAAI/bge-reranker-v2-m3": "rerankers/BAAI-bge-reranker-v2-m3",
-    "cross-encoder/ms-marco-MiniLM-L-12-v2": (
-        "rerankers/cross-encoder-ms-marco-MiniLM-L-12-v2"
-    ),
+    "cross-encoder/ms-marco-MiniLM-L-12-v2": ("rerankers/cross-encoder-ms-marco-MiniLM-L-12-v2"),
 }
 
 

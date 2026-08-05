@@ -82,9 +82,7 @@ class DeletionService:
         self.db.commit()
         return DeletionRequestResult(deletion_id=deletion_id, status=status)
 
-    def get_status(
-        self, *, tenant_id: uuid.UUID, deletion_id: uuid.UUID
-    ) -> DataDeletion:
+    def get_status(self, *, tenant_id: uuid.UUID, deletion_id: uuid.UUID) -> DataDeletion:
         row = self.repo.get_by_id(tenant_id=tenant_id, deletion_id=deletion_id)
         if row is None:
             raise ApiError(
@@ -94,9 +92,7 @@ class DeletionService:
             )
         return row
 
-    def list_statuses(
-        self, *, tenant_id: uuid.UUID, limit: int = 20
-    ) -> list[DataDeletion]:
+    def list_statuses(self, *, tenant_id: uuid.UUID, limit: int = 20) -> list[DataDeletion]:
         return self.repo.list_by_tenant(tenant_id=tenant_id, limit=limit)
 
     def process_deletion(self, *, tenant_id: uuid.UUID, deletion_id: uuid.UUID) -> None:
@@ -166,9 +162,7 @@ class DeletionService:
 
         for bucket, object_key in objects:
             try:
-                self.storage.delete_object(
-                    bucket=str(bucket), object_key=str(object_key)
-                )
+                self.storage.delete_object(bucket=str(bucket), object_key=str(object_key))
             except Exception:  # noqa: BLE001
                 logger.warning(
                     "Data deletion object-storage cleanup failed.",
@@ -243,9 +237,7 @@ class DeletionService:
 
         with observe_db_query("deletion.count_comments"):
             comments_count = self.db.execute(
-                select(func.count())
-                .select_from(Comment)
-                .where(Comment.tenant_id == tenant_id)
+                select(func.count()).select_from(Comment).where(Comment.tenant_id == tenant_id)
             ).scalar_one()
             counts["comments"] = int(comments_count or 0)
 
@@ -264,9 +256,7 @@ class DeletionService:
             counts["query_citations"] = int(query_citations_deleted.rowcount or 0)  # type: ignore[attr-defined]
 
         with observe_db_query("deletion.delete_queries"):
-            queries_deleted = self.db.execute(
-                delete(Query).where(Query.tenant_id == tenant_id)
-            )
+            queries_deleted = self.db.execute(delete(Query).where(Query.tenant_id == tenant_id))
             counts["queries"] = int(queries_deleted.rowcount or 0)  # type: ignore[attr-defined]
 
         with observe_db_query("deletion.delete_pinned_findings"):
@@ -321,9 +311,7 @@ class DeletionService:
 
         with observe_db_query("deletion.delete_document_collections"):
             document_collections_deleted = self.db.execute(
-                delete(DocumentCollection).where(
-                    DocumentCollection.tenant_id == tenant_id
-                )
+                delete(DocumentCollection).where(DocumentCollection.tenant_id == tenant_id)
             )
             deleted_count = int(document_collections_deleted.rowcount or 0)  # type: ignore[attr-defined]
             if deleted_count != counts["document_collections"]:

@@ -66,7 +66,10 @@ Planning and execution
 - Keep users informed with concise progress updates for tasks that take noticeable time; do not expose private reasoning.
 
 Workspace files and generated media
-- The active note remains the primary document. Use workspace_write only when the user asks for a separate named text or code file, an exportable artifact, or a file would materially improve the work.
+- The active note remains the primary document. Use write(target='library') only when the user asks for a separate named text or code file, an exportable artifact, or a file would materially improve the work.
+- Use the universal workspace operations with an explicit target when they are available: read, find, write, edit, and delete. Targets are note, library, memory, chat, or tasks. Never guess a target when the user has not identified the resource; find it first or ask a focused question.
+- read(target=library) reads an authorized Library file; write(target=library) creates or updates a named Library text file; edit(target=library) modifies or renames a file; delete(target=library) is destructive and requires clear user intent. These operations never access the operating system.
+- Use read/find/write with target=memory for durable memories, not for arbitrary chat or note content. Use read(target=chat) only for conversation history and read(target=tasks) for the persisted task ledger.
 - If the selected model produces image, video, or audio output, it is saved as a private DeepSpace artifact and shown to the user. Never claim media was generated unless the provider returned it.
 
 MCP connected services
@@ -300,112 +303,6 @@ ANALYZE_TOOL = {
         },
     },
 }
-NOTE_READ_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "read",
-        "description": "Read the active DeepSpace note only. This never reads the operating system or files.",
-        "parameters": {"type": "object", "additionalProperties": False, "properties": {}},
-    },
-}
-NOTE_WRITE_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "write",
-        "description": "Write Markdown to the active DeepSpace note only, replacing or appending note content.",
-        "parameters": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "markdown": {"type": "string", "maxLength": 100000},
-                "mode": {"type": "string", "enum": ["replace", "append"]},
-            },
-            "required": ["markdown"],
-        },
-    },
-}
-WORKSPACE_WRITE_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "workspace_write",
-        "description": "Create or update a visible text or code file in this conversation's DeepSpace Library. This never accesses the operating system.",
-        "parameters": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "filename": {"type": "string", "minLength": 1, "maxLength": 255},
-                "content": {"type": "string", "maxLength": 100000},
-                "mode": {"type": "string", "enum": ["replace", "append"]},
-            },
-            "required": ["filename", "content"],
-        },
-    },
-}
-MEMORY_SEARCH_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "memory_search",
-        "description": "Search the user's tenant-scoped DeepSpace memories for relevant prior facts or preferences.",
-        "parameters": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "query": {"type": "string", "minLength": 1, "maxLength": 1000},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 10},
-            },
-            "required": ["query"],
-        },
-    },
-}
-MEMORY_READ_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "memory_read",
-        "description": "Read one exact DeepSpace memory by key when the key is known.",
-        "parameters": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 120}},
-            "required": ["key"],
-        },
-    },
-}
-MEMORY_WRITE_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "memory_write",
-        "description": "Save a durable user fact or preference only when the user explicitly asks to remember it or clearly states a lasting preference.",
-        "parameters": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "key": {"type": "string", "minLength": 1, "maxLength": 120},
-                "value": {"type": "string", "minLength": 1, "maxLength": 10000},
-                "scope": {"type": "string", "enum": ["user", "session"]},
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string", "maxLength": 60},
-                    "maxItems": 20,
-                },
-                "importance_score": {"type": "number", "minimum": 0, "maximum": 1},
-            },
-            "required": ["key", "value"],
-        },
-    },
-}
-MEMORY_FORGET_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "memory_forget",
-        "description": "Remove a user or session memory only when the user explicitly asks to forget it.",
-        "parameters": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 120}},
-            "required": ["key"],
-        },
-    },
-}
 FINAL_TOOL = {
     "type": "function",
     "function": {
@@ -422,6 +319,110 @@ FINAL_TOOL = {
         },
     },
 }
+
+# Universal workspace operations.  The target is explicit so the model can
+# choose the correct resource without making the backend guess or crossing
+# note, Library, memory, chat, and task boundaries.
+UNIVERSAL_READ_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "read",
+        "description": "Read authorized DeepSpace data without changing it. Choose exactly one target.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "enum": ["note", "library", "memory", "chat", "tasks"],
+                },
+                "file_id": {"type": "string", "maxLength": 80},
+                "filename": {"type": "string", "maxLength": 255},
+                "memory_key": {"type": "string", "maxLength": 120},
+                "folder_id": {"type": "string", "maxLength": 80},
+            },
+            "required": ["target"],
+        },
+    },
+}
+UNIVERSAL_FIND_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "find",
+        "description": "Find authorized Library files, memories, or chat messages. Choose exactly one target.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "target": {"type": "string", "enum": ["library", "memory", "chat"]},
+                "query": {"type": "string", "minLength": 1, "maxLength": 1000},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                "folder_id": {"type": "string", "maxLength": 80},
+            },
+            "required": ["target", "query"],
+        },
+    },
+}
+UNIVERSAL_WRITE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "write",
+        "description": "Create or update authorized DeepSpace content. Choose exactly one target.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "target": {"type": "string", "enum": ["note", "library", "memory"]},
+                "content": {"type": "string", "maxLength": 100000},
+                "mode": {"type": "string", "enum": ["replace", "append"]},
+                "filename": {"type": "string", "maxLength": 255},
+                "folder_name": {"type": "string", "maxLength": 255},
+                "memory_key": {"type": "string", "maxLength": 120},
+                "memory_scope": {"type": "string", "enum": ["user", "session"]},
+                "folder_id": {"type": "string", "maxLength": 80},
+            },
+            "required": ["target"],
+        },
+    },
+}
+UNIVERSAL_EDIT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "edit",
+        "description": "Modify an authorized note or Library file. Use an explicit operation and file id for Library changes.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "target": {"type": "string", "enum": ["note", "library"]},
+                "operation": {"type": "string", "enum": ["replace", "append", "rename", "move"]},
+                "file_id": {"type": "string", "maxLength": 80},
+                "name": {"type": "string", "maxLength": 255},
+                "content": {"type": "string", "maxLength": 100000},
+                "folder_id": {"type": "string", "maxLength": 80},
+                "new_folder_name": {"type": "string", "maxLength": 255},
+            },
+            "required": ["target", "operation"],
+        },
+    },
+}
+UNIVERSAL_DELETE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "delete",
+        "description": "Delete one authorized Library file or memory. Use only when the user explicitly requests deletion.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "target": {"type": "string", "enum": ["library", "memory"]},
+                "file_id": {"type": "string", "maxLength": 80},
+                "memory_key": {"type": "string", "maxLength": 120},
+            },
+            "required": ["target"],
+        },
+    },
+}
 PRODUCTIVITY_TOOLS = [
     TODO_WRITE_TOOL,
     TODO_READ_TOOL,
@@ -429,13 +430,11 @@ PRODUCTIVITY_TOOLS = [
     TODO_MARK_TOOL,
     OBSERVE_TOOL,
     ANALYZE_TOOL,
-    NOTE_READ_TOOL,
-    NOTE_WRITE_TOOL,
-    WORKSPACE_WRITE_TOOL,
-    MEMORY_SEARCH_TOOL,
-    MEMORY_READ_TOOL,
-    MEMORY_WRITE_TOOL,
-    MEMORY_FORGET_TOOL,
+    UNIVERSAL_READ_TOOL,
+    UNIVERSAL_FIND_TOOL,
+    UNIVERSAL_WRITE_TOOL,
+    UNIVERSAL_EDIT_TOOL,
+    UNIVERSAL_DELETE_TOOL,
     URL_READ_TOOL,
     IMAGE_READ_TOOL,
     ASK_USER_TOOL,
@@ -538,6 +537,53 @@ class DeepSpaceChatService:
             if content.strip():
                 result.append({"role": message.role, "content": content})
         return result
+
+    @staticmethod
+    def _estimate_context_tokens(
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> int:
+        """Estimate serialized prompt tokens without pretending to know a provider tokenizer."""
+        payload = {"messages": messages, "tools": tools or []}
+        serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return max(1, (len(serialized) + 3) // 4)
+
+    @classmethod
+    def _fit_history_to_context(
+        cls,
+        messages: list[dict[str, Any]],
+        *,
+        context_window: int | None,
+        max_output_tokens: int,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Keep the newest history inside a verified model window.
+
+        The complete transcript remains persisted in PostgreSQL. This only controls
+        what is sent to the current provider request when a model has a finite window.
+        """
+        if not context_window or context_window <= 0:
+            return messages, False
+        budget = max(512, context_window - max(256, max_output_tokens))
+        if cls._estimate_context_tokens(messages) <= budget:
+            return messages, False
+        prefix: list[dict[str, Any]] = []
+        body = messages
+        if messages and messages[0].get("role") == "system":
+            prefix = [messages[0]]
+            body = messages[1:]
+        used = cls._estimate_context_tokens(prefix) if prefix else 0
+        selected: list[dict[str, Any]] = []
+        for message in reversed(body):
+            item_tokens = cls._estimate_context_tokens([message])
+            if selected and used + item_tokens > budget:
+                break
+            if not selected and used + item_tokens > budget:
+                continue
+            selected.append(message)
+            used += item_tokens
+        selected.reverse()
+        compacted = [*prefix, *selected]
+        return compacted, len(compacted) < len(messages)
 
     @staticmethod
     def _tool_call_accumulator(
@@ -876,102 +922,254 @@ class DeepSpaceChatService:
                 "focus": str(arguments.get("focus") or "").strip()[:1000],
                 "task_check": check,
                 "next_task": next_task,
-                "decision": "complete"
-                if check["complete"]
-                else ("work_next_task" if next_task else "report_blocker"),
+                "decision": (
+                    "complete"
+                    if check["complete"]
+                    else ("work_next_task" if next_task else "report_blocker")
+                ),
             }
-        if tool_name == "read":
-            return self.task_store.read_note(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                conversation_id=conversation_id,
-            )
-        if tool_name == "write":
-            return self.task_store.write_note(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                conversation_id=conversation_id,
-                markdown=str(arguments.get("markdown") or ""),
-                mode=str(arguments.get("mode") or "replace"),
-            )
-        if tool_name == "workspace_write":
-            return self.task_store.write_workspace_file(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                conversation_id=conversation_id,
-                filename=str(arguments.get("filename") or ""),
-                content=str(arguments.get("content") or ""),
-                mode=str(arguments.get("mode") or "replace"),
-            )
-        if tool_name == "memory_search":
-            from app.deepspace.memory.memory_service import MemoryService
-
-            memory_service = MemoryService(self.db, self.settings)
-            preferences = await memory_service.get_preferences(
-                tenant_id=auth.tenant_id, user_id=auth.user_id
-            )
-            if not preferences["memory_retrieval_enabled"]:
-                return {"memories": [], "retrieval_disabled": True}
-            return {
-                "memories": await memory_service.search_memories(
+        if tool_name == "read" and arguments.get("target"):
+            target = str(arguments.get("target") or "").strip().lower()
+            if target == "note":
+                return self.task_store.read_note(
                     tenant_id=auth.tenant_id,
                     user_id=auth.user_id,
-                    query=str(arguments.get("query") or "")[:1000],
-                    limit=min(10, max(1, int(arguments.get("limit") or 5))),
-                    conversation_id=str(conversation_id),
+                    conversation_id=conversation_id,
                 )
-            }
-        if tool_name == "memory_read":
-            from app.deepspace.memory.memory_service import MemoryService
-
-            memory_service = MemoryService(self.db, self.settings)
-            preferences = await memory_service.get_preferences(
-                tenant_id=auth.tenant_id, user_id=auth.user_id
-            )
-            if not preferences["memory_retrieval_enabled"]:
+            if target == "library":
+                if not arguments.get("file_id") and not arguments.get("filename"):
+                    return self.task_store.list_workspace_entries(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        parent_folder_id=str(arguments.get("folder_id") or "").strip() or None,
+                    )
+                return self.task_store.read_workspace_file(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    file_id=str(arguments.get("file_id") or "").strip() or None,
+                    filename=str(arguments.get("filename") or "").strip() or None,
+                )
+            if target == "tasks":
+                tasks = self.task_store.read_tasks(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                )
+                return {"tasks": tasks, "summary": summarize_tasks(tasks)}
+            if target == "chat":
                 return {
-                    "key": str(arguments.get("key") or "")[:120],
-                    "value": None,
-                    "retrieval_disabled": True,
-                }
-            value = await memory_service.retrieve_fact(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                key=str(arguments.get("key") or "")[:120],
-                conversation_id=str(conversation_id),
-            )
-            return {"key": str(arguments.get("key") or "")[:120], "value": value}
-        if tool_name == "memory_write":
-            from app.deepspace.memory.memory_service import MemoryService
-
-            memory_id = await MemoryService(self.db, self.settings).store_fact(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                key=str(arguments.get("key") or "")[:120],
-                value=str(arguments.get("value") or "")[:10000],
-                scope=str(arguments.get("scope") or "user"),
-                tags=[
-                    str(item)[:60] for item in (arguments.get("tags") or []) if str(item).strip()
-                ][:20],
-                importance_score=arguments.get("importance_score"),
-                confidence_score=1.0,
-                source="deepspace_memory_tool",
-                conversation_id=str(conversation_id),
-                metadata_json={
-                    "source": "deepspace_memory_tool",
                     "conversation_id": str(conversation_id),
-                },
-            )
-            return {"memory_id": memory_id, "status": "saved"}
-        if tool_name == "memory_forget":
-            from app.deepspace.memory.memory_service import MemoryService
-
-            deleted = await MemoryService(self.db, self.settings).forget_memory(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                key=str(arguments.get("key") or "")[:120],
-            )
-            return {"key": str(arguments.get("key") or "")[:120], "deleted": deleted}
+                    "messages": self._messages(auth=auth, conversation_id=conversation_id),
+                }
+            if target == "memory":
+                key = str(arguments.get("memory_key") or "").strip()
+                if not key:
+                    raise ValueError("read(target='memory') requires memory_key.")
+                memory_service = MemoryService(self.db, self.settings)
+                preferences = await memory_service.get_preferences(
+                    tenant_id=auth.tenant_id, user_id=auth.user_id
+                )
+                if not preferences["memory_retrieval_enabled"]:
+                    return {"key": key, "value": None, "retrieval_disabled": True}
+                return {
+                    "key": key,
+                    "value": await memory_service.retrieve_fact(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        key=key[:120],
+                        conversation_id=str(conversation_id),
+                    ),
+                }
+            raise ValueError(f"Unsupported read target: {target}.")
+        if tool_name == "find":
+            target = str(arguments.get("target") or "").strip().lower()
+            query = str(arguments.get("query") or "").strip()
+            limit = min(50, max(1, int(arguments.get("limit") or 10)))
+            if target == "library":
+                return {
+                    "target": target,
+                    "query": query,
+                    "files": self.task_store.find_workspace_files(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        query=query,
+                        limit=limit,
+                        parent_folder_id=str(arguments.get("folder_id") or "").strip() or None,
+                    ),
+                }
+            if target == "memory":
+                memory_service = MemoryService(self.db, self.settings)
+                preferences = await memory_service.get_preferences(
+                    tenant_id=auth.tenant_id, user_id=auth.user_id
+                )
+                if not preferences["memory_retrieval_enabled"]:
+                    return {
+                        "target": target,
+                        "query": query,
+                        "memories": [],
+                        "retrieval_disabled": True,
+                    }
+                return {
+                    "target": target,
+                    "query": query,
+                    "memories": await memory_service.search_memories(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        query=query[:1000],
+                        limit=min(10, limit),
+                        conversation_id=str(conversation_id),
+                    ),
+                }
+            if target == "chat":
+                lowered = query.casefold()
+                messages = [
+                    {
+                        "role": message.role,
+                        "content": (
+                            message.active_version.content
+                            if message.active_version
+                            else message.content
+                        ),
+                        "message_id": str(message.id),
+                    }
+                    for message in self.chat.get_messages(
+                        tenant_id=auth.tenant_id,
+                        conversation_id=conversation_id,
+                        user_id=auth.user_id,
+                    )
+                ]
+                return {
+                    "target": target,
+                    "query": query,
+                    "messages": [
+                        message
+                        for message in messages
+                        if lowered in str(message.get("content") or "").casefold()
+                    ][:limit],
+                }
+            raise ValueError(f"Unsupported find target: {target}.")
+        if tool_name == "write" and arguments.get("target"):
+            target = str(arguments.get("target") or "").strip().lower()
+            content = str(arguments.get("content") or "")
+            mode = str(arguments.get("mode") or "replace")
+            if target == "note":
+                return self.task_store.write_note(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    markdown=content,
+                    mode=mode,
+                )
+            if target == "library":
+                if arguments.get("folder_name"):
+                    return self.task_store.create_workspace_folder(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        name=str(arguments.get("folder_name") or ""),
+                        parent_folder_id=str(arguments.get("folder_id") or "").strip() or None,
+                    )
+                filename = str(arguments.get("filename") or "").strip()
+                if not filename:
+                    raise ValueError("write(target='library') requires filename.")
+                return self.task_store.write_workspace_file(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    filename=filename,
+                    content=content,
+                    mode=mode,
+                    parent_folder_id=str(arguments.get("folder_id") or "").strip() or None,
+                )
+            if target == "memory":
+                key = str(arguments.get("memory_key") or "").strip()
+                if not key:
+                    raise ValueError("write(target='memory') requires memory_key.")
+                memory_id = await MemoryService(self.db, self.settings).store_fact(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    key=key[:120],
+                    value=content[:10000],
+                    scope=str(arguments.get("memory_scope") or "user"),
+                    tags=[],
+                    importance_score=None,
+                    confidence_score=1.0,
+                    source="deepspace_universal_write",
+                    conversation_id=str(conversation_id),
+                    metadata_json={"source": "deepspace_universal_write"},
+                )
+                return {"memory_id": memory_id, "status": "saved", "key": key}
+            raise ValueError(f"Unsupported write target: {target}.")
+        if tool_name == "edit":
+            target = str(arguments.get("target") or "").strip().lower()
+            operation = str(arguments.get("operation") or "").strip().lower()
+            if target == "note":
+                if operation not in {"replace", "append"}:
+                    raise ValueError("Note edit supports replace or append.")
+                return self.task_store.write_note(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    markdown=str(arguments.get("content") or ""),
+                    mode=operation,
+                )
+            if target == "library":
+                if not str(arguments.get("file_id") or "").strip():
+                    raise ValueError("Library edit requires file_id.")
+                if operation == "move":
+                    move_folder_id = (
+                        str(arguments.get("folder_id")).strip()
+                        if "folder_id" in arguments
+                        else None
+                    )
+                    return self.task_store.edit_workspace_file(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        file_id=str(arguments.get("file_id")),
+                        parent_folder_id=move_folder_id,
+                        mode="move",
+                    )
+                return self.task_store.edit_workspace_file(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    file_id=str(arguments.get("file_id")),
+                    name=str(arguments.get("name")) if arguments.get("name") is not None else None,
+                    content=(
+                        str(arguments.get("content"))
+                        if arguments.get("content") is not None
+                        else None
+                    ),
+                    mode="append" if operation == "append" else "replace",
+                )
+            raise ValueError(f"Unsupported edit target: {target}.")
+        if tool_name == "delete":
+            target = str(arguments.get("target") or "").strip().lower()
+            if target == "library":
+                file_id = str(arguments.get("file_id") or "").strip()
+                if not file_id:
+                    raise ValueError("delete(target='library') requires file_id.")
+                return self.task_store.delete_workspace_file(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    file_id=file_id,
+                )
+            if target == "memory":
+                key = str(arguments.get("memory_key") or "").strip()
+                if not key:
+                    raise ValueError("delete(target='memory') requires memory_key.")
+                deleted = await MemoryService(self.db, self.settings).forget_memory(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    key=key[:120],
+                )
+                return {"key": key, "deleted": deleted}
+            raise ValueError(f"Unsupported delete target: {target}.")
         if tool_name == "web_search":
             if web_provider is None or web_candidate is None:
                 raise ValueError("No web search provider is configured.")
@@ -1041,9 +1239,11 @@ class DeepSpaceChatService:
             return {
                 "awaiting_user": True,
                 "question": question,
-                "options": [str(item).strip()[:200] for item in options[:8] if str(item).strip()]
-                if isinstance(options, list)
-                else [],
+                "options": (
+                    [str(item).strip()[:200] for item in options[:8] if str(item).strip()]
+                    if isinstance(options, list)
+                    else []
+                ),
             }
         if tool_name == "final":
             check = self.task_store.check_tasks(
@@ -1568,6 +1768,12 @@ class DeepSpaceChatService:
             )
             return
 
+        previous, history_compacted = self._fit_history_to_context(
+            previous,
+            context_window=candidate.context_window,
+            max_output_tokens=self.settings.llm_max_tokens_per_request,
+        )
+
         meta: dict[str, Any] = {
             "conversation_id": str(conversation_id),
             "message_id": str(assistant_message.id),
@@ -1688,6 +1894,18 @@ class DeepSpaceChatService:
             },
             *previous,
         ]
+        if history_compacted:
+            conversation_messages.insert(
+                1,
+                {
+                    "role": "system",
+                    "content": (
+                        "Older conversation turns were omitted from this provider request to stay within "
+                        "the selected model's verified context window. The full transcript remains persisted; "
+                        "use the available memory tools when older durable context is needed."
+                    ),
+                },
+            )
         if mcp_bindings:
             attached_services = ", ".join(
                 sorted({binding.server.name for binding in mcp_bindings.values()})
@@ -1704,6 +1922,7 @@ class DeepSpaceChatService:
         generated_artifacts: list[dict[str, Any]] = []
         citations: list[dict[str, Any]] = []
         used_memories: list[dict[str, Any]] = []
+        memory_written_this_turn = False
         forced_answer: str | None = None
         seen_tool_calls: dict[str, int] = {}
         pending_images: list[str] = []
@@ -1726,6 +1945,9 @@ class DeepSpaceChatService:
         round_index = 0
         empty_provider_retries = 0
         terminal_status = "running"
+        last_context_used_tokens: int | None = None
+        last_context_remaining_tokens: int | None = None
+        last_context_usage: float | None = None
         try:
             if resume_denied:
                 terminal_status = "blocked"
@@ -1903,6 +2125,47 @@ class DeepSpaceChatService:
                 request_messages = list(conversation_messages)
                 if lifecycle_instruction:
                     request_messages.append({"role": "system", "content": lifecycle_instruction})
+                request_messages, _request_compacted = self._fit_history_to_context(
+                    request_messages,
+                    context_window=candidate.context_window,
+                    max_output_tokens=self.settings.llm_max_tokens_per_request,
+                )
+                context_used_tokens = self._estimate_context_tokens(
+                    request_messages,
+                    tools_for_round,
+                )
+                context_remaining_tokens = (
+                    max(0, int(candidate.context_window) - context_used_tokens)
+                    if candidate.context_window
+                    else None
+                )
+                context_usage = (
+                    min(1.0, context_used_tokens / candidate.context_window)
+                    if candidate.context_window
+                    else None
+                )
+                last_context_used_tokens = context_used_tokens
+                last_context_remaining_tokens = context_remaining_tokens
+                last_context_usage = context_usage
+                yield sse(
+                    "metrics",
+                    {
+                        "contextUsedTokens": context_used_tokens,
+                        "contextRemainingTokens": context_remaining_tokens,
+                        "contextUsage": context_usage,
+                        "contextUsageSource": "estimated_local",
+                        **(
+                            {"contextLimit": candidate.context_window}
+                            if candidate.context_window
+                            else {}
+                        ),
+                        **(
+                            {"contextLimitSource": candidate.context_window_source}
+                            if candidate.context_window_source
+                            else {}
+                        ),
+                    },
+                )
                 request_payload = ChatGenerateRequest(
                     model=candidate.model_name,
                     messages=request_messages,
@@ -1980,9 +2243,11 @@ class DeepSpaceChatService:
                                         data_base64=data_base64,
                                         provider_type=candidate.provider_type,
                                         model_name=candidate.model_name,
-                                        title=media.get("title")
-                                        if isinstance(media.get("title"), str)
-                                        else None,
+                                        title=(
+                                            media.get("title")
+                                            if isinstance(media.get("title"), str)
+                                            else None
+                                        ),
                                         metadata={
                                             "turn_index": round_index,
                                             "generation": {
@@ -2112,7 +2377,9 @@ class DeepSpaceChatService:
                 if cancelled_during_provider_stream:
                     terminal_status = "cancelled"
                     if run_id is not None:
-                        self.runtime.finish(run_id=run_id, status="cancelled", error="user_cancelled")
+                        self.runtime.finish(
+                            run_id=run_id, status="cancelled", error="user_cancelled"
+                        )
                     break
 
                 if run_id is not None:
@@ -2458,6 +2725,8 @@ class DeepSpaceChatService:
                     raw_tool_payload = result.get("payload")
                     tool_payload = raw_tool_payload if isinstance(raw_tool_payload, dict) else {}
                     if success:
+                        if tool_name == "write" and item["arguments"].get("target") == "memory":
+                            memory_written_this_turn = True
                         raw_image = tool_payload.get("_image_base64")
                         if isinstance(raw_image, str) and raw_image:
                             pending_images.append(raw_image)
@@ -2466,7 +2735,7 @@ class DeepSpaceChatService:
                             for citation in tool_payload.get("citations", []):
                                 if isinstance(citation, dict):
                                     citations.append({**citation, "id": len(citations) + 1})
-                        if tool_name == "memory_search":
+                        if tool_name == "find" and item["arguments"].get("target") == "memory":
                             for memory in tool_payload.get("memories", []):
                                 if not isinstance(memory, dict) or not memory.get("id"):
                                     continue
@@ -2699,8 +2968,7 @@ class DeepSpaceChatService:
             ).strip()
         elif (
             terminal_status != "cancelled"
-            and
-            final_task_check["task_count"]
+            and final_task_check["task_count"]
             and not final_task_check["complete"]
             and forced_answer is None
         ):
@@ -2755,7 +3023,7 @@ class DeepSpaceChatService:
             metadata_json=metadata,
         )
         self.db.commit()
-        if terminal_status == "running" and answer.strip():
+        if terminal_status == "running" and answer.strip() and not memory_written_this_turn:
             try:
                 consolidation = await MemoryService(self.db, self.settings).consolidate_turn(
                     tenant_id=auth.tenant_id,
@@ -2788,6 +3056,10 @@ class DeepSpaceChatService:
             "modelName": candidate.model_name,
             "providerType": candidate.provider_type,
             "totalTokens": len(answer.split()),
+            "contextUsedTokens": last_context_used_tokens,
+            "contextRemainingTokens": last_context_remaining_tokens,
+            "contextUsage": last_context_usage,
+            "contextUsageSource": "estimated_local",
         }
         if candidate.context_window is not None:
             metrics["contextLimit"] = candidate.context_window

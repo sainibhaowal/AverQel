@@ -95,8 +95,8 @@ async def client_storage_websocket(websocket: WebSocket) -> None:
         logger.exception("Client-owned storage WebSocket failed")
         try:
             await websocket.close(code=1011, reason="Client storage channel failed")
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception:  # noqa: BLE001, B110 - cleanup must not mask the original websocket error
+            logger.debug("Client storage websocket close failed", exc_info=True)
     finally:
         if tenant_id and user_id:
             client_proxy_registry.unregister_client(

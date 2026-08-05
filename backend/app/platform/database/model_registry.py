@@ -22,6 +22,8 @@ from app.deepspace.models.message import Message
 from app.deepspace.models.message_version import MessageVersion
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
+from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.collection import (
     CollectionChatMessage,
@@ -99,6 +101,8 @@ __all__ = [
     "MessageVersion",
     "DeepSpaceMediaArtifact",
     "DeepSpaceWorkspaceFile",
+    "DeepSpaceWorkspaceFolder",
+    "DeepSpaceWorkspaceFileVersion",
     "Feedback",
     "PinnedFinding",
     "Comment",

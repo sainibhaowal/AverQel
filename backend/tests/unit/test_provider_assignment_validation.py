@@ -38,8 +38,6 @@ def test_validate_assignment_rejects_disabled_provider() -> None:
     provider = _provider(enabled=False)
 
     with pytest.raises(ApiError) as exc:
-        ProviderManagementService._validate_assignment(
-            feature_scope="chat", provider=provider
-        )
+        ProviderManagementService._validate_assignment(feature_scope="chat", provider=provider)
 
     assert exc.value.code == "PROVIDER_ASSIGNMENT_INVALID"

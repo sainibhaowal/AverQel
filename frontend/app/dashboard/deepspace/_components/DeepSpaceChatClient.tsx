@@ -520,6 +520,9 @@ export default function DeepSpaceChatClient({
   const consumeNoteEvents = useCallback(
     (events: Array<{ event: string; data: Record<string, unknown> }>) => {
       for (const event of events) {
+        if (event.event === "memory_candidate") {
+          window.dispatchEvent(new CustomEvent("deepspace:memory-updated", { detail: event.data }));
+        }
         const toolName = String(event.data.tool_name ?? "");
         const callKey = String(event.data.step_id ?? event.data.tool_id ?? "");
         if (event.event === "tool_delta" && toolName === "write" && callKey) {
@@ -618,66 +621,69 @@ export default function DeepSpaceChatClient({
     [activeConversationId, stream, thinkingEnabled],
   );
 
-  const loadConversation = useCallback(async (conversationId: string) => {
-    // A page transition can race the API request. Retry short transient
-    // failures and keep the current thread visible instead of replacing it
-    // with an empty reducer state.
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const response = (await fetchWithAuth(
-          `/deepspace/chats/${conversationId}/messages`,
-        )) as Response;
-        if (response.ok) {
-          const payload = (await response.json()) as { messages: DeepSpaceHistoryMessage[] };
-          dispatch({ type: "load_history", conversationId, messages: payload.messages });
-          // Reattach to a still-running worker after navigation or refresh.
-          // The reconnect flag is read-only: it never starts a second run.
-          const messages = payload.messages;
-          const activeAssistant = [...messages]
-            .map((message, index) => ({ message, index }))
-            .reverse()
-            .find(
-              ({ message }) =>
-                message.role === "assistant" &&
-                message.metadata_json?.status === "streaming" &&
-                typeof message.metadata_json?.client_request_id === "string",
-            );
-          if (activeAssistant) {
-            const requestId = String(
-              activeAssistant.message.metadata_json?.client_request_id ?? "",
-            );
-            const source = [...messages.slice(0, activeAssistant.index)]
+  const loadConversation = useCallback(
+    async (conversationId: string) => {
+      // A page transition can race the API request. Retry short transient
+      // failures and keep the current thread visible instead of replacing it
+      // with an empty reducer state.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = (await fetchWithAuth(
+            `/deepspace/chats/${conversationId}/messages`,
+          )) as Response;
+          if (response.ok) {
+            const payload = (await response.json()) as { messages: DeepSpaceHistoryMessage[] };
+            dispatch({ type: "load_history", conversationId, messages: payload.messages });
+            // Reattach to a still-running worker after navigation or refresh.
+            // The reconnect flag is read-only: it never starts a second run.
+            const messages = payload.messages;
+            const activeAssistant = [...messages]
+              .map((message, index) => ({ message, index }))
               .reverse()
-              .find((message) => message.role === "user");
-            if (requestId && source && resumedRunRef.current !== requestId) {
-              resumedRunRef.current = requestId;
-              activeRequestIdRef.current = requestId;
-              void streamStartRef.current({
-                endpoint: "/deepspace/chats/stream",
-                body: {
-                  message: source.content,
-                  conversation_id: conversationId,
-                  client_request_id: requestId,
-                  reconnect: true,
-                  thinking_enabled: thinkingEnabled,
-                },
-              });
+              .find(
+                ({ message }) =>
+                  message.role === "assistant" &&
+                  message.metadata_json?.status === "streaming" &&
+                  typeof message.metadata_json?.client_request_id === "string",
+              );
+            if (activeAssistant) {
+              const requestId = String(
+                activeAssistant.message.metadata_json?.client_request_id ?? "",
+              );
+              const source = [...messages.slice(0, activeAssistant.index)]
+                .reverse()
+                .find((message) => message.role === "user");
+              if (requestId && source && resumedRunRef.current !== requestId) {
+                resumedRunRef.current = requestId;
+                activeRequestIdRef.current = requestId;
+                void streamStartRef.current({
+                  endpoint: "/deepspace/chats/stream",
+                  body: {
+                    message: source.content,
+                    conversation_id: conversationId,
+                    client_request_id: requestId,
+                    reconnect: true,
+                    thinking_enabled: thinkingEnabled,
+                  },
+                });
+              }
             }
+            return;
           }
-          return;
+          if (response.status === 404) {
+            dispatch({ type: "reset_thread" });
+            return;
+          }
+        } catch (error) {
+          if (attempt === 2) {
+            console.error("Failed to load DeepSpace conversation history", error);
+          }
         }
-        if (response.status === 404) {
-          dispatch({ type: "reset_thread" });
-          return;
-        }
-      } catch (error) {
-        if (attempt === 2) {
-          console.error("Failed to load DeepSpace conversation history", error);
-        }
+        await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
       }
-      await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
-    }
-  }, [thinkingEnabled]);
+    },
+    [thinkingEnabled],
+  );
 
   useEffect(() => {
     saveMCPActiveContext({ conversation_id: activeConversationId });
@@ -1088,6 +1094,7 @@ export default function DeepSpaceChatClient({
     selectedModel?.contextWindow ??
     latestAssistant?.metrics?.contextLimit ??
     state.lastContextLimit;
+  const contextUsageSource = latestAssistant?.metrics?.contextUsageSource ?? null;
 
   const handlePromptSelect = useCallback(
     (prompt: string) => {
@@ -1188,6 +1195,7 @@ export default function DeepSpaceChatClient({
               voiceState={voiceState}
               contextUsedTokens={contextUsedTokens}
               contextLimit={contextLimit}
+              contextUsageSource={contextUsageSource}
               sttActive={sttActive}
               ttsActive={ttsActive}
               onSttToggle={handleSttToggle}

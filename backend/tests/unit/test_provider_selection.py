@@ -17,9 +17,7 @@ from app.providers.services.selection_service import ProviderSelectionService
 def test_provider_selection_prefers_workspace_then_tenant_then_env(settings) -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Selection Order Tenant"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Selection Order Tenant")
         workspace_id = generate_uuid7_with_fallback()
         session.add(tenant)
         session.flush()

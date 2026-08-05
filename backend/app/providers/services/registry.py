@@ -118,9 +118,7 @@ class ProviderRegistry:
             api_key=self.settings.llm_api_key,
         )
 
-    def get_embedding_provider(
-        self, provider_type: str | None = None
-    ) -> EmbeddingProvider:
+    def get_embedding_provider(self, provider_type: str | None = None) -> EmbeddingProvider:
         resolved = provider_type or self.settings.embedding_provider
         return self._bind_embedding_provider(
             resolved,
@@ -216,22 +214,17 @@ class ProviderRegistry:
             metadata=dict(provider_config.metadata_json or {}),
         )
 
-    def get_model_discovery_provider(
-        self, provider_type: str
-    ) -> ModelDiscoveryProvider:
+    def get_model_discovery_provider(self, provider_type: str) -> ModelDiscoveryProvider:
         if provider_type == "sentence-transformers":
             return SentenceTransformersEmbeddingProvider(
                 base_url=self.settings.local_inference_base_url
             )
         if provider_type == "cohere":
-            return CohereProvider().bind(
-                self.settings.llm_api_base_url, self.settings.llm_api_key
-            )
+            return CohereProvider().bind(self.settings.llm_api_base_url, self.settings.llm_api_key)
         if provider_type == "openrouter":
             return OpenRouterProvider(
                 supports_embeddings=True,
-                base_url=self.settings.llm_api_base_url
-                or "https://openrouter.ai/api/v1",
+                base_url=self.settings.llm_api_base_url or "https://openrouter.ai/api/v1",
                 api_key=self.settings.llm_api_key,
             )
         if provider_type == "ollama":
@@ -306,9 +299,7 @@ class ProviderRegistry:
                 provider_config.api_base_url or self.settings.llm_api_base_url,
                 api_key,
             )
-        raise ValueError(
-            f"Unsupported discovery provider: {provider_config.provider_type}"
-        )
+        raise ValueError(f"Unsupported discovery provider: {provider_config.provider_type}")
 
     def get_install_provider_from_config(
         self,
@@ -318,6 +309,4 @@ class ProviderRegistry:
     ) -> ModelInstallProvider:
         if provider_config.provider_type == "ollama":
             return OllamaProvider().bind(provider_config.api_base_url or "")
-        raise ValueError(
-            f"Unsupported install provider: {provider_config.provider_type}"
-        )
+        raise ValueError(f"Unsupported install provider: {provider_config.provider_type}")

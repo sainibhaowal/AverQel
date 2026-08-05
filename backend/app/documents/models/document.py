@@ -79,9 +79,7 @@ class Document(Base):
         index=True,
     )
     extraction_method: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    extraction_coverage_score: Mapped[float | None] = mapped_column(
-        Float, nullable=True
-    )
+    extraction_coverage_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     extraction_ocr_used: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

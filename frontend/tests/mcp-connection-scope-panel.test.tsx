@@ -16,9 +16,13 @@ describe("MCPConnectionScopePanel", () => {
     expect(screen.getByText(/ownership is verified server-side/i)).toBeInTheDocument();
     expect(screen.getByText(/scope-gated access/i)).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Load scope" })[0]).toBeDisabled();
-    fireEvent.change(screen.getByPlaceholderText("Enter conversation ID"), { target: { value: "conversation-1" } });
+    fireEvent.change(screen.getByPlaceholderText("Enter conversation ID"), {
+      target: { value: "conversation-1" },
+    });
     fireEvent.click(screen.getAllByRole("button", { name: "Load scope" })[0]);
-    await waitFor(() => expect(getMCPScopedConnections).toHaveBeenCalledWith("conversation", "conversation-1"));
+    await waitFor(() =>
+      expect(getMCPScopedConnections).toHaveBeenCalledWith("conversation", "conversation-1"),
+    );
     expect(updateMCPScopedConnection).not.toHaveBeenCalled();
   });
 });

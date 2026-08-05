@@ -27,9 +27,7 @@ def upgrade() -> None:
     for row in rows:
         collection_id = row[0]
         bind.execute(
-            sa.text(
-                "UPDATE document_collections SET connection_code = :code WHERE id = :id"
-            ),
+            sa.text("UPDATE document_collections SET connection_code = :code WHERE id = :id"),
             {"id": collection_id, "code": _code_for_id(collection_id)},
         )
 
@@ -43,7 +41,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_document_collections_connection_code", table_name="document_collections"
-    )
+    op.drop_index("ix_document_collections_connection_code", table_name="document_collections")
     op.drop_column("document_collections", "connection_code")

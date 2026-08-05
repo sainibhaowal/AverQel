@@ -279,9 +279,7 @@ def test_query_metadata_filename_filter_answer(
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
     with _metadata_inventory_context(seed_user) as (_, service, auth):
-        filter_answer = _execute_inventory_question(
-            service, auth, 'Show documents named "beta"'
-        )
+        filter_answer = _execute_inventory_question(service, auth, 'Show documents named "beta"')
     assert "beta-analysis.pdf" in filter_answer
     assert "alpha-report.pdf" not in filter_answer
 
@@ -308,15 +306,9 @@ def test_title_inside_pdf_question_does_not_route_to_inventory_metadata(
         service = QueryService(session, get_settings())
 
         assert (
-            service._is_document_inventory_query(
-                "what is the title of pdf content inside"
-            )
-            is False
+            service._is_document_inventory_query("what is the title of pdf content inside") is False
         )
-        assert (
-            service._is_document_inventory_query("what is the title inside the pdf")
-            is False
-        )
+        assert service._is_document_inventory_query("what is the title inside the pdf") is False
         assert (
             service._should_route_to_document_inventory(
                 query_text="tell me about table : relative training flops by model size",
@@ -608,10 +600,7 @@ def test_named_filter_no_match_returns_natural_no_match_response(
                 ).answer
             )
         assert 'No documents matched the filename filter "alpha".' in no_match_answer
-        assert (
-            "You currently have no available documents in this workspace."
-            not in no_match_answer
-        )
+        assert "You currently have no available documents in this workspace." not in no_match_answer
 
         with _patch_inventory_llm(service):
             fallback_answer = str(
@@ -732,8 +721,7 @@ def test_inventory_questions_use_llm_grounding_when_chat_provider_exists(
             in captured_synthesize_kwargs["retrieved_chunks"][0].content.lower()
         )
         assert (
-            "workspace metadata snapshot only"
-            in captured_synthesize_kwargs["query_text"].lower()
+            "workspace metadata snapshot only" in captured_synthesize_kwargs["query_text"].lower()
         )
     finally:
         session.rollback()
@@ -863,21 +851,15 @@ def _advanced_inventory_context(
 
         docs = {
             doc.filename: doc
-            for doc in session.query(Document)
-            .filter_by(tenant_id=seeded.tenant_id)
-            .all()
+            for doc in session.query(Document).filter_by(tenant_id=seeded.tenant_id).all()
         }
         jobs = {
             job.document_id: job
-            for job in session.query(IngestionJob)
-            .filter_by(tenant_id=seeded.tenant_id)
-            .all()
+            for job in session.query(IngestionJob).filter_by(tenant_id=seeded.tenant_id).all()
         }
         chunks = {
             chunk.document_id: chunk
-            for chunk in session.query(DocumentChunk)
-            .filter_by(tenant_id=seeded.tenant_id)
-            .all()
+            for chunk in session.query(DocumentChunk).filter_by(tenant_id=seeded.tenant_id).all()
         }
 
         alpha = docs["alpha-report.pdf"]
@@ -899,9 +881,7 @@ def _advanced_inventory_context(
         jobs[beta.id].max_attempts = 3
         jobs[beta.id].last_error_code = "EMBEDDING_PROVIDER_UNAVAILABLE"
         jobs[beta.id].last_error_message = "Embedding backend timed out while indexing."
-        chunks[beta.id].content = (
-            "beta analysis discusses retrieval failures and chunk drift"
-        )
+        chunks[beta.id].content = "beta analysis discusses retrieval failures and chunk drift"
 
         gamma = docs["gamma-notes.pdf"]
         gamma.extraction_vision_used = True
@@ -909,9 +889,7 @@ def _advanced_inventory_context(
         gamma.extraction_coverage_score = 0.44
         gamma.information_yield = 68.0
         gamma.extraction_warnings = ["Layout blocks were incomplete"]
-        chunks[gamma.id].content = (
-            "gamma notes mention adaptive retrieval and evaluation"
-        )
+        chunks[gamma.id].content = "gamma notes mention adaptive retrieval and evaluation"
 
         research_collection = DocumentCollection(
             id=generate_uuid7_with_fallback(),
@@ -979,9 +957,7 @@ def _advanced_inventory_context(
         session.close()
 
 
-def _execute_inventory_question(
-    service: QueryService, auth: AuthContext, query_text: str
-) -> str:
+def _execute_inventory_question(service: QueryService, auth: AuthContext, query_text: str) -> str:
     with _patch_inventory_llm(service):
         result = service.execute(
             auth=auth,
@@ -1024,9 +1000,7 @@ def test_query_advanced_document_intelligence_ocr_answer(
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
     with _advanced_inventory_context(seed_user) as (_, service, auth):
-        ocr_answer = _execute_inventory_question(
-            service, auth, "Which documents use OCR?"
-        )
+        ocr_answer = _execute_inventory_question(service, auth, "Which documents use OCR?")
     assert "alpha-report.pdf (OCR)" in ocr_answer
     assert "coverage 91%" in ocr_answer
 
@@ -1096,7 +1070,6 @@ def test_query_advanced_document_intelligence_comparison_and_collections(
     assert "alpha-report.pdf" in collection_summary
     assert "gamma-notes.pdf" in collection_summary
     assert (
-        'The strongest collection for "adaptive retrieval" is Research.'
-        in best_collection_answer
+        'The strongest collection for "adaptive retrieval" is Research.' in best_collection_answer
     )
     assert "Runner-up: Operations" in best_collection_answer

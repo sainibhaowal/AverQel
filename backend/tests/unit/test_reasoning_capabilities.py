@@ -287,9 +287,7 @@ def test_followup_generation_uses_static_fallback_without_extra_llm_call(
     def fail_call(**kwargs: Any) -> tuple[str, dict[str, int]]:
         nonlocal called
         called = True
-        raise AssertionError(
-            "follow-up generation should not trigger a second LLM call"
-        )
+        raise AssertionError("follow-up generation should not trigger a second LLM call")
 
     monkeypatch.setattr(service, "_call_llm_with_retry", fail_call)
 

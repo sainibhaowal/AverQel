@@ -7,5 +7,17 @@ from .media_artifact import DeepSpaceMediaArtifact
 from .message import Message
 from .message_version import MessageVersion
 from .workspace_file import DeepSpaceWorkspaceFile
+from .workspace_file_version import DeepSpaceWorkspaceFileVersion
+from .workspace_folder import DeepSpaceWorkspaceFolder
 
-__all__ = ["AgentMemoryPreferences", "Conversation", "Message", "MessageVersion", "DeepSpaceMediaArtifact", "DeepSpaceWorkspaceFile", "DeepSpaceRunEvent"]
+__all__ = [
+    "AgentMemoryPreferences",
+    "Conversation",
+    "Message",
+    "MessageVersion",
+    "DeepSpaceMediaArtifact",
+    "DeepSpaceWorkspaceFile",
+    "DeepSpaceWorkspaceFolder",
+    "DeepSpaceWorkspaceFileVersion",
+    "DeepSpaceRunEvent",
+]

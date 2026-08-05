@@ -149,9 +149,7 @@ def _sanitize_class_relation(candidate: str) -> str | None:
         stripped,
     )
     if valid_match:
-        left_entity, left_card, relation, right_card, right_entity, label = (
-            valid_match.groups()
-        )
+        left_entity, left_card, relation, right_card, right_entity, label = valid_match.groups()
         return (
             f'{left_entity} "{_normalize_class_cardinality(left_card)}" '
             f'{relation} "{_normalize_class_cardinality(right_card)}" {right_entity}{label or ""}'
@@ -162,9 +160,7 @@ def _sanitize_class_relation(candidate: str) -> str | None:
         stripped,
     )
     if malformed_match:
-        left_entity, left_card, relation, right_entity, right_card, label = (
-            malformed_match.groups()
-        )
+        left_entity, left_card, relation, right_entity, right_card, label = malformed_match.groups()
         return (
             f'{left_entity} "{_normalize_class_cardinality(left_card)}" '
             f'{relation} "{_normalize_class_cardinality(right_card)}" {right_entity}{label or ""}'
@@ -215,9 +211,7 @@ def _sanitize_class_attribute(candidate: str) -> str:
         return ""
 
     # Mermaid class diagrams handle generics more reliably with ~Type~ than <Type>.
-    return re.sub(
-        r"<([A-Za-z_][\w., ]*)>", lambda m: f"~{m.group(1).strip()}~", candidate
-    )
+    return re.sub(r"<([A-Za-z_][\w., ]*)>", lambda m: f"~{m.group(1).strip()}~", candidate)
 
 
 def _class_declaration_name(candidate: str) -> str | None:
@@ -242,11 +236,7 @@ def _repair_detached_class_members(lines: list[str]) -> list[str]:
         stripped = line.strip()
         class_name = _class_declaration_name(line)
 
-        if (
-            not class_name
-            or "{" in stripped
-            or stripped.startswith(("direction ", "note ", "%%"))
-        ):
+        if not class_name or "{" in stripped or stripped.startswith(("direction ", "note ", "%%")):
             repaired.append(line)
             index += 1
             continue
@@ -263,9 +253,7 @@ def _repair_detached_class_members(lines: list[str]) -> list[str]:
 
             if (
                 _class_declaration_name(candidate) is not None
-                or candidate_stripped.startswith(
-                    ("direction ", "note ", "%%", "class ")
-                )
+                or candidate_stripped.startswith(("direction ", "note ", "%%", "class "))
                 or "{" in candidate_stripped
                 or "}" in candidate_stripped
                 or _sanitize_class_relation(candidate_stripped) is not None
@@ -332,9 +320,7 @@ def _sanitize_mindmap_line(line: str) -> str:
 
 def _repair_mindmap_structure(lines: list[str]) -> list[str]:
     body = lines[1:]
-    content_lines = [
-        line for line in body if line.strip() and not line.strip().startswith("%%")
-    ]
+    content_lines = [line for line in body if line.strip() and not line.strip().startswith("%%")]
     if not content_lines:
         return lines
 
@@ -372,9 +358,7 @@ def _repair_mindmap_structure(lines: list[str]) -> list[str]:
 
 def _sanitize_journey_line(line: str) -> str:
     def infer_actor(label: str) -> str:
-        first_word = (
-            re.split(r"\s+", label.strip(), maxsplit=1)[0] if label.strip() else ""
-        )
+        first_word = re.split(r"\s+", label.strip(), maxsplit=1)[0] if label.strip() else ""
         first_word = re.sub(r"[^\w-]", "", first_word)
         if re.match(
             r"^(user|admin|system|analyst|reviewer|customer|client)$",
@@ -493,22 +477,16 @@ def sanitize_mermaid_syntax(syntax: str) -> str:
         r"^((?:graph|flowchart)\s+(?:TB|TD|BT|RL|LR))\s*([\s\S]*)$",
     )
     normalized = split_starter(normalized, r"^erdiagram\s*([\s\S]*)$", "erDiagram")
-    normalized = split_starter(
-        normalized, r"^classdiagram\s*([\s\S]*)$", "classDiagram"
-    )
+    normalized = split_starter(normalized, r"^classdiagram\s*([\s\S]*)$", "classDiagram")
     normalized = split_starter(normalized, r"^journey\s*([\s\S]*)$", "journey")
     normalized = split_starter(normalized, r"^timeline\s*([\s\S]*)$", "timeline")
     normalized = split_starter(normalized, r"^gantt\s*([\s\S]*)$", "gantt")
-    state_match = re.match(
-        r"^(stateDiagram(?:-v2)?)\s*([\s\S]*)$", normalized, flags=re.IGNORECASE
-    )
+    state_match = re.match(r"^(stateDiagram(?:-v2)?)\s*([\s\S]*)$", normalized, flags=re.IGNORECASE)
     if state_match:
         state_starter = state_match.group(1)
         rest = (state_match.group(2) or "").lstrip()
         normalized = state_starter if not rest else f"{state_starter}\n{rest}"
-    normalized = split_starter(
-        normalized, r"^sequencediagram\s*([\s\S]*)$", "sequenceDiagram"
-    )
+    normalized = split_starter(normalized, r"^sequencediagram\s*([\s\S]*)$", "sequenceDiagram")
     normalized = split_starter(normalized, r"^mindmap\s*([\s\S]*)$", "mindmap")
 
     first_line = normalized.splitlines()[0].strip().lower()
@@ -565,27 +543,19 @@ def sanitize_mermaid_syntax(syntax: str) -> str:
 
     if first_line.startswith("mindmap"):
         lines = _repair_mindmap_structure(normalized.splitlines())
-        return "\n".join(
-            [lines[0], *[_sanitize_mindmap_line(line) for line in lines[1:]]]
-        )
+        return "\n".join([lines[0], *[_sanitize_mindmap_line(line) for line in lines[1:]]])
 
     if first_line.startswith("journey"):
         lines = normalized.splitlines()
-        return "\n".join(
-            [lines[0], *[_sanitize_journey_line(line) for line in lines[1:]]]
-        )
+        return "\n".join([lines[0], *[_sanitize_journey_line(line) for line in lines[1:]]])
 
     if first_line.startswith("timeline"):
         lines = normalized.splitlines()
-        return "\n".join(
-            [lines[0], *[_sanitize_timeline_line(line) for line in lines[1:]]]
-        )
+        return "\n".join([lines[0], *[_sanitize_timeline_line(line) for line in lines[1:]]])
 
     if first_line.startswith("gantt"):
         lines = normalized.splitlines()
-        return "\n".join(
-            [lines[0], *[_sanitize_gantt_line(line) for line in lines[1:]]]
-        )
+        return "\n".join([lines[0], *[_sanitize_gantt_line(line) for line in lines[1:]]])
 
     if not (first_line.startswith("flowchart") or first_line.startswith("graph")):
         return normalized
@@ -606,9 +576,7 @@ def sanitize_mermaid_syntax(syntax: str) -> str:
     flow_lines: list[str] = []
     for line in normalized.splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith(
-            ("style ", "classDef ", "class ", "linkStyle ")
-        ):
+        if not stripped or stripped.startswith(("style ", "classDef ", "class ", "linkStyle ")):
             flow_lines.append(line)
             continue
         normalized_line = re.sub(r"(-->|==>|-.->)\s+\|", r"\1|", line)
@@ -631,9 +599,7 @@ def sanitize_mermaid_syntax(syntax: str) -> str:
             normalized_line,
         )
         for segment in normalized_line.splitlines():
-            flow_lines.append(
-                re.sub(_MERMAID_COMPLEX_LABEL_RE, replace_complex_label, segment)
-            )
+            flow_lines.append(re.sub(_MERMAID_COMPLEX_LABEL_RE, replace_complex_label, segment))
     return "\n".join(flow_lines)
 
 
@@ -678,9 +644,7 @@ class StructuredDiagramResponse(BaseModel):
     class GraphPayload(BaseModel):
         nodes: list[StructuredDiagramResponse.GraphNode] = Field(default_factory=list)
         edges: list[StructuredDiagramResponse.GraphEdge] = Field(default_factory=list)
-        layout: str = Field(
-            default="horizontal", description="horizontal|vertical|radial"
-        )
+        layout: str = Field(default="horizontal", description="horizontal|vertical|radial")
 
         model_config = ConfigDict(extra="forbid")
 
@@ -745,9 +709,7 @@ class StructuredAnswerResponse(BaseModel):
         ),
     )
     limitations: str = Field(default="", description="Any missing context or ambiguity")
-    conclusion: str = Field(
-        default="", description="Final synthesized insight or takeaway"
-    )
+    conclusion: str = Field(default="", description="Final synthesized insight or takeaway")
     confidence_score: float = Field(
         default=0.0, ge=0.0, le=1.0, description="Calibrated confidence 0.0-1.0"
     )
@@ -794,15 +756,11 @@ class ReasoningTraceModel(BaseModel):
     chunks_rejected: int = Field(default=0, description="Chunks below threshold")
     rejection_reasons: list[str] = Field(default_factory=list)
     search_strategy: str = Field(default="hybrid", description="hybrid|vector|keyword")
-    timing_ms: dict[str, float] = Field(
-        default_factory=dict, description="Per-stage timing in ms"
-    )
+    timing_ms: dict[str, float] = Field(default_factory=dict, description="Per-stage timing in ms")
     metadata: dict[str, object] = Field(
         default_factory=dict, description="Additional trace diagnostics"
     )
-    search_strategy_summary: str = Field(
-        default="", description="Human-readable search summary"
-    )
+    search_strategy_summary: str = Field(default="", description="Human-readable search summary")
     trace_id: str = Field(default="", description="Unique trace ID for audit/debugging")
 
     model_config = ConfigDict(extra="forbid")

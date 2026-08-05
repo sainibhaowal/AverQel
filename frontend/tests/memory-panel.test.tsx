@@ -93,7 +93,9 @@ describe("MemoryPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("DeepSpace Memory")).toBeInTheDocument();
     });
-    expect(await screen.findByText(/Prefer concise summaries before sending\./i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Prefer concise summaries before sending\./i),
+    ).toBeInTheDocument();
 
     const input = screen.getByPlaceholderText(/search memories/i);
     fireEvent.change(input, { target: { value: "urgent" } });

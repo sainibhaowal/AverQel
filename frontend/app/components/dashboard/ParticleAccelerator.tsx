@@ -59,13 +59,14 @@ export default function ParticleAccelerator() {
         // Distribute standard and hub sizes
         const isHub = i < 15;
         const radius = isHub
-          ? 3.0 + Math.random() * 2.5   // Glowing hubs
-          : 1.0 + Math.random() * 1.2;  // Small dust particles
+          ? 3.0 + Math.random() * 2.5 // Glowing hubs
+          : 1.0 + Math.random() * 1.2; // Small dust particles
 
         const roll = Math.random();
-        const hue = roll < 0.65
-          ? 120 + Math.random() * 32   // Vibrant space green (120..152)
-          : 215 + Math.random() * 20;  // Deep space blue (215..235)
+        const hue =
+          roll < 0.65
+            ? 120 + Math.random() * 32 // Vibrant space green (120..152)
+            : 215 + Math.random() * 20; // Deep space blue (215..235)
 
         particles.push({
           x: Math.random() * w,
@@ -104,7 +105,7 @@ export default function ParticleAccelerator() {
           offsetX: Math.random() * 10,
           offsetY: Math.random() * 10,
           rgb: isDark ? [16, 44, 87] : [200, 235, 254], // Deep Space Blue vs Soft Sky Blue
-          alphaMax: isDark ? 0.24 : 0.20,
+          alphaMax: isDark ? 0.24 : 0.2,
         },
         {
           xFactor: 0.78,
@@ -115,7 +116,7 @@ export default function ParticleAccelerator() {
           offsetX: Math.random() * 10,
           offsetY: Math.random() * 10,
           rgb: isDark ? [15, 118, 110] : [214, 251, 245], // Deep Blueish-Green vs Soft Pale Teal
-          alphaMax: isDark ? 0.24 : 0.20,
+          alphaMax: isDark ? 0.24 : 0.2,
         },
         {
           xFactor: 0.45,
@@ -197,7 +198,7 @@ export default function ParticleAccelerator() {
         // Move cloud center slowly over time
         const cx = c.xFactor * w + Math.sin(time * c.speedX + c.offsetX) * (w * 0.08);
         const cy = c.yFactor * h + Math.cos(time * c.speedY + c.offsetY) * (h * 0.12);
-        
+
         // Dynamic swelling radius
         let rad = c.radiusFactor * w + Math.sin(time * 0.8 + c.offsetX) * 25;
         if (rad < 150) rad = 150;
@@ -221,9 +222,10 @@ export default function ParticleAccelerator() {
         // Draw radial gradient gas blob
         const grad = ctx.createRadialGradient(finalX, finalY, 0, finalX, finalY, rad);
         const [r, g, b] = c.rgb;
-        
+
         // Increase alpha slightly for light mode to look rich and painterly
-        const currentAlpha = (theme === "dark" ? c.alphaMax : c.alphaMax * 1.5) * (1.0 + clickPulse * 0.4);
+        const currentAlpha =
+          (theme === "dark" ? c.alphaMax : c.alphaMax * 1.5) * (1.0 + clickPulse * 0.4);
 
         grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${currentAlpha})`);
         grad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${currentAlpha * 0.45})`);
@@ -314,7 +316,7 @@ export default function ParticleAccelerator() {
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 block w-full h-full pointer-events-none z-[2]"
+      className="pointer-events-none absolute inset-0 z-[2] block h-full w-full"
     />
   );
 }

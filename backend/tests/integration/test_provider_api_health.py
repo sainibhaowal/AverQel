@@ -85,14 +85,10 @@ def test_provider_test_and_health_endpoints(
         lambda self, selection: FakeDiscovery(),
     )
 
-    test_response = client.post(
-        f"/api/v1/providers/{provider_id}/test", headers=headers
-    )
+    test_response = client.post(f"/api/v1/providers/{provider_id}/test", headers=headers)
     assert test_response.status_code == 200
     assert test_response.json()["status"] == "healthy"
 
-    health_response = client.get(
-        f"/api/v1/providers/{provider_id}/health", headers=headers
-    )
+    health_response = client.get(f"/api/v1/providers/{provider_id}/health", headers=headers)
     assert health_response.status_code == 200
     assert health_response.json()["status"] == "healthy"

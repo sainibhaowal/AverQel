@@ -82,9 +82,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
     )
-    op.create_index(
-        "ix_audit_logs_tenant_created_at", "audit_logs", ["tenant_id", "created_at"]
-    )
+    op.create_index("ix_audit_logs_tenant_created_at", "audit_logs", ["tenant_id", "created_at"])
     op.create_index(
         "ix_audit_logs_tenant_action_created_at",
         "audit_logs",
@@ -101,9 +99,7 @@ def upgrade() -> None:
             server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column(
-            "requested_by_user_id", postgresql.UUID(as_uuid=True), nullable=False
-        ),
+        sa.Column("requested_by_user_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column(
             "status",
             sa.String(length=32),
@@ -135,9 +131,7 @@ def upgrade() -> None:
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("failed_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["requested_by_user_id"], ["users.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["requested_by_user_id"], ["users.id"], ondelete="RESTRICT"),
     )
     op.create_index(
         "ix_data_deletions_tenant_requested_at",
@@ -158,9 +152,7 @@ def downgrade() -> None:
     _drop_rls_policy("data_deletions")
     _drop_rls_policy("audit_logs")
 
-    op.drop_index(
-        "ix_data_deletions_tenant_status_requested_at", table_name="data_deletions"
-    )
+    op.drop_index("ix_data_deletions_tenant_status_requested_at", table_name="data_deletions")
     op.drop_index("ix_data_deletions_tenant_requested_at", table_name="data_deletions")
     op.drop_table("data_deletions")
 

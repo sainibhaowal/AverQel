@@ -77,7 +77,10 @@ function formatDetail(value: unknown): string | null {
 function taskProgressFromTimeline(timeline: TimelineStep[]): TaskProgress | null {
   for (let index = timeline.length - 1; index >= 0; index -= 1) {
     const step = timeline[index];
-    if (!step?.toolName || !["todo_write", "todo_read", "todo_mark", "todo_check"].includes(step.toolName)) {
+    if (
+      !step?.toolName ||
+      !["todo_write", "todo_read", "todo_mark", "todo_check"].includes(step.toolName)
+    ) {
       continue;
     }
     try {
@@ -89,7 +92,9 @@ function taskProgressFromTimeline(timeline: TimelineStep[]): TaskProgress | null
       const rawTasks = taskCheck.tasks;
       if (!Array.isArray(rawTasks)) continue;
       const tasks = rawTasks
-        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+        .filter(
+          (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
+        )
         .map((item) => ({
           id: String(item.id ?? ""),
           content: String(item.content ?? "Untitled task"),
@@ -125,7 +130,9 @@ function TaskProgressCard({ progress }: { progress: TaskProgress }) {
     >
       <div className="flex items-center justify-between gap-3 text-[10px] font-semibold tracking-[0.12em] text-cyan-100/75 uppercase">
         <span>Verified task progress</span>
-        <span className="tabular-nums normal-case">{completed}/{total} complete</span>
+        <span className="normal-case tabular-nums">
+          {completed}/{total} complete
+        </span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/35">
         <div
@@ -135,7 +142,10 @@ function TaskProgressCard({ progress }: { progress: TaskProgress }) {
       </div>
       <ol className="mt-2 space-y-1.5">
         {progress.tasks.map((task, index) => (
-          <li key={task.id || `${task.content}-${index}`} className="flex items-start gap-2 text-[11px]">
+          <li
+            key={task.id || `${task.content}-${index}`}
+            className="flex items-start gap-2 text-[11px]"
+          >
             <span
               className={
                 task.status === "completed"
@@ -147,8 +157,12 @@ function TaskProgressCard({ progress }: { progress: TaskProgress }) {
             >
               {task.status === "completed" ? "✓" : task.status === "in_progress" ? "◉" : "○"}
             </span>
-            <span className="text-foreground/70 min-w-0 flex-1">{task.active_form || task.content}</span>
-            <span className="text-foreground/35 shrink-0 text-[9px] uppercase">{task.status.replace(/_/g, " ")}</span>
+            <span className="text-foreground/70 min-w-0 flex-1">
+              {task.active_form || task.content}
+            </span>
+            <span className="text-foreground/35 shrink-0 text-[9px] uppercase">
+              {task.status.replace(/_/g, " ")}
+            </span>
           </li>
         ))}
       </ol>
@@ -283,13 +297,17 @@ function TimelineEntry({
 
   return (
     <li className="relative pl-7" data-testid="deepspace-timeline-step">
-      {!isLast ? <span className="absolute top-0 bottom-[-0.75rem] left-[0.4rem] w-px bg-white/8" /> : null}
+      {!isLast ? (
+        <span className="absolute top-0 bottom-[-0.75rem] left-[0.4rem] w-px bg-white/8" />
+      ) : null}
       <span className="absolute top-2 left-0 flex h-4 w-4 items-center justify-center rounded-full border border-white/10 bg-[#101713]">
         <TimelineIcon step={step} />
       </span>
       <div className="rounded-lg border border-white/8 bg-black/15 px-3 py-2.5">
         <div className="text-foreground/65 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
-          <span className="text-foreground/30 tabular-nums">{String(index + 1).padStart(2, "0")}</span>
+          <span className="text-foreground/30 tabular-nums">
+            {String(index + 1).padStart(2, "0")}
+          </span>
           <span>{step.title}</span>
           {toolName ? (
             <span className="text-foreground/85 min-w-0 truncate font-mono normal-case">
@@ -366,7 +384,12 @@ export default function DeepSpaceThinkingPanel({
   );
   const orderedTimeline = timeline.filter((step) => step.toolName !== "pending_tool");
   const taskProgress = taskProgressFromTimeline(orderedTimeline);
-  if (!content.trim() && activitySteps.length === 0 && orderedTimeline.length === 0 && !isStreaming) {
+  if (
+    !content.trim() &&
+    activitySteps.length === 0 &&
+    orderedTimeline.length === 0 &&
+    !isStreaming
+  ) {
     return null;
   }
   return (
@@ -406,7 +429,10 @@ export default function DeepSpaceThinkingPanel({
             ))}
           </div>
         ) : null}
-        {isStreaming && !content.trim() && activitySteps.length === 0 && orderedTimeline.length === 0 ? (
+        {isStreaming &&
+        !content.trim() &&
+        activitySteps.length === 0 &&
+        orderedTimeline.length === 0 ? (
           <div className="text-foreground/45">Waiting for the model and tools…</div>
         ) : null}
       </div>

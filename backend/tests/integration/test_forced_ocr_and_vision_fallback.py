@@ -84,9 +84,7 @@ def test_forced_ocr_fallback_emits_metadata(
 
         # Must be long enough to pass chunk_min_length validation.
         # Repeating to easily exceed 40 characters limit in default config.
-        valid_text = (
-            "ocr recovered text valid length enough to pass chunking minimums. " * 30
-        )
+        valid_text = "ocr recovered text valid length enough to pass chunking minimums. " * 30
         return [
             OcrPageResult(
                 page_number=numbers[0],
@@ -102,9 +100,7 @@ def test_forced_ocr_fallback_emits_metadata(
         _ = (self, payload)
         numbers = page_numbers or [1]
         return [
-            RenderedPdfPage(
-                page_number=numbers[0], image_bytes=b"fakeimage", width=200, height=200
-            )
+            RenderedPdfPage(page_number=numbers[0], image_bytes=b"fakeimage", width=200, height=200)
         ]
 
     monkeypatch.setattr(PdfRenderService, "render_pdf_pages", fake_render)
@@ -234,9 +230,6 @@ def test_forced_vision_fallback_emits_metadata(
     metrics = client.get("/api/v1/metrics")
     assert metrics.status_code == 200
     body = metrics.text
-    assert (
-        'aks_extraction_fallback_total{path="vision",reason="layout_complexity"}'
-        in body
-    )
+    assert 'aks_extraction_fallback_total{path="vision",reason="layout_complexity"}' in body
     # Verify tenant leak test (6.7) - tenant_id should not be in labels
     assert str(seeded.tenant_id) not in body

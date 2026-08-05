@@ -106,11 +106,7 @@ class MCPProviderOAuthProfile:
         """Reject scope escalation and incomplete provider authorization."""
         expected = set(self.scopes_for(provider_slug))
         required = set(self.required_scopes)
-        granted = {
-            item.strip()
-            for item in str(granted_scope or "").split()
-            if item.strip()
-        }
+        granted = {item.strip() for item in str(granted_scope or "").split() if item.strip()}
         if not granted:
             raise ValueError("OAuth provider did not return granted scopes")
         unexpected = granted - expected
@@ -145,7 +141,11 @@ class MCPProviderOAuthProfile:
             identity["email"] = email.strip().lower()
         if not identity.get("email") and isinstance(email_payload, list):
             for item in email_payload:
-                if isinstance(item, dict) and item.get("primary") and isinstance(item.get("email"), str):
+                if (
+                    isinstance(item, dict)
+                    and item.get("primary")
+                    and isinstance(item.get("email"), str)
+                ):
                     identity["email"] = str(item["email"]).strip().lower()
                     break
         if isinstance(display_name, str) and display_name.strip():
@@ -167,7 +167,9 @@ class MCPProviderOAuthProfile:
             "code_challenge_methods_supported": ["S256"],
         }
 
-    def protected_resource_metadata(self, *, resource_url: str, scopes: tuple[str, ...]) -> dict[str, object]:
+    def protected_resource_metadata(
+        self, *, resource_url: str, scopes: tuple[str, ...]
+    ) -> dict[str, object]:
         return {
             "resource": resource_url,
             "authorization_servers": [self.authorization_endpoint],
@@ -176,7 +178,7 @@ class MCPProviderOAuthProfile:
         }
 
 
-GOOGLE_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(
+GOOGLE_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol endpoint profile
     key="google",
     label="Google",
     provider_slugs=GOOGLE_PROVIDER_SLUGS,
@@ -220,7 +222,7 @@ GOOGLE_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(
 )
 
 
-GITHUB_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(
+GITHUB_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol endpoint profile
     key="github",
     label="GitHub",
     provider_slugs=frozenset({"github"}),

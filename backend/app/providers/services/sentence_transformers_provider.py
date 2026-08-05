@@ -127,9 +127,7 @@ class SentenceTransformersEmbeddingProvider:
                     "install_supported": False,
                     "selection_only": False,
                     "preinstalled": True,
-                    "profile": (
-                        "fast_local" if "MiniLM" in model_name else "multilingual_local"
-                    ),
+                    "profile": ("fast_local" if "MiniLM" in model_name else "multilingual_local"),
                 },
             )
             for model_name, display_name in self._SUPPORTED_RERANKER_MODELS

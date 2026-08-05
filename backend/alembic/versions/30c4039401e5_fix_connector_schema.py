@@ -21,12 +21,8 @@ depends_on = None
 def upgrade() -> None:
     # 1. Add user_id to connectors
     op.add_column("connectors", sa.Column("user_id", sa.UUID(), nullable=False))
-    op.create_index(
-        op.f("ix_connectors_user_id"), "connectors", ["user_id"], unique=False
-    )
-    op.create_foreign_key(
-        None, "connectors", "users", ["user_id"], ["id"], ondelete="CASCADE"
-    )
+    op.create_index(op.f("ix_connectors_user_id"), "connectors", ["user_id"], unique=False)
+    op.create_foreign_key(None, "connectors", "users", ["user_id"], ["id"], ondelete="CASCADE")
 
     # 2. Update lengths to match models
     op.alter_column(

@@ -20,12 +20,14 @@ EMAIL_KEY_SAFE_PATTERN = re.compile(r"[^a-z0-9_.@-]+")
 _REDIS_CONNECT_TIMEOUT_SECONDS = 2.0
 _REDIS_SOCKET_TIMEOUT_SECONDS = 2.0
 
+
 @dataclass
 class AdaptiveSystemMetrics:
     cpu_load_ratio: float
     memory_usage_pct: float
     multiplier: float
     status: str  # "NORMAL", "CONGESTED", "CRITICAL"
+
 
 class SystemHealthMonitor:
     @staticmethod
@@ -62,7 +64,7 @@ class SystemHealthMonitor:
                 usable_free = mem_free + mem_buffers + mem_cached
                 mem_pct = 100.0 * (1.0 - (usable_free / mem_total))
         except Exception:
-            pass
+            logger.debug("Unable to read host memory metrics", exc_info=True)
 
         if cpu_ratio > 1.5 or mem_pct > 90.0:
             status = "CRITICAL"
@@ -75,11 +77,9 @@ class SystemHealthMonitor:
             multiplier = 1.0
 
         return AdaptiveSystemMetrics(
-            cpu_load_ratio=cpu_ratio,
-            memory_usage_pct=mem_pct,
-            multiplier=multiplier,
-            status=status
+            cpu_load_ratio=cpu_ratio, memory_usage_pct=mem_pct, multiplier=multiplier, status=status
         )
+
 
 def resolve_request_priority(path: str) -> str:
     path = path.lower()
@@ -221,7 +221,7 @@ class RateLimitService:
                     code="SERVICE_OVERLOAD",
                     message="System is under critical resource pressure. Background sync suspended.",
                     status_code=503,
-                    details={"retry_after_seconds": 30}
+                    details={"retry_after_seconds": 30},
                 )
             elif priority == "INTERACTIVE":
                 limit = int(base_limit * 0.3)
@@ -244,7 +244,6 @@ class RateLimitService:
             window_seconds=300,
             scope="global_ip",
         )
-
 
     def enforce_query_user_limit(self, *, request: Request, user_id: str) -> None:
         self.enforce(

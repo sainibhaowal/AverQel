@@ -48,6 +48,7 @@ from app.providers.services import (
     ProviderOAuthService,
 )
 from app.providers.services.base import ProviderRequestError
+from app.providers.services.context_window import resolve_verified_context_window
 from app.providers.services.provider_models_service import (
     acquire_model_discovery_slot,
     provider_request_error_to_api_error,
@@ -164,15 +165,27 @@ def _assignment_response(row: Any) -> ProviderAssignmentResponse:
     )
 
 
-def _model_response(row: Any) -> ProviderModelResponse:
+def _model_response(row: Any, *, provider_type: str | None = None) -> ProviderModelResponse:
+    capabilities = dict(row.capabilities_json or {})
+    context_window = row.context_window
+    context_source = capabilities.get("context_window_source")
+    if not isinstance(context_window, int) or context_window <= 0:
+        verified = resolve_verified_context_window(
+            row.model_name,
+            provider_type=provider_type,
+        )
+        context_window = verified.context_window
+        context_source = context_source or verified.source
+    if context_source:
+        capabilities["context_window_source"] = context_source
     return ProviderModelResponse(
         id=getattr(row, "id", None),
         provider_config_id=getattr(row, "provider_config_id", None),
         model_name=row.model_name,
         model_kind=row.model_kind,
         display_name=row.display_name,
-        context_window=row.context_window,
-        capabilities_json=dict(row.capabilities_json or {}),
+        context_window=context_window,
+        capabilities_json=capabilities,
         is_available=row.is_available,
         last_seen_at=row.last_seen_at,
     )
@@ -261,14 +274,13 @@ async def create_provider(
 ) -> ProviderConfigResponse:
     _enforce_tenant_scope(request_tenant_id, auth)
     from app.deepspace.integrations.client_proxy import client_proxy_registry
+
     if client_proxy_registry.is_client_connected(str(auth.tenant_id), str(auth.user_id)):
         payload_dict = payload.model_dump()
         if "workspace_id" in payload_dict and payload_dict["workspace_id"]:
             payload_dict["workspace_id"] = str(payload_dict["workspace_id"])
         provider_data = await client_proxy_registry.db_proxy_call(
-            str(auth.tenant_id), str(auth.user_id),
-            "db.providers.create_provider",
-            payload_dict
+            str(auth.tenant_id), str(auth.user_id), "db.providers.create_provider", payload_dict
         )
         return ProviderConfigResponse.model_validate(provider_data)
 
@@ -302,9 +314,7 @@ async def create_provider(
         message="Failed to create provider config.",
         context={"tenant_id": str(auth.tenant_id), "user_id": str(auth.user_id)},
     )
-    return _provider_config_response(
-        service, tenant_id=auth.tenant_id, provider=provider
-    )
+    return _provider_config_response(service, tenant_id=auth.tenant_id, provider=provider)
 
 
 @router.get(
@@ -320,10 +330,7 @@ def get_supported_provider_types(
     _enforce_tenant_scope(request_tenant_id, auth)
     service = ProviderManagementService(db)
     return ProviderCatalogResponse(
-        items=[
-            ProviderCatalogEntry.model_validate(item)
-            for item in service.list_supported_types()
-        ]
+        items=[ProviderCatalogEntry.model_validate(item) for item in service.list_supported_types()]
     )
 
 
@@ -371,9 +378,7 @@ def preview_models(
             f"Model discovery for {payload.provider_type}: base_url={getattr(discovery, 'base_url', 'N/A')}"
         )
         infos = list(discovery.list_models()) if payload.supports_chat else []
-        logger.info(
-            f"Found {len(infos)} chat models, supports_chat={payload.supports_chat}"
-        )
+        logger.info(f"Found {len(infos)} chat models, supports_chat={payload.supports_chat}")
         if payload.supports_embeddings:
             infos.extend(list(discovery.list_embedding_models()))
         if payload.supports_reranking:
@@ -398,6 +403,18 @@ def preview_models(
         if key in seen:
             continue
         seen.add(key)
+        context_window = info.context_window
+        context_source = info.context_window_source
+        if not isinstance(context_window, int) or context_window <= 0:
+            verified = resolve_verified_context_window(
+                info.name,
+                provider_type=payload.provider_type,
+            )
+            context_window = verified.context_window
+            context_source = context_source or verified.source
+        capabilities = dict(info.capabilities)
+        if context_source:
+            capabilities["context_window_source"] = context_source
         items.append(
             ProviderModelResponse(
                 id=None,
@@ -405,8 +422,8 @@ def preview_models(
                 model_name=info.name,
                 model_kind=info.kind,
                 display_name=info.display_name,
-                context_window=info.context_window,
-                capabilities_json=dict(info.capabilities),
+                context_window=context_window,
+                capabilities_json=capabilities,
                 is_available=True,
                 last_seen_at=None,
             )
@@ -464,9 +481,7 @@ def list_assignments(
         actor_user_id=auth.user_id,
         workspace_id=workspace_id,
     )
-    return ProviderAssignmentListResponse(
-        items=[_assignment_response(row) for row in rows]
-    )
+    return ProviderAssignmentListResponse(items=[_assignment_response(row) for row in rows])
 
 
 @router.patch(
@@ -546,9 +561,7 @@ def get_provider(
         provider_config_id=provider_id,
         actor_user_id=auth.user_id,
     )
-    return _provider_config_response(
-        service, tenant_id=auth.tenant_id, provider=provider
-    )
+    return _provider_config_response(service, tenant_id=auth.tenant_id, provider=provider)
 
 
 @router.patch(
@@ -578,9 +591,7 @@ def update_provider(
         message="Failed to update provider config.",
         context={"tenant_id": str(auth.tenant_id), "provider_id": str(provider_id)},
     )
-    return _provider_config_response(
-        service, tenant_id=auth.tenant_id, provider=provider
-    )
+    return _provider_config_response(service, tenant_id=auth.tenant_id, provider=provider)
 
 
 @router.delete(
@@ -696,7 +707,15 @@ def refresh_provider_models(
     settings: Settings = Depends(get_settings),
 ) -> ProviderModelListResponse:
     _enforce_tenant_scope(request_tenant_id, auth)
-    rows = ProviderModelsService(db, ProviderRegistry(settings)).refresh_models(
+    # Read the provider metadata while the request tenant context is active.
+    # ``_commit_or_rollback`` commits the transaction, which intentionally
+    # clears the transaction-local RLS setting.  Looking the provider up only
+    # after that commit can make PostgreSQL evaluate the RLS UUID cast against
+    # an empty setting and fail with ``invalid input syntax for type uuid``.
+    provider = db.get(ProviderConfig, provider_id)
+    provider_type = provider.provider_type if provider is not None else None
+    models_service = ProviderModelsService(db, ProviderRegistry(settings))
+    rows = models_service.refresh_models(
         tenant_id=auth.tenant_id,
         provider_config_id=provider_id,
         actor_user_id=auth.user_id,
@@ -706,7 +725,9 @@ def refresh_provider_models(
         message="Failed to refresh provider models.",
         context={"tenant_id": str(auth.tenant_id), "provider_id": str(provider_id)},
     )
-    return ProviderModelListResponse(items=[_model_response(row) for row in rows])
+    return ProviderModelListResponse(
+        items=[_model_response(row, provider_type=provider_type) for row in rows]
+    )
 
 
 @router.get(
@@ -722,12 +743,17 @@ def list_provider_models(
     settings: Settings = Depends(get_settings),
 ) -> ProviderModelListResponse:
     _enforce_tenant_scope(request_tenant_id, auth)
-    rows = ProviderModelsService(db, ProviderRegistry(settings)).list_models(
+    models_service = ProviderModelsService(db, ProviderRegistry(settings))
+    rows = models_service.list_models(
         tenant_id=auth.tenant_id,
         provider_config_id=provider_id,
         actor_user_id=auth.user_id,
     )
-    return ProviderModelListResponse(items=[_model_response(row) for row in rows])
+    provider = db.get(ProviderConfig, provider_id)
+    provider_type = provider.provider_type if provider is not None else None
+    return ProviderModelListResponse(
+        items=[_model_response(row, provider_type=provider_type) for row in rows]
+    )
 
 
 @router.post(
@@ -867,9 +893,7 @@ def disconnect_provider(
         message="Failed to disconnect provider.",
         context={"tenant_id": str(auth.tenant_id), "provider_id": str(provider_id)},
     )
-    return ProviderDisconnectResponse(
-        provider_id=str(provider_id), revoked_secret_count=count
-    )
+    return ProviderDisconnectResponse(provider_id=str(provider_id), revoked_secret_count=count)
 
 
 @router.post(
@@ -920,6 +944,4 @@ def rotate_provider_secret(
         message="Failed to rotate provider secret.",
         context={"tenant_id": str(auth.tenant_id), "provider_id": str(provider_id)},
     )
-    return ProviderDisconnectResponse(
-        provider_id=str(provider_id), revoked_secret_count=0
-    )
+    return ProviderDisconnectResponse(provider_id=str(provider_id), revoked_secret_count=0)

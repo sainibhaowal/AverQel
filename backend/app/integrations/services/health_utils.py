@@ -3,9 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-ConnectorHealthStatus = Literal[
-    "healthy", "degraded", "auth_expired", "offline", "stale"
-]
+ConnectorHealthStatus = Literal["healthy", "degraded", "auth_expired", "offline", "stale"]
 
 
 def now_iso() -> str:

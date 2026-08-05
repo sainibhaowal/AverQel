@@ -70,9 +70,7 @@ def list_all_tickets_admin(
 ) -> AdminSupportListResponse:
     # Group by user
     user_ids = (
-        db.execute(select(SupportTicket.user_id).group_by(SupportTicket.user_id))
-        .scalars()
-        .all()
+        db.execute(select(SupportTicket.user_id).group_by(SupportTicket.user_id)).scalars().all()
     )
 
     items = []
@@ -97,9 +95,7 @@ def list_all_tickets_admin(
                 email=user.email,
                 ticket_count=len(tickets),
                 last_ticket_at=tickets[0].created_at if tickets else None,
-                latest_tickets=[
-                    SupportTicketResponse.model_validate(t) for t in tickets[:5]
-                ],
+                latest_tickets=[SupportTicketResponse.model_validate(t) for t in tickets[:5]],
             )
         )
 

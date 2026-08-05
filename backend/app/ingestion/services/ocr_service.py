@@ -70,9 +70,7 @@ class OcrService:
         results: list[OcrPageResult] = []
         indices = page_numbers or [index + 1 for index in range(len(images))]
         for page_number, image_payload in zip(indices, images, strict=True):
-            page_result = self.extract_image_text(
-                image_payload, filename=f"page-{page_number}.png"
-            )
+            page_result = self.extract_image_text(image_payload, filename=f"page-{page_number}.png")
             page_warnings = [
                 f"ocr_page_{page_number}_{warning}" for warning in page_result.warnings
             ]
@@ -125,11 +123,7 @@ class OcrService:
 
                 texts, confidence_values = self._extract_paddle_result(result)
                 text = sanitize_document_text(" ".join(texts)).strip()
-                confidence = (
-                    statistics.fmean(confidence_values)
-                    if confidence_values
-                    else 0.0
-                )
+                confidence = statistics.fmean(confidence_values) if confidence_values else 0.0
                 warnings: list[str] = []
                 if confidence < self.settings.ocr_min_confidence:
                     warnings.append("ocr_low_confidence")
@@ -213,9 +207,7 @@ class OcrService:
         return aliases.get(languages[0].lower(), languages[0].lower())
 
     @classmethod
-    def _extract_paddle_result(
-        cls, results: list[Any]
-    ) -> tuple[list[str], list[float]]:
+    def _extract_paddle_result(cls, results: list[Any]) -> tuple[list[str], list[float]]:
         texts: list[str] = []
         confidence_values: list[float] = []
         for result in results:
@@ -280,10 +272,7 @@ class OcrService:
 
     def _guard_dimensions(self, width: int, height: int) -> None:
         pixels = width * height
-        if (
-            width > self.settings.ocr_max_image_width
-            or height > self.settings.ocr_max_image_height
-        ):
+        if width > self.settings.ocr_max_image_width or height > self.settings.ocr_max_image_height:
             raise ApiError(
                 code="IMAGE_PARSE_FAILED",
                 message="Image dimensions exceed OCR safety limits.",

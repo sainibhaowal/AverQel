@@ -139,9 +139,7 @@ class ProviderSecretService:
             secret_type=secret_type,
         )
         if refreshed is None:  # pragma: no cover - defensive
-            raise ProviderSecretCryptoError(
-                "rotated provider secret could not be reloaded"
-            )
+            raise ProviderSecretCryptoError("rotated provider secret could not be reloaded")
         return refreshed
 
     def get_secret_value(

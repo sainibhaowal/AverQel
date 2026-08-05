@@ -11,7 +11,7 @@ from app.platform.worker.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="mcp.sync_official_catalog")
+@celery_app.task(name="mcp.sync_official_catalog")  # type: ignore[misc]
 def sync_official_mcp_catalog() -> dict[str, int]:
     """Idempotently apply reviewed catalog metadata without contacting vendors."""
     with SessionLocal() as session:

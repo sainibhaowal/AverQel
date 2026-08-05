@@ -46,9 +46,7 @@ class IdempotencyService:
         idempotency_key: str,
         request_fingerprint: str,
     ) -> IdempotencyReplay | None:
-        existing = self.repository.get(
-            tenant_id=tenant_id, idempotency_key=idempotency_key
-        )
+        existing = self.repository.get(tenant_id=tenant_id, idempotency_key=idempotency_key)
         if existing is None:
             return None
         if existing.request_fingerprint != request_fingerprint:

@@ -26,9 +26,7 @@ class ProviderAssignmentsRepository(BaseRepository):
         owner_user_id: uuid.UUID | None = None,
     ) -> Sequence[ProviderAssignment]:
         self.apply_tenant_scope(tenant_id)
-        stmt = select(ProviderAssignment).where(
-            ProviderAssignment.tenant_id == tenant_id
-        )
+        stmt = select(ProviderAssignment).where(ProviderAssignment.tenant_id == tenant_id)
         stmt = stmt.where(ProviderAssignment.workspace_id.is_(None))
         if owner_user_id is not None:
             stmt = stmt.where(
@@ -38,9 +36,7 @@ class ProviderAssignmentsRepository(BaseRepository):
                 )
             )
         else:
-            stmt = stmt.where(
-                ProviderAssignment.visibility_scope.in_(("tenant", "system"))
-            )
+            stmt = stmt.where(ProviderAssignment.visibility_scope.in_(("tenant", "system")))
         stmt = stmt.order_by(
             ProviderAssignment.feature_scope.asc(), ProviderAssignment.priority.asc()
         )
@@ -69,12 +65,8 @@ class ProviderAssignmentsRepository(BaseRepository):
                 )
             )
         else:
-            stmt = stmt.where(
-                ProviderAssignment.visibility_scope.in_(("tenant", "system"))
-            )
-        stmt = stmt.order_by(
-            ProviderAssignment.priority.asc(), ProviderAssignment.created_at.asc()
-        )
+            stmt = stmt.where(ProviderAssignment.visibility_scope.in_(("tenant", "system")))
+        stmt = stmt.order_by(ProviderAssignment.priority.asc(), ProviderAssignment.created_at.asc())
         return self.db.execute(stmt).scalars().first()
 
     def get_by_scope_and_priority(
@@ -178,9 +170,7 @@ class ProviderAssignmentsRepository(BaseRepository):
         )
         if enabled_only:
             stmt = stmt.where(ProviderAssignment.enabled.is_(True))
-        stmt = stmt.order_by(
-            ProviderAssignment.priority.asc(), ProviderAssignment.created_at.asc()
-        )
+        stmt = stmt.order_by(ProviderAssignment.priority.asc(), ProviderAssignment.created_at.asc())
         return self.db.execute(stmt).scalars().all()
 
     def delete(

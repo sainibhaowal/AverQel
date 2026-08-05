@@ -159,38 +159,41 @@ export default function ProvidersSettingsPage() {
     }
   }, [activeTab, browsingCatalog, loading, providers, selectedProviderId, showCreateFlow]);
 
-  const loadModels = useCallback(async (id: string) => {
-    setLoadingModels(true);
-    try {
-      const provider = providers.find((item) => item.id === id);
-      if (!provider) {
-        setProviderModels([]);
-        return;
-      }
-
-      let m: ProviderModel[];
-      if (!provider.enabled) {
-        // Disabled providers cannot be refreshed by design. Their cached
-        // inventory is still safe to display while the connection is resumed.
-        m = await listProviderModels(id);
-      } else {
-        try {
-          m = await refreshProviderModels(id);
-        } catch (refreshError) {
-          console.warn(
-            "Provider model refresh failed, falling back to cached inventory",
-            refreshError,
-          );
-          m = await listProviderModels(id);
+  const loadModels = useCallback(
+    async (id: string) => {
+      setLoadingModels(true);
+      try {
+        const provider = providers.find((item) => item.id === id);
+        if (!provider) {
+          setProviderModels([]);
+          return;
         }
+
+        let m: ProviderModel[];
+        if (!provider.enabled) {
+          // Disabled providers cannot be refreshed by design. Their cached
+          // inventory is still safe to display while the connection is resumed.
+          m = await listProviderModels(id);
+        } else {
+          try {
+            m = await refreshProviderModels(id);
+          } catch (refreshError) {
+            console.warn(
+              "Provider model refresh failed, falling back to cached inventory",
+              refreshError,
+            );
+            m = await listProviderModels(id);
+          }
+        }
+        setProviderModels(m);
+      } catch (error) {
+        console.error("Failed to load model inventory", error);
+      } finally {
+        setLoadingModels(false);
       }
-      setProviderModels(m);
-    } catch (error) {
-      console.error("Failed to load model inventory", error);
-    } finally {
-      setLoadingModels(false);
-    }
-  }, [providers]);
+    },
+    [providers],
+  );
 
   useEffect(() => {
     if (selectedProviderId) {

@@ -31,13 +31,9 @@ def test_answer_service_uses_llm_provider_when_enabled(
 
         @staticmethod
         def json() -> dict[str, object]:
-            return {
-                "choices": [{"message": {"content": "Generated answer from provider"}}]
-            }
+            return {"choices": [{"message": {"content": "Generated answer from provider"}}]}
 
-    fake_httpx = SimpleNamespace(
-        post=lambda *args, **kwargs: _FakeResponse()
-    )  # noqa: ARG005
+    fake_httpx = SimpleNamespace(post=lambda *args, **kwargs: _FakeResponse())  # noqa: ARG005
     monkeypatch.setitem(sys.modules, "httpx", fake_httpx)
 
     settings = get_settings()

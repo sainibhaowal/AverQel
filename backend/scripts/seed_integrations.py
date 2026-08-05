@@ -117,9 +117,7 @@ def seed_integrations() -> None:
             existing = result.scalar_one_or_none()
 
             if existing:
-                logger.info(
-                    f"Integration {int_data['slug']} already exists, updating..."
-                )
+                logger.info(f"Integration {int_data['slug']} already exists, updating...")
                 existing.name = int_data["name"]
                 existing.description = int_data["description"]
                 existing.ui_metadata = int_data["ui_metadata"]

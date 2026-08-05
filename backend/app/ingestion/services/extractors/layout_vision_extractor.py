@@ -51,11 +51,7 @@ class LayoutVisionExtractor(BaseExtractor):
         vision = self.vision_service.analyze_pages(pages)
         text = "\n\n".join(block.text for block in vision.blocks).strip()
         confidence_values = [block.confidence for block in vision.blocks]
-        coverage = (
-            sum(confidence_values) / len(confidence_values)
-            if confidence_values
-            else 0.0
-        )
+        coverage = sum(confidence_values) / len(confidence_values) if confidence_values else 0.0
         return ExtractionResult(
             text=text,
             page_count=len(pages),
@@ -93,13 +89,9 @@ class LayoutVisionExtractor(BaseExtractor):
     def _build_pages(self, request: ExtractionRequest) -> list[VisionPageInput]:
         lowered = request.filename.lower()
         if lowered.endswith(".pdf") or request.content_type == "application/pdf":
-            rendered_pages = self.pdf_render_service.render_pdf_pages(
-                payload=request.payload
-            )
+            rendered_pages = self.pdf_render_service.render_pdf_pages(payload=request.payload)
             return [
-                VisionPageInput(
-                    page_number=page.page_number, image_bytes=page.image_bytes
-                )
+                VisionPageInput(page_number=page.page_number, image_bytes=page.image_bytes)
                 for page in rendered_pages
             ]
 

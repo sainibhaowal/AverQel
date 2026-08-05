@@ -1,4 +1,5 @@
 """Security checks for user-supplied MCP remote endpoints."""
+
 from __future__ import annotations
 
 import ipaddress
@@ -35,11 +36,14 @@ def resolve_public_addresses(host: str, port: int) -> tuple[str, ...]:
         raise MCPEndpointRejectedError("MCP endpoint resolves to a restricted network")
     return tuple(sorted(str(address) for address in addresses))
 
+
 def validate_remote_endpoint(raw: str) -> str:
     value = str(raw or "").strip()
     parsed = urlparse(value)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-        raise MCPEndpointRejectedError("MCP endpoint must be an HTTPS URL without embedded credentials")
+        raise MCPEndpointRejectedError(
+            "MCP endpoint must be an HTTPS URL without embedded credentials"
+        )
     host = parsed.hostname.rstrip(".").lower()
     if host in {"localhost", "localhost.localdomain", "metadata.google.internal"}:
         raise MCPEndpointRejectedError("MCP endpoint host is not allowed")

@@ -40,9 +40,7 @@ class VisionOcrClient(Protocol):
 
 
 class VisionService:
-    def __init__(
-        self, settings: Settings, *, ocr_service: VisionOcrClient | None = None
-    ) -> None:
+    def __init__(self, settings: Settings, *, ocr_service: VisionOcrClient | None = None) -> None:
         self.settings = settings
         self.ocr_service = ocr_service or OcrService(settings)
 
@@ -79,9 +77,7 @@ class VisionService:
                         code="VISION_TIMEOUT",
                         message="Vision processing timed out.",
                         status_code=504,
-                        details={
-                            "timeout_seconds": self.settings.vision_timeout_seconds
-                        },
+                        details={"timeout_seconds": self.settings.vision_timeout_seconds},
                     )
 
                 raw_text = sanitize_document_text(page.hint_text).strip()
@@ -96,9 +92,7 @@ class VisionService:
 
                 page_blocks, page_warnings = self._infer_layout_blocks(
                     text=raw_text,
-                    base_confidence=max(
-                        confidence, self.settings.vision_min_confidence
-                    ),
+                    base_confidence=max(confidence, self.settings.vision_min_confidence),
                     page_number=page.page_number,
                 )
                 blocks.extend(page_blocks)
@@ -174,9 +168,7 @@ class VisionService:
 
         flush_paragraph()
 
-        short_line_ratio = sum(1 for line in lines if len(line) < 36) / max(
-            len(lines), 1
-        )
+        short_line_ratio = sum(1 for line in lines if len(line) < 36) / max(len(lines), 1)
         if short_line_ratio > 0.45:
             warnings.append("multi_column_reflow_applied")
 

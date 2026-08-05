@@ -11,7 +11,10 @@ describe("MCPProviderDetails", () => {
     expect(screen.getByRole("note")).toHaveTextContent(/community connector/i);
     expect(screen.getByText("mail.read")).toBeInTheDocument();
     expect(screen.getByText("https://provider.example/mcp")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /documentation/i })).toHaveAttribute("href", "https://provider.example/docs");
+    expect(screen.getByRole("link", { name: /documentation/i })).toHaveAttribute(
+      "href",
+      "https://provider.example/docs",
+    );
     expect(screen.getByText("Healthy")).toBeInTheDocument();
     expect(screen.getByText("search_mail")).toBeInTheDocument();
   });

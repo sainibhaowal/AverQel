@@ -124,9 +124,7 @@ def test_ingestion_cutover_uses_assigned_embedding_provider_and_persists_metadat
         session.close()
 
     def _fake_embed_many(self, request):  # type: ignore[no-untyped-def]
-        return type(
-            "EmbedResponse", (), {"vectors": [[0.1] * settings.embedding_dimension]}
-        )()
+        return type("EmbedResponse", (), {"vectors": [[0.1] * settings.embedding_dimension]})()
 
     monkeypatch.setattr(OpenAICompatibleProvider, "embed_many", _fake_embed_many)
 
@@ -144,9 +142,7 @@ def test_ingestion_cutover_uses_assigned_embedding_provider_and_persists_metadat
             "X-Tenant-Id": str(seeded.tenant_id),
             "Idempotency-Key": "phase7-ingestion-cutover",
         },
-        files={
-            "file": ("phase7.txt", b"provider metadata content\n" * 16, "text/plain")
-        },
+        files={"file": ("phase7.txt", b"provider metadata content\n" * 16, "text/plain")},
     )
     assert upload.status_code == 200
 
@@ -156,9 +152,7 @@ def test_ingestion_cutover_uses_assigned_embedding_provider_and_persists_metadat
         set_db_tenant_context(session, seeded.tenant_id)
         embeddings = (
             session.execute(
-                select(ChunkEmbedding).where(
-                    ChunkEmbedding.tenant_id == seeded.tenant_id
-                )
+                select(ChunkEmbedding).where(ChunkEmbedding.tenant_id == seeded.tenant_id)
             )
             .scalars()
             .all()

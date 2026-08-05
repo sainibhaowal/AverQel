@@ -62,9 +62,7 @@ class RerankerService:
                     candidate_count=len(chunks),
                     selected_count=min(len(chunks), max(top_n, 0)),
                     failure_reason=(
-                        None
-                        if self.settings.reranking_enabled
-                        else "reranking_disabled"
+                        None if self.settings.reranking_enabled else "reranking_disabled"
                     ),
                 ),
             )
@@ -144,9 +142,7 @@ class RerankerService:
             for item in response.results
             if 0 <= item.index < len(chunks)
         }
-        scored_rows = [
-            (index, chunks[index], score) for index, score in index_to_score.items()
-        ]
+        scored_rows = [(index, chunks[index], score) for index, score in index_to_score.items()]
         scored_rows.sort(key=lambda item: item[2], reverse=True)
         reranked = [row for _, row, _ in scored_rows]
         if len(reranked) < top_n:

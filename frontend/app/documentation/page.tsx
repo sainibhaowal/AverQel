@@ -108,9 +108,9 @@ export default function DocsIndex() {
           hardening phases, and where future development should stay careful.
         </p>
         <p>
-          If you are a user, start with Getting Started, Grounded Queries, Documents Hub, and
-          Memory & Workspace. If you are developing the system, also read Connectors & MCP,
-          Providers, Privacy & Security, and Architecture.
+          If you are a user, start with Getting Started, Grounded Queries, Documents Hub, and Memory
+          & Workspace. If you are developing the system, also read Connectors & MCP, Providers,
+          Privacy & Security, and Architecture.
         </p>
       </DocsSection>
       <DocsCards

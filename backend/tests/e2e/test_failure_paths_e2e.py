@@ -54,9 +54,7 @@ def test_unsupported_extension_path(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    seeded = seed_user(
-        "tenant-fail-ext", "user-ext@example.com", "Password!123", ("editor",)
-    )
+    seeded = seed_user("tenant-fail-ext", "user-ext@example.com", "Password!123", ("editor",))
     token = _login(client, seeded)
 
     response = client.post(
@@ -66,9 +64,7 @@ def test_unsupported_extension_path(
             "X-Tenant-Id": str(seeded.tenant_id),
             "Idempotency-Key": "idem-fail-ext",
         },
-        files={
-            "file": ("bad_file.bin", b"some binary data", "application/octet-stream")
-        },
+        files={"file": ("bad_file.bin", b"some binary data", "application/octet-stream")},
     )
     # The API might allow basic upload for `.bin` if not strictly checked at API edge,
     # but the settings.upload_allowed_extensions guards it.
@@ -82,9 +78,7 @@ def test_oversize_file_path(
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
     settings.upload_max_bytes = 100  # Artificially low limit for testing
-    seeded = seed_user(
-        "tenant-fail-size", "user-size@example.com", "Password!123", ("editor",)
-    )
+    seeded = seed_user("tenant-fail-size", "user-size@example.com", "Password!123", ("editor",))
     token = _login(client, seeded)
 
     large_payload = b"x" * 200
@@ -120,9 +114,7 @@ def test_corrupted_file_path(
             "X-Tenant-Id": str(seeded.tenant_id),
             "Idempotency-Key": "idem-fail-corr",
         },
-        files={
-            "file": ("corrupted.pdf", b"this is not a valid pdf", "application/pdf")
-        },
+        files={"file": ("corrupted.pdf", b"this is not a valid pdf", "application/pdf")},
     )
     assert response.status_code == 200
     doc_id = response.json()["document_id"]

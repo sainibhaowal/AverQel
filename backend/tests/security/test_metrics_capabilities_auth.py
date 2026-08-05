@@ -42,9 +42,7 @@ def test_metrics_summary_forbidden_for_non_admin(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    user = seed_user(
-        "metrics-reader-tenant", "reader@example.com", "StrongPass!1234", ("reader",)
-    )
+    user = seed_user("metrics-reader-tenant", "reader@example.com", "StrongPass!1234", ("reader",))
     token = _login(client, str(user.tenant_id), user.email, user.password)
 
     response = client.get(
@@ -62,9 +60,7 @@ def test_metrics_summary_accessible_for_admin(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    user = seed_user(
-        "metrics-admin-tenant", "admin@example.com", "StrongPass!1234", ("admin",)
-    )
+    user = seed_user("metrics-admin-tenant", "admin@example.com", "StrongPass!1234", ("admin",))
     token = _login(client, str(user.tenant_id), user.email, user.password)
 
     response = client.get(
@@ -153,9 +149,7 @@ def test_capabilities_accessible_for_authenticated_reader(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    user = seed_user(
-        "cap-reader-tenant", "cap-reader@example.com", "StrongPass!1234", ("reader",)
-    )
+    user = seed_user("cap-reader-tenant", "cap-reader@example.com", "StrongPass!1234", ("reader",))
     token = _login(client, str(user.tenant_id), user.email, user.password)
 
     response = client.get(
@@ -177,9 +171,7 @@ def test_capabilities_accessible_for_admin(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    user = seed_user(
-        "cap-admin-tenant", "cap-admin@example.com", "StrongPass!1234", ("admin",)
-    )
+    user = seed_user("cap-admin-tenant", "cap-admin@example.com", "StrongPass!1234", ("admin",))
     token = _login(client, str(user.tenant_id), user.email, user.password)
 
     response = client.get(

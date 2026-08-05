@@ -55,7 +55,11 @@ export const docsNavGroups: NavGroup[] = [
         href: "/documentation/connectors-mcp",
         icon: <Network size={14} />,
       },
-      { title: "Memory & Workspace", href: "/documentation/memory-workspace", icon: <Layers3 size={14} /> },
+      {
+        title: "Memory & Workspace",
+        href: "/documentation/memory-workspace",
+        icon: <Layers3 size={14} />,
+      },
     ],
   },
   {

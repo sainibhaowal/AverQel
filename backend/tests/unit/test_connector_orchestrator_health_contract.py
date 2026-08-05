@@ -27,9 +27,7 @@ def _seed_connector(
     status: ConnectorStatus = ConnectorStatus.ACTIVE,
     config: dict[str, Any] | None = None,
 ) -> Connector:
-    seeded = seed_user(
-        "Connector Health Tenant", "health@example.com", "Secret123!", ("admin",)
-    )
+    seeded = seed_user("Connector Health Tenant", "health@example.com", "Secret123!", ("admin",))
     integration_name = f"{name} {uuid4().hex[:8]}"
     integration = Integration(
         name=integration_name,
@@ -141,9 +139,7 @@ def test_sync_connector_short_circuits_when_circuit_is_open(
 
         def validate_health(self) -> dict[str, Any]:
             calls["validate"] += 1
-            raise AssertionError(
-                "validate_health should not run while the circuit is open"
-            )
+            raise AssertionError("validate_health should not run while the circuit is open")
 
     monkeypatch.setitem(ConnectorOrchestrator._REGISTRY, slug, _BlockedService)
 
@@ -494,9 +490,7 @@ def test_sync_connector_records_checkpoint_when_service_is_missing(
     monkeypatch,
 ) -> None:
     slug = f"connector-missing-service-{uuid4().hex[:8]}"
-    connector = _seed_connector(
-        db_session, seed_user, slug=slug, name="Missing Service"
-    )
+    connector = _seed_connector(db_session, seed_user, slug=slug, name="Missing Service")
     monkeypatch.delitem(ConnectorOrchestrator._REGISTRY, slug, raising=False)
 
     result = ConnectorOrchestrator(db_session).sync_connector(

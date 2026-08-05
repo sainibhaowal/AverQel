@@ -104,9 +104,7 @@ def test_upload_index_query_citations_e2e(
     try:
         set_db_tenant_context(session, seeded.tenant_id)
         query_count = session.execute(
-            select(func.count())
-            .select_from(Query)
-            .where(Query.tenant_id == seeded.tenant_id)
+            select(func.count()).select_from(Query).where(Query.tenant_id == seeded.tenant_id)
         ).scalar_one()
         citation_count = session.execute(
             select(func.count())

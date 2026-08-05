@@ -17,9 +17,7 @@ def canonicalize_role_names(
     roles: list[str] | set[str] | tuple[str, ...] | frozenset[str],
 ) -> frozenset[str]:
     return frozenset(
-        canonicalize_role_name(role)
-        for role in roles
-        if isinstance(role, str) and role.strip()
+        canonicalize_role_name(role) for role in roles if isinstance(role, str) and role.strip()
     )
 
 

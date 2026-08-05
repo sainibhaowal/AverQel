@@ -40,13 +40,21 @@ function RichMessageRenderer({
   const showWorkflowMeta = mode !== "deepspace";
   const displayBlocks = resolveDisplayBlocks(message);
   const displayContent = stripTransportContent(message.content, displayBlocks);
+  const legacySummary = parseLegacySummary(displayContent);
+  const readableContent = legacySummary ? "" : displayContent;
   const suppressStreamingJson = isStreaming && looksLikeStructuredJson(displayContent);
-  const hasRenderableContent = !suppressStreamingJson && displayContent.trim().length > 0;
+  const hasMarkdownContent = !suppressStreamingJson && readableContent.trim().length > 0;
+  const hasRenderableContent = hasMarkdownContent || Boolean(legacySummary);
 
   return (
     <div className="min-w-0 space-y-8 overflow-hidden sm:space-y-9">
-      {hasRenderableContent ? (
-        <MarkdownRenderer content={displayContent} streaming={isStreaming} messageId={message.id} />
+      {legacySummary ? <LegacySummaryPanel summary={legacySummary} /> : null}
+      {hasMarkdownContent ? (
+        <MarkdownRenderer
+          content={readableContent}
+          streaming={isStreaming}
+          messageId={message.id}
+        />
       ) : null}
 
       {message.artifacts.length > 0 || message.files.length > 0 ? (
@@ -100,6 +108,195 @@ function RichMessageRenderer({
 }
 
 export default memo(RichMessageRenderer);
+
+type LegacySummary =
+  | {
+      kind: "comparison";
+      heading: string;
+      highlights: string[];
+      documents: Array<{ name: string; summary: string; details: string[] }>;
+    }
+  | {
+      kind: "evidence";
+      heading: string;
+      document: string;
+      status: string;
+      evidence: string[];
+    }
+  | {
+      kind: "collection";
+      collection: string;
+      metrics: string[];
+      documents: string[];
+    };
+
+/**
+ * Older provider responses sometimes contain the same structured summaries
+ * as plain text instead of the structured transport envelope. Keep those
+ * responses useful by promoting only the three distinctive, server-generated
+ * formats to the same visual panel used by structured results. Ordinary
+ * Markdown is left completely unchanged.
+ */
+function parseLegacySummary(content: string): LegacySummary | null {
+  const lines = content.split("\n");
+  const first = lines[0]?.trim() ?? "";
+
+  if (/^Compared \d+ documents across\b/i.test(first)) {
+    const documents: Array<{ name: string; summary: string; details: string[] }> = [];
+    const highlights: string[] = [];
+    let current: (typeof documents)[number] | null = null;
+    for (const line of lines.slice(1)) {
+      const document = line.match(/^\s*-\s+([^:]+):\s*(.+)$/);
+      if (document) {
+        current = { name: document[1]!.trim(), summary: document[2]!.trim(), details: [] };
+        documents.push(current);
+        continue;
+      }
+      if (!current && line.trim()) {
+        highlights.push(line.trim());
+        continue;
+      }
+      const detail = line.match(/^\s{2,}(.+?)\s*$/);
+      if (detail && current) current.details.push(detail[1]!.trim());
+    }
+    if (documents.length > 0) return { kind: "comparison", heading: first, highlights, documents };
+  }
+
+  const evidenceHeading = first.match(
+    /^Documents matching\s+(.+?)\s+in the filtered workspace slice/i,
+  );
+  if (evidenceHeading) {
+    const document = lines
+      .slice(1)
+      .map((line) => line.match(/^\s*-\s+(.+?)\s+\(([^)]+)\)\s*$/))
+      .find(Boolean);
+    if (document) {
+      const evidence = lines
+        .slice(1)
+        .map((line) => line.match(/^\s+Evidence\s+(.+?)\s*$/i)?.[1]?.trim())
+        .filter((value): value is string => Boolean(value));
+      return {
+        kind: "evidence",
+        heading: first,
+        document: document[1]!.trim(),
+        status: document[2]!.trim(),
+        evidence,
+      };
+    }
+  }
+
+  const collectionHeading = first.match(/^Collection summary for\s+(.+?):\s*$/i);
+  if (collectionHeading) {
+    const documentsIndex = lines.findIndex((line) => /^Documents:\s*$/i.test(line.trim()));
+    const metricLines = (documentsIndex === -1 ? lines.slice(1) : lines.slice(1, documentsIndex))
+      .map((line) => line.match(/^\s*-\s+(.+)$/)?.[1]?.trim())
+      .filter((value): value is string => Boolean(value));
+    const documents = (documentsIndex === -1 ? [] : lines.slice(documentsIndex + 1))
+      .map((line) => line.match(/^\s*-\s+(.+)$/)?.[1]?.trim())
+      .filter((value): value is string => Boolean(value));
+    return {
+      kind: "collection",
+      collection: collectionHeading[1]!.trim(),
+      metrics: metricLines,
+      documents,
+    };
+  }
+
+  return null;
+}
+
+function LegacySummaryPanel({ summary }: { summary: LegacySummary }) {
+  if (summary.kind === "comparison") {
+    return (
+      <section className="border-glass-border/60 bg-glass-bg/30 rounded-2xl border p-4 shadow-sm sm:p-5">
+        <div className="text-primary mb-4 text-xs font-semibold tracking-[0.16em] uppercase">
+          Comparison
+        </div>
+        <p className="text-foreground/90 text-sm leading-7">{summary.heading}</p>
+        {summary.highlights.length > 0 ? (
+          <ul className="text-foreground/75 mt-2 space-y-1 text-sm leading-6">
+            {summary.highlights.map((highlight) => (
+              <li key={highlight}>{highlight}</li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-2">
+          {summary.documents.map((document) => (
+            <article
+              key={document.name}
+              className="border-glass-border/50 bg-surface-1/30 rounded-xl border p-3"
+            >
+              <h3 className="text-foreground text-sm font-semibold">{document.name}</h3>
+              <p className="text-foreground/75 mt-1 text-xs leading-6">{document.summary}</p>
+              {document.details.length > 0 ? (
+                <ul className="text-foreground/65 mt-2 space-y-1 text-xs leading-5">
+                  {document.details.map((detail) => (
+                    <li key={detail}>{detail}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (summary.kind === "evidence") {
+    return (
+      <section className="border-glass-border/60 bg-glass-bg/30 rounded-2xl border p-4 shadow-sm sm:p-5">
+        <div className="text-primary mb-3 text-xs font-semibold tracking-[0.16em] uppercase">
+          Investigation Evidence
+        </div>
+        <p className="text-foreground/90 text-sm leading-7">{summary.heading}</p>
+        <div className="border-glass-border/50 bg-surface-1/30 mt-4 rounded-xl border p-3">
+          <div className="text-foreground text-sm font-semibold">{summary.document}</div>
+          <div className="text-foreground/55 mt-1 text-xs uppercase">{summary.status}</div>
+          <ul className="text-foreground/75 mt-3 space-y-2 text-sm leading-6">
+            {summary.evidence.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="border-glass-border/60 bg-glass-bg/30 rounded-2xl border p-4 shadow-sm sm:p-5">
+      <div className="text-primary text-xs font-semibold tracking-[0.16em] uppercase">
+        Collection Summary
+      </div>
+      <div className="text-foreground mt-2 text-sm font-semibold">{summary.collection}</div>
+      {summary.metrics.length > 0 ? (
+        <ul className="text-foreground/75 mt-3 grid gap-2 text-sm leading-6 sm:grid-cols-2">
+          {summary.metrics.map((metric) => {
+            const separator = metric.indexOf(":");
+            if (separator === -1) return <li key={metric}>{metric}</li>;
+            return (
+              <li key={metric}>
+                <span>{metric.slice(0, separator + 1)}</span>{" "}
+                <span>{metric.slice(separator + 1).trim()}</span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {summary.documents.length > 0 ? (
+        <div className="border-glass-border/50 mt-4 border-t pt-3">
+          <div className="text-foreground/55 mb-2 text-xs tracking-[0.14em] uppercase">
+            Documents
+          </div>
+          <ul className="text-foreground/75 space-y-1 text-sm leading-6">
+            {summary.documents.map((document) => (
+              <li key={document}>{document}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 function resolveDisplayBlocks(message: QueryThreadMessage): StructuredBlock[] {
   const content = message.content;

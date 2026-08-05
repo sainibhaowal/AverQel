@@ -47,9 +47,7 @@ def process_ingestion_job(self: Task, job_id: str, tenant_id: str) -> str:
                 job_id=parsed_job_id,
             )
         except RetryableIngestionError as exc:
-            countdown = service.compute_retry_delay(
-                current_attempt=int(self.request.retries) + 1
-            )
+            countdown = service.compute_retry_delay(current_attempt=int(self.request.retries) + 1)
             WORKER_JOB_TRANSITIONS_TOTAL.labels(stage=stage, status="retry").inc()
             raise self.retry(
                 exc=exc,
@@ -68,9 +66,7 @@ def process_ingestion_job(self: Task, job_id: str, tenant_id: str) -> str:
         return "ok"
 
     finally:
-        WORKER_STAGE_DURATION_SECONDS.labels(stage=stage).observe(
-            time.perf_counter() - start
-        )
+        WORKER_STAGE_DURATION_SECONDS.labels(stage=stage).observe(time.perf_counter() - start)
 
         try:
             session.rollback()

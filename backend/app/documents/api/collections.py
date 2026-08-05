@@ -89,6 +89,8 @@ def _enforce_collection_admin(
         message="Owner access for this collection is required.",
         status_code=403,
     )
+
+
 def _enforce_collection_access(
     *,
     repo: CollectionsRepository,
@@ -151,6 +153,7 @@ def _collection_response(
         created_at=collection.created_at,
         updated_at=collection.updated_at,
     )
+
 
 def _normalize_member_role(raw_role: str | None) -> str:
     if raw_role == "owner":
@@ -569,9 +572,7 @@ def delete_collection_notification(
     db: Session = Depends(get_db),
 ) -> Response:
     repo = CollectionNotificationsRepository(db)
-    deleted = repo.delete_for_user(
-        user_id=auth.user_id, notification_id=notification_id
-    )
+    deleted = repo.delete_for_user(user_id=auth.user_id, notification_id=notification_id)
     if not deleted:
         raise ApiError(
             code="COLLECTION_NOTIFICATION_NOT_FOUND",
@@ -887,20 +888,31 @@ def add_permissions(
 
     # Check if a 1:1 direct connection already exists between auth.user_id and target_user.id
     from app.documents.models.collection import CollectionPermission as DBCollectionPermission
-    user_collections = db.query(DBCollectionPermission.collection_id).filter(
-        DBCollectionPermission.user_id == auth.user_id
-    ).all()
+
+    user_collections = (
+        db.query(DBCollectionPermission.collection_id)
+        .filter(DBCollectionPermission.user_id == auth.user_id)
+        .all()
+    )
     user_col_ids = [c[0] for c in user_collections]
 
     if user_col_ids:
-        duplicate_conn = db.query(DBCollectionPermission.collection_id).filter(
-            DBCollectionPermission.collection_id.in_(user_col_ids),
-            DBCollectionPermission.user_id == target_user.id
-        ).first()
+        duplicate_conn = (
+            db.query(DBCollectionPermission.collection_id)
+            .filter(
+                DBCollectionPermission.collection_id.in_(user_col_ids),
+                DBCollectionPermission.user_id == target_user.id,
+            )
+            .first()
+        )
         if duplicate_conn:
             col_id = duplicate_conn[0]
             existing_col = repo.get_by_id_global(collection_id=col_id)
-            if existing_col and existing_col.description and "1:1 Connection" in existing_col.description:
+            if (
+                existing_col
+                and existing_col.description
+                and "1:1 Connection" in existing_col.description
+            ):
                 raise ApiError(
                     code="DUPLICATE_CONNECTION",
                     message="Connection already exists!",
@@ -1046,9 +1058,7 @@ def remove_permissions(
                 status_code=400,
             )
     else:
-        if payload.user_ids and any(
-            user_id != auth.user_id for user_id in payload.user_ids
-        ):
+        if payload.user_ids and any(user_id != auth.user_id for user_id in payload.user_ids):
             raise ApiError(
                 code="FORBIDDEN",
                 message="Members can only leave collections themselves.",
@@ -1077,9 +1087,7 @@ def remove_permissions(
                     message=f'{actor_email} removed you from "{collection.name}".',
                 )
             else:
-                for permission in repo.get_permissions_global(
-                    collection_id=collection_id
-                ):
+                for permission in repo.get_permissions_global(collection_id=collection_id):
                     if permission.user_id == auth.user_id:
                         continue
                     if _normalize_member_role(permission.role) not in {
@@ -1195,6 +1203,7 @@ class CollectionBroadcastManager:
     def redis_client(self):
         if self._redis_client is None:
             from app.core.config import get_settings
+
             self._redis_client = aioredis.from_url(get_settings().redis_url, decode_responses=True)
         return self._redis_client
 
@@ -1245,6 +1254,7 @@ class CollectionBroadcastManager:
                 task = asyncio.create_task(self._redis_subscribe_loop(collection_id))
                 self.redis_tasks[collection_id] = task
 
+
 broadcast_manager = CollectionBroadcastManager()
 
 from app.core.config import Settings, get_settings  # noqa: E402
@@ -1261,9 +1271,7 @@ async def collection_websocket(
     await broadcast_manager.connect(str(collection_id), websocket)
     auth = None
     try:
-        auth = await _authenticate_websocket_auth_context(
-            websocket, db=db, settings=settings
-        )
+        auth = await _authenticate_websocket_auth_context(websocket, db=db, settings=settings)
 
         repo = CollectionsRepository(db)
         collection = repo.get_by_id_global(collection_id=collection_id)
@@ -1295,7 +1303,7 @@ async def collection_websocket(
                 "user_id": str(auth.user_id),
                 "is_online": True,
                 "last_seen": presence.last_seen.isoformat(),
-            }
+            },
         )
 
         while True:
@@ -1305,7 +1313,7 @@ async def collection_websocket(
                 continue
 
             action = data.get("action")
-            db.rollback() # Refresh long-lived session transaction to read fresh database state
+            db.rollback()  # Refresh long-lived session transaction to read fresh database state
             if action == "post_message":
                 content = str(data.get("content", "")).strip()
                 if not content:
@@ -1345,7 +1353,7 @@ async def collection_websocket(
                     "is_media": db_msg.is_media,
                     "media_mime_type": db_msg.media_mime_type,
                     "reactions": db_msg.reactions,
-                    "created_at": db_msg.created_at.isoformat()
+                    "created_at": db_msg.created_at.isoformat(),
                 }
 
                 await broadcast_manager.publish_event(
@@ -1356,10 +1364,7 @@ async def collection_websocket(
                 await broadcast_manager.publish_event(
                     str(collection_id),
                     "user_typing",
-                    {
-                        "user_id": str(auth.user_id),
-                        "is_typing": is_typing
-                    }
+                    {"user_id": str(auth.user_id), "is_typing": is_typing},
                 )
             elif action == "react":
                 msg_id = data.get("message_id")
@@ -1368,7 +1373,12 @@ async def collection_websocket(
                     from app.documents.models.collection import (
                         CollectionChatMessage as DBCollectionChatMessage,
                     )
-                    db_msg = db.query(DBCollectionChatMessage).filter(DBCollectionChatMessage.id == uuid.UUID(msg_id)).first()
+
+                    db_msg = (
+                        db.query(DBCollectionChatMessage)
+                        .filter(DBCollectionChatMessage.id == uuid.UUID(msg_id))
+                        .first()
+                    )
                     if db_msg:
                         try:
                             reactions_dict = json.loads(db_msg.reactions)
@@ -1387,10 +1397,7 @@ async def collection_websocket(
                         await broadcast_manager.publish_event(
                             str(collection_id),
                             "message_reacted",
-                            {
-                                "message_id": str(db_msg.id),
-                                "reactions": db_msg.reactions
-                            }
+                            {"message_id": str(db_msg.id), "reactions": db_msg.reactions},
                         )
             elif action == "delivered":
                 msg_id = data.get("message_id")
@@ -1398,17 +1405,19 @@ async def collection_websocket(
                     from app.documents.models.collection import (
                         CollectionChatMessage as DBCollectionChatMessage,
                     )
-                    db_msg = db.query(DBCollectionChatMessage).filter(DBCollectionChatMessage.id == uuid.UUID(msg_id)).first()
+
+                    db_msg = (
+                        db.query(DBCollectionChatMessage)
+                        .filter(DBCollectionChatMessage.id == uuid.UUID(msg_id))
+                        .first()
+                    )
                     if db_msg and db_msg.status == "sent":
                         db_msg.status = "delivered"
                         db.commit()
                         await broadcast_manager.publish_event(
                             str(collection_id),
                             "message_delivered",
-                            {
-                                "message_id": str(db_msg.id),
-                                "status": "delivered"
-                            }
+                            {"message_id": str(db_msg.id), "status": "delivered"},
                         )
             elif action == "delete":
                 msg_id = data.get("message_id")
@@ -1416,9 +1425,12 @@ async def collection_websocket(
                     from app.documents.models.collection import (
                         CollectionChatMessage as DBCollectionChatMessage,
                     )
-                    db_msg = db.query(DBCollectionChatMessage).filter(
-                        DBCollectionChatMessage.id == uuid.UUID(msg_id)
-                    ).first()
+
+                    db_msg = (
+                        db.query(DBCollectionChatMessage)
+                        .filter(DBCollectionChatMessage.id == uuid.UUID(msg_id))
+                        .first()
+                    )
                     # Senders or collection owners can delete
                     permission = repo.get_user_permission_global(
                         collection_id=collection_id,
@@ -1435,21 +1447,19 @@ async def collection_websocket(
                         await broadcast_manager.publish_event(
                             str(collection_id),
                             "message_deleted",
-                            {
-                                "message_id": str(msg_id),
-                                "message": "This message was deleted"
-                            }
+                            {"message_id": str(msg_id), "message": "This message was deleted"},
                         )
             elif action == "read":
                 from app.documents.models.collection import (
                     CollectionChatMessage as DBCollectionChatMessage,
                 )
+
                 unread_msgs = (
                     db.query(DBCollectionChatMessage)
                     .filter(
                         DBCollectionChatMessage.collection_id == collection_id,
                         DBCollectionChatMessage.user_id != auth.user_id,
-                        DBCollectionChatMessage.status != "read"
+                        DBCollectionChatMessage.status != "read",
                     )
                     .all()
                 )
@@ -1460,23 +1470,22 @@ async def collection_websocket(
                     await broadcast_manager.publish_event(
                         str(collection_id),
                         "messages_read",
-                        {
-                            "reader_id": str(auth.user_id),
-                            "status": "read"
-                        }
+                        {"reader_id": str(auth.user_id), "status": "read"},
                     )
     except WebSocketDisconnect:
-        pass
+        return
     except Exception:
         logger.exception("Error in collection websocket handler")
         try:
             await websocket.close(code=1011)
         except Exception:
-            pass
+            logger.debug("Collection websocket close failed", exc_info=True)
     finally:
         if auth:
             try:
-                presence = db.query(UserPresence).filter(UserPresence.user_id == auth.user_id).first()
+                presence = (
+                    db.query(UserPresence).filter(UserPresence.user_id == auth.user_id).first()
+                )
                 if presence:
                     presence.is_online = False
                     presence.last_seen = datetime.now(UTC)
@@ -1488,11 +1497,12 @@ async def collection_websocket(
                             "user_id": str(auth.user_id),
                             "is_online": False,
                             "last_seen": presence.last_seen.isoformat(),
-                        }
+                        },
                     )
             except Exception:
                 logger.exception("Error updating presence on disconnect")
         await broadcast_manager.disconnect(str(collection_id), websocket)
+
 
 @router.get("/{collection_id}/chats", response_model=list[CollectionChatMessage])
 def get_collection_chats(
@@ -1512,10 +1522,11 @@ def get_collection_chats(
         from datetime import timedelta
 
         from app.documents.models.collection import CollectionChatMessage as DBCollectionChatMessage
+
         cutoff = datetime.now(UTC) - timedelta(days=collection.expiry_days)
         db.query(DBCollectionChatMessage).filter(
             DBCollectionChatMessage.collection_id == collection_id,
-            DBCollectionChatMessage.created_at < cutoff
+            DBCollectionChatMessage.created_at < cutoff,
         ).delete(synchronize_session=False)
         db.commit()
 
@@ -1532,10 +1543,11 @@ def get_collection_chats(
             is_media=msg.is_media,
             media_mime_type=msg.media_mime_type,
             reactions=msg.reactions,
-            created_at=msg.created_at.isoformat()
+            created_at=msg.created_at.isoformat(),
         )
         for msg, email, avatar in db_messages
     ]
+
 
 @router.post("/{collection_id}/chats", response_model=CollectionChatMessage)
 async def create_collection_chat(
@@ -1578,12 +1590,10 @@ async def create_collection_chat(
         "is_media": db_msg.is_media,
         "media_mime_type": db_msg.media_mime_type,
         "reactions": db_msg.reactions,
-        "created_at": db_msg.created_at.isoformat()
+        "created_at": db_msg.created_at.isoformat(),
     }
 
-    await broadcast_manager.publish_event(
-        str(collection_id), "new_message", msg_payload
-    )
+    await broadcast_manager.publish_event(str(collection_id), "new_message", msg_payload)
 
     return CollectionChatMessage(**msg_payload)
 
@@ -1633,6 +1643,7 @@ async def upload_collection_chat_media(
         "bucket": stored_obj.bucket,
     }
 
+
 @router.get("/{collection_id}/chats/media/{media_id}/{filename}")
 async def download_collection_chat_media(
     collection_id: uuid.UUID,
@@ -1656,6 +1667,7 @@ async def download_collection_chat_media(
     storage = StorageService(settings)
 
     import re
+
     safe_fn = re.sub(r"[^A-Za-z0-9._-]+", "_", filename)
     # Fallback to file if empty
     if not safe_fn:
@@ -1664,6 +1676,7 @@ async def download_collection_chat_media(
 
     stream = storage.get_stream(bucket=settings.minio_bucket, object_key=object_key)
     return StreamingResponse(stream, media_type="application/octet-stream")
+
 
 @router.post("/{collection_id}/chats/clear")
 async def clear_collection_chats(
@@ -1685,17 +1698,16 @@ async def clear_collection_chats(
     from app.documents.models.collection import CollectionChatMessage as DBCollectionChatMessage
 
     # Delete all E2EE messages
-    db.query(DBCollectionChatMessage).filter(DBCollectionChatMessage.collection_id == collection_id).delete()
+    db.query(DBCollectionChatMessage).filter(
+        DBCollectionChatMessage.collection_id == collection_id
+    ).delete()
     db.commit()
 
     # Broadcast clear event to instantly purge active clients' state/cache
-    await broadcast_manager.publish_event(
-        str(collection_id),
-        "chat_cleared",
-        {}
-    )
+    await broadcast_manager.publish_event(str(collection_id), "chat_cleared", {})
 
     return {"status": "success", "message": "Chat history cleared successfully"}
+
 
 @router.get("/{collection_id}/presence")
 def get_collection_members_presence(
@@ -1727,7 +1739,7 @@ def get_collection_members_presence(
             "user_id": str(r[0]),
             "email": r[1],
             "is_online": bool(r[2]),
-            "last_seen": r[3].isoformat() if r[3] else None
+            "last_seen": r[3].isoformat() if r[3] else None,
         }
         for r in results
     ]
@@ -1765,11 +1777,7 @@ async def update_collection_expiry(
     db.commit()
 
     await broadcast_manager.publish_event(
-        str(collection_id),
-        "expiry_updated",
-        {
-            "expiry_days": payload.expiry_days
-        }
+        str(collection_id), "expiry_updated", {"expiry_days": payload.expiry_days}
     )
 
     member_count = repo.count_connected_members_global(collection_id=collection_id)

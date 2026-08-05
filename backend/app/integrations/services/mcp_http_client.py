@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import Any
+
 import httpcore
 import httpx
+from httpcore import SOCKET_OPTION, AsyncNetworkStream, NetworkStream
+from httpx._client import UseClientDefault
+from httpx._types import AuthTypes
 
 from app.integrations.services.mcp_endpoint_security import (
     resolve_public_addresses,
@@ -28,7 +34,14 @@ class _PinnedAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
         # public address.
         self._backend = getattr(httpcore, "AnyIOBackend", httpcore.AsyncNetworkBackend)()
 
-    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[SOCKET_OPTION] | None = None,
+    ) -> AsyncNetworkStream:
         errors: list[Exception] = []
         for address in resolve_public_addresses(host, port):
             try:
@@ -41,7 +54,9 @@ class _PinnedAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
                 )
             except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
-        raise MCPRedirectRejectedError("MCP endpoint could not establish a safe connection") from (errors[-1] if errors else None)
+        raise MCPRedirectRejectedError("MCP endpoint could not establish a safe connection") from (
+            errors[-1] if errors else None
+        )
 
 
 class _PinnedSyncNetworkBackend(httpcore.NetworkBackend):
@@ -54,7 +69,14 @@ class _PinnedSyncNetworkBackend(httpcore.NetworkBackend):
             else getattr(httpcore, "AutoBackend", httpcore.SyncBackend)()
         )
 
-    def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Iterable[SOCKET_OPTION] | None = None,
+    ) -> NetworkStream:
         errors: list[Exception] = []
         for address in resolve_public_addresses(host, port):
             try:
@@ -67,19 +89,28 @@ class _PinnedSyncNetworkBackend(httpcore.NetworkBackend):
                 )
             except Exception as exc:  # noqa: BLE001
                 errors.append(exc)
-        raise MCPRedirectRejectedError("MCP endpoint could not establish a safe connection") from (errors[-1] if errors else None)
+        raise MCPRedirectRejectedError("MCP endpoint could not establish a safe connection") from (
+            errors[-1] if errors else None
+        )
 
 
 class SafeMCPClient(httpx.Client):
     """Synchronous client that validates every destination and never follows redirects."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs["follow_redirects"] = False
         super().__init__(*args, **kwargs)
         if hasattr(self, "_transport") and hasattr(self._transport, "_pool"):
             self._transport._pool._network_backend = _PinnedSyncNetworkBackend()
 
-    def send(self, request, *, stream=False, auth=httpx.USE_CLIENT_DEFAULT, follow_redirects=httpx.USE_CLIENT_DEFAULT):
+    def send(
+        self,
+        request: httpx.Request,
+        *,
+        stream: bool = False,
+        auth: AuthTypes | UseClientDefault | None = httpx.USE_CLIENT_DEFAULT,
+        follow_redirects: bool | UseClientDefault = httpx.USE_CLIENT_DEFAULT,
+    ) -> httpx.Response:
         validate_remote_endpoint(str(request.url))
         response = super().send(
             request,
@@ -96,13 +127,20 @@ class SafeMCPClient(httpx.Client):
 class SafeMCPAsyncClient(httpx.AsyncClient):
     """Asynchronous client that validates every destination and never follows redirects."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs["follow_redirects"] = False
         super().__init__(*args, **kwargs)
         if hasattr(self, "_transport") and hasattr(self._transport, "_pool"):
             self._transport._pool._network_backend = _PinnedAsyncNetworkBackend()
 
-    async def send(self, request, *, stream=False, auth=httpx.USE_CLIENT_DEFAULT, follow_redirects=httpx.USE_CLIENT_DEFAULT):
+    async def send(
+        self,
+        request: httpx.Request,
+        *,
+        stream: bool = False,
+        auth: AuthTypes | UseClientDefault | None = httpx.USE_CLIENT_DEFAULT,
+        follow_redirects: bool | UseClientDefault = httpx.USE_CLIENT_DEFAULT,
+    ) -> httpx.Response:
         validate_remote_endpoint(str(request.url))
         response = await super().send(
             request,
@@ -116,7 +154,9 @@ class SafeMCPAsyncClient(httpx.AsyncClient):
         return response
 
 
-def build_safe_sync_client(*, timeout: float = 30.0, headers: dict[str, str] | None = None) -> SafeMCPClient:
+def build_safe_sync_client(
+    *, timeout: float = 30.0, headers: dict[str, str] | None = None
+) -> SafeMCPClient:
     return SafeMCPClient(timeout=timeout, headers=headers, trust_env=False)
 
 

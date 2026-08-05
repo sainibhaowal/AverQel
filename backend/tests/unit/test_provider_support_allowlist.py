@@ -8,9 +8,7 @@ def test_provider_support_catalog_keeps_account_linking_disabled_by_default() ->
     session = get_session_factory()()
     try:
         service = ProviderManagementService(session)
-        catalog = {
-            item["provider_type"]: item for item in service.list_supported_types()
-        }
+        catalog = {item["provider_type"]: item for item in service.list_supported_types()}
         assert catalog["openai"]["supports_account_linking"] is False
         assert catalog["ollama"]["supports_account_linking"] is False
         assert catalog["lmstudio"]["supports_account_linking"] is False

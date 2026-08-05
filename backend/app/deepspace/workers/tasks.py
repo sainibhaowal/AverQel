@@ -117,7 +117,11 @@ def run_deepspace_task(
                 # makes a later browser reconnect lossless.
                 if resolved_conversation_id is None:
                     data_line = next(
-                        (line[5:].strip() for line in frame.splitlines() if line.startswith("data:")),
+                        (
+                            line[5:].strip()
+                            for line in frame.splitlines()
+                            if line.startswith("data:")
+                        ),
                         "",
                     )
                     try:

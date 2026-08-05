@@ -206,7 +206,7 @@ export default function DeepSpaceScrollTracker({
     <div className="pointer-events-auto absolute top-20 right-0 bottom-48 z-20 flex min-h-0 flex-col items-center gap-3 p-0">
       <div
         aria-label="DeepSpace message navigation"
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pl-3 pr-1"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pl-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="flex flex-col items-center gap-1.5">
           {messages.map((msg, index) => {
@@ -215,10 +215,7 @@ export default function DeepSpaceScrollTracker({
             const label = getMessageLabel(msg, index);
             const isTooltipVisible = tooltipMessageId === msg.id;
             return (
-              <div
-                key={msg.id}
-                className="group relative flex items-center justify-end"
-              >
+              <div key={msg.id} className="group relative flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => jumpToMessage(msg.id)}
@@ -240,7 +237,7 @@ export default function DeepSpaceScrollTracker({
                   />
                 </button>
                 <div
-                  className={`pointer-events-none absolute right-full mr-3 max-w-[12rem] rounded-2xl border px-3 py-1.5 text-[11px] leading-4 font-medium truncate text-white shadow-[0_14px_30px_rgba(0,0,0,0.32)] backdrop-blur-md transition-all duration-200 ${
+                  className={`pointer-events-none absolute right-full mr-3 max-w-[12rem] truncate rounded-2xl border px-3 py-1.5 text-[11px] leading-4 font-medium text-white shadow-[0_14px_30px_rgba(0,0,0,0.32)] backdrop-blur-md transition-all duration-200 ${
                     isTooltipVisible
                       ? "border-cyan-300/20 bg-slate-950/90 opacity-100"
                       : "border-white/8 bg-slate-950/82 opacity-0"

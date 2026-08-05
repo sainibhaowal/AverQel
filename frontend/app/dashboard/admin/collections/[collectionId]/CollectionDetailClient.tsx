@@ -24,7 +24,7 @@ import {
   Lock,
   Play,
   Pause,
-  Search
+  Search,
 } from "lucide-react";
 import toast from "react-hot-toast";
 const DEFAULT_AVATAR_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23f59e0b"/><stop offset="100%" stop-color="%2310b981"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23g)"/><path d="M50 30a15 15 0 1 0 0 30 15 15 0 0 0 0-30zM50 67c-18 0-32 10-32 20v3h64v-3c0-10-14-20-32-20z" fill="%230f172a"/></svg>`;
@@ -38,9 +38,16 @@ import {
   decryptFile,
   getSafetyNumber,
   encryptBackup,
-  decryptBackup
+  decryptBackup,
 } from "@/lib/crypto";
-import { initDb, saveLocalMessage, getLocalMessages, resetUnreadCount, purgeExpiredMessages, clearLocalMessages } from "@/lib/localDb";
+import {
+  initDb,
+  saveLocalMessage,
+  getLocalMessages,
+  resetUnreadCount,
+  purgeExpiredMessages,
+  clearLocalMessages,
+} from "@/lib/localDb";
 import { AnimatePresence, motion } from "framer-motion";
 
 interface Collection {
@@ -152,7 +159,9 @@ export default function AdminCollectionDetailPage({
   const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
 
   // Presence and Typing States
-  const [membersPresence, setMembersPresence] = useState<Record<string, { is_online: boolean; last_seen: string | null }>>({});
+  const [membersPresence, setMembersPresence] = useState<
+    Record<string, { is_online: boolean; last_seen: string | null }>
+  >({});
   const [otherUserTyping, setOtherUserTyping] = useState<boolean>(false);
   const typingTimerRef = useRef<number | null>(null);
   const isTypingRef = useRef<boolean>(false);
@@ -381,7 +390,7 @@ export default function AdminCollectionDetailPage({
                 return updated;
               }
               return m;
-            })
+            }),
           );
         } else if (data.type === "messages_read") {
           const { reader_id, status } = data.payload;
@@ -394,7 +403,7 @@ export default function AdminCollectionDetailPage({
                   return updated;
                 }
                 return m;
-              })
+              }),
             );
           }
         } else if (data.type === "message_reacted") {
@@ -407,7 +416,7 @@ export default function AdminCollectionDetailPage({
                 return updated;
               }
               return m;
-            })
+            }),
           );
         } else if (data.type === "user_typing") {
           const { user_id, is_typing } = data.payload;
@@ -456,26 +465,28 @@ export default function AdminCollectionDetailPage({
                     media_mime_type: null,
                     reactions: "{}",
                   }
-                : m
-            )
+                : m,
+            ),
           );
           // Update IndexedDB locally
           if (collectionId) {
-            initDb().then((db) => {
-              const tx = db.transaction("chats", "readwrite");
-              const store = tx.objectStore("chats");
-              const request = store.get(message_id);
-              request.onsuccess = () => {
-                const existing = request.result;
-                if (existing) {
-                  existing.message = message || "This message was deleted";
-                  existing.is_media = false;
-                  existing.media_mime_type = null;
-                  existing.reactions = "{}";
-                  store.put(existing);
-                }
-              };
-            }).catch(console.error);
+            initDb()
+              .then((db) => {
+                const tx = db.transaction("chats", "readwrite");
+                const store = tx.objectStore("chats");
+                const request = store.get(message_id);
+                request.onsuccess = () => {
+                  const existing = request.result;
+                  if (existing) {
+                    existing.message = message || "This message was deleted";
+                    existing.is_media = false;
+                    existing.media_mime_type = null;
+                    existing.reactions = "{}";
+                    store.put(existing);
+                  }
+                };
+              })
+              .catch(console.error);
           }
         }
       } catch (err) {
@@ -484,7 +495,9 @@ export default function AdminCollectionDetailPage({
     };
 
     socket.onclose = (event) => {
-      console.warn(`WebSocket closed. Code=${event.code}, Reason=${event.reason}. Scheduling reconnect...`);
+      console.warn(
+        `WebSocket closed. Code=${event.code}, Reason=${event.reason}. Scheduling reconnect...`,
+      );
       setWsStatus("offline");
       socketRef.current = null;
       if (event.code === 4004) {
@@ -506,9 +519,9 @@ export default function AdminCollectionDetailPage({
       console.error("WebSocket encountered an error:", err);
       socket.close();
     };
-  // Reconnection deliberately follows the current socket lifecycle; loading collection state inside
-  // this callback would create a declaration-order cycle with the data loader below.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Reconnection deliberately follows the current socket lifecycle; loading collection state inside
+    // this callback would create a declaration-order cycle with the data loader below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionId, cryptoKey, user?.id]);
 
   useEffect(() => {
@@ -539,23 +552,26 @@ export default function AdminCollectionDetailPage({
     setErrorMessage(null);
 
     try {
-      const [collRes, profileRes, colDocsRes, permissionsRes, allDocsRes, presenceRes] = await Promise.all([
-        fetchWithAuth(`/collections/${collectionId}`),
-        // Keep the established profile request in this compatibility batch. Some deployments use it
-        // to refresh the authenticated profile while opening a collection.
-        fetchWithAuth("/auth/profile"),
-        fetchWithAuth(`/collections/${collectionId}/documents`),
-        fetchWithAuth(`/collections/${collectionId}/permissions`),
-        fetchWithAuth("/documents"),
-        fetchWithAuth(`/collections/${collectionId}/presence`),
-      ]);
+      const [collRes, profileRes, colDocsRes, permissionsRes, allDocsRes, presenceRes] =
+        await Promise.all([
+          fetchWithAuth(`/collections/${collectionId}`),
+          // Keep the established profile request in this compatibility batch. Some deployments use it
+          // to refresh the authenticated profile while opening a collection.
+          fetchWithAuth("/auth/profile"),
+          fetchWithAuth(`/collections/${collectionId}/documents`),
+          fetchWithAuth(`/collections/${collectionId}/permissions`),
+          fetchWithAuth("/documents"),
+          fetchWithAuth(`/collections/${collectionId}/presence`),
+        ]);
 
       if (!collRes.ok) {
         if (collRes.status === 404 || collRes.status === 403) {
           onCollectionDeleted?.();
           return;
         }
-        throw new Error(await extractApiErrorMessage(collRes, "Failed to load collection details."));
+        throw new Error(
+          await extractApiErrorMessage(collRes, "Failed to load collection details."),
+        );
       }
 
       const collData = (await collRes.json()) as Collection;
@@ -585,7 +601,6 @@ export default function AdminCollectionDetailPage({
         });
         setMembersPresence(nextPresence);
       }
-
     } catch (error) {
       console.error(error);
       setErrorMessage(error instanceof Error ? error.message : "Failed to load collection.");
@@ -644,12 +659,12 @@ export default function AdminCollectionDetailPage({
       <span>
         {parts.map((part, i) =>
           regex.test(part) ? (
-            <mark key={i} className="bg-amber-500/35 text-foreground px-0.5 rounded font-black">
-               {part}
+            <mark key={i} className="text-foreground rounded bg-amber-500/35 px-0.5 font-black">
+              {part}
             </mark>
           ) : (
             part
-          )
+          ),
         )}
       </span>
     );
@@ -662,7 +677,7 @@ export default function AdminCollectionDetailPage({
           action: "react",
           message_id: messageId,
           reaction: emoji,
-        })
+        }),
       );
     } else {
       toast.error("WebSocket offline, reaction failed.");
@@ -670,13 +685,17 @@ export default function AdminCollectionDetailPage({
   };
 
   const handleClearChatHistory = async () => {
-    if (!window.confirm("Are you absolutely sure you want to permanently clear the entire chat history for everyone? This action is irreversible and deletes all messages and media attachments.")) {
+    if (
+      !window.confirm(
+        "Are you absolutely sure you want to permanently clear the entire chat history for everyone? This action is irreversible and deletes all messages and media attachments.",
+      )
+    ) {
       return;
     }
 
     try {
       const res = await fetchWithAuth(`/collections/${collectionId}/chats/clear`, {
-        method: "POST"
+        method: "POST",
       });
       if (!res.ok) throw new Error("Failed to clear chat history");
 
@@ -699,7 +718,7 @@ export default function AdminCollectionDetailPage({
         JSON.stringify({
           action: "delete",
           message_id: messageId,
-        })
+        }),
       );
     } else {
       toast.error("WebSocket offline, deletion failed.");
@@ -821,8 +840,10 @@ export default function AdminCollectionDetailPage({
       });
       if (!res.ok) throw new Error("Failed to update self-destruct timer.");
       const updated = await res.json();
-      setCollection((prev) => prev ? { ...prev, expiry_days: updated.expiry_days } : null);
-      toast.success(`Self-destruct timer updated to ${days === 0 ? "No Expiry" : days === 1 ? "1 Day" : `${days} Days`}`);
+      setCollection((prev) => (prev ? { ...prev, expiry_days: updated.expiry_days } : null));
+      toast.success(
+        `Self-destruct timer updated to ${days === 0 ? "No Expiry" : days === 1 ? "1 Day" : `${days} Days`}`,
+      );
     } catch (err: any) {
       toast.error(err.message || "Failed to update self-destruct setting.");
     }
@@ -874,11 +895,18 @@ export default function AdminCollectionDetailPage({
             toast.error("Invalid backup file format. Missing metadata.");
             return;
           }
-          const password = window.prompt("Enter the security password used to encrypt this backup:");
+          const password = window.prompt(
+            "Enter the security password used to encrypt this backup:",
+          );
           if (!password) return;
 
           setIsImportingBackup(true);
-          const decryptedJson = await decryptBackup(backupObj.ciphertext, backupObj.salt, backupObj.iv, password);
+          const decryptedJson = await decryptBackup(
+            backupObj.ciphertext,
+            backupObj.salt,
+            backupObj.iv,
+            password,
+          );
           const restoredChats = JSON.parse(decryptedJson);
           if (!Array.isArray(restoredChats)) {
             throw new Error("Restored payload is not a valid chat list.");
@@ -1020,7 +1048,9 @@ export default function AdminCollectionDetailPage({
     if (!hasText && !hasFiles) return;
 
     setSendingChat(true);
-    const toastId = toast.loading(hasFiles ? `Encrypting and sending ${stagedFiles.length} file(s)...` : "Sending message...");
+    const toastId = toast.loading(
+      hasFiles ? `Encrypting and sending ${stagedFiles.length} file(s)...` : "Sending message...",
+    );
 
     try {
       if (hasFiles) {
@@ -1056,7 +1086,7 @@ export default function AdminCollectionDetailPage({
                 content: encryptedPayload,
                 is_media: true,
                 media_mime_type: file.type,
-              })
+              }),
             );
           } else {
             const res = await fetchWithAuth(`/collections/${collectionId}/chats`, {
@@ -1091,7 +1121,7 @@ export default function AdminCollectionDetailPage({
               action: "post_message",
               content: payloadMessage,
               is_media: false,
-            })
+            }),
           );
           setChatText("");
         } else {
@@ -1136,33 +1166,31 @@ export default function AdminCollectionDetailPage({
   };
 
   return (
-    <div className="w-full h-full flex flex-col min-h-0 bg-transparent relative overflow-hidden">
-
+    <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent">
       {/* Drag & Drop listeners attached to timeline outer block */}
       <div
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className="flex-1 flex flex-col min-h-0 relative"
+        className="relative flex min-h-0 flex-1 flex-col"
       >
-
         {/* Error banner */}
         {errorMessage && (
-          <div className="bg-red-500/10 border-b border-red-500/20 px-5 py-3 text-xs text-red-400 shrink-0">
+          <div className="shrink-0 border-b border-red-500/20 bg-red-500/10 px-5 py-3 text-xs text-red-400">
             {errorMessage}
           </div>
         )}
 
         {/* Direct detail-route controls. The embedded collection view supplies these from its parent. */}
-        <div className="flex items-center justify-between gap-3 border-b border-foreground/10 dark:border-white/5 bg-foreground/[0.01] px-5 py-2.5 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="border-foreground/10 bg-foreground/[0.01] flex shrink-0 items-center justify-between gap-3 border-b px-5 py-2.5 dark:border-white/5">
+          <div className="flex min-w-0 items-center gap-2">
             <Link
               href={`${collectionsBasePath}/${collectionId}?section=documents`}
-              className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-wider transition ${
+              className={`rounded-lg border px-3 py-2 text-[10px] font-black tracking-wider uppercase transition ${
                 activeDrawer === "documents"
                   ? "border-amber-500 bg-amber-500 text-slate-950"
-                  : "border-foreground/10 bg-foreground/5 text-slate-500 hover:text-foreground"
+                  : "border-foreground/10 bg-foreground/5 hover:text-foreground text-slate-500"
               }`}
               onClick={() => setActiveDrawer("documents")}
             >
@@ -1170,10 +1198,10 @@ export default function AdminCollectionDetailPage({
             </Link>
             <Link
               href={`${collectionsBasePath}/${collectionId}?section=access`}
-              className={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-wider transition ${
+              className={`rounded-lg border px-3 py-2 text-[10px] font-black tracking-wider uppercase transition ${
                 activeDrawer === "members"
                   ? "border-amber-500 bg-amber-500 text-slate-950"
-                  : "border-foreground/10 bg-foreground/5 text-slate-500 hover:text-foreground"
+                  : "border-foreground/10 bg-foreground/5 hover:text-foreground text-slate-500"
               }`}
               onClick={() => setActiveDrawer("members")}
             >
@@ -1186,7 +1214,7 @@ export default function AdminCollectionDetailPage({
               aria-label="Leave collection"
               onClick={() => void handleLeaveCollection()}
               disabled={deletingCollection}
-              className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-red-400 transition hover:bg-red-500/10 disabled:opacity-50"
+              className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[10px] font-black tracking-wider text-red-400 uppercase transition hover:bg-red-500/10 disabled:opacity-50"
             >
               Leave Collection
             </button>
@@ -1194,79 +1222,100 @@ export default function AdminCollectionDetailPage({
         </div>
 
         {/* Presence and Typing Indicator Subheader */}
-        <div className="bg-foreground/[0.02] border-b border-foreground/10 dark:border-white/5 px-5 py-2.5 flex items-center justify-between shrink-0 text-xs">
+        <div className="bg-foreground/[0.02] border-foreground/10 flex shrink-0 items-center justify-between border-b px-5 py-2.5 text-xs dark:border-white/5">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setShowShieldModal(true)}
-              className="flex items-center gap-1.5 hover:scale-[1.02] transition cursor-pointer"
+              className="flex cursor-pointer items-center gap-1.5 transition hover:scale-[1.02]"
             >
-              <ShieldCheck size={14} className="text-emerald-500 animate-pulse" />
-              <span className="font-extrabold text-slate-500 hover:text-foreground uppercase tracking-widest text-[9px]">E2EE SECURE CHANNEL</span>
+              <ShieldCheck size={14} className="animate-pulse text-emerald-500" />
+              <span className="hover:text-foreground text-[9px] font-extrabold tracking-widest text-slate-500 uppercase">
+                E2EE SECURE CHANNEL
+              </span>
             </button>
           </div>
           <div className="flex items-center gap-4">
             <button
               type="button"
               onClick={() => setShowSearchBar(!showSearchBar)}
-              className="text-slate-500 hover:text-foreground transition cursor-pointer"
+              className="hover:text-foreground cursor-pointer text-slate-500 transition"
             >
               <Search size={14} />
             </button>
             <div className="flex items-center gap-2">
               {/* WS status chip */}
               {wsStatus === "online" ? (
-                <span className="flex items-center gap-1 text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  <span className="h-1 w-1 rounded-full bg-emerald-500 animate-ping" />
+                <span className="flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-emerald-500 uppercase">
+                  <span className="h-1 w-1 animate-ping rounded-full bg-emerald-500" />
                   Live Sync
                 </span>
               ) : wsStatus === "connecting" ? (
-                <span className="flex items-center gap-1 text-[9px] bg-blue-500/10 border border-blue-500/20 text-blue-400 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+                <span className="flex animate-pulse items-center gap-1 rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-blue-400 uppercase">
                   <span className="h-1 w-1 rounded-full bg-blue-400" />
                   Syncing...
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-500 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                <span className="flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-extrabold tracking-wider text-amber-500 uppercase">
                   <span className="h-1 w-1 rounded-full bg-amber-500" />
                   Local Cache Only
                 </span>
               )}
               {otherUserTyping ? (
-                <span className="text-[10px] text-emerald-500 font-extrabold animate-pulse uppercase tracking-wider">typing...</span>
-              ) : (() => {
-                const otherMember = permissions.find((p) => p.user_id !== user?.id);
-                if (otherMember && otherMember.user_id) {
-                  const presence = membersPresence[otherMember.user_id];
-                  if (presence?.is_online) {
-                    return <span className="text-[10px] text-emerald-500 font-extrabold uppercase tracking-wider">online</span>;
-                  } else if (presence?.last_seen) {
-                    const lastSeenTime = new Date(presence.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    return <span className="text-[10px] text-slate-550 uppercase tracking-wider font-semibold">last seen {lastSeenTime}</span>;
+                <span className="animate-pulse text-[10px] font-extrabold tracking-wider text-emerald-500 uppercase">
+                  typing...
+                </span>
+              ) : (
+                (() => {
+                  const otherMember = permissions.find((p) => p.user_id !== user?.id);
+                  if (otherMember && otherMember.user_id) {
+                    const presence = membersPresence[otherMember.user_id];
+                    if (presence?.is_online) {
+                      return (
+                        <span className="text-[10px] font-extrabold tracking-wider text-emerald-500 uppercase">
+                          online
+                        </span>
+                      );
+                    } else if (presence?.last_seen) {
+                      const lastSeenTime = new Date(presence.last_seen).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                      return (
+                        <span className="text-slate-550 text-[10px] font-semibold tracking-wider uppercase">
+                          last seen {lastSeenTime}
+                        </span>
+                      );
+                    }
                   }
-                }
-                return <span className="text-[10px] text-slate-550 uppercase tracking-wider font-semibold">secured offline</span>;
-              })()}
+                  return (
+                    <span className="text-slate-550 text-[10px] font-semibold tracking-wider uppercase">
+                      secured offline
+                    </span>
+                  );
+                })()
+              )}
             </div>
           </div>
         </div>
 
         {/* Search Bar Input Panel */}
         {showSearchBar && (
-          <div className="bg-foreground/[0.01] border-b border-foreground/10 dark:border-white/5 px-5 py-2.5 flex items-center gap-2 shrink-0">
+          <div className="bg-foreground/[0.01] border-foreground/10 flex shrink-0 items-center gap-2 border-b px-5 py-2.5 dark:border-white/5">
             <Search size={13} className="text-slate-550" />
             <input
               type="text"
               value={searchQueryText}
               onChange={(e) => setSearchQueryText(e.target.value)}
               placeholder="Search chat history..."
-              className="flex-1 bg-transparent border-none text-xs text-foreground placeholder-slate-500 outline-none"
+              className="text-foreground flex-1 border-none bg-transparent text-xs placeholder-slate-500 outline-none"
               autoFocus
             />
             {searchQueryText && (
               <button
                 type="button"
                 onClick={() => setSearchQueryText("")}
-                className="text-[10px] text-slate-500 hover:text-foreground font-bold cursor-pointer"
+                className="hover:text-foreground cursor-pointer text-[10px] font-bold text-slate-500"
               >
                 Clear
               </button>
@@ -1277,7 +1326,7 @@ export default function AdminCollectionDetailPage({
                 setShowSearchBar(false);
                 setSearchQueryText("");
               }}
-              className="text-xs text-slate-550 hover:text-foreground font-extrabold ml-2 cursor-pointer"
+              className="text-slate-550 hover:text-foreground ml-2 cursor-pointer text-xs font-extrabold"
             >
               Cancel
             </button>
@@ -1286,40 +1335,44 @@ export default function AdminCollectionDetailPage({
 
         {/* Drag and Drop File Encryption Overlay */}
         {isDragging && (
-          <div className="absolute inset-0 z-40 bg-background/80 backdrop-blur-md border-4 border-dashed border-emerald-500/50 rounded-2xl flex flex-col items-center justify-center text-center p-6 m-4 animate-pulse">
-            <span className="text-4xl mb-3">☁️</span>
-            <p className="text-xs font-black uppercase tracking-wider text-emerald-500">Drop file to encrypt & send</p>
-            <p className="text-[10px] text-slate-500 mt-1 max-w-xs leading-relaxed">
+          <div className="bg-background/80 absolute inset-0 z-40 m-4 flex animate-pulse flex-col items-center justify-center rounded-2xl border-4 border-dashed border-emerald-500/50 p-6 text-center backdrop-blur-md">
+            <span className="mb-3 text-4xl">☁️</span>
+            <p className="text-xs font-black tracking-wider text-emerald-500 uppercase">
+              Drop file to encrypt & send
+            </p>
+            <p className="mt-1 max-w-xs text-[10px] leading-relaxed text-slate-500">
               Your file will be encrypted on your device using AES-GCM 256 before transit.
             </p>
           </div>
         )}
 
         {/* Scrollable messages timeline */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-foreground/[0.005]">
-
+        <div className="bg-foreground/[0.005] flex-1 space-y-4 overflow-y-auto p-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* Invitation banner if pending */}
           {isPending && (
-            <div className="bg-background/80 border border-foreground/10 dark:border-white/5 p-5 rounded-[1.6rem] flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4 mt-6 shadow-none backdrop-blur-md">
+            <div className="bg-background/80 border-foreground/10 mx-auto mt-6 flex max-w-md flex-col items-center justify-center space-y-4 rounded-[1.6rem] border p-5 text-center shadow-none backdrop-blur-md dark:border-white/5">
               <span className="text-xl">📨</span>
               <div className="space-y-1">
-                <h4 className="text-xs font-black tracking-widest text-foreground/80 uppercase">Join Shared Bridge Connection?</h4>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  You have been invited to connect in this bridge workspace. Approve to view shared documents and start exchanging live messages.
+                <h4 className="text-foreground/80 text-xs font-black tracking-widest uppercase">
+                  Join Shared Bridge Connection?
+                </h4>
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  You have been invited to connect in this bridge workspace. Approve to view shared
+                  documents and start exchanging live messages.
                 </p>
               </div>
-              <div className="flex items-center gap-3 w-full">
+              <div className="flex w-full items-center gap-3">
                 <button
                   onClick={() => void handleInvitationResponse("deny")}
                   disabled={savingPermissions}
-                  className="flex-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-455 hover:text-red-400 py-2.5 rounded-xl text-xs font-bold transition disabled:opacity-60 cursor-pointer"
+                  className="text-red-455 flex-1 cursor-pointer rounded-xl border border-red-500/25 bg-red-500/10 py-2.5 text-xs font-bold transition hover:bg-red-500/20 hover:text-red-400 disabled:opacity-60"
                 >
                   Deny
                 </button>
                 <button
                   onClick={() => void handleInvitationResponse("approve")}
                   disabled={savingPermissions}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl text-xs font-bold transition disabled:opacity-60 cursor-pointer shadow-none border border-emerald-500/20"
+                  className="flex-1 cursor-pointer rounded-xl border border-emerald-500/20 bg-emerald-600 py-2.5 text-xs font-bold text-white shadow-none transition hover:bg-emerald-500 disabled:opacity-60"
                 >
                   Approve
                 </button>
@@ -1327,227 +1380,251 @@ export default function AdminCollectionDetailPage({
             </div>
           )}
 
-          {filteredChats.length > 0 ? (
-            filteredChats.map((msg) => {
-              const isSelf = msg.user_id === user?.id;
-              const date = new Date(msg.created_at);
-              const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              const isMsgDeleted = msg.message === "This message was deleted";
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col max-w-[80%] sm:max-w-[65%] relative group ${isSelf ? "ml-auto items-end" : "mr-auto items-start"}`}
-                  onContextMenu={(e) => {
-                    if (isMsgDeleted) return;
-                    e.preventDefault();
-                    setActiveMessageMenuId(activeMessageMenuId === msg.id ? null : msg.id);
-                  }}
-                >
-                  {/* Options Dropdown Menu */}
-                  {activeMessageMenuId === msg.id && !isMsgDeleted && (
-                    <>
-                      <div className="fixed inset-0 z-20 cursor-default" onClick={() => setActiveMessageMenuId(null)} />
-                      <div className={`absolute z-30 bg-slate-900 border border-white/10 rounded-xl py-1 shadow-xl min-w-[7.5rem] font-bold text-[9px] uppercase tracking-wider text-slate-400 ${isSelf ? "right-2 top-8" : "left-2 top-8"}`}>
-                        {!msg.is_media && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(msg.message);
-                              setActiveMessageMenuId(null);
-                              toast.success("Copied message.");
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-white/5 hover:text-white transition cursor-pointer"
-                          >
-                            Copy
-                          </button>
-                        )}
-                        {(isSelf || isOwner) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleDeleteMessage(msg.id);
-                              setActiveMessageMenuId(null);
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-red-500/10 hover:text-red-400 text-red-500 transition cursor-pointer"
-                          >
-                            Delete
-                          </button>
-                        )}
-                        <button
-                          type="button"
+          {filteredChats.length > 0
+            ? filteredChats.map((msg) => {
+                const isSelf = msg.user_id === user?.id;
+                const date = new Date(msg.created_at);
+                const formattedTime = date.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                const isMsgDeleted = msg.message === "This message was deleted";
+                return (
+                  <div
+                    key={msg.id}
+                    className={`group relative flex max-w-[80%] flex-col sm:max-w-[65%] ${isSelf ? "ml-auto items-end" : "mr-auto items-start"}`}
+                    onContextMenu={(e) => {
+                      if (isMsgDeleted) return;
+                      e.preventDefault();
+                      setActiveMessageMenuId(activeMessageMenuId === msg.id ? null : msg.id);
+                    }}
+                  >
+                    {/* Options Dropdown Menu */}
+                    {activeMessageMenuId === msg.id && !isMsgDeleted && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-20 cursor-default"
                           onClick={() => setActiveMessageMenuId(null)}
-                          className="w-full text-left px-3 py-2 hover:bg-white/5 transition cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Floating Reactions Bar */}
-                  {!isMsgDeleted && (
-                    <div className="absolute -top-7 z-15 hidden group-hover:flex items-center gap-1 bg-background/95 border border-foreground/10 dark:border-white/5 px-2 py-1 rounded-full shadow-lg backdrop-blur">
-                      {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          onClick={() => handleSendReaction(msg.id, emoji)}
-                          className="hover:scale-130 active:scale-95 transition cursor-pointer text-xs p-0.5"
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-1.5 mb-1 px-1">
-                    <img
-                      src={
-                        msg.user_avatar ||
-                        (permissions.find((p) => p.user_id === msg.user_id)?.user_avatar) ||
-                        DEFAULT_AVATAR_SVG
-                      }
-                      alt="avatar"
-                      className="h-4 w-4 rounded-full object-cover border border-foreground/10 shrink-0 select-none"
-                    />
-                    <span className="text-[9px] text-slate-500 font-bold tracking-wider">
-                      {isSelf ? "You" : msg.user_email ? msg.user_email.split('@')[0] : "Partner"}
-                    </span>
-                  </div>
-                  <div className={`flex items-center gap-2 w-full ${isSelf ? "flex-row-reverse" : "flex-row"}`}>
-                    <div
-                      className={`px-4 py-2.5 rounded-[1.2rem] text-xs font-semibold leading-relaxed border transition-all ${
-                        isSelf
-                          ? "bg-emerald-500/10 dark:bg-emerald-800/15 border-emerald-500/20 text-foreground dark:text-emerald-100 rounded-tr-none"
-                          : "bg-foreground/5 dark:bg-slate-900 border-foreground/5 dark:border-white/5 text-foreground dark:text-slate-200 rounded-tl-none"
-                      }`}
-                    >
-                      {isMsgDeleted ? (
-                        <p className="italic text-slate-500 dark:text-slate-400 flex items-center gap-1.5 select-none font-normal">
-                          <span className="text-xs">🚫</span> This message was deleted
-                        </p>
-                      ) : msg.is_media ? (
-                        <SecureMediaRenderer
-                          collectionId={collectionId}
-                          msg={msg}
-                          cryptoKey={cryptoKey}
-                          onPreview={(url, filename, mimeType) => setActivePreviewFile({ url, filename, mimeType })}
                         />
-                      ) : (
-                        <p className="break-words white-space-pre-wrap">
-                          {highlightText(msg.message, searchQueryText)}
-                        </p>
-                      )}
-                      <div className="flex items-center justify-end gap-1 mt-1.5">
-                        <span className={`block text-[8px] font-bold ${isSelf ? "text-emerald-500/70" : "text-slate-500"}`}>
-                          {formattedTime}
-                        </span>
-                        {isSelf && !isMsgDeleted && (
-                          <span className="inline-flex items-center ml-1">
-                            {msg.status === "read" ? (
-                              <CheckCheck size={11} className="text-emerald-500" />
-                            ) : msg.status === "delivered" ? (
-                              <CheckCheck size={11} className="text-slate-500" />
-                            ) : (
-                              <Check size={11} className="text-slate-500" />
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {/* Tiny Options Button */}
-                    {!isMsgDeleted && (
-                      <button
-                        type="button"
-                        onClick={() => setActiveMessageMenuId(activeMessageMenuId === msg.id ? null : msg.id)}
-                        className="opacity-0 group-hover:opacity-100 h-6 w-6 rounded-full bg-foreground/5 border border-foreground/10 text-slate-500 hover:text-foreground hover:bg-foreground/10 flex items-center justify-center transition cursor-pointer text-xs shrink-0 select-none font-black"
-                      >
-                        ⋮
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Render Reaction Badges */}
-                  {(() => {
-                    if (!msg.reactions) return null;
-                    let reactionsObj: Record<string, string> = {};
-                    try {
-                      reactionsObj = typeof msg.reactions === "string" ? JSON.parse(msg.reactions) : msg.reactions;
-                    } catch {}
-
-                    const emojisList = Object.values(reactionsObj);
-                    if (emojisList.length === 0) return null;
-
-                    const counts: Record<string, number> = {};
-                    emojisList.forEach((e) => {
-                      counts[e] = (counts[e] || 0) + 1;
-                    });
-
-                    return (
-                      <div className="flex items-center gap-1 mt-1 px-1">
-                        {Object.entries(counts).map(([emoji, count]) => (
-                          <div
-                            key={emoji}
-                            className="flex items-center gap-0.5 bg-foreground/5 dark:bg-slate-900 border border-foreground/5 dark:border-white/5 rounded-full px-1.5 py-0.5 text-[9px] font-bold shadow-none"
+                        <div
+                          className={`absolute z-30 min-w-[7.5rem] rounded-xl border border-white/10 bg-slate-900 py-1 text-[9px] font-bold tracking-wider text-slate-400 uppercase shadow-xl ${isSelf ? "top-8 right-2" : "top-8 left-2"}`}
+                        >
+                          {!msg.is_media && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(msg.message);
+                                setActiveMessageMenuId(null);
+                                toast.success("Copied message.");
+                              }}
+                              className="w-full cursor-pointer px-3 py-2 text-left transition hover:bg-white/5 hover:text-white"
+                            >
+                              Copy
+                            </button>
+                          )}
+                          {(isSelf || isOwner) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleDeleteMessage(msg.id);
+                                setActiveMessageMenuId(null);
+                              }}
+                              className="w-full cursor-pointer px-3 py-2 text-left text-red-500 transition hover:bg-red-500/10 hover:text-red-400"
+                            >
+                              Delete
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setActiveMessageMenuId(null)}
+                            className="w-full cursor-pointer px-3 py-2 text-left transition hover:bg-white/5"
                           >
-                            <span>{emoji}</span>
-                            {count > 1 && <span className="text-[8px] text-slate-500 ml-0.5">{count}</span>}
-                          </div>
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Floating Reactions Bar */}
+                    {!isMsgDeleted && (
+                      <div className="bg-background/95 border-foreground/10 absolute -top-7 z-15 hidden items-center gap-1 rounded-full border px-2 py-1 shadow-lg backdrop-blur group-hover:flex dark:border-white/5">
+                        {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => handleSendReaction(msg.id, emoji)}
+                            className="cursor-pointer p-0.5 text-xs transition hover:scale-130 active:scale-95"
+                          >
+                            {emoji}
+                          </button>
                         ))}
                       </div>
-                    );
-                  })()}
+                    )}
+
+                    <div className="mb-1 flex items-center gap-1.5 px-1">
+                      <img
+                        src={
+                          msg.user_avatar ||
+                          permissions.find((p) => p.user_id === msg.user_id)?.user_avatar ||
+                          DEFAULT_AVATAR_SVG
+                        }
+                        alt="avatar"
+                        className="border-foreground/10 h-4 w-4 shrink-0 rounded-full border object-cover select-none"
+                      />
+                      <span className="text-[9px] font-bold tracking-wider text-slate-500">
+                        {isSelf ? "You" : msg.user_email ? msg.user_email.split("@")[0] : "Partner"}
+                      </span>
+                    </div>
+                    <div
+                      className={`flex w-full items-center gap-2 ${isSelf ? "flex-row-reverse" : "flex-row"}`}
+                    >
+                      <div
+                        className={`rounded-[1.2rem] border px-4 py-2.5 text-xs leading-relaxed font-semibold transition-all ${
+                          isSelf
+                            ? "text-foreground rounded-tr-none border-emerald-500/20 bg-emerald-500/10 dark:bg-emerald-800/15 dark:text-emerald-100"
+                            : "bg-foreground/5 border-foreground/5 text-foreground rounded-tl-none dark:border-white/5 dark:bg-slate-900 dark:text-slate-200"
+                        }`}
+                      >
+                        {isMsgDeleted ? (
+                          <p className="flex items-center gap-1.5 font-normal text-slate-500 italic select-none dark:text-slate-400">
+                            <span className="text-xs">🚫</span> This message was deleted
+                          </p>
+                        ) : msg.is_media ? (
+                          <SecureMediaRenderer
+                            collectionId={collectionId}
+                            msg={msg}
+                            cryptoKey={cryptoKey}
+                            onPreview={(url, filename, mimeType) =>
+                              setActivePreviewFile({ url, filename, mimeType })
+                            }
+                          />
+                        ) : (
+                          <p className="white-space-pre-wrap break-words">
+                            {highlightText(msg.message, searchQueryText)}
+                          </p>
+                        )}
+                        <div className="mt-1.5 flex items-center justify-end gap-1">
+                          <span
+                            className={`block text-[8px] font-bold ${isSelf ? "text-emerald-500/70" : "text-slate-500"}`}
+                          >
+                            {formattedTime}
+                          </span>
+                          {isSelf && !isMsgDeleted && (
+                            <span className="ml-1 inline-flex items-center">
+                              {msg.status === "read" ? (
+                                <CheckCheck size={11} className="text-emerald-500" />
+                              ) : msg.status === "delivered" ? (
+                                <CheckCheck size={11} className="text-slate-500" />
+                              ) : (
+                                <Check size={11} className="text-slate-500" />
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Tiny Options Button */}
+                      {!isMsgDeleted && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveMessageMenuId(activeMessageMenuId === msg.id ? null : msg.id)
+                          }
+                          className="bg-foreground/5 border-foreground/10 hover:text-foreground hover:bg-foreground/10 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border text-xs font-black text-slate-500 opacity-0 transition select-none group-hover:opacity-100"
+                        >
+                          ⋮
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Render Reaction Badges */}
+                    {(() => {
+                      if (!msg.reactions) return null;
+                      let reactionsObj: Record<string, string> = {};
+                      try {
+                        reactionsObj =
+                          typeof msg.reactions === "string"
+                            ? JSON.parse(msg.reactions)
+                            : msg.reactions;
+                      } catch {}
+
+                      const emojisList = Object.values(reactionsObj);
+                      if (emojisList.length === 0) return null;
+
+                      const counts: Record<string, number> = {};
+                      emojisList.forEach((e) => {
+                        counts[e] = (counts[e] || 0) + 1;
+                      });
+
+                      return (
+                        <div className="mt-1 flex items-center gap-1 px-1">
+                          {Object.entries(counts).map(([emoji, count]) => (
+                            <div
+                              key={emoji}
+                              className="bg-foreground/5 border-foreground/5 flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-bold shadow-none dark:border-white/5 dark:bg-slate-900"
+                            >
+                              <span>{emoji}</span>
+                              {count > 1 && (
+                                <span className="ml-0.5 text-[8px] text-slate-500">{count}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })
+            : !isPending && (
+                <div className="flex h-full flex-col items-center justify-center p-6 text-center text-slate-500">
+                  <MessageSquare size={36} className="mb-2 animate-pulse text-slate-400" />
+                  <p className="text-xs font-bold tracking-wider text-slate-400 uppercase">
+                    Secure Live Chat Channel
+                  </p>
+                  <p className="mt-1.5 max-w-[15rem] text-[10px] leading-relaxed text-slate-500">
+                    Start sending messages here. All chats and sync operations are delivered in real
+                    time.
+                  </p>
                 </div>
-              );
-            })
-          ) : (
-            !isPending && (
-              <div className="flex flex-col items-center justify-center h-full text-center p-6 text-slate-500">
-                <MessageSquare size={36} className="text-slate-400 mb-2 animate-pulse" />
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Secure Live Chat Channel</p>
-                <p className="text-[10px] text-slate-500 mt-1.5 max-w-[15rem] leading-relaxed">
-                  Start sending messages here. All chats and sync operations are delivered in real time.
-                </p>
-              </div>
-            )
-          )}
+              )}
           <div ref={chatEndRef} />
         </div>
 
         {/* 3. Typing Composer Form */}
         {!isPending && (
-          <div className="border-t border-foreground/10 dark:border-white/5 bg-foreground/[0.01] flex flex-col shrink-0">
+          <div className="border-foreground/10 bg-foreground/[0.01] flex shrink-0 flex-col border-t dark:border-white/5">
             {/* Staged Files Preview Row */}
             {stagedFiles.length > 0 && (
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-foreground/5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-slate-950/20 max-h-[7rem]">
+              <div className="border-foreground/5 flex max-h-[7rem] items-center gap-3 overflow-x-auto border-b bg-slate-950/20 px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {stagedFiles.map((file, idx) => {
                   const isStagedImg = file.type.startsWith("image/");
                   return (
                     <div
                       key={idx}
-                      className="relative flex items-center gap-2 px-3 py-2 bg-foreground/5 border border-foreground/10 dark:border-white/5 rounded-2xl shrink-0 max-w-[12rem] group"
+                      className="bg-foreground/5 border-foreground/10 group relative flex max-w-[12rem] shrink-0 items-center gap-2 rounded-2xl border px-3 py-2 dark:border-white/5"
                     >
                       {isStagedImg ? (
                         <img
                           src={URL.createObjectURL(file)}
                           alt="preview"
-                          className="h-8 w-8 rounded-lg object-cover border border-white/10 shrink-0"
+                          className="h-8 w-8 shrink-0 rounded-lg border border-white/10 object-cover"
                         />
                       ) : (
-                        <div className="h-8 w-8 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-550 shrink-0">
+                        <div className="text-amber-550 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-500/25 bg-amber-500/10">
                           <FileIcon size={14} />
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="text-[10px] font-bold text-foreground truncate leading-snug">{file.name}</p>
-                        <p className="text-[8px] text-slate-500 uppercase tracking-widest mt-0.5 font-bold">
+                        <p className="text-foreground truncate text-[10px] leading-snug font-bold">
+                          {file.name}
+                        </p>
+                        <p className="mt-0.5 text-[8px] font-bold tracking-widest text-slate-500 uppercase">
                           {(file.size / (1024 * 1024)).toFixed(2)} MB
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setStagedFiles((prev) => prev.filter((_, i) => i !== idx))}
-                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-slate-900 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer shadow-lg text-[9px] font-bold"
+                        className="absolute -top-1.5 -right-1.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full border border-white/10 bg-slate-900 text-[9px] font-bold text-slate-400 shadow-lg transition hover:text-white"
                       >
                         <X size={10} />
                       </button>
@@ -1558,15 +1635,10 @@ export default function AdminCollectionDetailPage({
             )}
 
             {/* Input Form */}
-            <form onSubmit={handleSendChat} className="p-4 flex items-center gap-2">
-              <label className="flex h-10 w-10 items-center justify-center rounded-xl border border-foreground/10 bg-foreground/5 hover:bg-foreground/10 text-slate-500 hover:text-foreground transition cursor-pointer flex-shrink-0">
+            <form onSubmit={handleSendChat} className="flex items-center gap-2 p-4">
+              <label className="border-foreground/10 bg-foreground/5 hover:bg-foreground/10 hover:text-foreground flex h-10 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-xl border text-slate-500 transition">
                 <Paperclip size={15} />
-                <input
-                  type="file"
-                  multiple
-                  onChange={handleStageMedia}
-                  className="hidden"
-                />
+                <input type="file" multiple onChange={handleStageMedia} className="hidden" />
               </label>
               <input
                 type="text"
@@ -1575,13 +1647,15 @@ export default function AdminCollectionDetailPage({
                   setChatText(e.target.value);
                   handleTypingActivity();
                 }}
-                placeholder={stagedFiles.length > 0 ? "Add caption to files..." : "Type a message..."}
-                className="flex-1 bg-background/80 border border-foreground/10 dark:border-white/5 rounded-xl px-4 py-3 text-xs text-foreground placeholder-slate-500 outline-none focus:border-amber-500/30 transition"
+                placeholder={
+                  stagedFiles.length > 0 ? "Add caption to files..." : "Type a message..."
+                }
+                className="bg-background/80 border-foreground/10 text-foreground flex-1 rounded-xl border px-4 py-3 text-xs placeholder-slate-500 transition outline-none focus:border-amber-500/30 dark:border-white/5"
               />
               <button
                 type="submit"
                 disabled={sendingChat || (!chatText.trim() && stagedFiles.length === 0)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-slate-950 font-bold shadow-none hover:brightness-115 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 cursor-pointer flex-shrink-0"
+                className="flex h-10 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-xl bg-amber-500 font-bold text-slate-950 shadow-none transition-all hover:scale-[1.02] hover:brightness-115 active:scale-95 disabled:opacity-50"
               >
                 <Send size={14} />
               </button>
@@ -1591,53 +1665,69 @@ export default function AdminCollectionDetailPage({
 
         {/* Drawer 1: Shared Documents Slider (R-to-L) */}
         <div
-          className={`absolute inset-y-0 right-0 z-20 w-full sm:w-[26rem] bg-background/95 border-l border-foreground/10 dark:border-white/5 shadow-none backdrop-blur-md transition-transform duration-300 transform flex flex-col ${
+          className={`bg-background/95 border-foreground/10 absolute inset-y-0 right-0 z-20 flex w-full transform flex-col border-l shadow-none backdrop-blur-md transition-transform duration-300 sm:w-[26rem] dark:border-white/5 ${
             activeDrawer === "documents" ? "translate-x-0" : "translate-x-full"
           }`}
         >
           {/* Drawer Header */}
-          <div className="flex items-center justify-between border-b border-foreground/10 dark:border-white/5 px-5 py-4 shrink-0 bg-foreground/[0.01]">
+          <div className="border-foreground/10 bg-foreground/[0.01] flex shrink-0 items-center justify-between border-b px-5 py-4 dark:border-white/5">
             <div className="flex items-center gap-2.5">
               <FileStack size={16} className="text-amber-500" />
-              <h3 className="text-xs font-black tracking-wider uppercase text-foreground/90">Shared Documents</h3>
+              <h3 className="text-foreground/90 text-xs font-black tracking-wider uppercase">
+                Shared Documents
+              </h3>
             </div>
-            <button onClick={() => setActiveDrawer(null)} className="text-slate-500 hover:text-foreground transition p-1 hover:rotate-90 duration-200 cursor-pointer">
+            <button
+              onClick={() => setActiveDrawer(null)}
+              className="hover:text-foreground cursor-pointer p-1 text-slate-500 transition duration-200 hover:rotate-90"
+            >
               <X size={16} />
             </button>
           </div>
 
           {/* Drawer Content */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-foreground/[0.003]">
-
+          <div className="bg-foreground/[0.003] flex-1 space-y-6 overflow-y-auto p-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {/* 1. Add Documents Uploader Form */}
             <div className="space-y-3.5">
-              <h4 className="text-[9px] text-slate-550 dark:text-slate-500 font-bold uppercase tracking-widest px-1">Available to add</h4>
-              <div className="space-y-2 max-h-[16rem] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <h4 className="text-slate-550 px-1 text-[9px] font-bold tracking-widest uppercase dark:text-slate-500">
+                Available to add
+              </h4>
+              <div className="max-h-[16rem] space-y-2 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {availableDocs.length > 0 ? (
                   availableDocs.map((doc) => {
                     const isSelected = selectedDocumentIds.includes(doc.document_id);
-                    const ext = doc.filename.split('.').pop()?.toUpperCase() || "DOC";
+                    const ext = doc.filename.split(".").pop()?.toUpperCase() || "DOC";
                     return (
                       <label
                         key={doc.document_id}
-                        className={`flex items-center justify-between gap-3 rounded-xl p-3 border transition-all duration-200 cursor-pointer ${
+                        className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 transition-all duration-200 ${
                           isSelected
-                            ? "bg-amber-500/[0.06] border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.05)]"
-                            : "bg-foreground/[0.015] border-foreground/5 dark:border-white/5 hover:bg-foreground/[0.03] hover:border-foreground/10"
+                            ? "border-amber-500/30 bg-amber-500/[0.06] shadow-[0_0_12px_rgba(245,158,11,0.05)]"
+                            : "bg-foreground/[0.015] border-foreground/5 hover:bg-foreground/[0.03] hover:border-foreground/10 dark:border-white/5"
                         }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`h-8 w-8 rounded-lg flex items-center justify-center text-[8px] font-black shrink-0 ${
-                            isSelected ? "bg-amber-500/20 text-amber-500 border border-amber-500/30" : "bg-foreground/5 text-slate-400 border border-foreground/10"
-                          }`}>
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div
+                            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[8px] font-black ${
+                              isSelected
+                                ? "border border-amber-500/30 bg-amber-500/20 text-amber-500"
+                                : "bg-foreground/5 border-foreground/10 border text-slate-400"
+                            }`}
+                          >
                             {ext}
                           </div>
                           <div className="min-w-0">
-                            <p className={`text-xs truncate font-semibold transition-colors ${isSelected ? "text-amber-500" : "text-foreground"}`}>{doc.filename}</p>
-                            <p className="text-[8px] text-slate-550 dark:text-slate-500 uppercase tracking-widest font-bold mt-0.5">{doc.status}</p>
+                            <p
+                              className={`truncate text-xs font-semibold transition-colors ${isSelected ? "text-amber-500" : "text-foreground"}`}
+                            >
+                              {doc.filename}
+                            </p>
+                            <p className="text-slate-550 mt-0.5 text-[8px] font-bold tracking-widest uppercase dark:text-slate-500">
+                              {doc.status}
+                            </p>
                           </div>
                         </div>
-                        <div className="relative flex items-center justify-center shrink-0">
+                        <div className="relative flex shrink-0 items-center justify-center">
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -1645,16 +1735,18 @@ export default function AdminCollectionDetailPage({
                               setSelectedDocumentIds((current) =>
                                 e.target.checked
                                   ? [...current, doc.document_id]
-                                  : current.filter((id) => id !== doc.document_id)
+                                  : current.filter((id) => id !== doc.document_id),
                               )
                             }
                             className="hidden"
                           />
-                          <div className={`h-5 w-5 rounded-lg border transition-all flex items-center justify-center ${
-                            isSelected
-                              ? "bg-amber-500 border-amber-500 text-slate-950 scale-105"
-                              : "border-foreground/20 dark:border-white/20 bg-background/50"
-                          }`}>
+                          <div
+                            className={`flex h-5 w-5 items-center justify-center rounded-lg border transition-all ${
+                              isSelected
+                                ? "scale-105 border-amber-500 bg-amber-500 text-slate-950"
+                                : "border-foreground/20 bg-background/50 dark:border-white/20"
+                            }`}
+                          >
                             {isSelected && <Check size={11} className="stroke-[3]" />}
                           </div>
                         </div>
@@ -1662,9 +1754,13 @@ export default function AdminCollectionDetailPage({
                     );
                   })
                 ) : (
-                  <div className="border border-dashed border-foreground/10 dark:border-white/5 p-6 text-center rounded-xl bg-foreground/[0.005]">
-                    <p className="text-[10px] text-slate-550 uppercase tracking-wider font-bold">All documents added</p>
-                    <p className="text-[9px] text-slate-500 mt-1">No additional docs available to connect.</p>
+                  <div className="border-foreground/10 bg-foreground/[0.005] rounded-xl border border-dashed p-6 text-center dark:border-white/5">
+                    <p className="text-slate-550 text-[10px] font-bold tracking-wider uppercase">
+                      All documents added
+                    </p>
+                    <p className="mt-1 text-[9px] text-slate-500">
+                      No additional docs available to connect.
+                    </p>
                   </div>
                 )}
               </div>
@@ -1673,7 +1769,7 @@ export default function AdminCollectionDetailPage({
                   type="button"
                   disabled={savingDocs || selectedDocumentIds.length === 0}
                   onClick={() => void handleAddDocuments()}
-                  className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 active:scale-98 text-white rounded-xl py-3 text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-none border border-emerald-500/20"
+                  className="w-full cursor-pointer rounded-xl border border-emerald-500/20 bg-gradient-to-r from-emerald-600 to-teal-600 py-3 text-xs font-black tracking-wider text-white uppercase shadow-none transition-all hover:brightness-110 active:scale-98 disabled:pointer-events-none disabled:opacity-50"
                 >
                   {savingDocs ? "Adding..." : "Add Selected Documents"}
                 </button>
@@ -1682,23 +1778,29 @@ export default function AdminCollectionDetailPage({
 
             {/* 2. Bridge Inventory */}
             <div className="space-y-3.5">
-              <h4 className="text-[9px] text-slate-550 dark:text-slate-500 font-bold uppercase tracking-widest px-1">Bridge Inventory</h4>
+              <h4 className="text-slate-550 px-1 text-[9px] font-bold tracking-widest uppercase dark:text-slate-500">
+                Bridge Inventory
+              </h4>
               <div className="space-y-2">
                 {collectionDocs.length > 0 ? (
                   collectionDocs.map((doc) => {
-                    const ext = doc.filename.split('.').pop()?.toUpperCase() || "DOC";
+                    const ext = doc.filename.split(".").pop()?.toUpperCase() || "DOC";
                     return (
                       <div
                         key={doc.document_id}
-                        className="flex items-center justify-between gap-3 bg-foreground/[0.01] dark:bg-slate-950/20 p-3 rounded-xl border border-foreground/5 dark:border-white/5 hover:border-foreground/10 dark:hover:border-white/10 transition-all duration-200"
+                        className="bg-foreground/[0.01] border-foreground/5 hover:border-foreground/10 flex items-center justify-between gap-3 rounded-xl border p-3 transition-all duration-200 dark:border-white/5 dark:bg-slate-950/20 dark:hover:border-white/10"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="h-8 w-8 rounded-lg bg-foreground/5 text-slate-400 border border-foreground/10 flex items-center justify-center text-[8px] font-black shrink-0">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="bg-foreground/5 border-foreground/10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-[8px] font-black text-slate-400">
                             {ext}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs text-foreground truncate font-semibold">{doc.filename}</p>
-                            <p className="text-[8px] text-slate-550 dark:text-slate-500 uppercase tracking-widest font-bold mt-0.5">{doc.status}</p>
+                            <p className="text-foreground truncate text-xs font-semibold">
+                              {doc.filename}
+                            </p>
+                            <p className="text-slate-550 mt-0.5 text-[8px] font-bold tracking-widest uppercase dark:text-slate-500">
+                              {doc.status}
+                            </p>
                           </div>
                         </div>
                         {ownedDocumentIds.has(doc.document_id) && isConnectedMember ? (
@@ -1707,12 +1809,12 @@ export default function AdminCollectionDetailPage({
                             disabled={savingDocs}
                             onClick={() => void handleRemoveDocument(doc.document_id)}
                             aria-label={`Remove document ${doc.filename}`}
-                            className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg px-2.5 py-1.5 text-[9px] font-bold tracking-wider uppercase transition flex-shrink-0 cursor-pointer"
+                            className="flex-shrink-0 cursor-pointer rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-[9px] font-bold tracking-wider text-red-400 uppercase transition hover:bg-red-500/20"
                           >
                             Remove
                           </button>
                         ) : (
-                          <span className="text-[8px] text-slate-550 border border-foreground/10 dark:border-white/5 rounded-lg px-2.5 py-1.5 bg-background dark:bg-slate-900 uppercase font-black tracking-widest flex-shrink-0">
+                          <span className="text-slate-550 border-foreground/10 bg-background flex-shrink-0 rounded-lg border px-2.5 py-1.5 text-[8px] font-black tracking-widest uppercase dark:border-white/5 dark:bg-slate-900">
                             Shared
                           </span>
                         )}
@@ -1720,58 +1822,68 @@ export default function AdminCollectionDetailPage({
                     );
                   })
                 ) : (
-                  <div className="border border-dashed border-foreground/10 dark:border-white/5 p-8 text-center rounded-xl bg-foreground/[0.005] flex flex-col items-center justify-center">
-                    <span className="text-lg text-slate-500 mb-1.5 animate-pulse">📂</span>
-                    <p className="text-[10px] text-slate-550 uppercase tracking-wider font-bold">No documents shared</p>
-                    <p className="text-[9px] text-slate-500 mt-1 max-w-[13rem]">Select from available files above to populate the bridge inventory.</p>
+                  <div className="border-foreground/10 bg-foreground/[0.005] flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center dark:border-white/5">
+                    <span className="mb-1.5 animate-pulse text-lg text-slate-500">📂</span>
+                    <p className="text-slate-550 text-[10px] font-bold tracking-wider uppercase">
+                      No documents shared
+                    </p>
+                    <p className="mt-1 max-w-[13rem] text-[9px] text-slate-500">
+                      Select from available files above to populate the bridge inventory.
+                    </p>
                   </div>
                 )}
               </div>
             </div>
-
           </div>
         </div>
 
         {/* Drawer 2: Bridge Members Slider (R-to-L) */}
         <div
-          className={`absolute inset-y-0 right-0 z-20 w-full sm:w-[26rem] bg-background/95 border-l border-foreground/10 dark:border-white/5 shadow-none backdrop-blur-md transition-transform duration-300 transform flex flex-col ${
+          className={`bg-background/95 border-foreground/10 absolute inset-y-0 right-0 z-20 flex w-full transform flex-col border-l shadow-none backdrop-blur-md transition-transform duration-300 sm:w-[26rem] dark:border-white/5 ${
             activeDrawer === "members" ? "translate-x-0" : "translate-x-full"
           }`}
         >
           {/* Drawer Header */}
-          <div className="flex items-center justify-between border-b border-foreground/10 dark:border-white/5 px-5 py-4 shrink-0">
+          <div className="border-foreground/10 flex shrink-0 items-center justify-between border-b px-5 py-4 dark:border-white/5">
             <div className="flex items-center gap-2">
               <Users size={16} className="text-amber-500" />
-              <h3 className="text-xs font-black tracking-wider uppercase text-foreground/80">Bridge Members</h3>
+              <h3 className="text-foreground/80 text-xs font-black tracking-wider uppercase">
+                Bridge Members
+              </h3>
             </div>
-            <button onClick={() => setActiveDrawer(null)} className="text-slate-500 hover:text-foreground transition p-1">
+            <button
+              onClick={() => setActiveDrawer(null)}
+              className="hover:text-foreground p-1 text-slate-500 transition"
+            >
               <X size={16} />
             </button>
           </div>
 
           {/* Drawer Content */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-
+          <div className="flex-1 space-y-6 overflow-y-auto p-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {/* 1. Send Access Invitation Request */}
             {isOwner && collection && collection.member_count < 10 && (
               <div className="space-y-3">
-                <h4 className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Invite Member</h4>
-                <div className="bg-foreground/[0.02] dark:bg-slate-950/45 p-4 rounded-xl border border-foreground/10 dark:border-white/5 space-y-3">
-                  <p className="text-[11px] text-slate-550 dark:text-slate-400 leading-relaxed">
-                    Input a connection code below to invite a user into this shared workspace channel.
+                <h4 className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                  Invite Member
+                </h4>
+                <div className="bg-foreground/[0.02] border-foreground/10 space-y-3 rounded-xl border p-4 dark:border-white/5 dark:bg-slate-950/45">
+                  <p className="text-slate-550 text-[11px] leading-relaxed dark:text-slate-400">
+                    Input a connection code below to invite a user into this shared workspace
+                    channel.
                   </p>
                   <div className="flex items-center gap-2">
                     <input
                       value={connectCode}
                       onChange={(e) => setConnectCode(e.target.value.toUpperCase())}
                       placeholder="Connection ID"
-                      className="flex-1 bg-background border border-foreground/10 dark:border-white/5 rounded-xl px-3 py-2.5 text-xs text-foreground uppercase outline-none focus:border-amber-500/30 transition"
+                      className="bg-background border-foreground/10 text-foreground flex-1 rounded-xl border px-3 py-2.5 text-xs uppercase transition outline-none focus:border-amber-500/30 dark:border-white/5"
                     />
                     <button
                       type="button"
                       disabled={savingPermissions || !connectCode.trim()}
                       onClick={() => void handleSendRequest()}
-                      className="bg-amber-500 hover:brightness-110 text-slate-950 font-bold text-xs rounded-xl px-4 py-2.5 shadow-none active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+                      className="cursor-pointer rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-none transition-all hover:brightness-110 active:scale-95 disabled:opacity-50"
                     >
                       Invite
                     </button>
@@ -1782,30 +1894,39 @@ export default function AdminCollectionDetailPage({
 
             {/* 2. Member Topology list */}
             <div className="space-y-3">
-              <h4 className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Members Topology</h4>
+              <h4 className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                Members Topology
+              </h4>
               <div className="space-y-2">
                 {permissions.map((perm) => {
                   const isUserSelf = perm.user_id === user?.id;
                   return (
-                    <div key={perm.id} className="flex items-center justify-between gap-3 bg-foreground/[0.02] dark:bg-slate-950/40 p-3 rounded-xl border border-foreground/10 dark:border-white/5">
-                      <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      key={perm.id}
+                      className="bg-foreground/[0.02] border-foreground/10 flex items-center justify-between gap-3 rounded-xl border p-3 dark:border-white/5 dark:bg-slate-950/40"
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
                         <img
                           src={perm.user_avatar || DEFAULT_AVATAR_SVG}
                           alt="avatar"
-                          className="h-8 w-8 rounded-full object-cover border border-foreground/10 shrink-0 select-none"
+                          className="border-foreground/10 h-8 w-8 shrink-0 rounded-full border object-cover select-none"
                         />
                         <div className="min-w-0">
-                          <p className="text-xs text-foreground truncate font-semibold">{perm.user_email || perm.user_id}</p>
-                          <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">{perm.role}</p>
+                          <p className="text-foreground truncate text-xs font-semibold">
+                            {perm.user_email || perm.user_id}
+                          </p>
+                          <p className="mt-0.5 text-[9px] tracking-widest text-slate-500 uppercase">
+                            {perm.role}
+                          </p>
                         </div>
                       </div>
 
                       {isUserSelf ? (
-                        <span className="text-[9px] text-slate-500 border border-foreground/10 dark:border-white/5 rounded-lg px-2.5 py-1.5 bg-background dark:bg-slate-900 uppercase font-bold tracking-wider">
+                        <span className="border-foreground/10 bg-background rounded-lg border px-2.5 py-1.5 text-[9px] font-bold tracking-wider text-slate-500 uppercase dark:border-white/5 dark:bg-slate-900">
                           You
                         </span>
                       ) : perm.role === "pending" ? (
-                        <span className="text-[9px] text-amber-500 border border-amber-500/10 rounded-lg px-2.5 py-1.5 bg-amber-500/5 uppercase font-bold tracking-wider animate-pulse">
+                        <span className="animate-pulse rounded-lg border border-amber-500/10 bg-amber-500/5 px-2.5 py-1.5 text-[9px] font-bold tracking-wider text-amber-500 uppercase">
                           Waiting
                         </span>
                       ) : isOwner ? (
@@ -1813,12 +1934,12 @@ export default function AdminCollectionDetailPage({
                           type="button"
                           disabled={savingPermissions}
                           onClick={() => void handleRemoveMember(perm.user_id, perm.user_email)}
-                          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition cursor-pointer"
+                          className="cursor-pointer rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-1.5 text-[10px] font-bold text-red-400 transition hover:bg-red-500/20"
                         >
                           Remove
                         </button>
                       ) : (
-                        <span className="text-[9px] text-emerald-500 border border-emerald-500/10 rounded-lg px-2.5 py-1.5 bg-emerald-500/5 uppercase font-bold tracking-wider">
+                        <span className="rounded-lg border border-emerald-500/10 bg-emerald-500/5 px-2.5 py-1.5 text-[9px] font-bold tracking-wider text-emerald-500 uppercase">
                           Connected
                         </span>
                       )}
@@ -1830,16 +1951,19 @@ export default function AdminCollectionDetailPage({
 
             {/* 3. Expiry Settings (Self-Destruct) */}
             {isOwner && (
-              <div className="space-y-3 pt-2 border-t border-foreground/10 dark:border-white/5">
-                <h4 className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Self-Destruct Timer</h4>
-                <div className="bg-foreground/[0.02] dark:bg-slate-950/45 p-4 rounded-xl border border-foreground/10 dark:border-white/5 space-y-3">
-                  <p className="text-[11px] text-slate-550 dark:text-slate-400 leading-relaxed">
-                    Set message retention length. Expired messages are permanently wiped from all client caches and database server records automatically.
+              <div className="border-foreground/10 space-y-3 border-t pt-2 dark:border-white/5">
+                <h4 className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                  Self-Destruct Timer
+                </h4>
+                <div className="bg-foreground/[0.02] border-foreground/10 space-y-3 rounded-xl border p-4 dark:border-white/5 dark:bg-slate-950/45">
+                  <p className="text-slate-550 text-[11px] leading-relaxed dark:text-slate-400">
+                    Set message retention length. Expired messages are permanently wiped from all
+                    client caches and database server records automatically.
                   </p>
                   <select
                     value={collection?.expiry_days || 0}
                     onChange={(e) => void handleUpdateExpiry(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-white/5 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-amber-500/30 transition cursor-pointer"
+                    className="w-full cursor-pointer rounded-xl border border-white/5 bg-slate-950 px-4 py-3 text-xs text-white transition outline-none focus:border-amber-500/30"
                   >
                     <option value={0}>∞ No Expiry (Default)</option>
                     <option value={1}>⏱ 1 Day</option>
@@ -1851,18 +1975,21 @@ export default function AdminCollectionDetailPage({
             )}
 
             {/* 4. Encrypted Chat Backups */}
-            <div className="space-y-3 pt-2 border-t border-foreground/10 dark:border-white/5">
-              <h4 className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Local E2EE Backups</h4>
-              <div className="bg-foreground/[0.02] dark:bg-slate-950/45 p-4 rounded-xl border border-foreground/10 dark:border-white/5 space-y-3">
-                <p className="text-[11px] text-slate-555 dark:text-slate-400 leading-relaxed">
-                  Export your decrypted local client database to a password-protected JSON backup, or import a saved backup to restore your chat logs.
+            <div className="border-foreground/10 space-y-3 border-t pt-2 dark:border-white/5">
+              <h4 className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
+                Local E2EE Backups
+              </h4>
+              <div className="bg-foreground/[0.02] border-foreground/10 space-y-3 rounded-xl border p-4 dark:border-white/5 dark:bg-slate-950/45">
+                <p className="text-slate-555 text-[11px] leading-relaxed dark:text-slate-400">
+                  Export your decrypted local client database to a password-protected JSON backup,
+                  or import a saved backup to restore your chat logs.
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={handleExportBackup}
                     disabled={isExportingBackup}
-                    className="w-full bg-foreground/5 hover:bg-foreground/10 text-foreground border border-foreground/10 dark:border-white/5 font-bold text-[11px] rounded-xl py-2.5 shadow-none transition cursor-pointer active:scale-95 text-center"
+                    className="bg-foreground/5 hover:bg-foreground/10 text-foreground border-foreground/10 w-full cursor-pointer rounded-xl border py-2.5 text-center text-[11px] font-bold shadow-none transition active:scale-95 dark:border-white/5"
                   >
                     {isExportingBackup ? "Exporting..." : "Export Backup"}
                   </button>
@@ -1870,7 +1997,7 @@ export default function AdminCollectionDetailPage({
                     type="button"
                     onClick={handleImportBackup}
                     disabled={isImportingBackup}
-                    className="w-full bg-foreground/5 hover:bg-foreground/10 text-foreground border border-foreground/10 dark:border-white/5 font-bold text-[11px] rounded-xl py-2.5 shadow-none transition cursor-pointer active:scale-95 text-center"
+                    className="bg-foreground/5 hover:bg-foreground/10 text-foreground border-foreground/10 w-full cursor-pointer rounded-xl border py-2.5 text-center text-[11px] font-bold shadow-none transition active:scale-95 dark:border-white/5"
                   >
                     {isImportingBackup ? "Importing..." : "Import Backup"}
                   </button>
@@ -1880,26 +2007,27 @@ export default function AdminCollectionDetailPage({
 
             {/* 5. Danger Zone */}
             {isOwner && (
-              <div className="space-y-3 pt-2 border-t border-red-500/20">
-                <h4 className="text-[10px] text-red-500 font-bold uppercase tracking-widest">Danger Zone</h4>
-                <div className="bg-red-500/5 p-4 rounded-xl border border-red-500/15 space-y-3">
-                  <p className="text-[11px] text-red-400 leading-relaxed">
-                    Permanently clear all E2EE messages, shared documents metadata, and decrypted caches.
+              <div className="space-y-3 border-t border-red-500/20 pt-2">
+                <h4 className="text-[10px] font-bold tracking-widest text-red-500 uppercase">
+                  Danger Zone
+                </h4>
+                <div className="space-y-3 rounded-xl border border-red-500/15 bg-red-500/5 p-4">
+                  <p className="text-[11px] leading-relaxed text-red-400">
+                    Permanently clear all E2EE messages, shared documents metadata, and decrypted
+                    caches.
                   </p>
                   <button
                     type="button"
                     onClick={handleClearChatHistory}
-                    className="w-full bg-red-600 hover:bg-red-500 text-white font-bold text-xs py-3 rounded-xl transition cursor-pointer active:scale-95 text-center border border-red-500/20"
+                    className="w-full cursor-pointer rounded-xl border border-red-500/20 bg-red-600 py-3 text-center text-xs font-bold text-white transition hover:bg-red-500 active:scale-95"
                   >
                     Clear Chat History
                   </button>
                 </div>
               </div>
             )}
-
           </div>
         </div>
-
       </div>
 
       {/* E2EE Shield Details Modal */}
@@ -1910,7 +2038,7 @@ export default function AdminCollectionDetailPage({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setShowShieldModal(false)}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           >
             <motion.div
               initial={{ scale: 0.9, y: 15, opacity: 0 }}
@@ -1918,47 +2046,66 @@ export default function AdminCollectionDetailPage({
               exit={{ scale: 0.9, y: 15, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 350 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md bg-background/95 border border-foreground/10 dark:border-white/5 rounded-[1.8rem] p-6 shadow-none backdrop-blur-md relative overflow-hidden"
+              className="bg-background/95 border-foreground/10 relative w-full max-w-md overflow-hidden rounded-[1.8rem] border p-6 shadow-none backdrop-blur-md dark:border-white/5"
             >
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600" />
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className="h-14 w-14 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
+              <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600" />
+              <div className="flex flex-col items-center space-y-4 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-500">
                   <ShieldCheck size={28} className="animate-pulse" />
                 </div>
                 <div className="space-y-1.5">
-                  <h3 className="text-sm font-black tracking-widest text-foreground uppercase text-center">Zero-Knowledge E2EE Bridge</h3>
-                  <p className="text-[11px] text-slate-550 dark:text-slate-400 font-medium text-center">
+                  <h3 className="text-foreground text-center text-sm font-black tracking-widest uppercase">
+                    Zero-Knowledge E2EE Bridge
+                  </h3>
+                  <p className="text-slate-550 text-center text-[11px] font-medium dark:text-slate-400">
                     Fully Secure End-to-End Cryptography Activated
                   </p>
                 </div>
 
-                <div className="bg-foreground/[0.02] border border-foreground/5 dark:border-white/5 rounded-2xl p-4 text-left text-[11px] text-slate-500 space-y-3 leading-relaxed w-full">
+                <div className="bg-foreground/[0.02] border-foreground/5 w-full space-y-3 rounded-2xl border p-4 text-left text-[11px] leading-relaxed text-slate-500 dark:border-white/5">
                   <div className="flex items-start gap-2.5">
-                    <span className="text-emerald-500 text-xs mt-0.5">🔑</span>
-                    <p><strong className="text-foreground">PBKDF2 Key Derivation:</strong> Symmetric keys are derived locally on your device using a combination of the collection ID and connection keys.</p>
+                    <span className="mt-0.5 text-xs text-emerald-500">🔑</span>
+                    <p>
+                      <strong className="text-foreground">PBKDF2 Key Derivation:</strong> Symmetric
+                      keys are derived locally on your device using a combination of the collection
+                      ID and connection keys.
+                    </p>
                   </div>
                   <div className="flex items-start gap-2.5">
-                    <span className="text-emerald-500 text-xs mt-0.5">🔒</span>
-                    <p><strong className="text-foreground">AES-GCM-256 Encryption:</strong> All message texts and files are encrypted client-side using random 12-byte IVs before transit.</p>
+                    <span className="mt-0.5 text-xs text-emerald-500">🔒</span>
+                    <p>
+                      <strong className="text-foreground">AES-GCM-256 Encryption:</strong> All
+                      message texts and files are encrypted client-side using random 12-byte IVs
+                      before transit.
+                    </p>
                   </div>
                   <div className="flex items-start gap-2.5">
-                    <span className="text-emerald-500 text-xs mt-0.5">☁️</span>
-                    <p><strong className="text-foreground">Zero Server Readability:</strong> The central server storage only stores encrypted base64 ciphertexts. Your privacy is 100% math-guaranteed.</p>
+                    <span className="mt-0.5 text-xs text-emerald-500">☁️</span>
+                    <p>
+                      <strong className="text-foreground">Zero Server Readability:</strong> The
+                      central server storage only stores encrypted base64 ciphertexts. Your privacy
+                      is 100% math-guaranteed.
+                    </p>
                   </div>
                   {safetyNumber && (
-                    <div className="border-t border-foreground/5 dark:border-white/5 pt-3 mt-1 space-y-1.5">
-                      <p className="text-[10px] text-slate-555 dark:text-slate-400 font-bold uppercase tracking-wider">Safety Number Fingerprint:</p>
-                      <div className="bg-foreground/5 dark:bg-black/40 rounded-xl px-3 py-2.5 font-mono text-[10px] text-center text-emerald-500 font-bold tracking-widest border border-foreground/5 dark:border-white/5 select-all">
+                    <div className="border-foreground/5 mt-1 space-y-1.5 border-t pt-3 dark:border-white/5">
+                      <p className="text-slate-555 text-[10px] font-bold tracking-wider uppercase dark:text-slate-400">
+                        Safety Number Fingerprint:
+                      </p>
+                      <div className="bg-foreground/5 border-foreground/5 rounded-xl border px-3 py-2.5 text-center font-mono text-[10px] font-bold tracking-widest text-emerald-500 select-all dark:border-white/5 dark:bg-black/40">
                         {safetyNumber}
                       </div>
-                      <p className="text-[9px] text-slate-500 leading-normal text-center">Compare this number with your peer to verify that no third party is intercepting your communication.</p>
+                      <p className="text-center text-[9px] leading-normal text-slate-500">
+                        Compare this number with your peer to verify that no third party is
+                        intercepting your communication.
+                      </p>
                     </div>
                   )}
                 </div>
 
                 <button
                   onClick={() => setShowShieldModal(false)}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-3 rounded-xl transition cursor-pointer active:scale-[0.98] border border-emerald-500/10"
+                  className="w-full cursor-pointer rounded-xl border border-emerald-500/10 bg-emerald-600 py-3 text-xs font-bold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
                 >
                   Understand & Close
                 </button>
@@ -1976,7 +2123,7 @@ export default function AdminCollectionDetailPage({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setActivePreviewFile(null)}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20, opacity: 0 }}
@@ -1984,25 +2131,29 @@ export default function AdminCollectionDetailPage({
               exit={{ scale: 0.9, y: 20, opacity: 0 }}
               transition={{ type: "spring", damping: 28, stiffness: 300 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-3xl h-[85vh] bg-slate-900/95 border border-white/10 rounded-[1.8rem] flex flex-col shadow-2xl overflow-hidden backdrop-blur-xl relative"
+              className="relative flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur-xl"
             >
               {/* Top Bar */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-slate-950/20 shrink-0">
+              <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-slate-950/20 px-6 py-4">
                 <div className="min-w-0">
-                  <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase">Secure File Preview</h3>
-                  <p className="text-[11px] text-white font-bold truncate mt-0.5">{activePreviewFile.filename}</p>
+                  <h3 className="text-xs font-black tracking-widest text-slate-400 uppercase">
+                    Secure File Preview
+                  </h3>
+                  <p className="mt-0.5 truncate text-[11px] font-bold text-white">
+                    {activePreviewFile.filename}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <a
                     href={activePreviewFile.url}
                     download={activePreviewFile.filename}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition cursor-pointer"
+                    className="flex cursor-pointer items-center gap-2 rounded-xl bg-emerald-600 px-3 py-1.5 text-[10px] font-bold tracking-wider text-white uppercase transition hover:bg-emerald-500"
                   >
                     Download
                   </a>
                   <button
                     onClick={() => setActivePreviewFile(null)}
-                    className="h-7 w-7 flex items-center justify-center rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 transition hover:text-white"
                   >
                     <X size={14} />
                   </button>
@@ -2010,7 +2161,7 @@ export default function AdminCollectionDetailPage({
               </div>
 
               {/* Preview Viewport */}
-              <div className="flex-1 min-h-0 bg-slate-950/40 p-6 overflow-auto flex items-center justify-center">
+              <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-950/40 p-6">
                 {(() => {
                   const { url, mimeType } = activePreviewFile;
                   const isImg = mimeType.startsWith("image/") || mimeType === "image/svg+xml";
@@ -2019,30 +2170,41 @@ export default function AdminCollectionDetailPage({
 
                   if (isImg) {
                     return (
-                      <div className="max-w-full max-h-full flex items-center justify-center rounded-xl overflow-hidden border border-white/5">
-                        <img src={url} alt={activePreviewFile.filename} className="max-w-full max-h-[60vh] object-contain" />
+                      <div className="flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-xl border border-white/5">
+                        <img
+                          src={url}
+                          alt={activePreviewFile.filename}
+                          className="max-h-[60vh] max-w-full object-contain"
+                        />
                       </div>
                     );
                   }
 
                   if (isAud) {
                     return (
-                      <div className="w-full max-w-md p-6 bg-slate-900 border border-white/10 rounded-2xl flex flex-col items-center gap-4 text-center">
-                        <div className="h-16 w-16 rounded-full bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-450">
+                      <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-2xl border border-white/10 bg-slate-900 p-6 text-center">
+                        <div className="text-emerald-450 flex h-16 w-16 items-center justify-center rounded-full border border-emerald-500/25 bg-emerald-500/10">
                           <Volume2 size={32} className="animate-pulse" />
                         </div>
                         <div className="w-full">
-                          <p className="text-[11px] text-slate-400 uppercase tracking-widest font-black">Audio Playback</p>
-                          <p className="text-xs font-bold text-white truncate mt-1">{activePreviewFile.filename}</p>
+                          <p className="text-[11px] font-black tracking-widest text-slate-400 uppercase">
+                            Audio Playback
+                          </p>
+                          <p className="mt-1 truncate text-xs font-bold text-white">
+                            {activePreviewFile.filename}
+                          </p>
                         </div>
-                        <audio controls src={url} className="w-full mt-2" />
+                        <audio controls src={url} className="mt-2 w-full" />
                       </div>
                     );
                   }
 
                   if (isPdf) {
                     return (
-                      <iframe src={url} className="w-full h-full rounded-xl border border-white/10 bg-slate-900" />
+                      <iframe
+                        src={url}
+                        className="h-full w-full rounded-xl border border-white/10 bg-slate-900"
+                      />
                     );
                   }
 
@@ -2050,15 +2212,17 @@ export default function AdminCollectionDetailPage({
                     return (
                       <div className="flex flex-col items-center gap-3">
                         <Paperclip size={24} className="animate-spin text-amber-500" />
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Decrypting File Data...</span>
+                        <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">
+                          Decrypting File Data...
+                        </span>
                       </div>
                     );
                   }
 
                   if (previewTextContent !== null) {
                     return (
-                      <div className="w-full h-full flex flex-col border border-white/10 rounded-xl bg-slate-950 overflow-hidden font-mono text-[10px] text-slate-350 p-4">
-                        <pre className="flex-1 overflow-auto whitespace-pre select-text p-2 leading-relaxed">
+                      <div className="text-slate-350 flex h-full w-full flex-col overflow-hidden rounded-xl border border-white/10 bg-slate-950 p-4 font-mono text-[10px]">
+                        <pre className="flex-1 overflow-auto p-2 leading-relaxed whitespace-pre select-text">
                           {previewTextContent}
                         </pre>
                       </div>
@@ -2067,28 +2231,37 @@ export default function AdminCollectionDetailPage({
 
                   // Generic document preview card
                   return (
-                    <div className="w-full max-w-sm p-6 bg-slate-900 border border-white/10 rounded-3xl flex flex-col items-center text-center space-y-4">
-                      <div className="h-16 w-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+                    <div className="flex w-full max-w-sm flex-col items-center space-y-4 rounded-3xl border border-white/10 bg-slate-900 p-6 text-center">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-500">
                         <FileIcon size={32} />
                       </div>
                       <div>
-                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Secure Document Attachment</h4>
-                        <p className="text-[10px] text-slate-550 mt-1">This format is secure and cannot be rendered natively inside the browser preview window.</p>
+                        <h4 className="text-xs font-black tracking-wider text-slate-400 uppercase">
+                          Secure Document Attachment
+                        </h4>
+                        <p className="text-slate-550 mt-1 text-[10px]">
+                          This format is secure and cannot be rendered natively inside the browser
+                          preview window.
+                        </p>
                       </div>
-                      <div className="bg-slate-950/50 border border-white/5 rounded-2xl p-3 text-left w-full space-y-1">
+                      <div className="w-full space-y-1 rounded-2xl border border-white/5 bg-slate-950/50 p-3 text-left">
                         <div className="flex justify-between text-[9px] font-bold">
                           <span className="text-slate-500 uppercase">Filename:</span>
-                          <span className="text-slate-350 truncate max-w-[12rem]">{activePreviewFile.filename}</span>
+                          <span className="text-slate-350 max-w-[12rem] truncate">
+                            {activePreviewFile.filename}
+                          </span>
                         </div>
                         <div className="flex justify-between text-[9px] font-bold">
                           <span className="text-slate-500 uppercase">Mime-type:</span>
-                          <span className="text-slate-350">{mimeType || "application/octet-stream"}</span>
+                          <span className="text-slate-350">
+                            {mimeType || "application/octet-stream"}
+                          </span>
                         </div>
                       </div>
                       <a
                         href={url}
                         download={activePreviewFile.filename}
-                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-3 rounded-xl transition cursor-pointer text-center block"
+                        className="block w-full cursor-pointer rounded-xl bg-emerald-600 py-3 text-center text-xs font-bold text-white transition hover:bg-emerald-500"
                       >
                         Download Document
                       </a>
@@ -2100,11 +2273,9 @@ export default function AdminCollectionDetailPage({
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }
-
 
 function SecureMediaRenderer({
   collectionId,
@@ -2145,7 +2316,7 @@ function SecureMediaRenderer({
         }
 
         const res = await fetchWithAuth(
-          `/collections/${collectionId}/chats/media/${media_id}/${filename}`
+          `/collections/${collectionId}/chats/media/${media_id}/${filename}`,
         );
         if (!res.ok) throw new Error("Fetch media failed");
         const buffer = await res.arrayBuffer();
@@ -2179,7 +2350,7 @@ function SecureMediaRenderer({
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 p-2 bg-foreground/5 rounded-xl animate-pulse">
+      <div className="bg-foreground/5 flex animate-pulse items-center gap-2 rounded-xl p-2">
         <Paperclip size={14} className="animate-spin text-amber-500" />
         <span className="text-[10px] text-slate-500">Decrypting media...</span>
       </div>
@@ -2188,14 +2359,15 @@ function SecureMediaRenderer({
 
   if (error || !blobUrl) {
     return (
-      <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-xl">
+      <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-2">
         <Lock size={14} className="text-red-400" />
         <span className="text-[10px] text-red-400">Decryption failed</span>
       </div>
     );
   }
 
-  const isImage = msg.media_mime_type?.startsWith("image/") || msg.media_mime_type === "image/svg+xml";
+  const isImage =
+    msg.media_mime_type?.startsWith("image/") || msg.media_mime_type === "image/svg+xml";
   const isAudio = msg.media_mime_type?.startsWith("audio/");
 
   if (isImage) {
@@ -2203,15 +2375,21 @@ function SecureMediaRenderer({
       <div className="flex flex-col gap-1.5">
         <div
           onClick={() => onPreview(blobUrl, decryptedFilename, msg.media_mime_type || "image/png")}
-          className="rounded-lg overflow-hidden border border-foreground/5 cursor-pointer hover:opacity-90 transition relative group"
+          className="border-foreground/5 group relative cursor-pointer overflow-hidden rounded-lg border transition hover:opacity-90"
         >
-          <img src={blobUrl} alt="Secure upload" className="max-w-full max-h-[12rem] object-cover" />
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-            <span className="text-[10px] text-white font-bold uppercase tracking-wider">Preview Image</span>
+          <img
+            src={blobUrl}
+            alt="Secure upload"
+            className="max-h-[12rem] max-w-full object-cover"
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100">
+            <span className="text-[10px] font-bold tracking-wider text-white uppercase">
+              Preview Image
+            </span>
           </div>
         </div>
         {decryptedCaption && (
-          <p className="text-[11px] text-foreground/90 leading-relaxed font-normal whitespace-pre-wrap select-text break-words">
+          <p className="text-foreground/90 text-[11px] leading-relaxed font-normal break-words whitespace-pre-wrap select-text">
             {decryptedCaption}
           </p>
         )}
@@ -2223,10 +2401,15 @@ function SecureMediaRenderer({
     return (
       <div className="flex flex-col gap-1.5">
         <div className="py-1">
-          <WaveformAudioPlayer src={blobUrl} onPreviewClick={() => onPreview(blobUrl, decryptedFilename, msg.media_mime_type || "audio/mp3")} />
+          <WaveformAudioPlayer
+            src={blobUrl}
+            onPreviewClick={() =>
+              onPreview(blobUrl, decryptedFilename, msg.media_mime_type || "audio/mp3")
+            }
+          />
         </div>
         {decryptedCaption && (
-          <p className="text-[11px] text-foreground/90 leading-relaxed font-normal whitespace-pre-wrap select-text break-words">
+          <p className="text-foreground/90 text-[11px] leading-relaxed font-normal break-words whitespace-pre-wrap select-text">
             {decryptedCaption}
           </p>
         )}
@@ -2237,27 +2420,34 @@ function SecureMediaRenderer({
   return (
     <div className="flex flex-col gap-1.5">
       <div
-        onClick={() => onPreview(blobUrl, decryptedFilename, msg.media_mime_type || "application/octet-stream")}
-        className="flex items-center justify-between gap-2.5 p-2.5 bg-foreground/5 rounded-xl border border-foreground/5 hover:bg-foreground/10 transition cursor-pointer"
+        onClick={() =>
+          onPreview(blobUrl, decryptedFilename, msg.media_mime_type || "application/octet-stream")
+        }
+        className="bg-foreground/5 border-foreground/5 hover:bg-foreground/10 flex cursor-pointer items-center justify-between gap-2.5 rounded-xl border p-2.5 transition"
       >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <FileIcon size={16} className="text-amber-500 shrink-0" />
+        <div className="flex min-w-0 items-center gap-2.5">
+          <FileIcon size={16} className="shrink-0 text-amber-500" />
           <div className="min-w-0">
-            <p className="text-[11px] text-foreground font-semibold truncate">{decryptedFilename}</p>
-            <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">Secure Document</p>
+            <p className="text-foreground truncate text-[11px] font-semibold">
+              {decryptedFilename}
+            </p>
+            <p className="mt-0.5 text-[9px] tracking-widest text-slate-500 uppercase">
+              Secure Document
+            </p>
           </div>
         </div>
-        <span className="text-[9px] text-amber-500 font-bold uppercase shrink-0 px-2 py-0.5 bg-amber-500/10 rounded-md">Preview</span>
+        <span className="shrink-0 rounded-md bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold text-amber-500 uppercase">
+          Preview
+        </span>
       </div>
       {decryptedCaption && (
-        <p className="text-[11px] text-foreground/90 leading-relaxed font-normal whitespace-pre-wrap select-text break-words">
+        <p className="text-foreground/90 text-[11px] leading-relaxed font-normal break-words whitespace-pre-wrap select-text">
           {decryptedCaption}
         </p>
       )}
     </div>
   );
 }
-
 
 function WaveformAudioPlayer({ src, onPreviewClick }: { src: string; onPreviewClick: () => void }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -2277,7 +2467,10 @@ function WaveformAudioPlayer({ src, onPreviewClick }: { src: string; onPreviewCl
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+      audioRef.current
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(console.error);
     }
   };
 
@@ -2309,10 +2502,10 @@ function WaveformAudioPlayer({ src, onPreviewClick }: { src: string; onPreviewCl
 
       peaks.forEach((peak, i) => {
         const x = i * barWidth;
-        const isPlayed = (i / peaks.length) <= progress;
+        const isPlayed = i / peaks.length <= progress;
 
         let scale = 1;
-        if (isPlaying && Math.abs((i / peaks.length) - progress) < 0.1) {
+        if (isPlaying && Math.abs(i / peaks.length - progress) < 0.1) {
           scale = 1 + Math.sin(Date.now() * 0.015) * 0.2;
         }
 
@@ -2330,7 +2523,7 @@ function WaveformAudioPlayer({ src, onPreviewClick }: { src: string; onPreviewCl
       } else {
         peaks.forEach((peak, i) => {
           const x = i * barWidth;
-          const isPlayed = (i / peaks.length) <= progress;
+          const isPlayed = i / peaks.length <= progress;
           const barHeight = canvas.height * peak * 0.8;
           const y = (canvas.height - barHeight) / 2;
           ctx.fillStyle = isPlayed ? "rgba(16, 185, 129, 0.95)" : "rgba(148, 163, 184, 0.3)";
@@ -2349,7 +2542,7 @@ function WaveformAudioPlayer({ src, onPreviewClick }: { src: string; onPreviewCl
   }, [currentTime, duration, isPlaying, peaks]);
 
   return (
-    <div className="flex items-center gap-3 bg-foreground/[0.03] dark:bg-slate-950/40 border border-foreground/5 dark:border-white/5 rounded-2xl p-3 max-w-[18rem] min-w-[15rem]">
+    <div className="bg-foreground/[0.03] border-foreground/5 flex max-w-[18rem] min-w-[15rem] items-center gap-3 rounded-2xl border p-3 dark:border-white/5 dark:bg-slate-950/40">
       <audio
         ref={audioRef}
         src={src}
@@ -2358,25 +2551,29 @@ function WaveformAudioPlayer({ src, onPreviewClick }: { src: string; onPreviewCl
         onEnded={onAudioEnded}
         className="hidden"
       />
-      <div className="flex flex-col gap-2 shrink-0">
+      <div className="flex shrink-0 flex-col gap-2">
         <button
           type="button"
           onClick={togglePlay}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition active:scale-95 cursor-pointer shrink-0"
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-emerald-500 text-slate-950 transition hover:bg-emerald-400 active:scale-95"
         >
-          {isPlaying ? <Pause size={12} className="fill-current text-slate-950" /> : <Play size={12} className="fill-current ml-0.5 text-slate-950" />}
+          {isPlaying ? (
+            <Pause size={12} className="fill-current text-slate-950" />
+          ) : (
+            <Play size={12} className="ml-0.5 fill-current text-slate-950" />
+          )}
         </button>
         <button
           type="button"
           onClick={onPreviewClick}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-foreground/5 border border-foreground/10 text-foreground hover:bg-foreground/10 transition active:scale-95 cursor-pointer shrink-0 text-[9px] font-black"
+          className="bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border text-[9px] font-black transition active:scale-95"
         >
           Open
         </button>
       </div>
-      <div className="flex-1 min-w-0">
-        <canvas ref={canvasRef} width={160} height={36} className="w-full h-9 block" />
-        <div className="flex items-center justify-between text-[8px] text-slate-500 font-bold uppercase tracking-wider mt-1 px-1">
+      <div className="min-w-0 flex-1">
+        <canvas ref={canvasRef} width={160} height={36} className="block h-9 w-full" />
+        <div className="mt-1 flex items-center justify-between px-1 text-[8px] font-bold tracking-wider text-slate-500 uppercase">
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>

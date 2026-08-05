@@ -102,9 +102,7 @@ class TestSpecificModelVariants:
             result = uses_gemma_think_trigger(model)
             print(f"Case/space variation: {model} -> {result}")
             # Should be case-insensitive and handle spaces/hyphens
-            assert (
-                result
-            ), f"{model} should trigger Gemma thinking (case/space insensitive)"
+            assert result, f"{model} should trigger Gemma thinking (case/space insensitive)"
 
     def test_reasoning_capabilities_output_for_variants(self):
         """Test that reasoning capabilities return proper structure for variants."""
@@ -126,6 +124,4 @@ class TestSpecificModelVariants:
 
             # Should have reasoning capabilities structure
             assert isinstance(caps, dict), f"{model} should return dict"
-            assert (
-                "supports_reasoning" in caps
-            ), f"{model} should have supports_reasoning field"
+            assert "supports_reasoning" in caps, f"{model} should have supports_reasoning field"

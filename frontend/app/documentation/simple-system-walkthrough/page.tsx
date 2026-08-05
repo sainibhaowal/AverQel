@@ -10,9 +10,14 @@ export default function SimpleSystemWalkthroughPage() {
         <ol className="list-decimal space-y-3 pl-6">
           <li>You type a request into chat or DeepSpace.</li>
           <li>The backend validates your tenant, account, conversation, and provider scope.</li>
-          <li>DeepSpace answers through the shared grounded chat service and can use notes, memory, and document context.</li>
+          <li>
+            DeepSpace answers through the shared grounded chat service and can use notes, memory,
+            and document context.
+          </li>
           <li>The answer streams into the conversation and is saved to history.</li>
-          <li>The answer streams into the conversation and can be inserted into the note editor.</li>
+          <li>
+            The answer streams into the conversation and can be inserted into the note editor.
+          </li>
         </ol>
       </DocsSection>
 

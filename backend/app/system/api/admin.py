@@ -247,9 +247,7 @@ def list_admin_document_summary(
                 tenant_id=tenant_id,
                 documents_count=document_repo.count_by_tenant(tenant_id=tenant_id),
                 storage_bytes=document_repo.sum_storage_by_tenant(tenant_id=tenant_id),
-                quarantined_count=document_repo.count_quarantined_by_tenant(
-                    tenant_id=tenant_id
-                ),
+                quarantined_count=document_repo.count_quarantined_by_tenant(tenant_id=tenant_id),
                 status_counts=[
                     AdminDocumentStatusCountResponse(status=status, count=count)
                     for status, count in status_counts.items()
@@ -340,9 +338,7 @@ def revoke_break_glass_grant(
             status_code=404,
         )
     db.execute(
-        update(BreakGlassGrant)
-        .where(BreakGlassGrant.id == grant_id)
-        .values(status="revoked")
+        update(BreakGlassGrant).where(BreakGlassGrant.id == grant_id).values(status="revoked")
     )
     AuditService(db).write_event(
         tenant_id=grant.tenant_id,
@@ -436,9 +432,7 @@ def list_data_deletions(
                 status=row.status,
                 scope=row.scope,
                 reason=row.reason,
-                result_counts={
-                    str(k): int(v) for k, v in (row.result_counts or {}).items()
-                },
+                result_counts={str(k): int(v) for k, v in (row.result_counts or {}).items()},
                 error_code=row.error_code,
                 error_message=row.error_message,
                 requested_at=row.requested_at,
@@ -509,9 +503,7 @@ def list_admin_users(
         if _has_admin_access(auth)
         else service.list_users(tenant_id=tenant_context.tenant_id)
     )
-    return AdminUserListResponse(
-        items=[_to_admin_user_response(item) for item in items]
-    )
+    return AdminUserListResponse(items=[_to_admin_user_response(item) for item in items])
 
 
 @router.get(
@@ -683,6 +675,4 @@ def list_admin_tenants(
             status_code=403,
         )
     items = AdminUserService(db, settings).list_tenants_global()
-    return AdminTenantListResponse(
-        items=[_to_admin_tenant_response(item) for item in items]
-    )
+    return AdminTenantListResponse(items=[_to_admin_tenant_response(item) for item in items])

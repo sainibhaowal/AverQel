@@ -18,9 +18,7 @@ class IngestionJobsRepository(BaseRepository):
         self.db.flush()
         return job
 
-    def get_by_id(
-        self, *, tenant_id: uuid.UUID, job_id: uuid.UUID
-    ) -> IngestionJob | None:
+    def get_by_id(self, *, tenant_id: uuid.UUID, job_id: uuid.UUID) -> IngestionJob | None:
         self.apply_tenant_scope(tenant_id)
         query = select(IngestionJob).where(
             IngestionJob.tenant_id == tenant_id,
@@ -81,9 +79,7 @@ class IngestionJobsRepository(BaseRepository):
 
         if status == "dead_lettered":
             job.dead_lettered_at = datetime.now(tz=UTC)
-            job.dead_letter_reason = (
-                dead_letter_reason or error_code or "unknown_failure"
-            )
+            job.dead_letter_reason = dead_letter_reason or error_code or "unknown_failure"
         elif dead_letter_reason:
             job.dead_letter_reason = dead_letter_reason
 

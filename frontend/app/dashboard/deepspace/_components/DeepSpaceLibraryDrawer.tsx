@@ -14,10 +14,15 @@ import {
   Trash2,
   Upload,
   X,
+  Clipboard,
+  ClipboardPaste,
+  Scissors,
+  FolderPlus,
+  FilePlus2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, uploadWithAuthProgress } from "@/lib/api";
 
 import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
 
@@ -30,6 +35,25 @@ type LibraryFile = {
   source: string;
   size_bytes: number;
   content?: string | null;
+  parent_folder_id?: string | null;
+  version?: number;
+  is_binary?: boolean;
+  extracted_text?: string | null;
+  download_url?: string | null;
+  archive_entries?:
+    | { name: string; directory: boolean; compressedSize: number; size: number }[]
+    | null;
+};
+
+type LibraryFolder = { id: string; name: string; parent_folder_id?: string | null };
+type ArchiveSelection = { name: string; contentType: string };
+type UploadItem = {
+  id: string;
+  name: string;
+  size: number;
+  loaded: number;
+  status: "queued" | "uploading" | "complete" | "error";
+  error?: string;
 };
 
 type DeepSpaceLibraryDrawerProps = {
@@ -48,6 +72,9 @@ export default function DeepSpaceLibraryDrawer({
   onClose,
 }: DeepSpaceLibraryDrawerProps) {
   const [files, setFiles] = useState<LibraryFile[]>([]);
+  const [folders, setFolders] = useState<LibraryFolder[]>([]);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [folderStack, setFolderStack] = useState<string[]>([]);
   const [selected, setSelected] = useState<LibraryFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -58,8 +85,19 @@ export default function DeepSpaceLibraryDrawer({
   const [renameValue, setRenameValue] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+  const [dragActive, setDragActive] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<LibraryFile | null>(null);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<LibraryFolder | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newFileName, setNewFileName] = useState("");
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [folderRenameValue, setFolderRenameValue] = useState("");
+  const [clipboardFile, setClipboardFile] = useState<LibraryFile | null>(null);
+  const [clipboardMode, setClipboardMode] = useState<"copy" | "move">("copy");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [archiveSelection, setArchiveSelection] = useState<ArchiveSelection | null>(null);
 
   useEffect(() => {
     if (!embedded) return;
@@ -69,6 +107,13 @@ export default function DeepSpaceLibraryDrawer({
       // Storage can be unavailable in privacy-restricted browser contexts.
     }
   }, [embedded]);
+
+  useEffect(() => {
+    setCurrentFolderId(null);
+    setFolderStack([]);
+    setSelected(null);
+    setDraft("");
+  }, [conversationId]);
 
   const toggleFilesCollapsed = () => {
     setIsFilesCollapsed((current) => {
@@ -86,16 +131,23 @@ export default function DeepSpaceLibraryDrawer({
     if (!conversationId) return;
     setLoading(true);
     try {
-      const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/files`, {
-        timeoutMs: 8_000,
-      })) as Response;
+      const query = currentFolderId
+        ? `?parent_folder_id=${encodeURIComponent(currentFolderId)}`
+        : "";
+      const response = (await fetchWithAuth(
+        `/deepspace/library/${conversationId}/entries${query}`,
+        {
+          timeoutMs: 8_000,
+        },
+      )) as Response;
       if (!response.ok) return;
-      const nextFiles = (await response.json()) as LibraryFile[];
+      const entries = (await response.json()) as { files: LibraryFile[]; folders: LibraryFolder[] };
+      const nextFiles = entries.files ?? [];
+      setFolders(entries.folders ?? []);
       setFiles(nextFiles);
-      setSelected(
-        (current) =>
-          nextFiles.find((file) => file.id === current?.id) ?? current ?? nextFiles[0] ?? null,
-      );
+      const retained = selected && nextFiles.some((file) => file.id === selected.id);
+      if (selected && !retained) setDraft("");
+      setSelected(retained ? selected : (nextFiles[0] ?? null));
     } finally {
       setLoading(false);
     }
@@ -103,7 +155,7 @@ export default function DeepSpaceLibraryDrawer({
 
   useEffect(() => {
     if (open) void refresh();
-  }, [open, conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, conversationId, currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleLibraryChanged = () => {
@@ -128,21 +180,178 @@ export default function DeepSpaceLibraryDrawer({
       if (!response.ok) return;
       const detail = (await response.json()) as LibraryFile;
       setSelected(detail);
-      setDraft(detail.content ?? "");
+      setDraft(detail.content ?? detail.extracted_text ?? "");
+      setArchiveSelection(null);
+      setPreviewUrl(null);
+      if (detail.is_binary) {
+        const contentResponse = (await fetchWithAuth(
+          `/deepspace/library/${conversationId}/files/${file.id}/content`,
+          { timeoutMs: 30_000 },
+        )) as Response;
+        if (contentResponse.ok) {
+          const blob = await contentResponse.blob();
+          setPreviewUrl(URL.createObjectURL(blob));
+        }
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const openArchiveEntry = async (entry: { name: string; directory: boolean }) => {
+    if (!conversationId || !selected || entry.directory) return;
+    const response = (await fetchWithAuth(
+      `/deepspace/library/${conversationId}/files/${selected.id}/archive/${entry.name.split("/").map(encodeURIComponent).join("/")}`,
+      { timeoutMs: 30_000 },
+    )) as Response;
+    if (!response.ok) return;
+    const extension = entry.name.split(".").pop()?.toLowerCase() ?? "";
+    const textExtensions = new Set([
+      "md",
+      "mdx",
+      "txt",
+      "json",
+      "yaml",
+      "yml",
+      "xml",
+      "html",
+      "htm",
+      "css",
+      "js",
+      "ts",
+      "tsx",
+      "jsx",
+      "py",
+      "sql",
+      "diff",
+      "patch",
+      "java",
+      "go",
+      "rs",
+      "c",
+      "cpp",
+      "h",
+    ]);
+    const contentType =
+      response.headers.get("content-type")?.split(";", 1)[0] ||
+      (textExtensions.has(extension) ? "text/plain" : "application/octet-stream");
+    setArchiveSelection({ name: entry.name, contentType });
+    if (
+      contentType.startsWith("text/") ||
+      contentType.includes("json") ||
+      contentType.includes("xml") ||
+      contentType.includes("yaml") ||
+      textExtensions.has(extension)
+    ) {
+      setPreviewUrl(null);
+      setDraft(await response.text());
+    } else {
+      const blob = await response.blob();
+      setDraft("");
+      setPreviewUrl(URL.createObjectURL(blob));
+    }
+  };
+
+  useEffect(
+    () => () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    },
+    [previewUrl],
+  );
+
+  const createFolder = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = newFolderName.trim();
+    if (!conversationId || !name) return;
+    const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/folders`, {
+      method: "POST",
+      body: JSON.stringify({ name, parent_folder_id: currentFolderId }),
+    })) as Response;
+    if (!response.ok) {
+      setActionError("The folder could not be created.");
+      return;
+    }
+    setNewFolderName("");
+    await refresh();
+  };
+
+  const createFile = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = newFileName.trim();
+    if (!conversationId || !name) return;
+    const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/files`, {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        parent_folder_id: currentFolderId,
+        content_type: "text/markdown",
+        content: "",
+      }),
+    })) as Response;
+    if (!response.ok) {
+      setActionError("The file could not be created.");
+      return;
+    }
+    const created = (await response.json()) as LibraryFile;
+    setNewFileName("");
+    await refresh();
+    await selectFile(created);
+  };
+
+  const pasteFile = async () => {
+    if (!conversationId || !clipboardFile) return;
+    const response = (await fetchWithAuth(
+      `/deepspace/library/${conversationId}/files/${clipboardFile.id}/copy`,
+      {
+        method: "POST",
+        body: JSON.stringify({ parent_folder_id: currentFolderId, mode: clipboardMode }),
+      },
+    )) as Response;
+    if (!response.ok) {
+      setActionError("The file could not be pasted here.");
+      return;
+    }
+    setClipboardFile(null);
+    await refresh();
+  };
+
+  const renameFolder = async (folder: LibraryFolder) => {
+    const name = folderRenameValue.trim();
+    if (!conversationId || !name) return;
+    const response = (await fetchWithAuth(
+      `/deepspace/library/${conversationId}/folders/${folder.id}`,
+      { method: "PATCH", body: JSON.stringify({ name }) },
+    )) as Response;
+    if (!response.ok) {
+      setActionError("The folder could not be renamed.");
+      return;
+    }
+    setRenamingFolderId(null);
+    await refresh();
+  };
+
+  const deleteFolder = async (folder: LibraryFolder) => {
+    if (!conversationId) return;
+    const response = (await fetchWithAuth(
+      `/deepspace/library/${conversationId}/folders/${folder.id}?recursive=true`,
+      { method: "DELETE" },
+    )) as Response;
+    if (!response.ok) {
+      setActionError("The folder could not be removed.");
+      return;
+    }
+    await refresh();
+  };
+
   const saveFile = async () => {
-    if (!conversationId || !selected) return;
+    if (!conversationId || !selected || selected.is_binary) return;
     setSaving(true);
     try {
       const response = (await fetchWithAuth(
         `/deepspace/library/${conversationId}/files/${selected.id}`,
         {
           method: "PATCH",
-          body: JSON.stringify({ content: draft }),
+          body: JSON.stringify({ content: draft, expected_version: selected.version ?? 1 }),
         },
       )) as Response;
       if (!response.ok) return;
@@ -216,89 +425,258 @@ export default function DeepSpaceLibraryDrawer({
     }
   };
 
-  const importFile = async (file: File) => {
-    if (!conversationId) return;
-    const maxBytes = 4 * 1024 * 1024;
-    if (file.size > maxBytes) {
-      setActionError("Files must be 4 MB or smaller for secure Library preview.");
-      return;
-    }
-    const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-    const fallbackTypes: Record<string, string> = {
-      md: "text/markdown",
-      csv: "text/csv",
-      json: "application/json",
-      yaml: "application/yaml",
-      yml: "application/yaml",
-      diff: "text/x-diff",
-      patch: "text/x-diff",
-      svg: "image/svg+xml",
-      pdf: "application/pdf",
-      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      zip: "application/zip",
-    };
-    const contentType = file.type || fallbackTypes[extension] || "text/plain";
-    const isText = contentType.startsWith("text/") || ["json", "yaml", "yml"].includes(extension);
-    setImporting(true);
-    setActionError(null);
+  const updateUploadItem = (id: string, update: Partial<UploadItem>) => {
+    setUploadItems((items) =>
+      items.map((item) => (item.id === id ? { ...item, ...update } : item)),
+    );
+  };
+
+  const uploadOne = async (file: File, itemId: string): Promise<LibraryFile | null> => {
+    if (!conversationId) return null;
+    updateUploadItem(itemId, { status: "uploading", loaded: 0 });
     try {
-      const content = isText
-        ? await file.text()
-        : await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result ?? ""));
-            reader.onerror = () => reject(new Error("The file could not be read."));
-            reader.readAsDataURL(file);
-          });
-      const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/files`, {
-        method: "POST",
-        body: JSON.stringify({ name: file.name, content, content_type: contentType }),
-      })) as Response;
+      const form = new FormData();
+      form.append("file", file, file.name);
+      const response = await uploadWithAuthProgress(
+        `/deepspace/library/${conversationId}/files/upload?parent_folder_id=${encodeURIComponent(currentFolderId ?? "")}`,
+        form,
+        { onProgress: (loaded) => updateUploadItem(itemId, { loaded }) },
+      );
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        setActionError(
-          String(
-            payload?.detail?.message ??
-              payload?.error?.message ??
-              "The file could not be imported.",
-          ),
+        const message = String(
+          payload?.error?.message ?? payload?.detail?.message ?? "The file could not be imported.",
         );
-        return;
+        updateUploadItem(itemId, { status: "error", error: message, loaded: file.size });
+        return null;
       }
       const created = (await response.json()) as LibraryFile;
-      setSelected(created);
-      setDraft(created.content ?? content);
-      await refresh();
+      updateUploadItem(itemId, { status: "complete", loaded: file.size });
+      return created;
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "The file could not be imported.");
-    } finally {
-      setImporting(false);
+      const message = error instanceof Error ? error.message : "The file could not be imported.";
+      updateUploadItem(itemId, { status: "error", error: message, loaded: file.size });
+      return null;
     }
   };
+
+  const importFiles = async (input: File[] | FileList) => {
+    if (!conversationId) return;
+    const maxBytes = 25 * 1024 * 1024;
+    const filesToUpload = Array.from(input).filter((file) => file.size <= maxBytes);
+    const oversized = Array.from(input).filter((file) => file.size > maxBytes);
+    if (oversized.length)
+      setActionError(`${oversized.length} file(s) exceeded the 25 MB secure upload limit.`);
+    if (!filesToUpload.length) return;
+    const items = filesToUpload.map((file, index) => ({
+      id: `${Date.now()}-${index}-${file.name}`,
+      name: file.name,
+      size: file.size,
+      loaded: 0,
+      status: "queued" as const,
+    }));
+    setUploadItems(items);
+    setImporting(true);
+    setActionError(null);
+    const created: LibraryFile[] = [];
+    let nextIndex = 0;
+    const worker = async () => {
+      while (nextIndex < filesToUpload.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const result = await uploadOne(filesToUpload[index], items[index].id);
+        if (result) created.push(result);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, filesToUpload.length) }, () => worker()));
+    if (created.length) {
+      const last = created[created.length - 1];
+      setSelected(last);
+      setDraft(last.content ?? last.extracted_text ?? "");
+      await refresh();
+    }
+    if (created.length !== filesToUpload.length)
+      setActionError(
+        `${created.length} of ${filesToUpload.length} files imported. Failed files are shown below.`,
+      );
+    setImporting(false);
+  };
+
+  const handleClipboardPaste = (event: React.ClipboardEvent) => {
+    const files = Array.from(event.clipboardData.files);
+    if (!files.length) return;
+    event.preventDefault();
+    void importFiles(files);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const handleWindowPaste = (event: ClipboardEvent) => {
+      const files = Array.from(event.clipboardData?.files ?? []);
+      if (!files.length) return;
+      event.preventDefault();
+      void importFiles(files);
+    };
+    window.addEventListener("paste", handleWindowPaste);
+    return () => window.removeEventListener("paste", handleWindowPaste);
+  }, [open, conversationId, currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedLabel = useMemo(
     () => (embedded ? "DeepSpace Library" : (selected?.name ?? "DeepSpace Library")),
     [embedded, selected],
   );
   const fileList = (
-    <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
-      <div className="mb-2 flex items-center justify-end">
-        <label className="border-glass-border bg-surface-1 text-muted-foreground hover:bg-surface-2 hover:text-primary inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-semibold transition">
-          {importing ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-          Import file
-          <input
-            type="file"
-            className="sr-only"
-            disabled={importing}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file) void importFile(file);
-            }}
-          />
-        </label>
+    <div
+      className={`custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2 ${dragActive ? "bg-primary/[0.06]" : ""}`}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        setDragActive(true);
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setDragActive(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget === event.target) setDragActive(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragActive(false);
+        if (event.dataTransfer.files.length) void importFiles(event.dataTransfer.files);
+      }}
+      onPaste={handleClipboardPaste}
+    >
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+        <div className="flex items-center gap-1">
+          {currentFolderId ? (
+            <button
+              type="button"
+              onClick={() => {
+                const next = [...folderStack];
+                next.pop();
+                setFolderStack(next);
+                setCurrentFolderId(next.length ? next[next.length - 1] : null);
+                setSelected(null);
+                setDraft("");
+              }}
+              className="text-foreground/55 hover:bg-surface-2 hover:text-primary rounded-md p-1.5"
+              title="Back to parent folder"
+            >
+              <ArrowLeft size={13} />
+            </button>
+          ) : null}
+          <form onSubmit={createFolder} className="flex items-center gap-1">
+            <input
+              value={newFolderName}
+              onChange={(event) => setNewFolderName(event.target.value)}
+              placeholder="New folder"
+              className="border-glass-border bg-surface-0 text-foreground w-24 rounded-md border px-2 py-1.5 text-[10px] outline-none"
+            />
+            <button
+              type="submit"
+              title="Create folder"
+              className="border-glass-border bg-surface-1 text-primary rounded-md border p-1.5"
+            >
+              <FolderPlus size={12} />
+            </button>
+          </form>
+          <form onSubmit={createFile} className="flex items-center gap-1">
+            <input
+              value={newFileName}
+              onChange={(event) => setNewFileName(event.target.value)}
+              placeholder="New file.md"
+              className="border-glass-border bg-surface-0 text-foreground w-24 rounded-md border px-2 py-1.5 text-[10px] outline-none"
+            />
+            <button
+              type="submit"
+              title="Create file"
+              className="border-glass-border bg-surface-1 text-primary rounded-md border p-1.5"
+            >
+              <FilePlus2 size={12} />
+            </button>
+          </form>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={!clipboardFile}
+            onClick={() => void pasteFile()}
+            title={clipboardMode === "move" ? "Move file here" : "Paste copied file here"}
+            className="border-glass-border bg-surface-1 text-primary rounded-md border p-1.5 disabled:opacity-40"
+          >
+            <ClipboardPaste size={12} />
+          </button>
+          <label className="border-glass-border bg-surface-1 text-muted-foreground hover:bg-surface-2 hover:text-primary inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-semibold transition">
+            {importing ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            Import files
+            <input
+              type="file"
+              multiple
+              className="sr-only"
+              disabled={importing}
+              onChange={(event) => {
+                const files = event.target.files;
+                event.target.value = "";
+                if (files?.length) void importFiles(files);
+              }}
+            />
+          </label>
+        </div>
       </div>
+      <div
+        className={`mb-2 rounded-lg border border-dashed px-3 py-2 text-center text-[10px] transition ${dragActive ? "border-primary/70 bg-primary/[0.08] text-primary" : "border-glass-border text-foreground/45"}`}
+      >
+        Drop multiple files here or paste copied files with Ctrl/Cmd+V
+      </div>
+      {uploadItems.length
+        ? (() => {
+            const total = uploadItems.reduce((sum, item) => sum + item.size, 0);
+            const loaded = uploadItems.reduce(
+              (sum, item) => sum + Math.min(item.loaded, item.size),
+              0,
+            );
+            const percent = total ? Math.round((loaded / total) * 100) : 0;
+            return (
+              <div className="border-glass-border bg-surface-1/60 mb-2 rounded-lg border p-2">
+                <div className="text-foreground/65 mb-1 flex items-center justify-between text-[10px]">
+                  <span>Uploading {uploadItems.length} file(s)</span>
+                  <span>{percent}%</span>
+                </div>
+                <div className="bg-surface-0 h-1.5 overflow-hidden rounded-full">
+                  <div
+                    className="bg-primary h-full transition-[width]"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+                <div className="mt-2 max-h-28 space-y-1 overflow-auto">
+                  {uploadItems.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 text-[10px]">
+                      <span className="text-foreground/60 min-w-0 flex-1 truncate">
+                        {item.name}
+                      </span>
+                      <span
+                        className={
+                          item.status === "error"
+                            ? "text-rose-300"
+                            : item.status === "complete"
+                              ? "text-emerald-300"
+                              : "text-foreground/40"
+                        }
+                      >
+                        {item.status === "error"
+                          ? "failed"
+                          : item.status === "complete"
+                            ? "done"
+                            : `${Math.round((item.loaded / Math.max(item.size, 1)) * 100)}%`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()
+        : null}
       {loading && !files.length ? (
         <div className="flex justify-center p-5">
           <Loader2 size={16} className="text-primary animate-spin" />
@@ -315,9 +693,91 @@ export default function DeepSpaceLibraryDrawer({
           {actionError}
         </p>
       ) : null}
+      {folders.map((folder) => (
+        <div key={folder.id} className="hover:bg-surface-2 mb-1 flex items-center rounded-lg">
+          {renamingFolderId === folder.id ? (
+            <form
+              className="flex min-w-0 flex-1 gap-1 px-2 py-1"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void renameFolder(folder);
+              }}
+            >
+              <input
+                autoFocus
+                value={folderRenameValue}
+                onChange={(event) => setFolderRenameValue(event.target.value)}
+                className="border-glass-border bg-surface-0 text-foreground min-w-0 flex-1 rounded border px-2 py-1 text-[10px] outline-none"
+              />
+              <button type="submit" className="text-primary p-1">
+                <Check size={12} />
+              </button>
+            </form>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderStack((stack) => [...stack, folder.id]);
+                  setCurrentFolderId(folder.id);
+                  setSelected(null);
+                  setDraft("");
+                }}
+                className="text-foreground/70 hover:text-primary flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px]"
+              >
+                <FolderOpen size={14} className="text-primary shrink-0" />
+                <span className="truncate">{folder.name}</span>
+              </button>
+              <button
+                type="button"
+                title="Rename folder"
+                onClick={() => {
+                  setRenamingFolderId(folder.id);
+                  setFolderRenameValue(folder.name);
+                }}
+                className="text-foreground/40 hover:text-primary p-1"
+              >
+                <Pencil size={11} />
+              </button>
+              <button
+                type="button"
+                title="Delete folder"
+                onClick={() => setDeleteFolderTarget(folder)}
+                className="text-foreground/40 mr-1 p-1 hover:text-rose-200"
+              >
+                <Trash2 size={11} />
+              </button>
+            </>
+          )}
+        </div>
+      ))}
       {files.map((file) => (
         <div key={file.id} className="hover:bg-surface-2 mb-1 rounded-lg">
           <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                setClipboardFile(file);
+                setClipboardMode("copy");
+              }}
+              aria-label={`Copy ${file.name}`}
+              title="Copy file"
+              className="text-foreground/40 hover:bg-surface-2 hover:text-primary rounded-md p-1.5 transition"
+            >
+              <Clipboard size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setClipboardFile(file);
+                setClipboardMode("move");
+              }}
+              aria-label={`Cut ${file.name}`}
+              title="Move file"
+              className="text-foreground/40 hover:bg-surface-2 hover:text-primary rounded-md p-1.5 transition"
+            >
+              <Scissors size={12} />
+            </button>
             <button
               type="button"
               onClick={() => void selectFile(file)}
@@ -437,6 +897,7 @@ export default function DeepSpaceLibraryDrawer({
               onClick={() => {
                 setSelected(null);
                 setDraft("");
+                setArchiveSelection(null);
               }}
               aria-label="Back to files"
               className="text-foreground/60 hover:bg-surface-2 hover:text-primary rounded-md p-1"
@@ -449,7 +910,7 @@ export default function DeepSpaceLibraryDrawer({
           <span className="truncate">{selectedLabel}</span>
         </div>
         <div className="flex items-center gap-1">
-          {selected ? (
+          {selected && !selected.is_binary ? (
             <button
               type="button"
               disabled={saving}
@@ -498,11 +959,24 @@ export default function DeepSpaceLibraryDrawer({
           <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
             {selected ? (
               <DeepSpaceLibraryFileWorkspace
-                key={selected.id}
-                name={selected.name}
-                contentType={selected.content_type}
+                key={`${selected.id}:${archiveSelection?.name ?? "archive"}`}
+                name={archiveSelection?.name ?? selected.name}
+                contentType={archiveSelection?.contentType ?? selected.content_type}
                 value={draft}
                 onChange={setDraft}
+                previewUrl={previewUrl}
+                archiveEntries={archiveSelection ? null : selected.archive_entries}
+                onArchiveEntrySelect={archiveSelection ? undefined : openArchiveEntry}
+                archiveEntryName={archiveSelection?.name}
+                onArchiveBack={
+                  archiveSelection
+                    ? () => {
+                        setArchiveSelection(null);
+                        setPreviewUrl(null);
+                        setDraft(selected.extracted_text ?? "");
+                      }
+                    : undefined
+                }
               />
             ) : (
               <div className="border-glass-border bg-surface-1/40 text-foreground/45 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed px-6 text-center text-xs">
@@ -514,11 +988,24 @@ export default function DeepSpaceLibraryDrawer({
       ) : selected ? (
         <section className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
           <DeepSpaceLibraryFileWorkspace
-            key={selected.id}
-            name={selected.name}
-            contentType={selected.content_type}
+            key={`${selected.id}:${archiveSelection?.name ?? "archive"}`}
+            name={archiveSelection?.name ?? selected.name}
+            contentType={archiveSelection?.contentType ?? selected.content_type}
             value={draft}
             onChange={setDraft}
+            previewUrl={previewUrl}
+            archiveEntries={archiveSelection ? null : selected.archive_entries}
+            onArchiveEntrySelect={archiveSelection ? undefined : openArchiveEntry}
+            archiveEntryName={archiveSelection?.name}
+            onArchiveBack={
+              archiveSelection
+                ? () => {
+                    setArchiveSelection(null);
+                    setPreviewUrl(null);
+                    setDraft(selected.extracted_text ?? "");
+                  }
+                : undefined
+            }
           />
         </section>
       ) : (
@@ -542,6 +1029,22 @@ export default function DeepSpaceLibraryDrawer({
         cancelLabel="Keep file"
         variant="danger"
         loading={deleteTarget !== null && deletingId === deleteTarget.id}
+      />
+      <ConfirmationModal
+        isOpen={deleteFolderTarget !== null}
+        onClose={() => setDeleteFolderTarget(null)}
+        onConfirm={async () => {
+          if (!deleteFolderTarget) return;
+          await deleteFolder(deleteFolderTarget);
+          setDeleteFolderTarget(null);
+        }}
+        title="Delete library folder?"
+        message={
+          deleteFolderTarget ? `Delete “${deleteFolderTarget.name}” and everything inside it?` : ""
+        }
+        confirmLabel="Delete folder"
+        cancelLabel="Keep folder"
+        variant="danger"
       />
     </div>
   );

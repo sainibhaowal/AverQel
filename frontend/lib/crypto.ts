@@ -27,10 +27,7 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 /**
  * Derives a symmetric AES-GCM key from collectionId and connectionCode client-side.
  */
-export async function deriveKey(
-  collectionId: string,
-  connectionCode: string
-): Promise<CryptoKey> {
+export async function deriveKey(collectionId: string, connectionCode: string): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const passwordBuffer = encoder.encode(connectionCode);
   const salt = encoder.encode(collectionId);
@@ -41,7 +38,7 @@ export async function deriveKey(
     passwordBuffer,
     { name: "PBKDF2" },
     false,
-    ["deriveKey"]
+    ["deriveKey"],
   );
 
   // Derive AES-GCM 256 key
@@ -55,7 +52,7 @@ export async function deriveKey(
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false,
-    ["encrypt", "decrypt"]
+    ["encrypt", "decrypt"],
   );
 }
 
@@ -63,10 +60,7 @@ export async function deriveKey(
  * Encrypts plaintext string using AES-GCM.
  * Returns a JSON envelope containing base64 stringified ciphertext and IV.
  */
-export async function encryptMessage(
-  text: string,
-  key: CryptoKey
-): Promise<string> {
+export async function encryptMessage(text: string, key: CryptoKey): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(text);
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -74,7 +68,7 @@ export async function encryptMessage(
   const ciphertextBuffer = await window.crypto.subtle.encrypt(
     { name: "AES-GCM", iv: iv },
     key,
-    data
+    data,
   );
 
   const envelope = {
@@ -88,10 +82,7 @@ export async function encryptMessage(
 /**
  * Decrypts a JSON string envelope containing AES-GCM ciphertext and IV.
  */
-export async function decryptMessage(
-  envelopeStr: string,
-  key: CryptoKey
-): Promise<string> {
+export async function decryptMessage(envelopeStr: string, key: CryptoKey): Promise<string> {
   try {
     const envelope = JSON.parse(envelopeStr) as { ciphertext: string; iv: string };
     if (!envelope.ciphertext || !envelope.iv) {
@@ -104,7 +95,7 @@ export async function decryptMessage(
     const decryptedBuffer = await window.crypto.subtle.decrypt(
       { name: "AES-GCM", iv: iv },
       key,
-      ciphertext
+      ciphertext,
     );
 
     const decoder = new TextDecoder();
@@ -120,7 +111,7 @@ export async function decryptMessage(
  */
 export async function encryptFile(
   file: File,
-  key: CryptoKey
+  key: CryptoKey,
 ): Promise<{ encryptedBlob: Blob; iv: string }> {
   const arrayBuffer = await file.arrayBuffer();
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -128,7 +119,7 @@ export async function encryptFile(
   const encryptedBuffer = await window.crypto.subtle.encrypt(
     { name: "AES-GCM", iv: iv },
     key,
-    arrayBuffer
+    arrayBuffer,
   );
 
   return {
@@ -144,14 +135,14 @@ export async function decryptFile(
   encryptedData: ArrayBuffer,
   ivBase64: string,
   mimeType: string,
-  key: CryptoKey
+  key: CryptoKey,
 ): Promise<Blob> {
   const iv = new Uint8Array(base64ToArrayBuffer(ivBase64));
 
   const decryptedBuffer = await window.crypto.subtle.decrypt(
     { name: "AES-GCM", iv: iv },
     key,
-    encryptedData
+    encryptedData,
   );
 
   return new Blob([decryptedBuffer], { type: mimeType });
@@ -165,7 +156,7 @@ export async function decryptFile(
  */
 export async function getSafetyNumber(
   collectionId: string,
-  connectionCode: string
+  connectionCode: string,
 ): Promise<string> {
   const encoder = new TextEncoder();
   const combined = encoder.encode(`${collectionId}:${connectionCode}`);
@@ -187,7 +178,7 @@ export async function getSafetyNumber(
  */
 export async function encryptBackup(
   jsonData: string,
-  password: string
+  password: string,
 ): Promise<{ ciphertext: string; salt: string; iv: string }> {
   const encoder = new TextEncoder();
   const passwordBuffer = encoder.encode(password);
@@ -199,7 +190,7 @@ export async function encryptBackup(
     passwordBuffer,
     { name: "PBKDF2" },
     false,
-    ["deriveKey"]
+    ["deriveKey"],
   );
 
   const key = await window.crypto.subtle.deriveKey(
@@ -212,13 +203,13 @@ export async function encryptBackup(
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false,
-    ["encrypt"]
+    ["encrypt"],
   );
 
   const encrypted = await window.crypto.subtle.encrypt(
     { name: "AES-GCM", iv: iv },
     key,
-    encoder.encode(jsonData)
+    encoder.encode(jsonData),
   );
 
   return {
@@ -235,7 +226,7 @@ export async function decryptBackup(
   ciphertext: string,
   salt: string,
   iv: string,
-  password: string
+  password: string,
 ): Promise<string> {
   const passwordBuffer = new TextEncoder().encode(password);
   const saltArray = new Uint8Array(base64ToArrayBuffer(salt));
@@ -247,7 +238,7 @@ export async function decryptBackup(
     passwordBuffer,
     { name: "PBKDF2" },
     false,
-    ["deriveKey"]
+    ["deriveKey"],
   );
 
   const key = await window.crypto.subtle.deriveKey(
@@ -260,15 +251,14 @@ export async function decryptBackup(
     keyMaterial,
     { name: "AES-GCM", length: 256 },
     false,
-    ["decrypt"]
+    ["decrypt"],
   );
 
   const decrypted = await window.crypto.subtle.decrypt(
     { name: "AES-GCM", iv: ivArray },
     key,
-    ciphertextArray
+    ciphertextArray,
   );
 
   return new TextDecoder().decode(decrypted);
 }
-

@@ -20,15 +20,13 @@ def _jsonb_default(value: str) -> sa.TextClause:
 def _tenant_rls(table: str) -> None:
     op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
     op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
-    op.execute(
-        f"""
+    op.execute(f"""
         CREATE POLICY tenant_isolation_{table} ON {table}
         USING (current_setting('app.tenant_id', true) = 'bypass'
           OR tenant_id = NULLIF(current_setting('app.tenant_id', true), 'bypass')::uuid)
         WITH CHECK (current_setting('app.tenant_id', true) = 'bypass'
           OR tenant_id = NULLIF(current_setting('app.tenant_id', true), 'bypass')::uuid)
-        """
-    )
+        """)
 
 
 def upgrade() -> None:
@@ -37,9 +35,13 @@ def upgrade() -> None:
     op.create_table(
         "mcp_connection_policies",
         sa.Column("id", uuid, primary_key=True),
-        sa.Column("tenant_id", uuid, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", uuid, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("user_id", uuid, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("server_id", uuid, sa.ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "server_id", uuid, sa.ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("allowed_tools", jsonb, nullable=False, server_default=_jsonb_default("[]")),
         sa.Column("denied_tools", jsonb, nullable=False, server_default=_jsonb_default("[]")),
         sa.Column("read_only", sa.Boolean(), nullable=False, server_default=sa.text("true")),
@@ -48,14 +50,30 @@ def upgrade() -> None:
             "approval_rules",
             jsonb,
             nullable=False,
-            server_default=_jsonb_default('{"write":"needs_approval","delete":"needs_approval","external_message":"needs_approval"}'),
+            server_default=_jsonb_default(
+                '{"write":"needs_approval","delete":"needs_approval","external_message":"needs_approval"}'
+            ),
         ),
         sa.Column("tool_modes", jsonb, nullable=False, server_default=_jsonb_default("{}")),
         sa.Column("default_enabled", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("deepspace_overrides", jsonb, nullable=False, server_default=_jsonb_default("{}")),
-        sa.Column("conversation_overrides", jsonb, nullable=False, server_default=_jsonb_default("{}")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "deepspace_overrides", jsonb, nullable=False, server_default=_jsonb_default("{}")
+        ),
+        sa.Column(
+            "conversation_overrides", jsonb, nullable=False, server_default=_jsonb_default("{}")
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.UniqueConstraint("server_id", name="uq_mcp_connection_policies_server_id"),
         sa.CheckConstraint(
             "risk_ceiling IN ('read', 'write', 'delete', 'external_message')",
@@ -88,7 +106,9 @@ def downgrade() -> None:
     op.drop_constraint("fk_mcp_servers_connection_policy_id", "mcp_servers", type_="foreignkey")
     op.drop_column("mcp_servers", "connection_policy_id")
 
-    op.execute("DROP POLICY IF EXISTS tenant_isolation_mcp_connection_policies ON mcp_connection_policies")
+    op.execute(
+        "DROP POLICY IF EXISTS tenant_isolation_mcp_connection_policies ON mcp_connection_policies"
+    )
     op.execute("ALTER TABLE mcp_connection_policies NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE mcp_connection_policies DISABLE ROW LEVEL SECURITY")
     for column in ("updated_at", "server_id", "user_id", "tenant_id"):

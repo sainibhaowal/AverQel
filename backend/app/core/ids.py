@@ -24,7 +24,5 @@ def generate_uuid7_with_fallback() -> UUID:
     try:
         return generate_uuid7()
     except Exception:  # noqa: BLE001
-        logger.warning(
-            "UUIDv7 generation failed; falling back to UUIDv4.", exc_info=True
-        )
+        logger.warning("UUIDv7 generation failed; falling back to UUIDv4.", exc_info=True)
         return uuid4()

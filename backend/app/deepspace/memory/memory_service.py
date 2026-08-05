@@ -26,6 +26,8 @@ MAX_MEMORY_RETRIEVAL_ITEMS = 8
 MEMORY_STATUS_ACTIVE = "active"
 MEMORY_STATUS_PENDING = "pending"
 MEMORY_STATUS_ARCHIVED = "archived"
+MEMORY_SCHEMA_VERSION = "deepspace-memory-v2"
+MAX_AUTO_MEMORY_CANDIDATES = 3
 
 
 class MemoryService:
@@ -97,11 +99,7 @@ class MemoryService:
 
     @staticmethod
     def _tokenize(value: str) -> set[str]:
-        return {
-            token
-            for token in re.findall(r"[a-z0-9][a-z0-9_\-]{1,}", value.lower())
-            if token
-        }
+        return {token for token in re.findall(r"[a-z0-9][a-z0-9_\-]{1,}", value.lower()) if token}
 
     @staticmethod
     def _normalize_scope(scope: str | None) -> str:
@@ -133,15 +131,11 @@ class MemoryService:
 
     @staticmethod
     def _content_hash(*, key: str, value: str, scope: str) -> str:
-        normalized = "\n".join(
-            [key.strip().lower(), value.strip(), scope.strip().lower()]
-        )
+        normalized = "\n".join([key.strip().lower(), value.strip(), scope.strip().lower()])
         return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
     @staticmethod
-    def _cosine_similarity(
-        left: list[float] | None, right: list[float] | None
-    ) -> float:
+    def _cosine_similarity(left: list[float] | None, right: list[float] | None) -> float:
         if not left or not right or len(left) != len(right):
             return 0.0
         dot = sum(a * b for a, b in zip(left, right, strict=False))
@@ -197,11 +191,7 @@ class MemoryService:
         retention_days = MemoryService._retention_window_days(memory)
         if retention_days is None:
             return "persistent"
-        return (
-            "stale"
-            if MemoryService._age_days(memory, now=now) > retention_days
-            else "active"
-        )
+        return "stale" if MemoryService._age_days(memory, now=now) > retention_days else "active"
 
     @staticmethod
     def _importance_from_inputs(
@@ -225,10 +215,49 @@ class MemoryService:
             return str(memory.content_hash)
         scope = str(memory.scope or "user")
         return hashlib.sha256(
-            "\n".join([memory.key.strip().lower(), memory.value.strip(), scope]).encode(
-                "utf-8"
-            )
+            "\n".join([memory.key.strip().lower(), memory.value.strip(), scope]).encode("utf-8")
         ).hexdigest()
+
+    def _related_memory_ids(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        key: str,
+        value: str,
+        tags: list[str] | None,
+    ) -> list[str]:
+        """Build small tenant-scoped graph links using safe lexical overlap."""
+        current_tokens = self._tokenize(f"{key} {value} {' '.join(tags or [])}")
+        if not current_tokens:
+            return []
+        rows = (
+            self.db.execute(
+                select(AgentMemory)
+                .where(
+                    AgentMemory.tenant_id == tenant_id,
+                    AgentMemory.user_id == user_id,
+                    AgentMemory.scope == "user",
+                    AgentMemory.status.in_((MEMORY_STATUS_ACTIVE, MEMORY_STATUS_PENDING)),
+                )
+                .order_by(AgentMemory.updated_at.desc())
+                .limit(64)
+            )
+            .scalars()
+            .all()
+        )
+        ranked: list[tuple[float, AgentMemory]] = []
+        for memory in rows:
+            metadata = dict(memory.metadata_json or {})
+            other_tokens = self._tokenize(
+                f"{memory.key} {memory.value} {' '.join(memory.tags or [])} "
+                f"{' '.join(str(item) for item in metadata.get('entities', []))}"
+            )
+            overlap = len(current_tokens & other_tokens)
+            if overlap:
+                ranked.append((overlap / max(1, len(current_tokens)), memory))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        return [str(memory.id) for _score, memory in ranked[:8]]
 
     def _embed_text(
         self, text: str, *, tenant_id: str, user_id: str
@@ -323,32 +352,161 @@ class MemoryService:
         return any(term in lowered for term in blocked_terms)
 
     @staticmethod
-    def _candidate_from_prompt(prompt: str) -> tuple[str, str, list[str], float] | None:
-        """Extract only a clear, durable preference/fact without an extra LLM call.
+    def _slug(value: str, *, fallback: str = "memory") -> str:
+        words = re.findall(r"[a-z0-9]+", value.lower())
+        return "_".join(words[:8])[:80] or fallback
 
-        This deliberately ignores ordinary questions and full chat transcripts. It is a
-        bounded convenience feature, not self-training or hidden profile building.
+    @classmethod
+    def _structured_candidate(
+        cls,
+        *,
+        key: str,
+        value: str,
+        memory_type: str,
+        predicate: str,
+        confidence: float,
+        tags: list[str],
+        explicit: bool,
+        subject: str = "user",
+    ) -> dict[str, Any] | None:
+        normalized_value = " ".join(value.strip().split())
+        if len(normalized_value) < 8 or len(normalized_value) > 1000:
+            return None
+        if cls._is_sensitive_candidate(normalized_value):
+            return None
+        entity_tokens = [
+            token
+            for token in sorted(cls._tokenize(normalized_value))
+            if token not in {"prefer", "always", "never", "remember", "please"}
+        ][:16]
+        return {
+            "key": key[:120],
+            "value": normalized_value,
+            "tags": sorted(set([*tags, memory_type, "explicit" if explicit else "inferred"])),
+            "confidence": max(0.0, min(1.0, confidence)),
+            "importance": 0.9 if explicit else 0.65,
+            "explicit": explicit,
+            "metadata": {
+                "schema": MEMORY_SCHEMA_VERSION,
+                "memory_type": memory_type,
+                "subject": subject,
+                "predicate": predicate,
+                "object": normalized_value,
+                "entities": entity_tokens,
+                "temporal_scope": "persistent",
+                "capture_mode": "explicit" if explicit else "automatic",
+                "source_message": "explicit_user_request" if explicit else "latest_user_turn",
+            },
+        }
+
+    @classmethod
+    def _candidates_from_prompt(cls, prompt: str) -> list[dict[str, Any]]:
+        """Extract conservative, structured durable facts from one user turn.
+
+        This is intentionally bounded and deterministic. It never treats an ordinary
+        question or transcript as memory, and it never stores sensitive credentials.
+        Explicit remember requests bypass the automatic-capture preference because the
+        user has given direct consent for that specific fact.
         """
         normalized = " ".join(str(prompt or "").strip().split())
-        if len(normalized) < 12 or len(normalized) > 600:
-            return None
-        patterns = (
-            (r"\b(?:i|we)\s+prefer\s+(.+)", "preference", 0.9),
-            (r"\b(?:i|we)\s+(?:always|never)\s+(.+)", "workflow", 0.82),
-            (r"\bmy\s+([a-z][a-z0-9 _-]{1,50})\s+is\s+(.+)", "project_fact", 0.8),
+        if len(normalized) < 8 or len(normalized) > 2000:
+            return []
+        candidates: list[dict[str, Any]] = []
+
+        explicit_match = re.search(
+            r"\b(?:please\s+)?(?:remember\b|save\b|keep\s+in\s+mind\b)(?:\s+this)?\s*(?:for\s+(?:next|future)\s+time)?\s*(?:that|:|-)?\s*(.+)$",
+            normalized,
+            flags=re.IGNORECASE,
         )
-        for pattern, tag, confidence in patterns:
-            match = re.search(pattern, normalized, flags=re.IGNORECASE)
-            if match is None:
-                continue
-            if tag == "project_fact":
-                key = re.sub(r"[^a-z0-9]+", "_", match.group(1).lower()).strip("_")
-                value = f"My {match.group(1).strip()} is {match.group(2).strip()}"
-            else:
-                key = f"{tag}_{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:12]}"
-                value = normalized
-            return key[:120], value[:1000], [tag, "inferred"], confidence
-        return None
+        explicit_text = explicit_match.group(1).strip() if explicit_match else ""
+
+        fact_match = re.search(
+            r"\bmy\s+([a-z][a-z0-9 _-]{1,50})\s+is\s+(.+)$",
+            explicit_text or normalized,
+            flags=re.IGNORECASE,
+        )
+        if fact_match:
+            subject_name = fact_match.group(1).strip()
+            value = f"My {subject_name} is {fact_match.group(2).strip()}"
+            candidates.append(
+                cls._structured_candidate(
+                    key=f"fact_{cls._slug(subject_name)}",
+                    value=value,
+                    memory_type="fact",
+                    predicate="has_value",
+                    confidence=0.98 if explicit_match else 0.86,
+                    tags=["identity" if subject_name in {"name", "role", "job"} else "fact"],
+                    explicit=bool(explicit_match),
+                )
+            )
+
+        preference_match = re.search(
+            r"\b(?:i|we)\s+(prefer|always|never)\s+(.+)$",
+            explicit_text or normalized,
+            flags=re.IGNORECASE,
+        )
+        if preference_match:
+            predicate = preference_match.group(1).lower()
+            preference_value = f"I {predicate} {preference_match.group(2).strip()}"
+            candidates.append(
+                cls._structured_candidate(
+                    key=f"preference_{cls._slug(preference_match.group(2))}",
+                    value=preference_value,
+                    memory_type="preference" if predicate == "prefer" else "workflow",
+                    predicate=predicate,
+                    confidence=0.98 if explicit_match else 0.88,
+                    tags=["preference" if predicate == "prefer" else "workflow"],
+                    explicit=bool(explicit_match),
+                )
+            )
+
+        workflow_match = re.search(
+            r"\b(?:for|when)\s+(.+?)\s*,?\s*(?:always|never)\s+(.+)$",
+            explicit_text or normalized,
+            flags=re.IGNORECASE,
+        )
+        if workflow_match:
+            workflow_value = (
+                f"For {workflow_match.group(1).strip()}, {workflow_match.group(2).strip()}"
+            )
+            candidates.append(
+                cls._structured_candidate(
+                    key=f"workflow_{cls._slug(workflow_match.group(1))}",
+                    value=workflow_value,
+                    memory_type="workflow",
+                    predicate="workflow_rule",
+                    confidence=0.96 if explicit_match else 0.82,
+                    tags=["workflow", "rule"],
+                    explicit=bool(explicit_match),
+                )
+            )
+
+        # An explicit request can contain a durable statement that does not match one
+        # of the structured forms above. Keep it as a single general fact instead of
+        # silently dropping the user's direct instruction.
+        if explicit_match and not candidates and explicit_text:
+            candidates.append(
+                cls._structured_candidate(
+                    key=f"fact_{cls._slug(explicit_text)}",
+                    value=explicit_text,
+                    memory_type="fact",
+                    predicate="remembered_fact",
+                    confidence=0.95,
+                    tags=["fact"],
+                    explicit=True,
+                )
+            )
+
+        return [candidate for candidate in candidates if candidate][:MAX_AUTO_MEMORY_CANDIDATES]
+
+    @classmethod
+    def _candidate_from_prompt(cls, prompt: str) -> tuple[str, str, list[str], float] | None:
+        """Backward-compatible view of the first structured candidate."""
+        candidate = cls._candidates_from_prompt(prompt)
+        if not candidate:
+            return None
+        item = candidate[0]
+        return item["key"], item["value"], item["tags"], item["confidence"]
 
     async def consolidate_turn(
         self,
@@ -358,44 +516,87 @@ class MemoryService:
         conversation_id: str,
         prompt: str,
     ) -> dict[str, Any] | None:
-        """Create at most one reviewable durable-memory candidate after a successful turn."""
+        """Consolidate explicit or consented automatic facts after a successful turn."""
         preferences = await self.get_preferences(tenant_id=tenant_id, user_id=user_id)
-        if not preferences["automatic_capture_enabled"]:
-            return None
-        candidate = self._candidate_from_prompt(prompt)
-        if candidate is None:
-            return None
-        key, value, tags, confidence = candidate
-        if self._is_sensitive_candidate(value):
+        if self._is_sensitive_candidate(prompt):
             return {"status": "blocked_sensitive", "reason": "sensitive_content"}
+        candidates = self._candidates_from_prompt(prompt)
+        if not candidates:
+            return None
+        explicit_candidates = [item for item in candidates if item["explicit"]]
+        if not preferences["automatic_capture_enabled"]:
+            candidates = explicit_candidates
+        if not candidates:
+            return None
         tenant_id = self._normalize_owner_id(tenant_id)
         user_id = self._normalize_owner_id(user_id)
-        existing = self.db.execute(
-            select(AgentMemory).where(
-                AgentMemory.tenant_id == tenant_id,
-                AgentMemory.user_id == user_id,
-                AgentMemory.content_hash == self._content_hash(key=key, value=value, scope="user"),
+        results: list[dict[str, Any]] = []
+        for candidate in candidates:
+            key = str(candidate["key"])
+            value = str(candidate["value"])
+            explicit = bool(candidate["explicit"])
+            status = (
+                MEMORY_STATUS_ACTIVE
+                if explicit or not preferences["review_inferred_memories"]
+                else MEMORY_STATUS_PENDING
             )
-        ).scalar_one_or_none()
-        if existing is not None:
-            return {"status": "duplicate", "memory_id": str(existing.id)}
-        memory_id = await self.store_fact(
-            tenant_id=tenant_id,
-            user_id=user_id,
-            key=key,
-            value=value,
-            scope="user",
-            tags=tags,
-            importance_score=0.65,
-            confidence_score=confidence,
-            source="conversation_consolidation",
-            conversation_id=conversation_id,
-            status=(MEMORY_STATUS_PENDING if preferences["review_inferred_memories"] else MEMORY_STATUS_ACTIVE),
-            metadata_json={"inferred": True, "source_message": "latest_user_turn"},
-        )
+            existing = (
+                self.db.execute(
+                    select(AgentMemory)
+                    .where(
+                        AgentMemory.tenant_id == tenant_id,
+                        AgentMemory.user_id == user_id,
+                        AgentMemory.scope == "user",
+                        AgentMemory.key == key,
+                        AgentMemory.status != MEMORY_STATUS_ARCHIVED,
+                    )
+                    .order_by(AgentMemory.updated_at.desc())
+                )
+                .scalars()
+                .first()
+            )
+            metadata = dict(candidate["metadata"])
+            if existing is not None and existing.value.strip() != value.strip():
+                metadata["supersedes_memory_id"] = str(existing.id)
+                if explicit and status == MEMORY_STATUS_ACTIVE:
+                    existing.status = MEMORY_STATUS_ARCHIVED
+                    existing.metadata_json = {
+                        **dict(existing.metadata_json or {}),
+                        "superseded_at": datetime.now(UTC).isoformat(),
+                        "superseded_by": key,
+                    }
+                    self.db.commit()
+            memory_id = await self.store_fact(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                key=key,
+                value=value,
+                scope="user",
+                tags=list(candidate["tags"]),
+                importance_score=float(candidate["importance"]),
+                confidence_score=float(candidate["confidence"]),
+                source="explicit_memory_request" if explicit else "conversation_consolidation",
+                conversation_id=conversation_id,
+                status=status,
+                metadata_json=metadata,
+            )
+            results.append(
+                {
+                    "memory_id": memory_id,
+                    "status": "saved" if status == MEMORY_STATUS_ACTIVE else "pending",
+                    "key": key,
+                    "memory_type": metadata.get("memory_type"),
+                    "explicit": explicit,
+                }
+            )
+        if not results:
+            return None
+        primary = results[0]
         return {
-            "status": "pending" if preferences["review_inferred_memories"] else "saved",
-            "memory_id": memory_id,
+            "status": primary["status"],
+            "memory_id": primary["memory_id"],
+            "candidates": results,
+            "count": len(results),
         }
 
     async def store_fact(
@@ -420,10 +621,12 @@ class MemoryService:
         user_id = self._normalize_owner_id(user_id)
 
         from app.deepspace.integrations.client_proxy import client_proxy_registry
+
         channel = "storage"
         if client_proxy_registry.is_storage_connected(str(tenant_id), str(user_id)):
             return await client_proxy_registry.db_proxy_call(
-                str(tenant_id), str(user_id),
+                str(tenant_id),
+                str(user_id),
                 "db.memories.store_fact",
                 {
                     "key": key,
@@ -444,7 +647,9 @@ class MemoryService:
         normalized_value = value.strip()
         normalized_scope = self._normalize_scope(scope)
         normalized_status = (
-            status if status in {MEMORY_STATUS_ACTIVE, MEMORY_STATUS_PENDING} else MEMORY_STATUS_ACTIVE
+            status
+            if status in {MEMORY_STATUS_ACTIVE, MEMORY_STATUS_PENDING}
+            else MEMORY_STATUS_ACTIVE
         )
         if normalized_scope == "session" and expires_at is None:
             expires_at = datetime.now(UTC) + timedelta(days=SESSION_MEMORY_RETENTION_DAYS)
@@ -485,35 +690,59 @@ class MemoryService:
             existing.expires_at = expires_at or existing.expires_at
             existing.confidence_score = max(
                 float(existing.confidence_score or 0.0),
-                max(0.0, min(1.0, float(confidence_score if confidence_score is not None else 1.0))),
+                max(
+                    0.0, min(1.0, float(confidence_score if confidence_score is not None else 1.0))
+                ),
             )
             existing.content_hash = content_hash
-            existing.importance_score = max(
-                float(existing.importance_score or 0.0), importance
+            existing.importance_score = max(float(existing.importance_score or 0.0), importance)
+            previous_metadata = dict(existing.metadata_json or {})
+            confidence_history = list(previous_metadata.get("confidence_history") or [])
+            confidence_history.append(
+                max(
+                    0.0,
+                    min(
+                        1.0,
+                        float(confidence_score if confidence_score is not None else 1.0),
+                    ),
+                )
             )
             existing.metadata_json = {
-                **dict(existing.metadata_json or {}),
+                **previous_metadata,
                 **dict(metadata_json or {}),
                 "embedding_reused": True,
+                "schema": previous_metadata.get("schema", MEMORY_SCHEMA_VERSION),
+                "reinforcement_count": int(previous_metadata.get("reinforcement_count", 0)) + 1,
+                "last_confirmed_at": datetime.now(UTC).isoformat(),
+                "confidence_history": confidence_history[-12:],
             }
             if tags:
                 existing.tags = sorted(set((existing.tags or []) + tags))
             mem_id = existing.id
         else:
-            if normalized_status == MEMORY_STATUS_ACTIVE and normalized_scope == "user" and source in {
-                "manual_memory",
-                "deepspace_memory_tool",
-                "user_edit",
-            }:
-                conflicting_memories = self.db.execute(
-                    select(AgentMemory).where(
-                        AgentMemory.tenant_id == tenant_id,
-                        AgentMemory.user_id == user_id,
-                        AgentMemory.scope == "user",
-                        AgentMemory.status == MEMORY_STATUS_ACTIVE,
-                        AgentMemory.key == normalized_key,
+            if (
+                normalized_status == MEMORY_STATUS_ACTIVE
+                and normalized_scope == "user"
+                and source
+                in {
+                    "manual_memory",
+                    "deepspace_memory_tool",
+                    "user_edit",
+                }
+            ):
+                conflicting_memories = (
+                    self.db.execute(
+                        select(AgentMemory).where(
+                            AgentMemory.tenant_id == tenant_id,
+                            AgentMemory.user_id == user_id,
+                            AgentMemory.scope == "user",
+                            AgentMemory.status == MEMORY_STATUS_ACTIVE,
+                            AgentMemory.key == normalized_key,
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 for conflicting in conflicting_memories:
                     conflicting.status = MEMORY_STATUS_ARCHIVED
                     conflicting.metadata_json = {
@@ -532,6 +761,31 @@ class MemoryService:
                 embedding_text, tenant_id=tenant_id, user_id=user_id
             )
             mem_id = str(generate_uuid7_with_fallback())
+            structured_metadata = dict(metadata_json or {})
+            related_ids = self._related_memory_ids(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                key=normalized_key,
+                value=normalized_value,
+                tags=tags,
+            )
+            if related_ids:
+                structured_metadata["related_memory_ids"] = related_ids
+            structured_metadata.setdefault("schema", MEMORY_SCHEMA_VERSION)
+            structured_metadata.setdefault("reinforcement_count", 1)
+            structured_metadata.setdefault("last_confirmed_at", datetime.now(UTC).isoformat())
+            structured_metadata.setdefault(
+                "confidence_history",
+                [
+                    max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(confidence_score if confidence_score is not None else 1.0),
+                        ),
+                    )
+                ],
+            )
             memory = AgentMemory(
                 id=mem_id,
                 tenant_id=tenant_id,
@@ -545,17 +799,17 @@ class MemoryService:
                 embedding_version=MEMORY_EMBEDDING_VERSION,
                 content_hash=content_hash,
                 importance_score=importance,
-                confidence_score=max(0.0, min(1.0, float(confidence_score if confidence_score is not None else 1.0))),
+                confidence_score=max(
+                    0.0, min(1.0, float(confidence_score if confidence_score is not None else 1.0))
+                ),
                 status=normalized_status,
                 source=(str(source).strip()[:120] if source else None),
                 conversation_id=(str(conversation_id).strip()[:120] if conversation_id else None),
                 expires_at=expires_at,
                 access_count=0,
                 metadata_json={
-                    **dict(metadata_json or {}),
-                    "embedding_fallback_used": bool(
-                        embedding_metadata.get("fallback_used")
-                    ),
+                    **structured_metadata,
+                    "embedding_fallback_used": bool(embedding_metadata.get("fallback_used")),
                     "embedding_failure_code": embedding_metadata.get("failure_code"),
                 },
                 scope=normalized_scope,
@@ -580,10 +834,12 @@ class MemoryService:
         user_id = self._normalize_owner_id(user_id)
 
         from app.deepspace.integrations.client_proxy import client_proxy_registry
+
         channel = "storage"
         if client_proxy_registry.is_storage_connected(str(tenant_id), str(user_id)):
             return await client_proxy_registry.db_proxy_call(
-                str(tenant_id), str(user_id),
+                str(tenant_id),
+                str(user_id),
                 "db.memories.search_memories",
                 {"query": query, "limit": limit, "conversation_id": conversation_id},
                 channel=channel,
@@ -640,11 +896,7 @@ class MemoryService:
                 )
             )
             memory_tokens = self._tokenize(f"{memory.key} {memory.value}")
-            lexical = (
-                len(query_tokens & memory_tokens) / len(query_tokens)
-                if query_tokens
-                else 0.0
-            )
+            lexical = len(query_tokens & memory_tokens) / len(query_tokens) if query_tokens else 0.0
             freshness = self._freshness_score(memory, now=now)
             importance = max(0.0, min(1.0, float(memory.importance_score or 0.0)))
             confidence = max(0.0, min(1.0, float(memory.confidence_score or 0.0)))
@@ -661,6 +913,13 @@ class MemoryService:
                 + freshness * 0.04
                 + scope_bonus
             )
+            metadata_entities = {
+                str(item).lower() for item in (memory.metadata_json or {}).get("entities", [])
+            }
+            graph_overlap = (
+                len(query_tokens & metadata_entities) / len(query_tokens) if query_tokens else 0.0
+            )
+            score += graph_overlap * 0.04
             if score > 0:
                 scored.append((score, semantic, lexical, freshness, memory))
 
@@ -726,8 +985,7 @@ class MemoryService:
             self.db.rollback()
             return None
         return [
-            (memory, float(distance) if distance is not None else None)
-            for memory, distance in rows
+            (memory, float(distance) if distance is not None else None) for memory, distance in rows
         ]
 
     async def retrieve_fact(
@@ -749,9 +1007,7 @@ class MemoryService:
             select(AgentMemory)
             .where(
                 AgentMemory.tenant_id == tenant_id,
-                self._accessible_memory_clause(
-                    user_id=user_id, conversation_id=conversation_id
-                ),
+                self._accessible_memory_clause(user_id=user_id, conversation_id=conversation_id),
                 self._active_memory_clause(),
                 AgentMemory.key == normalized_key,
             )
@@ -969,9 +1225,7 @@ class MemoryService:
             ),
             reverse=True,
         )[:10]
-        bullet_text = "; ".join(
-            f"{item['key']}: {str(item['value'])[:180]}" for item in ranked
-        )
+        bullet_text = "; ".join(f"{item['key']}: {str(item['value'])[:180]}" for item in ranked)
         summary = f"Synthesized {len(ranked)} high-value memories: {bullet_text}"
         await self.store_fact(
             tenant_id=tenant_id,
@@ -1065,9 +1319,7 @@ class MemoryService:
             "sample_queries": query_reports,
         }
 
-    async def cleanup_duplicate_memories(
-        self, *, tenant_id: str, user_id: str
-    ) -> dict[str, Any]:
+    async def cleanup_duplicate_memories(self, *, tenant_id: str, user_id: str) -> dict[str, Any]:
         """Collapse duplicate memory rows so storage stays clean over time."""
         tenant_id = self._normalize_owner_id(tenant_id)
         user_id = self._normalize_owner_id(user_id)
@@ -1121,13 +1373,9 @@ class MemoryService:
             combined_metadata: dict[str, Any] = dict(keeper.metadata_json or {})
             max_importance = float(keeper.importance_score or 0.0)
             for duplicate in group[1:]:
-                combined_tags.extend(
-                    [str(tag) for tag in (duplicate.tags or []) if tag]
-                )
+                combined_tags.extend([str(tag) for tag in (duplicate.tags or []) if tag])
                 combined_metadata.update(dict(duplicate.metadata_json or {}))
-                max_importance = max(
-                    max_importance, float(duplicate.importance_score or 0.0)
-                )
+                max_importance = max(max_importance, float(duplicate.importance_score or 0.0))
                 self.db.delete(duplicate)
                 removed_count += 1
             combined_tags.extend([str(tag) for tag in (keeper.tags or []) if tag])
@@ -1207,9 +1455,7 @@ class MemoryService:
         retention_days: int = SESSION_MEMORY_RETENTION_DAYS,
     ) -> dict[str, Any]:
         """Return a retention snapshot for lifecycle monitoring."""
-        report = await self.evaluate_memory_quality(
-            tenant_id=tenant_id, user_id=user_id
-        )
+        report = await self.evaluate_memory_quality(tenant_id=tenant_id, user_id=user_id)
         report["retention_policy"] = {
             "session_retention_days": retention_days,
             "decay_half_life_days": MEMORY_DECAY_HALF_LIFE_DAYS,
@@ -1313,9 +1559,7 @@ class TodoService:
         normalized_active_form = (active_form or content).strip() or content
         normalized_priority = int(priority or 0)
         payload = dict(metadata_json) if isinstance(metadata_json, dict) else None
-        automation_payload = (
-            dict(automation_json) if isinstance(automation_json, dict) else {}
-        )
+        automation_payload = dict(automation_json) if isinstance(automation_json, dict) else {}
 
         stmt = select(AgentTodo).where(
             AgentTodo.tenant_id == tenant_id,
@@ -1336,13 +1580,9 @@ class TodoService:
                 payload if payload is not None else dict(existing.metadata_json or {})
             )
             existing.automation_json = (
-                automation_payload
-                if automation_payload
-                else dict(existing.automation_json or {})
+                automation_payload if automation_payload else dict(existing.automation_json or {})
             )
-            existing.is_recurring = (
-                1 if is_recurring else int(existing.is_recurring or 0)
-            )
+            existing.is_recurring = 1 if is_recurring else int(existing.is_recurring or 0)
             existing.enabled = 1 if enabled else 0
             existing.next_run_at = next_run_at or existing.next_run_at
             existing.last_run_at = last_run_at or existing.last_run_at
@@ -1403,11 +1643,7 @@ class TodoService:
             thread_id=thread_id,
             content=content,
             active_form=active_form,
-            status=(
-                status
-                if status in {"pending", "in_progress", "completed"}
-                else "pending"
-            ),
+            status=(status if status in {"pending", "in_progress", "completed"} else "pending"),
             priority=int(priority or 0),
             metadata_json=dict(metadata_json or {}),
             automation_json=dict(automation_json or {}),
@@ -1457,17 +1693,11 @@ class TodoService:
                 status=str(todo_data.get("status") or "pending"),
                 priority=int(todo_data.get("priority") or 0),
                 thread_id=(
-                    str(todo_data.get("thread_id") or todo_data.get("threadId") or "")
-                    or None
+                    str(todo_data.get("thread_id") or todo_data.get("threadId") or "") or None
                 ),
-                metadata_json=todo_data.get("metadata_json")
-                or todo_data.get("metadata")
-                or {},
-                automation_json=todo_data.get("automation_json")
-                or todo_data.get("automation"),
-                is_recurring=bool(
-                    todo_data.get("is_recurring") or todo_data.get("recurring")
-                ),
+                metadata_json=todo_data.get("metadata_json") or todo_data.get("metadata") or {},
+                automation_json=todo_data.get("automation_json") or todo_data.get("automation"),
+                is_recurring=bool(todo_data.get("is_recurring") or todo_data.get("recurring")),
                 enabled=bool(todo_data.get("enabled", True)),
                 next_run_at=self._parse_datetime(todo_data.get("next_run_at")),
                 last_run_at=self._parse_datetime(todo_data.get("last_run_at")),
@@ -1490,9 +1720,7 @@ class TodoService:
         todos = self.db.execute(stmt).scalars().all()
         return [self._task_to_dict(t) for t in todos]
 
-    def get_task(
-        self, *, tenant_id: str, user_id: str, task_id: str
-    ) -> AgentTodo | None:
+    def get_task(self, *, tenant_id: str, user_id: str, task_id: str) -> AgentTodo | None:
         tenant_id = self._normalize_owner_id(tenant_id)
         user_id = self._normalize_owner_id(user_id)
         stmt = select(AgentTodo).where(
@@ -1529,9 +1757,7 @@ class TodoService:
         if "status" in updates and updates["status"] is not None:
             status = str(updates["status"])
             task.status = (
-                status
-                if status in {"pending", "in_progress", "completed"}
-                else task.status
+                status if status in {"pending", "in_progress", "completed"} else task.status
             )
         if "priority" in updates and updates["priority"] is not None:
             task.priority = int(updates["priority"])
@@ -1540,9 +1766,7 @@ class TodoService:
             task.thread_id = str(thread_id) if thread_id else None
         if "metadata_json" in updates and updates["metadata_json"] is not None:
             metadata_json = updates["metadata_json"]
-            task.metadata_json = (
-                dict(metadata_json) if isinstance(metadata_json, dict) else {}
-            )
+            task.metadata_json = dict(metadata_json) if isinstance(metadata_json, dict) else {}
         if "automation_json" in updates and updates["automation_json"] is not None:
             automation_json = updates["automation_json"]
             task.automation_json = (
@@ -1586,9 +1810,7 @@ class TodoService:
         task.status = "deleted"
         self.db.commit()
 
-    def list_due_recurring_tasks(
-        self, *, tenant_id: str, user_id: str
-    ) -> list[AgentTodo]:
+    def list_due_recurring_tasks(self, *, tenant_id: str, user_id: str) -> list[AgentTodo]:
         now = datetime.now(UTC)
         tenant_id = self._normalize_owner_id(tenant_id)
         user_id = self._normalize_owner_id(user_id)

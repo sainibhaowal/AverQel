@@ -311,7 +311,7 @@ export default function DocumentDetailPage() {
     <div className="space-y-8 pb-12">
       <Link
         href="/dashboard/documents"
-        className="hover:text-foreground group mb-4 inline-flex items-center gap-2 text-slate-700 dark:text-slate-400 transition-colors"
+        className="hover:text-foreground group mb-4 inline-flex items-center gap-2 text-slate-700 transition-colors dark:text-slate-400"
       >
         <ArrowLeft size={18} className="transition-transform group-hover:-translate-x-1" />
         <span className="text-sm font-semibold">Back to Documents</span>
@@ -357,11 +357,11 @@ export default function DocumentDetailPage() {
             <div className="glass-card p-10">
               <div className="relative flex justify-between">
                 {/* Background Track */}
-                <div className="bg-slate-200 dark:bg-slate-800/80 absolute top-[21px] left-0 z-0 h-1.5 w-full rounded-full" />
-                
+                <div className="absolute top-[21px] left-0 z-0 h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-800/80" />
+
                 {/* Active Progress Track */}
                 <div
-                  className="bg-gradient-to-r from-teal-500 to-emerald-500 absolute top-[21px] left-0 z-0 h-1.5 rounded-full transition-all duration-1000 shadow-[0_0_12px_rgba(16,185,129,0.45)]"
+                  className="absolute top-[21px] left-0 z-0 h-1.5 rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.45)] transition-all duration-1000"
                   style={{
                     width: `${Math.max(0, (boundedStepIndex / (steps.length - 1)) * 100)}%`,
                   }}
@@ -369,34 +369,39 @@ export default function DocumentDetailPage() {
 
                 {steps.map((step, idx) => {
                   const isCompleted = idx < boundedStepIndex || normalizedStatus === "indexed";
-                  const isActive = idx === boundedStepIndex && normalizedStatus !== "indexed" && !isFailed;
+                  const isActive =
+                    idx === boundedStepIndex && normalizedStatus !== "indexed" && !isFailed;
 
                   return (
                     <div key={step.id} className="group relative z-10 flex flex-col items-center">
                       <div className="relative">
                         {/* Pulse Ring for Active Node */}
                         {isActive && (
-                          <div className="absolute inset-[-4px] rounded-xl border border-emerald-400/50 animate-[ping_1.8s_ease-in-out_infinite] pointer-events-none" />
+                          <div className="pointer-events-none absolute inset-[-4px] animate-[ping_1.8s_ease-in-out_infinite] rounded-xl border border-emerald-400/50" />
                         )}
                         <div
-                          className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-500 relative z-10 ${
+                          className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-500 ${
                             isCompleted
                               ? "border-none bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-[0_4px_14px_rgba(13,148,136,0.3)]"
                               : isActive
-                                ? "border-2 border-emerald-600 bg-white text-emerald-700 shadow-[0_0_24px_rgba(16,185,129,0.35)] scale-110 dark:border-emerald-500 dark:bg-[#101512] dark:text-emerald-400 dark:shadow-[0_0_20px_rgba(16,185,129,0.45)]"
+                                ? "scale-110 border-2 border-emerald-600 bg-white text-emerald-700 shadow-[0_0_24px_rgba(16,185,129,0.35)] dark:border-emerald-500 dark:bg-[#101512] dark:text-emerald-400 dark:shadow-[0_0_20px_rgba(16,185,129,0.45)]"
                                 : "border-slate-300 bg-slate-50 text-slate-500 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-600"
                           } `}
                         >
-                          {isCompleted ? <CheckCircle2 size={16} className="stroke-[2.5]" /> : step.icon}
+                          {isCompleted ? (
+                            <CheckCircle2 size={16} className="stroke-[2.5]" />
+                          ) : (
+                            step.icon
+                          )}
                         </div>
                       </div>
                       <span
                         className={`mt-4 text-[10px] tracking-[0.16em] uppercase transition-colors ${
                           isCompleted
-                            ? "text-slate-800 dark:text-slate-200 font-bold"
+                            ? "font-bold text-slate-800 dark:text-slate-200"
                             : isActive
-                              ? "text-emerald-700 dark:text-emerald-400 font-extrabold"
-                              : "text-slate-500 dark:text-slate-600 font-medium"
+                              ? "font-extrabold text-emerald-700 dark:text-emerald-400"
+                              : "font-medium text-slate-500 dark:text-slate-600"
                         }`}
                       >
                         {step.label}
@@ -411,27 +416,29 @@ export default function DocumentDetailPage() {
                 <div className="flex items-center justify-between text-[11px] font-bold tracking-[0.2em] uppercase">
                   <div className="flex items-center gap-2">
                     {!isFailed && normalizedStatus !== "indexed" && (
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                      <span className="h-2 w-2 animate-ping rounded-full bg-emerald-500" />
                     )}
                     <span className="text-slate-500">Current Phase:</span>
-                    <span className={`font-black ${isFailed ? "text-red-600" : "text-emerald-750 dark:text-emerald-400"}`}>
+                    <span
+                      className={`font-black ${isFailed ? "text-red-600" : "text-emerald-750 dark:text-emerald-400"}`}
+                    >
                       {isFailed ? "FAILED" : activePipelineStatus.replace("_", " ")}
                     </span>
                   </div>
-                  <span className="text-teal-800 dark:text-teal-300 tabular-nums font-black">{overallProgress}%</span>
+                  <span className="font-black text-teal-800 tabular-nums dark:text-teal-300">
+                    {overallProgress}%
+                  </span>
                 </div>
-                <div className="bg-slate-200/60 dark:bg-slate-800/80 h-3 overflow-hidden rounded-full relative shadow-inner p-[2px]">
+                <div className="relative h-3 overflow-hidden rounded-full bg-slate-200/60 p-[2px] shadow-inner dark:bg-slate-800/80">
                   <div
-                    className="bg-gradient-to-r from-teal-500 via-emerald-400 to-emerald-500 h-full rounded-full transition-all duration-700 relative overflow-hidden"
-                    style={{ 
+                    className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-teal-500 via-emerald-400 to-emerald-500 transition-all duration-700"
+                    style={{
                       width: `${overallProgress}%`,
-                      boxShadow: "0 0 10px rgba(16, 185, 129, 0.3)"
+                      boxShadow: "0 0 10px rgba(16, 185, 129, 0.3)",
                     }}
                   >
                     {/* Shimmer overlay */}
-                    {!isFailed && overallProgress < 100 && (
-                      <div className="progress-bar-shimmer" />
-                    )}
+                    {!isFailed && overallProgress < 100 && <div className="progress-bar-shimmer" />}
                   </div>
                 </div>
               </div>
@@ -470,19 +477,21 @@ export default function DocumentDetailPage() {
                 <div className="flex gap-6">
                   <button
                     onClick={() => setViewMode("reader")}
-                    className={`pb-1 text-[10px] font-black tracking-widest uppercase transition-all ${viewMode === "reader"
+                    className={`pb-1 text-[10px] font-black tracking-widest uppercase transition-all ${
+                      viewMode === "reader"
                         ? "text-primary border-primary border-b-2"
                         : "text-foreground/40 hover:text-foreground"
-                      }`}
+                    }`}
                   >
                     Reader Mode
                   </button>
                   <button
                     onClick={() => setViewMode("technical")}
-                    className={`pb-1 text-[10px] font-black tracking-widest uppercase transition-all ${viewMode === "technical"
+                    className={`pb-1 text-[10px] font-black tracking-widest uppercase transition-all ${
+                      viewMode === "technical"
                         ? "text-primary border-primary border-b-2"
                         : "text-foreground/40 hover:text-foreground"
-                      }`}
+                    }`}
                   >
                     Technical Fragments
                   </button>
@@ -608,7 +617,7 @@ export default function DocumentDetailPage() {
             </h3>
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-md border border-teal-300 bg-teal-50/70 px-2 py-1 text-[10px] font-bold tracking-wider text-teal-900 uppercase dark:border-primary/30 dark:bg-primary/10 dark:text-primary">
+                <span className="dark:border-primary/30 dark:bg-primary/10 dark:text-primary rounded-md border border-teal-300 bg-teal-50/70 px-2 py-1 text-[10px] font-bold tracking-wider text-teal-900 uppercase">
                   Coverage {Math.round((doc.extraction_coverage_score ?? 0) * 100)}%
                 </span>
                 {doc.extraction_ocr_used ? (
@@ -622,11 +631,15 @@ export default function DocumentDetailPage() {
                   </span>
                 ) : null}
               </div>
-              <p className="text-slate-700 dark:text-slate-400 font-mono text-xs">
-                Method: <span className="font-bold text-foreground">{doc.extraction_method || "n/a"}</span>
+              <p className="font-mono text-xs text-slate-700 dark:text-slate-400">
+                Method:{" "}
+                <span className="text-foreground font-bold">{doc.extraction_method || "n/a"}</span>
               </p>
-              <p className="text-slate-700 dark:text-slate-400 font-mono text-xs">
-                Embeddings: <span className="font-bold text-foreground">{status?.embedding_provider || "pending"} / {status?.embedding_model || "pending"}</span>
+              <p className="font-mono text-xs text-slate-700 dark:text-slate-400">
+                Embeddings:{" "}
+                <span className="text-foreground font-bold">
+                  {status?.embedding_provider || "pending"} / {status?.embedding_model || "pending"}
+                </span>
               </p>
               {doc.extraction_warnings?.length ? (
                 <div className="rounded-xl border border-amber-300 bg-amber-50/90 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
@@ -693,10 +706,11 @@ export default function DocumentDetailPage() {
                     <Link
                       key={v.document_id}
                       href={`/dashboard/documents/${v.document_id}`}
-                      className={`flex items-center justify-between rounded-xl border p-3 transition-all ${v.document_id === id
+                      className={`flex items-center justify-between rounded-xl border p-3 transition-all ${
+                        v.document_id === id
                           ? "border-primary/30 bg-primary/10 text-primary"
                           : "theme-chip text-slate-700 hover:border-white/10 dark:text-slate-400"
-                        }`}
+                      }`}
                     >
                       <div className="flex items-center gap-3">
                         <div
@@ -714,10 +728,12 @@ export default function DocumentDetailPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-slate-700 dark:text-slate-400 italic">No other versions detected.</p>
+                <p className="text-xs text-slate-700 italic dark:text-slate-400">
+                  No other versions detected.
+                </p>
               )}
               <div className="pt-2">
-                <p className="text-[10px] leading-relaxed text-slate-700 dark:text-slate-500 italic">
+                <p className="text-[10px] leading-relaxed text-slate-700 italic dark:text-slate-500">
                   * New versions are automatically tracked when uploading a document with the same
                   filename but modified content.
                 </p>

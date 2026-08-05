@@ -248,9 +248,7 @@ def get_document_full_text(
     )
 
     if not doc:
-        raise ApiError(
-            code="DOCUMENT_NOT_FOUND", message="Document not found", status_code=404
-        )
+        raise ApiError(code="DOCUMENT_NOT_FOUND", message="Document not found", status_code=404)
 
     # Get all chunks sorted by index
     chunks = (
@@ -305,9 +303,7 @@ def download_document(
         )
 
     # Stream the file from storage
-    file_stream = storage.get_stream(
-        bucket=doc.storage_bucket, object_key=doc.storage_object_key
-    )
+    file_stream = storage.get_stream(bucket=doc.storage_bucket, object_key=doc.storage_object_key)
 
     return StreamingResponse(
         file_stream,
@@ -331,9 +327,7 @@ def list_documents(
 
     service = IngestionService(db=db, settings=settings)
     items = service.list_documents(tenant_id=auth.tenant_id, user_id=auth.user_id)
-    return DocumentListResponse(
-        items=[_document_metadata_response(doc) for doc in items]
-    )
+    return DocumentListResponse(items=[_document_metadata_response(doc) for doc in items])
 
 
 @router.post(
@@ -373,23 +367,30 @@ async def upload_document(
 
     payload = await file.read()
     from app.deepspace.integrations.client_proxy import client_proxy_registry
+
     if client_proxy_registry.is_client_connected(str(auth.tenant_id), str(auth.user_id)):
         import base64
+
         payload_b64 = base64.b64encode(payload).decode("utf-8")
         result_data = await client_proxy_registry.db_proxy_call(
-            str(auth.tenant_id), str(auth.user_id),
+            str(auth.tenant_id),
+            str(auth.user_id),
             "db.documents.upload",
             {
                 "idempotency_key": cleaned_key,
                 "filename": file.filename or "",
                 "content_type": file.content_type or "application/octet-stream",
-                "payload_b64": payload_b64
-            }
+                "payload_b64": payload_b64,
+            },
         )
         return DocumentUploadResponse(
             document_id=uuid.UUID(result_data["document_id"]),
             status=result_data.get("status", "completed"),
-            ingestion_job_id=uuid.UUID(result_data["ingestion_job_id"]) if result_data.get("ingestion_job_id") else None,
+            ingestion_job_id=(
+                uuid.UUID(result_data["ingestion_job_id"])
+                if result_data.get("ingestion_job_id")
+                else None
+            ),
         )
 
     service = IngestionService(db=db, settings=settings)
@@ -439,9 +440,7 @@ async def stream_document_events(
                 if await request.is_disconnected():
                     break
 
-                message = pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=1.0
-                )
+                message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if message and message.get("data"):
                     payload = message["data"]
                     if isinstance(payload, bytes):
@@ -730,12 +729,8 @@ def delete_document(
             status_code=404,
         )
 
-    service.documents.soft_delete_batch(
-        tenant_id=auth.tenant_id, document_ids=[document_id]
-    )
-    service.chunks.delete_by_document_ids(
-        tenant_id=auth.tenant_id, document_ids=[document_id]
-    )
+    service.documents.soft_delete_batch(tenant_id=auth.tenant_id, document_ids=[document_id])
+    service.chunks.delete_by_document_ids(tenant_id=auth.tenant_id, document_ids=[document_id])
     db.commit()
 
     _safe_audit_commit(
@@ -775,12 +770,8 @@ def batch_delete_documents(
     if not to_delete:
         return DeleteBatchResponse(deleted_count=0)
 
-    service.documents.soft_delete_batch(
-        tenant_id=auth.tenant_id, document_ids=to_delete
-    )
-    service.chunks.delete_by_document_ids(
-        tenant_id=auth.tenant_id, document_ids=to_delete
-    )
+    service.documents.soft_delete_batch(tenant_id=auth.tenant_id, document_ids=to_delete)
+    service.chunks.delete_by_document_ids(tenant_id=auth.tenant_id, document_ids=to_delete)
     db.commit()
 
     _safe_audit_commit(
@@ -835,9 +826,7 @@ def reingest_document(
     document.extraction_vision_used = False
     document.extraction_warnings = []
 
-    service.chunks.delete_by_document_ids(
-        tenant_id=auth.tenant_id, document_ids=[document_id]
-    )
+    service.chunks.delete_by_document_ids(tenant_id=auth.tenant_id, document_ids=[document_id])
 
     for existing_job in service.jobs.list_by_document_id(
         tenant_id=auth.tenant_id,

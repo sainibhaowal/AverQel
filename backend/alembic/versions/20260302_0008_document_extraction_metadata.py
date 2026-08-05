@@ -17,12 +17,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "documents", sa.Column("extraction_method", sa.String(length=64), nullable=True)
-    )
-    op.add_column(
-        "documents", sa.Column("extraction_coverage_score", sa.Float(), nullable=True)
-    )
+    op.add_column("documents", sa.Column("extraction_method", sa.String(length=64), nullable=True))
+    op.add_column("documents", sa.Column("extraction_coverage_score", sa.Float(), nullable=True))
     op.add_column(
         "documents",
         sa.Column(

@@ -193,9 +193,7 @@ class MCPServerOAuthService:
             client_id=client_id,
             client_secret=client_secret,
         )
-        oauth_metadata = OAuthMetadata.model_validate(
-            profile.oauth_metadata(scopes=scopes)
-        )
+        oauth_metadata = OAuthMetadata.model_validate(profile.oauth_metadata(scopes=scopes))
         resource_metadata = ProtectedResourceMetadata.model_validate(
             profile.protected_resource_metadata(
                 resource_url=str(server.config.get("server_url") or ""),
@@ -230,7 +228,9 @@ class MCPServerOAuthService:
                     "code_verifier": pkce["code_verifier"],
                     "client_info": client_info.model_dump(mode="json", exclude_none=True),
                     "client_metadata": client_metadata.model_dump(mode="json", exclude_none=True),
-                    "resource_metadata": resource_metadata.model_dump(mode="json", exclude_none=True),
+                    "resource_metadata": resource_metadata.model_dump(
+                        mode="json", exclude_none=True
+                    ),
                     "oauth_metadata": oauth_metadata.model_dump(mode="json", exclude_none=True),
                 },
                 separators=(",", ":"),
@@ -303,12 +303,18 @@ class MCPServerOAuthService:
                     identity_payload = response.json()
                     email_payload = None
                     if profile.identity_email_endpoint:
-                        email_response = client.get(profile.identity_email_endpoint, headers=headers)
+                        email_response = client.get(
+                            profile.identity_email_endpoint, headers=headers
+                        )
                         if email_response.status_code == 200:
                             email_payload = email_response.json()
                     return profile.extract_identity(identity_payload, email_payload)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception:  # noqa: BLE001, B110 - static fallback preserves OAuth availability
+            return {
+                "provider_subject": f"{profile.key}-user",
+                "account_id": f"{profile.key}-user",
+                "display_name": f"{profile.label} Account",
+            }
         return {
             "provider_subject": f"{profile.key}-user",
             "account_id": f"{profile.key}-user",
@@ -340,9 +346,7 @@ class MCPServerOAuthService:
             client_secret=client_secret,
             code=code,
             code_verifier=str(pending.get("code_verifier") or ""),
-            redirect_uri=str(
-                pending.get("client_metadata", {}).get("redirect_uris", [""])[0]
-            ),
+            redirect_uri=str(pending.get("client_metadata", {}).get("redirect_uris", [""])[0]),
         )
         granted_scopes = profile.verify_scopes(
             provider_slug=server.provider_slug or "",
@@ -375,11 +379,15 @@ class MCPServerOAuthService:
             if token_expires_in is not None
             else None
         )
-        record = self.db.query(MCPOAuthToken).filter(
-            MCPOAuthToken.server_id == server.id,
-            MCPOAuthToken.tenant_id == server.tenant_id,
-            MCPOAuthToken.user_id == server.user_id,
-        ).one_or_none()
+        record = (
+            self.db.query(MCPOAuthToken)
+            .filter(
+                MCPOAuthToken.server_id == server.id,
+                MCPOAuthToken.tenant_id == server.tenant_id,
+                MCPOAuthToken.user_id == server.user_id,
+            )
+            .one_or_none()
+        )
         if record is None:
             record = MCPOAuthToken(
                 tenant_id=server.tenant_id,
@@ -404,7 +412,15 @@ class MCPServerOAuthService:
         server.config = {
             key: value
             for key, value in (server.config or {}).items()
-            if key not in {"oauth_pending", "oauth_transaction_id", "oauth_client_info", "client_metadata", "oauth_metadata", "resource_metadata"}
+            if key
+            not in {
+                "oauth_pending",
+                "oauth_transaction_id",
+                "oauth_client_info",
+                "client_metadata",
+                "oauth_metadata",
+                "resource_metadata",
+            }
         }
         server.status = "connected"
         server.enabled = True
@@ -434,7 +450,9 @@ class MCPServerOAuthService:
         ).scalar_one_or_none()
         if record is not None and profile is not None and profile.revocation_endpoint:
             credentials = self._decrypt_token_credentials(server)
-            token_value = str(credentials.get("refresh_token") or credentials.get("access_token") or "").strip()
+            token_value = str(
+                credentials.get("refresh_token") or credentials.get("access_token") or ""
+            ).strip()
             if token_value:
                 client_id, client_secret, _ = profile.configured_credentials(self.settings)
                 if client_id and client_secret:
@@ -494,7 +512,7 @@ class MCPServerOAuthService:
         from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata
 
         scope = get_client_metadata_scopes(None, resource_metadata, oauth_metadata) or ""
-        metadata = OAuthClientMetadata(
+        metadata = OAuthClientMetadata(  # nosec B106 - OAuth public-client metadata
             redirect_uris=[redirect_uri],
             token_endpoint_auth_method="none",
             scope=scope,
@@ -542,7 +560,9 @@ class MCPServerOAuthService:
                     "code_verifier": pkce["code_verifier"],
                     "client_info": client_info.model_dump(mode="json", exclude_none=True),
                     "client_metadata": metadata.model_dump(mode="json", exclude_none=True),
-                    "resource_metadata": resource_metadata.model_dump(mode="json", exclude_none=True),
+                    "resource_metadata": resource_metadata.model_dump(
+                        mode="json", exclude_none=True
+                    ),
                     "oauth_metadata": oauth_metadata.model_dump(mode="json", exclude_none=True),
                 },
                 separators=(",", ":"),
@@ -626,7 +646,9 @@ class MCPServerOAuthService:
         token = self.helper._exchange_token(
             oauth_metadata=OAuthMetadata.model_validate(pending["oauth_metadata"]),
             client_info=OAuthClientInformationFull.model_validate(pending["client_info"]),
-            resource_metadata=ProtectedResourceMetadata.model_validate(pending["resource_metadata"]),
+            resource_metadata=ProtectedResourceMetadata.model_validate(
+                pending["resource_metadata"]
+            ),
             code=code,
             code_verifier=pending["code_verifier"],
             redirect_uri=str(
@@ -654,18 +676,24 @@ class MCPServerOAuthService:
             if token_expires_in is not None
             else None
         )
-        record = self.db.query(MCPOAuthToken).filter(
-            MCPOAuthToken.server_id == server.id,
-            MCPOAuthToken.tenant_id == server.tenant_id,
-            MCPOAuthToken.user_id == server.user_id,
-        ).one_or_none()
+        record = (
+            self.db.query(MCPOAuthToken)
+            .filter(
+                MCPOAuthToken.server_id == server.id,
+                MCPOAuthToken.tenant_id == server.tenant_id,
+                MCPOAuthToken.user_id == server.user_id,
+            )
+            .one_or_none()
+        )
         if record is None:
             record = MCPOAuthToken(
                 tenant_id=server.tenant_id,
                 user_id=server.user_id,
                 server_id=server.id,
                 registry_entry_id=server.registry_entry_id,
-                provider_slug=server.provider_slug or str((server.config or {}).get("vendor_slug") or "") or None,
+                provider_slug=server.provider_slug
+                or str((server.config or {}).get("vendor_slug") or "")
+                or None,
                 secret_ciphertext=encrypted.ciphertext,
                 secret_nonce=encrypted.nonce,
                 secret_kid=encrypted.kid,
@@ -676,7 +704,9 @@ class MCPServerOAuthService:
         else:
             record.user_id = server.user_id
             record.registry_entry_id = server.registry_entry_id
-            record.provider_slug = server.provider_slug or str((server.config or {}).get("vendor_slug") or "") or None
+            record.provider_slug = (
+                server.provider_slug or str((server.config or {}).get("vendor_slug") or "") or None
+            )
             record.secret_ciphertext = encrypted.ciphertext
             record.secret_nonce = encrypted.nonce
             record.secret_kid = encrypted.kid
@@ -686,7 +716,8 @@ class MCPServerOAuthService:
         server.config = {
             key: value
             for key, value in (server.config or {}).items()
-            if key not in {
+            if key
+            not in {
                 "oauth_pending",
                 "oauth_transaction_id",
                 "oauth_client_info",

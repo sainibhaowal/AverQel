@@ -145,6 +145,7 @@ class ProviderSelectionCandidate:
         "workspace_fallback",
         "tenant_fallback",
         "env_fallback",
+        "builtin",
     ]
     provider_config_id: UUID | None = None
     tenant_id: UUID | None = None

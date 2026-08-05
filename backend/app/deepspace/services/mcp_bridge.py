@@ -96,17 +96,21 @@ class DeepSpaceMCPBridge:
         # execute method; MCP remains simply unavailable in that environment.
         if not callable(getattr(self.db, "execute", None)):
             return {}
-        servers = self.db.execute(
-            select(MCPServer)
-            .where(
-                MCPServer.tenant_id == auth.tenant_id,
-                MCPServer.user_id == auth.user_id,
-                MCPServer.enabled.is_(True),
-                MCPServer.status == "connected",
+        servers = (
+            self.db.execute(
+                select(MCPServer)
+                .where(
+                    MCPServer.tenant_id == auth.tenant_id,
+                    MCPServer.user_id == auth.user_id,
+                    MCPServer.enabled.is_(True),
+                    MCPServer.status == "connected",
+                )
+                .order_by(MCPServer.created_at.desc())
+                .limit(self.MAX_SERVERS)
             )
-            .order_by(MCPServer.created_at.desc())
-            .limit(self.MAX_SERVERS)
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         bindings: dict[str, DeepSpaceMCPTool] = {}
         max_age = int(getattr(self.settings, "mcp_catalog_max_age_seconds", 3600))

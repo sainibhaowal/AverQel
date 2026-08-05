@@ -9,9 +9,7 @@ from app.system.repositories.base import BaseRepository
 
 
 class IdempotencyKeysRepository(BaseRepository):
-    def get(
-        self, *, tenant_id: uuid.UUID, idempotency_key: str
-    ) -> IdempotencyKey | None:
+    def get(self, *, tenant_id: uuid.UUID, idempotency_key: str) -> IdempotencyKey | None:
         self.apply_tenant_scope(tenant_id)
         query = select(IdempotencyKey).where(
             IdempotencyKey.tenant_id == tenant_id,

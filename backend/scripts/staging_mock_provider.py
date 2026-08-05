@@ -32,7 +32,10 @@ class MockProviderHandler(BaseHTTPRequestHandler):
             else:
                 payload = {
                     "object": "list",
-                    "data": [{"object": "embedding", "index": i, "embedding": vector} for i, vector in enumerate(vectors)],
+                    "data": [
+                        {"object": "embedding", "index": i, "embedding": vector}
+                        for i, vector in enumerate(vectors)
+                    ],
                     "model": "staging-mock-embedding",
                 }
             self.send_response(200)

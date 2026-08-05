@@ -7,7 +7,9 @@ function hasConfiguredModel(modelName: string | null | undefined): boolean {
 }
 
 function supportsWebSearch(provider: ProviderConfig): boolean {
-  return Boolean(provider.supports_web_search) || ["tavily", "searxng"].includes(provider.provider_type);
+  return (
+    Boolean(provider.supports_web_search) || ["tavily", "searxng"].includes(provider.provider_type)
+  );
 }
 
 function supportsReranking(provider: ProviderConfig): boolean {

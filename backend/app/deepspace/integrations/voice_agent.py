@@ -23,7 +23,7 @@ logger = logging.getLogger("voice-agent")
 # Paths to local models
 STT_MODEL_PATH = "/app/models/stt/faster-whisper-tiny.en"
 TTS_MODEL_PATH = "/app/models/tts/kokoro-v1.0.onnx"
-VOICES_PATH    = "/app/models/tts/voices-v1.0.bin"
+VOICES_PATH = "/app/models/tts/voices-v1.0.bin"
 
 # Global wake session states
 session_awake_states = {}  # room_name -> {"is_awake": bool, "last_active_time": float}
@@ -35,26 +35,43 @@ initial_prompts = {}  # room_name -> initial_prompt string bias
 # Multiple wake names/variations for high robustness under various phonetic spelling differences
 WAKE_WORDS = [
     # AverQel variations
-    "averqel", "everqel", "aver kel", "ever kel", "averqul", "overkill", "averqul", "aver-kel", "averquel", "everquel",
+    "averqel",
+    "everqel",
+    "aver kel",
+    "ever kel",
+    "averqul",
+    "overkill",
+    "averqul",
+    "aver-kel",
+    "averquel",
+    "everquel",
     # Jarvis variations
-    "jarvis", "jarves", "jarv",
+    "jarvis",
+    "jarves",
+    "jarv",
     # General assistant names
-    "hey system", "system", "assistant", "hey assistant", "aver", "qel"
+    "hey system",
+    "system",
+    "assistant",
+    "hey assistant",
+    "aver",
+    "qel",
 ]
+
 
 def check_and_extract_wake_word(transcript: str) -> tuple[bool, str]:
     cleaned = transcript.lower().strip()
     # Remove leading common punctuation/fillers
-    cleaned = re.sub(r'^[,\.\?\!\-\s]+', '', cleaned)
+    cleaned = re.sub(r"^[,\.\?\!\-\s]+", "", cleaned)
 
     # Check if starts with a wake word
     for wake_word in WAKE_WORDS:
         # Match as whole words at the start
-        pattern = r'^' + re.escape(wake_word) + r'\b'
+        pattern = r"^" + re.escape(wake_word) + r"\b"
         if re.search(pattern, cleaned):
             # Remove the wake word and any leading punctuation/spaces
-            remaining = re.sub(pattern, '', cleaned)
-            remaining = re.sub(r'^[,\.\?\!\-\s]+', '', remaining).strip()
+            remaining = re.sub(pattern, "", cleaned)
+            remaining = re.sub(r"^[,\.\?\!\-\s]+", "", remaining).strip()
             return True, remaining
 
     # Also support general contains in the first 3 words (e.g. "hey, check AverQel")
@@ -65,8 +82,8 @@ def check_and_extract_wake_word(transcript: str) -> tuple[bool, str]:
             if wake_word in first_few:
                 # Remove everything up to and including the wake word
                 idx = cleaned.find(wake_word)
-                remaining = cleaned[idx + len(wake_word):]
-                remaining = re.sub(r'^[,\.\?\!\-\s]+', '', remaining).strip()
+                remaining = cleaned[idx + len(wake_word) :]
+                remaining = re.sub(r"^[,\.\?\!\-\s]+", "", remaining).strip()
                 return True, remaining
 
     return False, cleaned
@@ -104,6 +121,7 @@ async def broadcast_state(
 ) -> None:
     """Push state update to the frontend via WebRTC data channel."""
     import json
+
     payload_dict = {"state": state, "node_id": node_id}
     if text is not None:
         payload_dict["text"] = text
@@ -146,7 +164,9 @@ async def synthesize_and_speak(
         samples, sample_rate = await loop.run_in_executor(
             None, lambda: tts.create(text, voice="af_sarah", speed=1.0, lang="en-us")
         )
-        logger.info("TTS synthesis complete. samples_len=%d, sample_rate=%d", len(samples), sample_rate)
+        logger.info(
+            "TTS synthesis complete. samples_len=%d, sample_rate=%d", len(samples), sample_rate
+        )
 
         # Convert float32 -> int16 PCM
         int16 = (samples * 32767).astype(np.int16)
@@ -189,6 +209,7 @@ async def synthesize_and_speak(
             global is_agent_speaking
             is_agent_speaking = False
             await broadcast_state(room, "listening")
+
         asyncio.create_task(reset_speaking_flag())
 
 
@@ -198,22 +219,26 @@ async def _generate_spoken_text(prompt_text: str) -> str:
         if not provider:
             return ""
         from app.providers.services.types import ChatGenerateRequest
+
         req = ChatGenerateRequest(
             model=model_name,
             messages=[
-                {"role": "system", "content": "You are a concise, helpful voice assistant. Output ONLY the raw spoken dialogue segment. No markdown, no quotes, no conversational preamble. Keep it under 15 words."},
-                {"role": "user", "content": prompt_text}
+                {
+                    "role": "system",
+                    "content": "You are a concise, helpful voice assistant. Output ONLY the raw spoken dialogue segment. No markdown, no quotes, no conversational preamble. Keep it under 15 words.",
+                },
+                {"role": "user", "content": prompt_text},
             ],
             temperature=0.3,
             max_tokens=60,
             base_url=provider.base_url,
             api_key=provider.api_key,
-            stream=False
+            stream=False,
         )
         full_text = ""
         async for token in provider.stream_generate(req):
             full_text += token
-        full_text = full_text.strip().replace('"', '').replace("'", "")
+        full_text = full_text.strip().replace('"', "").replace("'", "")
         return full_text
     except Exception as e:
         logger.error("Error generating spoken text: %s", e)
@@ -221,10 +246,7 @@ async def _generate_spoken_text(prompt_text: str) -> str:
 
 
 async def _handle_agentic_step(
-    event_type: str,
-    step_data: dict[str, Any],
-    audio_source: rtc.AudioSource,
-    room: rtc.Room
+    event_type: str, step_data: dict[str, Any], audio_source: rtc.AudioSource, room: rtc.Room
 ) -> None:
     prompt = ""
     if event_type == "agent_plan":
@@ -271,10 +293,10 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # High-quality VAD config: less sensitive to background static noise/hum, triggers only on real speech
     vad = silero.VAD.load(
-        activation_threshold=0.45,    # Triggers on clear speech syllables
+        activation_threshold=0.45,  # Triggers on clear speech syllables
         deactivation_threshold=0.35,  # Faster deactivation cut-off
-        min_speech_duration=0.18,     # Ignore short clicks/pops under 180ms
-        min_silence_duration=0.8,     # Wait 800ms before finishing speech segment
+        min_speech_duration=0.18,  # Ignore short clicks/pops under 180ms
+        min_silence_duration=0.8,  # Wait 800ms before finishing speech segment
     )
 
     def process_remote_track(track: rtc.Track, participant: rtc.RemoteParticipant):
@@ -302,6 +324,7 @@ async def entrypoint(ctx: JobContext) -> None:
     @ctx.room.on("data_received")
     def on_data_received(data_packet: rtc.DataPacket) -> None:
         import json
+
         try:
             payload = data_packet.data
             data = json.loads(payload.decode())
@@ -315,19 +338,27 @@ async def entrypoint(ctx: JobContext) -> None:
                 session_tts[ctx.room.name] = tts_active
                 initial_prompts[ctx.room.name] = data.get("initial_prompt", "")
 
-                logger.info("Voice session for %s updated: STT=%s, TTS=%s with prompt bias: %r",
-                            ctx.room.name, stt_active, tts_active, initial_prompts[ctx.room.name])
+                logger.info(
+                    "Voice session for %s updated: STT=%s, TTS=%s with prompt bias: %r",
+                    ctx.room.name,
+                    stt_active,
+                    tts_active,
+                    initial_prompts[ctx.room.name],
+                )
 
                 # Speak confirmation only if TTS (speaker) is newly turned on
                 if tts_active and not prev_tts:
                     import random
+
                     greetings = [
                         "I am online.",
                         "Ready for service.",
                         "Voice system active.",
-                        "TTS synthesis initialized."
+                        "TTS synthesis initialized.",
                     ]
-                    msg = random.choice(greetings)
+                    msg = random.choice(
+                        greetings
+                    )  # nosec B311 - greeting selection is not security-sensitive
                     asyncio.create_task(
                         synthesize_and_speak(msg, audio_source, ctx.room, node_id="orchestrator")
                     )
@@ -340,10 +371,14 @@ async def entrypoint(ctx: JobContext) -> None:
                         _handle_agentic_step(event_type, step_data, audio_source, ctx.room)
                     )
             elif data.get("type") == "test-tts":
-                text_to_speak = data.get("text", "Hello, I am AverQel. Audio output is working perfectly.")
+                text_to_speak = data.get(
+                    "text", "Hello, I am AverQel. Audio output is working perfectly."
+                )
                 logger.info("Received test-tts request: %r", text_to_speak)
                 asyncio.create_task(
-                    synthesize_and_speak(text_to_speak, audio_source, ctx.room, node_id="orchestrator")
+                    synthesize_and_speak(
+                        text_to_speak, audio_source, ctx.room, node_id="orchestrator"
+                    )
                 )
         except Exception as e:
             logger.error("Error processing data message: %s", e)
@@ -360,10 +395,15 @@ async def entrypoint(ctx: JobContext) -> None:
                 logger.info("Processing pre-existing track: %s", publication.track.sid)
                 process_remote_track(publication.track, participant)
             elif publication.subscribed:
-                logger.info("Track %s is subscribed but publication.track is not populated yet", publication.sid)
+                logger.info(
+                    "Track %s is subscribed but publication.track is not populated yet",
+                    publication.sid,
+                )
 
 
-def run_transcribe(model: WhisperModel, arr: np.ndarray, beam_size: int, initial_prompt: str | None = None) -> str:
+def run_transcribe(
+    model: WhisperModel, arr: np.ndarray, beam_size: int, initial_prompt: str | None = None
+) -> str:
     """Run transcription with custom segment filtering to block static noise loop hallucinations."""
     segments, _ = model.transcribe(
         arr,
@@ -371,7 +411,7 @@ def run_transcribe(model: WhisperModel, arr: np.ndarray, beam_size: int, initial
         language="en",
         vad_filter=True,
         word_timestamps=False,
-        initial_prompt=initial_prompt
+        initial_prompt=initial_prompt,
     )
 
     valid_texts = []
@@ -380,22 +420,45 @@ def run_transcribe(model: WhisperModel, arr: np.ndarray, beam_size: int, initial
 
         # 1. Filter out Whisper silent/noisy loop hallucinations
         if s.no_speech_prob > 0.55:
-            logger.info("Ignoring segment due to high no_speech_prob (%.3f): %r", s.no_speech_prob, text)
+            logger.info(
+                "Ignoring segment due to high no_speech_prob (%.3f): %r", s.no_speech_prob, text
+            )
             continue
         if s.compression_ratio > 2.4:
-            logger.info("Ignoring segment due to high compression_ratio (%.3f): %r", s.compression_ratio, text)
+            logger.info(
+                "Ignoring segment due to high compression_ratio (%.3f): %r",
+                s.compression_ratio,
+                text,
+            )
             continue
         if s.avg_logprob < -1.0:
             logger.info("Ignoring segment due to low avg_logprob (%.3f): %r", s.avg_logprob, text)
             continue
 
         # 2. Filter out known static boilerplate sentences
-        cleaned = re.sub(r'[^\w\s]', '', text.lower()).strip()
-        if cleaned in (
-            "thank you for watching", "thank you", "thank you very much",
-            "go next", "you", "transcribing", "watching", "subscribe",
-            "he", "she", "it", "they", "we", "i", "you got it", "hospital"
-        ) or not cleaned:
+        cleaned = re.sub(r"[^\w\s]", "", text.lower()).strip()
+        if (
+            cleaned
+            in (
+                "thank you for watching",
+                "thank you",
+                "thank you very much",
+                "go next",
+                "you",
+                "transcribing",
+                "watching",
+                "subscribe",
+                "he",
+                "she",
+                "it",
+                "they",
+                "we",
+                "i",
+                "you got it",
+                "hospital",
+            )
+            or not cleaned
+        ):
             logger.info("Ignoring known static boilerplate hallucination: %r", text)
             continue
 
@@ -480,7 +543,9 @@ async def _process_incoming_audio(
 
                 # Partial transcription every ~0.8 seconds
                 current_time = asyncio.get_event_loop().time()
-                if len(speech_samples) > 16000 * 0.5 and (current_time - last_transcribe_time > 0.8):
+                if len(speech_samples) > 16000 * 0.5 and (
+                    current_time - last_transcribe_time > 0.8
+                ):
                     last_transcribe_time = current_time
                     asyncio.create_task(_transcribe_partial(list(speech_samples), room))
 
@@ -492,14 +557,19 @@ async def _process_incoming_audio(
                             resampler = rtc.AudioResampler(frame.sample_rate, 16000, num_channels=1)
                         resampled_frames = resampler.push(frame) + resampler.flush()
                         for r_frame in resampled_frames:
-                            s = np.frombuffer(r_frame.data, dtype=np.int16).astype(np.float32) / 32768.0
+                            s = (
+                                np.frombuffer(r_frame.data, dtype=np.int16).astype(np.float32)
+                                / 32768.0
+                            )
                             speech_samples.extend(s.tolist())
 
                 if speech_samples:
                     logger.info("Speech ended. Buffer size: %d samples", len(speech_samples))
                     await broadcast_state(room, "thinking")
                     asyncio.create_task(
-                        _transcribe_and_respond(list(speech_samples), room, audio_source, participant)
+                        _transcribe_and_respond(
+                            list(speech_samples), room, audio_source, participant
+                        )
                     )
                     speech_samples.clear()
                 else:
@@ -509,7 +579,10 @@ async def _process_incoming_audio(
     worker_task = asyncio.create_task(vad_worker())
 
     try:
-        logger.info("Audio stream started for participant %s. Entering frame processing loop.", participant.identity)
+        logger.info(
+            "Audio stream started for participant %s. Entering frame processing loop.",
+            participant.identity,
+        )
         frame_count = 0
         async for event in audio_stream:
             audio_frame = event.frame
@@ -528,14 +601,13 @@ async def _process_incoming_audio(
                     audio_frame.num_channels,
                     audio_frame.samples_per_channel,
                     len(audio_frame.data),
-                    max_amp
+                    max_amp,
                 )
 
             vad_stream.push_frame(audio_frame)
     finally:
         await vad_stream.aclose()
         worker_task.cancel()
-
 
 
 def get_resolved_chat_provider():
@@ -561,34 +633,47 @@ def get_resolved_chat_provider():
             return None, None
 
         selection_service = ProviderSelectionService(db, None)
-        selection = selection_service.resolve_chat(
-            tenant_id=user.tenant_id,
-            actor_user_id=user.id
-        )
+        selection = selection_service.resolve_chat(tenant_id=user.tenant_id, actor_user_id=user.id)
 
         registry = ProviderRegistry(selection_service.settings)
         if selection.candidates:
             for candidate in selection.candidates:
                 # connectivity check for local endpoints (LM Studio, Ollama etc.)
-                if candidate.provider_type == "lmstudio" or (candidate.base_url and "localhost" in candidate.base_url):
+                if candidate.provider_type == "lmstudio" or (
+                    candidate.base_url and "localhost" in candidate.base_url
+                ):
                     import socket
                     from urllib.parse import urlparse
+
                     parsed = urlparse(candidate.base_url)
                     try:
-                        host = "host.docker.internal" if parsed.hostname in ("localhost", "127.0.0.1") else parsed.hostname
+                        host = (
+                            "host.docker.internal"
+                            if parsed.hostname in ("localhost", "127.0.0.1")
+                            else parsed.hostname
+                        )
                         port = parsed.port or 80
                         with socket.create_connection((host, port), timeout=0.3):
                             pass
                     except Exception:
-                        logger.warning("Local provider candidate %s at %s is unreachable. Trying next candidate.", candidate.provider_type, candidate.base_url)
+                        logger.warning(
+                            "Local provider candidate %s at %s is unreachable. Trying next candidate.",
+                            candidate.provider_type,
+                            candidate.base_url,
+                        )
                         continue
 
-                logger.info("Selected Chat Provider: %s, model: %s", candidate.provider_type, candidate.model_name)
+                logger.info(
+                    "Selected Chat Provider: %s, model: %s",
+                    candidate.provider_type,
+                    candidate.model_name,
+                )
                 provider = registry.get_chat_provider_from_selection(candidate)
                 return provider, candidate.model_name
 
         # If lmstudio candidate is unreachable, check other active provider configs in database
         from app.providers.models.provider_config import ProviderConfig
+
         stmt = select(ProviderConfig).where(
             ProviderConfig.enabled,
             ProviderConfig.supports_chat,
@@ -626,7 +711,9 @@ async def _transcribe_and_respond(
         logger.info("Speech segment max amplitude: %.1f", max_amp)
 
         if max_amp < 1500:  # Gated at 1500 to keep low-amplitude background noise out of STT
-            logger.info("Ignoring silent/noise speech segment (amplitude %.1f below 1500 gate)", max_amp)
+            logger.info(
+                "Ignoring silent/noise speech segment (amplitude %.1f below 1500 gate)", max_amp
+            )
             await broadcast_state(room, "listening")
             return
 
@@ -643,6 +730,7 @@ async def _transcribe_and_respond(
 
         # Broadcast final transcript as dictation-result and reset listening state
         import json
+
         logger.info("Broadcasting dictation result: %r", transcript)
         await broadcast_state(room, "listening")
         payload = json.dumps({"type": "dictation-result", "text": transcript}).encode()

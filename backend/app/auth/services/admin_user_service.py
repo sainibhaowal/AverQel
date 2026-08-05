@@ -217,9 +217,7 @@ class AdminUserService:
             limit=max(1, min(limit, 100)),
         )
 
-    def list_recent_activity_global(
-        self, *, user_id: uuid.UUID, limit: int = 20
-    ) -> list[Any]:
+    def list_recent_activity_global(self, *, user_id: uuid.UUID, limit: int = 20) -> list[Any]:
         return self.audit.repo.list_for_actor_global(
             actor_user_id=user_id,
             limit=max(1, min(limit, 100)),
@@ -345,9 +343,7 @@ class AdminUserService:
             allow_self=False,
         )
 
-        counts = asdict(
-            self._stats_map(tenant_id=tenant_id, user_ids=[user.id])[user.id]
-        )
+        counts = asdict(self._stats_map(tenant_id=tenant_id, user_ids=[user.id])[user.id])
         counts["refresh_tokens"] = self._count_for_query(
             select(func.count())
             .select_from(self.refresh_tokens_model)
@@ -367,9 +363,7 @@ class AdminUserService:
         )
         for bucket, object_key in objects:
             try:
-                self.storage.delete_object(
-                    bucket=str(bucket), object_key=str(object_key)
-                )
+                self.storage.delete_object(bucket=str(bucket), object_key=str(object_key))
             except Exception:  # noqa: BLE001
                 logger.warning(
                     "Failed to delete user-owned object from storage.",
@@ -457,9 +451,7 @@ class AdminUserService:
         return user
 
     def _is_bootstrap_super_admin_email(self, email: str) -> bool:
-        return is_platform_admin_email(
-            email, self.settings.bootstrap_super_admin_emails
-        )
+        return is_platform_admin_email(email, self.settings.bootstrap_super_admin_emails)
 
     def _count_for_query(self, statement: Any) -> int:
         return int(self.db.execute(statement).scalar_one() or 0)
@@ -515,9 +507,7 @@ class AdminUserService:
             for user_id in user_ids
         }
 
-    def _stats_map_global(
-        self, *, user_ids: list[uuid.UUID]
-    ) -> dict[uuid.UUID, AdminUserStats]:
+    def _stats_map_global(self, *, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, AdminUserStats]:
         def grouped(model: Any, field: Any) -> dict[uuid.UUID, int]:
             set_db_tenant_context(self.db, "bypass")
             rows = self.db.execute(
@@ -542,9 +532,7 @@ class AdminUserService:
 
         user_tenants = {
             user.id: user.tenant_id
-            for user in self.db.execute(
-                select(User).where(User.id.in_(user_ids))
-            ).scalars()
+            for user in self.db.execute(select(User).where(User.id.in_(user_ids))).scalars()
         }
         storage_rows = self.db.execute(
             select(
@@ -567,9 +555,7 @@ class AdminUserService:
                 conversations_count=conversations.get(user_id, 0),
                 comments_count=comments.get(user_id, 0),
                 pinned_findings_count=pinned.get(user_id, 0),
-                providers_count=provider_counts_by_tenant.get(
-                    user_tenants.get(user_id), 0
-                ),
+                providers_count=provider_counts_by_tenant.get(user_tenants.get(user_id), 0),
                 storage_bytes=storage.get(user_id, 0),
             )
             for user_id in user_ids

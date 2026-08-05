@@ -16,6 +16,7 @@ export interface MessageMetrics {
   contextUsedTokens?: number;
   contextRemainingTokens?: number;
   contextUsage?: number;
+  contextUsageSource?: string | null;
   phase?: string;
   activeTools?: string[];
   latencyTimeline?: Array<{ label: string; atMs: number; detail?: string }>;

@@ -99,9 +99,7 @@ def test_dashboard_service_get_overview(
     db_session.flush()
 
     cd1 = CollectionDocument(collection_id=collection.id, document_id=doc1.id)
-    cd_deleted = CollectionDocument(
-        collection_id=collection.id, document_id=doc_deleted.id
-    )
+    cd_deleted = CollectionDocument(collection_id=collection.id, document_id=doc_deleted.id)
     db_session.add_all([cd1, cd_deleted])
     db_session.commit()
 

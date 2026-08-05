@@ -295,10 +295,11 @@ export default function DashboardPage() {
       <motion.section
         {...CARD_ENTER}
         transition={{ duration: 0.5 }}
-        className={`relative min-h-0 overflow-hidden rounded-[1.5rem] border p-6 shadow-xl transition-all duration-300 sm:rounded-[2rem] sm:p-8 lg:p-10 ${theme === "dark"
+        className={`relative min-h-0 overflow-hidden rounded-[1.5rem] border p-6 shadow-xl transition-all duration-300 sm:rounded-[2rem] sm:p-8 lg:p-10 ${
+          theme === "dark"
             ? "border-white/5 bg-[#05070a] shadow-none"
             : "border-teal-500/10 bg-gradient-to-br from-[#ffffff] via-[#f2faf7] to-[#f5f8fa] shadow-lg shadow-teal-950/[0.02]"
-          }`}
+        }`}
       >
         {/* Dynamic Background Elements */}
         <div className="bg-primary/10 absolute top-[-10%] right-[-10%] h-[250px] w-[250px] animate-pulse rounded-full opacity-40 blur-[80px] sm:h-[400px] sm:w-[400px] sm:blur-[100px] dark:opacity-80" />
@@ -318,8 +319,9 @@ export default function DashboardPage() {
 
             <div className="space-y-2.5">
               <h1
-                className={`text-2xl leading-[1.15] font-black tracking-tight sm:text-4xl md:text-5xl ${theme === "dark" ? "text-white" : "text-black"
-                  }`}
+                className={`text-2xl leading-[1.15] font-black tracking-tight sm:text-4xl md:text-5xl ${
+                  theme === "dark" ? "text-white" : "text-black"
+                }`}
               >
                 Visibility. <span className="text-primary">Grounded.</span> Ready.
               </h1>
@@ -343,10 +345,11 @@ export default function DashboardPage() {
               <Link
                 href="/dashboard/query"
                 prefetch={false}
-                className={`flex items-center gap-2 rounded-xl border px-6 py-3 text-xs font-black tracking-widest uppercase backdrop-blur-md transition-all active:scale-95 ${theme === "dark"
+                className={`flex items-center gap-2 rounded-xl border px-6 py-3 text-xs font-black tracking-widest uppercase backdrop-blur-md transition-all active:scale-95 ${
+                  theme === "dark"
                     ? "border-white/10 bg-white/5 text-white hover:bg-white/10"
                     : "border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
-                  }`}
+                }`}
               >
                 <Search size={14} className="stroke-[3]" />
                 Explore
@@ -355,8 +358,9 @@ export default function DashboardPage() {
           </div>
 
           <div
-            className={`grid grid-cols-2 gap-px overflow-hidden rounded-2xl border ${theme === "dark" ? "border-white/5 bg-white/5" : "border-black/5 bg-black/5"
-              } xl:w-[26rem]`}
+            className={`grid grid-cols-2 gap-px overflow-hidden rounded-2xl border ${
+              theme === "dark" ? "border-white/5 bg-white/5" : "border-black/5 bg-black/5"
+            } xl:w-[26rem]`}
           >
             {topStats.map((stat, idx) => {
               const Icon = stat.icon;
@@ -366,27 +370,31 @@ export default function DashboardPage() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.4, delay: 0.2 + idx * 0.08 }}
-                  className={`p-4 sm:p-5 ${theme === "dark" ? "bg-[#0b0f14]" : "bg-white"
-                    } transition-all hover:bg-opacity-95`}
+                  className={`p-4 sm:p-5 ${
+                    theme === "dark" ? "bg-[#0b0f14]" : "bg-white"
+                  } hover:bg-opacity-95 transition-all`}
                 >
                   <div className="mb-2 flex items-center justify-between">
                     <span
-                      className={`text-[8px] font-bold tracking-[0.18em] uppercase ${theme === "dark" ? "text-white/30" : "text-slate-900/40"
-                        }`}
+                      className={`text-[8px] font-bold tracking-[0.18em] uppercase ${
+                        theme === "dark" ? "text-white/30" : "text-slate-900/40"
+                      }`}
                     >
                       {stat.label}
                     </span>
                     <Icon size={14} className="text-primary stroke-[2.5]" />
                   </div>
                   <div
-                    className={`text-xl font-black tracking-tight sm:text-2xl ${theme === "dark" ? "text-white" : "text-primary"
-                      }`}
+                    className={`text-xl font-black tracking-tight sm:text-2xl ${
+                      theme === "dark" ? "text-white" : "text-primary"
+                    }`}
                   >
                     {loading ? "..." : stat.value}
                   </div>
                   <p
-                    className={`mt-0.5 text-[9px] leading-relaxed font-semibold transition-colors ${theme === "dark" ? "text-white/30" : "text-slate-900/40"
-                      }`}
+                    className={`mt-0.5 text-[9px] leading-relaxed font-semibold transition-colors ${
+                      theme === "dark" ? "text-white/30" : "text-slate-900/40"
+                    }`}
                   >
                     {stat.detail}
                   </p>
@@ -398,8 +406,9 @@ export default function DashboardPage() {
 
         {/* Floating Health Status */}
         <div
-          className={`absolute bottom-3 left-6 flex flex-wrap items-center gap-4 text-[8px] font-bold tracking-[0.2em] uppercase transition-colors sm:bottom-4 sm:left-8 sm:gap-6 sm:text-[9px] ${theme === "dark" ? "text-white/30" : "text-slate-900/40"
-            }`}
+          className={`absolute bottom-3 left-6 flex flex-wrap items-center gap-4 text-[8px] font-bold tracking-[0.2em] uppercase transition-colors sm:bottom-4 sm:left-8 sm:gap-6 sm:text-[9px] ${
+            theme === "dark" ? "text-white/30" : "text-slate-900/40"
+          }`}
         >
           <div className="flex items-center gap-1.5">
             <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
@@ -433,7 +442,7 @@ export default function DashboardPage() {
                     key={item.label}
                     href={item.href}
                     prefetch={false}
-                    className="group flex items-center gap-3.5 px-2 py-3.5 border-b border-foreground/5 dark:border-white/5 last:border-0 hover:bg-foreground/[0.015] dark:hover:bg-white/[0.015] rounded-lg transition-all"
+                    className="group border-foreground/5 hover:bg-foreground/[0.015] flex items-center gap-3.5 rounded-lg border-b px-2 py-3.5 transition-all last:border-0 dark:border-white/5 dark:hover:bg-white/[0.015]"
                   >
                     <div
                       className={`flex h-9 w-9 items-center justify-center rounded-lg border ${tone.chip}`}
@@ -480,7 +489,7 @@ export default function DashboardPage() {
                 [1, 2, 3].map((row) => (
                   <div
                     key={row}
-                    className="bg-foreground/[0.03] h-16 animate-pulse rounded-lg dark:bg-white/[0.02] border-b border-foreground/5 dark:border-white/5 last:border-0"
+                    className="bg-foreground/[0.03] border-foreground/5 h-16 animate-pulse rounded-lg border-b last:border-0 dark:border-white/5 dark:bg-white/[0.02]"
                   />
                 ))
               ) : overview.recent_documents.length > 0 ? (
@@ -489,20 +498,23 @@ export default function DashboardPage() {
                     key={document.document_id}
                     href={`/dashboard/documents/${document.document_id}`}
                     prefetch={false}
-                    className="group block px-2 py-3.5 border-b border-foreground/5 dark:border-white/5 last:border-0 hover:bg-foreground/[0.015] dark:hover:bg-white/[0.015] rounded-lg transition-all"
+                    className="group border-foreground/5 hover:bg-foreground/[0.015] block rounded-lg border-b px-2 py-3.5 transition-all last:border-0 dark:border-white/5 dark:hover:bg-white/[0.015]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-foreground truncate text-sm font-semibold group-hover:text-primary transition-colors">
+                        <p className="text-foreground group-hover:text-primary truncate text-sm font-semibold transition-colors">
                           {document.filename}
                         </p>
                         <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs font-medium">
-                          <span className={`font-semibold uppercase tracking-wider ${document.status === "indexed"
-                              ? "text-emerald-500"
-                              : document.status === "failed"
-                                ? "text-rose-500"
-                                : "text-amber-500"
-                            }`}>
+                          <span
+                            className={`font-semibold tracking-wider uppercase ${
+                              document.status === "indexed"
+                                ? "text-emerald-500"
+                                : document.status === "failed"
+                                  ? "text-rose-500"
+                                  : "text-amber-500"
+                            }`}
+                          >
                             {formatStatusLabel(document.status)}
                           </span>
                           <span>•</span>
@@ -560,7 +572,7 @@ export default function DashboardPage() {
                 [1, 2, 3].map((i) => (
                   <div
                     key={i}
-                    className="bg-foreground/[0.03] h-14 animate-pulse rounded-lg dark:bg-white/[0.02] border-b border-foreground/5 dark:border-white/5 last:border-0"
+                    className="bg-foreground/[0.03] border-foreground/5 h-14 animate-pulse rounded-lg border-b last:border-0 dark:border-white/5 dark:bg-white/[0.02]"
                   />
                 ))
               ) : overview.collections.length > 0 ? (
@@ -581,7 +593,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-3">
-                            <p className="text-foreground truncate text-sm font-semibold group-hover:text-primary transition-colors">
+                            <p className="text-foreground group-hover:text-primary truncate text-sm font-semibold transition-colors">
                               {collection.name}
                             </p>
                             {hasAdminAccess ? (
@@ -628,7 +640,7 @@ export default function DashboardPage() {
                 [1, 2, 3, 4].map((i) => (
                   <div
                     key={i}
-                    className="bg-foreground/[0.03] h-14 animate-pulse rounded-lg dark:bg-white/[0.02] border-b border-foreground/5 dark:border-white/5 last:border-0"
+                    className="bg-foreground/[0.03] border-foreground/5 h-14 animate-pulse rounded-lg border-b last:border-0 dark:border-white/5 dark:bg-white/[0.02]"
                   />
                 ))
               ) : overview.recent_activity.length > 0 ? (
@@ -640,14 +652,15 @@ export default function DashboardPage() {
                   const Icon = config.icon;
 
                   return (
-                    <div key={group.id} className="border-b border-foreground/5 dark:border-white/5 last:border-0">
-                      <div
-                        className="group flex flex-col rounded-lg transition-all"
-                      >
+                    <div
+                      key={group.id}
+                      className="border-foreground/5 border-b last:border-0 dark:border-white/5"
+                    >
+                      <div className="group flex flex-col rounded-lg transition-all">
                         <button
                           onClick={() => isGroup && toggleGroup(group.id)}
                           disabled={!isGroup}
-                          className="flex w-full items-start justify-between gap-3 px-2 py-3.5 text-left hover:bg-foreground/[0.015] dark:hover:bg-white/[0.015] rounded-lg transition-colors"
+                          className="hover:bg-foreground/[0.015] flex w-full items-start justify-between gap-3 rounded-lg px-2 py-3.5 text-left transition-colors dark:hover:bg-white/[0.015]"
                         >
                           <div className="flex min-w-0 items-start gap-3">
                             <div
@@ -656,16 +669,16 @@ export default function DashboardPage() {
                               <Icon size={15} className={`${config.color} stroke-[2.5]`} />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-foreground truncate text-sm font-bold tracking-tight group-hover:text-primary transition-colors">
+                              <p className="text-foreground group-hover:text-primary truncate text-sm font-bold tracking-tight transition-colors">
                                 {config.label}
                                 {isGroup && (
-                                  <span className="bg-foreground/5 dark:bg-white/5 text-muted-foreground ml-2 rounded-full px-2 py-0.5 text-[9px] font-bold">
+                                  <span className="bg-foreground/5 text-muted-foreground ml-2 rounded-full px-2 py-0.5 text-[9px] font-bold dark:bg-white/5">
                                     {group.items.length} events
                                   </span>
                                 )}
                               </p>
-                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground font-medium">
-                                <span className="font-semibold uppercase tracking-wider">
+                              <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-medium">
+                                <span className="font-semibold tracking-wider uppercase">
                                   {mainEvent.resource_type}
                                 </span>
                                 <span>•</span>
@@ -677,14 +690,15 @@ export default function DashboardPage() {
                           </div>
                           <div className="flex items-center gap-2.5 self-center">
                             <div
-                              className={`h-1.5 w-1.5 rounded-full ${config.color.includes("emerald")
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                config.color.includes("emerald")
                                   ? "bg-emerald-500"
                                   : config.color.includes("blue")
                                     ? "bg-blue-500"
                                     : config.color.includes("amber")
                                       ? "bg-amber-500"
                                       : "bg-primary"
-                                }`}
+                              }`}
                             />
                             {isGroup && (
                               <motion.div
@@ -705,13 +719,13 @@ export default function DashboardPage() {
                               exit={{ height: 0, opacity: 0 }}
                               className="overflow-hidden"
                             >
-                              <div className="border-t border-foreground/5 dark:border-white/5 bg-foreground/[0.005] dark:bg-white/[0.005] px-2 py-1 pb-3">
+                              <div className="border-foreground/5 bg-foreground/[0.005] border-t px-2 py-1 pb-3 dark:border-white/5 dark:bg-white/[0.005]">
                                 {group.items.slice(1).map((item) => {
                                   const subConfig = getActivityConfig(item);
                                   return (
                                     <div
                                       key={item.id}
-                                      className="border-foreground/5 dark:border-white/5 mt-3 ml-4.5 flex items-center justify-between border-l-2 pl-3.5"
+                                      className="border-foreground/5 mt-3 ml-4.5 flex items-center justify-between border-l-2 pl-3.5 dark:border-white/5"
                                     >
                                       <div className="min-w-0">
                                         <p className="text-foreground/80 truncate text-[11px] font-bold">
@@ -724,12 +738,13 @@ export default function DashboardPage() {
                                         </div>
                                       </div>
                                       <div
-                                        className={`h-1 w-1 rounded-full ${subConfig.color.includes("emerald")
+                                        className={`h-1 w-1 rounded-full ${
+                                          subConfig.color.includes("emerald")
                                             ? "bg-emerald-500/50"
                                             : subConfig.color.includes("blue")
                                               ? "bg-blue-500/50"
                                               : "bg-primary/50"
-                                          }`}
+                                        }`}
                                       />
                                     </div>
                                   );
@@ -768,40 +783,43 @@ export default function DashboardPage() {
               {overview.provider_runtimes.map((runtime) => (
                 <div
                   key={runtime.feature_scope}
-                  className="group px-2 py-3.5 border-b border-foreground/5 dark:border-white/5 last:border-0 hover:bg-foreground/[0.015] dark:hover:bg-white/[0.015] rounded-lg transition-all"
+                  className="group border-foreground/5 hover:bg-foreground/[0.015] rounded-lg border-b px-2 py-3.5 transition-all last:border-0 dark:border-white/5 dark:hover:bg-white/[0.015]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`rounded-md border px-2.5 py-0.5 text-[9px] font-black tracking-[0.12em] uppercase ${runtime.feature_scope === "chat"
-                              ? "!border-teal-300 !bg-teal-50/70 !text-teal-900 dark:!border-primary/40 dark:!bg-primary/15 dark:!text-primary"
+                          className={`rounded-md border px-2.5 py-0.5 text-[9px] font-black tracking-[0.12em] uppercase ${
+                            runtime.feature_scope === "chat"
+                              ? "dark:!border-primary/40 dark:!bg-primary/15 dark:!text-primary !border-teal-300 !bg-teal-50/70 !text-teal-900"
                               : runtime.feature_scope === "embeddings"
                                 ? "!border-cyan-300 !bg-cyan-50/70 !text-cyan-900 dark:!border-cyan-500/40 dark:!bg-cyan-500/15 dark:!text-cyan-300"
                                 : runtime.feature_scope === "reranking"
                                   ? "!border-purple-300 !bg-purple-50/70 !text-purple-900 dark:!border-purple-500/40 dark:!bg-purple-500/15 dark:!text-purple-300"
                                   : "!border-amber-300 !bg-amber-50/70 !text-amber-900 dark:!border-amber-500/40 dark:!bg-amber-500/15 dark:!text-amber-300"
-                            }`}
+                          }`}
                         >
                           {runtime.feature_scope.replace("_", " ")}
                         </span>
 
                         {runtime.health_status ? (
                           <span
-                            className={`rounded-md border px-2.5 py-0.5 text-[9px] font-black tracking-[0.1em] uppercase ${runtime.health_status === "healthy"
+                            className={`rounded-md border px-2.5 py-0.5 text-[9px] font-black tracking-[0.1em] uppercase ${
+                              runtime.health_status === "healthy"
                                 ? "!border-emerald-300 !bg-emerald-50/70 !text-emerald-900 dark:!border-emerald-500/40 dark:!bg-emerald-500/15 dark:!text-emerald-400"
                                 : "!border-amber-300 !bg-amber-50/70 !text-amber-900 dark:!border-amber-500/40 dark:!bg-amber-500/15 dark:!text-amber-400"
-                              }`}
+                            }`}
                           >
                             {runtime.health_status}
                           </span>
                         ) : null}
                       </div>
                       <p
-                        className={`mt-2 text-sm font-bold ${runtime.provider_type === "unconfigured"
+                        className={`mt-2 text-sm font-bold ${
+                          runtime.provider_type === "unconfigured"
                             ? "text-foreground/45"
                             : "text-foreground"
-                          }`}
+                        }`}
                       >
                         {runtime.provider_display_name}
                       </p>
@@ -838,7 +856,7 @@ export default function DashboardPage() {
                     className={
                       action.primary
                         ? "group border-primary/20 from-primary to-primary/80 text-primary-foreground rounded-xl border bg-gradient-to-br p-4 shadow-lg transition-all hover:scale-[1.015] hover:brightness-110 active:scale-95"
-                        : "group rounded-xl border border-foreground/5 dark:border-white/5 bg-foreground/[0.01] dark:bg-white/[0.01] hover:bg-foreground/[0.03] dark:hover:bg-white/[0.03] hover:border-primary/20 p-4 transition-all duration-200"
+                        : "group border-foreground/5 bg-foreground/[0.01] hover:bg-foreground/[0.03] hover:border-primary/20 rounded-xl border p-4 transition-all duration-200 dark:border-white/5 dark:bg-white/[0.01] dark:hover:bg-white/[0.03]"
                     }
                   >
                     <div className="flex items-start gap-3">
@@ -856,7 +874,11 @@ export default function DashboardPage() {
                           <p className="text-sm font-semibold">{action.title}</p>
                           <ArrowRight
                             size={14}
-                            className={action.primary ? "text-white/70" : "text-muted-foreground/40 group-hover:text-primary transition-all group-hover:translate-x-0.5"}
+                            className={
+                              action.primary
+                                ? "text-white/70"
+                                : "text-muted-foreground/40 group-hover:text-primary transition-all group-hover:translate-x-0.5"
+                            }
                           />
                         </div>
                         <p

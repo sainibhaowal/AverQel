@@ -34,9 +34,7 @@ class MCPServerRead(BaseModel):
             return {}
         allowed = {"email", "display_name", "provider_subject", "account_id"}
         return {
-            key: value[key]
-            for key in allowed
-            if key in value and isinstance(value[key], str | int)
+            key: value[key] for key in allowed if key in value and isinstance(value[key], str | int)
         }
 
     @field_serializer("config")

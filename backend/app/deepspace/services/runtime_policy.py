@@ -24,14 +24,13 @@ class DeepSpaceToolPolicy:
         "todo_check": "read",
         "observe": "read",
         "analyze": "read",
+        "read": "read",
+        "find": "read",
         "todo_write": "write",
         "todo_mark": "write",
         "write": "write",
-        "workspace_write": "write",
-        "memory_write": "write",
-        "memory_forget": "write",
-        "memory_search": "read",
-        "memory_read": "read",
+        "edit": "write",
+        "delete": "write",
         "ask_user": "interactive",
         # Final verification must not race a write-capable tool emitted in the
         # same provider response.

@@ -14,10 +14,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "DELETE FROM mcp_registry_entries "
-        "WHERE trust_status IS DISTINCT FROM 'approved'"
-    )
+    op.execute("DELETE FROM mcp_registry_entries " "WHERE trust_status IS DISTINCT FROM 'approved'")
 
 
 def downgrade() -> None:

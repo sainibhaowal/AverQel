@@ -36,7 +36,9 @@ def test_catalog_worker_commits_the_idempotent_catalog_sync(
             assert received_session is session
 
         def sync_official_providers(self) -> SimpleNamespace:
-            return SimpleNamespace(as_dict=lambda: {"created": 6, "updated": 0, "unchanged": 0, "total": 6})
+            return SimpleNamespace(
+                as_dict=lambda: {"created": 6, "updated": 0, "unchanged": 0, "total": 6}
+            )
 
     monkeypatch.setattr(tasks_mcp_catalog, "SessionLocal", lambda: session)
     monkeypatch.setattr(tasks_mcp_catalog, "MCPCatalogService", _Service)

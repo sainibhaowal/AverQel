@@ -145,16 +145,13 @@ class ConnectorOrchestrator:
             report = {}
         healthy = bool(report.get("healthy"))
         raw_status = (
-            str(report.get("status") or ("healthy" if healthy else "degraded"))
-            .strip()
-            .lower()
+            str(report.get("status") or ("healthy" if healthy else "degraded")).strip().lower()
         )
         status: ConnectorHealthStatus = cast(
             ConnectorHealthStatus,
             (
                 raw_status
-                if raw_status
-                in {"healthy", "degraded", "auth_expired", "offline", "stale"}
+                if raw_status in {"healthy", "degraded", "auth_expired", "offline", "stale"}
                 else ("healthy" if healthy else "degraded")
             ),
         )
@@ -197,15 +194,11 @@ class ConnectorOrchestrator:
             connector.last_error = None
             connector.error_count = 0
         else:
-            consecutive_failures = max(
-                1, int(current_health.get("consecutive_failures") or 0) + 1
-            )
+            consecutive_failures = max(1, int(current_health.get("consecutive_failures") or 0) + 1)
             circuit_open_until = future_iso(backoff_seconds(consecutive_failures))
             last_good_at = current_health.get("last_good_at")
             connector.error_count = consecutive_failures
-            connector.last_error = (
-                normalized["error_message"] or normalized["error_code"]
-            )
+            connector.last_error = normalized["error_message"] or normalized["error_code"]
             connector.status = (
                 ConnectorStatus.ERROR
                 if normalized["status"] == "auth_expired"
@@ -407,9 +400,7 @@ class ConnectorOrchestrator:
                 "error_code": error_code,
                 "retryable": retryable,
                 "retry_after_at": retry_after_at,
-                "retry_after_seconds": ConnectorOrchestrator._retry_after_seconds(
-                    retry_after_at
-                ),
+                "retry_after_seconds": ConnectorOrchestrator._retry_after_seconds(retry_after_at),
                 "error_domain": ConnectorOrchestrator._sync_error_domain(
                     error_code=error_code, phase=phase, retryable=retryable
                 ),
@@ -536,17 +527,14 @@ class ConnectorOrchestrator:
             secrets=connector.secrets,
         )
 
-    def _circuit_open_report(
-        self, connector: Connector, integration_slug: str
-    ) -> dict[str, Any]:
+    def _circuit_open_report(self, connector: Connector, integration_slug: str) -> dict[str, Any]:
         health = self._connector_health_state(connector)
         raw_status = str(health.get("status") or "degraded").strip().lower()
         status: ConnectorHealthStatus = cast(
             ConnectorHealthStatus,
             (
                 raw_status
-                if raw_status
-                in {"healthy", "degraded", "auth_expired", "offline", "stale"}
+                if raw_status in {"healthy", "degraded", "auth_expired", "offline", "stale"}
                 else "degraded"
             ),
         )
@@ -610,9 +598,7 @@ class ConnectorOrchestrator:
             report=report,
             phase=phase,
         )
-        applied = self._decorate_with_cached_snapshot(
-            connector=connector, report=applied
-        )
+        applied = self._decorate_with_cached_snapshot(connector=connector, report=applied)
         config = dict(connector.config or {})
         config[Connector.HEALTH_CONFIG_KEY] = applied
         connector.config = config
@@ -640,9 +626,7 @@ class ConnectorOrchestrator:
             integration_slug = "unknown"
 
             def sync_elapsed_ms() -> int:
-                return int(
-                    (datetime.now(tz=UTC) - sync_started_at).total_seconds() * 1000
-                )
+                return int((datetime.now(tz=UTC) - sync_started_at).total_seconds() * 1000)
 
             connector = self.session.get(Connector, connector_id)
             if not connector:
@@ -756,9 +740,7 @@ class ConnectorOrchestrator:
 
             # Decrypt and inject secrets into connector config
             try:
-                stmt = select(ConnectorSecret).where(
-                    ConnectorSecret.connector_id == connector_id
-                )
+                stmt = select(ConnectorSecret).where(ConnectorSecret.connector_id == connector_id)
                 secrets = self.session.execute(stmt).scalars().all()
                 runtime_secret_values: dict[str, str] = {}
                 if secrets:
@@ -892,15 +874,12 @@ class ConnectorOrchestrator:
                         run_id=sync_run_id,
                         phase="sync_preflight",
                         status="blocked",
-                        error_code=health.get("last_error_code")
-                        or health.get("error_code"),
+                        error_code=health.get("last_error_code") or health.get("error_code"),
                         error_message=health.get("last_error_message")
                         or health.get("error_message"),
                         retryable=retryable,
                         attempt=attempt,
-                        retry_after_at=(
-                            health.get("circuit_open_until") if retryable else None
-                        ),
+                        retry_after_at=(health.get("circuit_open_until") if retryable else None),
                         extra={
                             "started_at": sync_started_at.isoformat(),
                             "duration_ms": sync_elapsed_ms(),
@@ -925,12 +904,9 @@ class ConnectorOrchestrator:
                         phase="sync_preflight",
                         status="blocked",
                         attempt=attempt,
-                        error_code=health.get("last_error_code")
-                        or health.get("error_code"),
+                        error_code=health.get("last_error_code") or health.get("error_code"),
                         retryable=retryable,
-                        retry_after_at=(
-                            health.get("circuit_open_until") if retryable else None
-                        ),
+                        retry_after_at=(health.get("circuit_open_until") if retryable else None),
                         duration_ms=sync_elapsed_ms(),
                     )
                     self._log_activity(
@@ -964,17 +940,14 @@ class ConnectorOrchestrator:
                         duration_ms=sync_elapsed_ms(),
                         started_at=sync_started_at.isoformat(),
                         completed_at=datetime.now(tz=UTC).isoformat(),
-                        error_code=health.get("last_error_code")
-                        or health.get("error_code"),
+                        error_code=health.get("last_error_code") or health.get("error_code"),
                         retryable=retryable,
                         health=health,
                         fallback_snapshot=self._last_success_snapshot(connector),
                         extra={
                             "sync": {
                                 "retry_after_at": (
-                                    health.get("circuit_open_until")
-                                    if retryable
-                                    else None
+                                    health.get("circuit_open_until") if retryable else None
                                 )
                             }
                         },
@@ -1059,9 +1032,7 @@ class ConnectorOrchestrator:
             self.session.flush()
 
             try:
-                logger.info(
-                    f"📡 [{connector.name}] Phase 1: Fetching intelligence from source..."
-                )
+                logger.info(f"📡 [{connector.name}] Phase 1: Fetching intelligence from source...")
                 self._emit_progress(
                     progress_callback,
                     phase="fetch",
@@ -1109,9 +1080,7 @@ class ConnectorOrchestrator:
                             run_id=sync_run_id,
                             phase="fetch",
                             status=(
-                                "retrying"
-                                if retryable and attempt < max_attempts
-                                else "failed"
+                                "retrying" if retryable and attempt < max_attempts else "failed"
                             ),
                             attempt=attempt,
                             error_code=failure_code,
@@ -1133,9 +1102,7 @@ class ConnectorOrchestrator:
                     raise ValueError(result.get("message", "Source fetch failed"))
 
                 if result.get("status") == "skipped":
-                    logger.info(
-                        f"✅ [{connector.name}] Sync skipped: No new content found."
-                    )
+                    logger.info(f"✅ [{connector.name}] Sync skipped: No new content found.")
                     self._emit_progress(
                         progress_callback,
                         phase="skipped",
@@ -1289,11 +1256,7 @@ class ConnectorOrchestrator:
                         content=f"Review {connector.name} sync: {draft_title}",
                         active_form=f"Review {connector.name} sync: {draft_title}",
                         status="pending",
-                        priority=(
-                            60
-                            if integration.slug in {"gmail", "google-calendar"}
-                            else 40
-                        ),
+                        priority=(60 if integration.slug in {"gmail", "google-calendar"} else 40),
                         metadata_json={
                             "source": integration.slug,
                             "connector_id": str(connector.id),
@@ -1400,9 +1363,7 @@ class ConnectorOrchestrator:
                 )
                 return self._build_sync_response(
                     status=str(result.get("status") or "success"),
-                    message=str(
-                        result.get("message") or f"Sync completed for {connector.name}."
-                    ),
+                    message=str(result.get("message") or f"Sync completed for {connector.name}."),
                     run_id=sync_run_id,
                     phase="complete",
                     attempt=attempt,
@@ -1415,9 +1376,7 @@ class ConnectorOrchestrator:
 
             except Exception as e:
                 logger.error(f"❌ [{connector.name}] Sync FAILED: {str(e)}")
-                failure_status, failure_code = classify_health_status(
-                    exception=e, message=str(e)
-                )
+                failure_status, failure_code = classify_health_status(exception=e, message=str(e))
                 failure_report = build_health_report(
                     status=failure_status,
                     healthy=False,
@@ -1490,9 +1449,7 @@ class ConnectorOrchestrator:
                         error_code=str(failure_code),
                         retryable=retryable,
                         retry_after_at=(
-                            orchestrator._compute_retry_after_at(attempt=1)
-                            if retryable
-                            else None
+                            orchestrator._compute_retry_after_at(attempt=1) if retryable else None
                         ),
                         duration_ms=sync_elapsed_ms(),
                     )
@@ -1596,14 +1553,10 @@ class ConnectorOrchestrator:
 
             service_cls = self._REGISTRY.get(integration.slug)
             if not service_cls:
-                return {
-                    "error": f"No service implementation for integration: {integration.slug}"
-                }
+                return {"error": f"No service implementation for integration: {integration.slug}"}
 
             try:
-                stmt = select(ConnectorSecret).where(
-                    ConnectorSecret.connector_id == connector_id
-                )
+                stmt = select(ConnectorSecret).where(ConnectorSecret.connector_id == connector_id)
                 secrets = self.session.execute(stmt).scalars().all()
                 runtime_secret_values: dict[str, str] = {}
                 if secrets:

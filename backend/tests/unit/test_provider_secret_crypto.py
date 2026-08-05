@@ -13,9 +13,7 @@ from app.providers.services.provider_secret_crypto import (
 
 
 def _keyring_json() -> str:
-    return json.dumps(
-        {"kid-active": base64.urlsafe_b64encode(b"1" * 32).decode("utf-8")}
-    )
+    return json.dumps({"kid-active": base64.urlsafe_b64encode(b"1" * 32).decode("utf-8")})
 
 
 def test_provider_secret_crypto_roundtrip() -> None:

@@ -73,9 +73,7 @@ export async function getLocalMessages(collectionId: string): Promise<LocalMessa
     request.onsuccess = () => {
       const msgs = request.result || [];
       // Sort chronologically
-      msgs.sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
+      msgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
       resolve(msgs);
     };
     request.onerror = () => reject(request.error);
@@ -125,7 +123,7 @@ export async function resetUnreadCount(collectionId: string): Promise<void> {
  */
 export async function purgeExpiredMessages(
   collectionId: string,
-  expiryDays: number
+  expiryDays: number,
 ): Promise<number> {
   if (expiryDays <= 0) return 0;
   const db = await initDb();

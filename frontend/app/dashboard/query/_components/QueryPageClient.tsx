@@ -1,7 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, History, Settings2, Check, ChevronDown, X, Sparkles, Brain, Hash, Compass, Folder } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  AlertCircle,
+  History,
+  Settings2,
+  Check,
+  ChevronDown,
+  X,
+  Sparkles,
+  Brain,
+  Hash,
+  Compass,
+  Folder,
+} from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import { createPortal } from "react-dom";
@@ -82,7 +102,7 @@ function IconTooltipButton({
       }}
       onPointerUp={hide}
       onPointerCancel={hide}
-      className={`group relative inline-flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-full transition-all ${
+      className={`group relative inline-flex h-8 w-8 items-center justify-center rounded-full transition-all sm:h-10 sm:w-10 ${
         active
           ? "bg-primary text-primary-foreground shadow-[0_0_15px_rgba(var(--primary),0.3)]"
           : "text-foreground/70 hover:bg-surface-2 hover:text-primary"
@@ -251,13 +271,15 @@ export default function QueryPageClient() {
           const fallbackModels = chatProviders.flatMap((provider) => {
             const modelName = provider.default_chat_model?.trim();
             return modelName
-              ? [{
-                  providerId: provider.id,
-                  modelName,
-                  displayName: modelName,
-                  contextWindow: null,
-                  contextWindowSource: "provider_default",
-                }]
+              ? [
+                  {
+                    providerId: provider.id,
+                    modelName,
+                    displayName: modelName,
+                    contextWindow: null,
+                    contextWindowSource: "provider_default",
+                  },
+                ]
               : [];
           });
           if (chatAssignment?.model_name && chatAssignment.provider_config_id) {
@@ -288,54 +310,59 @@ export default function QueryPageClient() {
     };
   }, []);
 
-  const handleModelSelect = useCallback((providerId: string, modelName: string) => {
-    const previousModel = selectedModelOverride;
-    const previousProvider = selectedProviderOverride;
-    const selectionVersion = ++modelSelectionVersionRef.current;
+  const handleModelSelect = useCallback(
+    (providerId: string, modelName: string) => {
+      const previousModel = selectedModelOverride;
+      const previousProvider = selectedProviderOverride;
+      const selectionVersion = ++modelSelectionVersionRef.current;
 
-    // Optimistic UI keeps both composers truthful immediately after the click.
-    setSelectedModelOverride(modelName);
-    setSelectedProviderOverride(providerId);
+      // Optimistic UI keeps both composers truthful immediately after the click.
+      setSelectedModelOverride(modelName);
+      setSelectedProviderOverride(providerId);
 
-    const waitForPrevious = modelSwitchRef.current ?? Promise.resolve();
-    const operation = waitForPrevious.catch(() => undefined).then(async () => {
-      const toastId = toast.loading("Switching model...");
-      try {
-        const assignmentsList = await listAssignments();
-        const chatAssignment = assignmentsList.find((a) => a.feature_scope === "chat");
+      const waitForPrevious = modelSwitchRef.current ?? Promise.resolve();
+      const operation = waitForPrevious
+        .catch(() => undefined)
+        .then(async () => {
+          const toastId = toast.loading("Switching model...");
+          try {
+            const assignmentsList = await listAssignments();
+            const chatAssignment = assignmentsList.find((a) => a.feature_scope === "chat");
 
-        if (chatAssignment) {
-          await updateAssignment(chatAssignment.id, {
-            provider_config_id: providerId,
-            model_name: modelName,
-            enabled: true,
-          });
-        } else {
-          await createAssignment({
-            feature_scope: "chat",
-            provider_config_id: providerId,
-            model_name: modelName,
-            enabled: true,
-          });
-        }
+            if (chatAssignment) {
+              await updateAssignment(chatAssignment.id, {
+                provider_config_id: providerId,
+                model_name: modelName,
+                enabled: true,
+              });
+            } else {
+              await createAssignment({
+                feature_scope: "chat",
+                provider_config_id: providerId,
+                model_name: modelName,
+                enabled: true,
+              });
+            }
 
-        toast.success(`Switched model to ${modelName}`, { id: toastId });
-      } catch (err) {
-        console.error("Failed to switch model", err);
-        if (selectionVersion === modelSelectionVersionRef.current) {
-          setSelectedModelOverride(previousModel);
-          setSelectedProviderOverride(previousProvider);
-        }
-        toast.error("Failed to switch model", { id: toastId });
-      }
-    });
+            toast.success(`Switched model to ${modelName}`, { id: toastId });
+          } catch (err) {
+            console.error("Failed to switch model", err);
+            if (selectionVersion === modelSelectionVersionRef.current) {
+              setSelectedModelOverride(previousModel);
+              setSelectedProviderOverride(previousProvider);
+            }
+            toast.error("Failed to switch model", { id: toastId });
+          }
+        });
 
-    modelSwitchRef.current = operation;
-    void operation.finally(() => {
-      if (modelSwitchRef.current === operation) modelSwitchRef.current = null;
-    });
-    return operation;
-  }, [selectedModelOverride, selectedProviderOverride]);
+      modelSwitchRef.current = operation;
+      void operation.finally(() => {
+        if (modelSwitchRef.current === operation) modelSwitchRef.current = null;
+      });
+      return operation;
+    },
+    [selectedModelOverride, selectedProviderOverride],
+  );
 
   const isNearBottom = useCallback((element: HTMLDivElement) => {
     const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
@@ -797,15 +824,19 @@ export default function QueryPageClient() {
     dispatch,
   ]);
   const effectiveModelName = selectedModelOverride ?? state.lastModelName ?? null;
-  const selectedModel = availableModels.find(
-    (model) =>
-      model.modelName === effectiveModelName &&
-      (!selectedProviderOverride || model.providerId === selectedProviderOverride),
-  ) ?? availableModels.find((model) => model.modelName === effectiveModelName);
-  const latestAssistant = [...state.messages].reverse().find((message) => message.role === "assistant");
+  const selectedModel =
+    availableModels.find(
+      (model) =>
+        model.modelName === effectiveModelName &&
+        (!selectedProviderOverride || model.providerId === selectedProviderOverride),
+    ) ?? availableModels.find((model) => model.modelName === effectiveModelName);
+  const latestAssistant = [...state.messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
   const contextUsedTokens =
     latestAssistant?.metrics?.contextUsedTokens ?? latestAssistant?.metrics?.totalTokens ?? null;
-  const contextLimit = selectedModel?.contextWindow ?? latestAssistant?.metrics?.contextLimit ?? null;
+  const contextLimit =
+    selectedModel?.contextWindow ?? latestAssistant?.metrics?.contextLimit ?? null;
   const activeError = state.streamError;
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-transparent">
@@ -818,7 +849,7 @@ export default function QueryPageClient() {
 
         if (shouldRenderPortal) {
           return createPortal(
-            <div className="border-glass-border bg-surface-0/90 pointer-events-auto flex items-center gap-0.5 sm:gap-1 rounded-full border p-0.5 sm:p-1 shadow-xl backdrop-blur-md">
+            <div className="border-glass-border bg-surface-0/90 pointer-events-auto flex items-center gap-0.5 rounded-full border p-0.5 shadow-xl backdrop-blur-md sm:gap-1 sm:p-1">
               <IconTooltipButton
                 label="Controls"
                 active={filtersOpen}
@@ -925,22 +956,26 @@ export default function QueryPageClient() {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 420, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-4 right-4 bottom-4 z-50 flex w-[320px] sm:w-[400px] flex-col rounded-[2.5rem] border border-white/10 bg-black/85 p-6 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.7)] backdrop-blur-3xl overflow-y-auto"
+              className="fixed top-4 right-4 bottom-4 z-50 flex w-[320px] flex-col overflow-y-auto rounded-[2.5rem] border border-white/10 bg-black/85 p-6 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.7)] backdrop-blur-3xl sm:w-[400px]"
             >
-              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+              <div className="mb-6 flex items-center justify-between border-b border-white/10 pb-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.15)]">
+                  <div className="bg-primary/10 text-primary border-primary/20 flex h-8 w-8 items-center justify-center rounded-xl border shadow-[0_0_15px_rgba(var(--primary),0.15)]">
                     <Settings2 size={16} />
                   </div>
                   <div>
-                    <h2 className="text-sm font-bold tracking-widest uppercase text-white">Search Engine</h2>
-                    <p className="text-[10px] text-foreground/40 font-medium mt-0.5 uppercase tracking-wider">Configure Workspace RAG</p>
+                    <h2 className="text-sm font-bold tracking-widest text-white uppercase">
+                      Search Engine
+                    </h2>
+                    <p className="text-foreground/40 mt-0.5 text-[10px] font-medium tracking-wider uppercase">
+                      Configure Workspace RAG
+                    </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setFiltersOpen(false)}
-                  className="rounded-full p-2 text-foreground/40 hover:bg-white/10 hover:text-white transition-all active:scale-90"
+                  className="text-foreground/40 rounded-full p-2 transition-all hover:bg-white/10 hover:text-white active:scale-90"
                 >
                   <X size={15} />
                 </button>
@@ -979,27 +1014,33 @@ export default function QueryPageClient() {
                           key={mode.id}
                           type="button"
                           onClick={() => setSearchMode(mode.id)}
-                          className={`w-full rounded-2xl border p-4 text-left transition-all duration-200 flex items-start gap-3 relative overflow-hidden group ${
+                          className={`group relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200 ${
                             isActive
-                              ? "border-primary/40 bg-gradient-to-br from-primary/15 to-primary/5 text-foreground shadow-[0_4px_20px_rgba(var(--primary),0.08)]"
-                              : "border-white/5 bg-white/[0.02] text-foreground/70 hover:bg-white/[0.05] hover:border-white/10"
+                              ? "border-primary/40 from-primary/15 to-primary/5 text-foreground bg-gradient-to-br shadow-[0_4px_20px_rgba(var(--primary),0.08)]"
+                              : "text-foreground/70 border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.05]"
                           }`}
                         >
-                          <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-                            isActive ? "border-primary/30 bg-primary/10 text-primary" : "border-white/10 bg-white/5"
-                          }`}>
+                          <div
+                            className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors ${
+                              isActive
+                                ? "border-primary/30 bg-primary/10 text-primary"
+                                : "border-white/10 bg-white/5"
+                            }`}
+                          >
                             {mode.icon}
                           </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold tracking-wide">{mode.name}</span>
                               {isActive && (
-                                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary/20 text-primary border border-primary/30 shadow-[0_0_10px_rgba(var(--primary),0.2)]">
+                                <span className="bg-primary/20 text-primary border-primary/30 flex h-4 w-4 items-center justify-center rounded-full border shadow-[0_0_10px_rgba(var(--primary),0.2)]">
                                   <Check size={10} className="stroke-[3]" />
                                 </span>
                               )}
                             </div>
-                            <p className="text-[10px] text-foreground/40 mt-1 leading-relaxed">{mode.desc}</p>
+                            <p className="text-foreground/40 mt-1 text-[10px] leading-relaxed">
+                              {mode.desc}
+                            </p>
                           </div>
                         </button>
                       );
@@ -1012,14 +1053,17 @@ export default function QueryPageClient() {
                   <label className="text-foreground/40 block text-[10px] font-bold tracking-[0.2em] uppercase">
                     Retrieval Depth
                   </label>
-                  <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-transparent p-4 flex gap-3 items-start">
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-foreground/60">
+                  <div className="flex items-start gap-3 rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.03] to-transparent p-4">
+                    <div className="text-foreground/60 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
                       <Compass size={14} className="text-foreground/50 animate-pulse" />
                     </div>
                     <div className="space-y-1">
-                      <h4 className="text-xs font-bold text-foreground/80 uppercase tracking-wider">Adaptive Depth</h4>
-                      <p className="text-[10px] text-foreground/45 leading-relaxed">
-                        AVERQEL automatically calibrates retrieval parameters for each query, executing deep reranking to prioritize the strongest grounded evidence.
+                      <h4 className="text-foreground/80 text-xs font-bold tracking-wider uppercase">
+                        Adaptive Depth
+                      </h4>
+                      <p className="text-foreground/45 text-[10px] leading-relaxed">
+                        AVERQEL automatically calibrates retrieval parameters for each query,
+                        executing deep reranking to prioritize the strongest grounded evidence.
                       </p>
                     </div>
                   </div>
@@ -1039,18 +1083,21 @@ export default function QueryPageClient() {
                         }
                       }}
                       disabled={state.isStreaming || collectionScopeLoading}
-                      className="border-white/10 bg-white/[0.02] text-foreground hover:border-primary/40 hover:bg-primary/[0.04] flex w-full items-center justify-between rounded-2xl border p-4 text-left text-xs transition-all outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                      className="text-foreground hover:border-primary/40 hover:bg-primary/[0.04] flex w-full items-center justify-between rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-left text-xs transition-all outline-none disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-primary">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="text-primary flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
                           <Folder size={14} />
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate font-semibold text-xs text-foreground/90">
-                            {collectionOptions.find((item) => item.id === selectedCollectionId)?.name ?? "All accessible documents"}
+                          <p className="text-foreground/90 truncate text-xs font-semibold">
+                            {collectionOptions.find((item) => item.id === selectedCollectionId)
+                              ?.name ?? "All accessible documents"}
                           </p>
                           <p className="text-foreground/40 mt-0.5 text-[9px] tracking-[0.18em] uppercase">
-                            {selectedCollectionId ? "Connected bridge scope" : "Workspace-wide scope"}
+                            {selectedCollectionId
+                              ? "Connected bridge scope"
+                              : "Workspace-wide scope"}
                           </p>
                         </div>
                       </div>
@@ -1067,7 +1114,7 @@ export default function QueryPageClient() {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: 6, scale: 0.98 }}
                           transition={{ duration: 0.16, ease: "easeOut" }}
-                          className="border-white/10 bg-black/95 absolute left-0 right-0 z-30 mt-2 max-h-64 overflow-y-auto rounded-2xl border p-2 shadow-2xl backdrop-blur-xl"
+                          className="absolute right-0 left-0 z-30 mt-2 max-h-64 overflow-y-auto rounded-2xl border border-white/10 bg-black/95 p-2 shadow-2xl backdrop-blur-xl"
                         >
                           <button
                             type="button"
@@ -1082,13 +1129,17 @@ export default function QueryPageClient() {
                             }`}
                           >
                             <div className="flex items-center gap-2.5">
-                              <div className={`flex h-6 w-6 items-center justify-center rounded-md border ${
-                                !selectedCollectionId ? "border-primary/30 bg-primary/10 text-primary" : "border-white/10 bg-white/5"
-                              }`}>
+                              <div
+                                className={`flex h-6 w-6 items-center justify-center rounded-md border ${
+                                  !selectedCollectionId
+                                    ? "border-primary/30 bg-primary/10 text-primary"
+                                    : "border-white/10 bg-white/5"
+                                }`}
+                              >
                                 <Folder size={12} />
                               </div>
                               <div>
-                                <p className="font-semibold text-xs">All accessible documents</p>
+                                <p className="text-xs font-semibold">All accessible documents</p>
                                 <p className="text-foreground/42 mt-0.5 text-[9px] tracking-[0.18em] uppercase">
                                   Full workspace scope
                                 </p>
@@ -1116,20 +1167,27 @@ export default function QueryPageClient() {
                                 }`}
                               >
                                 <div className="flex items-center gap-2.5">
-                                  <div className={`flex h-6 w-6 items-center justify-center rounded-md border ${
-                                    selected ? "border-primary/30 bg-primary/10 text-primary" : "border-white/10 bg-white/5"
-                                  }`}>
+                                  <div
+                                    className={`flex h-6 w-6 items-center justify-center rounded-md border ${
+                                      selected
+                                        ? "border-primary/30 bg-primary/10 text-primary"
+                                        : "border-white/10 bg-white/5"
+                                    }`}
+                                  >
                                     <Folder size={12} />
                                   </div>
                                   <div>
-                                    <p className="font-semibold text-xs">{collection.name}</p>
+                                    <p className="text-xs font-semibold">{collection.name}</p>
                                     <p className="text-foreground/42 mt-0.5 text-[9px] tracking-[0.18em] uppercase">
                                       Shared bridge collection
                                     </p>
                                   </div>
                                 </div>
                                 {selected ? (
-                                  <Check size={13} className="text-primary ml-3 shrink-0 stroke-[3.5]" />
+                                  <Check
+                                    size={13}
+                                    className="text-primary ml-3 shrink-0 stroke-[3.5]"
+                                  />
                                 ) : null}
                               </button>
                             );
@@ -1139,7 +1197,8 @@ export default function QueryPageClient() {
                     </AnimatePresence>
                   </div>
                   <p className="text-foreground/40 mt-2.5 text-[10px] leading-relaxed">
-                    Narrow search boundaries to a specific connection bridge when focusing queries on isolated data silos.
+                    Narrow search boundaries to a specific connection bridge when focusing queries
+                    on isolated data silos.
                   </p>
                 </div>
               </div>
@@ -1160,7 +1219,7 @@ export default function QueryPageClient() {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 420, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-4 right-4 bottom-4 z-50 flex w-[280px] sm:w-[320px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl"
+              className="fixed top-4 right-4 bottom-4 z-50 flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl sm:w-[320px]"
             >
               <ChatSidebar
                 endpointBase={chatEndpointBase}

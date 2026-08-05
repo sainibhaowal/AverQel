@@ -55,12 +55,8 @@ def test_cross_tenant_document_read_denied(
     monkeypatch.setattr(StorageService, "put_bytes", fake_put)
     monkeypatch.setattr(StorageService, "get_bytes", fake_get)
 
-    tenant_a = seed_user(
-        "tenant-sec-a", "editor-a@tenant.example", "StrongPass!1234", ("editor",)
-    )
-    tenant_b = seed_user(
-        "tenant-sec-b", "reader-b@tenant.example", "StrongPass!1234", ("reader",)
-    )
+    tenant_a = seed_user("tenant-sec-a", "editor-a@tenant.example", "StrongPass!1234", ("editor",))
+    tenant_b = seed_user("tenant-sec-b", "reader-b@tenant.example", "StrongPass!1234", ("reader",))
 
     token_a = _login(client, tenant_a)
     token_b = _login(client, tenant_b)
@@ -113,9 +109,7 @@ def test_upload_validation_blocks_invalid_mime(
 
     monkeypatch.setattr(StorageService, "put_bytes", fake_put)
 
-    seeded = seed_user(
-        "tenant-sec-c", "editor-c@tenant.example", "StrongPass!1234", ("editor",)
-    )
+    seeded = seed_user("tenant-sec-c", "editor-c@tenant.example", "StrongPass!1234", ("editor",))
     token = _login(client, seeded)
 
     response = client.post(
@@ -135,9 +129,7 @@ def test_malware_scan_blocked_path(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    seeded = seed_user(
-        "tenant-sec-d", "editor-d@tenant.example", "StrongPass!1234", ("editor",)
-    )
+    seeded = seed_user("tenant-sec-d", "editor-d@tenant.example", "StrongPass!1234", ("editor",))
     token = _login(client, seeded)
 
     response = client.post(
@@ -163,9 +155,7 @@ def test_malware_scan_blocked_path(
         session.execute(text("SET ROLE aks_app"))
         set_db_tenant_context(session, seeded.tenant_id)
         doc_count = session.execute(
-            select(func.count())
-            .select_from(Document)
-            .where(Document.tenant_id == seeded.tenant_id)
+            select(func.count()).select_from(Document).where(Document.tenant_id == seeded.tenant_id)
         ).scalar_one()
         assert doc_count == 0
     finally:

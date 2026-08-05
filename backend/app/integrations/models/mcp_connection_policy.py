@@ -31,22 +31,54 @@ class MCPConnectionPolicy(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    server_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False, index=True)
-    allowed_tools: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
-    denied_tools: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    server_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("mcp_servers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    allowed_tools: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    denied_tools: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
     read_only: Mapped[bool] = mapped_column(nullable=False, server_default=text("true"))
-    risk_ceiling: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'read'"))
+    risk_ceiling: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'read'")
+    )
     approval_rules: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
-        server_default=text("'{\"write\":\"needs_approval\",\"delete\":\"needs_approval\",\"external_message\":\"needs_approval\"}'::jsonb"),
+        server_default=text(
+            '\'{"write":"needs_approval","delete":"needs_approval","external_message":"needs_approval"}\'::jsonb'
+        ),
     )
-    tool_modes: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    tool_modes: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
     default_enabled: Mapped[bool] = mapped_column(nullable=False, server_default=text("true"))
-    deepspace_overrides: Mapped[dict[str, bool]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    conversation_overrides: Mapped[dict[str, bool]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"), index=True)
+    deepspace_overrides: Mapped[dict[str, bool]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    conversation_overrides: Mapped[dict[str, bool]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+        index=True,
+    )

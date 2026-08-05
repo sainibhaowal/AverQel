@@ -38,9 +38,7 @@ def _write_env_file(
         values["AKS_CONNECTOR_OAUTH_REDIRECT_URI"] = (
             "https://averqel.localhost/api/v1/integrations/connectors/oauth/callback"
         )
-        values["AKS_CONNECTOR_OAUTH_FRONTEND_REDIRECT_URI"] = (
-            "https://averqel.localhost/dashboard"
-        )
+        values["AKS_CONNECTOR_OAUTH_FRONTEND_REDIRECT_URI"] = "https://averqel.localhost/dashboard"
 
     if include_weak_secrets:
         values["AKS_JWT_SECRET"] = "too-short"

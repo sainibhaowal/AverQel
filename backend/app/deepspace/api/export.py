@@ -49,9 +49,7 @@ async def export_conversation(
         extension = "pdf"
     elif format == "docx":
         file_obj = service.generate_docx(content_html, title)
-        media_type = (
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         extension = "docx"
     else:
         file_obj = service.generate_md(content_html)

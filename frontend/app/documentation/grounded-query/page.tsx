@@ -53,8 +53,8 @@ export default function GroundedQueryDocsPage() {
 
       <DocsSection title="Why it still matters">
         <p>
-          AverQel depends on solid grounded retrieval to turn private files into usable,
-          trustworthy context for both query answers and DeepSpace conversations.
+          AverQel depends on solid grounded retrieval to turn private files into usable, trustworthy
+          context for both query answers and DeepSpace conversations.
         </p>
       </DocsSection>
     </DocsShell>

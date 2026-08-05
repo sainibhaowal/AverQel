@@ -177,9 +177,7 @@ def run_connector_sync_task(self: Task, connector_id_str: str) -> str:
         result_status = str(result.get("status") or "").lower()
         sync_meta = result.get("sync")
         response_retry_after_at = (
-            str(sync_meta.get("retry_after_at") or "")
-            if isinstance(sync_meta, dict)
-            else ""
+            str(sync_meta.get("retry_after_at") or "") if isinstance(sync_meta, dict) else ""
         ) or None
 
         if retryable and result_status in {"error", "offline", "degraded"}:
@@ -222,9 +220,7 @@ def run_connector_sync_task(self: Task, connector_id_str: str) -> str:
         WORKER_JOB_TRANSITIONS_TOTAL.labels(stage=stage, status="error").inc()
         raise
     finally:
-        WORKER_STAGE_DURATION_SECONDS.labels(stage=stage).observe(
-            time.perf_counter() - start
-        )
+        WORKER_STAGE_DURATION_SECONDS.labels(stage=stage).observe(time.perf_counter() - start)
         if acquired_lock:
             _release_connector_sync_lock(session, connector_id)
         _cleanup_connector_session(session)

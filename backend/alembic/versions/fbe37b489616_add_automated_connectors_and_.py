@@ -26,9 +26,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("slug", sa.String(length=50), nullable=False),
         sa.Column("description", sa.String(length=500), nullable=True),
-        sa.Column(
-            "is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False
-        ),
+        sa.Column("is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.Column(
             "ui_metadata",
             postgresql.JSONB(astext_type=sa.Text()),
@@ -78,9 +76,7 @@ def upgrade() -> None:
         ),
         sa.Column("last_sync_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_error", sa.Text(), nullable=True),
-        sa.Column(
-            "error_count", sa.Integer(), server_default=sa.text("0"), nullable=False
-        ),
+        sa.Column("error_count", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -96,9 +92,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["collection_id"], ["document_collections.id"], ondelete="SET NULL"
         ),
-        sa.ForeignKeyConstraint(
-            ["integration_id"], ["integrations.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["integration_id"], ["integrations.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -114,9 +108,7 @@ def upgrade() -> None:
         ["integration_id"],
         unique=False,
     )
-    op.create_index(
-        op.f("ix_connectors_tenant_id"), "connectors", ["tenant_id"], unique=False
-    )
+    op.create_index(op.f("ix_connectors_tenant_id"), "connectors", ["tenant_id"], unique=False)
 
     op.create_table(
         "connector_secrets",
@@ -136,9 +128,7 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["connector_id"], ["connectors.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["connector_id"], ["connectors.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -157,12 +147,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        op.f("ix_connector_secrets_tenant_id"), table_name="connector_secrets"
-    )
-    op.drop_index(
-        op.f("ix_connector_secrets_connector_id"), table_name="connector_secrets"
-    )
+    op.drop_index(op.f("ix_connector_secrets_tenant_id"), table_name="connector_secrets")
+    op.drop_index(op.f("ix_connector_secrets_connector_id"), table_name="connector_secrets")
     op.drop_table("connector_secrets")
     op.drop_index(op.f("ix_connectors_tenant_id"), table_name="connectors")
     op.drop_index(op.f("ix_connectors_integration_id"), table_name="connectors")

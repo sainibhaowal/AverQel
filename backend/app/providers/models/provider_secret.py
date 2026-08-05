@@ -51,9 +51,7 @@ class ProviderSecret(Base):
     secret_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     secret_kid: Mapped[str] = mapped_column(String(128), nullable=False)
     secret_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_rotated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

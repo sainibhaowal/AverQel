@@ -109,11 +109,7 @@ def provider_request_error_to_api_error(
             message=f"{provider_label} is temporarily unavailable during model {operation}. Please try again shortly.",
             status_code=502,
         )
-    detail = (
-        exc.message.strip()
-        if isinstance(exc.message, str) and exc.message.strip()
-        else None
-    )
+    detail = exc.message.strip() if isinstance(exc.message, str) and exc.message.strip() else None
     return ApiError(
         code="PROVIDER_TEST_FAILED",
         message=detail or f"{provider_label} model {operation} failed.",
@@ -136,9 +132,7 @@ class ProviderModelsService:
         object.__setattr__(self, "configs", ProviderConfigsRepository(self.db))
         object.__setattr__(self, "assignments", ProviderAssignmentsRepository(self.db))
         object.__setattr__(self, "cache", ProviderModelCacheRepository(self.db))
-        object.__setattr__(
-            self, "health_checks", ProviderHealthChecksRepository(self.db)
-        )
+        object.__setattr__(self, "health_checks", ProviderHealthChecksRepository(self.db))
         object.__setattr__(self, "secrets", ProviderSecretService(self.db))
         object.__setattr__(self, "audit", AuditService(self.db))
 
@@ -156,9 +150,7 @@ class ProviderModelsService:
             require_enabled=False,
         )
         return list(
-            self.cache.list_models(
-                tenant_id=tenant_id, provider_config_id=provider_config_id
-            )
+            self.cache.list_models(tenant_id=tenant_id, provider_config_id=provider_config_id)
         )
 
     def refresh_models(
@@ -180,9 +172,7 @@ class ProviderModelsService:
             discovery = self.registry.get_model_discovery_provider_from_config(
                 provider, api_key=api_key
             )
-            chat_models = (
-                list(discovery.list_models()) if provider.supports_chat else []
-            )
+            chat_models = list(discovery.list_models()) if provider.supports_chat else []
             embedding_models = []
             reranker_models = []
             if provider.supports_embeddings:
@@ -235,9 +225,7 @@ class ProviderModelsService:
                 is_available = model.name in usable_chat_model_names
                 capabilities["chat_usable"] = is_available
                 if not is_available:
-                    capabilities["availability_reason"] = (
-                        "lmstudio_chat_model_load_failed"
-                    )
+                    capabilities["availability_reason"] = "lmstudio_chat_model_load_failed"
             if kind == "embedding":
                 capabilities["embedding_dimension"] = capabilities.get(
                     "embedding_dimension"
@@ -304,9 +292,7 @@ class ProviderModelsService:
             reranker_models=reranker_models,
             usable_chat_model_names=usable_chat_model_names,
         )
-        return list(
-            self.cache.list_models(tenant_id=tenant_id, provider_config_id=provider.id)
-        )
+        return list(self.cache.list_models(tenant_id=tenant_id, provider_config_id=provider.id))
 
     def pull_model(
         self,
@@ -330,9 +316,7 @@ class ProviderModelsService:
             )
         api_key = self._resolve_api_key(tenant_id=tenant_id, provider=provider)
         try:
-            installer = self.registry.get_install_provider_from_config(
-                provider, api_key=api_key
-            )
+            installer = self.registry.get_install_provider_from_config(provider, api_key=api_key)
             installer.pull_model(model_name)
         except Exception as exc:  # noqa: BLE001
             raise ApiError(
@@ -419,9 +403,7 @@ class ProviderModelsService:
 
         h_status = result.status if result is not None else "unhealthy"
         h_latency = result.latency_ms if result is not None else None
-        h_error_code = (
-            result.error_code if result is not None else "provider_test_failed"
-        )
+        h_error_code = result.error_code if result is not None else "provider_test_failed"
         h_error_msg = result.error_message_redacted if result is not None else error
         h_metadata = dict(result.metadata) if result is not None else {}
 
@@ -473,9 +455,7 @@ class ProviderModelsService:
                 owner_user_id=actor_user_id,
             )
             if actor_user_id is not None
-            else self.configs.get_by_id(
-                tenant_id=tenant_id, provider_config_id=provider_config_id
-            )
+            else self.configs.get_by_id(tenant_id=tenant_id, provider_config_id=provider_config_id)
         )
         if provider is None:
             raise ApiError(
@@ -491,9 +471,7 @@ class ProviderModelsService:
             )
         return provider
 
-    def _resolve_api_key(
-        self, *, tenant_id: uuid.UUID, provider: ProviderConfig
-    ) -> str | None:
+    def _resolve_api_key(self, *, tenant_id: uuid.UUID, provider: ProviderConfig) -> str | None:
         if provider.auth_mode in {"none", "local_no_key"}:
             return None
         return self.secrets.get_secret_value(  # nosec B106
@@ -531,9 +509,7 @@ class ProviderModelsService:
         }
 
         if provider.supports_chat:
-            selected_chat_models = (
-                usable_chat_model_names or discovered_chat_model_names
-            )
+            selected_chat_models = usable_chat_model_names or discovered_chat_model_names
             if (
                 not provider.default_chat_model
                 or provider.default_chat_model not in selected_chat_models
@@ -570,9 +546,7 @@ class ProviderModelsService:
                 not provider.default_reranker_model
                 or provider.default_reranker_model not in reranker_model_names
             ):
-                default_reranker_model = self._select_default_reranker_model(
-                    reranker_models
-                )
+                default_reranker_model = self._select_default_reranker_model(reranker_models)
                 update_values["default_reranker_model"] = default_reranker_model
                 provider.default_reranker_model = default_reranker_model
 
@@ -627,9 +601,7 @@ class ProviderModelsService:
     @staticmethod
     def _looks_like_embedding_model(model_name: str) -> bool:
         lowered = model_name.lower()
-        return any(
-            token in lowered for token in ("embed", "embedding", "bge", "e5", "nomic")
-        )
+        return any(token in lowered for token in ("embed", "embedding", "bge", "e5", "nomic"))
 
     def _detect_embedding_dimension(
         self,
@@ -639,9 +611,7 @@ class ProviderModelsService:
         model_name: str,
     ) -> int | None:
         if provider.provider_type == "sentence-transformers":
-            return SentenceTransformersEmbeddingProvider.get_embedding_dimension(
-                model_name
-            )
+            return SentenceTransformersEmbeddingProvider.get_embedding_dimension(model_name)
         try:
             response = self.registry.get_embedding_provider_from_selection(
                 self._provider_to_selection(
@@ -764,9 +734,7 @@ class ProviderModelsService:
             stream=False,
         )
 
-    def _select_default_embedding_model(
-        self, embedding_models: list[Any]
-    ) -> str | None:
+    def _select_default_embedding_model(self, embedding_models: list[Any]) -> str | None:
         names = [
             model.name
             for model in embedding_models

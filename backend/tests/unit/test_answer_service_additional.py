@@ -85,9 +85,7 @@ def test_generate_with_provider_fallback_paths(monkeypatch: pytest.MonkeyPatch) 
     chunks = [_chunk(0.9, "A"), _chunk(0.8, "B")]
 
     # Circuit-open fallback — stream yields a fallback message
-    AnswerService._llm_circuit.opened_until = datetime.now(tz=UTC) + timedelta(
-        seconds=10
-    )
+    AnswerService._llm_circuit.opened_until = datetime.now(tz=UTC) + timedelta(seconds=10)
     result = list(
         service._stream_generate_with_provider(
             tenant_id=UUID("11111111-1111-7111-8111-111111111111"),
@@ -159,9 +157,7 @@ def test_call_llm_provider_status_and_payload_paths(
         sys.modules,
         "httpx",
         SimpleNamespace(
-            post=lambda *a, **k: FakeResponse(
-                200, {"choices": [{"message": {"content": 1}}]}
-            )
+            post=lambda *a, **k: FakeResponse(200, {"choices": [{"message": {"content": 1}}]})
         ),
     )
     with pytest.raises(RetryableLlmError):
@@ -171,9 +167,7 @@ def test_call_llm_provider_status_and_payload_paths(
         sys.modules,
         "httpx",
         SimpleNamespace(
-            post=lambda *a, **k: FakeResponse(
-                200, {"choices": [{"message": {"content": "ok"}}]}
-            )
+            post=lambda *a, **k: FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})
         ),
     )
     assert service._call_llm_provider(query_text="Q", context="C") == ("ok", {})
@@ -197,9 +191,7 @@ def test_allow_llm_usage_in_memory_fallback(monkeypatch: pytest.MonkeyPatch) -> 
     )
     tenant = UUID("11111111-1111-7111-8111-111111111111")
 
-    assert (
-        service._allow_llm_usage(tenant_id=tenant, estimated_input_tokens=10) is False
-    )
+    assert service._allow_llm_usage(tenant_id=tenant, estimated_input_tokens=10) is False
 
     _reset_state()
     monkeypatch.setenv("AKS_LLM_MONTHLY_BUDGET_USD", "1")
@@ -210,9 +202,7 @@ def test_allow_llm_usage_in_memory_fallback(monkeypatch: pytest.MonkeyPatch) -> 
         lambda: (_ for _ in ()).throw(RuntimeError("down")),
     )
     assert service._allow_llm_usage(tenant_id=tenant, estimated_input_tokens=10) is True
-    assert (
-        service._allow_llm_usage(tenant_id=tenant, estimated_input_tokens=10) is False
-    )
+    assert service._allow_llm_usage(tenant_id=tenant, estimated_input_tokens=10) is False
     get_settings.cache_clear()
 
 
@@ -247,11 +237,7 @@ def test_buffer_text_for_stream_prefers_small_semantic_chunks() -> None:
     assert len(chunks) >= 3
     assert all(chunk for chunk in chunks)
     assert all(len(chunk) <= 40 for chunk in chunks)
-    assert (
-        " ".join(chunks)
-        .replace("  ", " ")
-        .startswith("This is a longer fallback answer")
-    )
+    assert " ".join(chunks).replace("  ", " ").startswith("This is a longer fallback answer")
 
 
 def test_structured_output_instruction_prefers_specific_artifacts() -> None:
@@ -321,9 +307,7 @@ def test_open_chat_empty_provider_response_falls_back_to_buffered_text(
     monkeypatch.setattr(service, "_llm_is_circuit_open", lambda: False)
     monkeypatch.setattr(service, "_allow_llm_usage", lambda **kwargs: True)
     monkeypatch.setattr(service, "_estimate_tokens", lambda text: 10)
-    monkeypatch.setattr(
-        service, "_astream_open_chat_provider_events", _empty_provider_events
-    )
+    monkeypatch.setattr(service, "_astream_open_chat_provider_events", _empty_provider_events)
 
     events = asyncio.run(_collect())
 
@@ -369,9 +353,7 @@ def test_open_chat_provider_failure_falls_back_to_buffered_text(
     monkeypatch.setattr(service, "_llm_is_circuit_open", lambda: False)
     monkeypatch.setattr(service, "_allow_llm_usage", lambda **kwargs: True)
     monkeypatch.setattr(service, "_estimate_tokens", lambda text: 10)
-    monkeypatch.setattr(
-        service, "_astream_open_chat_provider_events", _raise_provider_failure
-    )
+    monkeypatch.setattr(service, "_astream_open_chat_provider_events", _raise_provider_failure)
 
     events = asyncio.run(_collect())
 
@@ -450,9 +432,7 @@ def test_open_chat_chart_queries_use_structured_chart_artifacts(
     assert chart_event.data["title"] == "Monthly Sales"
 
 
-def test_open_chat_salvages_nested_series_chart_type_without_falling_back_to_line() -> (
-    None
-):
+def test_open_chat_salvages_nested_series_chart_type_without_falling_back_to_line() -> None:
     payload = {
         "key_findings": ["Distribution is balanced."],
         "detailed_analysis": "Pie chart requested.",

@@ -84,10 +84,7 @@ class ChunksRepository(BaseRepository):
                 )
             )
             for embedding in embeddings:
-                if (
-                    embedding.tenant_id != tenant_id
-                    or embedding.document_id != document_id
-                ):
+                if embedding.tenant_id != tenant_id or embedding.document_id != document_id:
                     raise ValueError("Embedding tenant_id/document_id mismatch")
                 self.db.add(embedding)
             self.db.flush()
@@ -796,9 +793,7 @@ class ChunksRepository(BaseRepository):
             row.document_id: DocumentChunkStats(
                 chunk_count=int(row.chunk_count or 0),
                 avg_quality_score=(
-                    float(row.avg_quality_score)
-                    if row.avg_quality_score is not None
-                    else None
+                    float(row.avg_quality_score) if row.avg_quality_score is not None else None
                 ),
             )
             for row in rows

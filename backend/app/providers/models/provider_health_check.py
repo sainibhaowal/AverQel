@@ -36,9 +36,7 @@ class ProviderHealthCheck(Base):
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    error_message_redacted: Mapped[str | None] = mapped_column(
-        String(512), nullable=True
-    )
+    error_message_redacted: Mapped[str | None] = mapped_column(String(512), nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,

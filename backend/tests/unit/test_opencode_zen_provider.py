@@ -114,14 +114,10 @@ def test_opencode_zen_provider_lists_models_and_parses_context_windows(monkeypat
             },
         )
 
-    fake_httpx = SimpleNamespace(
-        get=_fake_get, Timeout=_FakeTimeout, AsyncClient=_FakeAsyncClient
-    )
+    fake_httpx = SimpleNamespace(get=_fake_get, Timeout=_FakeTimeout, AsyncClient=_FakeAsyncClient)
     monkeypatch.setitem(sys.modules, "httpx", fake_httpx)
 
-    provider = OpenCodeZenProvider(
-        base_url="https://opencode.ai/zen/v1", api_key="zen_test"
-    )
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="zen_test")
     models = provider.list_models()
 
     assert [model.name for model in models] == [
@@ -155,14 +151,10 @@ def test_opencode_zen_provider_parses_string_context_windows(monkeypatch):
             },
         )
 
-    fake_httpx = SimpleNamespace(
-        get=_fake_get, Timeout=_FakeTimeout, AsyncClient=_FakeAsyncClient
-    )
+    fake_httpx = SimpleNamespace(get=_fake_get, Timeout=_FakeTimeout, AsyncClient=_FakeAsyncClient)
     monkeypatch.setitem(sys.modules, "httpx", fake_httpx)
 
-    provider = OpenCodeZenProvider(
-        base_url="https://opencode.ai/zen/v1", api_key="zen_test"
-    )
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="zen_test")
     models = provider.list_models()
 
     assert [model.name for model in models] == ["gpt-5.4", "claude-sonnet-4-6"]
@@ -184,14 +176,10 @@ def test_opencode_zen_provider_emits_live_context_for_deepseek_v4_flash(monkeypa
             },
         )
 
-    fake_httpx = SimpleNamespace(
-        get=_fake_get, Timeout=_FakeTimeout, AsyncClient=_FakeAsyncClient
-    )
+    fake_httpx = SimpleNamespace(get=_fake_get, Timeout=_FakeTimeout, AsyncClient=_FakeAsyncClient)
     monkeypatch.setitem(sys.modules, "httpx", fake_httpx)
 
-    provider = OpenCodeZenProvider(
-        base_url="https://opencode.ai/zen/v1", api_key="zen_test"
-    )
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="zen_test")
     models = provider.list_models()
 
     assert len(models) == 1
@@ -216,14 +204,10 @@ def test_opencode_zen_provider_uses_verified_docs_context_when_live_payload_miss
             },
         )
 
-    fake_httpx = SimpleNamespace(
-        get=_fake_get, Timeout=_FakeTimeout, AsyncClient=_FakeAsyncClient
-    )
+    fake_httpx = SimpleNamespace(get=_fake_get, Timeout=_FakeTimeout, AsyncClient=_FakeAsyncClient)
     monkeypatch.setitem(sys.modules, "httpx", fake_httpx)
 
-    provider = OpenCodeZenProvider(
-        base_url="https://opencode.ai/zen/v1", api_key="zen_test"
-    )
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="zen_test")
     models = provider.list_models()
 
     assert [model.name for model in models] == ["minimax-m2.5-free"]
@@ -250,9 +234,7 @@ def test_opencode_zen_provider_routes_model_families(monkeypatch):
     monkeypatch.setattr(GoogleProvider, "generate", fake_google_generate)
     monkeypatch.setattr(OpenAICompatibleProvider, "generate", fake_openai_generate)
 
-    provider = OpenCodeZenProvider(
-        base_url="https://opencode.ai/zen/v1", api_key="zen_test"
-    )
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="zen_test")
 
     assert provider.generate(_request("claude-sonnet-4-6")).content == "anthropic"
     assert provider.generate(_request("gemini-3.1-pro")).content == "google"
@@ -289,9 +271,7 @@ async def test_opencode_zen_provider_streams_responses_events(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "httpx", fake_httpx)
 
-    provider = OpenCodeZenProvider(
-        base_url="https://opencode.ai/zen/v1", api_key="zen_test"
-    )
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="zen_test")
     # Capturing emitted reasoning must not depend on the request flag or model
     # capability hints. The provider already emitted the reasoning event.
     request = _request("gpt-5.4", reasoning_enabled=False)

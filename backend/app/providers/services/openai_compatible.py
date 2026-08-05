@@ -51,9 +51,7 @@ class OpenAICompatibleProvider:
         self.base_url = resolve_provider_base_url(base_url)
         self.api_key = api_key
 
-    def bind(
-        self, base_url: str, api_key: str | None = None
-    ) -> OpenAICompatibleProvider:
+    def bind(self, base_url: str, api_key: str | None = None) -> OpenAICompatibleProvider:
         self.base_url = resolve_provider_base_url(base_url)
         self.api_key = api_key
         return self
@@ -140,9 +138,7 @@ class OpenAICompatibleProvider:
             provider_type=str(request.metadata.get("provider_type") or ""),
         )
         if not base_url:
-            raise ProviderCapabilityError(
-                "provider request requires a configured base URL"
-            )
+            raise ProviderCapabilityError("provider request requires a configured base URL")
         messages = self._prepare_messages(request)
         payload = {
             "model": request.model,
@@ -177,12 +173,10 @@ class OpenAICompatibleProvider:
         if not isinstance(content, str):
             raise RuntimeError("provider response missing message content")
         if not thinking_content:
-            extracted_thinking, extracted_content = (
-                self._extract_tagged_reasoning_content(
-                    content,
-                    enabled=self._reasoning_observation_enabled(request),
-                    model=request.model,
-                )
+            extracted_thinking, extracted_content = self._extract_tagged_reasoning_content(
+                content,
+                enabled=self._reasoning_observation_enabled(request),
+                model=request.model,
             )
             if extracted_content is not None:
                 content = extracted_content
@@ -214,9 +208,7 @@ class OpenAICompatibleProvider:
             provider_type=str(request.metadata.get("provider_type") or ""),
         )
         if not base_url:
-            raise ProviderCapabilityError(
-                "provider request requires a configured base URL"
-            )
+            raise ProviderCapabilityError("provider request requires a configured base URL")
         messages = self._prepare_messages(request)
         payload = {
             "model": request.model,
@@ -250,18 +242,14 @@ class OpenAICompatibleProvider:
                     except Exception:  # noqa: BLE001
                         error_bytes = None
                     if isinstance(error_bytes, bytes | bytearray):
-                        error_text = bytes(error_bytes).decode(
-                            "utf-8", errors="replace"
-                        )
+                        error_text = bytes(error_bytes).decode("utf-8", errors="replace")
                         try:
                             decoded = json.loads(error_text)
                         except json.JSONDecodeError:
                             decoded = None
                         if isinstance(decoded, dict):
                             error_payload = decoded
-                    self._raise_provider_error(
-                        response, payload=error_payload, text=error_text
-                    )
+                    self._raise_provider_error(response, payload=error_payload, text=error_text)
                 stream_state = "answer"
                 emitted_answer_text = ""
                 emitted_thinking_text = ""
@@ -294,13 +282,11 @@ class OpenAICompatibleProvider:
                             yield {"type": "thinking", "text": thinking_delta}
                     content = self._extract_stream_text(choice=choice, delta=delta)
                     if isinstance(content, str) and content:
-                        parsed_events, stream_state = (
-                            self._split_stream_content_for_reasoning(
-                                content,
-                                state=stream_state,
-                                enabled=self._reasoning_observation_enabled(request),
-                                model=request.model,
-                            )
+                        parsed_events, stream_state = self._split_stream_content_for_reasoning(
+                            content,
+                            state=stream_state,
+                            enabled=self._reasoning_observation_enabled(request),
+                            model=request.model,
                         )
                         for event_type, text in parsed_events:
                             if not text:
@@ -358,9 +344,7 @@ class OpenAICompatibleProvider:
             provider_type=str(request.metadata.get("provider_type") or ""),
         )
         if not base_url:
-            raise ProviderCapabilityError(
-                "provider request requires a configured base URL"
-            )
+            raise ProviderCapabilityError("provider request requires a configured base URL")
         messages = self._prepare_messages(request)
         payload = {
             "model": request.model,
@@ -401,9 +385,7 @@ class OpenAICompatibleProvider:
                         decoded = None
                     if isinstance(decoded, dict):
                         error_payload = decoded
-                self._raise_provider_error(
-                    response, payload=error_payload, text=error_text
-                )
+                self._raise_provider_error(response, payload=error_payload, text=error_text)
             stream_state = "answer"
             for raw_line in response.iter_lines():
                 line = raw_line.strip()
@@ -425,13 +407,11 @@ class OpenAICompatibleProvider:
                     delta = {}
                 content = self._extract_stream_text(choice=choice, delta=delta)
                 if isinstance(content, str) and content:
-                    parsed_events, stream_state = (
-                        self._split_stream_content_for_reasoning(
-                            content,
-                            state=stream_state,
-                            enabled=self._reasoning_observation_enabled(request),
-                            model=request.model,
-                        )
+                    parsed_events, stream_state = self._split_stream_content_for_reasoning(
+                        content,
+                        state=stream_state,
+                        enabled=self._reasoning_observation_enabled(request),
+                        model=request.model,
                     )
                     for event_type, text in parsed_events:
                         if event_type == "delta" and text:
@@ -439,9 +419,7 @@ class OpenAICompatibleProvider:
 
     def list_models(self) -> Sequence[ProviderModelInfo]:
         if not self.base_url:
-            raise ProviderCapabilityError(
-                "model listing requires a configured provider endpoint"
-            )
+            raise ProviderCapabilityError("model listing requires a configured provider endpoint")
         httpx_module = self._httpx()
         response = httpx_module.get(
             f"{self.base_url}/models",
@@ -466,13 +444,9 @@ class OpenAICompatibleProvider:
                 model_name,
                 provider_type=self.provider_name,
             )
-            context_window = (
-                live_context_window or verified_context_window.context_window
-            )
+            context_window = live_context_window or verified_context_window.context_window
             context_window_source = (
-                "live_model"
-                if live_context_window is not None
-                else verified_context_window.source
+                "live_model" if live_context_window is not None else verified_context_window.source
             )
             infos.append(
                 ProviderModelInfo(
@@ -502,9 +476,7 @@ class OpenAICompatibleProvider:
                 "embedding model listing requires an embedding-capable provider"
             )
         if not self.base_url:
-            raise ProviderCapabilityError(
-                "model listing requires a configured provider endpoint"
-            )
+            raise ProviderCapabilityError("model listing requires a configured provider endpoint")
         httpx_module = self._httpx()
         response = httpx_module.get(
             f"{self.base_url}/models",
@@ -549,24 +521,18 @@ class OpenAICompatibleProvider:
 
     def embed_many(self, request: EmbeddingRequest) -> EmbeddingResponse:
         if not self.supports_embeddings:
-            raise ProviderCapabilityError(
-                "embeddings not supported by this provider adapter"
-            )
+            raise ProviderCapabilityError("embeddings not supported by this provider adapter")
         httpx_module = self._httpx()
         base_url = resolve_provider_base_url(
             str(request.metadata.get("base_url") or ""),
             provider_type=request.provider_name,
         )
         if not base_url:
-            raise ProviderCapabilityError(
-                "embedding request requires a configured base URL"
-            )
+            raise ProviderCapabilityError("embedding request requires a configured base URL")
         payload = {"model": request.model, "input": request.texts}
         response = httpx_module.post(
             f"{base_url}/embeddings",
-            headers=self._build_headers(
-                str(request.metadata.get("api_key") or "") or None
-            ),
+            headers=self._build_headers(str(request.metadata.get("api_key") or "") or None),
             json=payload,
             timeout=float(request.timeout_seconds),
         )
@@ -628,9 +594,7 @@ class OpenAICompatibleProvider:
         return None
 
     @classmethod
-    def _extract_stream_text(
-        cls, *, choice: dict[str, Any], delta: dict[str, Any]
-    ) -> str | None:
+    def _extract_stream_text(cls, *, choice: dict[str, Any], delta: dict[str, Any]) -> str | None:
         direct_candidates = (
             delta.get("content"),
             delta.get("text"),
@@ -689,9 +653,7 @@ class OpenAICompatibleProvider:
 
                 content = str(messages[index].get("content", ""))
                 normalized = cls._strip_slash_think_commands(content).strip()
-                final_text = (
-                    f"{command}\n{normalized}".strip() if normalized else command
-                )
+                final_text = f"{command}\n{normalized}".strip() if normalized else command
 
                 if request.images:
                     # Convert content to list format for multimodal
@@ -702,9 +664,7 @@ class OpenAICompatibleProvider:
                         multimodal_content.append(
                             {
                                 "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{img_b64}"
-                                },
+                                "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
                             }
                         )
                     messages[index]["content"] = cast(Any, multimodal_content)
@@ -724,7 +684,10 @@ class OpenAICompatibleProvider:
                 messages[index]["content"] = [
                     {"type": "text", "text": text},
                     *[
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}}
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                        }
                         for img_b64 in request.images
                     ],
                 ]
@@ -752,19 +715,13 @@ class OpenAICompatibleProvider:
     @staticmethod
     def _reasoning_observation_enabled(request: ChatGenerateRequest) -> bool:
         """Observe provider-emitted reasoning without forcing request controls."""
-        return bool(
-            request.reasoning_enabled
-            or request.metadata.get("reasoning_mode") == "auto"
-        )
+        return bool(request.reasoning_enabled or request.metadata.get("reasoning_mode") == "auto")
 
     @staticmethod
     def _effective_tool_choice(request: ChatGenerateRequest) -> str | dict[str, Any] | None:
         choice = request.tool_choice
-        if (
-            choice == "required"
-            and not supports_required_tool_choice(
-                str(request.metadata.get("provider_type") or ""), request.model
-            )
+        if choice == "required" and not supports_required_tool_choice(
+            str(request.metadata.get("provider_type") or ""), request.model
         ):
             # DeepSeek V4 rejects forced choice in its always-thinking mode;
             # keep the tools available and let the model select them.
@@ -786,9 +743,7 @@ class OpenAICompatibleProvider:
             content = str(message.get("content") or "")
             if "<|think|>" in content:
                 return prepared
-            message["content"] = (
-                f"<|think|>\n{content}".strip() if content.strip() else "<|think|>"
-            )
+            message["content"] = f"<|think|>\n{content}".strip() if content.strip() else "<|think|>"
             return prepared
         prepared.insert(0, {"role": "system", "content": "<|think|>"})
         return prepared
@@ -796,9 +751,7 @@ class OpenAICompatibleProvider:
     @staticmethod
     def _strip_slash_think_commands(content: str) -> str:
         lines = [line for line in content.splitlines() if line.strip()]
-        filtered_lines = [
-            line for line in lines if line.strip() not in {"/think", "/no_think"}
-        ]
+        filtered_lines = [line for line in lines if line.strip() not in {"/think", "/no_think"}]
         return "\n".join(filtered_lines)
 
     def _apply_reasoning_request_settings(
@@ -889,9 +842,7 @@ class OpenAICompatibleProvider:
 
     @classmethod
     def _contains_gemma_channel_reasoning(cls, content: str) -> bool:
-        return (
-            cls._GEMMA_CHANNEL_THOUGHT in content or cls._GEMMA_CHANNEL_END in content
-        )
+        return cls._GEMMA_CHANNEL_THOUGHT in content or cls._GEMMA_CHANNEL_END in content
 
     @classmethod
     def _split_stream_content_for_reasoning(
@@ -902,10 +853,7 @@ class OpenAICompatibleProvider:
         enabled: bool,
         model: str | None = None,
     ) -> tuple[list[tuple[str, str]], str]:
-        if (
-            state == "gemma_thought"
-            or cls._contains_gemma_channel_reasoning(content)
-        ):
+        if state == "gemma_thought" or cls._contains_gemma_channel_reasoning(content):
             return cls._split_gemma_channel_content(
                 content,
                 state=state,

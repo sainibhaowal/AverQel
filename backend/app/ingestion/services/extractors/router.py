@@ -53,9 +53,7 @@ class ExtractorRouter:
         self.settings = settings
         self.registry = registry or self._build_default_registry(settings)
         self.conversion = conversion_service or ConversionService(settings)
-        self.vision_extractor = vision_extractor or LayoutVisionExtractor(
-            settings=settings
-        )
+        self.vision_extractor = vision_extractor or LayoutVisionExtractor(settings=settings)
 
     def extract(
         self,
@@ -65,16 +63,13 @@ class ExtractorRouter:
         payload: bytes,
         tenant_id: uuid.UUID | None = None,
     ) -> ExtractionResult:
-        request = ExtractionRequest(
-            filename=filename, content_type=content_type, payload=payload
-        )
+        request = ExtractionRequest(filename=filename, content_type=content_type, payload=payload)
         extractor = self.registry.resolve(request)
         if extractor is not None:
             result = extractor.extract(request)
             if (
                 self.settings.vision_enabled
-                and result.coverage_score
-                < self.settings.extraction_low_coverage_threshold
+                and result.coverage_score < self.settings.extraction_low_coverage_threshold
                 and self._vision_allowed_for_tenant(tenant_id)
                 and self.vision_extractor.can_handle(request)
             ):
@@ -83,9 +78,7 @@ class ExtractorRouter:
 
         extension = Path(filename).suffix.lower()
         if extension in self._LEGACY_EXTENSIONS:
-            converted = self.conversion.convert_legacy(
-                filename=filename, payload=payload
-            )
+            converted = self.conversion.convert_legacy(filename=filename, payload=payload)
             converted_result = self.extract(
                 filename=converted.filename,
                 content_type=converted.content_type,
@@ -160,19 +153,13 @@ class ExtractorRouter:
                 vision_extractor=vision_extractor,
             )
         )
-        registry.register(
-            PlainTextExtractor(max_text_chars=settings.parser_max_text_chars)
-        )
-        registry.register(
-            MarkdownExtractor(max_text_chars=settings.parser_max_text_chars)
-        )
+        registry.register(PlainTextExtractor(max_text_chars=settings.parser_max_text_chars))
+        registry.register(MarkdownExtractor(max_text_chars=settings.parser_max_text_chars))
         registry.register(ImageOcrExtractor(settings=settings, ocr_service=ocr_service))
         registry.register(DocxExtractor(max_text_chars=settings.parser_max_text_chars))
         registry.register(PptxExtractor(max_text_chars=settings.parser_max_text_chars))
         registry.register(XlsxExtractor(max_text_chars=settings.parser_max_text_chars))
-        registry.register(
-            CodeTextExtractor(max_text_chars=settings.parser_max_text_chars)
-        )
+        registry.register(CodeTextExtractor(max_text_chars=settings.parser_max_text_chars))
         return registry
 
     @staticmethod

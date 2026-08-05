@@ -20,9 +20,7 @@ async def check_assignments():
 
         print(f"Checking assignments for Tenant: {tenant.name} ({tenant.id})")
 
-        stmt = select(ProviderAssignment).where(
-            ProviderAssignment.tenant_id == tenant.id
-        )
+        stmt = select(ProviderAssignment).where(ProviderAssignment.tenant_id == tenant.id)
         assignments = db.execute(stmt).scalars().all()
 
         if not assignments:

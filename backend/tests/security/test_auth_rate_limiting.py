@@ -21,9 +21,7 @@ def test_auth_login_rate_limit_exceeded_returns_429(
         ("reader",),
     )
 
-    def fake_increment(
-        self: RateLimitService, *, key: str, window_seconds: int
-    ) -> tuple[int, int]:
+    def fake_increment(self: RateLimitService, *, key: str, window_seconds: int) -> tuple[int, int]:
         del self, window_seconds
         if "auth_login" in key:
             return 999, 300
@@ -46,9 +44,7 @@ def test_public_auth_routes_allow_missing_tenant_id_without_crashing(
 ) -> None:
     seen_keys: list[str] = []
 
-    def fake_increment(
-        self: RateLimitService, *, key: str, window_seconds: int
-    ) -> tuple[int, int]:
+    def fake_increment(self: RateLimitService, *, key: str, window_seconds: int) -> tuple[int, int]:
         del self, window_seconds
         seen_keys.append(key)
         return 1, 300
@@ -67,7 +63,4 @@ def test_public_auth_routes_allow_missing_tenant_id_without_crashing(
     )
     assert login_response.status_code == 200
 
-    assert any(
-        "rate_limit:auth_login:unknown:public-auth@example.com" == key
-        for key in seen_keys
-    )
+    assert any("rate_limit:auth_login:unknown:public-auth@example.com" == key for key in seen_keys)

@@ -925,8 +925,12 @@ body {
 .deepspace-composer-border-trace {
   opacity: var(--deepspace-runtime-opacity);
   box-shadow: 0 0 calc(4px + var(--deepspace-context-ratio) * 12px)
-    hsl(var(--deepspace-context-hue, 155) 85% 60% / calc(0.08 + var(--deepspace-context-ratio) * 0.2));
-  transition: opacity 240ms ease, filter 240ms ease;
+    hsl(
+      var(--deepspace-context-hue, 155) 85% 60% / calc(0.08 + var(--deepspace-context-ratio) * 0.2)
+    );
+  transition:
+    opacity 240ms ease,
+    filter 240ms ease;
 }
 
 .deepspace-composer-border-gradient {
@@ -1087,9 +1091,13 @@ body {
     transparent 0deg 285deg,
     var(--deepspace-trace-color) 320deg 360deg
   );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
   mask-composite: exclude;
   animation: deepspace-composer-tool-trace 1.55s linear infinite;
   filter: drop-shadow(0 0 5px var(--deepspace-trace-color));

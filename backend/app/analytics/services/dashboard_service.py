@@ -46,9 +46,7 @@ class DashboardService:
         self.jobs = IngestionJobsRepository(db)
         self.provider_configs = ProviderConfigsRepository(db)
         self.provider_health = ProviderHealthChecksRepository(db)
-        self.provider_selection = ProviderSelectionService(
-            db=db, settings=get_settings()
-        )
+        self.provider_selection = ProviderSelectionService(db=db, settings=get_settings())
 
     def get_stats(self, *, tenant_id: uuid.UUID) -> DashboardStatsResponse:
         total_docs = self.documents.count_by_tenant(tenant_id=tenant_id)
@@ -93,9 +91,7 @@ class DashboardService:
                 for document in recent_documents
             ],
             provider_runtimes=self._get_provider_runtimes(tenant_id=tenant_id),
-            collections=self._get_collection_summaries(
-                tenant_id=tenant_id, user_id=user_id
-            ),
+            collections=self._get_collection_summaries(tenant_id=tenant_id, user_id=user_id),
             recent_activity=self._get_recent_activity(tenant_id=tenant_id),
         )
 
@@ -168,17 +164,11 @@ class DashboardService:
                     allow_live_model_discovery=False,
                 )
             elif scope == "embeddings":
-                selection = self.provider_selection.resolve_embeddings(
-                    tenant_id=tenant_id
-                )
+                selection = self.provider_selection.resolve_embeddings(tenant_id=tenant_id)
             elif scope == "reranking":
-                selection = self.provider_selection.resolve_reranking(
-                    tenant_id=tenant_id
-                )
+                selection = self.provider_selection.resolve_reranking(tenant_id=tenant_id)
             else:
-                selection = self.provider_selection.resolve_web_search(
-                    tenant_id=tenant_id
-                )
+                selection = self.provider_selection.resolve_web_search(tenant_id=tenant_id)
 
             candidate = selection.candidates[0] if selection.candidates else None
             if candidate is None:
@@ -224,9 +214,7 @@ class DashboardService:
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
     ) -> list[DashboardCollectionSummaryResponse]:
-        collections = self.collections.list_accessible_for_user_global(user_id=user_id)[
-            :4
-        ]
+        collections = self.collections.list_accessible_for_user_global(user_id=user_id)[:4]
         collection_ids = [collection.id for collection in collections]
         doc_counts = self.collections.get_collection_document_counts(
             collection_ids=collection_ids,
@@ -245,9 +233,7 @@ class DashboardService:
             )
         return summaries
 
-    def _get_recent_activity(
-        self, *, tenant_id: uuid.UUID
-    ) -> list[DashboardActivityItemResponse]:
+    def _get_recent_activity(self, *, tenant_id: uuid.UUID) -> list[DashboardActivityItemResponse]:
         with observe_db_query("dashboard.recent_activity"):
             rows = (
                 self.db.execute(

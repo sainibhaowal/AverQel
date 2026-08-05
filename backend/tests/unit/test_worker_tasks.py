@@ -149,9 +149,7 @@ class _FakeConnectorSession(_FakeSession):
         if "FROM connectors" in text_stmt and "connectors.id" in text_stmt:
             return _FakeRowResult((self.connector, self.integration))
         if "SELECT connectors.id" in text_stmt:
-            return SimpleNamespace(
-                scalars=lambda: _FakeScalarResult([self.connector.id])
-            )
+            return SimpleNamespace(scalars=lambda: _FakeScalarResult([self.connector.id]))
         return None
 
     def expire_all(self) -> None:
@@ -174,17 +172,11 @@ def test_ingestion_ping() -> None:
 
 
 def test_process_ingestion_job_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        tasks_ingestion, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter()
-    )
-    monkeypatch.setattr(
-        tasks_ingestion, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_ingestion, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter())
+    monkeypatch.setattr(tasks_ingestion, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_ingestion, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(tasks_ingestion, "IngestionService", _FakeIngestionService)
-    monkeypatch.setattr(
-        tasks_ingestion, "get_session_factory", lambda: (lambda: _FakeSession())
-    )
+    monkeypatch.setattr(tasks_ingestion, "get_session_factory", lambda: (lambda: _FakeSession()))
 
     task_obj = tasks_ingestion.process_ingestion_job
     monkeypatch.setattr(task_obj, "retry", lambda **kwargs: None, raising=False)
@@ -203,17 +195,11 @@ def test_process_ingestion_job_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_process_ingestion_job_retry(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        tasks_ingestion, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter()
-    )
-    monkeypatch.setattr(
-        tasks_ingestion, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_ingestion, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter())
+    monkeypatch.setattr(tasks_ingestion, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_ingestion, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(tasks_ingestion, "IngestionService", _RetryIngestionService)
-    monkeypatch.setattr(
-        tasks_ingestion, "get_session_factory", lambda: (lambda: _FakeSession())
-    )
+    monkeypatch.setattr(tasks_ingestion, "get_session_factory", lambda: (lambda: _FakeSession()))
 
     def _retry(**kwargs):  # type: ignore[no-untyped-def]
         raise RuntimeError(f"retry-called:{kwargs['countdown']}")
@@ -233,12 +219,8 @@ def test_process_ingestion_job_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_process_ingestion_job_cleanup_exceptions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        tasks_ingestion, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter()
-    )
-    monkeypatch.setattr(
-        tasks_ingestion, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_ingestion, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter())
+    monkeypatch.setattr(tasks_ingestion, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_ingestion, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(tasks_ingestion, "IngestionService", _FakeIngestionService)
     monkeypatch.setattr(
@@ -269,13 +251,9 @@ def test_process_ingestion_job_cleanup_exceptions(
 
 
 def test_run_connector_sync_task_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "WORKER_RETRIES_TOTAL", _DummyCounter())
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "get_settings", lambda: _FakeSettings())
 
     connector = SimpleNamespace(
@@ -316,13 +294,9 @@ def test_run_connector_sync_task_success(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_run_connector_sync_task_passes_retry_attempt_to_orchestrator(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "WORKER_RETRIES_TOTAL", _DummyCounter())
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "get_settings", lambda: _FakeSettings())
 
     connector = SimpleNamespace(
@@ -367,13 +341,9 @@ def test_run_connector_sync_task_passes_retry_attempt_to_orchestrator(
 def test_run_connector_sync_task_cleans_up_session_best_effort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "WORKER_RETRIES_TOTAL", _DummyCounter())
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "get_settings", lambda: _FakeSettings())
 
     connector = SimpleNamespace(
@@ -426,13 +396,9 @@ def test_run_connector_sync_task_returns_locked_when_another_run_holds_the_lock(
     transitions = _RecordingCounter()
     lock_contention = _RecordingCounter()
     monkeypatch.setattr(tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", transitions)
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_LOCK_CONTENTION_TOTAL", lock_contention
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_LOCK_CONTENTION_TOTAL", lock_contention)
     monkeypatch.setattr(tasks_connectors, "WORKER_RETRIES_TOTAL", _DummyCounter())
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "get_settings", lambda: _FakeSettings())
 
     connector = SimpleNamespace(
@@ -475,13 +441,9 @@ def test_run_connector_sync_task_returns_locked_when_another_run_holds_the_lock(
 def test_run_connector_sync_task_retries_retryable_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "WORKER_RETRIES_TOTAL", _DummyCounter())
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "get_settings", lambda: _FakeSettings())
 
     connector = SimpleNamespace(
@@ -533,13 +495,9 @@ def test_run_connector_sync_task_retries_retryable_failure(
 def test_run_connector_sync_task_does_not_retry_non_retryable_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "WORKER_RETRIES_TOTAL", _DummyCounter())
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "get_settings", lambda: _FakeSettings())
 
     connector = SimpleNamespace(
@@ -595,13 +553,9 @@ def test_run_connector_sync_task_does_not_retry_non_retryable_failure(
 def test_run_connector_sync_task_prefers_retry_after_at_from_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_JOB_TRANSITIONS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "WORKER_RETRIES_TOTAL", _DummyCounter())
-    monkeypatch.setattr(
-        tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_connectors, "WORKER_STAGE_DURATION_SECONDS", _DummyCounter())
     monkeypatch.setattr(tasks_connectors, "get_settings", lambda: _FakeSettings())
 
     connector = SimpleNamespace(
@@ -640,9 +594,7 @@ def test_run_connector_sync_task_prefers_retry_after_at_from_checkpoint(
             }
 
     monkeypatch.setattr(tasks_connectors, "ConnectorOrchestrator", _FakeOrchestrator)
-    monkeypatch.setattr(
-        tasks_connectors, "_countdown_from_retry_after_at", lambda value: 45
-    )
+    monkeypatch.setattr(tasks_connectors, "_countdown_from_retry_after_at", lambda value: 45)
 
     def _retry(**kwargs):  # type: ignore[no-untyped-def]
         raise RuntimeError(f"retry-called:{kwargs['countdown']}")
@@ -663,9 +615,7 @@ def test_maintenance_heartbeat() -> None:
 
 
 def test_retention_cleanup_success_and_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_maintenance, "CursorResult", _FakeCursorResult)
     monkeypatch.setattr(tasks_maintenance, "get_settings", lambda: _FakeSettings())
 
@@ -700,9 +650,7 @@ def test_retention_cleanup_success_and_error(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(tasks_maintenance, "Tenant", _TenantModel)
     monkeypatch.setattr(tasks_maintenance, "AuditService", _AuditSvc)
-    monkeypatch.setattr(
-        tasks_maintenance, "get_session_factory", lambda: (lambda: _Session())
-    )
+    monkeypatch.setattr(tasks_maintenance, "get_session_factory", lambda: (lambda: _Session()))
     run_fn = tasks_maintenance.retention_cleanup.__wrapped__
     report = run_fn()
     assert report["audit_logs_deleted"] == 2
@@ -712,21 +660,15 @@ def test_retention_cleanup_success_and_error(monkeypatch: pytest.MonkeyPatch) ->
         def query(self, _model):  # type: ignore[no-untyped-def]
             raise RuntimeError("boom")
 
-    monkeypatch.setattr(
-        tasks_maintenance, "get_session_factory", lambda: (lambda: _ErrorSession())
-    )
+    monkeypatch.setattr(tasks_maintenance, "get_session_factory", lambda: (lambda: _ErrorSession()))
     with pytest.raises(RuntimeError):
         run_fn()
 
 
 def test_process_data_deletion_paths(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_maintenance, "get_settings", lambda: _FakeSettings())
-    monkeypatch.setattr(
-        tasks_maintenance, "get_session_factory", lambda: (lambda: _FakeSession())
-    )
+    monkeypatch.setattr(tasks_maintenance, "get_session_factory", lambda: (lambda: _FakeSession()))
 
     class _DeletionService:
         def __init__(self, session, settings):  # type: ignore[no-untyped-def]
@@ -762,9 +704,7 @@ def test_process_data_deletion_paths(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_process_data_deletion_cleanup_exceptions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_maintenance, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(
         tasks_maintenance,
@@ -800,9 +740,7 @@ def test_process_data_deletion_cleanup_exceptions(
 def test_retention_cleanup_finally_exception_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter()
-    )
+    monkeypatch.setattr(tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter())
     monkeypatch.setattr(tasks_maintenance, "get_settings", lambda: _FakeSettings())
 
     class _TenantModel:

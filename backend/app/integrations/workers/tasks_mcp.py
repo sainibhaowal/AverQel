@@ -65,7 +65,9 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
         if not locked:
             return {"status": "already_running", "server_id": server_id}
         server = db.execute(
-            select(MCPServer).where(MCPServer.id == uuid.UUID(server_id), MCPServer.tenant_id == tenant_uuid)
+            select(MCPServer).where(
+                MCPServer.id == uuid.UUID(server_id), MCPServer.tenant_id == tenant_uuid
+            )
         ).scalar_one_or_none()
         if server is None:
             return {"status": "not_found"}
@@ -75,8 +77,13 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
             server.last_error = "MCP provider is disabled"
             db.commit()
             return {"status": "provider_disabled", "server_id": server_id}
+
         async def _notification(method: str, params: object) -> None:
-            if method.endswith("tools/list_changed") or method.endswith("prompts/list_changed") or method.endswith("resources/list_changed"):
+            if (
+                method.endswith("tools/list_changed")
+                or method.endswith("prompts/list_changed")
+                or method.endswith("resources/list_changed")
+            ):
                 MCPEventsRepository(db).append(
                     tenant_id=tenant_uuid,
                     server_id=server.id,
@@ -85,7 +92,9 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                     user_id=server.user_id,
                 )
 
-        runtime = build_mcp_server_runtime(db=db, settings=get_settings(), server=server, notification_handler=_notification)
+        runtime = build_mcp_server_runtime(
+            db=db, settings=get_settings(), server=server, notification_handler=_notification
+        )
         if runtime is None:
             server.status = "failed"
             server.last_error = "MCP runtime unavailable"
@@ -96,7 +105,8 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
             catalog = anyio.run(_load_catalog, runtime)
             catalog["tools"] = [
                 {**item, "inputSchema": MCPCatalog.normalize_schema(item.get("inputSchema"))}
-                for item in catalog["tools"] if isinstance(item, dict)
+                for item in catalog["tools"]
+                if isinstance(item, dict)
             ]
             catalog_revision = int(server.catalog_revision or 0) + 1
             server.config = {
@@ -122,7 +132,10 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                 user_id=server.user_id,
             )
             db.commit()
-            return {"status": "connected", "counts": {key: len(value) for key, value in catalog.items()}}
+            return {
+                "status": "connected",
+                "counts": {key: len(value) for key, value in catalog.items()},
+            }
         except Exception as exc:  # noqa: BLE001
             db.rollback()
             logger.exception("MCP catalog refresh failed for %s", server.id)
@@ -163,7 +176,11 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
     with SessionLocal() as db:
         tenant_uuid = uuid.UUID(tenant_id)
         set_db_tenant_context(db, tenant_uuid)
-        server = db.execute(select(MCPServer).where(MCPServer.id == uuid.UUID(server_id), MCPServer.tenant_id == tenant_uuid)).scalar_one_or_none()
+        server = db.execute(
+            select(MCPServer).where(
+                MCPServer.id == uuid.UUID(server_id), MCPServer.tenant_id == tenant_uuid
+            )
+        ).scalar_one_or_none()
         if server is None or not server.enabled:
             return {"status": "stopped"}
         provider_available, _provider_reason = mcp_server_provider_available(db, server)
@@ -174,17 +191,23 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
             return {"status": "provider_disabled"}
 
         async def _notification(method: str, params: object) -> None:
-            if method.endswith(("tools/list_changed", "prompts/list_changed", "resources/list_changed")):
+            if method.endswith(
+                ("tools/list_changed", "prompts/list_changed", "resources/list_changed")
+            ):
                 MCPEventsRepository(db).append(
-                    tenant_id=tenant_uuid, server_id=server.id,
+                    tenant_id=tenant_uuid,
+                    server_id=server.id,
                     event_type=method.replace("/", "_"),
-                    payload={"params": params if isinstance(params, dict) else {}}, user_id=server.user_id,
+                    payload={"params": params if isinstance(params, dict) else {}},
+                    user_id=server.user_id,
                 )
                 db.commit()
                 refresh_server_catalog.delay(str(server.id), str(server.tenant_id))
 
         try:
-            runtime = build_mcp_server_runtime(db=db, settings=get_settings(), server=server, notification_handler=_notification)
+            runtime = build_mcp_server_runtime(
+                db=db, settings=get_settings(), server=server, notification_handler=_notification
+            )
             if runtime is None:
                 server.status = "needs_auth"
                 db.commit()
@@ -212,8 +235,11 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
             server.last_error = str(exc)[:1000]
             server.reconnect_attempts = int(server.reconnect_attempts or 0) + 1
             MCPEventsRepository(db).append(
-                tenant_id=tenant_uuid, server_id=server.id,
-                event_type="lifecycle_failed", payload={"error": str(exc)}, user_id=server.user_id,
+                tenant_id=tenant_uuid,
+                server_id=server.id,
+                event_type="lifecycle_failed",
+                payload={"error": str(exc)},
+                user_id=server.user_id,
             )
             db.commit()
             logger.exception("MCP lifecycle failed for %s", server.id)

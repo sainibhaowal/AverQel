@@ -24,9 +24,7 @@ def upgrade():
     columns = {column["name"] for column in inspector.get_columns("conversations")}
 
     if "content_html" not in columns:
-        op.add_column(
-            "conversations", sa.Column("content_html", sa.Text(), nullable=True)
-        )
+        op.add_column("conversations", sa.Column("content_html", sa.Text(), nullable=True))
 
 
 def downgrade():

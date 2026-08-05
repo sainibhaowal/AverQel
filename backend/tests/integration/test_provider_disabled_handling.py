@@ -66,9 +66,7 @@ def test_disabled_provider_cannot_be_tested_or_assigned(
     )
     assert disable_response.status_code == 200
 
-    test_response = client.post(
-        f"/api/v1/providers/{provider_id}/test", headers=headers
-    )
+    test_response = client.post(f"/api/v1/providers/{provider_id}/test", headers=headers)
     assert test_response.status_code == 400
     assert test_response.json()["error"]["code"] == "PROVIDER_ASSIGNMENT_INVALID"
 
@@ -136,9 +134,7 @@ def test_delete_provider_migrates_active_assignments_to_enabled_replacement(
     assert assignment_response.status_code == 200
     assignment_id = assignment_response.json()["id"]
 
-    delete_response = client.delete(
-        f"/api/v1/providers/{first_provider_id}", headers=headers
-    )
+    delete_response = client.delete(f"/api/v1/providers/{first_provider_id}", headers=headers)
     assert delete_response.status_code == 200
     assert delete_response.json()["status"] == "deleted"
 
@@ -151,9 +147,7 @@ def test_delete_provider_migrates_active_assignments_to_enabled_replacement(
     assignments_response = client.get("/api/v1/providers/assignments", headers=headers)
     assert assignments_response.status_code == 200
     migrated = next(
-        item
-        for item in assignments_response.json()["items"]
-        if item["id"] == assignment_id
+        item for item in assignments_response.json()["items"] if item["id"] == assignment_id
     )
     assert migrated["provider_config_id"] == second_provider_id
     assert migrated["enabled"] is True

@@ -27,20 +27,12 @@ def upgrade() -> None:
         table_name="chunk_embeddings",
         postgresql_using="hnsw",
     )
-    op.drop_index(
-        "ix_chunk_embeddings_tenant_created_at", table_name="chunk_embeddings"
-    )
+    op.drop_index("ix_chunk_embeddings_tenant_created_at", table_name="chunk_embeddings")
     op.drop_index("ix_data_deletions_tenant_requested_at", table_name="data_deletions")
-    op.drop_index(
-        "ix_data_deletions_tenant_status_requested_at", table_name="data_deletions"
-    )
-    op.drop_index(
-        "ix_document_chunks_fts", table_name="document_chunks", postgresql_using="gin"
-    )
+    op.drop_index("ix_data_deletions_tenant_status_requested_at", table_name="data_deletions")
+    op.drop_index("ix_document_chunks_fts", table_name="document_chunks", postgresql_using="gin")
     op.drop_index("ix_document_chunks_tenant_created_at", table_name="document_chunks")
-    op.add_column(
-        "documents", sa.Column("parent_document_id", sa.UUID(), nullable=True)
-    )
+    op.add_column("documents", sa.Column("parent_document_id", sa.UUID(), nullable=True))
     op.add_column(
         "documents",
         sa.Column("version", sa.Integer(), server_default=sa.text("1"), nullable=False),
@@ -55,9 +47,7 @@ def upgrade() -> None:
         ["id"],
         ondelete="SET NULL",
     )
-    op.drop_index(
-        "ix_idempotency_keys_tenant_created_at", table_name="idempotency_keys"
-    )
+    op.drop_index("ix_idempotency_keys_tenant_created_at", table_name="idempotency_keys")
     op.drop_index("ix_ingestion_jobs_tenant_created_at", table_name="ingestion_jobs")
     op.drop_index("ix_ingestion_jobs_tenant_document", table_name="ingestion_jobs")
     op.drop_index("ix_ingestion_jobs_tenant_status", table_name="ingestion_jobs")

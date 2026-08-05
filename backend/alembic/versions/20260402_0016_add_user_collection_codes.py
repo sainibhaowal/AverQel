@@ -32,9 +32,7 @@ def upgrade() -> None:
         )
 
     op.alter_column("users", "collection_code", nullable=False)
-    op.create_index(
-        "ix_users_collection_code", "users", ["collection_code"], unique=True
-    )
+    op.create_index("ix_users_collection_code", "users", ["collection_code"], unique=True)
 
 
 def downgrade() -> None:

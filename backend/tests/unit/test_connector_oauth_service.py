@@ -11,9 +11,7 @@ from app.integrations.services.connector_oauth_service import ConnectorOAuthServ
 
 def _seed_integration(db_session, slug: str) -> Integration:
     integration = (
-        db_session.execute(select(Integration).where(Integration.slug == slug))
-        .scalars()
-        .first()
+        db_session.execute(select(Integration).where(Integration.slug == slug)).scalars().first()
     )
     if integration is None:
         integration = Integration(
@@ -35,9 +33,7 @@ def test_connector_oauth_readiness_requires_callback_url(
 ) -> None:
     settings.averqel_public_origin = None
     settings.connector_oauth_redirect_uri = None
-    settings.connector_oauth_frontend_redirect_uri = (
-        "https://averqel.localhost/dashboard"
-    )
+    settings.connector_oauth_frontend_redirect_uri = "https://averqel.localhost/dashboard"
     settings.connector_google_oauth_client_id = "google-id"
     settings.connector_google_oauth_client_secret = "google-secret"
     monkeypatch.setattr(connector_oauth_service, "MCP_SDK_AVAILABLE", True)
@@ -83,18 +79,16 @@ def test_connector_oauth_derives_redirect_uri_from_public_origin(
 ) -> None:
     settings.averqel_public_origin = "https://averqel.localhost"
     settings.connector_oauth_redirect_uri = None
-    settings.connector_oauth_frontend_redirect_uri = (
-        "https://averqel.localhost/dashboard"
-    )
+    settings.connector_oauth_frontend_redirect_uri = "https://averqel.localhost/dashboard"
     monkeypatch.setattr(connector_oauth_service, "MCP_SDK_AVAILABLE", True)
 
     service = ConnectorOAuthService(db_session, settings)
-    
+
     # Configure provider client secret to make it configured
     settings.connector_google_oauth_client_id = "google-client-id"
     settings.connector_google_oauth_client_secret = "google-client-secret"
     integration = _seed_integration(db_session, "google-drive")
-    
+
     # Set the UI metadata auth_mode to mcp
     integration.ui_metadata = {"auth_mode": "mcp"}
     db_session.add(integration)
@@ -104,7 +98,10 @@ def test_connector_oauth_derives_redirect_uri_from_public_origin(
 
     assert readiness["configured"] is True
     assert readiness["missing"] == []
-    assert service._connector_redirect_uri() == "https://averqel.localhost/api/v1/integrations/connectors/oauth/callback"
+    assert (
+        service._connector_redirect_uri()
+        == "https://averqel.localhost/api/v1/integrations/connectors/oauth/callback"
+    )
 
 
 def test_connector_oauth_derives_frontend_redirect_uri_from_public_origin(
@@ -125,7 +122,7 @@ def test_connector_oauth_derives_frontend_redirect_uri_from_public_origin(
     settings.connector_google_oauth_client_id = "google-client-id"
     settings.connector_google_oauth_client_secret = "google-client-secret"
     integration = _seed_integration(db_session, "google-drive")
-    
+
     # Set the UI metadata auth_mode to mcp
     integration.ui_metadata = {"auth_mode": "mcp"}
     db_session.add(integration)

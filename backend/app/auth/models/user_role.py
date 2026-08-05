@@ -14,9 +14,7 @@ from app.platform.database.base import Base
 class UserRole(Base):
     __tablename__ = "user_roles"
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "user_id", "role_id", name="uq_user_roles_tenant_user_role"
-        ),
+        UniqueConstraint("tenant_id", "user_id", "role_id", name="uq_user_roles_tenant_user_role"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

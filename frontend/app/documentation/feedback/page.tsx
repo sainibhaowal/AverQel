@@ -29,7 +29,9 @@ export default function FeedbackDocsPage() {
 
       <DocsSection title="Feedback Collection Policy">
         <p>
-          Feedback submissions are voluntary and help shape the platform. We collect feature requirements, system versions, and anonymized usability logs to address bugs and direct resources toward high-demand integrations.
+          Feedback submissions are voluntary and help shape the platform. We collect feature
+          requirements, system versions, and anonymized usability logs to address bugs and direct
+          resources toward high-demand integrations.
         </p>
       </DocsSection>
     </DocsShell>

@@ -47,9 +47,7 @@ def test_sample_corpus_indexes_end_to_end(
     monkeypatch.setattr(StorageService, "put_bytes", fake_put)
     monkeypatch.setattr(StorageService, "get_bytes", fake_get)
 
-    seeded = seed_user(
-        "tenant-e2e", "editor-e2e@tenant.example", "StrongPass!1234", ("editor",)
-    )
+    seeded = seed_user("tenant-e2e", "editor-e2e@tenant.example", "StrongPass!1234", ("editor",))
 
     login = client.post(
         "/api/v1/auth/login",
@@ -103,9 +101,7 @@ def test_sample_corpus_indexes_end_to_end(
         set_db_tenant_context(session, seeded.tenant_id)
 
         documents_count = session.execute(
-            select(func.count())
-            .select_from(Document)
-            .where(Document.tenant_id == seeded.tenant_id)
+            select(func.count()).select_from(Document).where(Document.tenant_id == seeded.tenant_id)
         ).scalar_one()
         chunks_count = session.execute(
             select(func.count())

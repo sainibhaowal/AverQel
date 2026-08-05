@@ -54,17 +54,11 @@ class AnalyticsService:
 
     def get_dashboard_metrics(self, tenant_id: uuid.UUID) -> AnalyticsDashboardResponse:
         with observe_db_query("analytics.total_queries"):
-            total_q = (
-                select(func.count())
-                .select_from(Query)
-                .where(Query.tenant_id == tenant_id)
-            )
+            total_q = select(func.count()).select_from(Query).where(Query.tenant_id == tenant_id)
             total_queries = self.db.execute(total_q).scalar() or 0
 
         with observe_db_query("analytics.avg_confidence"):
-            avg_c = select(func.avg(Query.confidence)).where(
-                Query.tenant_id == tenant_id
-            )
+            avg_c = select(func.avg(Query.confidence)).where(Query.tenant_id == tenant_id)
             avg_confidence = self.db.execute(avg_c).scalar() or 0.0
 
         day_expr = sa_cast(Query.created_at, Date)

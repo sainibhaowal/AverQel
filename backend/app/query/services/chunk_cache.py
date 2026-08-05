@@ -33,9 +33,7 @@ class ChunkMetadataCache:
 
                 self._redis = get_redis_client()
             except Exception:  # noqa: BLE001
-                logger.debug(
-                    "Redis client unavailable for chunk metadata cache.", exc_info=True
-                )
+                logger.debug("Redis client unavailable for chunk metadata cache.", exc_info=True)
                 return None
         return self._redis
 
@@ -144,9 +142,7 @@ class ChunkMetadataCache:
                     pipe.setex(
                         self._make_key(chunk_id),
                         self.ttl,
-                        json.dumps(
-                            self._normalize_metadata(metadata), separators=(",", ":")
-                        ),
+                        json.dumps(self._normalize_metadata(metadata), separators=(",", ":")),
                     )
                 pipe.execute()
         except Exception:  # noqa: BLE001

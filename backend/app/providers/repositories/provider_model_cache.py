@@ -85,9 +85,7 @@ class ProviderModelCacheRepository(BaseRepository):
         seen_names: set[tuple[str, str]],
     ) -> int:
         self.apply_tenant_scope(tenant_id)
-        rows = self.list_models(
-            tenant_id=tenant_id, provider_config_id=provider_config_id
-        )
+        rows = self.list_models(tenant_id=tenant_id, provider_config_id=provider_config_id)
         removed = 0
         for row in rows:
             if (row.model_name, row.model_kind) in seen_names:

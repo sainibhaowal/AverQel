@@ -147,16 +147,12 @@ def test_login_unknown_user_raises_invalid_credentials(
         svc.login(tenant_id=uuid4(), email="x@example.com", password="pw")
 
 
-def test_login_bad_password_records_failure(
-    settings, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_login_bad_password_records_failure(settings, monkeypatch: pytest.MonkeyPatch) -> None:
     svc = _service(settings)
     user = _user()
     users = _Users(user)
     svc.users = users
-    monkeypatch.setattr(
-        "app.auth.services.auth_service.verify_password", lambda p, h: False
-    )
+    monkeypatch.setattr("app.auth.services.auth_service.verify_password", lambda p, h: False)
 
     with pytest.raises(ApiError) as exc:
         svc.login(tenant_id=uuid4(), email="x@example.com", password="bad")
@@ -169,9 +165,7 @@ def test_login_without_roles_raises(settings, monkeypatch: pytest.MonkeyPatch) -
     svc = _service(settings)
     svc.users = _Users(_user())
     svc.roles = _Roles([])
-    monkeypatch.setattr(
-        "app.auth.services.auth_service.verify_password", lambda p, h: True
-    )
+    monkeypatch.setattr("app.auth.services.auth_service.verify_password", lambda p, h: True)
     with pytest.raises(ApiError) as exc:
         svc.login(tenant_id=uuid4(), email="x@example.com", password="pw")
     assert exc.value.code == "ROLE_ASSIGNMENT_REQUIRED"
@@ -202,9 +196,7 @@ def test_refresh_inactive_user_revokes_family(settings) -> None:
     tenant_id = uuid4()
     user_id = uuid4()
     svc = _service(settings)
-    svc.refresh_tokens = _RefreshTokens(
-        _token_row(user_id=user_id, tenant_id=tenant_id)
-    )
+    svc.refresh_tokens = _RefreshTokens(_token_row(user_id=user_id, tenant_id=tenant_id))
     svc.users = _Users(_user(active=False))
 
     with pytest.raises(ApiError) as exc:
@@ -217,9 +209,7 @@ def test_refresh_user_without_roles_raises(settings) -> None:
     tenant_id = uuid4()
     user_id = uuid4()
     svc = _service(settings)
-    svc.refresh_tokens = _RefreshTokens(
-        _token_row(user_id=user_id, tenant_id=tenant_id)
-    )
+    svc.refresh_tokens = _RefreshTokens(_token_row(user_id=user_id, tenant_id=tenant_id))
     svc.users = _Users(_user(active=True))
     svc.roles = _Roles([])
 

@@ -28,9 +28,7 @@ class AppFeedbackCreate(BaseModel):
     campaign_id: uuid.UUID | None = None
     subject: str = Field(..., min_length=1, max_length=255)
     content: str = Field(..., min_length=1)
-    category: Literal["suggestion", "bug", "achievement", "ux_improvement"] = (
-        "suggestion"
-    )
+    category: Literal["suggestion", "bug", "achievement", "ux_improvement"] = "suggestion"
 
 
 class AppFeedbackResponse(AppFeedbackCreate):

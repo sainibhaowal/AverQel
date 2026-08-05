@@ -58,10 +58,7 @@ class TableExtractor:
                             continue
                         # First row = headers, rest = data
                         headers = [str(cell or "").strip() for cell in raw_table[0]]
-                        rows = [
-                            [str(cell or "").strip() for cell in row]
-                            for row in raw_table[1:]
-                        ]
+                        rows = [[str(cell or "").strip() for cell in row] for row in raw_table[1:]]
                         tables.append(
                             ExtractedTable(
                                 page_number=page_num,

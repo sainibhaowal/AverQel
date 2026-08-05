@@ -74,9 +74,7 @@ def test_hybrid_search_rrf(db_session, settings, seed_user):
     assert "proprietary" in results[0].content.lower()
 
 
-def test_structural_section_queries_prioritize_exact_unit_hits(
-    db_session, settings, seed_user
-):
+def test_structural_section_queries_prioritize_exact_unit_hits(db_session, settings, seed_user):
     user_data = seed_user("Section Tenant", "section@example.com", "pass", ("reader",))
     service = RetrievalService(db_session, settings)
 

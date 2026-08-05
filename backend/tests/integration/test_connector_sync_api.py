@@ -46,9 +46,7 @@ def _seed_connector(db_session, tenant_id, user_id, slug: str) -> Connector:
     )
     db_session.flush()
     integration = (
-        db_session.execute(select(Integration).where(Integration.slug == slug))
-        .scalars()
-        .first()
+        db_session.execute(select(Integration).where(Integration.slug == slug)).scalars().first()
     )
     if integration is None:
         integration = Integration(
@@ -87,14 +85,10 @@ def test_trigger_sync_route_hands_off_to_background_orchestrator(
         user_id,
         "github",
     )
-    headers = _auth_headers(
-        type("_Seeded", (), {"tenant_id": tenant_id, "user_id": user_id})()
-    )
+    headers = _auth_headers(type("_Seeded", (), {"tenant_id": tenant_id, "user_id": user_id})())
     calls: list[dict[str, str]] = []
 
-    def fake_sync(
-        self, connector_id, tenant_id, progress_callback=None, attempt=1
-    ):  # noqa: ARG001
+    def fake_sync(self, connector_id, tenant_id, progress_callback=None, attempt=1):  # noqa: ARG001
         calls.append(
             {
                 "connector_id": str(connector_id),
@@ -109,9 +103,7 @@ def test_trigger_sync_route_hands_off_to_background_orchestrator(
 
     monkeypatch.setattr(ConnectorOrchestrator, "sync_connector", fake_sync)
 
-    response = client.post(
-        f"/api/v1/integrations/connectors/{connector.id}/sync", headers=headers
-    )
+    response = client.post(f"/api/v1/integrations/connectors/{connector.id}/sync", headers=headers)
 
     assert response.status_code == 200
     assert response.json()["status"] == "accepted"
@@ -133,9 +125,7 @@ def test_connector_summary_endpoint_exposes_live_health_and_sync_state(
     tenant_id = uuid4()
     user_id = uuid4()
     connector = _seed_connector(db_session, tenant_id, user_id, "github")
-    headers = _auth_headers(
-        type("_Seeded", (), {"tenant_id": tenant_id, "user_id": user_id})()
-    )
+    headers = _auth_headers(type("_Seeded", (), {"tenant_id": tenant_id, "user_id": user_id})())
     retry_after_at = datetime.now(UTC) + timedelta(seconds=45)
 
     health = {
@@ -216,9 +206,7 @@ def test_connector_fleet_summary_endpoint_aggregates_connector_health(
 ) -> None:
     tenant_id = uuid4()
     user_id = uuid4()
-    headers = _auth_headers(
-        type("_Seeded", (), {"tenant_id": tenant_id, "user_id": user_id})()
-    )
+    headers = _auth_headers(type("_Seeded", (), {"tenant_id": tenant_id, "user_id": user_id})())
     db_session.add(Tenant(id=tenant_id, name=f"Tenant {uuid4().hex[:8]}"))
     db_session.add(
         User(
@@ -379,9 +367,7 @@ def test_connector_sync_history_endpoint_returns_recent_audits_and_is_tenant_sco
     tenant_id = uuid4()
     user_id = uuid4()
     connector = _seed_connector(db_session, tenant_id, user_id, "github")
-    headers = _auth_headers(
-        type("_Seeded", (), {"tenant_id": tenant_id, "user_id": user_id})()
-    )
+    headers = _auth_headers(type("_Seeded", (), {"tenant_id": tenant_id, "user_id": user_id})())
 
     db_session.add(
         AuditLog(

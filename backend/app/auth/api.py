@@ -67,9 +67,7 @@ def _token_response(result: LoginResult) -> TokenResponse:
     )
 
 
-def _set_refresh_cookie(
-    response: Response, settings: Settings, refresh_token: str
-) -> None:
+def _set_refresh_cookie(response: Response, settings: Settings, refresh_token: str) -> None:
     response.set_cookie(
         key=settings.refresh_cookie_name,
         value=refresh_token,
@@ -211,7 +209,9 @@ def oauth_callback(
         frontend_url = "/auth/login"
     if error:
         redirect = RedirectResponse(url=f"{frontend_url}?oauth=error", status_code=303)
-        redirect.delete_cookie(OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
+        redirect.delete_cookie(
+            OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth"
+        )
         return redirect
     try:
         result = service.authenticate_callback(
@@ -223,9 +223,13 @@ def oauth_callback(
     except ApiError:
         db.rollback()
         redirect = RedirectResponse(url=f"{frontend_url}?oauth=error", status_code=303)
-        redirect.delete_cookie(OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
+        redirect.delete_cookie(
+            OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth"
+        )
         return redirect
-    redirect = RedirectResponse(url=f"{frontend_url}?oauth={'2fa' if result.requires_2fa else 'success'}", status_code=303)
+    redirect = RedirectResponse(
+        url=f"{frontend_url}?oauth={'2fa' if result.requires_2fa else 'success'}", status_code=303
+    )
     redirect.delete_cookie(OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
     if result.requires_2fa:
         redirect.set_cookie(
@@ -250,13 +254,22 @@ def verify_oauth_2fa(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> TokenResponse:
-    RateLimitService(settings).enforce_auth_login_limit(request=request, tenant_id=None, email="oauth_2fa_verify")
+    RateLimitService(settings).enforce_auth_login_limit(
+        request=request, tenant_id=None, email="oauth_2fa_verify"
+    )
     pending_token = request.cookies.get(OAUTH_2FA_COOKIE)
     if not pending_token:
-        raise ApiError(code="INVALID_2FA_TOKEN", message="OAuth two-factor challenge expired.", status_code=401)
+        raise ApiError(
+            code="INVALID_2FA_TOKEN", message="OAuth two-factor challenge expired.", status_code=401
+        )
     service = AuthService(db, settings)
     result = service.verify_totp_login(pending_token=pending_token, code=payload.code)
-    _audit_and_commit(db=db, tenant_id=result.user.tenant_id, action="auth.oauth_2fa_verify", actor_user_id=result.user.id)
+    _audit_and_commit(
+        db=db,
+        tenant_id=result.user.tenant_id,
+        action="auth.oauth_2fa_verify",
+        actor_user_id=result.user.id,
+    )
     _set_refresh_cookie(response, settings, result.refresh_token)
     response.delete_cookie(OAUTH_2FA_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
     return _token_response(result)
@@ -605,9 +618,7 @@ def verify_2fa(
     settings: Settings = Depends(get_settings),
 ) -> TokenResponse:
     limiter = RateLimitService(settings)
-    limiter.enforce_auth_login_limit(
-        request=request, tenant_id=None, email="2fa_verify"
-    )
+    limiter.enforce_auth_login_limit(request=request, tenant_id=None, email="2fa_verify")
 
     service = AuthService(db, settings)
     result = service.verify_totp_login(

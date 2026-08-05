@@ -54,9 +54,7 @@ class QueriesRepository(BaseRepository):
         with observe_db_query("queries.create_citations"):
             for citation in citations:
                 if citation.tenant_id != tenant_id:
-                    raise ValueError(
-                        "Citation tenant_id does not match repository tenant_id"
-                    )
+                    raise ValueError("Citation tenant_id does not match repository tenant_id")
                 self.db.add(citation)
             self.db.flush()
         return citations

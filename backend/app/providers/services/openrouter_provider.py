@@ -24,9 +24,7 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         )
 
     def bind(self, base_url: str, api_key: str | None = None) -> OpenRouterProvider:
-        self.base_url = (
-            resolve_provider_base_url(base_url) or "https://openrouter.ai/api/v1"
-        )
+        self.base_url = resolve_provider_base_url(base_url) or "https://openrouter.ai/api/v1"
         self.api_key = api_key
         return self
 

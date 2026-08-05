@@ -298,43 +298,29 @@ def uses_groq_reasoning_api(
     )
 
 
-def uses_enable_thinking_controls(
-    provider_type: str | None, model_name: str | None
-) -> bool:
-    return (
-        provider_type or ""
-    ).lower() in _LOCAL_REASONING_PROVIDER_TYPES and _matches_any(
+def uses_enable_thinking_controls(provider_type: str | None, model_name: str | None) -> bool:
+    return (provider_type or "").lower() in _LOCAL_REASONING_PROVIDER_TYPES and _matches_any(
         model_name,
         _ENABLE_THINKING_HINTS,
     )
 
 
-def uses_slash_think_controls(
-    provider_type: str | None, model_name: str | None
-) -> bool:
-    return (
-        provider_type or ""
-    ).lower() in _LOCAL_REASONING_PROVIDER_TYPES and _matches_any(
+def uses_slash_think_controls(provider_type: str | None, model_name: str | None) -> bool:
+    return (provider_type or "").lower() in _LOCAL_REASONING_PROVIDER_TYPES and _matches_any(
         model_name,
         _SLASH_THINK_HINTS,
     )
 
 
-def uses_openai_reasoning_payload(
-    provider_type: str | None, model_name: str | None
-) -> bool:
-    return (
-        provider_type or ""
-    ).lower() in _OPENAI_COMPATIBLE_PROVIDER_TYPES and _matches_any(
+def uses_openai_reasoning_payload(provider_type: str | None, model_name: str | None) -> bool:
+    return (provider_type or "").lower() in _OPENAI_COMPATIBLE_PROVIDER_TYPES and _matches_any(
         model_name,
         _OPENAI_REASONING_PAYLOAD_HINTS,
     )
 
 
 def uses_think_tags(provider_type: str | None, model_name: str | None) -> bool:
-    return (
-        provider_type or ""
-    ).lower() in _OPENAI_COMPATIBLE_PROVIDER_TYPES and _matches_any(
+    return (provider_type or "").lower() in _OPENAI_COMPATIBLE_PROVIDER_TYPES and _matches_any(
         model_name,
         _THINK_TAG_HINTS,
     )
@@ -362,9 +348,7 @@ def resolve_reasoning_profile(
             request_controls_off=(),
             response_formats=("reasoning_content", "gemma_channel_tags", "think_tags"),
         )
-    if provider in {"google", "opencode-zen"} and _matches_any(
-        model_name, _GOOGLE_HINTS
-    ):
+    if provider in {"google", "opencode-zen"} and _matches_any(model_name, _GOOGLE_HINTS):
         return ReasoningProfile(
             supports_reasoning=True,
             reasoning_visibility="provider_exposed",
@@ -375,9 +359,7 @@ def resolve_reasoning_profile(
             request_controls_off=("thinking_config_disable",),
             response_formats=("thought_parts",),
         )
-    if provider in {"anthropic", "opencode-zen"} and _matches_any(
-        model_name, _ANTHROPIC_HINTS
-    ):
+    if provider in {"anthropic", "opencode-zen"} and _matches_any(model_name, _ANTHROPIC_HINTS):
         return ReasoningProfile(
             supports_reasoning=True,
             reasoning_visibility="provider_exposed",
@@ -461,9 +443,7 @@ def model_supports_reasoning(provider_type: str | None, model_name: str | None) 
     return resolve_reasoning_profile(provider_type, model_name).supports_reasoning
 
 
-def supports_required_tool_choice(
-    provider_type: str | None, model_name: str | None
-) -> bool:
+def supports_required_tool_choice(provider_type: str | None, model_name: str | None) -> bool:
     """Return whether a model can accept a forced tool choice.
 
     DeepSeek V4 models are thinking-first models at the upstream API and

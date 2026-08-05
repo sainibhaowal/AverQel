@@ -30,7 +30,9 @@ def test_sync_mcp_client_validates_and_rejects_redirects(monkeypatch: pytest.Mon
         lambda value: checked.append(value) or value,
     )
     transport = httpx.MockTransport(
-        lambda request: httpx.Response(302, headers={"location": "https://private.invalid"}, request=request)
+        lambda request: httpx.Response(
+            302, headers={"location": "https://private.invalid"}, request=request
+        )
     )
 
     with SafeMCPClient(transport=transport) as client:
@@ -48,7 +50,9 @@ def test_async_mcp_client_validates_and_rejects_redirects(monkeypatch: pytest.Mo
         lambda value: checked.append(value) or value,
     )
     transport = httpx.MockTransport(
-        lambda request: httpx.Response(302, headers={"location": "https://private.invalid"}, request=request)
+        lambda request: httpx.Response(
+            302, headers={"location": "https://private.invalid"}, request=request
+        )
     )
 
     async def run() -> None:

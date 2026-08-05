@@ -127,9 +127,7 @@ async def test_rbac_dependency_paths() -> None:
 
 
 class _FakeSessionForDB:
-    def __init__(
-        self, *, rollback_fail=False, reset_fail=False, rollback2_fail=False
-    ) -> None:
+    def __init__(self, *, rollback_fail=False, reset_fail=False, rollback2_fail=False) -> None:
         self.rollback_calls = 0
         self.rollback_fail = rollback_fail
         self.reset_fail = reset_fail
@@ -167,9 +165,7 @@ async def test_get_db_cleanup_paths(monkeypatch: pytest.MonkeyPatch) -> None:
         session_module,
         "get_session_factory",
         lambda: (
-            lambda: _FakeSessionForDB(
-                rollback_fail=True, reset_fail=True, rollback2_fail=True
-            )
+            lambda: _FakeSessionForDB(rollback_fail=True, reset_fail=True, rollback2_fail=True)
         ),
     )
 
@@ -227,17 +223,11 @@ async def test_middleware_rate_limit_block_and_success(
 ) -> None:
     class _Limiter:
         def enforce_global_ip_limit(self, *, request):  # type: ignore[no-untyped-def]
-            request.state.rate_limit = SimpleNamespace(
-                limit=10, remaining=0, reset_unix=123
-            )
-            raise ApiError(
-                code="RATE_LIMIT_EXCEEDED", message="x", status_code=429, details={}
-            )
+            request.state.rate_limit = SimpleNamespace(limit=10, remaining=0, reset_unix=123)
+            raise ApiError(code="RATE_LIMIT_EXCEEDED", message="x", status_code=429, details={})
 
     monkeypatch.setattr("app.core.middleware.get_settings", get_settings)
-    monkeypatch.setattr(
-        "app.core.middleware.RateLimitService", lambda _settings: _Limiter()
-    )
+    monkeypatch.setattr("app.core.middleware.RateLimitService", lambda _settings: _Limiter())
     monkeypatch.setattr(
         "app.core.middleware.API_REQUESTS_TOTAL",
         SimpleNamespace(labels=lambda **_: SimpleNamespace(inc=lambda: None)),
@@ -261,13 +251,9 @@ async def test_middleware_rate_limit_block_and_success(
 
     class _Limiter2:
         def enforce_global_ip_limit(self, *, request):  # type: ignore[no-untyped-def]
-            request.state.rate_limit = SimpleNamespace(
-                limit=10, remaining=9, reset_unix=123
-            )
+            request.state.rate_limit = SimpleNamespace(limit=10, remaining=9, reset_unix=123)
 
-    monkeypatch.setattr(
-        "app.core.middleware.RateLimitService", lambda _settings: _Limiter2()
-    )
+    monkeypatch.setattr("app.core.middleware.RateLimitService", lambda _settings: _Limiter2())
     req2 = _mk_request(path="/health/live")
     resp2 = await mw.dispatch(req2, _next)
     assert resp2.status_code == 200
@@ -339,9 +325,7 @@ async def test_auth_api_refresh_and_documents_and_queries_errors(
             request=_mk_request(path="/api/v1/documents/upload", method="POST"),
             file=cast(
                 UploadFile,
-                SimpleNamespace(
-                    read=lambda: b"", filename="x.pdf", content_type="application/pdf"
-                ),
+                SimpleNamespace(read=lambda: b"", filename="x.pdf", content_type="application/pdf"),
             ),
             idempotency_key=None,
             request_tenant_id=auth.tenant_id,
@@ -354,9 +338,7 @@ async def test_auth_api_refresh_and_documents_and_queries_errors(
             request=_mk_request(path="/api/v1/documents/upload", method="POST"),
             file=cast(
                 UploadFile,
-                SimpleNamespace(
-                    read=lambda: b"", filename="x.pdf", content_type="application/pdf"
-                ),
+                SimpleNamespace(read=lambda: b"", filename="x.pdf", content_type="application/pdf"),
             ),
             idempotency_key="x" * 129,
             request_tenant_id=auth.tenant_id,
@@ -369,9 +351,7 @@ async def test_auth_api_refresh_and_documents_and_queries_errors(
             request=_mk_request(path="/api/v1/documents/upload", method="POST"),
             file=cast(
                 UploadFile,
-                SimpleNamespace(
-                    read=lambda: b"", filename="x.pdf", content_type="application/pdf"
-                ),
+                SimpleNamespace(read=lambda: b"", filename="x.pdf", content_type="application/pdf"),
             ),
             idempotency_key="ok",
             request_tenant_id=uuid4(),
@@ -472,9 +452,7 @@ def test_health_ready_error_branches(monkeypatch: pytest.MonkeyPatch) -> None:
             _ = stmt
             raise SQLAlchemyError("db bad")
 
-    monkeypatch.setattr(
-        health_api, "get_engine", lambda: SimpleNamespace(connect=lambda: _Conn())
-    )
+    monkeypatch.setattr(health_api, "get_engine", lambda: SimpleNamespace(connect=lambda: _Conn()))
     with pytest.raises(ApiError) as db_exc:
         health_api.ready()
     assert db_exc.value.code == "DATABASE_NOT_READY"
@@ -490,9 +468,7 @@ def test_health_ready_error_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         health_api,
         "get_redis_client",
-        lambda: SimpleNamespace(
-            ping=lambda: (_ for _ in ()).throw(RuntimeError("redis"))
-        ),
+        lambda: SimpleNamespace(ping=lambda: (_ for _ in ()).throw(RuntimeError("redis"))),
     )
     with pytest.raises(ApiError) as redis_exc:
         health_api.ready()
@@ -603,9 +579,7 @@ def test_repository_branches() -> None:
 
     repo_users = UsersRepository(db)  # type: ignore[arg-type]
     repo_users.apply_tenant_scope = lambda _tenant: None  # type: ignore[assignment]
-    user = SimpleNamespace(
-        failed_login_attempts=0, locked_until=None, last_login_at=None
-    )
+    user = SimpleNamespace(failed_login_attempts=0, locked_until=None, last_login_at=None)
     repo_users.register_failed_login(
         tenant_id=tenant_id,
         user=cast(User, user),
@@ -682,9 +656,7 @@ def test_deletion_service_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     # process_deletion exception branch (mark_failed + audit + re-raise)
     db_commits: list[str] = []
     svc.db = SimpleNamespace(commit=lambda: db_commits.append("commit"))  # type: ignore[assignment]
-    failed_row = SimpleNamespace(
-        status="queued", id=uuid4(), requested_by_user_id=uuid4()
-    )
+    failed_row = SimpleNamespace(status="queued", id=uuid4(), requested_by_user_id=uuid4())
     svc.get_status = lambda **kwargs: failed_row  # type: ignore[assignment]
     mark_failed_calls: list[str] = []
     svc.repo = SimpleNamespace(  # type: ignore[assignment]
@@ -703,18 +675,14 @@ def test_parser_chunking_malware_branches(monkeypatch: pytest.MonkeyPatch) -> No
     parser = ParserService(max_pdf_pages=1, max_text_chars=5)
 
     with pytest.raises(ApiError):
-        parser.parse_bytes(
-            filename="x.bin", content_type="application/octet-stream", payload=b"x"
-        )
+        parser.parse_bytes(filename="x.bin", content_type="application/octet-stream", payload=b"x")
 
     monkeypatch.setattr(
         "app.ingestion.services.parser_service.PdfReader",
         lambda _bio: (_ for _ in ()).throw(RuntimeError("pdf")),
     )
     with pytest.raises(ApiError):
-        parser.parse_bytes(
-            filename="x.pdf", content_type="application/pdf", payload=b"x"
-        )
+        parser.parse_bytes(filename="x.pdf", content_type="application/pdf", payload=b"x")
 
     class _Page:
         def extract_text(self):
@@ -725,18 +693,14 @@ def test_parser_chunking_malware_branches(monkeypatch: pytest.MonkeyPatch) -> No
         lambda _bio: SimpleNamespace(pages=[_Page(), _Page()]),
     )
     with pytest.raises(ApiError):
-        parser.parse_bytes(
-            filename="x.pdf", content_type="application/pdf", payload=b"x"
-        )
+        parser.parse_bytes(filename="x.pdf", content_type="application/pdf", payload=b"x")
 
     monkeypatch.setattr(
         "app.ingestion.services.parser_service.PdfReader",
         lambda _bio: SimpleNamespace(pages=[_Page()]),
     )
     with pytest.raises(ApiError):
-        parser.parse_bytes(
-            filename="x.pdf", content_type="application/pdf", payload=b"x"
-        )
+        parser.parse_bytes(filename="x.pdf", content_type="application/pdf", payload=b"x")
 
     with pytest.raises(ApiError):
         parser._parse_text(b"abcdef")
@@ -754,9 +718,7 @@ def test_parser_chunking_malware_branches(monkeypatch: pytest.MonkeyPatch) -> No
 
     malware = MalwareScanService()
     assert (
-        malware.scan_bytes(
-            filename="empty.txt", content_type="text/plain", payload=b""
-        ).is_clean
+        malware.scan_bytes(filename="empty.txt", content_type="text/plain", payload=b"").is_clean
         is False
     )
 

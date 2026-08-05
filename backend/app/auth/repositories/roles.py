@@ -16,9 +16,7 @@ class RolesRepository(BaseRepository):
         query = select(Role).where(Role.name == canonicalize_role_name(name))
         return self.db.execute(query).scalar_one_or_none()
 
-    def get_role_names_for_user(
-        self, tenant_id: uuid.UUID, user_id: uuid.UUID
-    ) -> set[str]:
+    def get_role_names_for_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID) -> set[str]:
         self.apply_tenant_scope(tenant_id)
         query = (
             select(Role.name)
@@ -29,8 +27,7 @@ class RolesRepository(BaseRepository):
             )
         )
         return {
-            canonicalize_role_name(str(name))
-            for name in self.db.execute(query).scalars().all()
+            canonicalize_role_name(str(name)) for name in self.db.execute(query).scalars().all()
         }
 
     def get_role_names_for_user_global(self, *, user_id: uuid.UUID) -> set[str]:
@@ -41,6 +38,5 @@ class RolesRepository(BaseRepository):
             .where(UserRole.user_id == user_id)
         )
         return {
-            canonicalize_role_name(str(name))
-            for name in self.db.execute(query).scalars().all()
+            canonicalize_role_name(str(name)) for name in self.db.execute(query).scalars().all()
         }

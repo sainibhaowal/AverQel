@@ -78,9 +78,7 @@ def test_registry_resolves_first_matching_extractor() -> None:
     registry.register(extractor)
 
     resolved = registry.resolve(
-        ExtractionRequest(
-            filename="a.fake", content_type="application/octet-stream", payload=b"x"
-        )
+        ExtractionRequest(filename="a.fake", content_type="application/octet-stream", payload=b"x")
     )
     assert resolved is extractor
 
@@ -90,9 +88,7 @@ def test_router_extracts_native_format(settings) -> None:
     registry.register(_FakeExtractor())
     router = ExtractorRouter(settings=settings, registry=registry)
 
-    result = router.extract(
-        filename="a.fake", content_type="application/x-fake", payload=b"hello"
-    )
+    result = router.extract(filename="a.fake", content_type="application/x-fake", payload=b"hello")
     assert result.text == "hello"
     assert result.extraction_method == "fake_native"
     assert result.coverage_score == 1.0
@@ -128,9 +124,7 @@ def test_router_rejects_unknown_type(settings) -> None:
     assert exc_info.value.code == "UNSUPPORTED_DOCUMENT_TYPE"
 
 
-def test_conversion_service_requires_libo_binary(
-    settings, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_conversion_service_requires_libo_binary(settings, monkeypatch: pytest.MonkeyPatch) -> None:
     service = ConversionService(settings)
     monkeypatch.setattr(
         "app.ingestion.services.conversion_service.shutil.which", lambda _name: None

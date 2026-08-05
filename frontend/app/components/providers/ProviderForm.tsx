@@ -91,7 +91,9 @@ export default function ProviderForm({
   const [authMode, setAuthMode] = useState(provider?.auth_mode || "api_key");
   const [secretValue, setSecretValue] = useState("");
   const [searchLanguage, setSearchLanguage] = useState(
-    typeof provider?.metadata_json?.language === "string" ? provider.metadata_json.language : "auto",
+    typeof provider?.metadata_json?.language === "string"
+      ? provider.metadata_json.language
+      : "auto",
   );
   const [allowedDomains, setAllowedDomains] = useState(
     Array.isArray(provider?.metadata_json?.allowed_domains)
@@ -127,7 +129,9 @@ export default function ProviderForm({
       setPreviewModels(models);
       setSecretValue("");
       setSearchLanguage(
-        typeof provider.metadata_json?.language === "string" ? provider.metadata_json.language : "auto",
+        typeof provider.metadata_json?.language === "string"
+          ? provider.metadata_json.language
+          : "auto",
       );
       setAllowedDomains(
         Array.isArray(provider.metadata_json?.allowed_domains)
@@ -391,19 +395,34 @@ export default function ProviderForm({
                 <label className="text-muted-foreground/60 px-0.5 font-mono text-[9px] tracking-[0.2em] uppercase">
                   Search language
                 </label>
-                <input value={searchLanguage} onChange={(event) => setSearchLanguage(event.target.value)} placeholder="auto" className="border-glass-border bg-surface-1 text-foreground h-10 w-full rounded-xl border px-3 text-xs outline-none" />
+                <input
+                  value={searchLanguage}
+                  onChange={(event) => setSearchLanguage(event.target.value)}
+                  placeholder="auto"
+                  className="border-glass-border bg-surface-1 text-foreground h-10 w-full rounded-xl border px-3 text-xs outline-none"
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-muted-foreground/60 px-0.5 font-mono text-[9px] tracking-[0.2em] uppercase">
                   Allowed domains
                 </label>
-                <input value={allowedDomains} onChange={(event) => setAllowedDomains(event.target.value)} placeholder="example.com, docs.example.org" className="border-glass-border bg-surface-1 text-foreground h-10 w-full rounded-xl border px-3 text-xs outline-none" />
+                <input
+                  value={allowedDomains}
+                  onChange={(event) => setAllowedDomains(event.target.value)}
+                  placeholder="example.com, docs.example.org"
+                  className="border-glass-border bg-surface-1 text-foreground h-10 w-full rounded-xl border px-3 text-xs outline-none"
+                />
               </div>
               <div className="space-y-1.5">
                 <label className="text-muted-foreground/60 px-0.5 font-mono text-[9px] tracking-[0.2em] uppercase">
                   Blocked domains
                 </label>
-                <input value={blockedDomains} onChange={(event) => setBlockedDomains(event.target.value)} placeholder="ads.example.com" className="border-glass-border bg-surface-1 text-foreground h-10 w-full rounded-xl border px-3 text-xs outline-none" />
+                <input
+                  value={blockedDomains}
+                  onChange={(event) => setBlockedDomains(event.target.value)}
+                  placeholder="ads.example.com"
+                  className="border-glass-border bg-surface-1 text-foreground h-10 w-full rounded-xl border px-3 text-xs outline-none"
+                />
               </div>
             </div>
           )}
@@ -469,7 +488,11 @@ export default function ProviderForm({
         <div className="grid gap-4 md:grid-cols-3">
           <StatusPanel
             label="Current Target"
-            value={kind === "web" ? catalogEntry?.display_name || provider?.display_name || "Web Search" : activeModelName || "No model selected"}
+            value={
+              kind === "web"
+                ? catalogEntry?.display_name || provider?.display_name || "Web Search"
+                : activeModelName || "No model selected"
+            }
             subtext={`${(catalogEntry?.is_local ?? provider?.is_local) ? "Managed" : "Hosted"} ${kind} runtime`}
           />
           <StatusPanel label="Runtime URL" value={apiBaseUrl || "Not set"} />

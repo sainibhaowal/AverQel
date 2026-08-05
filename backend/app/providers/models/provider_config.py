@@ -110,9 +110,7 @@ class ProviderConfig(Base):
         server_default=text("false"),
     )
     default_chat_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    default_embedding_model: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    default_embedding_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     default_reranker_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     timeout_seconds: Mapped[int] = mapped_column(
         Integer,

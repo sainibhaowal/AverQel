@@ -21,9 +21,7 @@ depends_on = None
 
 def upgrade() -> None:
     # 1. Add tsvector column
-    op.add_column(
-        "document_chunks", sa.Column("search_vector", TSVECTOR(), nullable=True)
-    )
+    op.add_column("document_chunks", sa.Column("search_vector", TSVECTOR(), nullable=True))
 
     # 2. Add GIN index
     op.create_index(

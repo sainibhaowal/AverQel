@@ -78,9 +78,7 @@ def upgrade() -> None:
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("email", sa.String(length=320), nullable=False),
         sa.Column("password_hash", sa.Text(), nullable=False),
-        sa.Column(
-            "is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")
-        ),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column(
             "failed_login_attempts",
             sa.Integer(),
@@ -168,9 +166,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.UniqueConstraint(
-            "tenant_id", "token_hash", name="uq_refresh_tokens_tenant_hash"
-        ),
+        sa.UniqueConstraint("tenant_id", "token_hash", name="uq_refresh_tokens_tenant_hash"),
     )
     op.create_index(
         "ix_refresh_tokens_tenant_user_revoked",
@@ -195,9 +191,7 @@ def upgrade() -> None:
         $$;
         """)
     op.execute("GRANT USAGE ON SCHEMA public TO aks_app")
-    op.execute(
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aks_app"
-    )
+    op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aks_app")
     op.execute("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO aks_app")
     op.execute("""
         ALTER DEFAULT PRIVILEGES IN SCHEMA public
@@ -232,9 +226,7 @@ def downgrade() -> None:
         REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM aks_app
         """)
     op.execute("REVOKE USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public FROM aks_app")
-    op.execute(
-        "REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public FROM aks_app"
-    )
+    op.execute("REVOKE SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public FROM aks_app")
     op.execute("REVOKE USAGE ON SCHEMA public FROM aks_app")
     op.execute("DROP ROLE IF EXISTS aks_app")
 

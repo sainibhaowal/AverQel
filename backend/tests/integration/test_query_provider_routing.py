@@ -104,8 +104,7 @@ def test_query_provider_routing_prefers_assignment(seed_user, monkeypatch) -> No
             search_mode="hybrid",
         )
         assert (
-            cast(StructuredAnswerResponse, result.answer).detailed_analysis
-            == "route:gpt-routing"
+            cast(StructuredAnswerResponse, result.answer).detailed_analysis == "route:gpt-routing"
         )
     finally:
         session.rollback()

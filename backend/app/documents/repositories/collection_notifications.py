@@ -92,9 +92,7 @@ class CollectionNotificationsRepository(BaseRepository):
         read_at: datetime,
     ) -> None:
         self._apply_bypass_scope()
-        items = self.list_for_user(
-            user_id=user_id, collection_id=collection_id, limit=200
-        )
+        items = self.list_for_user(user_id=user_id, collection_id=collection_id, limit=200)
         with observe_db_query("collection_notifications.mark_all_read_for_user"):
             for item in items:
                 if item.read_at is None:

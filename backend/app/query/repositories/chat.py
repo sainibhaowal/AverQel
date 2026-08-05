@@ -359,7 +359,7 @@ class ChatRepository:
                 Conversation.kind == conversation.kind,
                 Message.conversation_id == conversation_id,
             )
-            .order_by(Message.created_at.asc())
+            .order_by(Message.created_at.asc(), Message.id.asc())
             .limit(limit)
         )
         return self.db.execute(stmt).scalars().all()
@@ -465,9 +465,7 @@ class ChatRepository:
         )
         if message is None:
             raise ValueError("Message not found for tenant")
-        version = next(
-            (item for item in message.versions if item.id == version_id), None
-        )
+        version = next((item for item in message.versions if item.id == version_id), None)
         if version is None:
             raise ValueError("Message version not found for message")
         self._activate_version(message=message, version=version)
@@ -606,9 +604,7 @@ class ChatRepository:
         self._touch_conversation(conversation_id, tenant_id)
         return True
 
-    def _touch_conversation(
-        self, conversation_id: uuid.UUID, tenant_id: uuid.UUID
-    ) -> None:
+    def _touch_conversation(self, conversation_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
         stmt = (
             update(Conversation)
             .where(

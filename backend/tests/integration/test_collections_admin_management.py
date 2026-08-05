@@ -167,9 +167,7 @@ def test_collections_admin_management_routes_allow_add_list_and_remove(
         },
     )
     assert list_permissions_after.status_code == 200
-    permission_user_ids_after = {
-        item["user_id"] for item in list_permissions_after.json()
-    }
+    permission_user_ids_after = {item["user_id"] for item in list_permissions_after.json()}
     assert str(extra_user_id) not in permission_user_ids_after
     assert str(seeded.user_id) in permission_user_ids_after
 
@@ -391,6 +389,4 @@ def test_shared_user_in_different_tenant_can_see_shared_collection_documents(
         },
     )
     assert shared_documents.status_code == 200
-    assert [item["filename"] for item in shared_documents.json()] == [
-        "shared-cross-doc.txt"
-    ]
+    assert [item["filename"] for item in shared_documents.json()] == ["shared-cross-doc.txt"]

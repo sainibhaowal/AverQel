@@ -36,11 +36,15 @@ def test_sync_official_mcp_catalog_creates_six_safe_entries(
     result = MCPCatalogService(clean_curated_mcp_catalog).sync_official_providers()
     clean_curated_mcp_catalog.commit()
 
-    rows = clean_curated_mcp_catalog.execute(
-        select(MCPRegistryEntry)
-        .where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
-        .order_by(MCPRegistryEntry.popularity_rank)
-    ).scalars().all()
+    rows = (
+        clean_curated_mcp_catalog.execute(
+            select(MCPRegistryEntry)
+            .where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
+            .order_by(MCPRegistryEntry.popularity_rank)
+        )
+        .scalars()
+        .all()
+    )
 
     assert result.as_dict() == {"created": 6, "updated": 0, "unchanged": 0, "total": 6}
     assert [row.server_name for row in rows] == [
@@ -84,7 +88,9 @@ def test_sync_official_mcp_catalog_is_idempotent_and_preserves_other_sources(
         row.server_name: row.id
         for row in session.execute(
             select(MCPRegistryEntry).where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     }
     third_party = MCPRegistryEntry(
         source="external-test-catalog",
@@ -104,7 +110,9 @@ def test_sync_official_mcp_catalog_is_idempotent_and_preserves_other_sources(
         row.server_name: row.id
         for row in session.execute(
             select(MCPRegistryEntry).where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     }
 
     assert first_result.created == 6

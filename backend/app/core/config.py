@@ -19,9 +19,7 @@ PRODUCTION_ENVS: Final[set[str]] = {"production"}
 
 DEFAULT_JWT_SECRET: Final[str] = "change-me-please-use-env-secret-min-32-chars"
 DEFAULT_REFRESH_SECRET: Final[str] = "change-me-refresh-hash-secret-min-32-chars"
-DEFAULT_DATABASE_URL: Final[str] = (
-    "postgresql+psycopg://postgres:postgres@localhost:1005/knowledge"
-)
+DEFAULT_DATABASE_URL: Final[str] = "postgresql+psycopg://postgres:postgres@localhost:1005/knowledge"
 DEFAULT_MINIO_ACCESS_KEY: Final[str] = "minioadmin"
 DEFAULT_MINIO_SECRET_KEY: Final[str] = "minioadmin"
 
@@ -112,9 +110,7 @@ def _is_http_url(value: str) -> bool:
 def _is_valid_origin(value: str) -> bool:
     parsed = urlparse(value)
     return (
-        parsed.scheme in {"http", "https"}
-        and bool(parsed.netloc)
-        and not parsed.path.rstrip("/")
+        parsed.scheme in {"http", "https"} and bool(parsed.netloc) and not parsed.path.rstrip("/")
     )
 
 
@@ -129,7 +125,13 @@ def _is_private_service_host(value: str) -> bool:
     host = (parsed.hostname or "").strip().lower()
     if not host:
         return False
-    if host in {"localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal"}:
+    if host in {
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",
+        "::1",
+        "host.docker.internal",
+    }:  # nosec B104 - classifier, not a bind operation
         return True
     if "." not in host:
         return True
@@ -164,13 +166,9 @@ def _parse_provider_secret_keyring(raw: str | None) -> dict[str, bytes]:
         try:
             key_bytes = base64.urlsafe_b64decode(encoded_key.encode("utf-8"))
         except Exception as exc:  # pragma: no cover - defensive branch
-            raise ValueError(
-                f"provider secret key for kid={kid!r} is not valid base64"
-            ) from exc
+            raise ValueError(f"provider secret key for kid={kid!r} is not valid base64") from exc
         if len(key_bytes) not in {16, 24, 32}:
-            raise ValueError(
-                "provider secret keys must decode to 16, 24, or 32 bytes for AES-GCM"
-            )
+            raise ValueError("provider secret keys must decode to 16, 24, or 32 bytes for AES-GCM")
         keyring[kid.strip()] = key_bytes
     return keyring
 
@@ -289,8 +287,9 @@ class Settings(BaseSettings):
     )
     livekit_url: str = Field(default="http://livekit:7880", validation_alias="LIVEKIT_URL")
     livekit_api_key: str = Field(default="devkey", validation_alias="LIVEKIT_API_KEY")
-    livekit_api_secret: str = Field(default="cohesive-voice-secret-key-1092", validation_alias="LIVEKIT_API_SECRET")
-
+    livekit_api_secret: str = Field(
+        default="cohesive-voice-secret-key-1092", validation_alias="LIVEKIT_API_SECRET"
+    )
 
     # -----------------------------------------------------------------------
     # Upload / Parsing
@@ -528,9 +527,7 @@ class Settings(BaseSettings):
     query_top_k_min: int = 1
     query_top_k_max: int = 25
     query_cache_ttl_seconds: int = 300
-    query_no_result_answer_text: str = (
-        "No relevant information found for the requested query."
-    )
+    query_no_result_answer_text: str = "No relevant information found for the requested query."
     benchmark_week3_query_script_path: str = "scripts/benchmark_week3_queries.py"
 
     rate_limit_queries_per_user_per_minute: int = 60
@@ -601,9 +598,7 @@ class Settings(BaseSettings):
             raise ValueError("connection URLs must not be empty")
         return cleaned
 
-    @field_validator(
-        "minio_endpoint", "minio_bucket", "jwt_issuer", "jwt_audience", "app_name"
-    )
+    @field_validator("minio_endpoint", "minio_bucket", "jwt_issuer", "jwt_audience", "app_name")
     @classmethod
     def validate_non_empty_strings(cls, value: str) -> str:
         cleaned = value.strip()
@@ -625,9 +620,7 @@ class Settings(BaseSettings):
         normalized = _normalize_str_list([item.lower() for item in value])
         for email in normalized:
             if "@" not in email:
-                raise ValueError(
-                    "bootstrap_super_admin_emails must contain valid email addresses"
-                )
+                raise ValueError("bootstrap_super_admin_emails must contain valid email addresses")
         return normalized
 
     @field_validator("cors_origins")
@@ -646,9 +639,7 @@ class Settings(BaseSettings):
     def validate_upload_allowed_mime_types(cls, value: list[str]) -> list[str]:
         normalized = _normalize_str_list(value)
         if not normalized:
-            raise ValueError(
-                "upload_allowed_mime_types must contain at least one MIME type"
-            )
+            raise ValueError("upload_allowed_mime_types must contain at least one MIME type")
         return normalized
 
     @field_validator("upload_allowed_extensions")
@@ -656,9 +647,7 @@ class Settings(BaseSettings):
     def validate_upload_allowed_extensions(cls, value: list[str]) -> list[str]:
         normalized = _normalize_ext_list(value)
         if not normalized:
-            raise ValueError(
-                "upload_allowed_extensions must contain at least one extension"
-            )
+            raise ValueError("upload_allowed_extensions must contain at least one extension")
         return normalized
 
     @field_validator("ocr_languages")
@@ -676,9 +665,7 @@ class Settings(BaseSettings):
 
     @field_validator("provider_openai_oauth_allowed_redirect_uris")
     @classmethod
-    def validate_provider_openai_oauth_allowed_redirect_uris(
-        cls, value: list[str]
-    ) -> list[str]:
+    def validate_provider_openai_oauth_allowed_redirect_uris(cls, value: list[str]) -> list[str]:
         normalized = _normalize_str_list(value)
         for redirect_uri in normalized:
             parsed = urlparse(redirect_uri)
@@ -779,9 +766,7 @@ class Settings(BaseSettings):
     def validate_top_k_max(cls, value: int, info: ValidationInfo) -> int:
         min_value = int(info.data.get("query_top_k_min", 1))
         if value < min_value:
-            raise ValueError(
-                "query_top_k_max must be greater than or equal to query_top_k_min"
-            )
+            raise ValueError("query_top_k_max must be greater than or equal to query_top_k_min")
         return value
 
     @model_validator(mode="after")
@@ -806,9 +791,7 @@ class Settings(BaseSettings):
             raise ValueError("llm_api_base_url must be a valid http/https URL")
         return cleaned.rstrip("/")
 
-    @field_validator(
-        "connector_oauth_redirect_uri", "connector_oauth_frontend_redirect_uri"
-    )
+    @field_validator("connector_oauth_redirect_uri", "connector_oauth_frontend_redirect_uri")
     @classmethod
     def validate_connector_oauth_urls(cls, value: str | None) -> str | None:
         if value is None:
@@ -817,9 +800,7 @@ class Settings(BaseSettings):
         if not cleaned:
             return None
         if not _is_http_url(cleaned):
-            raise ValueError(
-                "connector OAuth redirect URLs must be valid http/https URLs"
-            )
+            raise ValueError("connector OAuth redirect URLs must be valid http/https URLs")
         return cleaned
 
     @field_validator("mcp_oauth_redirect_uri")
@@ -896,9 +877,7 @@ class Settings(BaseSettings):
 
         if self.llm_provider == "custom":
             if not self.llm_api_base_url:
-                raise ValueError(
-                    "llm_api_base_url is required when llm_provider=custom"
-                )
+                raise ValueError("llm_api_base_url is required when llm_provider=custom")
             if not self.llm_model:
                 raise ValueError("llm_model is required when llm_provider=custom")
 
@@ -976,9 +955,7 @@ class Settings(BaseSettings):
             raise ValueError("chunk_overlap must be smaller than chunk_size")
 
         if self.chunk_min_length > self.chunk_size:
-            raise ValueError(
-                "chunk_min_length must be less than or equal to chunk_size"
-            )
+            raise ValueError("chunk_min_length must be less than or equal to chunk_size")
 
         if self.refresh_cookie_samesite == "none" and not self.refresh_cookie_secure:
             raise ValueError("refresh_cookie_secure must be true when SameSite=None")
@@ -1018,9 +995,7 @@ class Settings(BaseSettings):
             raise ValueError("Production requires a non-default jwt_secret")
 
         if self.refresh_token_hash_secret == DEFAULT_REFRESH_SECRET:
-            raise ValueError(
-                "Production requires a non-default refresh_token_hash_secret"
-            )
+            raise ValueError("Production requires a non-default refresh_token_hash_secret")
 
         if self.database_url == DEFAULT_DATABASE_URL:
             raise ValueError("Production requires a non-default database_url")
@@ -1034,9 +1009,7 @@ class Settings(BaseSettings):
         if not self.refresh_cookie_secure:
             raise ValueError("Production requires refresh_cookie_secure=true")
 
-        if self.minio_secure is False and not _is_private_service_host(
-            self.minio_endpoint
-        ):
+        if self.minio_secure is False and not _is_private_service_host(self.minio_endpoint):
             raise ValueError(
                 "Production requires minio_secure=true unless minio_endpoint is an internal private service"
             )
@@ -1045,14 +1018,10 @@ class Settings(BaseSettings):
             raise ValueError("Production requires connector_oauth_redirect_uri")
 
         if not self.connector_oauth_frontend_redirect_uri:
-            raise ValueError(
-                "Production requires connector_oauth_frontend_redirect_uri"
-            )
+            raise ValueError("Production requires connector_oauth_frontend_redirect_uri")
 
         if not self.connector_oauth_redirect_uri.startswith("https://"):
-            raise ValueError(
-                "Production requires connector_oauth_redirect_uri to use https"
-            )
+            raise ValueError("Production requires connector_oauth_redirect_uri to use https")
 
         if not self.connector_oauth_frontend_redirect_uri.startswith("https://"):
             raise ValueError(
@@ -1073,11 +1042,11 @@ class Settings(BaseSettings):
             and not _is_local_like_url(self.llm_api_base_url)
             and not self.llm_api_key
         ):
-            raise ValueError(
-                "Production requires llm_api_key for non-local custom LLM endpoints"
-            )
+            raise ValueError("Production requires llm_api_key for non-local custom LLM endpoints")
 
-        if self.provider_secret_backend == "env_keyring":
+        if (
+            self.provider_secret_backend == "env_keyring"  # nosec B105
+        ):  # backend selector, not a secret
             if not self.provider_secret_active_kid:
                 raise ValueError("Production requires provider_secret_active_kid")
 
@@ -1121,8 +1090,7 @@ class Settings(BaseSettings):
 
         redirect_uri = self.provider_openai_oauth_redirect_uri.rstrip("/")
         allowlisted = {
-            item.rstrip("/")
-            for item in self.provider_openai_oauth_allowed_redirect_uris
+            item.rstrip("/") for item in self.provider_openai_oauth_allowed_redirect_uris
         }
         if redirect_uri not in allowlisted:
             raise ValueError(
@@ -1133,7 +1101,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_provider_secret_keyring(self) -> Settings:
-        if self.provider_secret_backend == "aws_kms":
+        if self.provider_secret_backend == "aws_kms":  # nosec B105 - backend selector, not a secret
             if self.provider_secret_active_kid or self.provider_secret_keyring_json:
                 raise ValueError(
                     "provider_secret_active_kid/provider_secret_keyring_json are not used when provider_secret_backend=aws_kms"
@@ -1178,9 +1146,7 @@ class Settings(BaseSettings):
 
         keyring = _parse_provider_secret_keyring(self.totp_secret_keyring_json)
         if self.totp_secret_active_kid not in keyring:
-            raise ValueError(
-                "totp_secret_active_kid must exist in totp_secret_keyring_json"
-            )
+            raise ValueError("totp_secret_active_kid must exist in totp_secret_keyring_json")
 
         return self
 

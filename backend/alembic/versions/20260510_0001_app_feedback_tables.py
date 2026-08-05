@@ -25,9 +25,7 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("title", sa.String(length=255), nullable=False),
         sa.Column("description", sa.Text(), nullable=False),
-        sa.Column(
-            "is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False
-        ),
+        sa.Column("is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -68,19 +66,13 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["campaign_id"], ["feedback_campaigns.id"], ondelete="SET NULL"
-        ),
+        sa.ForeignKeyConstraint(["campaign_id"], ["feedback_campaigns.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        op.f("ix_app_feedback_tenant_id"), "app_feedback", ["tenant_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_app_feedback_user_id"), "app_feedback", ["user_id"], unique=False
-    )
+    op.create_index(op.f("ix_app_feedback_tenant_id"), "app_feedback", ["tenant_id"], unique=False)
+    op.create_index(op.f("ix_app_feedback_user_id"), "app_feedback", ["user_id"], unique=False)
     op.create_index(
         op.f("ix_app_feedback_campaign_id"),
         "app_feedback",
@@ -99,9 +91,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        op.f("ix_feedback_campaigns_is_active"), table_name="feedback_campaigns"
-    )
+    op.drop_index(op.f("ix_feedback_campaigns_is_active"), table_name="feedback_campaigns")
     op.drop_index(op.f("ix_app_feedback_created_at"), table_name="app_feedback")
     op.drop_index(op.f("ix_app_feedback_campaign_id"), table_name="app_feedback")
     op.drop_index(op.f("ix_app_feedback_user_id"), table_name="app_feedback")

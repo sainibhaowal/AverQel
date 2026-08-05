@@ -26,9 +26,7 @@ class QueryRun:
     error_code: str | None
 
 
-def run_query_once(
-    url: str, headers: dict[str, str], payload: dict[str, object]
-) -> QueryRun:
+def run_query_once(url: str, headers: dict[str, str], payload: dict[str, object]) -> QueryRun:
     start = time.perf_counter()
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=30)
@@ -67,9 +65,7 @@ def run_query_once(
 def _read_token_pool(token: str, token_file: str | None) -> list[str]:
     if token_file is None:
         return [token]
-    values = [
-        line.strip() for line in open(token_file, encoding="utf-8").read().splitlines()
-    ]
+    values = [line.strip() for line in open(token_file, encoding="utf-8").read().splitlines()]
     values = [value for value in values if value]
     return values or [token]
 
@@ -89,9 +85,7 @@ def resolve_cold_unique_query(mode: str, explicit_unique: bool) -> bool:
     return explicit_unique
 
 
-def summarize_runs(
-    runs: list[QueryRun], elapsed_seconds: float
-) -> dict[str, float | int]:
+def summarize_runs(runs: list[QueryRun], elapsed_seconds: float) -> dict[str, float | int]:
     latencies = [run.latency_ms for run in runs]
     success_count = sum(1 for run in runs if run.ok)
     cached_count = sum(1 for run in runs if run.cached)
@@ -100,20 +94,14 @@ def summarize_runs(
     for run in runs:
         status_counts[run.status_code] = status_counts.get(run.status_code, 0) + 1
         if run.error_code:
-            error_code_counts[run.error_code] = (
-                error_code_counts.get(run.error_code, 0) + 1
-            )
+            error_code_counts[run.error_code] = error_code_counts.get(run.error_code, 0) + 1
 
     summary: dict[str, float | int] = {
         "total_requests": len(runs),
         "success_count": success_count,
         "error_count": len(runs) - success_count,
-        "success_rate_percent": round(
-            (success_count / len(runs)) * 100 if runs else 0.0, 2
-        ),
-        "cached_response_percent": round(
-            (cached_count / len(runs)) * 100 if runs else 0.0, 2
-        ),
+        "success_rate_percent": round((success_count / len(runs)) * 100 if runs else 0.0, 2),
+        "cached_response_percent": round((cached_count / len(runs)) * 100 if runs else 0.0, 2),
         "throughput_rps": round(len(runs) / elapsed_seconds, 2),
         "p50_ms": round(percentile(latencies, 0.50), 2),
         "p95_ms": round(percentile(latencies, 0.95), 2),
@@ -127,9 +115,7 @@ def summarize_runs(
     return summary
 
 
-def clear_rate_limit_counters(
-    *, redis_url: str, key_pattern: str = "rate_limit:*"
-) -> int:
+def clear_rate_limit_counters(*, redis_url: str, key_pattern: str = "rate_limit:*") -> int:
     client = redis.Redis.from_url(redis_url, decode_responses=True)
     keys = list(client.scan_iter(match=key_pattern, count=1000))
     if keys:
@@ -156,12 +142,8 @@ def run_phase(
             if unique_query_per_request:
                 phase_payload["query"] = f"{payload['query']} [bench-{index}]"
             phase_headers = headers.copy()
-            phase_headers["Authorization"] = (
-                f"Bearer {token_pool[index % len(token_pool)]}"
-            )
-            futures.append(
-                executor.submit(run_query_once, url, phase_headers, phase_payload)
-            )
+            phase_headers["Authorization"] = f"Bearer {token_pool[index % len(token_pool)]}"
+            futures.append(executor.submit(run_query_once, url, phase_headers, phase_payload))
         for future in as_completed(futures):
             runs.append(future.result())
     elapsed_seconds = max(time.perf_counter() - phase_start, 0.001)
@@ -192,19 +174,13 @@ def run_steady_state_phase(
                 if unique_query_per_request:
                     phase_payload["query"] = f"{payload['query']} [steady-{index}]"
                 phase_headers = headers.copy()
-                phase_headers["Authorization"] = (
-                    f"Bearer {token_pool[index % len(token_pool)]}"
-                )
-                futures.append(
-                    executor.submit(run_query_once, url, phase_headers, phase_payload)
-                )
+                phase_headers["Authorization"] = f"Bearer {token_pool[index % len(token_pool)]}"
+                futures.append(executor.submit(run_query_once, url, phase_headers, phase_payload))
                 index += 1
             for future in as_completed(futures):
                 runs.append(future.result())
         if request_interval_seconds > 0:
-            remaining_sleep = request_interval_seconds - (
-                time.perf_counter() - cycle_started
-            )
+            remaining_sleep = request_interval_seconds - (time.perf_counter() - cycle_started)
             if remaining_sleep > 0:
                 time.sleep(remaining_sleep)
 
@@ -216,18 +192,12 @@ def run_steady_state_phase(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Week 3/5 query benchmark runner")
-    parser.add_argument(
-        "--base-url", default="http://localhost:1000/api/v1", help="API base URL"
-    )
+    parser.add_argument("--base-url", default="http://localhost:1000/api/v1", help="API base URL")
     parser.add_argument("--token", required=True, help="Bearer token")
     parser.add_argument("--tenant-id", required=True, help="Tenant UUID")
-    parser.add_argument(
-        "--requests", type=int, default=120, help="Total requests per phase"
-    )
+    parser.add_argument("--requests", type=int, default=120, help="Total requests per phase")
     parser.add_argument("--workers", type=int, default=10, help="Parallel workers")
-    parser.add_argument(
-        "--virtual-users", type=int, default=0, help="Alias for workers count"
-    )
+    parser.add_argument("--virtual-users", type=int, default=0, help="Alias for workers count")
     parser.add_argument(
         "--steady-state-seconds",
         type=int,
@@ -235,9 +205,7 @@ def main() -> int:
         help="Run steady-state load for the specified seconds when > 0",
     )
     parser.add_argument("--top-k", type=int, default=5, help="top_k to send")
-    parser.add_argument(
-        "--query", default="what are the SLA requirements?", help="Query text"
-    )
+    parser.add_argument("--query", default="what are the SLA requirements?", help="Query text")
     parser.add_argument(
         "--mode",
         choices=("cold", "warm", "both"),
@@ -299,9 +267,7 @@ def main() -> int:
         "top_k": args.top_k,
         "filters": {},
     }
-    cold_unique_query = resolve_cold_unique_query(
-        args.mode, args.unique_query_per_request
-    )
+    cold_unique_query = resolve_cold_unique_query(args.mode, args.unique_query_per_request)
     if args.dry_run:
         report = {
             "generated_at": datetime.now(tz=UTC).isoformat(),
@@ -312,9 +278,7 @@ def main() -> int:
                 "python_version": platform.python_version(),
                 "platform": platform.platform(),
                 "workers": args.workers,
-                "virtual_users": (
-                    args.virtual_users if args.virtual_users > 0 else args.workers
-                ),
+                "virtual_users": (args.virtual_users if args.virtual_users > 0 else args.workers),
                 "requests_per_phase": args.requests,
                 "steady_state_seconds": args.steady_state_seconds,
                 "top_k": args.top_k,
@@ -360,9 +324,7 @@ def main() -> int:
             )
         phases["cold_cache"] = cold_summary
         if args.mode == "both" and args.rate_limit_reset_between_phases:
-            rate_limit_keys_deleted += clear_rate_limit_counters(
-                redis_url=args.redis_url
-            )
+            rate_limit_keys_deleted += clear_rate_limit_counters(redis_url=args.redis_url)
 
     if args.mode in {"warm", "both"}:
         for _ in range(args.warmup_requests):

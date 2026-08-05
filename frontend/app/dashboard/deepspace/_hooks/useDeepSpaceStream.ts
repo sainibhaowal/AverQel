@@ -159,10 +159,7 @@ export function useDeepSpaceStream({
               "The chat stream could not be reached.",
               retryable,
             );
-            if (
-              attempt < MAX_INITIAL_STREAM_RETRIES &&
-              retryable
-            ) {
+            if (attempt < MAX_INITIAL_STREAM_RETRIES && retryable) {
               await new Promise((resolve) =>
                 window.setTimeout(resolve, INITIAL_STREAM_RETRY_DELAY_MS),
               );

@@ -202,8 +202,10 @@ export function buildMarketplaceQuery(params: MarketplaceQuery): string {
   if (params.q.trim()) query.set("q", params.q.trim());
   if (params.category) query.set("category", params.category);
   if (params.transport) query.set("transport", params.transport);
-  if (params.official !== undefined && params.official !== null) query.set("official", String(params.official));
-  if (params.verified !== undefined && params.verified !== null) query.set("verified", String(params.verified));
+  if (params.official !== undefined && params.official !== null)
+    query.set("official", String(params.official));
+  if (params.verified !== undefined && params.verified !== null)
+    query.set("verified", String(params.verified));
   if (params.authType) query.set("auth_type", params.authType);
   if (params.trustStatus) query.set("trust_status", params.trustStatus);
   if (params.sort && params.sort !== "default") query.set("sort", params.sort);
@@ -215,7 +217,8 @@ export function safeExternalUrl(value?: string | null): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
-    if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) return null;
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password)
+      return null;
     return url.toString();
   } catch {
     return null;
@@ -231,7 +234,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { detail?: unknown } | null;
+    const payload = (await response.json().catch(() => null)) as { detail?: unknown } | null;
     throw new Error(typeof payload?.detail === "string" ? payload.detail : "MCP request failed");
   }
   if (response.status === 204) return undefined as T;
@@ -250,7 +253,9 @@ export function getMarketplaceEntry(entryId: string): Promise<MCPMarketplaceEntr
   return request<MCPMarketplaceEntry>(`/mcp/marketplace/${encodeURIComponent(entryId)}`);
 }
 
-export function connectMarketplaceEntry(entryId: string): Promise<{ server: MCPConnection; authorization_url?: string | null; setup_required?: boolean }> {
+export function connectMarketplaceEntry(
+  entryId: string,
+): Promise<{ server: MCPConnection; authorization_url?: string | null; setup_required?: boolean }> {
   return request(`/mcp/marketplace/${encodeURIComponent(entryId)}/connect`, { method: "POST" });
 }
 
@@ -270,7 +275,13 @@ export function getMCPPolicy(serverId: string): Promise<MCPConnectionPolicy> {
   return request<MCPConnectionPolicy>(`/mcp/servers/${encodeURIComponent(serverId)}/policy`);
 }
 
-export function updateMCPPolicy(serverId: string, policy: Omit<MCPConnectionPolicy, "id" | "tenant_id" | "user_id" | "server_id" | "created_at" | "updated_at">): Promise<MCPConnectionPolicy> {
+export function updateMCPPolicy(
+  serverId: string,
+  policy: Omit<
+    MCPConnectionPolicy,
+    "id" | "tenant_id" | "user_id" | "server_id" | "created_at" | "updated_at"
+  >,
+): Promise<MCPConnectionPolicy> {
   return request<MCPConnectionPolicy>(`/mcp/servers/${encodeURIComponent(serverId)}/policy`, {
     method: "PUT",
     body: JSON.stringify(policy),
@@ -281,22 +292,42 @@ export function getMCPTools(serverId: string): Promise<MCPToolCatalog> {
   return request<MCPToolCatalog>(`/mcp/servers/${encodeURIComponent(serverId)}/tools`);
 }
 
-export function updateMCPToolPolicy(serverId: string, toolName: string, mode: MCPToolMode): Promise<MCPTool> {
-  return request<MCPTool>(`/mcp/servers/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(toolName)}/policy`, {
-    method: "PUT",
-    body: JSON.stringify({ mode }),
-  });
+export function updateMCPToolPolicy(
+  serverId: string,
+  toolName: string,
+  mode: MCPToolMode,
+): Promise<MCPTool> {
+  return request<MCPTool>(
+    `/mcp/servers/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(toolName)}/policy`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ mode }),
+    },
+  );
 }
 
-export function getMCPScopedConnections(scope: MCPScope, scopeId: string): Promise<MCPScopedConnectionList> {
-  return request<MCPScopedConnectionList>(`/mcp/${scope === "deepspace" ? "deepspaces" : "conversations"}/${encodeURIComponent(scopeId)}/connections`);
+export function getMCPScopedConnections(
+  scope: MCPScope,
+  scopeId: string,
+): Promise<MCPScopedConnectionList> {
+  return request<MCPScopedConnectionList>(
+    `/mcp/${scope === "deepspace" ? "deepspaces" : "conversations"}/${encodeURIComponent(scopeId)}/connections`,
+  );
 }
 
-export function updateMCPScopedConnection(scope: MCPScope, scopeId: string, serverId: string, enabled: boolean): Promise<unknown> {
-  return request(`/mcp/${scope === "deepspace" ? "deepspaces" : "conversations"}/${encodeURIComponent(scopeId)}/connections/${encodeURIComponent(serverId)}`, {
-    method: "PUT",
-    body: JSON.stringify({ enabled }),
-  });
+export function updateMCPScopedConnection(
+  scope: MCPScope,
+  scopeId: string,
+  serverId: string,
+  enabled: boolean,
+): Promise<unknown> {
+  return request(
+    `/mcp/${scope === "deepspace" ? "deepspaces" : "conversations"}/${encodeURIComponent(scopeId)}/connections/${encodeURIComponent(serverId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    },
+  );
 }
 
 export function refreshMCPServer(serverId: string): Promise<{ status: string; server_id: string }> {

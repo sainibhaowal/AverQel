@@ -56,9 +56,7 @@ def _connector_retry_state(
     if sync_checkpoint.get("retryable") is False:
         return "blocked"
 
-    retry_after_at = Connector._parse_iso_datetime(
-        sync_checkpoint.get("retry_after_at")
-    )
+    retry_after_at = Connector._parse_iso_datetime(sync_checkpoint.get("retry_after_at"))
     if retry_after_at is None:
         if connector.status == ConnectorStatus.SYNCING:
             return "scheduled"
@@ -107,12 +105,8 @@ def list_connectors(
     auth: AuthContext = Depends(get_auth_context),
 ) -> list[ConnectorRead]:
     """List all active connectors for the current tenant."""
-    result = session.execute(
-        select(Connector).where(Connector.tenant_id == auth.tenant_id)
-    )
-    return [
-        ConnectorRead.model_validate(connector) for connector in result.scalars().all()
-    ]
+    result = session.execute(select(Connector).where(Connector.tenant_id == auth.tenant_id))
+    return [ConnectorRead.model_validate(connector) for connector in result.scalars().all()]
 
 
 @router.get("/connectors/summary", response_model=ConnectorFleetSummary)
@@ -147,13 +141,9 @@ def connector_fleet_summary(
         status_value = str(getattr(connector.status, "value", connector.status)).lower()
         status_breakdown[status_value] = status_breakdown.get(status_value, 0) + 1
         integration = connector.integration.slug if connector.integration else "unknown"
-        integration_breakdown[integration] = (
-            integration_breakdown.get(integration, 0) + 1
-        )
+        integration_breakdown[integration] = integration_breakdown.get(integration, 0) + 1
         health = connector.health_contract()
-        health_status = (
-            str(health.get("status") or status_value).strip().lower() or "unknown"
-        )
+        health_status = str(health.get("status") or status_value).strip().lower() or "unknown"
         _increment_counter(health_status_breakdown, health_status)
         if status_value == "active":
             active_count += 1
@@ -168,15 +158,11 @@ def connector_fleet_summary(
             healthy_count += 1
         if str(health.get("status") or "").lower() == "stale":
             stale_count += 1
-        sync_checkpoint = dict(connector.config or {}).get(
-            Connector.SYNC_CHECKPOINT_CONFIG_KEY
-        )
+        sync_checkpoint = dict(connector.config or {}).get(Connector.SYNC_CHECKPOINT_CONFIG_KEY)
         if isinstance(sync_checkpoint, dict):
             if bool(sync_checkpoint.get("retryable")):
                 retryable_count += 1
-            retry_after_at = Connector._parse_iso_datetime(
-                sync_checkpoint.get("retry_after_at")
-            )
+            retry_after_at = Connector._parse_iso_datetime(sync_checkpoint.get("retry_after_at"))
             if retry_after_at is not None and retry_after_at <= now:
                 due_sync_count += 1
             error_domain = str(sync_checkpoint.get("error_domain") or "").strip()
@@ -206,14 +192,10 @@ def connector_fleet_summary(
                     "live_status": str(health.get("status") or status_value),
                     "retry_state": retry_state,
                     "retryable": (
-                        bool(sync_checkpoint.get("retryable"))
-                        if sync_checkpoint
-                        else None
+                        bool(sync_checkpoint.get("retryable")) if sync_checkpoint else None
                     ),
                     "retry_after_at": (
-                        Connector._parse_iso_datetime(
-                            sync_checkpoint.get("retry_after_at")
-                        )
+                        Connector._parse_iso_datetime(sync_checkpoint.get("retry_after_at"))
                         if sync_checkpoint
                         else None
                     ),
@@ -348,9 +330,7 @@ async def connector_oauth_callback(
 ) -> RedirectResponse:
     """Handle OAuth callbacks for connector account linking."""
     settings = get_settings()
-    frontend_base = (
-        (settings.connector_oauth_frontend_redirect_uri or "").strip().rstrip("/")
-    )
+    frontend_base = (settings.connector_oauth_frontend_redirect_uri or "").strip().rstrip("/")
     redirect_base = frontend_base or "/dashboard"
 
     if error:
@@ -360,9 +340,7 @@ async def connector_oauth_callback(
         return RedirectResponse(url=redirect_url, status_code=302)
 
     try:
-        connector = await ConnectorOAuthService(session, settings).callback(
-            code=code, state=state
-        )
+        connector = await ConnectorOAuthService(session, settings).callback(code=code, state=state)
     except ApiError as exc:
         redirect_url = f"{redirect_base}?oauth=error&message={exc.message}"
         return RedirectResponse(url=redirect_url, status_code=302)
@@ -376,9 +354,7 @@ async def connector_oauth_callback(
         f"&integration_id={connector.integration_id}"
     )
     background_tasks.add_task(_schedule_oauth_sync, connector.id, connector.tenant_id)
-    return RedirectResponse(
-        url=redirect_url, status_code=302, background=background_tasks
-    )
+    return RedirectResponse(url=redirect_url, status_code=302, background=background_tasks)
 
 
 @router.post("/connectors/{connector_id}/sync", response_model=SyncResult)
@@ -394,9 +370,7 @@ def trigger_sync(
         raise HTTPException(status_code=404, detail="Connector not found")
 
     # Use a fresh orchestrator inside the task to avoid session closure issues
-    logger.info(
-        f"🔄 Handing off sync for connector {connector_id} to background worker..."
-    )
+    logger.info(f"🔄 Handing off sync for connector {connector_id} to background worker...")
     orchestrator = ConnectorOrchestrator(session)
     background_tasks.add_task(orchestrator.sync_connector, connector_id, auth.tenant_id)
 
@@ -416,9 +390,7 @@ def connector_summary(
 
     connector_read = ConnectorRead.model_validate(connector)
     health = connector.health_contract()
-    sync_checkpoint = dict(connector.config or {}).get(
-        Connector.SYNC_CHECKPOINT_CONFIG_KEY
-    )
+    sync_checkpoint = dict(connector.config or {}).get(Connector.SYNC_CHECKPOINT_CONFIG_KEY)
     if not isinstance(sync_checkpoint, dict):
         sync_checkpoint = {}
     retry_state = _connector_retry_state(
@@ -428,9 +400,7 @@ def connector_summary(
     )
     retry_after_at = sync_checkpoint.get("retry_after_at")
     retry_after_seconds = (
-        ConnectorOrchestrator._retry_after_seconds(str(retry_after_at))
-        if retry_after_at
-        else None
+        ConnectorOrchestrator._retry_after_seconds(str(retry_after_at)) if retry_after_at else None
     )
     health_age_seconds = _seconds_since(connector.last_checked_at)
     sync_checkpoint_age_seconds = _seconds_since(
@@ -474,9 +444,7 @@ def connector_summary(
     retry_after_at = sync_checkpoint.get("retry_after_at")
     retry_after_seconds = sync_checkpoint.get("retry_after_seconds")
     error_domain = sync_checkpoint.get("error_domain")
-    live_status = (
-        str(sync_checkpoint.get("status") or connector.status.value).strip().lower()
-    )
+    live_status = str(sync_checkpoint.get("status") or connector.status.value).strip().lower()
     if health:
         live_status = str(health.get("status") or live_status).strip().lower()
 
@@ -489,9 +457,7 @@ def connector_summary(
         retry_state=retry_state,
         retryable=bool(retryable) if retryable is not None else None,
         retry_after_at=Connector._parse_iso_datetime(retry_after_at),
-        retry_after_seconds=(
-            int(retry_after_seconds) if retry_after_seconds is not None else None
-        ),
+        retry_after_seconds=(int(retry_after_seconds) if retry_after_seconds is not None else None),
         error_domain=str(error_domain) if error_domain else None,
         health_age_seconds=health_age_seconds,
         sync_checkpoint_age_seconds=sync_checkpoint_age_seconds,
@@ -540,11 +506,7 @@ def connector_sync_history(
                 id=audit.id,
                 action=audit.action,
                 status=audit.status,
-                phase=(
-                    str(details.get("phase"))
-                    if details.get("phase") is not None
-                    else None
-                ),
+                phase=(str(details.get("phase")) if details.get("phase") is not None else None),
                 error_code=(
                     str(details.get("error_code"))
                     if details.get("error_code") is not None
@@ -556,13 +518,9 @@ def connector_sync_history(
                     else None
                 ),
                 retryable=(
-                    bool(details.get("retryable"))
-                    if details.get("retryable") is not None
-                    else None
+                    bool(details.get("retryable")) if details.get("retryable") is not None else None
                 ),
-                retry_after_at=Connector._parse_iso_datetime(
-                    details.get("retry_after_at")
-                ),
+                retry_after_at=Connector._parse_iso_datetime(details.get("retry_after_at")),
                 retry_after_seconds=_optional_int(details.get("retry_after_seconds")),
                 attempt=_optional_int(details.get("attempt")),
                 duration_ms=_optional_int(details.get("duration_ms")),
@@ -609,14 +567,10 @@ def delete_connector(
         raise HTTPException(status_code=404, detail="Connector not found")
 
     # Delete secrets first
-    session.execute(
-        select(ConnectorSecret).where(ConnectorSecret.connector_id == connector_id)
-    )
+    session.execute(select(ConnectorSecret).where(ConnectorSecret.connector_id == connector_id))
     # The secrets should ideally be deleted via relationship cascade or manually
     secrets = (
-        session.execute(
-            select(ConnectorSecret).where(ConnectorSecret.connector_id == connector_id)
-        )
+        session.execute(select(ConnectorSecret).where(ConnectorSecret.connector_id == connector_id))
         .scalars()
         .all()
     )
@@ -650,6 +604,5 @@ def list_connector_documents(
         .limit(10)
     )
     return [
-        DocumentMetadataResponse.model_validate(document)
-        for document in result.scalars().all()
+        DocumentMetadataResponse.model_validate(document) for document in result.scalars().all()
     ]

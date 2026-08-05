@@ -20,18 +20,14 @@ def db_session():
 
 def test_conversational_memory_persistence(db_session, settings, seed_user):
     # 0. Seed user and tenant
-    user_data = seed_user(
-        "Test Tenant", "alice@example.com", "password123", ("reader",)
-    )
+    user_data = seed_user("Test Tenant", "alice@example.com", "password123", ("reader",))
     tenant_id = user_data.tenant_id
     user_id = user_data.user_id
 
     repo = ChatRepository(db_session)
 
     # 1. Create conversation
-    conv = repo.create_conversation(
-        tenant_id=tenant_id, user_id=user_id, title="Test Chat"
-    )
+    conv = repo.create_conversation(tenant_id=tenant_id, user_id=user_id, title="Test Chat")
     assert conv.id is not None
 
     # 2. Add message
@@ -45,9 +41,7 @@ def test_conversational_memory_persistence(db_session, settings, seed_user):
 
 def test_query_service_session_awareness(db_session, settings, seed_user):
     # 0. Seed user and tenant
-    user_data = seed_user(
-        "Test Tenant 2", "bob@example.com", "password123", ("reader",)
-    )
+    user_data = seed_user("Test Tenant 2", "bob@example.com", "password123", ("reader",))
     auth = AuthContext(
         user_id=user_data.user_id,
         tenant_id=user_data.tenant_id,

@@ -8,32 +8,59 @@ export default function ConnectorsMcpDocsPage() {
     >
       <DocsCards
         items={[
-          { title: "Marketplace", body: "Browse approved providers with publisher, logo, transport, authentication, reviewed tools, scopes, risk labels, documentation, and health metadata." },
-          { title: "User OAuth", body: "Google or GitHub handles the login and consent screen. AverQel receives the authorization result, never the user's password, and stores token material encrypted." },
-          { title: "Policy Control", body: "Each connection has read-only, risk, per-tool, conversation, and DeepSpace controls. Write, delete, and external-message actions can require approval." },
-          { title: "Remote Runtime", body: "This release connects to remote Streamable HTTP or SSE MCP servers. Local stdio, SSH, and arbitrary local servers are not supported by the marketplace release." },
+          {
+            title: "Marketplace",
+            body: "Browse approved providers with publisher, logo, transport, authentication, reviewed tools, scopes, risk labels, documentation, and health metadata.",
+          },
+          {
+            title: "User OAuth",
+            body: "Google or GitHub handles the login and consent screen. AverQel receives the authorization result, never the user's password, and stores token material encrypted.",
+          },
+          {
+            title: "Policy Control",
+            body: "Each connection has read-only, risk, per-tool, conversation, and DeepSpace controls. Write, delete, and external-message actions can require approval.",
+          },
+          {
+            title: "Remote Runtime",
+            body: "This release connects to remote Streamable HTTP or SSE MCP servers. Local stdio, SSH, and arbitrary local servers are not supported by the marketplace release.",
+          },
         ]}
       />
 
       <DocsSection title="The user flow">
         <ol className="list-decimal space-y-2 pl-6">
           <li>Open Dashboard → MCP Marketplace and choose an approved provider.</li>
-          <li>Review the publisher, trust status, endpoint, transport, tools, risks, and requested OAuth scopes.</li>
-          <li>Select Connect. The browser goes to the provider&apos;s official authorization page.</li>
+          <li>
+            Review the publisher, trust status, endpoint, transport, tools, risks, and requested
+            OAuth scopes.
+          </li>
+          <li>
+            Select Connect. The browser goes to the provider&apos;s official authorization page.
+          </li>
           <li>Sign in and approve the requested scopes at Google, GitHub, or another provider.</li>
-          <li>AverQel returns to the connection inspector, captures only safe account identity, refreshes the catalog, and shows the available tools.</li>
-          <li>Configure the connection policy. A connection or scope remains unavailable when it has not been explicitly enabled.</li>
-          <li>Use the protected MCP surface for actions such as searching Gmail or reading a GitHub repository. The runtime checks identity, connection, catalog freshness, tool policy, and approval requirements before calling the remote server.</li>
+          <li>
+            AverQel returns to the connection inspector, captures only safe account identity,
+            refreshes the catalog, and shows the available tools.
+          </li>
+          <li>
+            Configure the connection policy. A connection or scope remains unavailable when it has
+            not been explicitly enabled.
+          </li>
+          <li>
+            Use the protected MCP surface for actions such as searching Gmail or reading a GitHub
+            repository. The runtime checks identity, connection, catalog freshness, tool policy, and
+            approval requirements before calling the remote server.
+          </li>
         </ol>
       </DocsSection>
 
       <DocsSection title="Official and community providers">
         <p>
-          An <strong>Official</strong> provider is operated by the vendor represented in the
-          catalog and has been reviewed by AverQel. A <strong>Community</strong> provider is a
-          reviewed third-party server that is not operated by that official vendor or by AverQel.
-          Community providers never receive the Official badge automatically and always show a
-          trust warning before connection.
+          An <strong>Official</strong> provider is operated by the vendor represented in the catalog
+          and has been reviewed by AverQel. A <strong>Community</strong> provider is a reviewed
+          third-party server that is not operated by that official vendor or by AverQel. Community
+          providers never receive the Official badge automatically and always show a trust warning
+          before connection.
         </p>
         <p>
           Only entries with AverQel&apos;s approved trust status can be connected. The catalog is
@@ -44,12 +71,25 @@ export default function ConnectorsMcpDocsPage() {
 
       <DocsSection title="Badges and provider metadata">
         <ul className="list-disc space-y-2 pl-6">
-          <li><strong>Official:</strong> reviewed vendor-operated provider.</li>
-          <li><strong>Community:</strong> reviewed third-party provider with a visible warning.</li>
-          <li><strong>New:</strong> recently published catalog entry within its review window.</li>
-          <li><strong>Trending:</strong> catalog popularity signal within its review window.</li>
-          <li><strong>Interactive:</strong> provider reviewed as supporting interactive workflows.</li>
-          <li>New, Trending, and Interactive are catalog attributes with review and expiry metadata; they are not hard-coded frontend labels.</li>
+          <li>
+            <strong>Official:</strong> reviewed vendor-operated provider.
+          </li>
+          <li>
+            <strong>Community:</strong> reviewed third-party provider with a visible warning.
+          </li>
+          <li>
+            <strong>New:</strong> recently published catalog entry within its review window.
+          </li>
+          <li>
+            <strong>Trending:</strong> catalog popularity signal within its review window.
+          </li>
+          <li>
+            <strong>Interactive:</strong> provider reviewed as supporting interactive workflows.
+          </li>
+          <li>
+            New, Trending, and Interactive are catalog attributes with review and expiry metadata;
+            they are not hard-coded frontend labels.
+          </li>
         </ul>
       </DocsSection>
 
@@ -62,21 +102,38 @@ export default function ConnectorsMcpDocsPage() {
         <ul className="list-disc space-y-2 pl-6">
           <li>OAuth transactions, including PKCE state, are encrypted and single-use.</li>
           <li>Access and refresh tokens are encrypted with tenant-bound associated data.</li>
-          <li>Safe account identity and verified scope names are stored separately from encrypted credentials.</li>
-          <li>Disconnect removes the local token record and requests provider revocation where supported.</li>
-          <li>Refresh updates encrypted credentials and verified scope metadata without exposing secrets to the frontend.</li>
+          <li>
+            Safe account identity and verified scope names are stored separately from encrypted
+            credentials.
+          </li>
+          <li>
+            Disconnect removes the local token record and requests provider revocation where
+            supported.
+          </li>
+          <li>
+            Refresh updates encrypted credentials and verified scope metadata without exposing
+            secrets to the frontend.
+          </li>
         </ul>
       </DocsSection>
 
       <DocsSection title="Tool permissions and precedence">
         <p>DeepSpace applies the most restrictive applicable rule. The effective order is:</p>
         <ol className="list-decimal space-y-2 pl-6">
-          <li>Connection ownership, provider approval, enabled status, authentication, and catalog freshness.</li>
+          <li>
+            Connection ownership, provider approval, enabled status, authentication, and catalog
+            freshness.
+          </li>
           <li>Connected-account availability across DeepSpace conversations.</li>
-          <li>Explicit <strong>Blocked</strong> tool mode.</li>
+          <li>
+            Explicit <strong>Blocked</strong> tool mode.
+          </li>
           <li>Allowlist and denylist checks.</li>
           <li>Read-only mode and the connection risk ceiling.</li>
-          <li>Per-tool mode: <strong>Always allow</strong>, <strong>Needs approval</strong>, or <strong>Blocked</strong>.</li>
+          <li>
+            Per-tool mode: <strong>Always allow</strong>, <strong>Needs approval</strong>, or{" "}
+            <strong>Blocked</strong>.
+          </li>
           <li>Platform and tenant safety rules, which Always allow can never bypass.</li>
         </ol>
         <p>
@@ -93,10 +150,10 @@ export default function ConnectorsMcpDocsPage() {
 
       <DocsSection title="Remote transport and current limits">
         <p>
-          <strong>Remote HTTP</strong> means AverQel connects over a vendor-hosted HTTPS
-          Streamable HTTP MCP endpoint. <strong>Remote SSE</strong> means the server uses the
-          Server-Sent Events transport. The endpoint is validated by AverQel before use and the
-          runtime maintains catalog freshness and safe reconnect behavior.
+          <strong>Remote HTTP</strong> means AverQel connects over a vendor-hosted HTTPS Streamable
+          HTTP MCP endpoint. <strong>Remote SSE</strong> means the server uses the Server-Sent
+          Events transport. The endpoint is validated by AverQel before use and the runtime
+          maintains catalog freshness and safe reconnect behavior.
         </p>
         <p>
           Local stdio processes, SSH-launched servers, arbitrary local servers, and user-supplied

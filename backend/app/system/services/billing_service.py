@@ -43,9 +43,7 @@ class BillingService:
         return record
 
     def get_tenant_usage(self, *, tenant_id: uuid.UUID) -> int:
-        query = select(func.sum(UsageRecord.total_tokens)).where(
-            UsageRecord.tenant_id == tenant_id
-        )
+        query = select(func.sum(UsageRecord.total_tokens)).where(UsageRecord.tenant_id == tenant_id)
         with observe_db_query("billing.get_tenant_usage"):
             return self.db.execute(query).scalar() or 0
 

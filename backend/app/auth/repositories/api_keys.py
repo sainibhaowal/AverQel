@@ -35,20 +35,14 @@ class ApiKeysRepository(BaseRepository):
             return self.db.execute(query).scalar_one_or_none()
 
     def update_last_used(self, *, key_id: uuid.UUID) -> None:
-        stmt = (
-            update(ApiKey)
-            .where(ApiKey.id == key_id)
-            .values(last_used_at=datetime.now(tz=UTC))
-        )
+        stmt = update(ApiKey).where(ApiKey.id == key_id).values(last_used_at=datetime.now(tz=UTC))
         with observe_db_query("api_keys.update_last_used"):
             self.db.execute(stmt)
 
     def list_by_tenant(self, *, tenant_id: uuid.UUID) -> list[ApiKey]:
         self.apply_tenant_scope(tenant_id)
         query = (
-            select(ApiKey)
-            .where(ApiKey.tenant_id == tenant_id)
-            .order_by(ApiKey.created_at.desc())
+            select(ApiKey).where(ApiKey.tenant_id == tenant_id).order_by(ApiKey.created_at.desc())
         )
         with observe_db_query("api_keys.list_by_tenant"):
             return list(self.db.execute(query).scalars().all())

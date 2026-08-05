@@ -538,6 +538,84 @@ export async function fetchWithAuth(
   return response;
 }
 
+/** Upload multipart data with real browser upload progress while preserving the
+ * same bearer/tenant session used by fetchWithAuth. */
+export async function uploadWithAuthProgress(
+  endpoint: string,
+  body: FormData,
+  options: {
+    onProgress?: (loaded: number, total: number) => void;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+  } = {},
+): Promise<Response> {
+  const token = localStorage.getItem("averqel_token");
+  const tenantId = getRequestTenantId(token);
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const fullUrl = `${baseUrl}${cleanEndpoint}`;
+
+  const attempt = (accessToken: string | null): Promise<Response> =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let timedOut = false;
+      const timeout = options.timeoutMs ?? 120_000;
+      xhr.open("POST", fullUrl, true);
+      xhr.withCredentials = true;
+      xhr.timeout = timeout;
+      if (accessToken) xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+      if (tenantId) xhr.setRequestHeader("X-Tenant-Id", tenantId);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) options.onProgress?.(event.loaded, event.total);
+      };
+      const abort = () => xhr.abort();
+      options.signal?.addEventListener("abort", abort, { once: true });
+      xhr.onload = () => {
+        const headers = new Headers();
+        xhr
+          .getAllResponseHeaders()
+          .trim()
+          .split(/[\r\n]+/)
+          .forEach((line) => {
+            const separator = line.indexOf(":");
+            if (separator > 0)
+              headers.set(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
+          });
+        resolve(
+          new Response(xhr.responseText, {
+            status: xhr.status,
+            statusText: xhr.statusText,
+            headers,
+          }),
+        );
+      };
+      xhr.onerror = () =>
+        reject(new Error("The file upload failed because the network connection was lost."));
+      xhr.onabort = () =>
+        reject(
+          options.signal?.aborted
+            ? new DOMException("Upload cancelled", "AbortError")
+            : new Error("The file upload was cancelled."),
+        );
+      xhr.ontimeout = () => {
+        timedOut = true;
+        reject(new ApiRequestTimeoutError(endpoint, timeout));
+      };
+      try {
+        xhr.send(body);
+      } catch (error) {
+        if (!timedOut) reject(error);
+      }
+    });
+
+  let response = await attempt(token);
+  if (response.status === 401) {
+    const refreshedToken = await refreshAccessToken(tenantId);
+    if (refreshedToken) response = await attempt(refreshedToken);
+  }
+  return response;
+}
+
 // Standardized API wrapper for AverQel v1.2+
 export const apiV1 = {
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {

@@ -87,20 +87,16 @@ class RetrievalService:
         lookup: dict[uuid.UUID, RetrievedChunkRow] = {}
 
         for rank, row in enumerate(vector_results, start=1):
-            scores[row.chunk_id] = scores.get(row.chunk_id, 0.0) + (
-                1.0 / (self.RRF_K + rank)
-            )
+            scores[row.chunk_id] = scores.get(row.chunk_id, 0.0) + (1.0 / (self.RRF_K + rank))
             lookup[row.chunk_id] = row
 
         for rank, row in enumerate(keyword_results, start=1):
-            scores[row.chunk_id] = scores.get(row.chunk_id, 0.0) + (
-                1.0 / (self.RRF_K + rank)
-            )
+            scores[row.chunk_id] = scores.get(row.chunk_id, 0.0) + (1.0 / (self.RRF_K + rank))
             lookup.setdefault(row.chunk_id, row)
 
-        sorted_ids = sorted(
-            scores.keys(), key=lambda chunk_id: scores[chunk_id], reverse=True
-        )[:top_k]
+        sorted_ids = sorted(scores.keys(), key=lambda chunk_id: scores[chunk_id], reverse=True)[
+            :top_k
+        ]
         max_rrf = (1.0 / (self.RRF_K + 1)) * 2
 
         fused: list[RetrievedChunkRow] = []
@@ -112,9 +108,7 @@ class RetrievalService:
                     chunk_id=row.chunk_id,
                     filename=row.filename,
                     content=row.content,
-                    similarity_score=(
-                        round(scores[chunk_id] / max_rrf, 6) if max_rrf > 0 else 0.0
-                    ),
+                    similarity_score=(round(scores[chunk_id] / max_rrf, 6) if max_rrf > 0 else 0.0),
                     source_type=row.source_type,
                     chunk_index=row.chunk_index,
                     section_header=row.section_header,
@@ -140,9 +134,7 @@ class RetrievalService:
         for doc_id, hits in hits_by_doc.items():
             indices: set[int] = set()
             for hit in hits:
-                for offset in range(
-                    -self.NEIGHBOR_EXPANSION, self.NEIGHBOR_EXPANSION + 1
-                ):
+                for offset in range(-self.NEIGHBOR_EXPANSION, self.NEIGHBOR_EXPANSION + 1):
                     if hit.chunk_index + offset >= 0:
                         indices.add(hit.chunk_index + offset)
             doc_indices[doc_id] = sorted(indices)
@@ -152,8 +144,7 @@ class RetrievalService:
         )
 
         chunk_map: dict[tuple[uuid.UUID, int], str] = {
-            (chunk.document_id, chunk.chunk_index): chunk.content
-            for chunk in adjacent_chunks
+            (chunk.document_id, chunk.chunk_index): chunk.content for chunk in adjacent_chunks
         }
 
         for doc_id, hits in hits_by_doc.items():
@@ -166,10 +157,7 @@ class RetrievalService:
                     current_cluster.append(hit)
                     continue
 
-                if (
-                    hit.chunk_index
-                    <= current_cluster[-1].chunk_index + self.CLUSTER_GAP
-                ):
+                if hit.chunk_index <= current_cluster[-1].chunk_index + self.CLUSTER_GAP:
                     current_cluster.append(hit)
                 else:
                     clusters.append(current_cluster)
@@ -223,9 +211,7 @@ class RetrievalService:
             if quality_score is None:
                 continue
 
-            boosted = row.similarity_score + (
-                float(quality_score) * self.QUALITY_BOOST_WEIGHT
-            )
+            boosted = row.similarity_score + (float(quality_score) * self.QUALITY_BOOST_WEIGHT)
             row.similarity_score = max(self.MIN_SCORE, min(boosted, self.MAX_SCORE))
 
     @staticmethod
@@ -334,9 +320,7 @@ class RetrievalService:
             retrieve_top_k = min(max_limit, retrieve_top_k + 1)
             profile = f"{profile}_semantic"
 
-        answer_top_k = min(
-            max_limit, max(self.settings.reranking_top_k_answer, answer_top_k)
-        )
+        answer_top_k = min(max_limit, max(self.settings.reranking_top_k_answer, answer_top_k))
         rerank_top_k = min(
             max_limit,
             max(answer_top_k, self.settings.reranking_top_k_rerank, rerank_top_k),
@@ -437,9 +421,7 @@ class RetrievalService:
         if normalized_search_mode in {"semantic", "hybrid"}:
             embed_start = time.perf_counter()
             try:
-                query_embedding = self.embeddings.embed_many(
-                    [query], tenant_id=tenant_id
-                )[0]
+                query_embedding = self.embeddings.embed_many([query], tenant_id=tenant_id)[0]
             except TypeError as exc:
                 if "tenant_id" not in str(exc):
                     raise
@@ -599,13 +581,9 @@ class RetrievalService:
                 DocumentChunk.document_id.in_(document_ids),
                 sa.or_(
                     DocumentChunk.chunk_metadata["header_1"].astext.ilike("%referen%"),
-                    DocumentChunk.chunk_metadata["header_1"].astext.ilike(
-                        "%bibliograph%"
-                    ),
+                    DocumentChunk.chunk_metadata["header_1"].astext.ilike("%bibliograph%"),
                     DocumentChunk.chunk_metadata["header_2"].astext.ilike("%referen%"),
-                    DocumentChunk.chunk_metadata["header_2"].astext.ilike(
-                        "%bibliograph%"
-                    ),
+                    DocumentChunk.chunk_metadata["header_2"].astext.ilike("%bibliograph%"),
                 ),
             )
             .order_by(DocumentChunk.chunk_index.asc())

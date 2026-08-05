@@ -29,17 +29,12 @@ class LocalDeterministicEmbeddingProvider:
 
     def embed_many(self, request: EmbeddingRequest) -> EmbeddingResponse:
         return EmbeddingResponse(
-            vectors=[
-                self._deterministic_vector(text, request.dimension)
-                for text in request.texts
-            ]
+            vectors=[self._deterministic_vector(text, request.dimension) for text in request.texts]
         )
 
     def list_embedding_models(self) -> Sequence[ProviderModelInfo]:
         return [
-            ProviderModelInfo(
-                name="hash-fallback", kind="embedding", capabilities={"local": True}
-            )
+            ProviderModelInfo(name="hash-fallback", kind="embedding", capabilities={"local": True})
         ]
 
     def health_check(self) -> HealthCheckResult:

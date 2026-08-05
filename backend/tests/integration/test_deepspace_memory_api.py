@@ -11,9 +11,7 @@ from app.deepspace.models.agent_memory import AgentMemory
 from tests.conftest import SeededUser
 
 
-def _auth_headers(
-    seeded: SeededUser, *, roles: tuple[str, ...] = ("admin",)
-) -> dict[str, str]:
+def _auth_headers(seeded: SeededUser, *, roles: tuple[str, ...] = ("admin",)) -> dict[str, str]:
     token = create_access_token(
         user_id=seeded.user_id,
         tenant_id=seeded.tenant_id,
@@ -206,6 +204,95 @@ def test_deepspace_memory_preferences_candidates_and_active_retrieval_boundaries
     assert sensitive == {"status": "blocked_sensitive", "reason": "sensitive_content"}
 
 
+def test_explicit_memory_request_is_saved_without_global_auto_capture(
+    db_session,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    seeded = seed_user(
+        "Explicit Memory Tenant",
+        "explicit-memory@example.com",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    service = MemoryService(db_session)
+
+    result = asyncio.run(
+        service.consolidate_turn(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            conversation_id="conversation-explicit-memory",
+            prompt="Please remember that I prefer concise Markdown answers for future time.",
+        )
+    )
+
+    assert result is not None
+    assert result["status"] == "saved"
+    assert result["count"] == 1
+    stored = asyncio.run(
+        service.get_memory(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            memory_id=str(result["memory_id"]),
+        )
+    )
+    assert stored is not None
+    assert stored["status"] == "active"
+    assert stored["metadata"]["schema"] == "deepspace-memory-v2"
+    assert stored["metadata"]["memory_type"] == "preference"
+    assert stored["metadata"]["capture_mode"] == "explicit"
+
+
+def test_automatic_memory_reinforces_and_structures_a_repeated_preference(
+    db_session,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    seeded = seed_user(
+        "Adaptive Memory Tenant",
+        "adaptive-memory@example.com",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    service = MemoryService(db_session)
+    asyncio.run(
+        service.update_preferences(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            automatic_capture_enabled=True,
+            review_inferred_memories=False,
+        )
+    )
+
+    first = asyncio.run(
+        service.consolidate_turn(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            conversation_id="conversation-adaptive-memory",
+            prompt="I prefer concise Markdown answers with practical examples.",
+        )
+    )
+    second = asyncio.run(
+        service.consolidate_turn(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            conversation_id="conversation-adaptive-memory",
+            prompt="I prefer concise Markdown answers with practical examples.",
+        )
+    )
+
+    assert first is not None and second is not None
+    assert first["memory_id"] == second["memory_id"]
+    stored = asyncio.run(
+        service.get_memory(
+            tenant_id=str(seeded.tenant_id),
+            user_id=str(seeded.user_id),
+            memory_id=str(first["memory_id"]),
+        )
+    )
+    assert stored is not None
+    assert stored["metadata"]["reinforcement_count"] == 2
+    assert stored["metadata"]["entities"]
+
+
 def test_deepspace_memory_uses_real_embeddings_scoring_and_dedupes(
     db_session,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
@@ -305,9 +392,7 @@ def test_deepspace_memory_short_circuits_exact_duplicate_embedding_calls(
     calls = {"embed": 0}
     embedding_dimension = get_settings().embedding_dimension
 
-    def fake_embed_text(
-        self, text: str, *, tenant_id: str, user_id: str
-    ):  # noqa: ANN001
+    def fake_embed_text(self, text: str, *, tenant_id: str, user_id: str):  # noqa: ANN001
         calls["embed"] += 1
         return (
             [0.25] * embedding_dimension,
@@ -386,10 +471,7 @@ def test_deepspace_memory_global_scope_is_visible_and_reported(
             key="team_playbook",
         )
     )
-    assert (
-        retrieved
-        == "Use the orchestrator for multi-step work and store the result in memory."
-    )
+    assert retrieved == "Use the orchestrator for multi-step work and store the result in memory."
 
     memories = asyncio.run(
         service.list_all_memories(
@@ -669,10 +751,7 @@ def test_deepspace_memory_decay_scores_track_recency(
         )
     )
     result_by_key = {item["key"]: item for item in results}
-    assert (
-        result_by_key["old_note"]["decay_score"]
-        > result_by_key["fresh_note"]["decay_score"]
-    )
+    assert result_by_key["old_note"]["decay_score"] > result_by_key["fresh_note"]["decay_score"]
     assert result_by_key["old_note"]["decay_score"] > 0.0
 
 
@@ -817,9 +896,7 @@ def test_deepspace_memory_cleanup_stale_endpoint_prunes_session_memory_only(
     db_session.add(fresh_user)
     db_session.commit()
 
-    response = client.post(
-        "/api/v1/deepspace/chats/memory/cleanup-stale", headers=headers
-    )
+    response = client.post("/api/v1/deepspace/chats/memory/cleanup-stale", headers=headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["memory_count"] == 1

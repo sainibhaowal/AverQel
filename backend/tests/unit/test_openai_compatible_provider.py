@@ -464,9 +464,7 @@ def test_openai_compatible_provider_disables_groq_reasoning_when_off() -> None:
     assert "reasoning" not in payload
 
 
-def test_openai_compatible_provider_uses_local_reasoning_controls_for_lmstudio() -> (
-    None
-):
+def test_openai_compatible_provider_uses_local_reasoning_controls_for_lmstudio() -> None:
     payload: dict[str, object] = {}
     request = ChatGenerateRequest(
         model="qwen3-14b",
@@ -490,9 +488,7 @@ def test_openai_compatible_provider_uses_local_reasoning_controls_for_lmstudio()
     assert payload["reasoning"] == {"effort": "high"}
 
 
-def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_lmstudio() -> (
-    None
-):
+def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_lmstudio() -> None:
     payload: dict[str, object] = {}
     request = ChatGenerateRequest(
         model="qwen3-14b",
@@ -515,9 +511,7 @@ def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_lmstud
     assert "reasoning" not in payload
 
 
-def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_nemotron() -> (
-    None
-):
+def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_nemotron() -> None:
     payload: dict[str, object] = {}
     request = ChatGenerateRequest(
         model="nvidia/nemotron-3-nano-4b",

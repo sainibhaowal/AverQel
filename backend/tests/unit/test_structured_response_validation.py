@@ -13,9 +13,7 @@ from app.query.schemas.structured_response import (
 def test_is_valid_mermaid_syntax_requires_real_mermaid_starter() -> None:
     assert is_valid_mermaid_syntax("flowchart TD\nA --> B") is True
     assert is_valid_mermaid_syntax("sequenceDiagram\nA->>B: hello") is True
-    assert (
-        is_valid_mermaid_syntax("erDiagram\nDocument ||--o{ Chunk : contains") is True
-    )
+    assert is_valid_mermaid_syntax("erDiagram\nDocument ||--o{ Chunk : contains") is True
     assert is_valid_mermaid_syntax("classDiagram\nclass Document") is True
     assert is_valid_mermaid_syntax("xychart-beta\nbar [1, 2, 3]") is True
     assert is_valid_mermaid_syntax('C4Context\nPerson(user, "User")') is True
@@ -58,7 +56,9 @@ Document | | -- o{ Chunk : contains
 
 
 def test_sanitize_mermaid_er_same_line_and_quoted_cardinality() -> None:
-    syntax = 'erDiagram| Document | | --o{ Chunk : contains\nCollection "1" -- "many" Document : groups'
+    syntax = (
+        'erDiagram| Document | | --o{ Chunk : contains\nCollection "1" -- "many" Document : groups'
+    )
 
     sanitized = sanitize_mermaid_syntax(syntax)
 
@@ -120,10 +120,7 @@ def test_sanitize_mermaid_flowchart_concatenated_edges_and_label_spacing() -> No
         'A["Exponential Distribution"] -->|Overlap with Gamma Distribution| B["Gamma Distribution"]'
         in sanitized
     )
-    assert (
-        '\nA -->|Overlap with Poisson Distribution| C["Poisson Distribution"]'
-        in sanitized
-    )
+    assert '\nA -->|Overlap with Poisson Distribution| C["Poisson Distribution"]' in sanitized
     assert "] || A --> |" not in sanitized
     assert "--> | Overlap" not in sanitized
 
@@ -228,12 +225,10 @@ def test_sanitize_mermaid_mindmap_simplifies_punctuation_heavy_labels() -> None:
     assert sanitized.startswith("mindmap\n")
     assert "root(Unit 2 Random Variables)" in sanitized
     assert (
-        "Definition Rule/function assigning outcomes of sample space to real numbers"
-        in sanitized
+        "Definition Rule/function assigning outcomes of sample space to real numbers" in sanitized
     )
     assert (
-        "Kim A 2019 Exponential Distribution - Intuition Derivation and Applications"
-        in sanitized
+        "Kim A 2019 Exponential Distribution - Intuition Derivation and Applications" in sanitized
     )
 
 

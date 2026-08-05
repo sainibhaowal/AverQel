@@ -72,7 +72,14 @@ def _safe_attributes(attributes: Mapping[str, Any] | None) -> dict[str, str | in
     """Allow only bounded, non-sensitive span values."""
     safe: dict[str, str | int | float | bool] = {}
     for key, value in (attributes or {}).items():
-        if value is None or key.lower() in {"prompt", "content", "output", "arguments", "headers", "sql"}:
+        if value is None or key.lower() in {
+            "prompt",
+            "content",
+            "output",
+            "arguments",
+            "headers",
+            "sql",
+        }:
             continue
         if isinstance(value, str | int | float | bool):
             rendered = value if not isinstance(value, str) else value[:256]
@@ -109,6 +116,7 @@ def inject_trace_context(headers: dict[str, Any]) -> dict[str, Any]:
 
 def trace_async(name: str) -> Callable[[Callable[P, R]], Callable[P, Any]]:
     """Decorate an async model/tool function with a redacted span."""
+
     def decorator(function: Callable[P, R]) -> Callable[P, Any]:
         @functools.wraps(function)
         async def wrapped(*args: P.args, **kwargs: P.kwargs) -> Any:
@@ -128,6 +136,7 @@ def trace_async(name: str) -> Callable[[Callable[P, R]], Callable[P, Any]]:
 
 def trace_async_generator(name: str) -> Callable[[Callable[P, Any]], Callable[P, Any]]:
     """Decorate an async generator so streaming model calls have one span."""
+
     def decorator(function: Callable[P, Any]) -> Callable[P, Any]:
         @functools.wraps(function)
         async def wrapped(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[Any, None]:
@@ -145,6 +154,7 @@ def trace_async_generator(name: str) -> Callable[[Callable[P, Any]], Callable[P,
 
 def trace_sync(name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorate a synchronous worker task with a redacted span."""
+
     def decorator(function: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(function)
         def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -158,6 +168,7 @@ def trace_sync(name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
 
 def trace_celery_task(name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Trace a Celery task and continue its producer trace when present."""
+
     def decorator(function: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(function)
         def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:

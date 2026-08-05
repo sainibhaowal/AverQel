@@ -19,17 +19,13 @@ class OllamaProvider(OpenAICompatibleProvider):
         self.base_url: str | None = None
 
     def bind(self, base_url: str, api_key: str | None = None) -> OllamaProvider:
-        self.base_url = resolve_provider_base_url(
-            base_url, provider_type=self.provider_name
-        )
+        self.base_url = resolve_provider_base_url(base_url, provider_type=self.provider_name)
         self.api_key = api_key
         return self
 
     def list_models(self) -> Sequence[ProviderModelInfo]:
         if not self.base_url:
-            raise ProviderCapabilityError(
-                "ollama provider requires a configured base URL"
-            )
+            raise ProviderCapabilityError("ollama provider requires a configured base URL")
         httpx_module = importlib.import_module("httpx")
         response = httpx_module.get(f"{self.base_url}/api/tags", timeout=8.0)
         if response.status_code >= 400:
@@ -119,9 +115,7 @@ class OllamaProvider(OpenAICompatibleProvider):
 
     def pull_model(self, model_name: str) -> HealthCheckResult:
         if not self.base_url:
-            raise ProviderCapabilityError(
-                "ollama provider requires a configured base URL"
-            )
+            raise ProviderCapabilityError("ollama provider requires a configured base URL")
         httpx_module = importlib.import_module("httpx")
         response = httpx_module.post(
             f"{self.base_url}/api/pull",
@@ -134,9 +128,7 @@ class OllamaProvider(OpenAICompatibleProvider):
 
     def delete_model(self, model_name: str) -> HealthCheckResult:
         if not self.base_url:
-            raise ProviderCapabilityError(
-                "ollama provider requires a configured base URL"
-            )
+            raise ProviderCapabilityError("ollama provider requires a configured base URL")
         httpx_module = importlib.import_module("httpx")
         response = httpx_module.request(
             "DELETE",

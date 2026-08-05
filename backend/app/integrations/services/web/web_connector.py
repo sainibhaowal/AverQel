@@ -34,9 +34,7 @@ class WebConnector(ConnectorService):
         }
 
         try:
-            with httpx.Client(
-                timeout=20.0, follow_redirects=True, headers=headers
-            ) as client:
+            with httpx.Client(timeout=20.0, follow_redirects=True, headers=headers) as client:
                 response = client.get(url)
                 response.raise_for_status()
                 html_content = response.text
@@ -61,9 +59,7 @@ class WebConnector(ConnectorService):
                 element.decompose()
 
             # Get title and high-fidelity text
-            title = (
-                soup.title.string.strip() if (soup.title and soup.title.string) else url
-            )
+            title = soup.title.string.strip() if (soup.title and soup.title.string) else url
 
             # Focus on article or main content if available
             main_content = soup.find("main") or soup.find("article") or soup.body

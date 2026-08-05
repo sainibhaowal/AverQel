@@ -39,9 +39,7 @@ def test_provider_oauth_gate_is_safe_by_default(
     )
     headers = _auth_headers(client, seeded)
 
-    status_response = client.get(
-        "/api/v1/providers/oauth/openai/status", headers=headers
-    )
+    status_response = client.get("/api/v1/providers/oauth/openai/status", headers=headers)
     assert status_response.status_code == 200
     assert status_response.json()["available"] is False
     assert status_response.json()["connected"] is False
@@ -67,9 +65,7 @@ def test_user_role_can_reach_provider_oauth_gate(
     )
     headers = _auth_headers(client, seeded)
 
-    status_response = client.get(
-        "/api/v1/providers/oauth/openai/status", headers=headers
-    )
+    status_response = client.get("/api/v1/providers/oauth/openai/status", headers=headers)
     assert status_response.status_code == 200
     assert status_response.json()["available"] is False
     assert status_response.json()["connected"] is False

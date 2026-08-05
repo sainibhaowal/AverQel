@@ -65,9 +65,7 @@ def test_upload_ingestion_happy_path_and_idempotent_replay(
     monkeypatch.setattr(StorageService, "put_bytes", fake_put)
     monkeypatch.setattr(StorageService, "get_bytes", fake_get)
 
-    seeded = seed_user(
-        "tenant-week2-a", "editor@tenant-a.example", "StrongPass!1234", ("editor",)
-    )
+    seeded = seed_user("tenant-week2-a", "editor@tenant-a.example", "StrongPass!1234", ("editor",))
     token = _login(
         client=client,
         tenant_id=str(seeded.tenant_id),
@@ -131,9 +129,7 @@ def test_upload_ingestion_happy_path_and_idempotent_replay(
         set_db_tenant_context(session, seeded.tenant_id)
 
         doc_count = session.execute(
-            select(func.count())
-            .select_from(Document)
-            .where(Document.tenant_id == seeded.tenant_id)
+            select(func.count()).select_from(Document).where(Document.tenant_id == seeded.tenant_id)
         ).scalar_one()
         chunk_count = session.execute(
             select(func.count())
@@ -185,9 +181,7 @@ def test_idempotency_conflict_when_payload_changes(
     monkeypatch.setattr(StorageService, "put_bytes", fake_put)
     monkeypatch.setattr(StorageService, "get_bytes", fake_get)
 
-    seeded = seed_user(
-        "tenant-week2-b", "editor@tenant-b.example", "StrongPass!1234", ("editor",)
-    )
+    seeded = seed_user("tenant-week2-b", "editor@tenant-b.example", "StrongPass!1234", ("editor",))
     token = _login(
         client=client,
         tenant_id=str(seeded.tenant_id),
@@ -252,13 +246,9 @@ def test_upload_ingestion_sanitizes_null_bytes_in_text_payload(
     # Bypass MIME signature validation; null bytes make magic sniff as octet-stream
     from app.ingestion.services.ingestion_service import IngestionService
 
-    monkeypatch.setattr(
-        IngestionService, "_validate_upload", lambda self, **kwargs: None
-    )
+    monkeypatch.setattr(IngestionService, "_validate_upload", lambda self, **kwargs: None)
 
-    seeded = seed_user(
-        "tenant-week2-c", "editor@tenant-c.example", "StrongPass!1234", ("editor",)
-    )
+    seeded = seed_user("tenant-week2-c", "editor@tenant-c.example", "StrongPass!1234", ("editor",))
     token = _login(
         client=client,
         tenant_id=str(seeded.tenant_id),

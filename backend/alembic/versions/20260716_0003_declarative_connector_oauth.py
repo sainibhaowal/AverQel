@@ -22,7 +22,7 @@ def upgrade() -> None:
     ):
         bind.execute(
             sa.text(
-            "UPDATE integrations SET ui_metadata = ui_metadata || jsonb_build_object('oauth_provider_key', CAST(:key AS text), 'oauth_provider_label', CAST(:label AS text)) WHERE slug = CAST(:slug AS text)",
+                "UPDATE integrations SET ui_metadata = ui_metadata || jsonb_build_object('oauth_provider_key', CAST(:key AS text), 'oauth_provider_label', CAST(:label AS text)) WHERE slug = CAST(:slug AS text)",
             ),
             {"slug": slug, "key": key, "label": label},
         )
@@ -33,7 +33,7 @@ def downgrade() -> None:
     for slug in ("google-drive", "gmail", "google-calendar", "github", "slack", "notion"):
         bind.execute(
             sa.text(
-            "UPDATE integrations SET ui_metadata = ui_metadata - 'oauth_provider_key' - 'oauth_provider_label' WHERE slug = CAST(:slug AS text)",
+                "UPDATE integrations SET ui_metadata = ui_metadata - 'oauth_provider_key' - 'oauth_provider_label' WHERE slug = CAST(:slug AS text)",
             ),
             {"slug": slug},
         )

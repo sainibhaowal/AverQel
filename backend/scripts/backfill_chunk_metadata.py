@@ -13,11 +13,7 @@ logger = logging.getLogger(__name__)
 def extract_latest_header(content: str) -> str | None:
     """Finds the last markdown header in the chunk content."""
     lines = content.split("\n")
-    headers = [
-        line.strip()
-        for line in lines
-        if line.startswith("# ") or line.startswith("## ")
-    ]
+    headers = [line.strip() for line in lines if line.startswith("# ") or line.startswith("## ")]
     return headers[-1] if headers else None
 
 
@@ -26,9 +22,7 @@ async def backfill_metadata():
     db = get_session_factory()()
     try:
         # Fetch all chunks
-        stmt = select(DocumentChunk).order_by(
-            DocumentChunk.document_id, DocumentChunk.chunk_index
-        )
+        stmt = select(DocumentChunk).order_by(DocumentChunk.document_id, DocumentChunk.chunk_index)
         chunks = db.scalars(stmt).all()
 
         updated_count = 0

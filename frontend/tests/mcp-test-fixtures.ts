@@ -1,4 +1,9 @@
-import type { MCPConnection, MCPConnectionPolicy, MCPMarketplaceEntry, MCPTool } from "@/lib/mcp-api";
+import type {
+  MCPConnection,
+  MCPConnectionPolicy,
+  MCPMarketplaceEntry,
+  MCPTool,
+} from "@/lib/mcp-api";
 
 export const marketplaceEntry: MCPMarketplaceEntry = {
   id: "provider-1",
@@ -15,8 +20,12 @@ export const marketplaceEntry: MCPMarketplaceEntry = {
   action: "connect",
   tool_count: 2,
   capabilities: ["search_mail"],
-  tool_preview: [{ name: "search_mail", description: "Search mail", category: "Read", risk_labels: ["read"] }],
-  tools: [{ name: "search_mail", description: "Search mail", category: "Read", risk_labels: ["read"] }],
+  tool_preview: [
+    { name: "search_mail", description: "Search mail", category: "Read", risk_labels: ["read"] },
+  ],
+  tools: [
+    { name: "search_mail", description: "Search mail", category: "Read", risk_labels: ["read"] },
+  ],
   catalog_status: "ready",
   auth_type: "oauth",
   trust_status: "approved",
@@ -45,7 +54,11 @@ export const policy: MCPConnectionPolicy = {
   denied_tools: [],
   read_only: true,
   risk_ceiling: "read",
-  approval_rules: { write: "needs_approval", delete: "needs_approval", external_message: "needs_approval" },
+  approval_rules: {
+    write: "needs_approval",
+    delete: "needs_approval",
+    external_message: "needs_approval",
+  },
   tool_modes: {},
   default_enabled: false,
   deepspace_overrides: {},
@@ -55,8 +68,20 @@ export const policy: MCPConnectionPolicy = {
 };
 
 export const tools: MCPTool[] = [
-  { name: "search_mail", description: "Search mail", category: "Read", risk_labels: ["read"], mode: "always_allow" },
-  { name: "send_mail", description: "Send mail", category: "Email", risk_labels: ["external_message"], mode: "needs_approval" },
+  {
+    name: "search_mail",
+    description: "Search mail",
+    category: "Read",
+    risk_labels: ["read"],
+    mode: "always_allow",
+  },
+  {
+    name: "send_mail",
+    description: "Send mail",
+    category: "Email",
+    risk_labels: ["external_message"],
+    mode: "needs_approval",
+  },
 ];
 
 export const connection: MCPConnection = {
@@ -64,10 +89,10 @@ export const connection: MCPConnection = {
   name: "Community Mail",
   status: "connected",
   transport: "streamable_http",
+  enabled: true,
   provider_slug: "community-mail",
   account_identity: { email: "owner@example.com", display_name: "Owner" },
-  scopes: ["mail.read"],
+  granted_scopes: ["mail.read"],
   catalog_revision: 2,
-  catalog_last_sync_at: "2026-07-20T00:00:00Z",
-  health: { status: "healthy", last_checked_at: "2026-07-20T00:00:00Z" },
+  reconnect_attempts: 0,
 };

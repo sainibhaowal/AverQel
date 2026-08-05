@@ -164,7 +164,7 @@ export default function QueryComposer({
 
   return (
     <div className="border-glass-border/60 sticky bottom-0 z-20 border-t bg-transparent px-2 pt-3 pb-0 sm:px-5">
-      <div className="mx-auto w-full max-w-5xl overflow-visible rounded-2xl border border-primary/30 bg-surface-1/35 backdrop-blur-md p-2.5 shadow-lg sm:p-3 transition-all duration-300">
+      <div className="border-primary/30 bg-surface-1/35 mx-auto w-full max-w-5xl overflow-visible rounded-2xl border p-2.5 shadow-lg backdrop-blur-md transition-all duration-300 sm:p-3">
         <textarea
           ref={textareaRef}
           value={query}
@@ -211,7 +211,7 @@ export default function QueryComposer({
                 type="button"
                 onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
                 disabled={isStreaming}
-                className="theme-pill !rounded-lg hover:text-foreground flex items-center gap-1.5 transition-all hover:bg-white/5 active:scale-95 cursor-pointer"
+                className="theme-pill hover:text-foreground flex cursor-pointer items-center gap-1.5 !rounded-lg transition-all hover:bg-white/5 active:scale-95"
               >
                 <Bot size={11} />
                 <span className="max-w-[11rem] truncate">{modelName || "Select Model"}</span>
@@ -266,7 +266,7 @@ export default function QueryComposer({
 
             {!isDeepSpace ? (
               <>
-                <span className="theme-pill !rounded-lg !bg-foreground/5 !border-foreground/10 !text-foreground/60 flex-shrink-0 italic">
+                <span className="theme-pill !bg-foreground/5 !border-foreground/10 !text-foreground/60 flex-shrink-0 !rounded-lg italic">
                   <span title="AVERQEL adjusts retrieval depth automatically based on the request.">
                     Retrieval Depth
                   </span>
@@ -274,7 +274,7 @@ export default function QueryComposer({
                     AVERQEL adjusts retrieval depth automatically based on the request.
                   </span>
                 </span>
-                <span className="theme-pill !rounded-lg !bg-foreground/5 !border-foreground/10 !text-foreground/60 flex-shrink-0 capitalize">
+                <span className="theme-pill !bg-foreground/5 !border-foreground/10 !text-foreground/60 flex-shrink-0 !rounded-lg capitalize">
                   {searchMode}
                 </span>
                 {supportsThinking ? (
@@ -282,7 +282,7 @@ export default function QueryComposer({
                     type="button"
                     onClick={() => onThinkingChange(!thinkingEnabled)}
                     disabled={isStreaming}
-                    className={`theme-pill !rounded-lg flex-shrink-0 transition-all ${
+                    className={`theme-pill flex-shrink-0 !rounded-lg transition-all ${
                       thinkingEnabled
                         ? "!border-primary/30 !bg-primary/10 !text-primary shadow-sm"
                         : "!bg-foreground/5 !border-foreground/10 !text-foreground/60"
@@ -299,7 +299,7 @@ export default function QueryComposer({
                     type="button"
                     onClick={() => onThinkingChange(!thinkingEnabled)}
                     disabled={isStreaming}
-                    className={`theme-pill !rounded-lg flex-shrink-0 transition-all ${
+                    className={`theme-pill flex-shrink-0 !rounded-lg transition-all ${
                       thinkingEnabled
                         ? "!border-primary/30 !bg-primary/10 !text-primary shadow-sm"
                         : "!bg-foreground/5 !border-foreground/10 !text-foreground/60"
@@ -366,7 +366,6 @@ export default function QueryComposer({
             </motion.button>
           </div>
         </div>
-
       </div>
     </div>
   );

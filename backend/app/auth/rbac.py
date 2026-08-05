@@ -120,9 +120,7 @@ def resolve_permissions(
     permissions: set[str] = set()
 
     for role in roles:
-        permissions.update(
-            PERMISSIONS_BY_ROLE.get(canonicalize_role_name(role), frozenset())
-        )
+        permissions.update(PERMISSIONS_BY_ROLE.get(canonicalize_role_name(role), frozenset()))
 
     if direct_permissions:
         permissions.update(direct_permissions)

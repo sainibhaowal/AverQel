@@ -24,12 +24,8 @@ class TestEnhancedReasoningCapabilities:
             "gemma-4-2b",
         ]
         for model in gemma_models:
-            assert uses_gemma_think_trigger(
-                model
-            ), f"{model} should trigger Gemma thinking"
-            assert model_supports_reasoning(
-                "google", model
-            ), f"{model} should support reasoning"
+            assert uses_gemma_think_trigger(model), f"{model} should trigger Gemma thinking"
+            assert model_supports_reasoning("google", model), f"{model} should support reasoning"
 
     def test_openai_reasoning_models(self):
         """Test OpenAI reasoning models are detected."""
@@ -46,9 +42,7 @@ class TestEnhancedReasoningCapabilities:
             "gpt-oss",
         ]
         for model in openai_models:
-            assert model_supports_reasoning(
-                "openai", model
-            ), f"{model} should support reasoning"
+            assert model_supports_reasoning("openai", model), f"{model} should support reasoning"
 
     def test_codex_models(self):
         """Test Codex models are detected."""
@@ -59,9 +53,7 @@ class TestEnhancedReasoningCapabilities:
             "gpt-5-codex-mini",
         ]
         for model in codex_models:
-            assert _matches_any(
-                model, _OPENAI_COMPATIBLE_HINTS
-            ), f"{model} should match hints"
+            assert _matches_any(model, _OPENAI_COMPATIBLE_HINTS), f"{model} should match hints"
 
     def test_claude_code_models(self):
         """Test Claude Code models are detected."""
@@ -74,9 +66,7 @@ class TestEnhancedReasoningCapabilities:
             "claude-4-sonnet",
         ]
         for model in claude_models:
-            assert model_supports_reasoning(
-                "anthropic", model
-            ), f"{model} should support reasoning"
+            assert model_supports_reasoning("anthropic", model), f"{model} should support reasoning"
 
     def test_kimi_models(self):
         """Test Kimi K2 models are detected."""
@@ -199,9 +189,7 @@ class TestEnhancedReasoningCapabilities:
             "gemini-3-flash-thinking",
         ]
         for model in gemini_models:
-            assert model_supports_reasoning(
-                "google", model
-            ), f"{model} should support reasoning"
+            assert model_supports_reasoning("google", model), f"{model} should support reasoning"
 
     def test_non_reasoning_models(self):
         """Test that non-reasoning models are not incorrectly detected."""

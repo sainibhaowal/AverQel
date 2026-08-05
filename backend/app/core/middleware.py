@@ -44,9 +44,7 @@ def _resolve_trace_id(request: Request) -> str:
     return provided or str(uuid4())
 
 
-def _apply_rate_limit_headers(
-    response: Response, decision: RateLimitDecision | None
-) -> None:
+def _apply_rate_limit_headers(response: Response, decision: RateLimitDecision | None) -> None:
     """Attach rate-limit headers when a decision is present."""
     if decision is None:
         return
@@ -55,15 +53,11 @@ def _apply_rate_limit_headers(
     response.headers["X-RateLimit-Reset"] = str(decision.reset_unix)
 
 
-def _record_request_metrics(
-    method: str, path: str, status: str, duration_seconds: float
-) -> None:
+def _record_request_metrics(method: str, path: str, status: str, duration_seconds: float) -> None:
     """Record request count and latency metrics safely."""
     try:
         API_REQUESTS_TOTAL.labels(method=method, path=path, status=status).inc()
-        API_REQUEST_LATENCY_SECONDS.labels(method=method, path=path).observe(
-            duration_seconds
-        )
+        API_REQUEST_LATENCY_SECONDS.labels(method=method, path=path).observe(duration_seconds)
     except Exception:  # noqa: BLE001
         # Metrics must never break request delivery.
         logger.debug("Failed to record request metrics.", exc_info=True)
@@ -111,8 +105,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                     health_status = getattr(request.state, "system_health_status", None)
                     if health_status:
                         limited_response.headers["X-System-Health"] = str(health_status)
-                        limited_response.headers["X-System-CPU-Ratio"] = f"{getattr(request.state, 'system_cpu_ratio', 0.0):.2f}"
-                        limited_response.headers["X-System-Memory-Pct"] = f"{getattr(request.state, 'system_memory_pct', 0.0):.1f}%"
+                        limited_response.headers["X-System-CPU-Ratio"] = (
+                            f"{getattr(request.state, 'system_cpu_ratio', 0.0):.2f}"
+                        )
+                        limited_response.headers["X-System-Memory-Pct"] = (
+                            f"{getattr(request.state, 'system_memory_pct', 0.0):.1f}%"
+                        )
 
                     limited_response.headers["X-Trace-Id"] = trace_id
                     _record_request_metrics(
@@ -133,8 +131,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             health_status = getattr(request.state, "system_health_status", None)
             if health_status:
                 response.headers["X-System-Health"] = str(health_status)
-                response.headers["X-System-CPU-Ratio"] = f"{getattr(request.state, 'system_cpu_ratio', 0.0):.2f}"
-                response.headers["X-System-Memory-Pct"] = f"{getattr(request.state, 'system_memory_pct', 0.0):.1f}%"
+                response.headers["X-System-CPU-Ratio"] = (
+                    f"{getattr(request.state, 'system_cpu_ratio', 0.0):.2f}"
+                )
+                response.headers["X-System-Memory-Pct"] = (
+                    f"{getattr(request.state, 'system_memory_pct', 0.0):.1f}%"
+                )
 
             response.headers["X-Trace-Id"] = trace_id
             _record_request_metrics(

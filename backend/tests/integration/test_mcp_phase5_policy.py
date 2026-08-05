@@ -80,7 +80,9 @@ def test_phase5_policy_matrix_is_deny_first(
     db_session: Session,
     seed_user,
 ) -> None:
-    seeded = seed_user("tenant-phase5-policy", "phase5-policy@example.com", "StrongPass!1234", ("admin",))
+    seeded = seed_user(
+        "tenant-phase5-policy", "phase5-policy@example.com", "StrongPass!1234", ("admin",)
+    )
     server, conversation, mission = _server(db_session, seeded)
     policy = db_session.query(MCPConnectionPolicy).filter_by(server_id=server.id).one()
     policy.conversation_overrides = {str(conversation.id): True}
@@ -162,7 +164,9 @@ def test_phase5_scope_provider_and_catalog_guards(
     db_session: Session,
     seed_user,
 ) -> None:
-    seeded = seed_user("tenant-phase5-guards", "phase5-guards@example.com", "StrongPass!1234", ("admin",))
+    seeded = seed_user(
+        "tenant-phase5-guards", "phase5-guards@example.com", "StrongPass!1234", ("admin",)
+    )
     server, conversation, mission = _server(db_session, seeded)
     policy = db_session.query(MCPConnectionPolicy).filter_by(server_id=server.id).one()
     policy.conversation_overrides = {str(conversation.id): True}
@@ -200,8 +204,9 @@ def test_phase5_scope_provider_and_catalog_guards(
         expected_catalog_revision=7,
         max_age_seconds=300,
     )
-    assert missing_scope.allowed is False
-    assert "conversation" in missing_scope.reason
+    # Connected accounts are user-scoped and available to every owned
+    # conversation by default; no conversation-id override is required.
+    assert missing_scope.allowed is True
 
     entry = MCPRegistryEntry(
         source="phase5-test",
@@ -238,11 +243,14 @@ def test_phase5_remote_call_is_blocked_before_runtime(
     seed_user,
     monkeypatch,
 ) -> None:
-    seeded = seed_user("tenant-phase5-boundary", "phase5-boundary@example.com", "StrongPass!1234", ("admin",))
+    seeded = seed_user(
+        "tenant-phase5-boundary", "phase5-boundary@example.com", "StrongPass!1234", ("admin",)
+    )
     server, conversation, mission = _server(db_session, seeded)
     policy = db_session.query(MCPConnectionPolicy).filter_by(server_id=server.id).one()
     policy.conversation_overrides = {}
     policy.deepspace_overrides = {str(mission.mission_id): True}
+    policy.default_enabled = False
     db_session.commit()
     set_db_tenant_context(db_session, seeded.tenant_id)
 

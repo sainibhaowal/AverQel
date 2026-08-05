@@ -8,24 +8,36 @@ export default function PrivacySecurityPage() {
     >
       <DocsCards
         items={[
-          { title: "Tenant + User Isolation", body: "MCP servers, OAuth tokens, policies, account identities, and events are queried with both tenant and user ownership checks." },
-          { title: "Encrypted Credentials", body: "OAuth access and refresh tokens are encrypted at rest. The browser receives safe account labels and scope names, never credential material." },
-          { title: "Connected-account scope", body: "Connected MCP accounts are available across the owning user’s DeepSpace conversations; ownership, catalog freshness, tool policy, risk limits, and approvals remain enforced." },
-          { title: "Metadata-Only Inspection", body: "The inspector exposes safe status and redacted event summaries, not raw MCP responses, private content, headers, tokens, or server configuration." },
+          {
+            title: "Tenant + User Isolation",
+            body: "MCP servers, OAuth tokens, policies, account identities, and events are queried with both tenant and user ownership checks.",
+          },
+          {
+            title: "Encrypted Credentials",
+            body: "OAuth access and refresh tokens are encrypted at rest. The browser receives safe account labels and scope names, never credential material.",
+          },
+          {
+            title: "Connected-account scope",
+            body: "Connected MCP accounts are available across the owning user’s DeepSpace conversations; ownership, catalog freshness, tool policy, risk limits, and approvals remain enforced.",
+          },
+          {
+            title: "Metadata-Only Inspection",
+            body: "The inspector exposes safe status and redacted event summaries, not raw MCP responses, private content, headers, tokens, or server configuration.",
+          },
         ]}
       />
 
       <DocsSection title="MCP account and tenant isolation">
         <p>
           Every native MCP connection belongs to one tenant and one user. OAuth token lookup uses
-          the connection&apos;s tenant, user, and server identity together. DeepSpace cannot select a
-          token belonging to another user or use a tenant-wide Google or GitHub token.
+          the connection&apos;s tenant, user, and server identity together. DeepSpace cannot select
+          a token belonging to another user or use a tenant-wide Google or GitHub token.
         </p>
         <p>
           Conversation and DeepSpace endpoints verify that the referenced object belongs to the
           current tenant and that the current user may operate it. These checks are repeated in the
-          runtime immediately before remote execution; frontend context is never treated as proof
-          of authorization.
+          runtime immediately before remote execution; frontend context is never treated as proof of
+          authorization.
         </p>
       </DocsSection>
 
@@ -33,11 +45,26 @@ export default function PrivacySecurityPage() {
         <ul className="list-disc space-y-2 pl-6">
           <li>Users sign in and consent directly at Google, GitHub, or the approved provider.</li>
           <li>Passwords remain with the provider and are never submitted to AverQel.</li>
-          <li>PKCE verifier data and signed OAuth state are held in encrypted, single-use transaction storage.</li>
-          <li>Access tokens, refresh tokens, and client secrets are encrypted and never serialized into frontend DTOs.</li>
-          <li>Verified granted scope names and safe account identity may be returned to the owning user.</li>
-          <li>Disconnect removes the local credential record and attempts provider revocation where the provider supports it.</li>
-          <li>OAuth secrets are excluded from logs, prompts, MCP events, inspector payloads, and marketplace metadata.</li>
+          <li>
+            PKCE verifier data and signed OAuth state are held in encrypted, single-use transaction
+            storage.
+          </li>
+          <li>
+            Access tokens, refresh tokens, and client secrets are encrypted and never serialized
+            into frontend DTOs.
+          </li>
+          <li>
+            Verified granted scope names and safe account identity may be returned to the owning
+            user.
+          </li>
+          <li>
+            Disconnect removes the local credential record and attempts provider revocation where
+            the provider supports it.
+          </li>
+          <li>
+            OAuth secrets are excluded from logs, prompts, MCP events, inspector payloads, and
+            marketplace metadata.
+          </li>
         </ul>
       </DocsSection>
 
@@ -68,23 +95,23 @@ export default function PrivacySecurityPage() {
           confirmation requirement before planning and again immediately before the remote call.
         </p>
         <p>
-          A blocked or disabled tool is not offered to the MCP action surface. A tool result may be summarized for
-          the user, but raw remote payloads are not returned through the MCP inspector or persisted as
-          unredacted MCP events.
+          A blocked or disabled tool is not offered to the MCP action surface. A tool result may be
+          summarized for the user, but raw remote payloads are not returned through the MCP
+          inspector or persisted as unredacted MCP events.
         </p>
       </DocsSection>
 
       <DocsSection title="Admin and operational boundaries">
         <p>
           Administrators can manage approved catalog metadata through the protected catalog
-          permission. Normal admin views receive operational metadata, not users&apos; OAuth tokens or
-          private MCP content. Audit and deletion workflows remain tenant-aware and do not require
-          exposing raw secrets.
+          permission. Normal admin views receive operational metadata, not users&apos; OAuth tokens
+          or private MCP content. Audit and deletion workflows remain tenant-aware and do not
+          require exposing raw secrets.
         </p>
         <p>
-          These controls describe AverQel&apos;s application contract. Operators must still configure
-          production OAuth clients, callback URLs, encryption keys, database RLS, retention, network
-          egress, provider scopes, and incident procedures for their deployment.
+          These controls describe AverQel&apos;s application contract. Operators must still
+          configure production OAuth clients, callback URLs, encryption keys, database RLS,
+          retention, network egress, provider scopes, and incident procedures for their deployment.
         </p>
       </DocsSection>
     </DocsShell>

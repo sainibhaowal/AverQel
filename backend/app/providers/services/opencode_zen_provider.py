@@ -75,12 +75,10 @@ class OpenCodeZenProvider:
         "maxModelLen",
     )
 
-    def __init__(
-        self, *, base_url: str | None = None, api_key: str | None = None
-    ) -> None:
-        self.base_url = resolve_provider_base_url(
+    def __init__(self, *, base_url: str | None = None, api_key: str | None = None) -> None:
+        self.base_url = resolve_provider_base_url(base_url or self.DEFAULT_BASE_URL) or (
             base_url or self.DEFAULT_BASE_URL
-        ) or (base_url or self.DEFAULT_BASE_URL)
+        )
         self.base_url = self.base_url.rstrip("/")
         self.api_key = api_key
 
@@ -178,9 +176,7 @@ class OpenCodeZenProvider:
             provider_type=self.provider_name,
         )
         if not resolved:
-            raise ProviderCapabilityError(
-                "OpenCode Zen provider requires a configured base URL"
-            )
+            raise ProviderCapabilityError("OpenCode Zen provider requires a configured base URL")
         return resolved.rstrip("/")
 
     @classmethod
@@ -212,8 +208,7 @@ class OpenCodeZenProvider:
             if isinstance(value, list):
                 return [item for item in value if isinstance(item, dict)]
         if any(
-            isinstance(payload.get(key), str | int | float | bool)
-            for key in cls._MODEL_NAME_KEYS
+            isinstance(payload.get(key), str | int | float | bool) for key in cls._MODEL_NAME_KEYS
         ):
             return [payload]
         return []
@@ -320,18 +315,14 @@ class OpenCodeZenProvider:
         return str(value)
 
     @classmethod
-    def _extract_response_tool_calls(
-        cls, payload: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    def _extract_response_tool_calls(cls, payload: dict[str, Any]) -> list[dict[str, Any]]:
         tool_calls: list[dict[str, Any]] = []
 
         def append_from_item(item: dict[str, Any]) -> None:
             item_type = str(item.get("type") or "").lower()
             if "function_call" not in item_type and "tool_call" not in item_type:
                 return
-            name = (
-                item.get("name") or item.get("function_name") or item.get("tool_name")
-            )
+            name = item.get("name") or item.get("function_name") or item.get("tool_name")
             call_id = item.get("id") or item.get("call_id") or item.get("item_id")
             arguments = item.get("arguments")
             if arguments is None:
@@ -382,9 +373,7 @@ class OpenCodeZenProvider:
                 if not isinstance(call_id, str) or not call_id.strip():
                     continue
                 output = (
-                    content
-                    if isinstance(content, str)
-                    else json.dumps(content, ensure_ascii=False)
+                    content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
                 )
                 input_items.append(
                     {
@@ -394,11 +383,7 @@ class OpenCodeZenProvider:
                     }
                 )
                 continue
-            text = (
-                content
-                if isinstance(content, str)
-                else json.dumps(content, ensure_ascii=False)
-            )
+            text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
             if not text.strip():
                 continue
             input_items.append(
@@ -407,9 +392,7 @@ class OpenCodeZenProvider:
                     "content": text,
                 }
             )
-        instructions = (
-            "\n\n".join(part for part in instructions_parts if part).strip() or None
-        )
+        instructions = "\n\n".join(part for part in instructions_parts if part).strip() or None
         return instructions, input_items
 
     @classmethod
@@ -471,18 +454,14 @@ class OpenCodeZenProvider:
                     except Exception:  # noqa: BLE001
                         error_bytes = None
                     if isinstance(error_bytes, bytes | bytearray):
-                        error_text = bytes(error_bytes).decode(
-                            "utf-8", errors="replace"
-                        )
+                        error_text = bytes(error_bytes).decode("utf-8", errors="replace")
                         try:
                             decoded = json.loads(error_text)
                         except json.JSONDecodeError:
                             decoded = None
                         if isinstance(decoded, dict):
                             error_payload = decoded
-                    self._raise_provider_error(
-                        response, payload=error_payload, text=error_text
-                    )
+                    self._raise_provider_error(response, payload=error_payload, text=error_text)
                 current_event = ""
                 async for raw_line in response.aiter_lines():
                     line = raw_line.strip()
@@ -519,9 +498,7 @@ class OpenCodeZenProvider:
                     if "reasoning" in lowered or "think" in lowered:
                         delta = payload_obj.get("delta")
                         if not isinstance(delta, str):
-                            delta = payload_obj.get("text") or payload_obj.get(
-                                "summary"
-                            )
+                            delta = payload_obj.get("text") or payload_obj.get("summary")
                         if isinstance(delta, str) and delta:
                             yield {"type": "thinking", "text": delta}
                         current_event = ""
@@ -535,11 +512,7 @@ class OpenCodeZenProvider:
                             item = payload_obj
                         item_type = str(item.get("type") or "").lower()
                         if "function_call" in item_type or "tool_call" in item_type:
-                            item_id = (
-                                item.get("id")
-                                or item.get("call_id")
-                                or item.get("item_id")
-                            )
+                            item_id = item.get("id") or item.get("call_id") or item.get("item_id")
                             if not isinstance(item_id, str) or not item_id.strip():
                                 item_id = f"call_{len(tool_call_order)}"
                             if item_id not in tool_call_index_by_id:
@@ -577,13 +550,8 @@ class OpenCodeZenProvider:
                         current_event = ""
                         continue
 
-                    if (
-                        "function_call_arguments.delta" in lowered
-                        or "arguments.delta" in lowered
-                    ):
-                        item_id = payload_obj.get("item_id") or payload_obj.get(
-                            "call_id"
-                        )
+                    if "function_call_arguments.delta" in lowered or "arguments.delta" in lowered:
+                        item_id = payload_obj.get("item_id") or payload_obj.get("call_id")
                         if not isinstance(item_id, str) or not item_id.strip():
                             item_id = f"call_{len(tool_call_order)}"
                         if item_id not in tool_call_index_by_id:
@@ -602,9 +570,7 @@ class OpenCodeZenProvider:
                                         "index": tool_call_index_by_id[item_id],
                                         "id": item_id,
                                         "function": {
-                                            "name": tool_call_name_by_id.get(
-                                                item_id, ""
-                                            ),
+                                            "name": tool_call_name_by_id.get(item_id, ""),
                                             "arguments": delta,
                                         },
                                     }
@@ -620,16 +586,12 @@ class OpenCodeZenProvider:
                             item_type = str(item.get("type") or "").lower()
                             if "function_call" in item_type or "tool_call" in item_type:
                                 item_id = (
-                                    item.get("id")
-                                    or item.get("call_id")
-                                    or item.get("item_id")
+                                    item.get("id") or item.get("call_id") or item.get("item_id")
                                 )
                                 if not isinstance(item_id, str) or not item_id.strip():
                                     item_id = f"call_{len(tool_call_order)}"
                                 if item_id not in tool_call_index_by_id:
-                                    tool_call_index_by_id[item_id] = len(
-                                        tool_call_order
-                                    )
+                                    tool_call_index_by_id[item_id] = len(tool_call_order)
                                     tool_call_order.append(item_id)
                                 fn_name = (
                                     item.get("name")
@@ -640,9 +602,7 @@ class OpenCodeZenProvider:
                                     tool_call_name_by_id[item_id] = fn_name.strip()
                                 arguments = item.get("arguments")
                                 if arguments is None:
-                                    arguments = item.get("input") or item.get(
-                                        "parameters"
-                                    )
+                                    arguments = item.get("input") or item.get("parameters")
                                 fragment = self._normalize_arguments(arguments)
                                 yield {
                                     "type": "tool_calls_delta",
@@ -664,17 +624,13 @@ class OpenCodeZenProvider:
                             elif "reason" in item_type or "think" in item_type:
                                 text = self._extract_text_from_content(item.get("text"))
                                 if not text.strip():
-                                    text = self._extract_text_from_content(
-                                        item.get("content")
-                                    )
+                                    text = self._extract_text_from_content(item.get("content"))
                                 if text.strip():
                                     yield {"type": "thinking", "text": text.strip()}
                             else:
                                 text = self._extract_text_from_content(item.get("text"))
                                 if not text.strip():
-                                    text = self._extract_text_from_content(
-                                        item.get("content")
-                                    )
+                                    text = self._extract_text_from_content(item.get("content"))
                                 if text.strip():
                                     yield {"type": "delta", "text": text.strip()}
                         current_event = ""
@@ -717,9 +673,7 @@ class OpenCodeZenProvider:
             return family, AnthropicProvider().bind(base_url, request.api_key)
         if family == "google":
             return family, GoogleProvider().bind(base_url, request.api_key)
-        return family, OpenAICompatibleProvider(
-            base_url=base_url, api_key=request.api_key
-        )
+        return family, OpenAICompatibleProvider(base_url=base_url, api_key=request.api_key)
 
     def generate(self, request: ChatGenerateRequest) -> ChatGenerateResponse:
         base_url = self._resolve_base_url(request.base_url)
@@ -748,9 +702,7 @@ class OpenCodeZenProvider:
         base_url = self._resolve_base_url(request.base_url)
         family, provider = self._family_provider(request, base_url=base_url)
         if family == "responses":
-            async for event in self._stream_responses_events(
-                request, base_url=base_url
-            ):
+            async for event in self._stream_responses_events(request, base_url=base_url):
                 yield event
             return
         if provider is None:
@@ -803,13 +755,9 @@ class OpenCodeZenProvider:
                 model_name,
                 provider_type=self.provider_name,
             )
-            context_window = (
-                live_context_window or verified_context_window.context_window
-            )
+            context_window = live_context_window or verified_context_window.context_window
             context_window_source = (
-                "live_model"
-                if live_context_window is not None
-                else verified_context_window.source
+                "live_model" if live_context_window is not None else verified_context_window.source
             )
             infos.append(
                 ProviderModelInfo(
@@ -847,9 +795,7 @@ class OpenCodeZenProvider:
                                 )
                             )
                         ),
-                        **reasoning_capabilities(
-                            self.provider_name, model_name, base_url=base_url
-                        ),
+                        **reasoning_capabilities(self.provider_name, model_name, base_url=base_url),
                     },
                 )
             )

@@ -95,15 +95,9 @@ def upgrade() -> None:
     )
     op.create_index(op.f("ix_agent_memory_id"), "agent_memory", ["id"], unique=False)
     op.create_index(op.f("ix_agent_memory_key"), "agent_memory", ["key"], unique=False)
-    op.create_index(
-        op.f("ix_agent_memory_scope"), "agent_memory", ["scope"], unique=False
-    )
-    op.create_index(
-        op.f("ix_agent_memory_tenant_id"), "agent_memory", ["tenant_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_agent_memory_user_id"), "agent_memory", ["user_id"], unique=False
-    )
+    op.create_index(op.f("ix_agent_memory_scope"), "agent_memory", ["scope"], unique=False)
+    op.create_index(op.f("ix_agent_memory_tenant_id"), "agent_memory", ["tenant_id"], unique=False)
+    op.create_index(op.f("ix_agent_memory_user_id"), "agent_memory", ["user_id"], unique=False)
 
     # 4. AgentTodo
     op.create_table(
@@ -121,15 +115,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(op.f("ix_agent_todos_id"), "agent_todos", ["id"], unique=False)
-    op.create_index(
-        op.f("ix_agent_todos_tenant_id"), "agent_todos", ["tenant_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_agent_todos_thread_id"), "agent_todos", ["thread_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_agent_todos_user_id"), "agent_todos", ["user_id"], unique=False
-    )
+    op.create_index(op.f("ix_agent_todos_tenant_id"), "agent_todos", ["tenant_id"], unique=False)
+    op.create_index(op.f("ix_agent_todos_thread_id"), "agent_todos", ["thread_id"], unique=False)
+    op.create_index(op.f("ix_agent_todos_user_id"), "agent_todos", ["user_id"], unique=False)
 
 
 def downgrade() -> None:

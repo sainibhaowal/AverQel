@@ -234,9 +234,7 @@ class ProviderManagementService:
         object.__setattr__(self, "assignments", ProviderAssignmentsRepository(self.db))
         object.__setattr__(self, "cache", ProviderModelCacheRepository(self.db))
         object.__setattr__(self, "secrets", ProviderSecretService(self.db))
-        object.__setattr__(
-            self, "health_checks", ProviderHealthChecksRepository(self.db)
-        )
+        object.__setattr__(self, "health_checks", ProviderHealthChecksRepository(self.db))
         object.__setattr__(self, "audit", AuditService(self.db))
 
     def list_supported_types(self) -> list[dict[str, object]]:
@@ -343,14 +341,10 @@ class ProviderManagementService:
             effective_default_embedding_model = None
 
         owner_user_id = (
-            None
-            if provider_type == MANAGED_SENTENCE_TRANSFORMERS_PROVIDER_TYPE
-            else actor_user_id
+            None if provider_type == MANAGED_SENTENCE_TRANSFORMERS_PROVIDER_TYPE else actor_user_id
         )
         visibility_scope = (
-            "system"
-            if provider_type == MANAGED_SENTENCE_TRANSFORMERS_PROVIDER_TYPE
-            else "user"
+            "system" if provider_type == MANAGED_SENTENCE_TRANSFORMERS_PROVIDER_TYPE else "user"
         )
         row = self.configs.create(
             ProviderConfig(
@@ -435,23 +429,16 @@ class ProviderManagementService:
             provider_config_id=provider_config_id,
             actor_user_id=actor_user_id,
         )
-        if (
-            provider.owner_user_id is not None
-            and provider.owner_user_id != actor_user_id
-        ):
+        if provider.owner_user_id is not None and provider.owner_user_id != actor_user_id:
             raise ApiError(
                 code="PROVIDER_CONFIG_NOT_FOUND",
                 message="Provider configuration not found.",
                 status_code=404,
             )
         update_values = dict(values)
-        if "display_name" in update_values and isinstance(
-            update_values["display_name"], str
-        ):
+        if "display_name" in update_values and isinstance(update_values["display_name"], str):
             update_values["display_name"] = update_values["display_name"].strip()
-        if "api_base_url" in update_values and isinstance(
-            update_values["api_base_url"], str
-        ):
+        if "api_base_url" in update_values and isinstance(update_values["api_base_url"], str):
             update_values["api_base_url"] = update_values["api_base_url"].strip()
         merged_auth_mode = (
             str(update_values["auth_mode"])
@@ -460,14 +447,12 @@ class ProviderManagementService:
         )
         merged_api_base_url = (
             str(update_values["api_base_url"])
-            if "api_base_url" in update_values
-            and update_values["api_base_url"] is not None
+            if "api_base_url" in update_values and update_values["api_base_url"] is not None
             else provider.api_base_url
         )
         merged_provider_type = (
             str(update_values["provider_type"])
-            if "provider_type" in update_values
-            and update_values["provider_type"] is not None
+            if "provider_type" in update_values and update_values["provider_type"] is not None
             else provider.provider_type
         )
         merged_enabled = bool(update_values.get("enabled", provider.enabled))
@@ -480,9 +465,7 @@ class ProviderManagementService:
         )
         if (
             merged_provider_type == "lmstudio"
-            and bool(
-                update_values.get("supports_embeddings", provider.supports_embeddings)
-            )
+            and bool(update_values.get("supports_embeddings", provider.supports_embeddings))
             and managed_embeddings_enabled
         ):
             update_values["default_embedding_model"] = None
@@ -503,39 +486,29 @@ class ProviderManagementService:
             supports_embeddings=bool(
                 update_values.get(
                     "supports_embeddings",
-                    _catalog_caps.get(
-                        "supports_embeddings", provider.supports_embeddings
-                    ),
+                    _catalog_caps.get("supports_embeddings", provider.supports_embeddings),
                 )
             ),
             supports_reranking=bool(
                 update_values.get(
                     "supports_reranking",
-                    _catalog_caps.get(
-                        "supports_reranking", provider.supports_reranking
-                    ),
+                    _catalog_caps.get("supports_reranking", provider.supports_reranking),
                 )
             ),
             supports_model_listing=bool(
                 update_values.get(
                     "supports_model_listing",
-                    _catalog_caps.get(
-                        "supports_model_listing", provider.supports_model_listing
-                    ),
+                    _catalog_caps.get("supports_model_listing", provider.supports_model_listing),
                 )
             ),
             supports_model_install=bool(
                 update_values.get(
                     "supports_model_install",
-                    _catalog_caps.get(
-                        "supports_model_install", provider.supports_model_install
-                    ),
+                    _catalog_caps.get("supports_model_install", provider.supports_model_install),
                 )
             ),
             is_local=bool(
-                update_values.get(
-                    "is_local", _catalog_caps.get("is_local", provider.is_local)
-                )
+                update_values.get("is_local", _catalog_caps.get("is_local", provider.is_local))
             ),
             api_key=api_key,
             existing_auth_mode=provider.auth_mode,
@@ -572,9 +545,7 @@ class ProviderManagementService:
         if (
             merged_provider_type == "sentence-transformers"
             and merged_enabled
-            and bool(
-                update_values.get("supports_embeddings", provider.supports_embeddings)
-            )
+            and bool(update_values.get("supports_embeddings", provider.supports_embeddings))
         ):
             self._clear_lmstudio_embedding_defaults(
                 tenant_id=tenant_id,
@@ -673,9 +644,7 @@ class ProviderManagementService:
                 details={"reason": reason},
             )
 
-    def _ensure_managed_sentence_transformer_providers(
-        self, *, tenant_id: uuid.UUID
-    ) -> None:
+    def _ensure_managed_sentence_transformer_providers(self, *, tenant_id: uuid.UUID) -> None:
         tenant_defaults = list(
             self.configs.list_by_workspace(tenant_id=tenant_id, workspace_id=None)
         )
@@ -708,11 +677,7 @@ class ProviderManagementService:
             None,
         )
         mixed_provider = next(
-            (
-                row
-                for row in managed_rows
-                if row.supports_embeddings and row.supports_reranking
-            ),
+            (row for row in managed_rows if row.supports_embeddings and row.supports_reranking),
             None,
         )
 
@@ -744,8 +709,7 @@ class ProviderManagementService:
                 from_provider_id=mixed_provider.id,
                 to_provider_id=reranker_provider.id,
                 default_model_name=(
-                    reranker_provider.default_reranker_model
-                    or get_settings().reranking_model
+                    reranker_provider.default_reranker_model or get_settings().reranking_model
                 ),
             )
             self._seed_managed_provider_model_cache(
@@ -760,20 +724,14 @@ class ProviderManagementService:
         else:
             if embeddings_provider is None:
                 fallback_source = reranker_provider
-                embeddings_provider = (
-                    self._create_managed_sentence_transformer_provider(
-                        tenant_id=tenant_id,
-                        display_name=MANAGED_EMBEDDINGS_PROVIDER_NAME,
-                        supports_embeddings=True,
-                        supports_reranking=False,
-                        default_embedding_model=get_settings().embedding_model,
-                        default_reranker_model=None,
-                        enabled=(
-                            fallback_source.enabled
-                            if fallback_source is not None
-                            else True
-                        ),
-                    )
+                embeddings_provider = self._create_managed_sentence_transformer_provider(
+                    tenant_id=tenant_id,
+                    display_name=MANAGED_EMBEDDINGS_PROVIDER_NAME,
+                    supports_embeddings=True,
+                    supports_reranking=False,
+                    default_embedding_model=get_settings().embedding_model,
+                    default_reranker_model=None,
+                    enabled=(fallback_source.enabled if fallback_source is not None else True),
                 )
                 changed = True
             if reranker_provider is None:
@@ -785,9 +743,7 @@ class ProviderManagementService:
                     default_embedding_model=None,
                     default_reranker_model=get_settings().reranking_model,
                     enabled=(
-                        embeddings_provider.enabled
-                        if embeddings_provider is not None
-                        else True
+                        embeddings_provider.enabled if embeddings_provider is not None else True
                     ),
                 )
                 changed = True
@@ -832,10 +788,7 @@ class ProviderManagementService:
                 duplicates=[
                     row
                     for row in embeddings_rows
-                    if row.id
-                    != min(
-                        embeddings_rows, key=lambda candidate: candidate.created_at
-                    ).id
+                    if row.id != min(embeddings_rows, key=lambda candidate: candidate.created_at).id
                 ],
             )
             changed = True
@@ -846,8 +799,7 @@ class ProviderManagementService:
                 duplicates=[
                     row
                     for row in reranker_rows
-                    if row.id
-                    != min(reranker_rows, key=lambda candidate: candidate.created_at).id
+                    if row.id != min(reranker_rows, key=lambda candidate: candidate.created_at).id
                 ],
             )
             changed = True
@@ -950,9 +902,7 @@ class ProviderManagementService:
                 },
             },
         )
-        refreshed = self.get_provider(
-            tenant_id=tenant_id, provider_config_id=provider.id
-        )
+        refreshed = self.get_provider(tenant_id=tenant_id, provider_config_id=provider.id)
         return refreshed
 
     def _ensure_split_reranker_provider(
@@ -981,9 +931,7 @@ class ProviderManagementService:
                     },
                 },
             )
-            return self.get_provider(
-                tenant_id=tenant_id, provider_config_id=existing_reranker.id
-            )
+            return self.get_provider(tenant_id=tenant_id, provider_config_id=existing_reranker.id)
 
         return self._create_managed_sentence_transformer_provider(
             tenant_id=tenant_id,
@@ -1072,10 +1020,7 @@ class ProviderManagementService:
             provider_config_id=provider_config_id,
             actor_user_id=actor_user_id,
         )
-        if (
-            provider.owner_user_id is not None
-            and provider.owner_user_id != actor_user_id
-        ):
+        if provider.owner_user_id is not None and provider.owner_user_id != actor_user_id:
             raise ApiError(
                 code="PROVIDER_CONFIG_NOT_FOUND",
                 message="Provider configuration not found.",
@@ -1101,9 +1046,7 @@ class ProviderManagementService:
                 for assignment in active_assignments:
                     migrated_model_name = assignment.model_name
                     if assignment.feature_scope == "chat":
-                        migrated_model_name = (
-                            replacement.default_chat_model or migrated_model_name
-                        )
+                        migrated_model_name = replacement.default_chat_model or migrated_model_name
                     elif assignment.feature_scope == "embeddings":
                         migrated_model_name = (
                             replacement.default_embedding_model or migrated_model_name
@@ -1187,9 +1130,7 @@ class ProviderManagementService:
         )
         return "deleted"
 
-    def _is_managed_sentence_transformer_provider(
-        self, provider: ProviderConfig
-    ) -> bool:
+    def _is_managed_sentence_transformer_provider(self, provider: ProviderConfig) -> bool:
         if provider.provider_type != MANAGED_SENTENCE_TRANSFORMERS_PROVIDER_TYPE:
             return False
         metadata = dict(provider.metadata_json or {})
@@ -1219,10 +1160,7 @@ class ProviderManagementService:
                 and candidate.owner_user_id != provider.owner_user_id
             ):
                 continue
-            if (
-                provider.visibility_scope != "user"
-                and candidate.visibility_scope == "user"
-            ):
+            if provider.visibility_scope != "user" and candidate.visibility_scope == "user":
                 continue
             if candidate.provider_type != provider.provider_type:
                 continue
@@ -1343,19 +1281,14 @@ class ProviderManagementService:
         actor_user_id: uuid.UUID,
         values: dict[str, object],
     ) -> ProviderAssignment:
-        assignment = self.assignments.get_by_id(
-            tenant_id=tenant_id, assignment_id=assignment_id
-        )
+        assignment = self.assignments.get_by_id(tenant_id=tenant_id, assignment_id=assignment_id)
         if assignment is None:
             raise ApiError(
                 code="PROVIDER_ASSIGNMENT_INVALID",
                 message="Provider assignment not found.",
                 status_code=404,
             )
-        if (
-            assignment.owner_user_id is not None
-            and assignment.owner_user_id != actor_user_id
-        ):
+        if assignment.owner_user_id is not None and assignment.owner_user_id != actor_user_id:
             raise ApiError(
                 code="PROVIDER_ASSIGNMENT_INVALID",
                 message="Provider assignment not found.",
@@ -1374,9 +1307,7 @@ class ProviderManagementService:
                 provider_config_id=provider_id,
                 actor_user_id=actor_user_id,
             )
-            self._validate_assignment(
-                feature_scope=assignment.feature_scope, provider=provider
-            )
+            self._validate_assignment(feature_scope=assignment.feature_scope, provider=provider)
         else:
             provider = self.get_provider(
                 tenant_id=tenant_id,
@@ -1410,9 +1341,7 @@ class ProviderManagementService:
             resource_id=str(assignment_id),
             details={"updated_fields": ",".join(sorted(values.keys()))},
         )
-        refreshed = self.assignments.get_by_id(
-            tenant_id=tenant_id, assignment_id=assignment_id
-        )
+        refreshed = self.assignments.get_by_id(tenant_id=tenant_id, assignment_id=assignment_id)
         if refreshed is None:  # pragma: no cover - defensive
             raise ApiError(
                 code="PROVIDER_ASSIGNMENT_INVALID",
@@ -1428,19 +1357,14 @@ class ProviderManagementService:
         assignment_id: uuid.UUID,
         actor_user_id: uuid.UUID,
     ) -> bool:
-        assignment = self.assignments.get_by_id(
-            tenant_id=tenant_id, assignment_id=assignment_id
-        )
+        assignment = self.assignments.get_by_id(tenant_id=tenant_id, assignment_id=assignment_id)
         if assignment is None:
             raise ApiError(
                 code="PROVIDER_ASSIGNMENT_INVALID",
                 message="Provider assignment not found.",
                 status_code=404,
             )
-        if (
-            assignment.owner_user_id is not None
-            and assignment.owner_user_id != actor_user_id
-        ):
+        if assignment.owner_user_id is not None and assignment.owner_user_id != actor_user_id:
             raise ApiError(
                 code="PROVIDER_ASSIGNMENT_INVALID",
                 message="Provider assignment not found.",
@@ -1473,10 +1397,7 @@ class ProviderManagementService:
             provider_config_id=provider_config_id,
             actor_user_id=actor_user_id,
         )
-        if (
-            provider.owner_user_id is not None
-            and provider.owner_user_id != actor_user_id
-        ):
+        if provider.owner_user_id is not None and provider.owner_user_id != actor_user_id:
             raise ApiError(
                 code="PROVIDER_CONFIG_NOT_FOUND",
                 message="Provider configuration not found.",
@@ -1512,18 +1433,13 @@ class ProviderManagementService:
             provider_config_id=provider_config_id,
             actor_user_id=actor_user_id,
         )
-        if (
-            provider.owner_user_id is not None
-            and provider.owner_user_id != actor_user_id
-        ):
+        if provider.owner_user_id is not None and provider.owner_user_id != actor_user_id:
             raise ApiError(
                 code="PROVIDER_CONFIG_NOT_FOUND",
                 message="Provider configuration not found.",
                 status_code=404,
             )
-        allowed_types = ALLOWED_SECRET_TYPES_BY_AUTH_MODE.get(
-            provider.auth_mode, frozenset()
-        )
+        allowed_types = ALLOWED_SECRET_TYPES_BY_AUTH_MODE.get(provider.auth_mode, frozenset())
         if secret_type not in allowed_types:
             raise ApiError(
                 code="PROVIDER_AUTH_MODE_NOT_ALLOWED",
@@ -1695,19 +1611,16 @@ class ProviderManagementService:
                 message="Selected provider does not support embeddings.",
                 status_code=400,
             )
-        if (
-            feature_scope in {"reranking", "fallback_reranking"}
-            and not provider.supports_reranking
-        ):
+        if feature_scope in {"reranking", "fallback_reranking"} and not provider.supports_reranking:
             raise ApiError(
                 code="PROVIDER_ASSIGNMENT_INVALID",
                 message="Selected provider does not support reranking.",
                 status_code=400,
             )
-        if (
-            feature_scope in {"web_search", "fallback_web_search"}
-            and provider.provider_type not in {"tavily", "searxng"}
-        ):
+        if feature_scope in {
+            "web_search",
+            "fallback_web_search",
+        } and provider.provider_type not in {"tavily", "searxng"}:
             raise ApiError(
                 code="PROVIDER_ASSIGNMENT_INVALID",
                 message="Selected provider does not support web search.",
@@ -1762,10 +1675,8 @@ class ProviderManagementService:
 
         static_dimension: int | None = None
         if provider.provider_type == MANAGED_SENTENCE_TRANSFORMERS_PROVIDER_TYPE:
-            static_dimension = (
-                SentenceTransformersEmbeddingProvider.get_embedding_dimension(
-                    model_name
-                )
+            static_dimension = SentenceTransformersEmbeddingProvider.get_embedding_dimension(
+                model_name
             )
 
         discovered_dimension = (
@@ -1807,9 +1718,7 @@ class ProviderManagementService:
             provider_config_id=provider.id,
             auth_mode=provider.auth_mode,
         )
-        provider_client = ProviderRegistry(
-            settings
-        ).get_embedding_provider_from_selection(
+        provider_client = ProviderRegistry(settings).get_embedding_provider_from_selection(
             ProviderSelectionCandidate(
                 provider_type=provider.provider_type,
                 model_name=model_name,

@@ -56,10 +56,7 @@ def test_emit_post_stream_events_from_structured_json() -> None:
 
     replace_event = events[0]
     assert replace_event.data["format"] == "structured"
-    assert (
-        replace_event.data["structured"]["diagram"]["diagram_type"]
-        == "mermaid_flowchart"
-    )
+    assert replace_event.data["structured"]["diagram"]["diagram_type"] == "mermaid_flowchart"
 
     diagram_event = next(event for event in events if event.event == "diagram")
     assert diagram_event.data["title"] == "Pipeline"

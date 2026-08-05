@@ -102,9 +102,7 @@ def _service(settings):  # type: ignore[no-untyped-def]
     service.documents = _Docs(None)
     service.chunks = _Chunks()
     service.storage = SimpleNamespace(get_bytes=lambda **kwargs: b"data")
-    service.parser = SimpleNamespace(
-        parse_bytes=lambda **kwargs: SimpleNamespace(text="content")
-    )
+    service.parser = SimpleNamespace(parse_bytes=lambda **kwargs: SimpleNamespace(text="content"))
     service.chunking = SimpleNamespace(
         chunk=lambda *_args, **_kwargs: [_Part(0, "chunk text", 0, 10, {})]
     )
@@ -131,9 +129,7 @@ def test_process_ingestion_job_not_found_returns(
 
 
 def test_process_ingestion_job_missing_document_dead_letters(settings) -> None:
-    job = SimpleNamespace(
-        id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3
-    )
+    job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3)
     service = _service(settings)
     service.jobs = _Jobs(job)
     service.documents = _Docs(None)
@@ -172,9 +168,7 @@ def test_process_ingestion_job_skips_superseded_job(settings) -> None:
     service.documents = _Docs(doc)
 
     service.process_ingestion_job(tenant_id=tenant_id, job_id=old_job.id)
-    assert any(
-        call.get("error_code") == "SUPERSEDED_JOB" for call in service.jobs.set_calls
-    )
+    assert any(call.get("error_code") == "SUPERSEDED_JOB" for call in service.jobs.set_calls)
 
 
 def test_process_ingestion_job_marks_already_indexed_job_complete(settings) -> None:
@@ -258,9 +252,7 @@ def test_process_ingestion_job_persists_stage_progress(settings) -> None:
 
     service.process_ingestion_job(tenant_id=tenant_id, job_id=uuid4())
 
-    recorded_progress = [
-        progress for progress, _status in service.documents.progress_calls
-    ]
+    recorded_progress = [progress for progress, _status in service.documents.progress_calls]
     assert 5 in recorded_progress
     assert 10 in recorded_progress
     assert 25 in recorded_progress
@@ -270,9 +262,7 @@ def test_process_ingestion_job_persists_stage_progress(settings) -> None:
 
 def test_process_ingestion_job_empty_parse_marks_failed(settings) -> None:
     tenant_id = uuid4()
-    job = SimpleNamespace(
-        id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3
-    )
+    job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3)
     doc = SimpleNamespace(
         id=job.document_id,
         status="queued",
@@ -284,9 +274,7 @@ def test_process_ingestion_job_empty_parse_marks_failed(settings) -> None:
     service = _service(settings)
     service.jobs = _Jobs(job)
     service.documents = _Docs(doc)
-    service.parser = SimpleNamespace(
-        parse_bytes=lambda **kwargs: SimpleNamespace(text="   ")
-    )
+    service.parser = SimpleNamespace(parse_bytes=lambda **kwargs: SimpleNamespace(text="   "))
 
     service.process_ingestion_job(tenant_id=tenant_id, job_id=uuid4())
     assert "failed" in service.documents.status_calls
@@ -294,9 +282,7 @@ def test_process_ingestion_job_empty_parse_marks_failed(settings) -> None:
 
 def test_process_ingestion_job_no_parts_marks_failed(settings) -> None:
     tenant_id = uuid4()
-    job = SimpleNamespace(
-        id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3
-    )
+    job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3)
     doc = SimpleNamespace(
         id=job.document_id,
         status="queued",
@@ -316,9 +302,7 @@ def test_process_ingestion_job_no_parts_marks_failed(settings) -> None:
 
 def test_process_ingestion_job_all_sanitized_out_marks_failed(settings) -> None:
     tenant_id = uuid4()
-    job = SimpleNamespace(
-        id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3
-    )
+    job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3)
     doc = SimpleNamespace(
         id=job.document_id,
         status="queued",
@@ -340,9 +324,7 @@ def test_process_ingestion_job_all_sanitized_out_marks_failed(settings) -> None:
 
 def test_process_ingestion_job_storage_error_path(settings) -> None:
     tenant_id = uuid4()
-    job = SimpleNamespace(
-        id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=1
-    )
+    job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=1)
     doc = SimpleNamespace(
         id=job.document_id,
         status="queued",
@@ -357,9 +339,7 @@ def test_process_ingestion_job_storage_error_path(settings) -> None:
 
     def _raise_storage(**kwargs):  # type: ignore[no-untyped-def]
         _ = kwargs
-        raise StorageServiceError(
-            code="STORAGE_UNAVAILABLE", message="down", retryable=False
-        )
+        raise StorageServiceError(code="STORAGE_UNAVAILABLE", message="down", retryable=False)
 
     service.storage = SimpleNamespace(get_bytes=_raise_storage)
     service.process_ingestion_job(tenant_id=tenant_id, job_id=uuid4())
@@ -368,9 +348,7 @@ def test_process_ingestion_job_storage_error_path(settings) -> None:
 
 def test_process_ingestion_job_unhandled_exception_triggers_retryable(settings) -> None:
     tenant_id = uuid4()
-    job = SimpleNamespace(
-        id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3
-    )
+    job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3)
     doc = SimpleNamespace(
         id=job.document_id,
         status="queued",
@@ -394,14 +372,10 @@ def test_validate_upload_branches_and_make_storage_key(settings) -> None:
     service = _service(settings)
 
     with pytest.raises(ApiError):
-        service._validate_upload(
-            filename="   ", content_type="application/pdf", payload=b"x"
-        )
+        service._validate_upload(filename="   ", content_type="application/pdf", payload=b"x")
 
     with pytest.raises(ApiError):
-        service._validate_upload(
-            filename="x.pdf", content_type="application/zip", payload=b"x"
-        )
+        service._validate_upload(filename="x.pdf", content_type="application/zip", payload=b"x")
 
     with pytest.raises(ApiError):
         service._validate_upload(
@@ -549,9 +523,7 @@ def test_validate_upload_accepts_supported_declared_mime_when_signature_mismatch
     )
 
 
-def test_enqueue_ingestion_queue_unavailable(
-    settings, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_enqueue_ingestion_queue_unavailable(settings, monkeypatch: pytest.MonkeyPatch) -> None:
     service = _service(settings)
 
     class _Task:
@@ -580,9 +552,7 @@ def test_upload_document_storage_error_maps_to_api_error(settings) -> None:
     )
     service.storage = SimpleNamespace(
         put_bytes=lambda **kwargs: (_ for _ in ()).throw(
-            StorageServiceError(
-                code="STORAGE_UNAVAILABLE", message="down", retryable=True
-            )
+            StorageServiceError(code="STORAGE_UNAVAILABLE", message="down", retryable=True)
         )
     )
     service.documents = SimpleNamespace(

@@ -29,7 +29,9 @@ def upgrade() -> None:
     op.add_column("agent_memory", sa.Column("conversation_id", sa.String(), nullable=True))
     op.add_column("agent_memory", sa.Column("expires_at", sa.DateTime(), nullable=True))
     op.create_index("ix_agent_memory_status", "agent_memory", ["status"], unique=False)
-    op.create_index("ix_agent_memory_conversation_id", "agent_memory", ["conversation_id"], unique=False)
+    op.create_index(
+        "ix_agent_memory_conversation_id", "agent_memory", ["conversation_id"], unique=False
+    )
     op.create_index("ix_agent_memory_expires_at", "agent_memory", ["expires_at"], unique=False)
 
     op.create_table(
@@ -37,16 +39,36 @@ def upgrade() -> None:
         sa.Column("id", sa.String(), nullable=False),
         sa.Column("tenant_id", sa.String(), nullable=False),
         sa.Column("user_id", sa.String(), nullable=False),
-        sa.Column("automatic_capture_enabled", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("review_inferred_memories", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("memory_retrieval_enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "automatic_capture_enabled",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
+        ),
+        sa.Column(
+            "review_inferred_memories", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "memory_retrieval_enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("tenant_id", "user_id", name="uq_agent_memory_preferences_owner"),
     )
-    op.create_index("ix_agent_memory_preferences_tenant_id", "agent_memory_preferences", ["tenant_id"], unique=False)
-    op.create_index("ix_agent_memory_preferences_user_id", "agent_memory_preferences", ["user_id"], unique=False)
+    op.create_index(
+        "ix_agent_memory_preferences_tenant_id",
+        "agent_memory_preferences",
+        ["tenant_id"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_agent_memory_preferences_user_id", "agent_memory_preferences", ["user_id"], unique=False
+    )
 
 
 def downgrade() -> None:

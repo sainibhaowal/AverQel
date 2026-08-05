@@ -128,8 +128,4 @@ def decode_live_event(payload: str) -> tuple[int, str] | None:
 def frames_after(
     events: Iterable[DeepSpaceRunEvent], *, after_sequence: int = 0
 ) -> list[tuple[int, str]]:
-    return [
-        (event.sequence, event.frame)
-        for event in events
-        if event.sequence > after_sequence
-    ]
+    return [(event.sequence, event.frame) for event in events if event.sequence > after_sequence]

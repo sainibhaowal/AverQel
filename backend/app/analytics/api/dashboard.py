@@ -31,6 +31,4 @@ def get_dashboard_overview(
     db: Session = Depends(get_db),
 ) -> DashboardOverviewResponse:
     service = DashboardService(db)
-    return service.get_overview(
-        tenant_id=tenant_context.tenant_id, user_id=auth.user_id
-    )
+    return service.get_overview(tenant_id=tenant_context.tenant_id, user_id=auth.user_id)

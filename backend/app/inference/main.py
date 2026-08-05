@@ -61,8 +61,5 @@ async def rerank(payload: RerankRequestPayload) -> RerankResponsePayload:
             documents=payload.documents,
         )
     return RerankResponsePayload(
-        results=[
-            RerankItem(index=index, score=score)
-            for index, score in scored[: payload.top_n]
-        ]
+        results=[RerankItem(index=index, score=score) for index, score in scored[: payload.top_n]]
     )

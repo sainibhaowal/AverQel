@@ -38,7 +38,9 @@ def test_mcp_phase2_schema_has_identity_metadata_and_rls(db_session: Session) ->
         "connection_policy_id",
         "catalog_revision",
     }.issubset(server_columns)
-    assert {"user_id", "registry_entry_id", "provider_slug", "granted_scopes"}.issubset(token_columns)
+    assert {"user_id", "registry_entry_id", "provider_slug", "granted_scopes"}.issubset(
+        token_columns
+    )
     assert {
         "tenant_id",
         "user_id",
@@ -54,28 +56,20 @@ def test_mcp_phase2_schema_has_identity_metadata_and_rls(db_session: Session) ->
         "conversation_overrides",
     }.issubset(policy_columns)
 
-    rls_enabled, rls_forced = db_session.execute(
-        text(
-            """
+    rls_enabled, rls_forced = db_session.execute(text("""
             SELECT relrowsecurity, relforcerowsecurity
             FROM pg_class
             WHERE oid = 'mcp_connection_policies'::regclass
-            """
-        )
-    ).one()
+            """)).one()
     assert rls_enabled is True
     assert rls_forced is True
     policy_name = db_session.execute(
-        text(
-            "SELECT policyname FROM pg_policies "
-            "WHERE tablename = 'mcp_connection_policies'"
-        )
+        text("SELECT policyname FROM pg_policies " "WHERE tablename = 'mcp_connection_policies'")
     ).scalar_one()
     assert policy_name == "tenant_isolation_mcp_connection_policies"
 
     token_nullable = {
-        column["name"]: column["nullable"]
-        for column in inspector.get_columns("mcp_oauth_tokens")
+        column["name"]: column["nullable"] for column in inspector.get_columns("mcp_oauth_tokens")
     }
     assert token_nullable["user_id"] is False
     assert token_nullable["secret_ciphertext"] is False

@@ -14,9 +14,13 @@ test.describe("DeepSpace durable runtime", () => {
     "Set DEEPSPACE_E2E_ENABLED=1 and provide staging storage state or a short-lived staging token.",
   );
 
-  test("rehydrates the durable runtime surface after a reconnect", async ({ authenticatedPage }) => {
+  test("rehydrates the durable runtime surface after a reconnect", async ({
+    authenticatedPage,
+  }) => {
     await authenticatedPage.goto("/dashboard/deepspace");
     await expect(authenticatedPage.getByText(/DeepSpace/i).first()).toBeVisible();
-    await expect(authenticatedPage.getByText(/Native Durable Runtime|Mission Canvas/i).first()).toBeVisible();
+    await expect(
+      authenticatedPage.getByText(/Native Durable Runtime|Mission Canvas/i).first(),
+    ).toBeVisible();
   });
 });

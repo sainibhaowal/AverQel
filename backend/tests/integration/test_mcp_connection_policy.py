@@ -11,7 +11,7 @@ def test_connection_policy_routes_enforce_owner_and_scope_boundaries(
     )
 
 
-def test_connection_policy_rejects_unknown_scoped_resource(
-    client, db_session, seed_user
-) -> None:
-    phase4_tests.test_phase4_missing_scope_owner_cannot_change_override(client, db_session, seed_user)
+def test_connection_policy_rejects_unknown_scoped_resource(client, db_session, seed_user) -> None:
+    phase4_tests.test_phase4_missing_scope_owner_cannot_change_override(
+        client, db_session, seed_user
+    )

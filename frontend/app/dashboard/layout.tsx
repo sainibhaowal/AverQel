@@ -126,10 +126,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isDeepSpaceRoute =
     pathname === "/dashboard/deepspace" || pathname.startsWith("/dashboard/deepspace/");
   const isCollectionsRoute = pathname.includes("/collections");
-  const isFullHeightRoute =
-    isQueryRoute ||
-    isDeepSpaceRoute ||
-    isCollectionsRoute;
+  const isFullHeightRoute = isQueryRoute || isDeepSpaceRoute || isCollectionsRoute;
   const hasAdminAccess = user ? hasAdminRole(user.roles) : false;
 
   const navItems = useMemo(() => {

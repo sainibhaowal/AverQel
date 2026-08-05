@@ -262,12 +262,11 @@ describe("TimelineStep Model", () => {
     );
 
     const timeline = state.messages.find((message) => message.id === assistantId)?.timeline;
-    expect(timeline?.map((step) => step.type)).toEqual([
-      "thinking",
-      "tool_call",
-      "thinking",
-    ]);
-    expect(timeline?.[0]).toMatchObject({ details: "I will plan the task list.", status: "completed" });
+    expect(timeline?.map((step) => step.type)).toEqual(["thinking", "tool_call", "thinking"]);
+    expect(timeline?.[0]).toMatchObject({
+      details: "I will plan the task list.",
+      status: "completed",
+    });
     expect(timeline?.[1]).toMatchObject({
       toolName: "todo_write",
       toolInputStream: '{"tasks":[',

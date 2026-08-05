@@ -6,7 +6,7 @@ describe("Mermaid error SVG guard", () => {
   it("rejects Mermaid's parser-error SVG output", () => {
     expect(
       isMermaidErrorSvg(
-        '<svg><text>Syntax error in text</text><text>mermaid version 11.13.0</text></svg>',
+        "<svg><text>Syntax error in text</text><text>mermaid version 11.13.0</text></svg>",
       ),
     ).toBe(true);
   });

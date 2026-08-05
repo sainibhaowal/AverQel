@@ -34,7 +34,9 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[index]
 
 
-def request_json(client: httpx.Client, method: str, url: str, *, token: str | None = None, **kwargs: object) -> tuple[httpx.Response, dict[str, object]]:
+def request_json(
+    client: httpx.Client, method: str, url: str, *, token: str | None = None, **kwargs: object
+) -> tuple[httpx.Response, dict[str, object]]:
     headers = dict(kwargs.pop("headers", {}) or {})
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -48,7 +50,9 @@ def request_json(client: httpx.Client, method: str, url: str, *, token: str | No
 
 def runtime_profile(base_url: str, identity: Identity) -> dict[str, object]:
     with httpx.Client(base_url=base_url, timeout=30.0) as client:
-        response, payload = request_json(client, "GET", "/api/v1/deepspace/chats/runtime", token=identity.token)
+        response, payload = request_json(
+            client, "GET", "/api/v1/deepspace/chats/runtime", token=identity.token
+        )
     if response.status_code != 200:
         raise RuntimeError(f"runtime profile failed: {response.status_code} {payload}")
     return payload
@@ -103,15 +107,40 @@ def graph_for(index: int) -> dict[str, object]:
     objective = f"Synthetic staging objective {index}: return deterministic evidence."
     return {
         "nodes": [
-            {"node_key": "planner", "node_type": "planner", "prompt": f"Plan safely: {objective}", "priority": 110},
-            {"node_key": "main_chat", "node_type": "executor", "prompt": objective, "depends_on": ["planner"], "priority": 100},
-            {"node_key": "critic", "node_type": "analysis", "prompt": f"Critique evidence for: {objective}", "depends_on": ["main_chat"], "priority": 90},
-            {"node_key": "verification", "node_type": "verifier", "prompt": f"Verify completion evidence for: {objective}", "depends_on": ["critic"], "priority": 80},
+            {
+                "node_key": "planner",
+                "node_type": "planner",
+                "prompt": f"Plan safely: {objective}",
+                "priority": 110,
+            },
+            {
+                "node_key": "main_chat",
+                "node_type": "executor",
+                "prompt": objective,
+                "depends_on": ["planner"],
+                "priority": 100,
+            },
+            {
+                "node_key": "critic",
+                "node_type": "analysis",
+                "prompt": f"Critique evidence for: {objective}",
+                "depends_on": ["main_chat"],
+                "priority": 90,
+            },
+            {
+                "node_key": "verification",
+                "node_type": "verifier",
+                "prompt": f"Verify completion evidence for: {objective}",
+                "depends_on": ["critic"],
+                "priority": 80,
+            },
         ]
     }
 
 
-def create_run(base_url: str, identity: Identity, conversation_id: str, index: int) -> dict[str, object]:
+def create_run(
+    base_url: str, identity: Identity, conversation_id: str, index: int
+) -> dict[str, object]:
     started = time.perf_counter()
     with httpx.Client(base_url=base_url, timeout=30.0) as client:
         response, payload = request_json(
@@ -147,11 +176,15 @@ def create_run(base_url: str, identity: Identity, conversation_id: str, index: i
     }
 
 
-def wait_for_run(base_url: str, identity: Identity, run_id: str, timeout_seconds: float) -> dict[str, object]:
+def wait_for_run(
+    base_url: str, identity: Identity, run_id: str, timeout_seconds: float
+) -> dict[str, object]:
     deadline = time.monotonic() + timeout_seconds
     with httpx.Client(base_url=base_url, timeout=30.0) as client:
         while time.monotonic() < deadline:
-            response, payload = request_json(client, "GET", f"/api/v1/deepspace/runs/{run_id}", token=identity.token)
+            response, payload = request_json(
+                client, "GET", f"/api/v1/deepspace/runs/{run_id}", token=identity.token
+            )
             if response.status_code != 200:
                 return {"run_id": run_id, "status": "http_error", "payload": payload}
             status = str(payload.get("status") or "")
@@ -161,9 +194,13 @@ def wait_for_run(base_url: str, identity: Identity, run_id: str, timeout_seconds
     return {"run_id": run_id, "status": "timeout"}
 
 
-def read_sse_sequences(client: httpx.Client, url: str, *, token: str, stop_after: int | None = None) -> list[int]:
+def read_sse_sequences(
+    client: httpx.Client, url: str, *, token: str, stop_after: int | None = None
+) -> list[int]:
     sequences: list[int] = []
-    with client.stream("GET", url, headers={"Authorization": f"Bearer {token}"}, timeout=60.0) as response:
+    with client.stream(
+        "GET", url, headers={"Authorization": f"Bearer {token}"}, timeout=60.0
+    ) as response:
         response.raise_for_status()
         for line in response.iter_lines():
             if not line.startswith("id: "):
@@ -197,11 +234,22 @@ def list_all_events(client: httpx.Client, base_path: str, *, token: str) -> list
 
 def reconnect_check(base_url: str, identity: Identity, run_id: str) -> dict[str, object]:
     with httpx.Client(base_url=base_url, timeout=60.0) as client:
-        all_payload = list_all_events(client, f"/api/v1/deepspace/runs/{run_id}/events", token=identity.token)
+        all_payload = list_all_events(
+            client, f"/api/v1/deepspace/runs/{run_id}/events", token=identity.token
+        )
         expected = [int(item["sequence"]) for item in all_payload]
-        first = read_sse_sequences(client, f"/api/v1/deepspace/runs/{run_id}/stream?after_sequence=0", token=identity.token, stop_after=min(3, len(expected)))
+        first = read_sse_sequences(
+            client,
+            f"/api/v1/deepspace/runs/{run_id}/stream?after_sequence=0",
+            token=identity.token,
+            stop_after=min(3, len(expected)),
+        )
         cursor = first[-1] if first else 0
-        second = read_sse_sequences(client, f"/api/v1/deepspace/runs/{run_id}/stream?after_sequence={cursor}", token=identity.token)
+        second = read_sse_sequences(
+            client,
+            f"/api/v1/deepspace/runs/{run_id}/stream?after_sequence={cursor}",
+            token=identity.token,
+        )
         combined = first + second
         return {
             "expected_count": len(expected),
@@ -260,7 +308,13 @@ def process_metrics(pids: list[int]) -> dict[str, object]:
         for pid in pids:
             try:
                 process = psutil.Process(pid)
-                samples.append({"pid": pid, "cpu_percent": process.cpu_percent(interval=0.05), "rss_bytes": process.memory_info().rss})
+                samples.append(
+                    {
+                        "pid": pid,
+                        "cpu_percent": process.cpu_percent(interval=0.05),
+                        "rss_bytes": process.memory_info().rss,
+                    }
+                )
             except psutil.Error:
                 samples.append({"pid": pid, "error": "unavailable"})
         return {"processes": samples}
@@ -270,7 +324,15 @@ def process_metrics(pids: list[int]) -> dict[str, object]:
 
 def approval_probe(base_url: str, identity: Identity, timeout_seconds: float) -> dict[str, object]:
     key = f"staging-approval-{uuid.uuid4().hex}"
-    graph = {"nodes": [{"node_key": "approval_probe", "node_type": "approval", "prompt": "Approve the staging recovery probe."}]}
+    graph = {
+        "nodes": [
+            {
+                "node_key": "approval_probe",
+                "node_type": "approval",
+                "prompt": "Approve the staging recovery probe.",
+            }
+        ]
+    }
     with httpx.Client(base_url=base_url, timeout=30.0) as client:
         response, payload = request_json(
             client,
@@ -281,28 +343,47 @@ def approval_probe(base_url: str, identity: Identity, timeout_seconds: float) ->
             json={
                 "objective": "Staging approval pause and resume probe.",
                 "graph": graph,
-                "execution_contract": {"require_verifier_before_finish": False, "budget": {"max_external_side_effects_per_epoch": 0}},
+                "execution_contract": {
+                    "require_verifier_before_finish": False,
+                    "budget": {"max_external_side_effects_per_epoch": 0},
+                },
             },
         )
         if response.status_code not in {200, 201}:
-            return {"ok": False, "stage": "create", "status_code": response.status_code, "payload": payload}
+            return {
+                "ok": False,
+                "stage": "create",
+                "status_code": response.status_code,
+                "payload": payload,
+            }
         run_id = str(payload.get("id") or "")
         paused = wait_for_run(base_url, identity, run_id, timeout_seconds)
-        events = list_all_events(client, f"/api/v1/deepspace/runs/{run_id}/events", token=identity.token)
-        approval_id = next(
-            str((event.get("payload_json") or {}).get("approval_id"))
-            for event in events
-            if event.get("event_type") in {"approval_requested", "run_paused_for_approval"}
-            and isinstance(event.get("payload_json"), dict)
-            and (event.get("payload_json") or {}).get("approval_id")
-        ) if any(
-            event.get("event_type") in {"approval_requested", "run_paused_for_approval"}
-            and isinstance(event.get("payload_json"), dict)
-            and (event.get("payload_json") or {}).get("approval_id")
-            for event in events
-        ) else ""
+        events = list_all_events(
+            client, f"/api/v1/deepspace/runs/{run_id}/events", token=identity.token
+        )
+        approval_id = (
+            next(
+                str((event.get("payload_json") or {}).get("approval_id"))
+                for event in events
+                if event.get("event_type") in {"approval_requested", "run_paused_for_approval"}
+                and isinstance(event.get("payload_json"), dict)
+                and (event.get("payload_json") or {}).get("approval_id")
+            )
+            if any(
+                event.get("event_type") in {"approval_requested", "run_paused_for_approval"}
+                and isinstance(event.get("payload_json"), dict)
+                and (event.get("payload_json") or {}).get("approval_id")
+                for event in events
+            )
+            else ""
+        )
         if paused.get("status") != "awaiting_approval" or not approval_id:
-            return {"ok": False, "run_id": run_id, "paused_status": paused.get("status"), "approval_id": approval_id}
+            return {
+                "ok": False,
+                "run_id": run_id,
+                "paused_status": paused.get("status"),
+                "approval_id": approval_id,
+            }
         resolved, resolved_payload = request_json(
             client,
             "POST",
@@ -324,37 +405,69 @@ def approval_probe(base_url: str, identity: Identity, timeout_seconds: float) ->
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:18000")
-    parser.add_argument("--count", type=int, default=100, help="Synthetic users/runs; production validation target is 100-500.")
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=100,
+        help="Synthetic users/runs; production validation target is 100-500.",
+    )
     parser.add_argument("--concurrency", type=int, default=100)
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--database-url", default=None)
     parser.add_argument("--redis-url", default=None)
     parser.add_argument("--provider-mode", choices=("real", "mock"), default="real")
-    parser.add_argument("--process-pids", default="", help="Comma-separated API/worker PIDs for CPU/RSS samples.")
-    parser.add_argument("--kill-worker-pid", type=int, default=None, help="Explicitly terminate this staging worker after run creation.")
-    parser.add_argument("--api-restart-command", default=None, help="Explicit staging API restart command, run after creation.")
+    parser.add_argument(
+        "--process-pids", default="", help="Comma-separated API/worker PIDs for CPU/RSS samples."
+    )
+    parser.add_argument(
+        "--kill-worker-pid",
+        type=int,
+        default=None,
+        help="Explicitly terminate this staging worker after run creation.",
+    )
+    parser.add_argument(
+        "--api-restart-command",
+        default=None,
+        help="Explicit staging API restart command, run after creation.",
+    )
     parser.add_argument("--skip-approval-probe", action="store_true")
     args = parser.parse_args()
 
     if not 1 <= args.count <= 500:
-        raise SystemExit("--count must be between 1 and 500; use 100-500 for production staging validation")
+        raise SystemExit(
+            "--count must be between 1 and 500; use 100-500 for production staging validation"
+        )
     if not 1 <= args.concurrency <= args.count:
         raise SystemExit("--concurrency must be between 1 and --count")
     if args.provider_mode == "mock" and args.count >= 50:
         # Mock traffic can validate transport and persistence, but it must be
         # explicitly marked and cannot be mistaken for provider certification.
-        print(json.dumps({"warning": "mock provider mode does not certify external provider capacity"}))
+        print(
+            json.dumps(
+                {"warning": "mock provider mode does not certify external provider capacity"}
+            )
+        )
 
     identity = create_identity(args.base_url)
     provider = runtime_profile(args.base_url, identity)
-    if args.provider_mode == "real" and str(provider.get("provider_type") or "").lower() in {"mock", "ollama", "vllm", "lmstudio"}:
-        raise SystemExit(f"real provider validation requested but runtime reports local/mock provider: {provider}")
+    if args.provider_mode == "real" and str(provider.get("provider_type") or "").lower() in {
+        "mock",
+        "ollama",
+        "vllm",
+        "lmstudio",
+    }:
+        raise SystemExit(
+            f"real provider validation requested but runtime reports local/mock provider: {provider}"
+        )
     conversation_ids = create_conversations(args.base_url, identity, args.count)
     started = time.perf_counter()
     results: list[dict[str, object]] = []
     lock = Lock()
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-        futures = [pool.submit(create_run, args.base_url, identity, conversation_ids[index], index) for index in range(args.count)]
+        futures = [
+            pool.submit(create_run, args.base_url, identity, conversation_ids[index], index)
+            for index in range(args.count)
+        ]
         for future in as_completed(futures):
             with lock:
                 results.append(future.result())
@@ -365,21 +478,38 @@ def main() -> None:
         worker_kill = {"pid": args.kill_worker_pid, "signal": "SIGTERM", "sent": True}
     api_restart = None
     if args.api_restart_command:
-        completed_restart = subprocess.run(shlex.split(args.api_restart_command), check=False, capture_output=True, text=True)
-        api_restart = {"command": args.api_restart_command, "returncode": completed_restart.returncode, "ok": completed_restart.returncode == 0}
+        completed_restart = subprocess.run(
+            shlex.split(args.api_restart_command), check=False, capture_output=True, text=True
+        )
+        api_restart = {
+            "command": args.api_restart_command,
+            "returncode": completed_restart.returncode,
+            "ok": completed_restart.returncode == 0,
+        }
 
     create_latencies = [float(item["latency_ms"]) for item in results]
     created = [item for item in results if item["status_code"] in {200, 201} and item["run_id"]]
     runs = [str(item["run_id"]) for item in created]
     final_states: list[dict[str, object]] = []
     with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
-        futures = [pool.submit(wait_for_run, args.base_url, identity, run_id, args.timeout) for run_id in runs]
+        futures = [
+            pool.submit(wait_for_run, args.base_url, identity, run_id, args.timeout)
+            for run_id in runs
+        ]
         for future in as_completed(futures):
             final_states.append(future.result())
 
     completed = [item for item in final_states if item.get("status") == "completed"]
-    reconnect = reconnect_check(args.base_url, identity, runs[0]) if runs else {"ok": False, "reason": "no runs"}
-    approval = {"skipped": True} if args.skip_approval_probe else approval_probe(args.base_url, identity, min(args.timeout, 120.0))
+    reconnect = (
+        reconnect_check(args.base_url, identity, runs[0])
+        if runs
+        else {"ok": False, "reason": "no runs"}
+    )
+    approval = (
+        {"skipped": True}
+        if args.skip_approval_probe
+        else approval_probe(args.base_url, identity, min(args.timeout, 120.0))
+    )
     if runs:
         with httpx.Client(base_url=args.base_url, timeout=30.0) as client:
             rehydrate_response, rehydrated = request_json(
@@ -391,25 +521,59 @@ def main() -> None:
     else:
         rehydrate_response, rehydrated = None, {}
     summary = {
-        "staging": {"base_url": args.base_url, "provider_mode": args.provider_mode, "provider": provider, "isolated_data_required": True},
+        "staging": {
+            "base_url": args.base_url,
+            "provider_mode": args.provider_mode,
+            "provider": provider,
+            "isolated_data_required": True,
+        },
         "identity": {"tenant_id": identity.tenant_id, "user_id": identity.user_id},
         "requested_runs": args.count,
         "concurrent_create_workers": args.concurrency,
         "create_success_rate": len(created) / args.count if args.count else 0.0,
-        "create_latency_ms": {"p50": percentile(create_latencies, 0.50), "p95": percentile(create_latencies, 0.95), "p99": percentile(create_latencies, 0.99), "max": max(create_latencies or [0.0])},
-        "final": {"completed": len(completed), "failed": sum(item.get("status") == "failed" for item in final_states), "awaiting_approval": sum(item.get("status") == "awaiting_approval" for item in final_states), "timeouts": sum(item.get("status") == "timeout" for item in final_states)},
+        "create_latency_ms": {
+            "p50": percentile(create_latencies, 0.50),
+            "p95": percentile(create_latencies, 0.95),
+            "p99": percentile(create_latencies, 0.99),
+            "max": max(create_latencies or [0.0]),
+        },
+        "final": {
+            "completed": len(completed),
+            "failed": sum(item.get("status") == "failed" for item in final_states),
+            "awaiting_approval": sum(
+                item.get("status") == "awaiting_approval" for item in final_states
+            ),
+            "timeouts": sum(item.get("status") == "timeout" for item in final_states),
+        },
         "run_wall_seconds": time.perf_counter() - started,
         "sse_reconnect": reconnect,
         "approval_pause_resume": approval,
-        "rehydrate": {"status_code": rehydrate_response.status_code if rehydrate_response else None, "message_count": len(rehydrated.get("messages") or []), "has_run": bool(rehydrated.get("run"))},
+        "rehydrate": {
+            "status_code": rehydrate_response.status_code if rehydrate_response else None,
+            "message_count": len(rehydrated.get("messages") or []),
+            "has_run": bool(rehydrated.get("run")),
+        },
         "database": db_metrics(args.database_url) if args.database_url else None,
         "redis": redis_metrics(args.redis_url),
-        "processes": process_metrics([int(pid.strip()) for pid in args.process_pids.split(",") if pid.strip()]) if args.process_pids else None,
+        "processes": (
+            process_metrics(
+                [int(pid.strip()) for pid in args.process_pids.split(",") if pid.strip()]
+            )
+            if args.process_pids
+            else None
+        ),
         "worker_kill": worker_kill,
         "api_restart": api_restart,
     }
     print(json.dumps(summary, indent=2, sort_keys=True))
-    if not (len(created) == args.count and len(completed) == args.count and bool(reconnect.get("ok")) and bool(approval.get("ok") or approval.get("skipped")) and rehydrate_response is not None and rehydrate_response.status_code == 200):
+    if not (
+        len(created) == args.count
+        and len(completed) == args.count
+        and bool(reconnect.get("ok"))
+        and bool(approval.get("ok") or approval.get("skipped"))
+        and rehydrate_response is not None
+        and rehydrate_response.status_code == 200
+    ):
         raise SystemExit(1)
 
 

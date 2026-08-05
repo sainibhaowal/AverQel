@@ -260,9 +260,7 @@ def observe_worker_stage(stage: str) -> Generator[None, None, None]:
         WORKER_JOB_TRANSITIONS_TOTAL.labels(stage=stage_label, status="error").inc()
         raise
     finally:
-        WORKER_STAGE_DURATION_SECONDS.labels(stage=stage_label).observe(
-            time.perf_counter() - start
-        )
+        WORKER_STAGE_DURATION_SECONDS.labels(stage=stage_label).observe(time.perf_counter() - start)
 
 
 @contextmanager
@@ -290,9 +288,7 @@ def observe_query_pipeline_segment(segment: str) -> Generator[None, None, None]:
 
 
 @contextmanager
-def observe_embedding_provider(
-    provider: str, model: str
-) -> Generator[None, None, None]:
+def observe_embedding_provider(provider: str, model: str) -> Generator[None, None, None]:
     provider_label = _safe_label(provider)
     model_label = _safe_label(model)
     start = time.perf_counter()

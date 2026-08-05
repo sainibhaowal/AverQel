@@ -150,9 +150,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error_handler(
-        _: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
         logger.warning(
             "Request validation failed.",
             extra={
@@ -171,11 +169,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
         code = _map_http_exception_code(exc.status_code)
-        detail = (
-            exc.detail
-            if isinstance(exc.detail, str) and exc.detail.strip()
-            else "HTTP error."
-        )
+        detail = exc.detail if isinstance(exc.detail, str) and exc.detail.strip() else "HTTP error."
 
         logger.info(
             "Handled HTTPException.",

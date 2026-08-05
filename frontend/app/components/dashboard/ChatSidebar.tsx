@@ -328,9 +328,11 @@ export default function ChatSidebar({
                       {conv.title}
                     </p>
                     {conv.live_status ? (
-                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-500">
+                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold tracking-[0.12em] text-emerald-500 uppercase">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-                        {conv.live_status === "awaiting_approval" ? "Needs approval" : conv.live_status}
+                        {conv.live_status === "awaiting_approval"
+                          ? "Needs approval"
+                          : conv.live_status}
                       </span>
                     ) : null}
                     <p

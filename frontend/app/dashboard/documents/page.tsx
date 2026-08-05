@@ -63,27 +63,15 @@ const PIPELINE_STAGE_ORDER: Record<string, number> = {
   dead_lettered: 5,
 };
 
-const TERMINAL_DOCUMENT_STATUSES = new Set([
-  "completed",
-  "indexed",
-  "failed",
-  "dead_lettered",
-]);
+const TERMINAL_DOCUMENT_STATUSES = new Set(["completed", "indexed", "failed", "dead_lettered"]);
 
-function mergeDocumentStatus(
-  current: Document,
-  incoming: DocumentStatusUpdate,
-): Document {
+function mergeDocumentStatus(current: Document, incoming: DocumentStatusUpdate): Document {
   const currentTime = current.updated_at ? Date.parse(current.updated_at) : NaN;
   const incomingTime = incoming.updated_at ? Date.parse(incoming.updated_at) : NaN;
 
   // Redis events can arrive late. Never let an older event move a document
   // backwards after the authoritative API has reported a newer state.
-  if (
-    Number.isFinite(currentTime) &&
-    Number.isFinite(incomingTime) &&
-    incomingTime < currentTime
-  ) {
+  if (Number.isFinite(currentTime) && Number.isFinite(incomingTime) && incomingTime < currentTime) {
     return current;
   }
 
@@ -100,8 +88,7 @@ function mergeDocumentStatus(
 
   if (
     incomingStatus !== currentStatus &&
-    (PIPELINE_STAGE_ORDER[incomingStatus] ?? 0) <
-      (PIPELINE_STAGE_ORDER[currentStatus] ?? 0)
+    (PIPELINE_STAGE_ORDER[incomingStatus] ?? 0) < (PIPELINE_STAGE_ORDER[currentStatus] ?? 0)
   ) {
     return current;
   }
@@ -396,7 +383,9 @@ export default function DocumentsPage() {
     setDocumentActionBusy(true);
     try {
       if (action.type === "delete") {
-        const res = (await fetchWithAuth(`/documents/${action.id}`, { method: "DELETE" })) as Response;
+        const res = (await fetchWithAuth(`/documents/${action.id}`, {
+          method: "DELETE",
+        })) as Response;
         if (res.ok) {
           setDocuments((prev) => prev.filter((d) => d.document_id !== action.id));
           toast.success(`"${action.filename}" deleted.`);
@@ -538,7 +527,7 @@ export default function DocumentsPage() {
                         <div className="min-w-0">
                           <Link
                             href={`/dashboard/documents/${doc.document_id}`}
-                            className="text-foreground hover:text-primary focus-visible:ring-primary/50 block truncate text-sm leading-tight font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                            className="text-foreground hover:text-primary focus-visible:ring-primary/50 block truncate text-sm leading-tight font-bold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                             aria-label={`Open ${doc.filename}`}
                           >
                             {doc.filename}
@@ -654,7 +643,7 @@ export default function DocumentsPage() {
                     <div className="min-w-0">
                       <Link
                         href={`/dashboard/documents/${doc.document_id}`}
-                        className="text-foreground hover:text-primary focus-visible:ring-primary/50 block truncate text-sm leading-tight font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                        className="text-foreground hover:text-primary focus-visible:ring-primary/50 block truncate text-sm leading-tight font-bold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                         aria-label={`Open ${doc.filename}`}
                       >
                         {doc.filename}
@@ -763,228 +752,233 @@ export default function DocumentsPage() {
       />
 
       {/* Raw Document Viewer Drawer */}
-      {mounted && typeof document !== "undefined" && createPortal(
-        <AnimatePresence>
-          {rawViewerTarget && (
-            <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={closeRawViewer}
-                className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
-              />
-              <motion.div
-                ref={drawerRef}
-                initial={{ x: "100%" }}
-                animate={{ x: 0 }}
-                exit={{ x: "100%" }}
-                onMouseUp={handleTextSelection}
-                transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                className="border-glass-border/30 bg-surface-0 !fixed !top-0 !right-0 !bottom-0 !left-auto !z-[70] !m-0 flex !h-[100svh] w-full flex-col overflow-hidden !rounded-none border-l shadow-[-20px_0_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl sm:max-w-[75vw] xl:max-w-[50vw]"
-              >
-                <AnimatePresence>
-                  {selection && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.8, y: 10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.8, y: 10 }}
-                      style={{
-                        position: "fixed",
-                        left: selection.x,
-                        top: selection.y,
-                        transform: "translateX(-50%) translateY(-100%)",
-                        zIndex: 100,
-                      }}
-                      className="flex items-center gap-2"
-                    >
-                      <button
-                        onClick={() => saveToNotes("selection", selection.text)}
-                        className="bg-primary shadow-primary/20 flex items-center gap-2 rounded-full px-4 py-2 text-[10px] font-black tracking-widest text-white uppercase shadow-xl ring-4 ring-black/50 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
+      {mounted &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {rawViewerTarget && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={closeRawViewer}
+                  className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+                />
+                <motion.div
+                  ref={drawerRef}
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  onMouseUp={handleTextSelection}
+                  transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                  className="border-glass-border/30 bg-surface-0 !fixed !top-0 !right-0 !bottom-0 !left-auto !z-[70] !m-0 flex !h-[100svh] w-full flex-col overflow-hidden !rounded-none border-l shadow-[-20px_0_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl sm:max-w-[75vw] xl:max-w-[50vw]"
+                >
+                  <AnimatePresence>
+                    {selection && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                        style={{
+                          position: "fixed",
+                          left: selection.x,
+                          top: selection.y,
+                          transform: "translateX(-50%) translateY(-100%)",
+                          zIndex: 100,
+                        }}
+                        className="flex items-center gap-2"
                       >
-                        <Plus size={14} className="stroke-[3]" />
-                        <span>Add to Note</span>
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="border-glass-border/60 bg-surface-0/40 flex items-center justify-between border-b px-6 py-5 backdrop-blur-xl">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-primary shadow-primary/20 flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-lg">
-                      <Eye size={22} className="stroke-[2.5]" />
-                    </div>
-                    <div>
-                      <h3 className="text-foreground text-base font-black tracking-tight">
-                        {rawViewerTarget.name}
-                      </h3>
-                      <div className="mt-1 flex items-center gap-1">
                         <button
-                          onClick={() => setViewerMode("raw")}
-                          className={`rounded-md px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-all ${viewerMode === "raw" ? "bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
+                          onClick={() => saveToNotes("selection", selection.text)}
+                          className="bg-primary shadow-primary/20 flex items-center gap-2 rounded-full px-4 py-2 text-[10px] font-black tracking-widest text-white uppercase shadow-xl ring-4 ring-black/50 backdrop-blur-md transition-all hover:scale-105 active:scale-95"
                         >
-                          Source File
+                          <Plus size={14} className="stroke-[3]" />
+                          <span>Add to Note</span>
                         </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="border-glass-border/60 bg-surface-0/40 flex items-center justify-between border-b px-6 py-5 backdrop-blur-xl">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-primary shadow-primary/20 flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-lg">
+                        <Eye size={22} className="stroke-[2.5]" />
+                      </div>
+                      <div>
+                        <h3 className="text-foreground text-base font-black tracking-tight">
+                          {rawViewerTarget.name}
+                        </h3>
+                        <div className="mt-1 flex items-center gap-1">
+                          <button
+                            onClick={() => setViewerMode("raw")}
+                            className={`rounded-md px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-all ${viewerMode === "raw" ? "bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
+                          >
+                            Source File
+                          </button>
+                          <button
+                            onClick={() => setViewerMode("text")}
+                            className={`rounded-md px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-all ${viewerMode === "text" ? "bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
+                          >
+                            Intelligence View
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="bg-foreground/5 flex items-center rounded-xl p-1 backdrop-blur-sm">
                         <button
-                          onClick={() => setViewerMode("text")}
-                          className={`rounded-md px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-all ${viewerMode === "text" ? "bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
+                          onClick={() => saveToNotes("selection")}
+                          disabled={isRawLoading}
+                          className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
+                          title="Copy text from PDF first, then click here"
                         >
-                          Intelligence View
+                          <Plus size={14} className="stroke-[2.5]" />
+                          <span>Paste Selection</span>
+                        </button>
+                        <div className="bg-foreground/10 mx-1 h-4 w-px" />
+                        <button
+                          onClick={() => saveToNotes("full")}
+                          disabled={isRawLoading}
+                          className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
+                        >
+                          {isRawLoading ? (
+                            <RefreshCcw size={14} className="animate-spin" />
+                          ) : (
+                            <Database size={14} className="stroke-[2.5]" />
+                          )}
+                          <span>Save Full Doc</span>
                         </button>
                       </div>
+                      <button
+                        onClick={closeRawViewer}
+                        className="bg-foreground/5 text-foreground/40 hover:text-danger hover:bg-danger/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
+                      >
+                        <X size={22} className="stroke-[2.5]" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="bg-foreground/5 flex items-center rounded-xl p-1 backdrop-blur-sm">
-                      <button
-                        onClick={() => saveToNotes("selection")}
-                        disabled={isRawLoading}
-                        className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
-                        title="Copy text from PDF first, then click here"
-                      >
-                        <Plus size={14} className="stroke-[2.5]" />
-                        <span>Paste Selection</span>
-                      </button>
-                      <div className="bg-foreground/10 mx-1 h-4 w-px" />
-                      <button
-                        onClick={() => saveToNotes("full")}
-                        disabled={isRawLoading}
-                        className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
-                      >
-                        {isRawLoading ? (
-                          <RefreshCcw size={14} className="animate-spin" />
-                        ) : (
-                          <Database size={14} className="stroke-[2.5]" />
-                        )}
-                        <span>Save Full Doc</span>
-                      </button>
-                    </div>
-                    <button
-                      onClick={closeRawViewer}
-                      className="bg-foreground/5 text-foreground/40 hover:text-danger hover:bg-danger/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
-                    >
-                      <X size={22} className="stroke-[2.5]" />
-                    </button>
+                  <div className="relative flex-1 overflow-hidden bg-white/5">
+                    {isRawLoading ? (
+                      <div className="flex h-full flex-col items-center justify-center gap-4">
+                        <div className="bg-primary h-1 w-32 overflow-hidden rounded-full opacity-20">
+                          <motion.div
+                            initial={{ x: "-100%" }}
+                            animate={{ x: "100%" }}
+                            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                            className="bg-primary h-full w-full"
+                          />
+                        </div>
+                        <p className="text-foreground/30 text-[10px] font-bold tracking-widest uppercase">
+                          Fetching Secure Asset...
+                        </p>
+                      </div>
+                    ) : viewerMode === "raw" && rawFileUrl ? (
+                      <iframe
+                        src={rawFileUrl}
+                        className="h-full w-full border-none"
+                        title="Original Document"
+                      />
+                    ) : rawTextContent ? (
+                      <div className="bg-surface-0 h-full overflow-y-auto px-12 py-16">
+                        <div className="mx-auto max-w-3xl">
+                          <div
+                            className="prose prose-invert prose-slate selection:bg-primary/40 max-w-none selection:text-white"
+                            dangerouslySetInnerHTML={{ __html: rawTextContent }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <p className="text-foreground/30 text-xs font-bold tracking-widest uppercase">
+                          No Intelligence View Available
+                        </p>
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div className="relative flex-1 overflow-hidden bg-white/5">
-                  {isRawLoading ? (
-                    <div className="flex h-full flex-col items-center justify-center gap-4">
-                      <div className="bg-primary h-1 w-32 overflow-hidden rounded-full opacity-20">
-                        <motion.div
-                          initial={{ x: "-100%" }}
-                          animate={{ x: "100%" }}
-                          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                          className="bg-primary h-full w-full"
-                        />
-                      </div>
-                      <p className="text-foreground/30 text-[10px] font-bold tracking-widest uppercase">
-                        Fetching Secure Asset...
-                      </p>
-                    </div>
-                  ) : viewerMode === "raw" && rawFileUrl ? (
-                    <iframe
-                      src={rawFileUrl}
-                      className="h-full w-full border-none"
-                      title="Original Document"
-                    />
-                  ) : rawTextContent ? (
-                    <div className="bg-surface-0 h-full overflow-y-auto px-12 py-16">
-                      <div className="mx-auto max-w-3xl">
-                        <div
-                          className="prose prose-invert prose-slate selection:bg-primary/40 max-w-none selection:text-white"
-                          dangerouslySetInnerHTML={{ __html: rawTextContent }}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <p className="text-foreground/30 text-xs font-bold tracking-widest uppercase">
-                        No Intelligence View Available
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
 
-      {mounted && typeof document !== "undefined" && showFormats && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div
-            className="bg-black/60 absolute inset-0 backdrop-blur-sm"
-            onClick={() => setShowFormats(false)}
-          />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-surface-0 border-glass-border relative max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-3xl border p-8 shadow-2xl"
-          >
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <h3 className="text-foreground text-2xl font-extrabold tracking-tight">
-                  Supported Formats
-                </h3>
-                <p className="text-foreground/40 mt-1 text-sm font-medium">
-                  Native pipeline coverage coverage currently available.
-                </p>
+      {mounted &&
+        typeof document !== "undefined" &&
+        showFormats &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowFormats(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-surface-0 border-glass-border relative max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-3xl border p-8 shadow-2xl"
+            >
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h3 className="text-foreground text-2xl font-extrabold tracking-tight">
+                    Supported Formats
+                  </h3>
+                  <p className="text-foreground/40 mt-1 text-sm font-medium">
+                    Native pipeline coverage coverage currently available.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowFormats(false)}
+                  className="bg-foreground/5 text-foreground/40 hover:text-foreground hover:bg-foreground/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
+                >
+                  <X size={20} className="stroke-[2.5]" />
+                </button>
               </div>
-              <button
-                onClick={() => setShowFormats(false)}
-                className="bg-foreground/5 text-foreground/40 hover:text-foreground hover:bg-foreground/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
-              >
-                <X size={20} className="stroke-[2.5]" />
-              </button>
-            </div>
 
-            <div className="border-glass-border bg-foreground/[0.01] max-h-[60vh] overflow-y-auto rounded-2xl border shadow-inner">
-              <table className="w-full border-collapse text-left">
-                <thead className="bg-surface-0/80 border-glass-border sticky top-0 z-10 border-b backdrop-blur-sm">
-                  <tr className="text-foreground/40 text-[10px] font-bold tracking-[0.2em] uppercase">
-                    <th className="px-5 py-4">Extension</th>
-                    <th className="px-5 py-4">Category</th>
-                    <th className="px-5 py-4">Method</th>
-                    <th className="px-5 py-4 text-right">Mode</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-glass-border divide-y">
-                  {(supportedFormats?.items ?? []).map((item) => (
-                    <tr
-                      key={`${item.extension}-${item.extraction_method}`}
-                      className="hover-yellow transition-colors"
-                    >
-                      <td className="text-primary px-5 py-4 font-mono text-[13px] font-bold">
-                        {item.extension}
-                      </td>
-                      <td className="text-foreground/60 px-5 py-4 text-[13px] font-medium">
-                        {item.category}
-                      </td>
-                      <td className="text-foreground/30 px-5 py-4 font-mono text-[11px] italic">
-                        {item.extraction_method}
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <span
-                          className={`theme-pill ${
-                            item.needs_conversion
-                              ? "!text-warning !bg-warning/10 !border-warning/20"
-                              : "!text-primary !bg-primary/10 !border-primary/20"
-                          }`}
-                        >
-                          {item.needs_conversion ? "conversion" : "native"}
-                        </span>
-                      </td>
+              <div className="border-glass-border bg-foreground/[0.01] max-h-[60vh] overflow-y-auto rounded-2xl border shadow-inner">
+                <table className="w-full border-collapse text-left">
+                  <thead className="bg-surface-0/80 border-glass-border sticky top-0 z-10 border-b backdrop-blur-sm">
+                    <tr className="text-foreground/40 text-[10px] font-bold tracking-[0.2em] uppercase">
+                      <th className="px-5 py-4">Extension</th>
+                      <th className="px-5 py-4">Category</th>
+                      <th className="px-5 py-4">Method</th>
+                      <th className="px-5 py-4 text-right">Mode</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </motion.div>
-        </div>,
-        document.body
-      )}
+                  </thead>
+                  <tbody className="divide-glass-border divide-y">
+                    {(supportedFormats?.items ?? []).map((item) => (
+                      <tr
+                        key={`${item.extension}-${item.extraction_method}`}
+                        className="hover-yellow transition-colors"
+                      >
+                        <td className="text-primary px-5 py-4 font-mono text-[13px] font-bold">
+                          {item.extension}
+                        </td>
+                        <td className="text-foreground/60 px-5 py-4 text-[13px] font-medium">
+                          {item.category}
+                        </td>
+                        <td className="text-foreground/30 px-5 py-4 font-mono text-[11px] italic">
+                          {item.extraction_method}
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <span
+                            className={`theme-pill ${
+                              item.needs_conversion
+                                ? "!text-warning !bg-warning/10 !border-warning/20"
+                                : "!text-primary !bg-primary/10 !border-primary/20"
+                            }`}
+                          >
+                            {item.needs_conversion ? "conversion" : "native"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

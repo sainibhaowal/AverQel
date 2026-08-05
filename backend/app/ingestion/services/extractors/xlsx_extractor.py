@@ -28,9 +28,7 @@ class XlsxExtractor(BaseExtractor):
         try:
             workbook = cast(
                 Any,
-                loader(
-                    filename=BytesIO(request.payload), read_only=True, data_only=True
-                ),
+                loader(filename=BytesIO(request.payload), read_only=True, data_only=True),
             )
         except Exception as exc:  # noqa: BLE001
             raise ApiError(
@@ -44,9 +42,7 @@ class XlsxExtractor(BaseExtractor):
         for worksheet in workbook.worksheets:
             sheet_count += 1
             lines.append(f"## Sheet: {worksheet.title}")
-            for row_idx, row in enumerate(
-                worksheet.iter_rows(values_only=True), start=1
-            ):
+            for row_idx, row in enumerate(worksheet.iter_rows(values_only=True), start=1):
                 values: list[str] = []
                 for col_idx, value in enumerate(row, start=1):
                     if value is None:

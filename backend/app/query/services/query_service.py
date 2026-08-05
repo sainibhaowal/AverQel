@@ -66,9 +66,7 @@ _NAMED_FILTER_RE = re.compile(
     r'(?i)\b(?:named|filename|name contains)\s+"([^"]+)"|\b(?:named|filename|name contains)\s+([^\n]+)$'
 )
 _COLLECTION_QUERY_RE = re.compile(r"(?i)\bcollection[s]?\b")
-_QUALITY_QUERY_RE = re.compile(
-    r"(?i)\b(low quality|quality|confidence|yield|quarantined)\b"
-)
+_QUALITY_QUERY_RE = re.compile(r"(?i)\b(low quality|quality|confidence|yield|quarantined)\b")
 _OCR_VISION_QUERY_RE = re.compile(r"(?i)\b(ocr|vision)\b")
 _FAILURE_DIAG_QUERY_RE = re.compile(
     r"(?i)\b(why did .* fail|failed ingestion|failure reason|last error|dead letter)\b"
@@ -234,9 +232,7 @@ class QueryService:
                 data={
                     "message_id": str(generate_uuid7_with_fallback()),
                     "conversation_id": str(resolved_conversation_id),
-                    "started_at": datetime.now(tz=UTC)
-                    .isoformat()
-                    .replace("+00:00", "Z"),
+                    "started_at": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
                     "operation": "new_turn",
                 },
             )
@@ -346,9 +342,7 @@ class QueryService:
                 )
                 self._maybe_commit()
             except Exception:  # noqa: BLE001
-                logger.exception(
-                    "Failed to persist grounded outline assistant response."
-                )
+                logger.exception("Failed to persist grounded outline assistant response.")
             yield AnswerService.encode_sse_event(
                 StreamEvent(event="done", data={"completed": True})
             )
@@ -371,9 +365,7 @@ class QueryService:
                 data={
                     "message_id": str(generate_uuid7_with_fallback()),
                     "conversation_id": str(resolved_conversation_id),
-                    "started_at": datetime.now(tz=UTC)
-                    .isoformat()
-                    .replace("+00:00", "Z"),
+                    "started_at": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
                     "operation": "new_turn",
                 },
             )
@@ -443,9 +435,7 @@ class QueryService:
                     )
                     self._maybe_commit()
                 except Exception:  # noqa: BLE001
-                    logger.exception(
-                        "Failed to persist fallback inventory assistant response."
-                    )
+                    logger.exception("Failed to persist fallback inventory assistant response.")
                 return
             inventory_chunks = self._build_inventory_grounding_chunks(
                 query_text=query_text,
@@ -534,9 +524,7 @@ class QueryService:
                 )
                 self._maybe_commit()
             except Exception:  # noqa: BLE001
-                logger.exception(
-                    "Failed to persist grounded inventory assistant response."
-                )
+                logger.exception("Failed to persist grounded inventory assistant response.")
             yield AnswerService.encode_sse_event(
                 StreamEvent(event="done", data={"completed": True})
             )
@@ -659,9 +647,7 @@ class QueryService:
 
         # Extract provider info for meta event
         selected_candidate = (
-            provider_candidates[0]
-            if provider_candidates
-            else self.answer._env_provider_candidate()
+            provider_candidates[0] if provider_candidates else self.answer._env_provider_candidate()
         )
 
         metadata_event = StreamEvent(
@@ -673,9 +659,7 @@ class QueryService:
                 "confidence": round(confidence, 6),
                 "cached": False,
                 "query_type": (
-                    query_type.value
-                    if hasattr(query_type, "value")
-                    else str(query_type)
+                    query_type.value if hasattr(query_type, "value") else str(query_type)
                 ),
                 "source_count": len(citations),
                 "reasoning_trace": reasoning_trace_data,
@@ -737,24 +721,18 @@ class QueryService:
                 # Extract text payload for persistence accumulation.
                 try:
                     data_line = next(
-                        line
-                        for line in event_str.splitlines()
-                        if line.startswith("data:")
+                        line for line in event_str.splitlines() if line.startswith("data:")
                     )
                     payload = json.loads(data_line[5:].strip())
                     text = str(payload.get("text", ""))
                     if text:
                         full_answer_parts.append(text)
                 except Exception:  # noqa: BLE001
-                    logger.debug(
-                        "Failed to parse streamed delta payload.", exc_info=True
-                    )
+                    logger.debug("Failed to parse streamed delta payload.", exc_info=True)
             elif event_str.startswith("event: replace"):
                 try:
                     data_line = next(
-                        line
-                        for line in event_str.splitlines()
-                        if line.startswith("data:")
+                        line for line in event_str.splitlines() if line.startswith("data:")
                     )
                     payload = json.loads(data_line[5:].strip())
                     replace_content = str(payload.get("content", "")).strip()
@@ -764,9 +742,7 @@ class QueryService:
                     if isinstance(structured_payload, dict):
                         latest_replace_structured = structured_payload
                 except Exception:  # noqa: BLE001
-                    logger.debug(
-                        "Failed to parse streamed replace payload.", exc_info=True
-                    )
+                    logger.debug("Failed to parse streamed replace payload.", exc_info=True)
             elif any(
                 event_str.startswith(f"event: {name}")
                 for name in ("table", "chart", "card", "diagram")
@@ -778,9 +754,7 @@ class QueryService:
                         if line.startswith("event:")
                     )
                     data_line = next(
-                        line
-                        for line in event_str.splitlines()
-                        if line.startswith("data:")
+                        line for line in event_str.splitlines() if line.startswith("data:")
                     )
                     payload = json.loads(data_line[5:].strip())
                     if isinstance(payload, dict):
@@ -792,24 +766,18 @@ class QueryService:
                             },
                         )
                 except Exception:  # noqa: BLE001
-                    logger.debug(
-                        "Failed to parse streamed block payload.", exc_info=True
-                    )
+                    logger.debug("Failed to parse streamed block payload.", exc_info=True)
             elif event_str.startswith("event: thinking"):
                 try:
                     data_line = next(
-                        line
-                        for line in event_str.splitlines()
-                        if line.startswith("data:")
+                        line for line in event_str.splitlines() if line.startswith("data:")
                     )
                     payload = json.loads(data_line[5:].strip())
                     text = str(payload.get("text", ""))
                     if text:
                         streamed_thinking_parts.append(text)
                 except Exception:  # noqa: BLE001
-                    logger.debug(
-                        "Failed to parse streamed thinking payload.", exc_info=True
-                    )
+                    logger.debug("Failed to parse streamed thinking payload.", exc_info=True)
             elif event_str.startswith("event: status"):
                 payload = self._extract_stream_payload(event_str)
                 if payload is not None:
@@ -850,10 +818,7 @@ class QueryService:
                     detail=f"Prepared {len(streamed_blocks)} structured output blocks",
                 ).data,
             )
-        if (
-            not streamed_status_history
-            or streamed_status_history[-1].get("code") != "trace"
-        ):
+        if not streamed_status_history or streamed_status_history[-1].get("code") != "trace":
             streamed_status_history = self._append_status_history_entry(
                 streamed_status_history,
                 self._status_event(
@@ -905,9 +870,7 @@ class QueryService:
 
         try:
             persisted_structured = (
-                latest_replace_structured
-                if isinstance(latest_replace_structured, dict)
-                else None
+                latest_replace_structured if isinstance(latest_replace_structured, dict) else None
             )
             self.chat.add_message(
                 tenant_id=auth.tenant_id,
@@ -944,9 +907,7 @@ class QueryService:
             self._maybe_commit()
         except Exception:  # noqa: BLE001
             logger.exception("Failed to persist streamed assistant response.")
-        yield AnswerService.encode_sse_event(
-            StreamEvent(event="done", data={"completed": True})
-        )
+        yield AnswerService.encode_sse_event(StreamEvent(event="done", data={"completed": True}))
         yield AnswerService.encode_sse_event(terminal_status)
 
     async def regenerate_message_stream(
@@ -1123,9 +1084,7 @@ class QueryService:
                 else "No prior messages in this conversation"
             ),
         )
-        status_history = self._append_status_history_entry(
-            status_history, context_status.data
-        )
+        status_history = self._append_status_history_entry(status_history, context_status.data)
         yield AnswerService.encode_sse_event(context_status)
         retrieval_running_status = self._status_event(
             code="retrieval",
@@ -1179,9 +1138,7 @@ class QueryService:
                 f"Prepared {len(citations)} citations from {len(retrieved_chunks)} retrieved chunks"
             ),
         )
-        status_history = self._append_status_history_entry(
-            status_history, grounding_status.data
-        )
+        status_history = self._append_status_history_entry(status_history, grounding_status.data)
         yield AnswerService.encode_sse_event(grounding_status)
         trace_status = self._status_event(
             code="trace",
@@ -1193,9 +1150,7 @@ class QueryService:
                 f"selected {reasoning_trace_data['chunks_selected']}"
             ),
         )
-        status_history = self._append_status_history_entry(
-            status_history, trace_status.data
-        )
+        status_history = self._append_status_history_entry(status_history, trace_status.data)
         yield AnswerService.encode_sse_event(trace_status)
 
         yield AnswerService.encode_sse_event(
@@ -1208,9 +1163,7 @@ class QueryService:
                     "confidence": round(confidence, 6),
                     "cached": False,
                     "query_type": (
-                        query_type.value
-                        if hasattr(query_type, "value")
-                        else str(query_type)
+                        query_type.value if hasattr(query_type, "value") else str(query_type)
                     ),
                     "source_count": len(citations),
                     "reasoning_trace": reasoning_trace_data,
@@ -1256,54 +1209,40 @@ class QueryService:
             if event_str.startswith("event: delta"):
                 try:
                     data_line = next(
-                        line
-                        for line in event_str.splitlines()
-                        if line.startswith("data:")
+                        line for line in event_str.splitlines() if line.startswith("data:")
                     )
                     payload = json.loads(data_line[5:].strip())
                     text = str(payload.get("text", ""))
                     if text:
                         full_answer_parts.append(text)
                 except Exception:
-                    logger.debug(
-                        "Failed to parse streamed delta payload.", exc_info=True
-                    )
+                    logger.debug("Failed to parse streamed delta payload.", exc_info=True)
             elif event_str.startswith("event: replace"):
                 try:
                     data_line = next(
-                        line
-                        for line in event_str.splitlines()
-                        if line.startswith("data:")
+                        line for line in event_str.splitlines() if line.startswith("data:")
                     )
                     payload = json.loads(data_line[5:].strip())
                     replace_content = str(payload.get("content", "")).strip()
                     if replace_content:
                         latest_replace_content = replace_content
                 except Exception:
-                    logger.debug(
-                        "Failed to parse streamed replace payload.", exc_info=True
-                    )
+                    logger.debug("Failed to parse streamed replace payload.", exc_info=True)
             elif event_str.startswith("event: thinking"):
                 try:
                     data_line = next(
-                        line
-                        for line in event_str.splitlines()
-                        if line.startswith("data:")
+                        line for line in event_str.splitlines() if line.startswith("data:")
                     )
                     payload = json.loads(data_line[5:].strip())
                     text = str(payload.get("text", ""))
                     if text:
                         thinking_parts.append(text)
                 except Exception:
-                    logger.debug(
-                        "Failed to parse streamed thinking payload.", exc_info=True
-                    )
+                    logger.debug("Failed to parse streamed thinking payload.", exc_info=True)
             elif event_str.startswith("event: status"):
                 payload = self._extract_stream_payload(event_str)
                 if payload is not None:
-                    status_history = self._append_status_history_entry(
-                        status_history, payload
-                    )
+                    status_history = self._append_status_history_entry(status_history, payload)
             elif event_str.startswith("event: files"):
                 payload = self._extract_stream_payload(event_str)
                 items = payload.get("items") if payload is not None else None
@@ -1336,9 +1275,7 @@ class QueryService:
         )
         for event in self._build_followup_events(followup_items):
             if event.event == "status":
-                status_history = self._append_status_history_entry(
-                    status_history, event.data
-                )
+                status_history = self._append_status_history_entry(status_history, event.data)
             yield AnswerService.encode_sse_event(event)
 
         if final_text:
@@ -1381,9 +1318,7 @@ class QueryService:
 
     def _message_active_metadata(self, message: Any) -> dict[str, Any]:
         active_version = getattr(message, "active_version", None)
-        if active_version is not None and isinstance(
-            active_version.metadata_json, dict
-        ):
+        if active_version is not None and isinstance(active_version.metadata_json, dict):
             return dict(active_version.metadata_json)
         return dict(getattr(message, "metadata_json", {}) or {})
 
@@ -1501,9 +1436,7 @@ class QueryService:
             actor_user_id=auth.user_id,
         )
         embedding_candidate = (
-            embedding_selection.candidates[0]
-            if embedding_selection.candidates
-            else None
+            embedding_selection.candidates[0] if embedding_selection.candidates else None
         )
 
         cache_key = self.build_cache_key(
@@ -1693,9 +1626,7 @@ class QueryService:
                 cached_payload.get("answer", self.settings.query_no_result_answer_text),
             )
             confidence = float(cached_payload.get("confidence", 0.0))
-            citations = cast(
-                list[dict[str, Any]], list(cached_payload.get("citations", []))
-            )
+            citations = cast(list[dict[str, Any]], list(cached_payload.get("citations", [])))
             retrieval_duration_ms = None
             answer_duration_ms = None
             retrieved_chunks = []
@@ -1788,9 +1719,7 @@ class QueryService:
                 )
             )
         if citation_rows:
-            self.queries.create_citations(
-                tenant_id=auth.tenant_id, citations=citation_rows
-            )
+            self.queries.create_citations(tenant_id=auth.tenant_id, citations=citation_rows)
 
         usage = answer_result.usage if answer_result is not None else None
         if not cached and usage:
@@ -1803,8 +1732,7 @@ class QueryService:
                 output_tokens=usage.get("completion_tokens", 0),
                 model_name=(
                     answer_result.model_name
-                    if answer_result is not None
-                    and answer_result.model_name is not None
+                    if answer_result is not None and answer_result.model_name is not None
                     else self.settings.llm_model
                 ),
             )
@@ -1982,11 +1910,7 @@ class QueryService:
             or normalized.startswith("show ")
             or normalized.startswith("list ")
         ):
-            if (
-                "indexed" in normalized
-                or "failed" in normalized
-                or "queued" in normalized
-            ):
+            if "indexed" in normalized or "failed" in normalized or "queued" in normalized:
                 return self._format_status_answer(records=workspace_records)
             return self._format_inventory_list_answer(records=workspace_records)
 
@@ -1995,27 +1919,17 @@ class QueryService:
 
         if "total storage" in normalized or "storage used" in normalized:
             total_size = sum(record.document.size_bytes for record in workspace_records)
-            return self._format_storage_answer(
-                records=workspace_records, total_size=total_size
-            )
+            return self._format_storage_answer(records=workspace_records, total_size=total_size)
 
         if "size" in normalized or "sizes" in normalized:
             return self._format_storage_answer(
                 records=workspace_records,
-                total_size=sum(
-                    record.document.size_bytes for record in workspace_records
-                ),
+                total_size=sum(record.document.size_bytes for record in workspace_records),
                 include_per_document=True,
             )
 
-        if (
-            "latest" in normalized
-            or "last uploaded" in normalized
-            or "most recent" in normalized
-        ):
-            latest = max(
-                workspace_records, key=lambda item: item.document.created_at
-            ).document
+        if "latest" in normalized or "last uploaded" in normalized or "most recent" in normalized:
+            latest = max(workspace_records, key=lambda item: item.document.created_at).document
             return (
                 f"The latest uploaded document is {latest.filename}.\n"
                 f"Status: {latest.status}\n"
@@ -2027,17 +1941,13 @@ class QueryService:
             return self._format_failure_diagnosis_answer(records=workspace_records)
 
         if _OCR_VISION_QUERY_RE.search(normalized):
-            return self._format_ocr_vision_answer(
-                records=workspace_records, query_text=normalized
-            )
+            return self._format_ocr_vision_answer(records=workspace_records, query_text=normalized)
 
         if _QUALITY_QUERY_RE.search(normalized):
             return self._format_quality_answer(records=workspace_records)
 
         if _COLLECTION_QUERY_RE.search(normalized):
-            return self._format_collection_answer(
-                records=workspace_records, query_text=normalized
-            )
+            return self._format_collection_answer(records=workspace_records, query_text=normalized)
 
         if "indexed" in normalized or "failed" in normalized or "queued" in normalized:
             return self._format_status_answer(records=workspace_records)
@@ -2087,9 +1997,7 @@ class QueryService:
             "",
         ]
         found_any = False
-        for document in sorted(
-            documents, key=lambda item: item.created_at, reverse=True
-        ):
+        for document in sorted(documents, key=lambda item: item.created_at, reverse=True):
             chunks = self.chunks.get_by_document_id(
                 tenant_id=auth.tenant_id,
                 document_id=document.id,
@@ -2125,9 +2033,7 @@ class QueryService:
         created_at_to: datetime | None,
     ) -> str | None:
         raw_lines = [
-            line.strip()
-            for line in _BATCH_QUESTION_SPLIT_RE.split(query_text)
-            if line.strip()
+            line.strip() for line in _BATCH_QUESTION_SPLIT_RE.split(query_text) if line.strip()
         ]
         if len(raw_lines) < 2:
             return None
@@ -2242,11 +2148,7 @@ class QueryService:
             or normalized.startswith("show ")
             or normalized.startswith("list ")
         ):
-            if (
-                "indexed" in normalized
-                or "failed" in normalized
-                or "queued" in normalized
-            ):
+            if "indexed" in normalized or "failed" in normalized or "queued" in normalized:
                 return self._format_status_answer(records=workspace_records)
             return self._format_inventory_list_answer(records=workspace_records)
 
@@ -2255,27 +2157,17 @@ class QueryService:
 
         if "total storage" in normalized or "storage used" in normalized:
             total_size = sum(record.document.size_bytes for record in workspace_records)
-            return self._format_storage_answer(
-                records=workspace_records, total_size=total_size
-            )
+            return self._format_storage_answer(records=workspace_records, total_size=total_size)
 
         if "size" in normalized or "sizes" in normalized:
             return self._format_storage_answer(
                 records=workspace_records,
-                total_size=sum(
-                    record.document.size_bytes for record in workspace_records
-                ),
+                total_size=sum(record.document.size_bytes for record in workspace_records),
                 include_per_document=True,
             )
 
-        if (
-            "latest" in normalized
-            or "last uploaded" in normalized
-            or "most recent" in normalized
-        ):
-            latest = max(
-                workspace_records, key=lambda item: item.document.created_at
-            ).document
+        if "latest" in normalized or "last uploaded" in normalized or "most recent" in normalized:
+            latest = max(workspace_records, key=lambda item: item.document.created_at).document
             return (
                 f"The latest uploaded document is {latest.filename}.\n"
                 f"Status: {latest.status}\n"
@@ -2287,17 +2179,13 @@ class QueryService:
             return self._format_failure_diagnosis_answer(records=workspace_records)
 
         if _OCR_VISION_QUERY_RE.search(normalized):
-            return self._format_ocr_vision_answer(
-                records=workspace_records, query_text=normalized
-            )
+            return self._format_ocr_vision_answer(records=workspace_records, query_text=normalized)
 
         if _QUALITY_QUERY_RE.search(normalized):
             return self._format_quality_answer(records=workspace_records)
 
         if _COLLECTION_QUERY_RE.search(normalized):
-            return self._format_collection_answer(
-                records=workspace_records, query_text=normalized
-            )
+            return self._format_collection_answer(records=workspace_records, query_text=normalized)
 
         if "indexed" in normalized or "failed" in normalized or "queued" in normalized:
             return self._format_status_answer(records=workspace_records)
@@ -2367,13 +2255,10 @@ class QueryService:
             return True
         if _DOCUMENT_CONTENT_INTENT_RE.search(normalized):
             return True
-        if _QUOTED_TERM_RE.search(normalized) and _CONTENT_FILTER_QUERY_RE.search(
-            normalized
-        ):
+        if _QUOTED_TERM_RE.search(normalized) and _CONTENT_FILTER_QUERY_RE.search(normalized):
             return True
         return ":" in normalized and any(
-            token in normalized
-            for token in ("table", "figure", "diagram", "chart", "section")
+            token in normalized for token in ("table", "figure", "diagram", "chart", "section")
         )
 
     @staticmethod
@@ -2439,9 +2324,7 @@ class QueryService:
             for match in _DOC_STATUS_RE.finditer(query_text)
         ]
         if any(token in query_text for token in ("embedding model", "embedder")):
-            status_matches = [
-                status for status in status_matches if status != "embedding"
-            ]
+            status_matches = [status for status in status_matches if status != "embedding"]
         if (
             len(set(status_matches)) == 1
             and (
@@ -2454,9 +2337,7 @@ class QueryService:
         ):
             requested = status_matches[0]
             next_documents = [
-                record
-                for record in next_documents
-                if record.document.status == requested
+                record for record in next_documents if record.document.status == requested
             ]
 
         named_match = _NAMED_FILTER_RE.search(query_text)
@@ -2476,10 +2357,7 @@ class QueryService:
             next_documents = [
                 record
                 for record in next_documents
-                if any(
-                    collection_needle in collection.lower()
-                    for collection in record.collections
-                )
+                if any(collection_needle in collection.lower() for collection in record.collections)
             ]
 
         embedding_model = self._extract_embedding_model_filter(query_text)
@@ -2500,9 +2378,7 @@ class QueryService:
                 for record in next_documents
                 if record.document.created_at.astimezone(UTC).date() == today
             ]
-        elif "uploaded yesterday" in query_text or re.search(
-            r"(?i)\byesterday\b", query_text
-        ):
+        elif "uploaded yesterday" in query_text or re.search(r"(?i)\byesterday\b", query_text):
             yesterday = (now - timedelta(days=1)).date()
             next_documents = [
                 record
@@ -2528,9 +2404,7 @@ class QueryService:
 
         return next_documents
 
-    def _format_embedding_model_answer(
-        self, *, records: list[DocumentWorkspaceRecord]
-    ) -> str:
+    def _format_embedding_model_answer(self, *, records: list[DocumentWorkspaceRecord]) -> str:
         lines = ["Embedding runtime by document:"]
         for record in records:
             doc = record.document
@@ -2585,9 +2459,7 @@ class QueryService:
     ) -> str:
         resolved_indexed = indexed_count
         if resolved_indexed is None:
-            resolved_indexed = sum(
-                1 for record in records if record.document.status == "indexed"
-            )
+            resolved_indexed = sum(1 for record in records if record.document.status == "indexed")
 
         lines = [f"You currently have {len(records)} documents in this workspace."]
         if resolved_indexed == len(records):
@@ -2616,14 +2488,9 @@ class QueryService:
             needle = raw.strip().strip("?").strip()
             if needle:
                 lines = [f'No documents matched the filename filter "{needle}".']
-                if (
-                    _FALLBACK_LIST_RE.search(query_text)
-                    or "what documents" in query_text
-                ):
+                if _FALLBACK_LIST_RE.search(query_text) or "what documents" in query_text:
                     lines.append("")
-                    lines.append(
-                        self._format_inventory_list_answer(records=all_records)
-                    )
+                    lines.append(self._format_inventory_list_answer(records=all_records))
                 return "\n".join(lines)
 
         collection_name = self._extract_collection_filter(query_text, all_records)
@@ -2775,21 +2642,14 @@ class QueryService:
             return False
         if _SECTION_HEADING_LINE_RE.match(compact):
             return True
-        return bool(
-            re.match(r"^\d+(?:\.\d+)*\s+[A-Z][A-Za-z0-9 ,:/()'\-]{2,80}$", compact)
-        )
+        return bool(re.match(r"^\d+(?:\.\d+)*\s+[A-Z][A-Za-z0-9 ,:/()'\-]{2,80}$", compact))
 
-    def _format_failure_diagnosis_answer(
-        self, *, records: list[DocumentWorkspaceRecord]
-    ) -> str:
+    def _format_failure_diagnosis_answer(self, *, records: list[DocumentWorkspaceRecord]) -> str:
         failures = [
             record
             for record in records
             if record.document.status in {"failed", "dead_lettered"}
-            or (
-                record.ingestion_job is not None
-                and record.ingestion_job.last_error_message
-            )
+            or (record.ingestion_job is not None and record.ingestion_job.last_error_message)
         ]
         if not failures:
             return "No failed or dead-lettered documents were found in this workspace."
@@ -2808,28 +2668,19 @@ class QueryService:
         target = (
             "ocr"
             if "ocr" in query_text and "vision" not in query_text
-            else (
-                "vision"
-                if "vision" in query_text and "ocr" not in query_text
-                else "both"
-            )
+            else ("vision" if "vision" in query_text and "ocr" not in query_text else "both")
         )
         if target == "ocr":
-            filtered = [
-                record for record in records if record.document.extraction_ocr_used
-            ]
+            filtered = [record for record in records if record.document.extraction_ocr_used]
             label = "OCR"
         elif target == "vision":
-            filtered = [
-                record for record in records if record.document.extraction_vision_used
-            ]
+            filtered = [record for record in records if record.document.extraction_vision_used]
             label = "Vision"
         else:
             filtered = [
                 record
                 for record in records
-                if record.document.extraction_ocr_used
-                or record.document.extraction_vision_used
+                if record.document.extraction_ocr_used or record.document.extraction_vision_used
             ]
             label = "OCR/Vision"
 
@@ -2955,8 +2806,7 @@ class QueryService:
             evidence_term=evidence_term,
         )
         scored = [
-            (record, self._compute_document_health(record))
-            for record in comparison_records[:5]
+            (record, self._compute_document_health(record)) for record in comparison_records[:5]
         ]
         healthiest = max(scored, key=lambda item: item[1]["score"])
         weakest = min(scored, key=lambda item: item[1]["score"])
@@ -2998,9 +2848,7 @@ class QueryService:
 
         collection_name = self._extract_collection_filter(query_text, records)
         if collection_name and (
-            "summary" in query_text
-            or "summarize" in query_text
-            or "overview" in query_text
+            "summary" in query_text or "summarize" in query_text or "overview" in query_text
         ):
             return self._format_collection_summary(
                 collection_name=collection_name,
@@ -3035,9 +2883,7 @@ class QueryService:
                     lines.append(f"- {evidence}")
             if len(ranked_collections) > 1:
                 runner_up_name, runner_up_payload = ranked_collections[1]
-                lines.append(
-                    f"Runner-up: {runner_up_name} ({runner_up_payload['score']:.1f})"
-                )
+                lines.append(f"Runner-up: {runner_up_name} ({runner_up_payload['score']:.1f})")
             return "\n".join(lines)
 
         return None
@@ -3191,13 +3037,8 @@ class QueryService:
             quality_reasons.append("quarantined")
         if doc.information_yield is not None and doc.information_yield < 70:
             quality_reasons.append(f"yield {round(doc.information_yield)}%")
-        if (
-            doc.extraction_coverage_score is not None
-            and doc.extraction_coverage_score < 0.5
-        ):
-            quality_reasons.append(
-                f"coverage {round(doc.extraction_coverage_score * 100)}%"
-            )
+        if doc.extraction_coverage_score is not None and doc.extraction_coverage_score < 0.5:
+            quality_reasons.append(f"coverage {round(doc.extraction_coverage_score * 100)}%")
         if record.embedded_chunk_count == 0 and doc.status != "indexed":
             quality_reasons.append("no embedded chunks")
         if not quality_reasons:
@@ -3276,9 +3117,7 @@ class QueryService:
         records: list[DocumentWorkspaceRecord],
         explicit_needles: list[str] | None = None,
     ) -> list[DocumentWorkspaceRecord]:
-        resolved_needles = explicit_needles or self._extract_named_comparison_needles(
-            query_text
-        )
+        resolved_needles = explicit_needles or self._extract_named_comparison_needles(query_text)
         matched = []
         for record in records:
             filename = record.document.filename.lower()
@@ -3286,9 +3125,7 @@ class QueryService:
             if filename in query_text or basename in query_text:
                 matched.append(record)
                 continue
-            if any(
-                needle in filename or needle in basename for needle in resolved_needles
-            ):
+            if any(needle in filename or needle in basename for needle in resolved_needles):
                 matched.append(record)
 
         if len(matched) >= 2:
@@ -3301,10 +3138,7 @@ class QueryService:
 
     @staticmethod
     def _extract_named_comparison_needles(query_text: str) -> list[str]:
-        return [
-            match.group(1).strip().lower()
-            for match in _QUOTED_TERM_RE.finditer(query_text)
-        ]
+        return [match.group(1).strip().lower() for match in _QUOTED_TERM_RE.finditer(query_text)]
 
     def _has_explicit_comparison_intent(
         self,
@@ -3314,8 +3148,7 @@ class QueryService:
         explicit_needles: list[str],
     ) -> bool:
         if any(
-            token in query_text
-            for token in ("compare", "comparison", "difference", "side by side")
+            token in query_text for token in ("compare", "comparison", "difference", "side by side")
         ):
             return True
 
@@ -3348,9 +3181,7 @@ class QueryService:
             grouped: dict[uuid.UUID, list[str]] = {}
             for hit in hits:
                 snippet = SnippetService.clean(hit.content, max_chars=170)
-                page = (
-                    f"p.{hit.page_number}" if hit.page_number is not None else "snippet"
-                )
+                page = f"p.{hit.page_number}" if hit.page_number is not None else "snippet"
                 grouped.setdefault(hit.document_id, []).append(f"{page}: {snippet}")
             return grouped
 
@@ -3379,12 +3210,7 @@ class QueryService:
         ):
             if marker in query_text:
                 term = (
-                    query_text.split(marker, 1)[1]
-                    .strip()
-                    .strip("?")
-                    .strip()
-                    .strip('"')
-                    .strip("'")
+                    query_text.split(marker, 1)[1].strip().strip("?").strip().strip('"').strip("'")
                 )
                 return term or None
         return None
@@ -3403,8 +3229,7 @@ class QueryService:
         )
         matched_doc_ids = {hit.document_id for hit in hits}
         avg_health = (
-            sum(self._compute_document_health(record)["score"] for record in records)
-            / len(records)
+            sum(self._compute_document_health(record)["score"] for record in records) / len(records)
             if records
             else 0.0
         )
@@ -3435,9 +3260,7 @@ class QueryService:
         ) / len(records)
         statuses: dict[str, int] = {}
         for record in records:
-            statuses[record.document.status] = (
-                statuses.get(record.document.status, 0) + 1
-            )
+            statuses[record.document.status] = statuses.get(record.document.status, 0) + 1
 
         lines = [
             f'Collection summary for "{collection_name}":',
@@ -3455,9 +3278,7 @@ class QueryService:
             )
         return "\n".join(lines)
 
-    def _compute_document_health(
-        self, record: DocumentWorkspaceRecord
-    ) -> dict[str, Any]:
+    def _compute_document_health(self, record: DocumentWorkspaceRecord) -> dict[str, Any]:
         doc = record.document
         score = 100.0
         reasons: list[str] = []
@@ -3491,9 +3312,7 @@ class QueryService:
         if doc.extraction_coverage_score is not None:
             if doc.extraction_coverage_score < 0.5:
                 score -= min(20.0, (0.5 - doc.extraction_coverage_score) * 40)
-                reasons.append(
-                    f"low coverage {round(doc.extraction_coverage_score * 100)}%"
-                )
+                reasons.append(f"low coverage {round(doc.extraction_coverage_score * 100)}%")
         else:
             score -= 6
             reasons.append("missing coverage score")
@@ -3509,9 +3328,7 @@ class QueryService:
             reasons.append("no text chunks")
         if record.avg_chunk_quality is not None and record.avg_chunk_quality < 0:
             score -= min(10.0, abs(record.avg_chunk_quality) * 10.0)
-            reasons.append(
-                f"negative citation feedback ({record.avg_chunk_quality:.2f})"
-            )
+            reasons.append(f"negative citation feedback ({record.avg_chunk_quality:.2f})")
 
         final_score = max(0, min(100, int(round(score))))
         if final_score >= 85:
@@ -3554,9 +3371,7 @@ class QueryService:
             if record.embedding_model
             else "not embedded"
         )
-        collections = (
-            ", ".join(record.collections) if record.collections else "no collection"
-        )
+        collections = ", ".join(record.collections) if record.collections else "no collection"
         quality = (
             f", avg chunk quality {record.avg_chunk_quality:.2f}"
             if record.avg_chunk_quality is not None
@@ -3627,9 +3442,7 @@ class QueryService:
                     "model": "document_inventory",
                 },
                 "reasoning_trace": None,
-                "status_history": self._followup_status_history(
-                    list(followup_items or [])
-                ),
+                "status_history": self._followup_status_history(list(followup_items or [])),
                 "files": [],
                 "output": [],
                 "follow_up_suggestions": list(followup_items or []),
@@ -3675,9 +3488,7 @@ class QueryService:
             return []
         blocks: list[dict[str, Any]] = []
         if answer.comparison_table is not None:
-            blocks.append(
-                self.answer._build_table_payload(answer.comparison_table, index=1)
-            )
+            blocks.append(self.answer._build_table_payload(answer.comparison_table, index=1))
         if answer.chart is not None:
             blocks.append(self.answer._build_chart_payload(answer.chart, index=1))
         if answer.diagram is not None:
@@ -3738,9 +3549,7 @@ class QueryService:
             "type": provider_type,
             "model": model_name if isinstance(model_name, str) and model_name else None,
             "source": (
-                provider_source
-                if isinstance(provider_source, str) and provider_source
-                else None
+                provider_source if isinstance(provider_source, str) and provider_source else None
             ),
             "fallback_used": bool(fallback_used),
         }
@@ -3759,8 +3568,7 @@ class QueryService:
             limit=10,
         )
         return [
-            {"role": m.role, "content": self._message_content_to_text(m.content)}
-            for m in history
+            {"role": m.role, "content": self._message_content_to_text(m.content)} for m in history
         ]
 
     def _retrieve_with_trace(
@@ -3815,9 +3623,7 @@ class QueryService:
         trace.end_stage("retrieval")
         return {"retrieved_chunks": retrieved_chunks, "trace": trace}
 
-    def _build_citation_dicts(
-        self, chunks: list[RetrievedChunk]
-    ) -> list[dict[str, Any]]:
+    def _build_citation_dicts(self, chunks: list[RetrievedChunk]) -> list[dict[str, Any]]:
         return [
             {
                 "document_id": str(c.document_id),
@@ -4025,9 +3831,7 @@ class QueryService:
     @staticmethod
     def _extract_stream_payload(event_str: str) -> dict[str, Any] | None:
         try:
-            data_line = next(
-                line for line in event_str.splitlines() if line.startswith("data:")
-            )
+            data_line = next(line for line in event_str.splitlines() if line.startswith("data:"))
         except StopIteration:
             return None
         try:
@@ -4045,17 +3849,11 @@ class QueryService:
             return history
         duration_value = payload.get("duration_ms")
         entry = {
-            "code": (
-                str(payload.get("code")).strip()
-                if payload.get("code") is not None
-                else None
-            ),
+            "code": (str(payload.get("code")).strip() if payload.get("code") is not None else None),
             "label": label,
             "state": str(payload.get("state") or "running"),
             "detail": (
-                str(payload.get("detail")).strip()
-                if payload.get("detail") is not None
-                else None
+                str(payload.get("detail")).strip() if payload.get("detail") is not None else None
             ),
             "timestamp": (
                 str(payload.get("timestamp")).strip()
@@ -4063,9 +3861,7 @@ class QueryService:
                 else QueryService._status_timestamp()
             ),
             "duration_ms": (
-                round(float(duration_value), 2)
-                if isinstance(duration_value, int | float)
-                else None
+                round(float(duration_value), 2) if isinstance(duration_value, int | float) else None
             ),
         }
         last = history[-1] if history else None
@@ -4094,10 +3890,7 @@ class QueryService:
         summaries: list[dict[str, Any]] = []
         for index, block in enumerate(blocks):
             block_type = str(block.get("type", "output")).strip() or "output"
-            title = str(
-                block.get("title")
-                or f"{block_type.replace('_', ' ').title()} {index + 1}"
-            )
+            title = str(block.get("title") or f"{block_type.replace('_', ' ').title()} {index + 1}")
             detail = block.get("description")
             if not isinstance(detail, str) or not detail.strip():
                 if block_type == "table":
@@ -4105,16 +3898,10 @@ class QueryService:
                     detail = f"{len(rows)} rows" if isinstance(rows, list) else None
                 elif block_type == "chart":
                     series = block.get("series")
-                    detail = (
-                        f"{len(series)} points" if isinstance(series, list) else None
-                    )
+                    detail = f"{len(series)} points" if isinstance(series, list) else None
                 elif block_type == "card":
                     content = block.get("content")
-                    detail = (
-                        content
-                        if isinstance(content, str) and content.strip()
-                        else None
-                    )
+                    detail = content if isinstance(content, str) and content.strip() else None
                 else:
                     detail = None
             summaries.append(
@@ -4145,9 +3932,7 @@ class QueryService:
                 sections.append(answer.limitations)
             if answer.conclusion:
                 sections.append(answer.conclusion)
-            return "\n\n".join(
-                section.strip() for section in sections if section.strip()
-            )
+            return "\n\n".join(section.strip() for section in sections if section.strip())
         return str(answer)
 
     @staticmethod
@@ -4173,10 +3958,7 @@ class QueryService:
         return get_trace_id() or f"trc_{generate_uuid7_with_fallback()}"
 
     def _validate_top_k(self, top_k: int) -> None:
-        if (
-            top_k < self.settings.query_top_k_min
-            or top_k > self.settings.query_top_k_max
-        ):
+        if top_k < self.settings.query_top_k_min or top_k > self.settings.query_top_k_max:
             raise ApiError(
                 code="TOP_K_OUT_OF_RANGE",
                 message="top_k is outside allowed bounds.",
@@ -4193,9 +3975,7 @@ class QueryService:
 
     @staticmethod
     def normalize_filters(filters: dict[str, Any]) -> dict[str, Any]:
-        return cast(
-            dict[str, Any], json.loads(json.dumps(filters, sort_keys=True, default=str))
-        )
+        return cast(dict[str, Any], json.loads(json.dumps(filters, sort_keys=True, default=str)))
 
     @staticmethod
     def build_cache_key(

@@ -41,8 +41,7 @@ def _read_token_pool(token: str, token_file: str | None) -> list[str]:
     tokens = [token]
     if token_file:
         values = [
-            line.strip()
-            for line in Path(token_file).read_text(encoding="utf-8").splitlines()
+            line.strip() for line in Path(token_file).read_text(encoding="utf-8").splitlines()
         ]
         values = [value for value in values if value]
         if values:
@@ -128,9 +127,7 @@ def poll_document_status(
     last_http_status = 0
     while time.perf_counter() - start <= timeout_seconds:
         attempts += 1
-        response = requests.get(
-            status_url, headers=headers, timeout=request_timeout_seconds
-        )
+        response = requests.get(status_url, headers=headers, timeout=request_timeout_seconds)
         last_http_status = response.status_code
         if response.status_code == 200:
             payload = response.json()
@@ -157,18 +154,12 @@ def _chunked(items: list[Path], size: int) -> list[list[Path]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Week 5 ingestion benchmark runner")
-    parser.add_argument(
-        "--base-url", default="http://localhost:1000/api/v1", help="API base URL"
-    )
+    parser.add_argument("--base-url", default="http://localhost:1000/api/v1", help="API base URL")
     parser.add_argument("--token", required=True, help="Bearer token")
     parser.add_argument("--tenant-id", required=True, help="Tenant UUID")
     parser.add_argument("--documents", type=int, default=20, help="Number of uploads")
-    parser.add_argument(
-        "--workers", type=int, default=5, help="Parallel upload workers"
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=10, help="Batch size for uploads"
-    )
+    parser.add_argument("--workers", type=int, default=5, help="Parallel upload workers")
+    parser.add_argument("--batch-size", type=int, default=10, help="Batch size for uploads")
     parser.add_argument(
         "--dataset-dir",
         default="tmp/week5_benchmark_dataset",
@@ -263,8 +254,7 @@ def main() -> int:
                     upload_once,
                     base_url=args.base_url,
                     token=token_pool[
-                        (batch_index * max(1, args.batch_size) + index)
-                        % len(token_pool)
+                        (batch_index * max(1, args.batch_size) + index) % len(token_pool)
                     ],
                     tenant_id=args.tenant_id,
                     file_path=file_path,
@@ -304,16 +294,12 @@ def main() -> int:
     ingestion_latencies = [run.latency_ms for run in terminal_statuses]
     indexed_count = sum(1 for run in terminal_statuses if run.status == "indexed")
     failed_count = sum(1 for run in terminal_statuses if run.status == "failed")
-    dead_letter_count = sum(
-        1 for run in terminal_statuses if run.status == "dead_lettered"
-    )
+    dead_letter_count = sum(1 for run in terminal_statuses if run.status == "dead_lettered")
     timeout_count = sum(1 for run in terminal_statuses if run.status == "timeout")
     upload_status_counts: dict[int, int] = {}
     upload_error_code_counts: dict[str, int] = {}
     for run in upload_runs:
-        upload_status_counts[run.status_code] = (
-            upload_status_counts.get(run.status_code, 0) + 1
-        )
+        upload_status_counts[run.status_code] = upload_status_counts.get(run.status_code, 0) + 1
         if run.error_code:
             upload_error_code_counts[run.error_code] = (
                 upload_error_code_counts.get(run.error_code, 0) + 1
@@ -347,10 +333,7 @@ def main() -> int:
             "upload_throughput_rps": round(total / upload_elapsed, 2),
             "avg_status_poll_attempts": round(
                 (
-                    (
-                        sum(run.attempts for run in terminal_statuses)
-                        / len(terminal_statuses)
-                    )
+                    (sum(run.attempts for run in terminal_statuses) / len(terminal_statuses))
                     if terminal_statuses
                     else 0.0
                 ),
@@ -375,9 +358,7 @@ def main() -> int:
                 key: value for key, value in sorted(upload_error_code_counts.items())
             },
             "poll_last_http_status_counts": {
-                str(code): sum(
-                    1 for run in terminal_statuses if run.last_http_status == code
-                )
+                str(code): sum(1 for run in terminal_statuses if run.last_http_status == code)
                 for code in sorted({run.last_http_status for run in terminal_statuses})
             },
         },

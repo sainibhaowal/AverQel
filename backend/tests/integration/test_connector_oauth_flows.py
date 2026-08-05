@@ -34,9 +34,7 @@ def _configure_secret_backend(settings: Settings) -> None:
     settings.connector_oauth_redirect_uri = (
         "https://averqel.localhost/api/v1/integrations/connectors/oauth/callback"
     )
-    settings.connector_oauth_frontend_redirect_uri = (
-        "https://averqel.localhost/dashboard"
-    )
+    settings.connector_oauth_frontend_redirect_uri = "https://averqel.localhost/dashboard"
     settings.connector_google_oauth_client_id = "google-client-id"
     settings.connector_google_oauth_client_secret = "google-client-secret"
     settings.connector_github_oauth_client_id = "github-client-id"
@@ -62,9 +60,7 @@ def _auth_headers(seeded) -> dict[str, str]:
 
 def _seed_connector(db_session, tenant_id, user_id, slug: str) -> Connector:
     integration = (
-        db_session.execute(select(Integration).where(Integration.slug == slug))
-        .scalars()
-        .first()
+        db_session.execute(select(Integration).where(Integration.slug == slug)).scalars().first()
     )
     if integration is None:
         integration = Integration(
@@ -119,9 +115,7 @@ def test_connector_oauth_start_builds_mcp_authorization_url(
 ):
     _configure_secret_backend(settings)
     seeded = seed_user("MCP Tenant", "mcp@example.com", "Password!123", ("admin",))
-    connector = _seed_connector(
-        db_session, seeded.tenant_id, seeded.user_id, "google-drive"
-    )
+    connector = _seed_connector(db_session, seeded.tenant_id, seeded.user_id, "google-drive")
 
     resource_metadata, oauth_metadata = _mcp_metadata()
     service = ConnectorOAuthService(db_session, settings)
@@ -158,9 +152,7 @@ def test_connector_oauth_start_returns_clean_error_when_not_configured(
 ):
     _configure_secret_backend(settings)
     seeded = seed_user("MCP Tenant", "mcp@example.com", "Password!123", ("admin",))
-    connector = _seed_connector(
-        db_session, seeded.tenant_id, seeded.user_id, "google-drive"
-    )
+    connector = _seed_connector(db_session, seeded.tenant_id, seeded.user_id, "google-drive")
 
     service = ConnectorOAuthService(db_session, settings)
 
@@ -185,9 +177,7 @@ def test_connector_oauth_start_returns_clean_error_on_network_failure(
 ):
     _configure_secret_backend(settings)
     seeded = seed_user("MCP Tenant", "mcp@example.com", "Password!123", ("admin",))
-    connector = _seed_connector(
-        db_session, seeded.tenant_id, seeded.user_id, "google-drive"
-    )
+    connector = _seed_connector(db_session, seeded.tenant_id, seeded.user_id, "google-drive")
 
     service = ConnectorOAuthService(db_session, settings)
 
@@ -200,9 +190,7 @@ def test_connector_oauth_start_returns_clean_error_on_network_failure(
             request=httpx.Request("GET", "https://example.invalid"),
         )
 
-    monkeypatch.setattr(
-        ConnectorOAuthService, "_discover_mcp_metadata", _capture_and_fail
-    )
+    monkeypatch.setattr(ConnectorOAuthService, "_discover_mcp_metadata", _capture_and_fail)
 
     with pytest.raises(ApiError) as exc_info:
         service.start(
@@ -223,9 +211,7 @@ def test_connector_oauth_readiness_reports_configured_for_mcp_integration(
 ):
     _configure_secret_backend(settings)
     seeded = seed_user("MCP Tenant", "mcp@example.com", "Password!123", ("admin",))
-    connector = _seed_connector(
-        db_session, seeded.tenant_id, seeded.user_id, "google-drive"
-    )
+    connector = _seed_connector(db_session, seeded.tenant_id, seeded.user_id, "google-drive")
 
     service = ConnectorOAuthService(db_session, settings)
     integration = db_session.get(Integration, connector.integration_id)
@@ -246,9 +232,7 @@ def test_connector_oauth_start_requires_mcp_sdk(
 ):
     _configure_secret_backend(settings)
     seeded = seed_user("MCP Tenant", "mcp@example.com", "Password!123", ("admin",))
-    connector = _seed_connector(
-        db_session, seeded.tenant_id, seeded.user_id, "google-drive"
-    )
+    connector = _seed_connector(db_session, seeded.tenant_id, seeded.user_id, "google-drive")
 
     service = ConnectorOAuthService(db_session, settings)
     monkeypatch.setattr(connector_oauth_service, "MCP_SDK_AVAILABLE", False)
@@ -294,9 +278,7 @@ async def test_connector_oauth_callback_persists_mcp_credentials(
 ):
     _configure_secret_backend(settings)
     seeded = seed_user("MCP Tenant 2", "mcp2@example.com", "Password!123", ("admin",))
-    connector = _seed_connector(
-        db_session, seeded.tenant_id, seeded.user_id, "google-drive"
-    )
+    connector = _seed_connector(db_session, seeded.tenant_id, seeded.user_id, "google-drive")
 
     resource_metadata, oauth_metadata = _mcp_metadata()
     service = ConnectorOAuthService(db_session, settings)

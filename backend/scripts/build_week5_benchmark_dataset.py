@@ -139,9 +139,7 @@ def build_dataset(
         "documents": manifest_docs,
     }
     manifest_path = output_dir / "manifest.json"
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
-    )
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return cast(dict[str, Any], manifest)
 
 
@@ -152,9 +150,7 @@ def main() -> int:
         default="tmp/week5_benchmark_dataset",
         help="Output directory for generated benchmark corpus",
     )
-    parser.add_argument(
-        "--documents", type=int, default=100, help="Total number of documents"
-    )
+    parser.add_argument("--documents", type=int, default=100, help="Total number of documents")
     parser.add_argument(
         "--target-pages-total",
         type=int,

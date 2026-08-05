@@ -31,18 +31,12 @@ def upgrade() -> None:
     )
     op.add_column(
         "documents",
-        sa.Column(
-            "quarantined", sa.Boolean(), server_default=sa.text("false"), nullable=False
-        ),
+        sa.Column("quarantined", sa.Boolean(), server_default=sa.text("false"), nullable=False),
     )
-    op.add_column(
-        "documents", sa.Column("information_yield", sa.Float(), nullable=True)
-    )
+    op.add_column("documents", sa.Column("information_yield", sa.Float(), nullable=True))
     op.add_column(
         "documents",
-        sa.Column(
-            "is_deleted", sa.Boolean(), server_default=sa.text("false"), nullable=False
-        ),
+        sa.Column("is_deleted", sa.Boolean(), server_default=sa.text("false"), nullable=False),
     )
     # ### end Alembic commands ###
 

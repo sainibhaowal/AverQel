@@ -113,9 +113,7 @@ def _docker_container_cmd(container_name: str) -> list[str]:
     return parsed if isinstance(parsed, list) else []
 
 
-def _resolve_sqlalchemy_url(
-    url: str, *, container_name: str, container_port: int
-) -> str:
+def _resolve_sqlalchemy_url(url: str, *, container_name: str, container_port: int) -> str:
     parsed = make_url(url)
     container_env = _docker_container_env(container_name)
     username = container_env.get("POSTGRES_USER") or parsed.username
@@ -191,18 +189,14 @@ def _resolve_redis_url(url: str) -> str:
             credentials = f":{password}@" if not username else f"{username}:{password}@"
         elif parsed.password:
             credentials = (
-                f":{parsed.password}@"
-                if not username
-                else f"{username}:{parsed.password}@"
+                f":{parsed.password}@" if not username else f"{username}:{parsed.password}@"
             )
         else:
             credentials = f"{username}@" if username else ""
         netloc = f"{credentials}{container_ip}:6379"
         return urlunsplit(parsed._replace(netloc=netloc))
 
-    resolved_url = _resolve_url(
-        url, container_name="averqel-redis", container_port=6379
-    )
+    resolved_url = _resolve_url(url, container_name="averqel-redis", container_port=6379)
     parsed = urlsplit(resolved_url)
     if parsed.password or not password:
         return resolved_url
@@ -315,18 +309,12 @@ from app.system.services.rate_limit_service import (  # noqa: E402
     _get_redis_client,
 )
 
-TEST_DATABASE_NAME = (
-    make_url(os.environ["AKS_DATABASE_URL"]).database or "knowledge_test"
-)
+TEST_DATABASE_NAME = make_url(os.environ["AKS_DATABASE_URL"]).database or "knowledge_test"
 SOURCE_DATABASE_NAME = (
-    TEST_DATABASE_NAME[: -len("_test")]
-    if TEST_DATABASE_NAME.endswith("_test")
-    else "knowledge"
+    TEST_DATABASE_NAME[: -len("_test")] if TEST_DATABASE_NAME.endswith("_test") else "knowledge"
 )
 TEST_TEMPLATE_DATABASE_NAME = f"{SOURCE_DATABASE_NAME}_test_template"
-RUNTIME_CACHE_DIR = Path(
-    os.environ.get("AVERQEL_RUNTIME_CACHE_DIR", "/tmp/averqel/backend/cache")
-)
+RUNTIME_CACHE_DIR = Path(os.environ.get("AVERQEL_RUNTIME_CACHE_DIR", "/tmp/averqel/backend/cache"))
 _DATABASE_TEST_FIXTURE_NAMES = {"client", "db_session", "seed_user"}
 _DATABASE_SOURCE_TOKENS = (
     "get_session_factory(",
@@ -382,9 +370,7 @@ def _ensure_default_roles(session) -> None:
 
 def _all_selected_tests_use_no_db_bootstrap(session: pytest.Session) -> bool:
     items = list(getattr(session, "items", []))
-    return bool(items) and all(
-        item.get_closest_marker("unit_no_db") is not None for item in items
-    )
+    return bool(items) and all(item.get_closest_marker("unit_no_db") is not None for item in items)
 
 
 def _is_strict_test_bootstrap() -> bool:
@@ -429,14 +415,10 @@ def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
     return max(1, min(4, cpu_count))
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     del config
     for item in items:
-        path = str(getattr(item, "path", getattr(item, "fspath", ""))).replace(
-            "\\", "/"
-        )
+        path = str(getattr(item, "path", getattr(item, "fspath", ""))).replace("\\", "/")
         if (
             "/tests/unit/" in path
             and item.get_closest_marker("unit_no_db") is None
@@ -447,9 +429,9 @@ def pytest_collection_modifyitems(
             except OSError:
                 source = ""
             fixture_names = set(getattr(item, "fixturenames", ()))
-            has_database_dependency = bool(
-                fixture_names & _DATABASE_TEST_FIXTURE_NAMES
-            ) or any(token in source for token in _DATABASE_SOURCE_TOKENS)
+            has_database_dependency = bool(fixture_names & _DATABASE_TEST_FIXTURE_NAMES) or any(
+                token in source for token in _DATABASE_SOURCE_TOKENS
+            )
             if not has_database_dependency:
                 # Conservative source-level classification for unit modules
                 # that use fakes/mocks only. A module can opt out with
@@ -560,9 +542,7 @@ def db_session() -> Iterator[object]:
 
 @pytest.fixture
 def seed_user() -> Callable[[str, str, str, tuple[str, ...]], SeededUser]:
-    def _seed(
-        tenant_name: str, email: str, password: str, roles: tuple[str, ...]
-    ) -> SeededUser:
+    def _seed(tenant_name: str, email: str, password: str, roles: tuple[str, ...]) -> SeededUser:
         normalized_email = email.strip().lower()
         canonical_roles = tuple(canonicalize_role_name(role) for role in roles)
         session = get_session_factory()()
@@ -585,14 +565,10 @@ def seed_user() -> Callable[[str, str, str, tuple[str, ...]], SeededUser]:
             session.flush()
 
             role_rows = (
-                session.execute(select(Role).where(Role.name.in_(canonical_roles)))
-                .scalars()
-                .all()
+                session.execute(select(Role).where(Role.name.in_(canonical_roles))).scalars().all()
             )
             if len(role_rows) != len(set(canonical_roles)):
-                raise AssertionError(
-                    "requested role is missing from seeded role catalog"
-                )
+                raise AssertionError("requested role is missing from seeded role catalog")
             for role in role_rows:
                 session.add(
                     UserRole(
@@ -649,9 +625,7 @@ def _truncate_test_tables() -> None:
     last_exc: OperationalError | ProgrammingError | None = None
     for _ in range(3):
         try:
-            with engine.connect().execution_options(
-                isolation_level="AUTOCOMMIT"
-            ) as connection:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
                 connection.execute(text("RESET ROLE"))
                 existing_tables = [
                     table_name
@@ -665,9 +639,7 @@ def _truncate_test_tables() -> None:
                 if existing_tables:
                     truncate_sql = text(
                         "SET statement_timeout = '5s';"
-                        "TRUNCATE TABLE "
-                        + ", ".join(existing_tables)
-                        + " RESTART IDENTITY CASCADE"
+                        "TRUNCATE TABLE " + ", ".join(existing_tables) + " RESTART IDENTITY CASCADE"
                     )
                     connection.execute(truncate_sql)
             last_exc = None
@@ -687,29 +659,17 @@ def _grant_test_database_access(connection) -> None:
     """Re-apply runtime grants after a schema restore or local bootstrap."""
     connection.execute(text("GRANT USAGE ON SCHEMA public TO aks_app"))
     connection.execute(
-        text(
-            "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aks_app"
-        )
+        text("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO aks_app")
     )
-    connection.execute(
-        text("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO aks_app")
-    )
-    connection.execute(
-        text(
-            """
+    connection.execute(text("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO aks_app"))
+    connection.execute(text("""
             ALTER DEFAULT PRIVILEGES IN SCHEMA public
             GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO aks_app
-            """
-        )
-    )
-    connection.execute(
-        text(
-            """
+            """))
+    connection.execute(text("""
             ALTER DEFAULT PRIVILEGES IN SCHEMA public
             GRANT USAGE, SELECT ON SEQUENCES TO aks_app
-            """
-        )
-    )
+            """))
 
 
 def _grant_database_access(test_url, database_name: str) -> None:
@@ -842,9 +802,7 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
             ),
             pool_pre_ping=True,
         )
-        template_revisions = _database_revisions(
-            template_engine, TEST_TEMPLATE_DATABASE_NAME
-        )
+        template_revisions = _database_revisions(template_engine, TEST_TEMPLATE_DATABASE_NAME)
         template_engine.dispose()
         if template_revisions == expected_heads:
             return
@@ -867,10 +825,7 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
                 )
             )
         connection.execute(
-            text(
-                f"DROP DATABASE IF EXISTS "
-                f"{_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}"
-            )
+            text(f"DROP DATABASE IF EXISTS " f"{_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}")
         )
         connection.execute(
             text(f"CREATE DATABASE {_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}")
@@ -878,8 +833,15 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
 
     schema_dump = subprocess.run(
         [
-            "docker", "exec", "averqel-postgres", "pg_dump", "-U", "postgres",
-            "--schema-only", "--no-owner", SOURCE_DATABASE_NAME,
+            "docker",
+            "exec",
+            "averqel-postgres",
+            "pg_dump",
+            "-U",
+            "postgres",
+            "--schema-only",
+            "--no-owner",
+            SOURCE_DATABASE_NAME,
         ],
         check=True,
         capture_output=True,
@@ -888,9 +850,17 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
     _restore_dump_into_database(TEST_TEMPLATE_DATABASE_NAME, schema_dump)
     seed_dump = subprocess.run(
         [
-            "docker", "exec", "averqel-postgres", "pg_dump", "-U", "postgres",
-            "--data-only", "--column-inserts", "--table=roles",
-            "--table=alembic_version", SOURCE_DATABASE_NAME,
+            "docker",
+            "exec",
+            "averqel-postgres",
+            "pg_dump",
+            "-U",
+            "postgres",
+            "--data-only",
+            "--column-inserts",
+            "--table=roles",
+            "--table=alembic_version",
+            SOURCE_DATABASE_NAME,
         ],
         check=True,
         capture_output=True,
@@ -937,11 +907,11 @@ def _wait_for_database(
                     "-tAc",
                     f"SELECT 1 FROM pg_database WHERE datname = '{database_name}'",
                 ],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
             if result.stdout.strip() == "1":
                 return
         except subprocess.CalledProcessError as exc:

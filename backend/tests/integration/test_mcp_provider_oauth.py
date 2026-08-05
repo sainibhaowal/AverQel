@@ -46,7 +46,9 @@ class _FakeClient:
 
     def get(self, url, **_kwargs):
         if url.endswith("userinfo"):
-            return _FakeResponse(200, {"sub": "google-subject", "email": "owner@example.com", "name": "Owner"})
+            return _FakeResponse(
+                200, {"sub": "google-subject", "email": "owner@example.com", "name": "Owner"}
+            )
         raise AssertionError(f"Unexpected identity URL: {url}")
 
 
@@ -101,7 +103,9 @@ def test_static_provider_oauth_encrypts_pending_data_and_captures_identity(
     assert b"code_verifier" not in transaction.secret_ciphertext
     assert "code_verifier" not in json.dumps(server.config)
 
-    monkeypatch.setattr(mcp_oauth_service, "build_safe_sync_client", lambda **_kwargs: _FakeClient())
+    monkeypatch.setattr(
+        mcp_oauth_service, "build_safe_sync_client", lambda **_kwargs: _FakeClient()
+    )
     state = params["state"][0]
     service.finish(server=server, code="authorization-code", state=state)
 
@@ -130,7 +134,9 @@ def test_static_provider_oauth_encrypts_pending_data_and_captures_identity(
     )
     assert json.loads(plaintext)["access_token"] == "access-secret"
     completed = db_session.execute(
-        select(MCPEvent).where(MCPEvent.server_id == server.id, MCPEvent.event_type == "oauth_completed")
+        select(MCPEvent).where(
+            MCPEvent.server_id == server.id, MCPEvent.event_type == "oauth_completed"
+        )
     ).scalar_one()
     assert completed.payload == {"provider": "google"}
 
@@ -184,10 +190,17 @@ def test_static_provider_disconnect_revokes_and_removes_local_token(
             assert kwargs["data"]["token"] == "refresh-secret"
             return _FakeResponse(200, {})
 
-    monkeypatch.setattr(mcp_oauth_service, "build_safe_sync_client", lambda **_kwargs: _RevokeClient())
+    monkeypatch.setattr(
+        mcp_oauth_service, "build_safe_sync_client", lambda **_kwargs: _RevokeClient()
+    )
     MCPServerOAuthService(db_session, settings).disconnect(server=server, user_id=seeded.user_id)
 
-    assert db_session.execute(select(MCPOAuthToken).where(MCPOAuthToken.server_id == server.id)).scalar_one_or_none() is None
+    assert (
+        db_session.execute(
+            select(MCPOAuthToken).where(MCPOAuthToken.server_id == server.id)
+        ).scalar_one_or_none()
+        is None
+    )
     db_session.refresh(server)
     assert server.account_identity == {}
     assert server.status == "needs_auth"

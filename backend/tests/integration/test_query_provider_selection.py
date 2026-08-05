@@ -17,9 +17,7 @@ from app.query.schemas.structured_response import StructuredAnswerResponse
 from app.query.services.query_service import QueryService
 
 
-def test_query_service_uses_selected_provider_assignment(
-    seed_user, monkeypatch
-) -> None:
+def test_query_service_uses_selected_provider_assignment(seed_user, monkeypatch) -> None:
     seeded = seed_user(
         "Provider Query Tenant",
         "provider-query@example.com",

@@ -108,7 +108,9 @@ def test_curated_provider_is_visible_but_requires_provider_oauth_configuration(
         response = client.get("/api/v1/mcp/marketplace?page=1", headers=_auth_headers(seeded))
 
         assert response.status_code == 200
-        gmail = next(item for item in response.json()["items"] if item["provider_slug"] == "google-gmail")
+        gmail = next(
+            item for item in response.json()["items"] if item["provider_slug"] == "google-gmail"
+        )
         assert gmail["official"] is True
         assert gmail["connectable"] is False
         assert gmail["requested_scopes"] == [

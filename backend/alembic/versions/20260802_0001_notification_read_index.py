@@ -30,6 +30,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     with op.get_context().autocommit_block():
         op.execute(
-            "DROP INDEX CONCURRENTLY IF EXISTS "
-            "ix_collection_notifications_recipient_created_id"
+            "DROP INDEX CONCURRENTLY IF EXISTS " "ix_collection_notifications_recipient_created_id"
         )

@@ -43,9 +43,7 @@ class ConnectorSecretCrypto:
             "connector_secret_keyring_json",
             self.settings.provider_secret_keyring_json,
         )
-        self._keyring = (
-            self._parse_keyring(keyring_json) if self._backend == "env_keyring" else {}
-        )
+        self._keyring = self._parse_keyring(keyring_json) if self._backend == "env_keyring" else {}
 
         self._kms_client = None
         if self._backend == "aws_kms":
@@ -84,9 +82,7 @@ class ConnectorSecretCrypto:
         try:
             payload = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            raise ConnectorSecretCryptoError(
-                "connector secret keyring is not valid JSON"
-            ) from exc
+            raise ConnectorSecretCryptoError("connector secret keyring is not valid JSON") from exc
 
         if not isinstance(payload, dict) or not payload:
             raise ConnectorSecretCryptoError(
@@ -125,9 +121,7 @@ class ConnectorSecretCrypto:
             plaintext_bytes = plaintext
 
         if not plaintext_bytes:
-            raise ConnectorSecretCryptoError(
-                "connector secret plaintext must not be empty"
-            )
+            raise ConnectorSecretCryptoError("connector secret plaintext must not be empty")
 
         if self._backend == "aws_kms":
             # Fallback to provider AWS settings if needed
@@ -152,9 +146,7 @@ class ConnectorSecretCrypto:
                 ) from exc
             ciphertext = response.get("CiphertextBlob")
             if not isinstance(ciphertext, bytes | bytearray):
-                raise ConnectorSecretCryptoError(
-                    "aws kms did not return a ciphertext blob"
-                )
+                raise ConnectorSecretCryptoError("aws kms did not return a ciphertext blob")
             return EncryptedConnectorSecret(
                 ciphertext=bytes(ciphertext),
                 nonce=b"",
@@ -162,21 +154,15 @@ class ConnectorSecretCrypto:
             )
 
         if not self._active_kid:
-            raise ConnectorSecretCryptoError(
-                "no active connector secret key id configured"
-            )
+            raise ConnectorSecretCryptoError("no active connector secret key id configured")
         key = self._keyring.get(self._active_kid)
         if key is None:
-            raise ConnectorSecretCryptoError(
-                "active connector secret key id is not in the keyring"
-            )
+            raise ConnectorSecretCryptoError("active connector secret key id is not in the keyring")
 
         cipher = AESGCM(key)
         nonce = os.urandom(12)
         ciphertext = cipher.encrypt(nonce, plaintext_bytes, aad)
-        return EncryptedConnectorSecret(
-            ciphertext=ciphertext, nonce=nonce, kid=self._active_kid
-        )
+        return EncryptedConnectorSecret(ciphertext=ciphertext, nonce=nonce, kid=self._active_kid)
 
     def decrypt(
         self,
@@ -214,13 +200,9 @@ class ConnectorSecretCrypto:
 
         key = self._keyring.get(kid)
         if key is None:
-            raise ConnectorSecretCryptoError(
-                "secret key id is not available for decryption"
-            )
+            raise ConnectorSecretCryptoError("secret key id is not available for decryption")
         try:
             cipher = AESGCM(key)
             return cipher.decrypt(nonce, ciphertext, aad)
         except Exception as exc:
-            raise ConnectorSecretCryptoError(
-                "connector secret decryption failed"
-            ) from exc
+            raise ConnectorSecretCryptoError("connector secret decryption failed") from exc

@@ -67,8 +67,12 @@ def test_phase4_policy_tools_and_scoped_overrides_are_tenant_user_owned(
     db_session: Session,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    owner = seed_user("tenant-phase4-owner", "phase4-owner@example.com", "StrongPass!1234", ("admin",))
-    other = seed_user("tenant-phase4-other", "phase4-other@example.com", "StrongPass!1234", ("admin",))
+    owner = seed_user(
+        "tenant-phase4-owner", "phase4-owner@example.com", "StrongPass!1234", ("admin",)
+    )
+    other = seed_user(
+        "tenant-phase4-other", "phase4-other@example.com", "StrongPass!1234", ("admin",)
+    )
     server = _server(db_session, owner)
     conversation = Conversation(tenant_id=owner.tenant_id, user_id=owner.user_id, title="Phase 4")
     mission = DeepSpaceMissionSnapshot(
@@ -97,7 +101,7 @@ def test_phase4_policy_tools_and_scoped_overrides_are_tenant_user_owned(
     policy_response = client.get(f"{base}/servers/{server.id}/policy", headers=owner_headers)
     assert policy_response.status_code == 200
     assert policy_response.json()["read_only"] is True
-    assert policy_response.json()["default_enabled"] is False
+    assert policy_response.json()["default_enabled"] is True
 
     update_response = client.put(
         f"{base}/servers/{server.id}/policy",
@@ -119,7 +123,10 @@ def test_phase4_policy_tools_and_scoped_overrides_are_tenant_user_owned(
 
     tools_response = client.get(f"{base}/servers/{server.id}/tools", headers=owner_headers)
     assert tools_response.status_code == 200
-    assert {item["name"] for item in tools_response.json()["tools"]} == {"read_inbox", "send_message"}
+    assert {item["name"] for item in tools_response.json()["tools"]} == {
+        "read_inbox",
+        "send_message",
+    }
     tool_response = client.put(
         f"{base}/servers/{server.id}/tools/send_message/policy",
         headers=owner_headers,
@@ -133,6 +140,8 @@ def test_phase4_policy_tools_and_scoped_overrides_are_tenant_user_owned(
         headers=owner_headers,
     )
     assert conversation_list.status_code == 200
+    # The explicit policy update above disables the account; a conversation
+    # remains disabled until the user enables that scope explicitly below.
     assert conversation_list.json()["connections"][0]["enabled"] is False
     conversation_update = client.put(
         f"{base}/conversations/{conversation.id}/connections/{server.id}",
@@ -156,10 +165,13 @@ def test_phase4_policy_tools_and_scoped_overrides_are_tenant_user_owned(
     assert deepspace_list.json()["connections"][0]["enabled"] is True
 
     assert client.get(f"{base}/servers/{server.id}", headers=other_headers).status_code == 404
-    assert client.get(
-        f"{base}/conversations/{conversation.id}/connections",
-        headers=other_headers,
-    ).status_code == 404
+    assert (
+        client.get(
+            f"{base}/conversations/{conversation.id}/connections",
+            headers=other_headers,
+        ).status_code
+        == 404
+    )
 
 
 def test_phase4_missing_scope_owner_cannot_change_override(
@@ -167,7 +179,9 @@ def test_phase4_missing_scope_owner_cannot_change_override(
     db_session: Session,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    owner = seed_user("tenant-phase4-owner-2", "phase4-owner-2@example.com", "StrongPass!1234", ("admin",))
+    owner = seed_user(
+        "tenant-phase4-owner-2", "phase4-owner-2@example.com", "StrongPass!1234", ("admin",)
+    )
     server = _server(db_session, owner)
     unknown_id = server.id
     response = client.put(

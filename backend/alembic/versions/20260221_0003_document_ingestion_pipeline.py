@@ -81,9 +81,7 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["uploaded_by_user_id"], ["users.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["uploaded_by_user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.UniqueConstraint(
             "tenant_id",
             "storage_bucket",
@@ -91,9 +89,7 @@ def upgrade() -> None:
             name="uq_documents_tenant_storage_object",
         ),
     )
-    op.create_index(
-        "ix_documents_tenant_created_at", "documents", ["tenant_id", "created_at"]
-    )
+    op.create_index("ix_documents_tenant_created_at", "documents", ["tenant_id", "created_at"])
     op.create_index("ix_documents_tenant_status", "documents", ["tenant_id", "status"])
 
     op.create_table(
@@ -108,9 +104,7 @@ def upgrade() -> None:
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("document_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column(
-            "attempt_count", sa.Integer(), nullable=False, server_default=sa.text("0")
-        ),
+        sa.Column("attempt_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("max_attempts", sa.Integer(), nullable=False),
         sa.Column("last_error_code", sa.String(length=64), nullable=True),
         sa.Column("last_error_message", sa.Text(), nullable=True),
@@ -135,9 +129,7 @@ def upgrade() -> None:
         "ingestion_jobs",
         ["tenant_id", "created_at"],
     )
-    op.create_index(
-        "ix_ingestion_jobs_tenant_status", "ingestion_jobs", ["tenant_id", "status"]
-    )
+    op.create_index("ix_ingestion_jobs_tenant_status", "ingestion_jobs", ["tenant_id", "status"])
 
     op.create_table(
         "document_chunks",
@@ -204,12 +196,8 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["document_id"], ["documents.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["chunk_id"], ["document_chunks.id"], ondelete="CASCADE"
-        ),
-        sa.UniqueConstraint(
-            "tenant_id", "chunk_id", name="uq_chunk_embeddings_tenant_chunk"
-        ),
+        sa.ForeignKeyConstraint(["chunk_id"], ["document_chunks.id"], ondelete="CASCADE"),
+        sa.UniqueConstraint("tenant_id", "chunk_id", name="uq_chunk_embeddings_tenant_chunk"),
     )
     op.create_index(
         "ix_chunk_embeddings_tenant_created_at",
@@ -239,9 +227,7 @@ def upgrade() -> None:
         sa.Column("resource_type", sa.String(length=32), nullable=False),
         sa.Column("resource_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("status_code", sa.Integer(), nullable=False),
-        sa.Column(
-            "response_body", postgresql.JSONB(astext_type=sa.Text()), nullable=False
-        ),
+        sa.Column("response_body", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -249,9 +235,7 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
-        sa.UniqueConstraint(
-            "tenant_id", "idempotency_key", name="uq_idempotency_tenant_key"
-        ),
+        sa.UniqueConstraint("tenant_id", "idempotency_key", name="uq_idempotency_tenant_key"),
     )
     op.create_index(
         "ix_idempotency_keys_tenant_created_at",
@@ -279,15 +263,11 @@ def downgrade() -> None:
     ):
         _drop_rls_policy(table_name)
 
-    op.drop_index(
-        "ix_idempotency_keys_tenant_created_at", table_name="idempotency_keys"
-    )
+    op.drop_index("ix_idempotency_keys_tenant_created_at", table_name="idempotency_keys")
     op.drop_table("idempotency_keys")
 
     op.drop_index("ix_chunk_embeddings_embedding_hnsw", table_name="chunk_embeddings")
-    op.drop_index(
-        "ix_chunk_embeddings_tenant_created_at", table_name="chunk_embeddings"
-    )
+    op.drop_index("ix_chunk_embeddings_tenant_created_at", table_name="chunk_embeddings")
     op.drop_table("chunk_embeddings")
 
     op.drop_index("ix_document_chunks_tenant_created_at", table_name="document_chunks")

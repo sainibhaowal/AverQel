@@ -42,15 +42,11 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        op.f("ix_usage_records_query_id"), "usage_records", ["query_id"], unique=False
-    )
+    op.create_index(op.f("ix_usage_records_query_id"), "usage_records", ["query_id"], unique=False)
     op.create_index(
         op.f("ix_usage_records_tenant_id"), "usage_records", ["tenant_id"], unique=False
     )
-    op.create_index(
-        op.f("ix_usage_records_user_id"), "usage_records", ["user_id"], unique=False
-    )
+    op.create_index(op.f("ix_usage_records_user_id"), "usage_records", ["user_id"], unique=False)
     # ### end Alembic commands ###
 
 

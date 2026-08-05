@@ -15,7 +15,7 @@ import { yaml } from "@codemirror/lang-yaml";
 import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
-import { Code2, Eye, PanelLeft, PencilLine } from "lucide-react";
+import { ArrowLeft, Code2, Eye, PanelLeft, PencilLine } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { LibraryPreview } from "./DeepSpaceLibraryPreview";
@@ -102,11 +102,28 @@ export default function DeepSpaceLibraryFileWorkspace({
   contentType,
   value,
   onChange,
+  previewUrl,
+  archiveEntries,
+  onArchiveEntrySelect,
+  archiveEntryName,
+  onArchiveBack,
 }: {
   name: string;
   contentType: string;
   value: string;
   onChange: (value: string) => void;
+  previewUrl?: string | null;
+  archiveEntries?:
+    | { name: string; directory: boolean; compressedSize: number; size: number }[]
+    | null;
+  onArchiveEntrySelect?: (entry: {
+    name: string;
+    directory: boolean;
+    compressedSize: number;
+    size: number;
+  }) => void;
+  archiveEntryName?: string;
+  onArchiveBack?: () => void;
 }) {
   const kind = libraryFileKind(name, contentType);
   const editorSupported = libraryKindSupportsEditor(kind);
@@ -122,6 +139,16 @@ export default function DeepSpaceLibraryFileWorkspace({
     <section className="border-glass-border bg-surface-1/40 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border">
       <header className="border-glass-border bg-surface-1/60 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
         <div className="flex min-w-0 items-center gap-2">
+          {archiveEntryName && onArchiveBack ? (
+            <button
+              type="button"
+              onClick={onArchiveBack}
+              title="Back to archive"
+              className="text-foreground/55 hover:bg-surface-2 hover:text-primary rounded-md p-1"
+            >
+              <ArrowLeft size={12} />
+            </button>
+          ) : null}
           <Code2 size={13} className="text-primary shrink-0" />
           <span className="text-foreground truncate font-mono text-[10px]">{name}</span>
           <span className="border-glass-border bg-surface-0 text-foreground/45 rounded border px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.1em] uppercase">
@@ -183,7 +210,14 @@ export default function DeepSpaceLibraryFileWorkspace({
         ) : null}
         {previewVisible ? (
           <div className="custom-scrollbar bg-surface-0 min-h-0 min-w-0 flex-1 overflow-auto p-4 text-sm">
-            <LibraryPreview kind={kind} contentType={contentType} value={value} />
+            <LibraryPreview
+              kind={kind}
+              contentType={contentType}
+              value={value}
+              previewUrl={previewUrl}
+              archiveEntries={archiveEntries}
+              onArchiveEntrySelect={onArchiveEntrySelect}
+            />
           </div>
         ) : null}
       </div>

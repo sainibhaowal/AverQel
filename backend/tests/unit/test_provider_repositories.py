@@ -106,14 +106,8 @@ def test_provider_config_repository_is_tenant_scoped() -> None:
         )
         session.commit()
 
-        assert (
-            repo.get_by_id(tenant_id=tenant_a.id, provider_config_id=config_a.id)
-            is not None
-        )
-        assert (
-            repo.get_by_id(tenant_id=tenant_b.id, provider_config_id=config_a.id)
-            is None
-        )
+        assert repo.get_by_id(tenant_id=tenant_a.id, provider_config_id=config_a.id) is not None
+        assert repo.get_by_id(tenant_id=tenant_b.id, provider_config_id=config_a.id) is None
         listed = repo.list_by_tenant(tenant_id=tenant_a.id, owner_user_id=user_a.id)
         assert [item.display_name for item in listed] == ["Local Ollama"]
     finally:
@@ -280,14 +274,7 @@ def test_provider_model_cache_assignment_health_and_usage_repositories() -> None
             ],
         )
         assert len(persisted) == 2
-        assert (
-            len(
-                cache_repo.list_models(
-                    tenant_id=tenant.id, provider_config_id=provider.id
-                )
-            )
-            == 2
-        )
+        assert len(cache_repo.list_models(tenant_id=tenant.id, provider_config_id=provider.id)) == 2
         removed = cache_repo.purge_stale_models(
             tenant_id=tenant.id,
             provider_config_id=provider.id,

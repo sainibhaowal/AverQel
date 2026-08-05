@@ -318,9 +318,18 @@ OFFICIAL_MCP_PROVIDERS: tuple[CuratedMCPProvider, ...] = (
             "https://www.googleapis.com/auth/chat.users.readstate.readonly",
         ),
         tool_preview=(
-            CuratedMCPTool("search_messages", "Search Google Chat messages.", "Messages", ("read",)),
-            CuratedMCPTool("list_messages", "List messages in a Chat space.", "Messages", ("read",)),
-            CuratedMCPTool("send_message", "Send a Google Chat message.", "Messages", ("write", "external_message")),
+            CuratedMCPTool(
+                "search_messages", "Search Google Chat messages.", "Messages", ("read",)
+            ),
+            CuratedMCPTool(
+                "list_messages", "List messages in a Chat space.", "Messages", ("read",)
+            ),
+            CuratedMCPTool(
+                "send_message",
+                "Send a Google Chat message.",
+                "Messages",
+                ("write", "external_message"),
+            ),
         ),
         availability="developer_preview",
         popularity_rank=4,
@@ -344,9 +353,13 @@ OFFICIAL_MCP_PROVIDERS: tuple[CuratedMCPProvider, ...] = (
             "https://www.googleapis.com/auth/contacts.readonly",
         ),
         tool_preview=(
-            CuratedMCPTool("get_user_profile", "Read the signed-in user's profile.", "People", ("read",)),
+            CuratedMCPTool(
+                "get_user_profile", "Read the signed-in user's profile.", "People", ("read",)
+            ),
             CuratedMCPTool("search_contacts", "Search the user's contacts.", "People", ("read",)),
-            CuratedMCPTool("search_directory_people", "Search the Workspace directory.", "People", ("read",)),
+            CuratedMCPTool(
+                "search_directory_people", "Search the Workspace directory.", "People", ("read",)
+            ),
         ),
         availability="developer_preview",
         popularity_rank=5,
@@ -407,7 +420,9 @@ def validate_official_mcp_catalog() -> None:
         if provider.transport != "streamable_http":
             raise ValueError(f"Unsupported curated MCP transport: {provider.transport}")
         if any(not scope.startswith("https://") for scope in provider.requested_scopes):
-            raise ValueError(f"Curated MCP provider has an invalid OAuth scope: {provider.provider_slug}")
+            raise ValueError(
+                f"Curated MCP provider has an invalid OAuth scope: {provider.provider_slug}"
+            )
 
 
 validate_official_mcp_catalog()

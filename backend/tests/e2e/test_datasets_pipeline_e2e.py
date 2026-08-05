@@ -28,9 +28,7 @@ def test_dataset_upload_index_query_citation_e2e(
     settings: Settings,
 ):
     ensure_test_datasets()
-    seeded_user = seed_user(
-        "tenant-e2e", "e2e@example.com", "Password!123", ("editor",)
-    )
+    seeded_user = seed_user("tenant-e2e", "e2e@example.com", "Password!123", ("editor",))
     token = _login(client, seeded_user)
     headers = {
         "Authorization": f"Bearer {token}",

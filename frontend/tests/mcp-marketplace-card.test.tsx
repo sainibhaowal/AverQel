@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import MCPMarketplaceCard, { resolveTrustedLogoPath } from "../app/dashboard/mcp/_components/MCPMarketplaceCard";
+import MCPMarketplaceCard, {
+  resolveTrustedLogoPath,
+} from "../app/dashboard/mcp/_components/MCPMarketplaceCard";
 import { marketplaceEntry } from "./mcp-test-fixtures";
 
 describe("MCPMarketplaceCard", () => {

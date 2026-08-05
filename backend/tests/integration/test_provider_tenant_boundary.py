@@ -26,12 +26,8 @@ def test_provider_routes_do_not_cross_tenant_boundaries(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    tenant_a = seed_user(
-        "tenant-a", "admin-a@tenant.example", "StrongPass!1234", ("admin",)
-    )
-    tenant_b = seed_user(
-        "tenant-b", "admin-b@tenant.example", "StrongPass!1234", ("admin",)
-    )
+    tenant_a = seed_user("tenant-a", "admin-a@tenant.example", "StrongPass!1234", ("admin",))
+    tenant_b = seed_user("tenant-b", "admin-b@tenant.example", "StrongPass!1234", ("admin",))
 
     create_response = client.post(
         "/api/v1/providers",

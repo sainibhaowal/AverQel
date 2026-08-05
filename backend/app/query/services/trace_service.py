@@ -39,9 +39,7 @@ class TraceCollector:
             return
 
         elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
-        self.timing_ms[cleaned] = round(
-            self.timing_ms.get(cleaned, 0.0) + elapsed_ms, 2
-        )
+        self.timing_ms[cleaned] = round(self.timing_ms.get(cleaned, 0.0) + elapsed_ms, 2)
 
     def record_retrieval(
         self,
@@ -58,9 +56,7 @@ class TraceCollector:
         self.chunks_evaluated = max(0, evaluated)
         self.chunks_selected = max(0, selected)
         self.chunks_rejected = max(0, rejected)
-        self.rejection_reasons = [
-            reason.strip() for reason in (reasons or []) if reason.strip()
-        ]
+        self.rejection_reasons = [reason.strip() for reason in (reasons or []) if reason.strip()]
         self.search_strategy = strategy.strip() or "hybrid"
 
     def set_metadata(self, **values: Any) -> None:

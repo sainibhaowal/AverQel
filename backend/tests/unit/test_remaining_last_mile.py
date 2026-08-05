@@ -39,14 +39,10 @@ async def test_middleware_rate_limit_headers_branch(
                 reset_unix=123,
                 scope="global_ip",
             )
-            raise ApiError(
-                code="RATE_LIMIT_EXCEEDED", message="x", status_code=429, details={}
-            )
+            raise ApiError(code="RATE_LIMIT_EXCEEDED", message="x", status_code=429, details={})
 
     monkeypatch.setattr("app.core.middleware.get_settings", get_settings)
-    monkeypatch.setattr(
-        "app.core.middleware.RateLimitService", lambda _settings: _Limiter()
-    )
+    monkeypatch.setattr("app.core.middleware.RateLimitService", lambda _settings: _Limiter())
     monkeypatch.setattr(
         "app.core.middleware.API_REQUESTS_TOTAL",
         SimpleNamespace(labels=lambda **_: SimpleNamespace(inc=lambda: None)),
@@ -155,9 +151,7 @@ def test_answer_service_remaining_branches(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setitem(
         sys.modules,
         "httpx",
-        SimpleNamespace(
-            post=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("httpx missing"))
-        ),
+        SimpleNamespace(post=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("httpx missing"))),
     )
     with pytest.raises(RetryableLlmError):
         service2._call_llm_provider(query_text="q", context="c")
@@ -240,9 +234,7 @@ def test_answer_service_remaining_branches(monkeypatch: pytest.MonkeyPatch) -> N
 
     # circuit reset + failure-none + threshold open + prompt truncation
     AnswerService._llm_circuit.failures = 3
-    AnswerService._llm_circuit.opened_until = datetime.now(tz=UTC) - timedelta(
-        seconds=1
-    )
+    AnswerService._llm_circuit.opened_until = datetime.now(tz=UTC) - timedelta(seconds=1)
     assert AnswerService._llm_is_circuit_open() is False
 
     service_none._record_llm_failure()

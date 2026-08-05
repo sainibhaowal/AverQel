@@ -50,9 +50,7 @@ def test_retrieval_service_applies_reranker_after_hybrid_fusion(
         "get_accessible_document_ids_global",
         lambda **_: {accessible_doc_id},
     )
-    monkeypatch.setattr(
-        service.embeddings, "embed_many", lambda *_, **__: [[0.1] * 384]
-    )
+    monkeypatch.setattr(service.embeddings, "embed_many", lambda *_, **__: [[0.1] * 384])
     monkeypatch.setattr(
         service.chunks,
         "search_top_k_global",
@@ -131,9 +129,7 @@ def test_retrieval_service_uses_adaptive_depth_plan_for_broad_queries(
     settings.query_top_k_max = 25
 
     accessible_doc_id = generate_uuid7_with_fallback()
-    vector_rows = [
-        _row(index, f"vector {index}", 0.9 - (index * 0.01)) for index in range(30)
-    ]
+    vector_rows = [_row(index, f"vector {index}", 0.9 - (index * 0.01)) for index in range(30)]
     search_top_ks: list[int] = []
     rerank_inputs: list[dict[str, int]] = []
 
@@ -142,9 +138,7 @@ def test_retrieval_service_uses_adaptive_depth_plan_for_broad_queries(
         "get_accessible_document_ids_global",
         lambda **_: {accessible_doc_id},
     )
-    monkeypatch.setattr(
-        service.embeddings, "embed_many", lambda *_, **__: [[0.1] * 384]
-    )
+    monkeypatch.setattr(service.embeddings, "embed_many", lambda *_, **__: [[0.1] * 384])
 
     def _fake_search_top_k(**kwargs):  # type: ignore[no-untyped-def]
         search_top_ks.append(kwargs["top_k"])

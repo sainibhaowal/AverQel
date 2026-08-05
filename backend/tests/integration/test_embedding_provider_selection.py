@@ -12,9 +12,7 @@ from app.providers.repositories.provider_configs import ProviderConfigsRepositor
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 
 
-def test_embedding_service_uses_selected_provider_assignment(
-    seed_user, monkeypatch
-) -> None:
+def test_embedding_service_uses_selected_provider_assignment(seed_user, monkeypatch) -> None:
     seeded = seed_user(
         "Embedding Provider Tenant",
         "embedding-provider@example.com",
@@ -94,9 +92,7 @@ def test_embedding_service_uses_selected_provider_assignment(
         get_settings.cache_clear()
 
 
-def test_embedding_service_requires_ui_assignment_when_db_backed(
-    seed_user, monkeypatch
-) -> None:
+def test_embedding_service_requires_ui_assignment_when_db_backed(seed_user, monkeypatch) -> None:
     seeded = seed_user(
         "Embedding Assignment Tenant",
         "embedding-required@example.com",

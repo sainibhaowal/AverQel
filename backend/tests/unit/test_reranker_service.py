@@ -83,9 +83,7 @@ def test_reranker_service_reorders_chunks(settings, monkeypatch, db_session) -> 
     assert result.metadata.model == "BAAI/bge-reranker-v2-m3"
 
 
-def test_reranker_service_falls_back_when_unconfigured(
-    settings, monkeypatch, db_session
-) -> None:
+def test_reranker_service_falls_back_when_unconfigured(settings, monkeypatch, db_session) -> None:
     tenant_id = generate_uuid7_with_fallback()
     db_session.add(Tenant(id=tenant_id, name="Reranker Fallback Tenant"))
     db_session.flush()

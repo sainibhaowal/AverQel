@@ -2,7 +2,7 @@
 
 import * as XLSX from "xlsx";
 import { Archive, FileWarning, Music2, Table2 } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 import type { LibraryFileKind } from "./DeepSpaceLibraryFormats";
@@ -149,8 +149,35 @@ function Table({ rows }: { rows: string[][] }) {
   );
 }
 
-function SpreadsheetTable({ value }: { value: string }) {
+function SpreadsheetTable({ value, previewUrl }: { value: string; previewUrl?: string | null }) {
+  const [binaryRows, setBinaryRows] = useState<string[][]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!previewUrl)
+      return () => {
+        cancelled = true;
+      };
+    void fetch(previewUrl)
+      .then((response) => response.arrayBuffer())
+      .then((buffer) => {
+        if (cancelled) return;
+        const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+        const first = workbook.SheetNames[0];
+        setBinaryRows(
+          first
+            ? (XLSX.utils.sheet_to_json(workbook.Sheets[first], { header: 1 }) as string[][])
+            : [],
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setBinaryRows([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [previewUrl]);
   const rows = useMemo(() => {
+    if (previewUrl && binaryRows.length) return binaryRows;
     const bytes = decodeBase64(value);
     if (!bytes) return [];
     try {
@@ -162,7 +189,7 @@ function SpreadsheetTable({ value }: { value: string }) {
     } catch {
       return [];
     }
-  }, [value]);
+  }, [binaryRows, previewUrl, value]);
   return rows.length ? (
     <Table rows={rows} />
   ) : (
@@ -186,14 +213,20 @@ export function LibraryPreview({
   kind,
   contentType,
   value,
+  previewUrl,
+  archiveEntries,
+  onArchiveEntrySelect,
 }: {
   kind: LibraryFileKind;
   contentType: string;
   value: string;
+  previewUrl?: string | null;
+  archiveEntries?: ArchiveEntry[] | null;
+  onArchiveEntrySelect?: (entry: ArchiveEntry) => void;
 }) {
   if (kind === "markdown") return <DeepSpaceMarkdownRenderer content={value} />;
   if (kind === "csv") return <Table rows={parseCsv(value)} />;
-  if (kind === "spreadsheet") return <SpreadsheetTable value={value} />;
+  if (kind === "spreadsheet") return <SpreadsheetTable value={value} previewUrl={previewUrl} />;
   if (kind === "diff") {
     return (
       <div className="custom-scrollbar h-full overflow-auto font-mono text-[11px]">
@@ -215,12 +248,14 @@ export function LibraryPreview({
     );
   }
   if (kind === "archive") {
-    const entries = parseArchive(value);
+    const entries = archiveEntries?.length ? archiveEntries : parseArchive(value);
     return entries.length ? (
       <div className="custom-scrollbar h-full overflow-auto p-3 text-xs">
         {entries.map((entry) => (
-          <div
+          <button
             key={entry.name}
+            type="button"
+            onClick={() => onArchiveEntrySelect?.(entry)}
             className="border-glass-border text-foreground/75 flex items-center justify-between gap-3 border-b px-2 py-2"
           >
             <span className="truncate">
@@ -229,7 +264,7 @@ export function LibraryPreview({
             <span className="text-muted-foreground shrink-0">
               {entry.directory ? "folder" : `${entry.size.toLocaleString()} B`}
             </span>
-          </div>
+          </button>
         ))}
       </div>
     ) : (
@@ -241,9 +276,11 @@ export function LibraryPreview({
   }
   if (["image", "svg", "video", "audio", "pdf", "docx"].includes(kind)) {
     const source =
-      kind === "svg" && value.trim().startsWith("<svg")
+      previewUrl ||
+      (kind === "svg" && value.trim().startsWith("<svg")
         ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(value)}`
-        : dataUrl(value, contentType);
+        : dataUrl(value, contentType));
+    if (kind === "docx" && value.trim()) return <DeepSpaceMarkdownRenderer content={value} />;
     if (!source)
       return (
         <EmptyPreview

@@ -19,9 +19,7 @@ ALLOWED_SEARCH_DEPTHS = {"ultra-fast", "fast", "basic", "advanced"}
 class TavilyProvider:
     provider_name = "tavily"
 
-    def __init__(
-        self, *, base_url: str | None = None, api_key: str | None = None
-    ) -> None:
+    def __init__(self, *, base_url: str | None = None, api_key: str | None = None) -> None:
         self.base_url = (base_url or DEFAULT_TAVILY_BASE_URL).rstrip("/")
         self.api_key = api_key
 
@@ -60,9 +58,7 @@ class TavilyProvider:
             )
         max_results = max(1, min(int(request.max_results), 10))
         search_depth = (
-            request.search_depth
-            if request.search_depth in ALLOWED_SEARCH_DEPTHS
-            else "basic"
+            request.search_depth if request.search_depth in ALLOWED_SEARCH_DEPTHS else "basic"
         )
         payload: dict[str, Any] = {
             "query": query,
@@ -131,19 +127,13 @@ class TavilyProvider:
                         if isinstance(item.get("raw_content"), str)
                         else None
                     ),
-                    favicon=(
-                        item.get("favicon")
-                        if isinstance(item.get("favicon"), str)
-                        else None
-                    ),
+                    favicon=(item.get("favicon") if isinstance(item.get("favicon"), str) else None),
                 )
             )
 
         response_time_raw = data.get("response_time")
         try:
-            response_time = (
-                float(response_time_raw) if response_time_raw is not None else None
-            )
+            response_time = float(response_time_raw) if response_time_raw is not None else None
         except (TypeError, ValueError):
             response_time = None
         return WebSearchResponse(
@@ -152,15 +142,9 @@ class TavilyProvider:
             results=results,
             response_time=response_time,
             request_id=(
-                data.get("request_id")
-                if isinstance(data.get("request_id"), str)
-                else None
+                data.get("request_id") if isinstance(data.get("request_id"), str) else None
             ),
-            usage=(
-                dict(data.get("usage") or {})
-                if isinstance(data.get("usage"), dict)
-                else {}
-            ),
+            usage=(dict(data.get("usage") or {}) if isinstance(data.get("usage"), dict) else {}),
         )
 
     def health_check(self) -> HealthCheckResult:
@@ -203,9 +187,7 @@ class TavilyProvider:
         except Exception:  # noqa: BLE001
             payload = None
         if isinstance(payload, dict):
-            detail = (
-                payload.get("detail") or payload.get("message") or payload.get("error")
-            )
+            detail = payload.get("detail") or payload.get("message") or payload.get("error")
             if isinstance(detail, str) and detail.strip():
                 message = detail.strip()
         if not message and isinstance(getattr(response, "text", None), str):

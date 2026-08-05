@@ -16,6 +16,8 @@ describe("MCPToolPermissionTable", () => {
     expect(screen.getAllByRole("option", { name: "needs approval" })).not.toHaveLength(0);
     expect(screen.getAllByRole("option", { name: "blocked" })).not.toHaveLength(0);
     fireEvent.change(selector, { target: { value: "blocked" } });
-    await waitFor(() => expect(updateMCPToolPolicy).toHaveBeenCalledWith("server-1", "search_mail", "blocked"));
+    await waitFor(() =>
+      expect(updateMCPToolPolicy).toHaveBeenCalledWith("server-1", "search_mail", "blocked"),
+    );
   });
 });

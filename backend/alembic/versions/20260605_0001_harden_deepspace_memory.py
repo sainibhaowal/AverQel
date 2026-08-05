@@ -18,15 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "agent_memory", sa.Column("embedding_provider", sa.String(), nullable=True)
-    )
-    op.add_column(
-        "agent_memory", sa.Column("embedding_model", sa.String(), nullable=True)
-    )
-    op.add_column(
-        "agent_memory", sa.Column("embedding_version", sa.String(), nullable=True)
-    )
+    op.add_column("agent_memory", sa.Column("embedding_provider", sa.String(), nullable=True))
+    op.add_column("agent_memory", sa.Column("embedding_model", sa.String(), nullable=True))
+    op.add_column("agent_memory", sa.Column("embedding_version", sa.String(), nullable=True))
     op.add_column("agent_memory", sa.Column("content_hash", sa.String(), nullable=True))
     op.add_column(
         "agent_memory",
@@ -36,9 +30,7 @@ def upgrade() -> None:
         "agent_memory",
         sa.Column("access_count", sa.Integer(), nullable=False, server_default="0"),
     )
-    op.add_column(
-        "agent_memory", sa.Column("last_accessed_at", sa.DateTime(), nullable=True)
-    )
+    op.add_column("agent_memory", sa.Column("last_accessed_at", sa.DateTime(), nullable=True))
     op.add_column("agent_memory", sa.Column("metadata_json", sa.JSON(), nullable=True))
     op.create_index(
         op.f("ix_agent_memory_content_hash"),

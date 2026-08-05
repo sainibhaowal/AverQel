@@ -57,9 +57,7 @@ class DeepSpaceExportService:
     """Generates premium PDF and DOCX exports from DeepSpace note HTML."""
 
     # ------------------------------------------------------------------ PDF
-    def generate_pdf(
-        self, html_content: str, title: str = "DeepSpace Note"
-    ) -> io.BytesIO:
+    def generate_pdf(self, html_content: str, title: str = "DeepSpace Note") -> io.BytesIO:
         """Build a clean, professionally styled PDF from the note HTML."""
         pdf = _PremiumPDF(title=title)
         pdf.alias_nb_pages()
@@ -196,9 +194,7 @@ class DeepSpaceExportService:
                 continue
             cells = row.find_all(["td", "th"])
             first_cell = cells[0] if cells else None
-            is_header = (
-                first_cell.name == "th" if isinstance(first_cell, Tag) else False
-            )
+            is_header = first_cell.name == "th" if isinstance(first_cell, Tag) else False
             for cell in cells:
                 if not isinstance(cell, Tag):
                     continue
@@ -215,9 +211,7 @@ class DeepSpaceExportService:
         pdf.ln(4)
 
     # ----------------------------------------------------------------- DOCX
-    def generate_docx(
-        self, html_content: str, title: str = "DeepSpace Note"
-    ) -> io.BytesIO:
+    def generate_docx(self, html_content: str, title: str = "DeepSpace Note") -> io.BytesIO:
         """Generates a structured DOCX from HTML content."""
         doc = Document()
         doc.add_heading(title, 0)

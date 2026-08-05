@@ -141,11 +141,15 @@ class DeepSpaceRuntimeStore:
         ).scalar_one_or_none()
         if run is None:
             return []
-        steps = self.db.execute(
-            select(DeepSpaceAgentStep)
-            .where(DeepSpaceAgentStep.run_id == run.id)
-            .order_by(DeepSpaceAgentStep.sequence.asc())
-        ).scalars().all()
+        steps = (
+            self.db.execute(
+                select(DeepSpaceAgentStep)
+                .where(DeepSpaceAgentStep.run_id == run.id)
+                .order_by(DeepSpaceAgentStep.sequence.asc())
+            )
+            .scalars()
+            .all()
+        )
         result: list[dict[str, object]] = []
         for step in steps:
             if step.step_type not in {"tool_start", "tool_result", "approval_requested"}:
@@ -154,7 +158,11 @@ class DeepSpaceRuntimeStore:
             success = bool(payload.get("success", step.status == "completed"))
             result.append(
                 {
-                    "type": "tool_start" if step.step_type == "tool_start" else ("tool_result" if success else "tool_error"),
+                    "type": (
+                        "tool_start"
+                        if step.step_type == "tool_start"
+                        else ("tool_result" if success else "tool_error")
+                    ),
                     "step_id": f"runtime_{step.sequence}",
                     "tool_id": step.tool_call_id,
                     "tool_name": step.tool_name,
@@ -177,17 +185,21 @@ class DeepSpaceRuntimeStore:
         approval_id: str,
     ) -> DeepSpaceAgentRun | None:
         """Return only a user-owned run containing the requested approval."""
-        runs = self.db.execute(
-            select(DeepSpaceAgentRun)
-            .where(
-                DeepSpaceAgentRun.tenant_id == tenant_id,
-                DeepSpaceAgentRun.user_id == user_id,
-                DeepSpaceAgentRun.conversation_id == conversation_id,
-                DeepSpaceAgentRun.status.in_({"awaiting_approval", "running", "blocked"}),
+        runs = (
+            self.db.execute(
+                select(DeepSpaceAgentRun)
+                .where(
+                    DeepSpaceAgentRun.tenant_id == tenant_id,
+                    DeepSpaceAgentRun.user_id == user_id,
+                    DeepSpaceAgentRun.conversation_id == conversation_id,
+                    DeepSpaceAgentRun.status.in_({"awaiting_approval", "running", "blocked"}),
+                )
+                .order_by(DeepSpaceAgentRun.updated_at.desc())
+                .limit(25)
             )
-            .order_by(DeepSpaceAgentRun.updated_at.desc())
-            .limit(25)
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for run in runs:
             checkpoint = run.checkpoint if isinstance(run.checkpoint, dict) else {}
             pending = checkpoint.get("pending_approval")
@@ -231,7 +243,9 @@ class DeepSpaceRuntimeStore:
         self.db.commit()
         return pending
 
-    def clear_pending_approval(self, *, run_id: uuid.UUID, checkpoint: dict[str, object] | None = None) -> None:
+    def clear_pending_approval(
+        self, *, run_id: uuid.UUID, checkpoint: dict[str, object] | None = None
+    ) -> None:
         """Remove a consumed approval while retaining the rest of the checkpoint."""
         values = dict(checkpoint or {})
         values.pop("pending_approval", None)

@@ -35,9 +35,7 @@ def test_query_rate_limit_exceeded_returns_429_and_does_not_persist_query(
     )
     token = _login(client, seeded)
 
-    def fake_increment(
-        self: RateLimitService, *, key: str, window_seconds: int
-    ) -> tuple[int, int]:
+    def fake_increment(self: RateLimitService, *, key: str, window_seconds: int) -> tuple[int, int]:
         del window_seconds
         if "queries_user" in key:
             return 61, 60
@@ -61,9 +59,7 @@ def test_query_rate_limit_exceeded_returns_429_and_does_not_persist_query(
         session.execute(text("SET ROLE aks_app"))
         set_db_tenant_context(session, seeded.tenant_id)
         query_count = session.execute(
-            select(func.count())
-            .select_from(Query)
-            .where(Query.tenant_id == seeded.tenant_id)
+            select(func.count()).select_from(Query).where(Query.tenant_id == seeded.tenant_id)
         ).scalar_one()
         assert query_count == 0
     finally:

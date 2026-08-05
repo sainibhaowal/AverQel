@@ -167,6 +167,10 @@ describe("MCP dashboard", () => {
   it("handles a successful OAuth return and opens installed connections", async () => {
     searchParamsMock.value = new URLSearchParams("mcp_status=connected&server_id=server-1");
     render(<MCPDashboard />);
-    await waitFor(() => expect(routerMock.replace).toHaveBeenCalledWith("/dashboard/mcp/inspector/server-1?mcp_status=connected"));
+    await waitFor(() =>
+      expect(routerMock.replace).toHaveBeenCalledWith(
+        "/dashboard/mcp/inspector/server-1?mcp_status=connected",
+      ),
+    );
   });
 });

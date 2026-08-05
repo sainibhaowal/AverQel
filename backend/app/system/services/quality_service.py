@@ -56,9 +56,7 @@ class QualityService:
         self._recompute_chunk_quality(tenant_id=tenant_id, chunk_id=chunk_id)
         return citation
 
-    def _recompute_chunk_quality(
-        self, *, tenant_id: uuid.UUID, chunk_id: uuid.UUID
-    ) -> None:
+    def _recompute_chunk_quality(self, *, tenant_id: uuid.UUID, chunk_id: uuid.UUID) -> None:
         """Recompute average feedback score for a chunk and trigger re-ingestion if needed."""
         avg_score = self.db.execute(
             select(func.avg(QueryCitation.feedback_score)).where(

@@ -29,9 +29,7 @@ class ProviderHealthChecksRepository(BaseRepository):
                 ProviderHealthCheck.tenant_id == tenant_id,
                 ProviderHealthCheck.provider_config_id == provider_config_id,
             )
-            .order_by(
-                ProviderHealthCheck.checked_at.desc(), ProviderHealthCheck.id.desc()
-            )
+            .order_by(ProviderHealthCheck.checked_at.desc(), ProviderHealthCheck.id.desc())
             .limit(1)
         )
         return self.db.execute(stmt).scalar_one_or_none()
@@ -50,9 +48,7 @@ class ProviderHealthChecksRepository(BaseRepository):
                 ProviderHealthCheck.tenant_id == tenant_id,
                 ProviderHealthCheck.provider_config_id == provider_config_id,
             )
-            .order_by(
-                ProviderHealthCheck.checked_at.desc(), ProviderHealthCheck.id.desc()
-            )
+            .order_by(ProviderHealthCheck.checked_at.desc(), ProviderHealthCheck.id.desc())
             .limit(limit)
         )
         return self.db.execute(stmt).scalars().all()

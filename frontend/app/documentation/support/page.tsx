@@ -29,7 +29,9 @@ export default function SupportDocsPage() {
 
       <DocsSection title="System State Verification">
         <p>
-          Before opening support tickets, you can run diagnostic tests directly in the app. The diagnostics scanner inspects IndexedDB size constraints, Web Crypto API availability, WebSocket latency, and Redis pub/sub connectivity to pinpoint connection bottlenecks.
+          Before opening support tickets, you can run diagnostic tests directly in the app. The
+          diagnostics scanner inspects IndexedDB size constraints, Web Crypto API availability,
+          WebSocket latency, and Redis pub/sub connectivity to pinpoint connection bottlenecks.
         </p>
       </DocsSection>
     </DocsShell>

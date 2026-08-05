@@ -78,9 +78,7 @@ class ProviderOAuthService:
                     return True
         return False
 
-    def start(
-        self, *, tenant_id: UUID, actor_user_id: UUID | None
-    ) -> tuple[bool, str | None, str]:
+    def start(self, *, tenant_id: UUID, actor_user_id: UUID | None) -> tuple[bool, str | None, str]:
         enabled, message = self.status(tenant_id=tenant_id)
         if not enabled:
             raise ApiError(
@@ -89,9 +87,7 @@ class ProviderOAuthService:
                 status_code=400,
             )
         nonce = str(uuid4())
-        state = self._sign_state(
-            tenant_id=tenant_id, actor_user_id=actor_user_id, nonce=nonce
-        )
+        state = self._sign_state(tenant_id=tenant_id, actor_user_id=actor_user_id, nonce=nonce)
         params = urlencode(
             {
                 "client_id": self.settings.provider_openai_oauth_client_id,
@@ -146,9 +142,7 @@ class ProviderOAuthService:
             "OpenAI OAuth callback flow is reserved for officially verified client support only.",
         )
 
-    def _sign_state(
-        self, *, tenant_id: UUID, actor_user_id: UUID | None, nonce: str
-    ) -> str:
+    def _sign_state(self, *, tenant_id: UUID, actor_user_id: UUID | None, nonce: str) -> str:
         payload = {
             "tenant_id": str(tenant_id),
             "actor_user_id": str(actor_user_id) if actor_user_id is not None else "",
@@ -156,9 +150,7 @@ class ProviderOAuthService:
             "iat": int(time.time()),
             "provider_type": OPENAI_OAUTH_PROVIDER_TYPE,
         }
-        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(
-            "utf-8"
-        )
+        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
         signature = hmac.new(
             self.settings.jwt_secret.encode("utf-8"),
             body,
@@ -223,10 +215,7 @@ class ProviderOAuthService:
                 status_code=400,
             )
         issued_at = payload.get("iat")
-        if (
-            not isinstance(issued_at, int)
-            or int(time.time()) - issued_at > STATE_MAX_AGE_SECONDS
-        ):
+        if not isinstance(issued_at, int) or int(time.time()) - issued_at > STATE_MAX_AGE_SECONDS:
             raise ApiError(
                 code="PROVIDER_OAUTH_UNSUPPORTED",
                 message="OAuth callback state has expired.",

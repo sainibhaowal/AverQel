@@ -259,9 +259,7 @@ def test_tenant_isolation_e2e(
             "X-Tenant-Id": str(tenant_a.tenant_id),
             "Idempotency-Key": "idem-a",
         },
-        files={
-            "file": ("secret.txt", b"highly classified tenant a secrets", "text/plain")
-        },
+        files={"file": ("secret.txt", b"highly classified tenant a secrets", "text/plain")},
     )
     assert res.status_code == 200
     doc_id_a = res.json()["document_id"]

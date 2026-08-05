@@ -106,8 +106,7 @@ def upgrade() -> None:
                 supports_model_install=row["supports_model_install"],
                 default_chat_model=None,
                 default_embedding_model=None,
-                default_reranker_model=row["default_reranker_model"]
-                or "BAAI/bge-reranker-v2-m3",
+                default_reranker_model=row["default_reranker_model"] or "BAAI/bge-reranker-v2-m3",
                 timeout_seconds=row["timeout_seconds"],
                 priority=row["priority"],
                 metadata_json=row["metadata_json"] or {},
@@ -117,9 +116,7 @@ def upgrade() -> None:
             provider_assignments.update()
             .where(
                 provider_assignments.c.provider_config_id == row["id"],
-                provider_assignments.c.feature_scope.in_(
-                    ["reranking", "fallback_reranking"]
-                ),
+                provider_assignments.c.feature_scope.in_(["reranking", "fallback_reranking"]),
             )
             .values(
                 provider_config_id=reranker_id,
@@ -171,9 +168,7 @@ def downgrade() -> None:
             bind.execute(
                 sa.select(provider_configs).where(
                     provider_configs.c.tenant_id == reranker["tenant_id"],
-                    provider_configs.c.workspace_id.is_not_distinct_from(
-                        reranker["workspace_id"]
-                    ),
+                    provider_configs.c.workspace_id.is_not_distinct_from(reranker["workspace_id"]),
                     provider_configs.c.provider_type == "sentence-transformers",
                     provider_configs.c.display_name == "AverQel Server Embeddings",
                     provider_configs.c.supports_embeddings.is_(True),
@@ -196,9 +191,7 @@ def downgrade() -> None:
             provider_assignments.update()
             .where(
                 provider_assignments.c.provider_config_id == reranker["id"],
-                provider_assignments.c.feature_scope.in_(
-                    ["reranking", "fallback_reranking"]
-                ),
+                provider_assignments.c.feature_scope.in_(["reranking", "fallback_reranking"]),
             )
             .values(provider_config_id=embeddings_row["id"])
         )
@@ -207,6 +200,4 @@ def downgrade() -> None:
                 provider_model_cache.c.provider_config_id == reranker["id"]
             )
         )
-        bind.execute(
-            provider_configs.delete().where(provider_configs.c.id == reranker["id"])
-        )
+        bind.execute(provider_configs.delete().where(provider_configs.c.id == reranker["id"]))

@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from app.providers.services.base import ProviderCapabilityError
+from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.context_window import extract_context_window
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.providers.services.reasoning_capabilities import reasoning_capabilities
@@ -38,9 +38,7 @@ class LMStudioProvider(OpenAICompatibleProvider):
         return parsed._replace(path=suffix).geturl().rstrip("/")
 
     def bind(self, base_url: str, api_key: str | None = None) -> LMStudioProvider:
-        resolved_base_url = resolve_provider_base_url(
-            base_url, provider_type=self.provider_name
-        )
+        resolved_base_url = resolve_provider_base_url(base_url, provider_type=self.provider_name)
         self.base_url = self.normalize_base_url(resolved_base_url or base_url)
         self.api_key = api_key
         return self
@@ -62,9 +60,7 @@ class LMStudioProvider(OpenAICompatibleProvider):
             name = self._extract_model_name(item)
             if not name or not self._looks_like_embedding_model(name):
                 continue
-            embedding_models.append(
-                self._build_model_info(item=item, name=name, kind="embedding")
-            )
+            embedding_models.append(self._build_model_info(item=item, name=name, kind="embedding"))
         return embedding_models
 
     def list_reranker_models(self) -> Sequence[ProviderModelInfo]:
@@ -72,9 +68,7 @@ class LMStudioProvider(OpenAICompatibleProvider):
 
     def _fetch_model_payload(self) -> list[dict[str, Any]]:
         if not self.base_url:
-            raise ProviderCapabilityError(
-                "lmstudio provider requires a configured base URL"
-            )
+            raise ProviderCapabilityError("lmstudio provider requires a configured base URL")
         httpx_module = importlib.import_module("httpx")
         headers = self._build_headers(self.api_key)
         for models_url in self._models_endpoints():
@@ -89,9 +83,7 @@ class LMStudioProvider(OpenAICompatibleProvider):
 
     def chat_model_is_usable(self, model_name: str) -> bool:
         if not self.base_url:
-            raise ProviderCapabilityError(
-                "lmstudio provider requires a configured base URL"
-            )
+            raise ProviderCapabilityError("lmstudio provider requires a configured base URL")
         httpx_module = importlib.import_module("httpx")
         headers = self._build_headers(self.api_key)
         response = httpx_module.post(
@@ -158,7 +150,12 @@ class LMStudioProvider(OpenAICompatibleProvider):
         return []
 
     def _models_endpoints(self) -> list[str]:
-        assert self.base_url is not None
+        if self.base_url is None:
+            raise ProviderRequestError(
+                provider_name=self.provider_name,
+                status_code=500,
+                message="LM Studio provider is not configured with a base URL.",
+            )
         normalized = self.base_url.rstrip("/")
         parsed = urlparse(normalized)
         path = parsed.path.rstrip("/")
@@ -205,9 +202,7 @@ class LMStudioProvider(OpenAICompatibleProvider):
             "selection_only": True,
         }
         if supports_chat:
-            metadata.update(
-                reasoning_capabilities("lmstudio", name, base_url=self.base_url)
-            )
+            metadata.update(reasoning_capabilities("lmstudio", name, base_url=self.base_url))
         owned_by = item.get("owned_by")
         if isinstance(owned_by, str) and owned_by:
             metadata["owned_by"] = owned_by

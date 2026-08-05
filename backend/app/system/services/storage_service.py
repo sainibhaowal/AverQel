@@ -131,9 +131,7 @@ class StorageService:
                 try:
                     body.close()
                 except Exception:  # noqa: BLE001
-                    logger.debug(
-                        "Failed to close object storage response body.", exc_info=True
-                    )
+                    logger.debug("Failed to close object storage response body.", exc_info=True)
 
         return cast(bytes, data)
 
@@ -166,6 +164,45 @@ class StorageService:
                 extra={"bucket": bucket, "object_key": object_key},
             )
 
+    def copy_object(
+        self,
+        *,
+        bucket: str,
+        source_key: str,
+        tenant_id: uuid.UUID,
+        document_id: uuid.UUID,
+        filename: str,
+        content_type: str,
+    ) -> StoredObject:
+        """Copy an object inside the private bucket without exposing it publicly."""
+        client = self._get_client()
+        self._ensure_bucket(client)
+        safe_filename = _safe_filename(filename)
+        object_key = f"{tenant_id}/{document_id}/{safe_filename}"
+        try:
+            client.copy_object(
+                Bucket=bucket,
+                Key=object_key,
+                CopySource={"Bucket": bucket, "Key": source_key},
+                ContentType=content_type,
+                MetadataDirective="REPLACE",
+                Metadata={"tenant_id": str(tenant_id), "document_id": str(document_id)},
+            )
+            head = client.head_object(Bucket=bucket, Key=object_key)
+        except (BotoCoreError, ClientError) as exc:
+            raise StorageServiceError(
+                code="STORAGE_UNAVAILABLE",
+                message="Unable to copy the Library object.",
+                retryable=True,
+            ) from exc
+        return StoredObject(
+            bucket=bucket,
+            object_key=object_key,
+            etag=str(head.get("ETag", "")).strip('"'),
+            size_bytes=int(head.get("ContentLength", 0)),
+            content_type=content_type,
+        )
+
     def _ensure_bucket(self, client: BaseClient) -> None:
         if self._bucket_verified:
             return
@@ -175,9 +212,7 @@ class StorageService:
             self._bucket_verified = True
             return
         except ClientError as exc:
-            status = int(
-                exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
-            )
+            status = int(exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0))
             if status not in {403, 404}:
                 raise StorageServiceError(
                     code="STORAGE_UNAVAILABLE",
@@ -217,8 +252,6 @@ class StorageService:
             aws_access_key_id=self.settings.minio_access_key,
             aws_secret_access_key=self.settings.minio_secret_key,
             use_ssl=self.settings.minio_secure,
-            verify=(
-                self.settings.minio_verify_ssl if self.settings.minio_secure else False
-            ),
+            verify=(self.settings.minio_verify_ssl if self.settings.minio_secure else False),
         )
         return self._client

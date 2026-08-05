@@ -28,9 +28,7 @@ class _Reader:
 
 
 class _FakePdfRender:
-    def render_pdf_pages(
-        self, *, payload: bytes, page_numbers: list[int] | None = None
-    ):
+    def render_pdf_pages(self, *, payload: bytes, page_numbers: list[int] | None = None):
         _ = payload
         numbers = page_numbers or [1]
         return [
@@ -40,9 +38,7 @@ class _FakePdfRender:
 
 
 class _FakeOcr:
-    def extract_pdf_page_text(
-        self, images: list[bytes], page_numbers: list[int] | None = None
-    ):
+    def extract_pdf_page_text(self, images: list[bytes], page_numbers: list[int] | None = None):
         _ = images
         nums = page_numbers or [1]
         return [
@@ -84,9 +80,7 @@ def test_pdf_extractor_uses_ocr_fallback(monkeypatch: pytest.MonkeyPatch) -> Non
     )
 
     result = extractor.extract(
-        ExtractionRequest(
-            filename="scan.pdf", content_type="application/pdf", payload=b"pdf"
-        )
+        ExtractionRequest(filename="scan.pdf", content_type="application/pdf", payload=b"pdf")
     )
 
     assert result.ocr_used is True
@@ -114,9 +108,7 @@ def test_pdf_extractor_vision_fallback_applied(monkeypatch: pytest.MonkeyPatch) 
     )
 
     result = extractor.extract(
-        ExtractionRequest(
-            filename="scan.pdf", content_type="application/pdf", payload=b"pdf"
-        )
+        ExtractionRequest(filename="scan.pdf", content_type="application/pdf", payload=b"pdf")
     )
 
     assert result.vision_used is True
@@ -131,15 +123,11 @@ def test_pdf_extractor_handles_unparseable_pdf(monkeypatch: pytest.MonkeyPatch) 
         _ = (args, kwargs)
         raise RuntimeError("broken")
 
-    monkeypatch.setattr(
-        "app.ingestion.services.extractors.pdf_extractor.PdfReader", _raise
-    )
+    monkeypatch.setattr("app.ingestion.services.extractors.pdf_extractor.PdfReader", _raise)
     extractor = PdfExtractor(max_pdf_pages=10, max_text_chars=5000, settings=settings)
 
     with pytest.raises(ApiError) as exc:
         extractor.extract(
-            ExtractionRequest(
-                filename="bad.pdf", content_type="application/pdf", payload=b"x"
-            )
+            ExtractionRequest(filename="bad.pdf", content_type="application/pdf", payload=b"x")
         )
     assert exc.value.code == "PDF_PARSE_FAILED"

@@ -81,9 +81,7 @@ def bootstrap():
         admin_email = bootstrap_emails[0] if bootstrap_emails else "admin@averqel.ai"
         admin_password = os.environ.get("AKS_INITIAL_ADMIN_PASSWORD", "Password123!")
 
-        result = session.execute(
-            select(User).where(User.email == admin_email)
-        ).scalar_one_or_none()
+        result = session.execute(select(User).where(User.email == admin_email)).scalar_one_or_none()
         if not result:
             user = User(
                 id=generate_uuid7_with_fallback(),
@@ -98,11 +96,7 @@ def bootstrap():
             print(f"Created user: {admin_email}")
 
             # Assign Role
-            session.add(
-                UserRole(
-                    tenant_id=tenant_id, user_id=user.id, role_id=role_map["admin"]
-                )
-            )
+            session.add(UserRole(tenant_id=tenant_id, user_id=user.id, role_id=role_map["admin"]))
             print(f"Assigned 'admin' role to {admin_email}")
         else:
             print(f"User {admin_email} already exists.")

@@ -74,9 +74,7 @@ def test_query_endpoint_happy_path_and_cache_hit(
     monkeypatch: MonkeyPatch,
 ) -> None:
     _patch_storage(monkeypatch)
-    seeded = seed_user(
-        "tenant-q1", "editor-q1@tenant.example", "StrongPass!1234", ("editor",)
-    )
+    seeded = seed_user("tenant-q1", "editor-q1@tenant.example", "StrongPass!1234", ("editor",))
     token = _login(client, seeded)
 
     _upload_indexed_doc(
@@ -146,9 +144,7 @@ def test_query_top_k_out_of_bounds_rejected(
     monkeypatch: MonkeyPatch,
 ) -> None:
     _patch_storage(monkeypatch)
-    seeded = seed_user(
-        "tenant-q2", "editor-q2@tenant.example", "StrongPass!1234", ("editor",)
-    )
+    seeded = seed_user("tenant-q2", "editor-q2@tenant.example", "StrongPass!1234", ("editor",))
     token = _login(client, seeded)
 
     response = client.post(
@@ -176,9 +172,7 @@ def test_query_stream_accepts_top_k_25(
     )
     token = _login(client, seeded)
 
-    async def fake_stream_execute(
-        self: QueryService, **_: object
-    ) -> AsyncIterator[str]:
+    async def fake_stream_execute(self: QueryService, **_: object) -> AsyncIterator[str]:
         yield 'event: replace\ndata: {"content":"ok"}\n\n'
         yield "event: done\ndata: {}\n\n"
 
@@ -204,9 +198,7 @@ def test_query_invalid_filter_field_rejected(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
-    seeded = seed_user(
-        "tenant-q3", "editor-q3@tenant.example", "StrongPass!1234", ("editor",)
-    )
+    seeded = seed_user("tenant-q3", "editor-q3@tenant.example", "StrongPass!1234", ("editor",))
     token = _login(client, seeded)
 
     response = client.post(

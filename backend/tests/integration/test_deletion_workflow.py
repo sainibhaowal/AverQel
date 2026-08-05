@@ -131,9 +131,7 @@ def test_data_deletion_workflow_completes_and_purges_tenant_documents(
         )
         session.add(collection)
         session.flush()
-        session.add(
-            CollectionDocument(collection_id=collection.id, document_id=document_id)
-        )
+        session.add(CollectionDocument(collection_id=collection.id, document_id=document_id))
         session.add(
             CollectionPermission(
                 collection_id=collection.id,
@@ -209,9 +207,7 @@ def test_data_deletion_workflow_completes_and_purges_tenant_documents(
         session.execute(text("SET ROLE aks_app"))
         set_db_tenant_context(session, seeded.tenant_id)
         doc_count = session.execute(
-            select(func.count())
-            .select_from(Document)
-            .where(Document.tenant_id == seeded.tenant_id)
+            select(func.count()).select_from(Document).where(Document.tenant_id == seeded.tenant_id)
         ).scalar_one()
         conversation_count = session.execute(
             select(func.count())
@@ -255,9 +251,7 @@ def test_data_deletion_workflow_completes_and_purges_tenant_documents(
             .where(DocumentCollection.tenant_id == seeded.tenant_id)
         ).scalar_one()
         comment_count = session.execute(
-            select(func.count())
-            .select_from(Comment)
-            .where(Comment.tenant_id == seeded.tenant_id)
+            select(func.count()).select_from(Comment).where(Comment.tenant_id == seeded.tenant_id)
         ).scalar_one()
         pinned_finding_count = session.execute(
             select(func.count())

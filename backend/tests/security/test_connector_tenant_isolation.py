@@ -70,9 +70,7 @@ def test_connector_rls_blocks_cross_tenant_reads(
             own_connector = tenant_a_session.get(Connector, connector.id)
             assert own_connector is not None
             own_secret = tenant_a_session.execute(
-                select(ConnectorSecret).where(
-                    ConnectorSecret.connector_id == connector.id
-                )
+                select(ConnectorSecret).where(ConnectorSecret.connector_id == connector.id)
             ).scalar_one_or_none()
             assert own_secret is not None
         finally:
@@ -86,9 +84,7 @@ def test_connector_rls_blocks_cross_tenant_reads(
             cross_connector = tenant_b_session.get(Connector, connector.id)
             assert cross_connector is None
             cross_secret = tenant_b_session.execute(
-                select(ConnectorSecret).where(
-                    ConnectorSecret.connector_id == connector.id
-                )
+                select(ConnectorSecret).where(ConnectorSecret.connector_id == connector.id)
             ).scalar_one_or_none()
             assert cross_secret is None
         finally:

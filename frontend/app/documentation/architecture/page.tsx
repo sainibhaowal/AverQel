@@ -31,15 +31,17 @@ export default function ArchitectureDocsPage() {
         <ol className="list-decimal space-y-3 pl-6">
           <li>The frontend sends a tenant-authenticated chat or query request.</li>
           <li>The backend loads scoped history and relevant document or memory context.</li>
-          <li>The selected provider generates the answer, with permitted tools available when needed.</li>
+          <li>
+            The selected provider generates the answer, with permitted tools available when needed.
+          </li>
           <li>The result streams to the frontend and is persisted as conversation history.</li>
         </ol>
       </DocsSection>
 
       <DocsSection title="Safety boundaries">
         <p>
-          Authentication, tenant isolation, encrypted secrets, provider policy, approval checks,
-          and MCP authorization remain backend responsibilities. Removing the orchestration and
+          Authentication, tenant isolation, encrypted secrets, provider policy, approval checks, and
+          MCP authorization remain backend responsibilities. Removing the orchestration and
           IDE-style surfaces does not weaken those boundaries.
         </p>
       </DocsSection>

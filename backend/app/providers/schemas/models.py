@@ -40,9 +40,7 @@ class ProviderModelPreviewRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    @field_validator(
-        "provider_type", "api_base_url", "auth_mode", "api_key", mode="before"
-    )
+    @field_validator("provider_type", "api_base_url", "auth_mode", "api_key", mode="before")
     @classmethod
     def trim_strings(cls, value: object) -> object:
         if isinstance(value, str):

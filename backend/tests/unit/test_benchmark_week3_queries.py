@@ -7,15 +7,11 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-SCRIPT_PATH = (
-    Path(__file__).resolve().parents[2] / "scripts" / "benchmark_week3_queries.py"
-)
+SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "benchmark_week3_queries.py"
 
 
 def _load_module() -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        "benchmark_week3_queries", SCRIPT_PATH
-    )
+    spec = importlib.util.spec_from_file_location("benchmark_week3_queries", SCRIPT_PATH)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -51,9 +47,7 @@ def test_dry_run_reports_cold_unique_default_enabled() -> None:
 def test_summarize_runs_includes_status_and_error_code_counters() -> None:
     module = _load_module()
     runs = [
-        module.QueryRun(
-            latency_ms=10.0, ok=True, cached=False, status_code=200, error_code=None
-        ),
+        module.QueryRun(latency_ms=10.0, ok=True, cached=False, status_code=200, error_code=None),
         module.QueryRun(
             latency_ms=12.5,
             ok=False,

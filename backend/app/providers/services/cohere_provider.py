@@ -16,22 +16,14 @@ from app.providers.services.types import (
 
 class CohereProvider:
     provider_name = "cohere"
-    _SUPPORTED_RERANK_MODELS: tuple[tuple[str, str], ...] = (
-        ("rerank-v3.5", "Cohere Rerank v3.5"),
-    )
+    _SUPPORTED_RERANK_MODELS: tuple[tuple[str, str], ...] = (("rerank-v3.5", "Cohere Rerank v3.5"),)
 
-    def __init__(
-        self, *, base_url: str | None = None, api_key: str | None = None
-    ) -> None:
-        self.base_url = (
-            base_url.rstrip("/") if base_url else "https://api.cohere.com/v2"
-        )
+    def __init__(self, *, base_url: str | None = None, api_key: str | None = None) -> None:
+        self.base_url = base_url.rstrip("/") if base_url else "https://api.cohere.com/v2"
         self.api_key = api_key
 
     def bind(self, base_url: str, api_key: str | None = None) -> CohereProvider:
-        self.base_url = (
-            base_url.rstrip("/") if base_url else "https://api.cohere.com/v2"
-        )
+        self.base_url = base_url.rstrip("/") if base_url else "https://api.cohere.com/v2"
         self.api_key = api_key
         return self
 

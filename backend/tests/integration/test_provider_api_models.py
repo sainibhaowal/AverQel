@@ -24,9 +24,7 @@ def _auth_headers(client: TestClient, seeded: SeededUser) -> dict[str, str]:
     }
 
 
-def _create_provider(
-    client: TestClient, headers: dict[str, str], provider_type: str
-) -> str:
+def _create_provider(client: TestClient, headers: dict[str, str], provider_type: str) -> str:
     is_ollama = provider_type == "ollama"
     response = client.post(
         "/api/v1/providers",
@@ -34,9 +32,7 @@ def _create_provider(
         json={
             "provider_type": provider_type,
             "display_name": provider_type,
-            "api_base_url": (
-                "http://localhost:11434" if is_ollama else "http://localhost:1234/v1"
-            ),
+            "api_base_url": ("http://localhost:11434" if is_ollama else "http://localhost:1234/v1"),
             "auth_mode": "local_no_key",
             "enabled": True,
             "is_local": True,
@@ -117,9 +113,7 @@ def test_provider_models_refresh_and_list(
     assert chat_row["capabilities_json"]["selection_only"] is True
     assert embed_row["capabilities_json"]["supports_embeddings"] is True
 
-    list_response = client.get(
-        f"/api/v1/providers/{provider_id}/models", headers=headers
-    )
+    list_response = client.get(f"/api/v1/providers/{provider_id}/models", headers=headers)
     assert list_response.status_code == 200
     assert {item["model_name"] for item in list_response.json()["items"]} == {
         "chat-model",

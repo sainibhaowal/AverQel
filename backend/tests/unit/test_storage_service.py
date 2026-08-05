@@ -63,9 +63,7 @@ def test_put_bytes_success_and_get_client_scheme(
     assert result.etag == "etag-1"
     assert result.bucket == "bucket-a"
     assert calls["service"] == "s3"
-    assert (
-        cast(dict[str, Any], calls["kwargs"])["endpoint_url"] == "http://localhost:9000"
-    )
+    assert cast(dict[str, Any], calls["kwargs"])["endpoint_url"] == "http://localhost:9000"
     assert str(tenant_id) in result.object_key
     assert str(document_id) in result.object_key
 

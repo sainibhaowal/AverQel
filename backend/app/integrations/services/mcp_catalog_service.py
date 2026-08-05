@@ -53,12 +53,16 @@ class MCPCatalogService:
         if len(expected_slugs) != len(provider_rows):
             raise ValueError("Curated MCP provider slugs must be unique")
 
-        existing_entries = self.session.execute(
-            select(MCPRegistryEntry).where(
-                MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE,
-                MCPRegistryEntry.server_name.in_(expected_slugs),
+        existing_entries = (
+            self.session.execute(
+                select(MCPRegistryEntry).where(
+                    MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE,
+                    MCPRegistryEntry.server_name.in_(expected_slugs),
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         existing_by_slug = {entry.server_name: entry for entry in existing_entries}
 
         created = updated = unchanged = 0

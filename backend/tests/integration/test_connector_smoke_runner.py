@@ -161,17 +161,13 @@ class _FakeSmokeApiClient:
         health = connector.get("config", {}).get("health") or {}
         return {
             **connector,
-            "health_status": health.get("status")
-            or connector.get("health_status")
-            or "healthy",
+            "health_status": health.get("status") or connector.get("health_status") or "healthy",
             "last_checked_at": health.get("last_checked_at"),
             "last_good_at": health.get("last_good_at"),
             "circuit_open_until": health.get("circuit_open_until"),
             "consecutive_failures": health.get("consecutive_failures") or 0,
             "health_metadata": health.get("metadata") or {},
-            "last_success_snapshot": connector.get("config", {}).get(
-                "last_success_snapshot"
-            ),
+            "last_success_snapshot": connector.get("config", {}).get("last_success_snapshot"),
         }
 
 
@@ -203,21 +199,14 @@ def test_smoke_runner_creates_selects_and_verifies_provider_flows() -> None:
         for item in payload["providers"]
     )
     assert all(
-        item["connector_name"].startswith(CONNECTOR_NAME_PREFIX)
-        for item in payload["providers"]
+        item["connector_name"].startswith(CONNECTOR_NAME_PREFIX) for item in payload["providers"]
     )
     assert client.calls.count(("POST", "/api/v1/integrations/connectors")) == 2
     assert (
-        client.calls.count(
-            ("POST", "/api/v1/integrations/connectors/connector-1/oauth/start")
-        )
-        == 1
+        client.calls.count(("POST", "/api/v1/integrations/connectors/connector-1/oauth/start")) == 1
     )
     assert (
-        client.calls.count(
-            ("POST", "/api/v1/integrations/connectors/connector-2/oauth/start")
-        )
-        == 1
+        client.calls.count(("POST", "/api/v1/integrations/connectors/connector-2/oauth/start")) == 1
     )
 
 

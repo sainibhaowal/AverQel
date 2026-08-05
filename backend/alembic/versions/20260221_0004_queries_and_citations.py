@@ -65,9 +65,7 @@ def upgrade() -> None:
             server_default=sa.text("'{}'::jsonb"),
         ),
         sa.Column("top_k", sa.Integer(), nullable=False),
-        sa.Column(
-            "cache_hit", sa.Boolean(), nullable=False, server_default=sa.text("false")
-        ),
+        sa.Column("cache_hit", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("answer", sa.Text(), nullable=False),
         sa.Column("confidence", sa.Float(), nullable=False),
         sa.Column("trace_id", sa.String(length=64), nullable=False),
@@ -85,9 +83,7 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("top_k >= 1", name="ck_queries_top_k_positive"),
     )
-    op.create_index(
-        "ix_queries_tenant_created_at", "queries", ["tenant_id", "created_at"]
-    )
+    op.create_index("ix_queries_tenant_created_at", "queries", ["tenant_id", "created_at"])
     op.create_index(
         "ix_queries_tenant_user_created_at",
         "queries",
@@ -119,9 +115,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["query_id"], ["queries.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["document_id"], ["documents.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(
-            ["chunk_id"], ["document_chunks.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["chunk_id"], ["document_chunks.id"], ondelete="CASCADE"),
         sa.UniqueConstraint(
             "tenant_id",
             "query_id",
@@ -132,9 +126,7 @@ def upgrade() -> None:
             "similarity_score >= 0.0", name="ck_query_citations_similarity_non_negative"
         ),
     )
-    op.create_index(
-        "ix_query_citations_tenant_query", "query_citations", ["tenant_id", "query_id"]
-    )
+    op.create_index("ix_query_citations_tenant_query", "query_citations", ["tenant_id", "query_id"])
     op.create_index(
         "ix_query_citations_tenant_document",
         "query_citations",

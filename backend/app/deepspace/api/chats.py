@@ -89,9 +89,7 @@ def _serialize_message(message: Any) -> MessageSchema:
         ),
         created_at=message.created_at,
         active_version_id=message.active_version_id,
-        active_version_index=(
-            active_version.version_index if active_version is not None else 1
-        ),
+        active_version_index=(active_version.version_index if active_version is not None else 1),
         version_count=max(len(versions), 1),
         versions=versions,
     )
@@ -179,7 +177,12 @@ async def list_conversations(
             str(auth.tenant_id),
             str(auth.user_id),
             "db.chats.list_conversations",
-            {"limit": limit, "offset": offset, "user_id": str(auth.user_id), "kind": CONVERSATION_KIND},
+            {
+                "limit": limit,
+                "offset": offset,
+                "user_id": str(auth.user_id),
+                "kind": CONVERSATION_KIND,
+            },
             channel="storage",
         )
         return ConversationListResponse(
@@ -229,12 +232,15 @@ async def create_conversation(
         )
         repo = DeepSpaceChatRepository(db)
         conversation_id = uuid.UUID(str(conversation["id"]))
-        if repo.get_conversation(
-            tenant_id=auth.tenant_id,
-            conversation_id=conversation_id,
-            user_id=auth.user_id,
-            kind=CONVERSATION_KIND,
-        ) is None:
+        if (
+            repo.get_conversation(
+                tenant_id=auth.tenant_id,
+                conversation_id=conversation_id,
+                user_id=auth.user_id,
+                kind=CONVERSATION_KIND,
+            )
+            is None
+        ):
             repo.create_conversation(
                 tenant_id=auth.tenant_id,
                 user_id=auth.user_id,
@@ -277,9 +283,7 @@ async def get_chat_history(
             {"conversation_id": str(conversation_id), "user_id": str(auth.user_id)},
             channel="storage",
         )
-        return ChatHistoryResponse(
-            messages=[MessageSchema.model_validate(item) for item in data]
-        )
+        return ChatHistoryResponse(messages=[MessageSchema.model_validate(item) for item in data])
 
     repo = DeepSpaceChatRepository(db)
     conversation = repo.get_conversation(
@@ -289,7 +293,9 @@ async def get_chat_history(
         kind=CONVERSATION_KIND,
     )
     if conversation is None:
-        raise ApiError(code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404)
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+        )
     messages = repo.get_messages(
         tenant_id=auth.tenant_id,
         conversation_id=conversation_id,
@@ -329,7 +335,9 @@ async def update_conversation(
 ) -> ConversationSchema:
     repo = DeepSpaceChatRepository(db)
     if payload.title is None and payload.content_html is None:
-        raise ApiError(code="INVALID_REQUEST", message="A title or note body is required.", status_code=400)
+        raise ApiError(
+            code="INVALID_REQUEST", message="A title or note body is required.", status_code=400
+        )
     updated = repo.update_conversation(
         tenant_id=auth.tenant_id,
         conversation_id=conversation_id,
@@ -339,7 +347,9 @@ async def update_conversation(
         kind=CONVERSATION_KIND,
     )
     if not updated:
-        raise ApiError(code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404)
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+        )
     db.commit()
     conversation = repo.get_conversation(
         tenant_id=auth.tenant_id,
@@ -348,7 +358,11 @@ async def update_conversation(
         kind=CONVERSATION_KIND,
     )
     if conversation is None:
-        raise ApiError(code="CONVERSATION_NOT_FOUND", message="Conversation not found after update", status_code=404)
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND",
+            message="Conversation not found after update",
+            status_code=404,
+        )
     return ConversationSchema.model_validate(conversation)
 
 
@@ -368,7 +382,9 @@ async def delete_conversation(
         user_id=auth.user_id,
         kind=CONVERSATION_KIND,
     ):
-        raise ApiError(code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404)
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+        )
     db.commit()
     return Response(status_code=204)
 
@@ -388,8 +404,8 @@ async def cancel_deepspace_chat(
     try:
         payload = await request.json()
         request_id = str(payload.get("client_request_id") or "").strip()
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception:  # noqa: BLE001, B110 - malformed optional JSON is treated as no request id
+        request_id = ""
     if request_id:
         cancel_client = aioredis.from_url(settings.redis_url, decode_responses=True)
         try:
@@ -405,7 +421,9 @@ async def cancel_deepspace_chat(
         user_id=auth.user_id,
         conversation_id=conversation_id,
     )
-    return Response(status_code=204, headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"})
+    return Response(
+        status_code=204, headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"}
+    )
 
 
 @router.post(
@@ -449,9 +467,15 @@ async def resolve_deepspace_approval(
         decision=payload.decision,
     )
     if resolved is None:
-        raise ApiError(code="APPROVAL_NOT_FOUND", message="Approval request not found.", status_code=404)
+        raise ApiError(
+            code="APPROVAL_NOT_FOUND", message="Approval request not found.", status_code=404
+        )
     if resolved.get("status") == "already_resolved":
-        raise ApiError(code="APPROVAL_ALREADY_RESOLVED", message="Approval request was already resolved.", status_code=409)
+        raise ApiError(
+            code="APPROVAL_ALREADY_RESOLVED",
+            message="Approval request was already resolved.",
+            status_code=409,
+        )
     return {
         "approval_id": approval_id,
         "decision": payload.decision,
@@ -501,7 +525,11 @@ async def delete_message(
     if message is None:
         raise ApiError(code="MESSAGE_NOT_FOUND", message="Message not found.", status_code=404)
     if message.role != "assistant":
-        raise ApiError(code="INVALID_MESSAGE_ROLE", message="Only assistant messages can be deleted.", status_code=400)
+        raise ApiError(
+            code="INVALID_MESSAGE_ROLE",
+            message="Only assistant messages can be deleted.",
+            status_code=400,
+        )
     repo.delete_message(
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
@@ -533,7 +561,11 @@ async def edit_message(
         kind=CONVERSATION_KIND,
     )
     if user_message is None or assistant_message is None or user_message.id != message_id:
-        raise ApiError(code="MESSAGE_EDIT_NOT_ALLOWED", message="Only the latest user message can be edited.", status_code=409)
+        raise ApiError(
+            code="MESSAGE_EDIT_NOT_ALLOWED",
+            message="Only the latest user message can be edited.",
+            status_code=409,
+        )
     repo.create_message_version(
         tenant_id=auth.tenant_id,
         conversation_id=conversation_id,
@@ -613,10 +645,13 @@ async def stream_deepspace_chat(
     conversation_id_raw = raw_payload.get("conversation_id")
     conversation_id = uuid.UUID(str(conversation_id_raw)) if conversation_id_raw else None
     if not prompt.strip() and not raw_payload.get("resume_approval_id"):
+
         async def empty_stream() -> AsyncIterator[str]:
             yield sse("error", {"code": "EMPTY_MESSAGE", "message": "Message cannot be empty."})
 
-        return StreamingResponse(empty_stream(), media_type="text/event-stream", headers=SSE_HEADERS)
+        return StreamingResponse(
+            empty_stream(), media_type="text/event-stream", headers=SSE_HEADERS
+        )
     client_request_id = str(raw_payload.get("client_request_id") or "").strip() or str(uuid.uuid4())
     reconnect = bool(raw_payload.get("reconnect", False))
     try:
@@ -735,7 +770,9 @@ async def regenerate_message_stream(
         user_id=auth.user_id,
     )
     if source_message is None or source_message.role != "assistant":
-        raise ApiError(code="MESSAGE_NOT_FOUND", message="DeepSpace turn not found.", status_code=404)
+        raise ApiError(
+            code="MESSAGE_NOT_FOUND", message="DeepSpace turn not found.", status_code=404
+        )
     messages = list(
         repo.get_messages(
             tenant_id=auth.tenant_id,
@@ -745,14 +782,20 @@ async def regenerate_message_stream(
     )
     source_index = next((index for index, item in enumerate(messages) if item.id == message_id), -1)
     if source_index < 0:
-        raise ApiError(code="MESSAGE_NOT_FOUND", message="DeepSpace turn not found.", status_code=404)
+        raise ApiError(
+            code="MESSAGE_NOT_FOUND", message="DeepSpace turn not found.", status_code=404
+        )
     user_message = next(
         (item for item in reversed(messages[:source_index]) if item.role == "user"), None
     )
     if user_message is None:
-        raise ApiError(code="MESSAGE_NOT_FOUND", message="DeepSpace source prompt not found.", status_code=404)
+        raise ApiError(
+            code="MESSAGE_NOT_FOUND", message="DeepSpace source prompt not found.", status_code=404
+        )
     source_prompt = (
-        user_message.active_version.content if user_message.active_version is not None else user_message.content
+        user_message.active_version.content
+        if user_message.active_version is not None
+        else user_message.content
     )
     service = DeepSpaceChatService(db=db, settings=settings)
 
@@ -792,7 +835,9 @@ async def edit_and_regenerate_stream(
         content=content,
     )
     if edited is None:
-        raise ApiError(code="MESSAGE_NOT_FOUND", message="DeepSpace message not found.", status_code=404)
+        raise ApiError(
+            code="MESSAGE_NOT_FOUND", message="DeepSpace message not found.", status_code=404
+        )
     db.commit()
     service = DeepSpaceChatService(db=db, settings=settings)
 
@@ -830,9 +875,7 @@ async def list_memories(
 ) -> Any:
     from app.deepspace.memory.memory_service import MemoryService
 
-    return await MemoryService(db).list_all_memories(
-        tenant_id=auth.tenant_id, user_id=auth.user_id
-    )
+    return await MemoryService(db).list_all_memories(tenant_id=auth.tenant_id, user_id=auth.user_id)
 
 
 @router.post("/memory", response_model=MemoryFactSchema, status_code=201)
@@ -859,7 +902,11 @@ async def write_memory(
         tenant_id=auth.tenant_id, user_id=auth.user_id, memory_id=memory_id
     )
     if memory is None:
-        raise ApiError(code="MEMORY_NOT_FOUND", message="Memory was not available after saving.", status_code=500)
+        raise ApiError(
+            code="MEMORY_NOT_FOUND",
+            message="Memory was not available after saving.",
+            status_code=500,
+        )
     return memory
 
 
@@ -870,9 +917,7 @@ async def get_memory_preferences(
 ) -> dict[str, bool]:
     from app.deepspace.memory.memory_service import MemoryService
 
-    return await MemoryService(db).get_preferences(
-        tenant_id=auth.tenant_id, user_id=auth.user_id
-    )
+    return await MemoryService(db).get_preferences(tenant_id=auth.tenant_id, user_id=auth.user_id)
 
 
 @router.patch("/memory/preferences", response_model=MemoryPreferencesSchema)
@@ -929,7 +974,11 @@ async def approve_memory_candidate(
         tenant_id=auth.tenant_id, user_id=auth.user_id, memory_id=memory_id
     )
     if memory is None:
-        raise ApiError(code="MEMORY_CANDIDATE_NOT_FOUND", message="Memory candidate not found.", status_code=404)
+        raise ApiError(
+            code="MEMORY_CANDIDATE_NOT_FOUND",
+            message="Memory candidate not found.",
+            status_code=404,
+        )
     return memory
 
 
@@ -945,7 +994,11 @@ async def reject_memory_candidate(
         tenant_id=auth.tenant_id, user_id=auth.user_id, memory_id=memory_id
     )
     if not deleted:
-        raise ApiError(code="MEMORY_CANDIDATE_NOT_FOUND", message="Memory candidate not found.", status_code=404)
+        raise ApiError(
+            code="MEMORY_CANDIDATE_NOT_FOUND",
+            message="Memory candidate not found.",
+            status_code=404,
+        )
     return Response(status_code=204)
 
 
@@ -956,9 +1009,7 @@ async def clear_personal_memory(
 ) -> Response:
     from app.deepspace.memory.memory_service import MemoryService
 
-    await MemoryService(db).clear_personal_memories(
-        tenant_id=auth.tenant_id, user_id=auth.user_id
-    )
+    await MemoryService(db).clear_personal_memories(tenant_id=auth.tenant_id, user_id=auth.user_id)
     return Response(status_code=204)
 
 
@@ -974,7 +1025,9 @@ async def forget_memory(
         tenant_id=auth.tenant_id, user_id=auth.user_id, key=key
     )
     if not success:
-        raise ApiError(code="MEMORY_NOT_FOUND", message=f"Memory key '{key}' not found.", status_code=404)
+        raise ApiError(
+            code="MEMORY_NOT_FOUND", message=f"Memory key '{key}' not found.", status_code=404
+        )
     return Response(status_code=204)
 
 
@@ -1036,7 +1089,9 @@ async def evaluate_memory_quality(
     retention_days = report.get("session_retention_days") or 7
     report["retention_policy"] = {
         "session_retention_days": retention_days,
-        "decay_half_life_days": report.get("retention_policy", {}).get("decay_half_life_days", 120.0),
+        "decay_half_life_days": report.get("retention_policy", {}).get(
+            "decay_half_life_days", 120.0
+        ),
     }
     report.setdefault("session_retention_days", retention_days)
     return MemoryRetentionReportSchema.model_validate(report)

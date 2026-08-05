@@ -86,9 +86,7 @@ def test_provider_model_refresh_does_not_auto_select_embedding_default(
 ) -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="No Auto Embedding Default"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="No Auto Embedding Default")
         session.add(tenant)
         session.flush()
 
@@ -160,9 +158,7 @@ def test_sentence_transformers_refresh_uses_static_embedding_dimension(
 ) -> None:
     session = get_session_factory()()
     try:
-        tenant = Tenant(
-            id=generate_uuid7_with_fallback(), name="Sentence Transformers Tenant"
-        )
+        tenant = Tenant(id=generate_uuid7_with_fallback(), name="Sentence Transformers Tenant")
         session.add(tenant)
         session.flush()
 
@@ -211,9 +207,7 @@ def test_sentence_transformers_refresh_uses_static_embedding_dimension(
         session.close()
 
 
-def test_provider_model_discovery_marks_reasoning_capability(
-    settings, monkeypatch
-) -> None:
+def test_provider_model_discovery_marks_reasoning_capability(settings, monkeypatch) -> None:
     session = get_session_factory()()
     try:
         tenant = Tenant(id=generate_uuid7_with_fallback(), name="Reasoning Tenant")
@@ -275,12 +269,8 @@ def test_provider_model_discovery_marks_reasoning_capability(
         assert rows[0].capabilities_json["supports_reasoning"] is True
         assert rows[0].capabilities_json["reasoning_visibility"] == "provider_exposed"
         assert rows[0].capabilities_json["supports_thinking_toggle"] is True
-        assert (
-            "enable_thinking_true" in rows[0].capabilities_json["request_controls_on"]
-        )
-        assert (
-            "enable_thinking_false" in rows[0].capabilities_json["request_controls_off"]
-        )
+        assert "enable_thinking_true" in rows[0].capabilities_json["request_controls_on"]
+        assert "enable_thinking_false" in rows[0].capabilities_json["request_controls_off"]
     finally:
         session.rollback()
         session.close()

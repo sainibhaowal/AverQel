@@ -131,8 +131,7 @@ class ChunkingService:
                             chunk_index=index,
                             content=c_text,
                             char_start=chunk_start if chunk_start != -1 else start,
-                            char_end=(chunk_start if chunk_start != -1 else start)
-                            + len(c_text),
+                            char_end=(chunk_start if chunk_start != -1 else start) + len(c_text),
                             metadata=meta,
                         )
                     )
@@ -167,8 +166,7 @@ class ChunkingService:
                         chunk_index=index,
                         content=c_text,
                         char_start=chunk_start if chunk_start != -1 else start,
-                        char_end=(chunk_start if chunk_start != -1 else start)
-                        + len(c_text),
+                        char_end=(chunk_start if chunk_start != -1 else start) + len(c_text),
                         metadata=meta,
                     )
                 )

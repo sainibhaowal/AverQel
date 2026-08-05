@@ -87,9 +87,7 @@ def _parse_uuid(
         return uuid.UUID(str(value))
     except (TypeError, ValueError) as exc:
         raise ApiError(
-            code=(
-                "INVALID_ACCESS_TOKEN" if invalid_token_status else "INVALID_TENANT_ID"
-            ),
+            code=("INVALID_ACCESS_TOKEN" if invalid_token_status else "INVALID_TENANT_ID"),
             message=f"{field_name} must be a valid UUID.",
             status_code=401 if invalid_token_status else 400,
         ) from exc
@@ -116,9 +114,7 @@ def _normalize_roles(raw_roles: Any) -> frozenset[str]:
             status_code=401,
         )
 
-    normalized = {
-        canonicalize_role_name(str(role)) for role in raw_roles if str(role).strip()
-    }
+    normalized = {canonicalize_role_name(str(role)) for role in raw_roles if str(role).strip()}
     return frozenset(normalized)
 
 
@@ -312,9 +308,7 @@ def _validate_live_user_and_tenant(
         )
 
     tenant = cast(TenantRecord | None, tenant_repo.get_by_id(tenant_id=tenant_id))
-    tenant_is_active = (
-        bool(getattr(tenant, "is_active", True)) if tenant is not None else False
-    )
+    tenant_is_active = bool(getattr(tenant, "is_active", True)) if tenant is not None else False
     if tenant is None or not tenant_is_active:
         raise ApiError(
             code="TENANT_DISABLED",
@@ -341,9 +335,7 @@ def _load_live_role_names(
     from app.auth.repositories.roles import RolesRepository
 
     role_names = RolesRepository(db).get_role_names_for_user(tenant_id, user_id)
-    return frozenset(
-        canonicalize_role_name(str(role)) for role in role_names if str(role).strip()
-    )
+    return frozenset(canonicalize_role_name(str(role)) for role in role_names if str(role).strip())
 
 
 def _enforce_platform_admin_allowlist(
@@ -364,9 +356,7 @@ def _check_jwt_not_revoked(*, db: Session, tenant_id: uuid.UUID, token_id: str) 
         rc = get_redis_client()
         revoked = bool(rc.exists(f"jwt:deny:{token_id}"))
     except Exception:  # noqa: BLE001
-        logger.warning(
-            "JWT denylist cache check failed; falling back to database.", exc_info=True
-        )
+        logger.warning("JWT denylist cache check failed; falling back to database.", exc_info=True)
 
     if not revoked:
         from app.auth.repositories.revoked_access_tokens import (

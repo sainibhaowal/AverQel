@@ -9,9 +9,7 @@ from app.ingestion.services.extractors.pptx_extractor import PptxExtractor
 from app.ingestion.services.extractors.xlsx_extractor import XlsxExtractor
 
 
-@patch(
-    "app.ingestion.services.extractors.docx_extractor.DocxExtractor._load_document_constructor"
-)
+@patch("app.ingestion.services.extractors.docx_extractor.DocxExtractor._load_document_constructor")
 def test_docx_extractor_success(mock_load):
     mock_doc = MagicMock()
     mock_para = MagicMock()
@@ -35,9 +33,7 @@ def test_docx_extractor_success(mock_load):
     assert result.coverage_score > 0.0
 
 
-@patch(
-    "app.ingestion.services.extractors.docx_extractor.DocxExtractor._load_document_constructor"
-)
+@patch("app.ingestion.services.extractors.docx_extractor.DocxExtractor._load_document_constructor")
 def test_docx_extractor_exceeds_limit(mock_load):
     mock_doc = MagicMock()
     mock_para = MagicMock()
@@ -89,9 +85,7 @@ def test_pptx_extractor_success(mock_load):
     assert "Hello PPTX" in result.text
 
 
-@patch(
-    "app.ingestion.services.extractors.xlsx_extractor.XlsxExtractor._load_workbook_loader"
-)
+@patch("app.ingestion.services.extractors.xlsx_extractor.XlsxExtractor._load_workbook_loader")
 def test_xlsx_extractor_success(mock_load):
     mock_wb = MagicMock()
     mock_ws = MagicMock()

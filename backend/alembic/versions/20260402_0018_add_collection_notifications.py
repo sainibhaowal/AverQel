@@ -28,9 +28,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("read_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["recipient_user_id"], ["users.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["recipient_user_id"], ["users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -61,9 +59,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_collection_notifications_event_type", table_name="collection_notifications"
-    )
+    op.drop_index("ix_collection_notifications_event_type", table_name="collection_notifications")
     op.drop_index(
         "ix_collection_notifications_collection_id",
         table_name="collection_notifications",

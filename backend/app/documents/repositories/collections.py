@@ -40,9 +40,7 @@ class CollectionsRepository(BaseRepository):
                 DocumentCollection.tenant_id == tenant_id,
                 CollectionPermission.user_id == user_id,
             )
-            .order_by(
-                DocumentCollection.created_at.desc(), DocumentCollection.id.desc()
-            )
+            .order_by(DocumentCollection.created_at.desc(), DocumentCollection.id.desc())
         )
         with observe_db_query("collections.list_accessible_for_user"):
             return list(self.db.execute(query).scalars().all())
@@ -63,9 +61,7 @@ class CollectionsRepository(BaseRepository):
                 CollectionPermission.user_id == user_id,
                 CollectionPermission.role.in_(["member", "owner", "shared"]),
             )
-            .order_by(
-                DocumentCollection.created_at.desc(), DocumentCollection.id.desc()
-            )
+            .order_by(DocumentCollection.created_at.desc(), DocumentCollection.id.desc())
         )
         with observe_db_query("collections.list_accessible_for_user_global"):
             return list(self.db.execute(query).scalars().all())
@@ -86,9 +82,7 @@ class CollectionsRepository(BaseRepository):
                 CollectionPermission.user_id == user_id,
                 CollectionPermission.role == "pending",
             )
-            .order_by(
-                DocumentCollection.created_at.desc(), DocumentCollection.id.desc()
-            )
+            .order_by(DocumentCollection.created_at.desc(), DocumentCollection.id.desc())
         )
         with observe_db_query("collections.list_pending_for_user_global"):
             return list(self.db.execute(query).scalars().all())
@@ -157,9 +151,7 @@ class CollectionsRepository(BaseRepository):
         query = (
             select(DocumentCollection)
             .where(DocumentCollection.tenant_id == tenant_id)
-            .order_by(
-                DocumentCollection.created_at.desc(), DocumentCollection.id.desc()
-            )
+            .order_by(DocumentCollection.created_at.desc(), DocumentCollection.id.desc())
         )
         with observe_db_query("collections.list_by_tenant"):
             return list(self.db.execute(query).scalars().all())
@@ -618,6 +610,7 @@ class CollectionsRepository(BaseRepository):
     ) -> list[tuple[CollectionChatMessage, str, str | None]]:
         self._apply_bypass_scope()
         from app.auth.models.user import User
+
         query = (
             select(CollectionChatMessage, User.email, User.avatar)
             .join(User, User.id == CollectionChatMessage.user_id)

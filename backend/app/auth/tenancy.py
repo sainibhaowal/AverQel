@@ -84,9 +84,7 @@ def require_login_tenant_id(
         required_message="X-Tenant-Id header is required for login.",
     )
     if tenant_id is None:
-        raise RuntimeError(
-            "tenant id parser returned None for a required login tenant id"
-        )
+        raise RuntimeError("tenant id parser returned None for a required login tenant id")
     return tenant_id
 
 
@@ -99,7 +97,5 @@ def require_request_tenant_id(
         required_message="X-Tenant-Id header is required.",
     )
     if tenant_id is None:
-        raise RuntimeError(
-            "tenant id parser returned None for a required request tenant id"
-        )
+        raise RuntimeError("tenant id parser returned None for a required request tenant id")
     return tenant_id

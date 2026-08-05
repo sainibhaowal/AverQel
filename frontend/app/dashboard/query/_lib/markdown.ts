@@ -38,26 +38,24 @@ export function normalizeMarkdown(content: string): string {
 }
 
 function normalizeMarkdownText(content: string): string {
-  return content
-    // Providers frequently emit HTML line breaks in otherwise plain Markdown.
-    .replace(/<br\s*\/?\s*>/gi, "\n")
-    .replace(/([^#\n])(#{1,6}\s)/g, "$1\n\n$2")
-    .split("\n")
-    .flatMap((line) => {
-      const recoveredTable = recoverCompactTable(line);
-      if (recoveredTable) return recoveredTable.split("\n");
+  return (
+    content
+      // Providers frequently emit HTML line breaks in otherwise plain Markdown.
+      .replace(/<br\s*\/?\s*>/gi, "\n")
+      .replace(/([^#\n])(#{1,6}\s)/g, "$1\n\n$2")
+      .split("\n")
+      .flatMap((line) => {
+        const recoveredTable = recoverCompactTable(line);
+        if (recoveredTable) return recoveredTable.split("\n");
 
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("|")) return [line];
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("|")) return [line];
 
-      // Repair compact tables such as `| A | B | | --- | --- |`.
-      return [
-        line
-          .replace(/\|\|/g, "|\n|")
-          .replace(/\|\s+\|(?=\s*:?-{2,})/g, "|\n|"),
-      ];
-    })
-    .join("\n");
+        // Repair compact tables such as `| A | B | | --- | --- |`.
+        return [line.replace(/\|\|/g, "|\n|").replace(/\|\s+\|(?=\s*:?-{2,})/g, "|\n|")];
+      })
+      .join("\n")
+  );
 }
 
 /**
@@ -77,10 +75,7 @@ function recoverCompactTable(line: string): string | null {
   const remainder = pipeCells(line.slice(separator.index + separator[0].length));
   if (remainder.length > 0 && remainder.length % header.length !== 0) return null;
 
-  const rows = [
-    `| ${header.join(" | ")} |`,
-    `| ${header.map(() => "---").join(" | ")} |`,
-  ];
+  const rows = [`| ${header.join(" | ")} |`, `| ${header.map(() => "---").join(" | ")} |`];
   for (let index = 0; index < remainder.length; index += header.length) {
     rows.push(`| ${remainder.slice(index, index + header.length).join(" | ")} |`);
   }

@@ -190,9 +190,7 @@ class TodoTaskSchema(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    model_config = ConfigDict(
-        from_attributes=True, extra="forbid", populate_by_name=True
-    )
+    model_config = ConfigDict(from_attributes=True, extra="forbid", populate_by_name=True)
 
 
 class ProactiveTaskSummarySchema(BaseModel):
@@ -220,12 +218,8 @@ class ProactiveTaskSummarySchema(BaseModel):
 
 class TodoTaskUpdateRequest(BaseModel):
     content: str | None = Field(default=None, min_length=1, max_length=4000)
-    active_form: str | None = Field(
-        default=None, alias="activeForm", min_length=1, max_length=4000
-    )
-    status: str | None = Field(
-        default=None, pattern="^(pending|in_progress|completed)$"
-    )
+    active_form: str | None = Field(default=None, alias="activeForm", min_length=1, max_length=4000)
+    status: str | None = Field(default=None, pattern="^(pending|in_progress|completed)$")
     priority: int | None = Field(default=None, ge=0, le=100)
     thread_id: str | None = None
     metadata_json: dict[str, Any] | None = None

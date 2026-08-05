@@ -30,9 +30,7 @@ describe("useDeepSpaceStream", () => {
     const onEvent = vi.fn();
     const onTransportError = vi.fn();
 
-    const { result } = renderHook(() =>
-      useDeepSpaceStream({ onEvent, onTransportError }),
-    );
+    const { result } = renderHook(() => useDeepSpaceStream({ onEvent, onTransportError }));
 
     await act(async () => {
       await result.current.start({ body: { message: "hello" } });
@@ -51,9 +49,7 @@ describe("useDeepSpaceStream", () => {
     const onEvent = vi.fn();
     const onTransportError = vi.fn();
 
-    const { result } = renderHook(() =>
-      useDeepSpaceStream({ onEvent, onTransportError }),
-    );
+    const { result } = renderHook(() => useDeepSpaceStream({ onEvent, onTransportError }));
 
     await act(async () => {
       await result.current.start({ body: { message: "hello" } });

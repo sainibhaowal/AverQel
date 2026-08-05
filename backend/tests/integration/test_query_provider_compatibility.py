@@ -24,9 +24,7 @@ def test_query_path_uses_provider_registry_compatibly(monkeypatch):
         def json():
             return {"choices": [{"message": {"content": "registry answer"}}]}
 
-    monkeypatch.setitem(
-        sys.modules, "httpx", SimpleNamespace(post=lambda *a, **k: _FakeResponse())
-    )
+    monkeypatch.setitem(sys.modules, "httpx", SimpleNamespace(post=lambda *a, **k: _FakeResponse()))
 
     service = AnswerService(get_settings().query_no_result_answer_text, get_settings())
     result = service.synthesize(

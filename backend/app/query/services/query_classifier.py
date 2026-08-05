@@ -20,9 +20,7 @@ _ACTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(
         r"\b(crawl|index|sync|refresh|update|fetch|pull from|load data from|start indexing)\b"
     ),
-    re.compile(
-        r"\b(github|google drive|notion|slack|web crawler|website|url|http|https)\b"
-    ),
+    re.compile(r"\b(github|google drive|notion|slack|web crawler|website|url|http|https)\b"),
 )
 
 
@@ -33,9 +31,7 @@ _COMPARISON_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
 )
 
 _SUMMARIZATION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
-    re.compile(
-        r"\b(summarize|summary|tldr|tl;dr|overview|briefly|gist|short summary)\b"
-    ),
+    re.compile(r"\b(summarize|summary|tldr|tl;dr|overview|briefly|gist|short summary)\b"),
     re.compile(r"^what is the main idea\b"),
     re.compile(r"^can you summarize\b"),
     re.compile(r"^give me a summary\b"),

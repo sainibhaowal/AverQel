@@ -90,9 +90,7 @@ def test_get_collection_document_counts(
     # Associate docs with collection
     cd1 = CollectionDocument(collection_id=collection.id, document_id=doc1.id)
     cd2 = CollectionDocument(collection_id=collection.id, document_id=doc2.id)
-    cd_deleted = CollectionDocument(
-        collection_id=collection.id, document_id=doc_deleted.id
-    )
+    cd_deleted = CollectionDocument(collection_id=collection.id, document_id=doc_deleted.id)
     db_session.add_all([cd1, cd2, cd_deleted])
     db_session.commit()
 

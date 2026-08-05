@@ -14,9 +14,7 @@ from app.platform.database.base import Base
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "token_hash", name="uq_refresh_tokens_tenant_hash"
-        ),
+        UniqueConstraint("tenant_id", "token_hash", name="uq_refresh_tokens_tenant_hash"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -42,15 +40,9 @@ class RefreshToken(Base):
         nullable=False,
         index=True,
     )
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    rotated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revocation_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

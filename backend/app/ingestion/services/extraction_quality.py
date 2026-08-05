@@ -48,16 +48,12 @@ def fallback_reasons(result: ExtractionResult) -> list[tuple[str, str]]:
     warning_set = set(result.warnings)
     if result.ocr_used:
         reason = (
-            "pdf_low_coverage"
-            if "pdf_ocr_fallback_used" in warning_set
-            else "image_or_low_text"
+            "pdf_low_coverage" if "pdf_ocr_fallback_used" in warning_set else "image_or_low_text"
         )
         reasons.append(("ocr", reason))
     if result.vision_used:
         reason = (
-            "layout_complexity"
-            if "vision_layout_fallback_used" in warning_set
-            else "low_coverage"
+            "layout_complexity" if "vision_layout_fallback_used" in warning_set else "low_coverage"
         )
         reasons.append(("vision", reason))
     return reasons
