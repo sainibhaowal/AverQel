@@ -135,6 +135,62 @@ class StorageService:
 
         return cast(bytes, data)
 
+    def put_upload_chunk(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        upload_id: uuid.UUID,
+        chunk_index: int,
+        payload: bytes,
+    ) -> StoredObject:
+        """Store a private, temporary upload chunk under a tenant-scoped key."""
+        client = self._get_client()
+        self._ensure_bucket(client)
+        object_key = f"{tenant_id}/library-uploads/{upload_id}/chunk-{chunk_index:08d}"
+        try:
+            response = client.put_object(
+                Bucket=self.settings.minio_bucket,
+                Key=object_key,
+                Body=payload,
+                ContentType="application/octet-stream",
+                Metadata={
+                    "tenant_id": str(tenant_id),
+                    "upload_id": str(upload_id),
+                    "chunk_index": str(chunk_index),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                },
+            )
+        except (BotoCoreError, ClientError) as exc:
+            raise StorageServiceError(
+                code="STORAGE_UNAVAILABLE",
+                message="Unable to store the upload chunk.",
+                retryable=True,
+            ) from exc
+        return StoredObject(
+            bucket=self.settings.minio_bucket,
+            object_key=object_key,
+            etag=str(response.get("ETag", "")).strip('"'),
+            size_bytes=len(payload),
+            content_type="application/octet-stream",
+        )
+
+    def get_upload_chunk(
+        self, *, tenant_id: uuid.UUID, upload_id: uuid.UUID, chunk_index: int
+    ) -> bytes:
+        return self.get_bytes(
+            bucket=self.settings.minio_bucket,
+            object_key=f"{tenant_id}/library-uploads/{upload_id}/chunk-{chunk_index:08d}",
+        )
+
+    def delete_upload_chunks(
+        self, *, tenant_id: uuid.UUID, upload_id: uuid.UUID, total_chunks: int
+    ) -> None:
+        for index in range(max(0, total_chunks)):
+            self.delete_object(
+                bucket=self.settings.minio_bucket,
+                object_key=f"{tenant_id}/library-uploads/{upload_id}/chunk-{index:08d}",
+            )
+
     def get_stream(self, *, bucket: str, object_key: str):
         """Return a stream for the object."""
         client = self._get_client()

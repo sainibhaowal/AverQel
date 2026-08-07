@@ -1930,6 +1930,15 @@ function mergeAgentStep(existing: AgentStep, incoming: AgentStep): AgentStep {
     };
   }
 
+  if (incoming.type === "ask_user_question") {
+    return {
+      ...base,
+      type: "ask_user_question",
+      status: "awaiting_approval",
+      completedAt: undefined,
+    };
+  }
+
   if (incoming.type === "tool_start") {
     return {
       ...base,
@@ -2198,7 +2207,8 @@ export type DeepSpaceThreadAction =
   | { type: "update_draft"; messageId: string; content: string }
   | { type: "activate_version"; messageId: string; version: DeepSpaceHistoryVersion }
   | { type: "update_message"; messageId: string; data: Partial<DeepSpaceMessage> }
-  | { type: "resume_query"; messageId: string };
+  | { type: "resume_query"; messageId: string }
+  | { type: "resume_user_question"; messageId: string; query: string };
 
 export const initialDeepSpaceThreadState: DeepSpaceThreadState = {
   messages: [],
@@ -2212,6 +2222,29 @@ export const initialDeepSpaceThreadState: DeepSpaceThreadState = {
   lastContextLimit: null,
   durableRun: null,
 };
+
+/** Locate a persisted clarification that is waiting for the user's answer. */
+export function findPendingUserQuestion(
+  messages: DeepSpaceMessage[],
+): { messageId: string; questionId: string } | null {
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = messages[messageIndex];
+    if (message?.role !== "assistant") continue;
+    for (let stepIndex = (message.agentSteps?.length ?? 0) - 1; stepIndex >= 0; stepIndex -= 1) {
+      const step = message.agentSteps?.[stepIndex];
+      const questionId = step?.data?.question_id;
+      if (
+        step?.type === "ask_user_question" &&
+        step.status === "awaiting_approval" &&
+        typeof questionId === "string" &&
+        questionId.trim()
+      ) {
+        return { messageId: message.id, questionId: questionId.trim() };
+      }
+    }
+  }
+  return null;
+}
 
 function rehydrateMetricsFromHistory(
   metadata: Record<string, unknown>,
@@ -2306,7 +2339,43 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
         }
       : null;
   const metrics = rehydrateMetricsFromHistory(metadata, message.created_at);
-  const agentSteps = normalizeHistoryAgentSteps(metadata.agent_steps);
+  let agentSteps = normalizeHistoryAgentSteps(metadata.agent_steps);
+  const pendingQuestion = metadata.pending_user_question;
+  if (
+    persistedStatus === "awaiting_user" &&
+    pendingQuestion &&
+    typeof pendingQuestion === "object" &&
+    !Array.isArray(pendingQuestion)
+  ) {
+    const pending = pendingQuestion as Record<string, unknown>;
+    const questionId = String(pending.question_id ?? "").trim();
+    if (questionId) {
+      const existingQuestion = (agentSteps ?? []).some(
+        (step) => String(step.data?.question_id ?? "") === questionId,
+      );
+      if (!existingQuestion) {
+        agentSteps = [
+          ...(agentSteps ?? []),
+          {
+            id: `question_${questionId}`,
+            type: "ask_user_question",
+            stepId: String(pending.step_id ?? ""),
+            toolName: "ask_user",
+            toolInput:
+              pending.tool_input && typeof pending.tool_input === "object"
+                ? (pending.tool_input as Record<string, unknown>)
+                : {},
+            toolId: String(pending.call_id ?? ""),
+            permissionLevel: "clarification",
+            status: "awaiting_approval",
+            startedAt: String(message.created_at),
+            data: pending,
+            turnIndex: typeof pending.turn_index === "number" ? pending.turn_index : undefined,
+          },
+        ];
+      }
+    }
+  }
   const compaction = readConversationCompactionState(metadata.conversation_compaction);
   const memoryMetadata = metadata.memory;
   const rawMemoryUsed =
@@ -2534,7 +2603,14 @@ function reduceDeepSpaceThread(
         messages: state.messages.map((m) => {
           if (m.id === activeId || (activeId === null && m.status === "streaming")) {
             const nextSteps = (m.agentSteps ?? []).map((s) => {
-              if (s.status === "running" || s.status === "awaiting_approval") {
+              const isPendingQuestion =
+                s.type === "ask_user_question" &&
+                s.status === "awaiting_approval" &&
+                typeof s.data?.question_id === "string";
+              if (
+                (s.status === "running" || s.status === "awaiting_approval") &&
+                !isPendingQuestion
+              ) {
                 return finalizeAgentStep(s, finishedAt, "completed");
               }
               return s;
@@ -2570,6 +2646,58 @@ function reduceDeepSpaceThread(
         isStreaming: true,
         streamError: null,
       };
+    case "resume_user_question": {
+      const messageIndex = state.messages.findIndex((m) => m.id === action.messageId);
+      if (messageIndex < 0) return state;
+      const current = state.messages[messageIndex]!;
+      const answerMessage: DeepSpaceMessage = {
+        id: createClientMessageId("user"),
+        role: "user",
+        content: action.query,
+        rawContent: action.query,
+        createdAt: new Date().toISOString(),
+        status: "ready",
+        blocks: [],
+        structured: null,
+        error: null,
+      };
+      const answeredAt = new Date().toISOString();
+      const answeredSteps = (current.agentSteps ?? []).map((step) =>
+        step.type === "ask_user_question" && step.status === "awaiting_approval"
+          ? {
+              ...step,
+              status: "completed" as const,
+              completedAt: answeredAt,
+              data: { ...(step.data ?? {}), answer_submitted: true },
+            }
+          : step,
+      );
+      const questionSnapshot: DeepSpaceMessage = {
+        ...current,
+        id: `${current.id}:question`,
+        status: "ready",
+        agentSteps: answeredSteps,
+      };
+      const resumedAssistant: DeepSpaceMessage = {
+        ...current,
+        agentSteps: answeredSteps,
+        content: "",
+        rawContent: "",
+        thinkingContent: "",
+        currentTurnText: "",
+        status: "streaming",
+        error: null,
+      };
+      const nextMessages = [...state.messages];
+      nextMessages.splice(messageIndex, 1, questionSnapshot, answerMessage, resumedAssistant);
+      return {
+        ...state,
+        messages: nextMessages,
+        activeAssistantId: action.messageId,
+        isStreaming: true,
+        streamError: null,
+      };
+    }
     case "stream_failed": {
       const activeId = state.activeAssistantId;
       const failedAt = nowIso();
@@ -3026,14 +3154,23 @@ function reduceDeepSpaceThread(
         };
       } else if (event.event === "done") {
         const finishedAt = nowIso();
+        const isAwaitingUser = String(event.data.status ?? "") === "awaiting_user";
         const nextSteps = (current.agentSteps ?? []).map((s) => {
-          if (s.status === "running" || s.status === "awaiting_approval") {
+          const isPendingQuestion =
+            s.type === "ask_user_question" &&
+            s.status === "awaiting_approval" &&
+            typeof s.data?.question_id === "string";
+          if (
+            (s.status === "running" || s.status === "awaiting_approval") &&
+            !(isAwaitingUser && isPendingQuestion)
+          ) {
             return finalizeAgentStep(s, finishedAt, "completed");
           }
           return s;
         });
         nextTimeline = nextTimeline.map((step) =>
-          step.status === "running"
+          step.status === "running" &&
+          !(isAwaitingUser && step.type === "permission" && step.data?.question_id)
             ? { ...step, status: "completed" as const, completedAt: finishedAt }
             : step,
         );

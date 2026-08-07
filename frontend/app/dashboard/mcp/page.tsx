@@ -312,7 +312,9 @@ export default function MCPDashboard() {
       )}
       {tab === "marketplace" ? (
         <section className="space-y-6">
-          <p className="text-sm text-slate-400">{total.toLocaleString()} approved connectors</p>
+          <p className="text-sm text-slate-400">
+            {total.toLocaleString("en-US")} approved connectors
+          </p>
           {loading ? (
             <p className="text-sm text-white/60">Loading marketplace…</p>
           ) : items.length === 0 ? (

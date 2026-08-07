@@ -52,6 +52,30 @@ def test_scope_verification_rejects_escalation_and_missing_scope() -> None:
 
 
 @pytest.mark.unit_no_db
+def test_github_comma_delimited_scopes_are_normalized_without_scope_escalation() -> None:
+    granted = GITHUB_MCP_OAUTH_PROFILE.verify_scopes(
+        provider_slug="github",
+        granted_scope="repo,read:user,user:email",
+    )
+
+    assert granted == ("read:user", "repo", "user:email")
+
+    with pytest.raises(ValueError, match="unapproved scope"):
+        GITHUB_MCP_OAUTH_PROFILE.verify_scopes(
+            provider_slug="github",
+            granted_scope="repo,read:user,user:email,gist",
+        )
+
+
+@pytest.mark.unit_no_db
+def test_github_revocation_uses_the_oauth_grant_endpoint() -> None:
+    assert (
+        GITHUB_MCP_OAUTH_PROFILE.revocation_endpoint
+        == "https://api.github.com/applications/{client_id}/grant"
+    )
+
+
+@pytest.mark.unit_no_db
 def test_identity_capture_is_restricted_to_safe_account_labels() -> None:
     identity = GITHUB_MCP_OAUTH_PROFILE.extract_identity(
         {"id": 42, "login": "ravi", "name": "Ravi", "private_token": "must-not-store"},

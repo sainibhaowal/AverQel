@@ -17,6 +17,7 @@ from app.deepspace.models.agent_runtime import (
 )
 from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.conversation import Conversation
+from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
 from app.deepspace.models.message import Message
 from app.deepspace.models.message_version import MessageVersion
@@ -117,6 +118,7 @@ __all__ = [
     "DeepSpaceAgentRun",
     "DeepSpaceAgentStep",
     "DeepSpaceRunEvent",
+    "DeepSpaceLibraryUpload",
     "AgentTodo",
     "AgentActivity",
     "DeepSpaceMissionSnapshot",

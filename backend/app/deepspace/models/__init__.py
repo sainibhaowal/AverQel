@@ -3,6 +3,7 @@
 from .agent_memory_preferences import AgentMemoryPreferences
 from .agent_runtime import DeepSpaceRunEvent
 from .conversation import Conversation
+from .library_upload import DeepSpaceLibraryUpload
 from .media_artifact import DeepSpaceMediaArtifact
 from .message import Message
 from .message_version import MessageVersion
@@ -20,4 +21,5 @@ __all__ = [
     "DeepSpaceWorkspaceFolder",
     "DeepSpaceWorkspaceFileVersion",
     "DeepSpaceRunEvent",
+    "DeepSpaceLibraryUpload",
 ]

@@ -644,7 +644,11 @@ async def stream_deepspace_chat(
     prompt = str(raw_payload.get("message", ""))
     conversation_id_raw = raw_payload.get("conversation_id")
     conversation_id = uuid.UUID(str(conversation_id_raw)) if conversation_id_raw else None
-    if not prompt.strip() and not raw_payload.get("resume_approval_id"):
+    resume_approval_id = str(raw_payload.get("resume_approval_id") or "").strip() or None
+    resume_user_question_id = (
+        str(raw_payload.get("resume_user_question_id") or "").strip() or None
+    )
+    if not prompt.strip() and not resume_approval_id and not resume_user_question_id:
 
         async def empty_stream() -> AsyncIterator[str]:
             yield sse("error", {"code": "EMPTY_MESSAGE", "message": "Message cannot be empty."})
@@ -659,8 +663,7 @@ async def stream_deepspace_chat(
     except (TypeError, ValueError):
         after_sequence = 0
     thinking_enabled = bool(raw_payload.get("thinking_enabled", False))
-    resume_approval_id = str(raw_payload.get("resume_approval_id") or "").strip() or None
-    if not reconnect and not resume_approval_id:
+    if not reconnect and not resume_approval_id and not resume_user_question_id:
         RateLimitService(settings).enforce_deepspace_user_limit(
             request=request,
             user_id=str(auth.user_id),
@@ -685,6 +688,7 @@ async def stream_deepspace_chat(
                             "client_request_id": client_request_id,
                             "thinking_enabled": thinking_enabled,
                             "resume_approval_id": resume_approval_id,
+                            "resume_user_question_id": resume_user_question_id,
                         }
                     )
                 except Exception:  # noqa: BLE001

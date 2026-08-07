@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import {
   ArrowLeft,
   Check,
@@ -19,12 +20,18 @@ import {
   Scissors,
   FolderPlus,
   FilePlus2,
+  Download,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchWithAuth, uploadWithAuthProgress } from "@/lib/api";
 
 import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
+import {
+  deletePersistedUpload,
+  getPersistedUpload,
+  savePersistedUpload,
+} from "../_lib/library-uploads";
 
 import DeepSpaceLibraryFileWorkspace from "./DeepSpaceLibraryFileWorkspace";
 
@@ -49,11 +56,27 @@ type LibraryFolder = { id: string; name: string; parent_folder_id?: string | nul
 type ArchiveSelection = { name: string; contentType: string };
 type UploadItem = {
   id: string;
+  uploadId?: string;
   name: string;
   size: number;
   loaded: number;
-  status: "queued" | "uploading" | "complete" | "error";
+  status: "queued" | "uploading" | "processing" | "complete" | "cancelled" | "error";
   error?: string;
+};
+
+type LibraryUpload = {
+  id: string;
+  name: string;
+  content_type: string;
+  expected_size: number;
+  chunk_size: number;
+  total_chunks: number;
+  received_chunks: number[];
+  bytes_received: number;
+  progress_percent: number;
+  status: "pending" | "uploading" | "queued" | "processing" | "completed" | "failed" | "cancelled";
+  file_id?: string | null;
+  error?: string | null;
 };
 
 type DeepSpaceLibraryDrawerProps = {
@@ -76,6 +99,7 @@ export default function DeepSpaceLibraryDrawer({
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [folderStack, setFolderStack] = useState<string[]>([]);
   const [selected, setSelected] = useState<LibraryFile | null>(null);
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState("");
@@ -98,6 +122,23 @@ export default function DeepSpaceLibraryDrawer({
   const [clipboardMode, setClipboardMode] = useState<"copy" | "move">("copy");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [archiveSelection, setArchiveSelection] = useState<ArchiveSelection | null>(null);
+  const [filesPanelWidth, setFilesPanelWidth] = useState(320);
+  const [isResizingFilesPanel, setIsResizingFilesPanel] = useState(false);
+  const [draggedEntry, setDraggedEntry] = useState<{
+    kind: "file" | "folder";
+    id: string;
+    name: string;
+  } | null>(null);
+  const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
+  const [movingEntryId, setMovingEntryId] = useState<string | null>(null);
+  const uploadControllersRef = useRef<Record<string, AbortController>>({});
+  const activeUploadIdsRef = useRef<Set<string>>(new Set());
+  const draggedEntryRef = useRef<{
+    kind: "file" | "folder";
+    id: string;
+    name: string;
+  } | null>(null);
+  const filesPanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!embedded) return;
@@ -112,6 +153,7 @@ export default function DeepSpaceLibraryDrawer({
     setCurrentFolderId(null);
     setFolderStack([]);
     setSelected(null);
+    setSelectedFileIds(new Set());
     setDraft("");
   }, [conversationId]);
 
@@ -145,6 +187,10 @@ export default function DeepSpaceLibraryDrawer({
       const nextFiles = entries.files ?? [];
       setFolders(entries.folders ?? []);
       setFiles(nextFiles);
+      setSelectedFileIds((current) => {
+        const visibleIds = new Set(nextFiles.map((file) => file.id));
+        return new Set([...current].filter((id) => visibleIds.has(id)));
+      });
       const retained = selected && nextFiles.some((file) => file.id === selected.id);
       if (selected && !retained) setDraft("");
       setSelected(retained ? selected : (nextFiles[0] ?? null));
@@ -156,6 +202,10 @@ export default function DeepSpaceLibraryDrawer({
   useEffect(() => {
     if (open) void refresh();
   }, [open, conversationId, currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (open && conversationId) void resumeUploads();
+  }, [open, conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleLibraryChanged = () => {
@@ -315,6 +365,41 @@ export default function DeepSpaceLibraryDrawer({
     await refresh();
   };
 
+  const moveEntryToFolder = async (
+    entry: { kind: "file" | "folder"; id: string; name: string },
+    parentFolderId: string,
+    mode: "move" | "copy" = "move",
+  ) => {
+    if (!conversationId || entry.id === parentFolderId) return;
+    setMovingEntryId(entry.id);
+    setActionError(null);
+    try {
+      const endpoint =
+        entry.kind === "file"
+          ? `/deepspace/library/${conversationId}/files/${entry.id}/copy`
+          : `/deepspace/library/${conversationId}/folders/${entry.id}`;
+      const response = (await fetchWithAuth(endpoint, {
+        method: entry.kind === "file" ? "POST" : "PATCH",
+        body: JSON.stringify(
+          entry.kind === "file"
+            ? { parent_folder_id: parentFolderId, mode }
+            : { parent_folder_id: parentFolderId },
+        ),
+      })) as Response;
+      if (!response.ok) {
+        const message = entry.kind === "file" ? "file" : "folder";
+        setActionError(`The ${message} could not be moved there.`);
+        return;
+      }
+      await refresh();
+    } finally {
+      setMovingEntryId(null);
+      setDraggedEntry(null);
+      draggedEntryRef.current = null;
+      setDropTargetFolderId(null);
+    }
+  };
+
   const renameFolder = async (folder: LibraryFolder) => {
     const name = folderRenameValue.trim();
     if (!conversationId || !name) return;
@@ -361,6 +446,55 @@ export default function DeepSpaceLibraryDrawer({
     } finally {
       setSaving(false);
     }
+  };
+
+  const downloadBlobResponse = async (response: Response, fallbackName: string) => {
+    if (!response.ok) {
+      setActionError("The selected file(s) could not be downloaded.");
+      return false;
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const filenameMatch = disposition.match(/filename\*?=(?:UTF-8''|\")?([^\";]+)/i);
+    const filename = filenameMatch?.[1]
+      ? decodeURIComponent(filenameMatch[1].replace(/\"/g, ""))
+      : fallbackName;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    return true;
+  };
+
+  const downloadFile = async (file: LibraryFile) => {
+    if (!conversationId) return;
+    setActionError(null);
+    const response = (await fetchWithAuth(
+      `/deepspace/library/${conversationId}/files/${file.id}/content?download=true`,
+      { timeoutMs: 120_000 },
+    )) as Response;
+    await downloadBlobResponse(response, file.name);
+  };
+
+  const exportSelectedFiles = async () => {
+    if (!conversationId || selectedFileIds.size === 0) return;
+    const chosen = files.filter((file) => selectedFileIds.has(file.id));
+    if (chosen.length === 1) {
+      await downloadFile(chosen[0]);
+      return;
+    }
+    setActionError(null);
+    const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/files/export`, {
+      method: "POST",
+      body: JSON.stringify({ file_ids: chosen.map((file) => file.id) }),
+      timeoutMs: 120_000,
+    })) as Response;
+    const downloaded = await downloadBlobResponse(response, "deepspace-library-export.zip");
+    if (downloaded) setSelectedFileIds(new Set());
   };
 
   const startRename = (file: LibraryFile) => {
@@ -431,32 +565,176 @@ export default function DeepSpaceLibraryDrawer({
     );
   };
 
-  const uploadOne = async (file: File, itemId: string): Promise<LibraryFile | null> => {
+  const readUpload = async (uploadId: string): Promise<LibraryUpload | null> => {
     if (!conversationId) return null;
-    updateUploadItem(itemId, { status: "uploading", loaded: 0 });
+    const response = (await fetchWithAuth(
+      `/deepspace/library/${conversationId}/uploads/${uploadId}`,
+      { timeoutMs: 8_000 },
+    )) as Response;
+    return response.ok ? ((await response.json()) as LibraryUpload) : null;
+  };
+
+  const runUploadSession = async (session: LibraryUpload, file: File, itemId: string) => {
+    if (!conversationId || activeUploadIdsRef.current.has(session.id)) return;
+    activeUploadIdsRef.current.add(session.id);
+    const controller = new AbortController();
+    uploadControllersRef.current[session.id] = controller;
     try {
-      const form = new FormData();
-      form.append("file", file, file.name);
-      const response = await uploadWithAuthProgress(
-        `/deepspace/library/${conversationId}/files/upload?parent_folder_id=${encodeURIComponent(currentFolderId ?? "")}`,
-        form,
-        { onProgress: (loaded) => updateUploadItem(itemId, { loaded }) },
-      );
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        const message = String(
-          payload?.error?.message ?? payload?.detail?.message ?? "The file could not be imported.",
+      let current = session;
+      updateUploadItem(itemId, {
+        uploadId: session.id,
+        status: "uploading",
+        loaded: current.bytes_received,
+      });
+      for (let index = 0; index < current.total_chunks; index += 1) {
+        if (controller.signal.aborted) throw new DOMException("Upload cancelled", "AbortError");
+        if (current.received_chunks.includes(index)) continue;
+        const chunk = file.slice(
+          index * current.chunk_size,
+          Math.min(file.size, (index + 1) * current.chunk_size),
         );
-        updateUploadItem(itemId, { status: "error", error: message, loaded: file.size });
-        return null;
+        const baseLoaded = current.bytes_received;
+        const response = await uploadWithAuthProgress(
+          `/deepspace/library/${conversationId}/uploads/${current.id}/chunks/${index}`,
+          chunk,
+          {
+            method: "PUT",
+            signal: controller.signal,
+            timeoutMs: 120_000,
+            onProgress: (loaded) =>
+              updateUploadItem(itemId, { loaded: Math.min(file.size, baseLoaded + loaded) }),
+          },
+        );
+        if (!response.ok) throw new Error("The upload chunk was rejected by the server.");
+        current = (await response.json()) as LibraryUpload;
+        updateUploadItem(itemId, { loaded: current.bytes_received });
       }
-      const created = (await response.json()) as LibraryFile;
-      updateUploadItem(itemId, { status: "complete", loaded: file.size });
-      return created;
+      const completeResponse = (await fetchWithAuth(
+        `/deepspace/library/${conversationId}/uploads/${current.id}/complete`,
+        { method: "POST", timeoutMs: 15_000 },
+      )) as Response;
+      if (!completeResponse.ok) throw new Error("The upload could not be queued for processing.");
+      current = (await completeResponse.json()) as LibraryUpload;
+      updateUploadItem(itemId, { status: "processing", loaded: file.size });
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        if (controller.signal.aborted) throw new DOMException("Upload cancelled", "AbortError");
+        if (current.status === "completed") {
+          updateUploadItem(itemId, { status: "complete", loaded: file.size });
+          await deletePersistedUpload(current.id);
+          await refresh();
+          return;
+        }
+        if (current.status === "failed" || current.status === "cancelled") {
+          throw new Error(current.error ?? "The file could not be imported.");
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        const next = await readUpload(current.id);
+        if (!next) throw new Error("The upload session could not be found.");
+        current = next;
+        updateUploadItem(itemId, {
+          status:
+            current.status === "processing" || current.status === "queued"
+              ? "processing"
+              : "uploading",
+          loaded: current.bytes_received,
+        });
+      }
+      throw new Error("The file is taking longer than expected. It will resume automatically.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "The file could not be imported.";
-      updateUploadItem(itemId, { status: "error", error: message, loaded: file.size });
-      return null;
+      if (controller.signal.aborted) {
+        updateUploadItem(itemId, { status: "cancelled", error: "Cancelled" });
+      } else {
+        const message = error instanceof Error ? error.message : "The file could not be imported.";
+        updateUploadItem(itemId, { status: "error", error: message });
+      }
+    } finally {
+      activeUploadIdsRef.current.delete(session.id);
+      delete uploadControllersRef.current[session.id];
+      setImporting((value) => value && Object.keys(uploadControllersRef.current).length > 0);
+    }
+  };
+
+  const createUploadSession = async (file: File): Promise<LibraryUpload> => {
+    if (!conversationId) throw new Error("No DeepSpace conversation is active.");
+    const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/uploads`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: file.name,
+        size_bytes: file.size,
+        content_type: file.type || "application/octet-stream",
+        parent_folder_id: currentFolderId,
+      }),
+      timeoutMs: 15_000,
+    })) as Response;
+    if (!response.ok) throw new Error("The upload session could not be created.");
+    return (await response.json()) as LibraryUpload;
+  };
+
+  const resumeUploads = async () => {
+    if (!conversationId) return;
+    const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/uploads`, {
+      timeoutMs: 8_000,
+    })) as Response;
+    if (!response.ok) return;
+    const sessions = (await response.json()) as LibraryUpload[];
+    for (const session of sessions) {
+      if (activeUploadIdsRef.current.has(session.id)) continue;
+      if (session.status === "failed") {
+        setUploadItems((items) =>
+          items.some((item) => item.uploadId === session.id)
+            ? items
+            : [
+                ...items,
+                {
+                  id: `resume-${session.id}`,
+                  uploadId: session.id,
+                  name: session.name,
+                  size: session.expected_size,
+                  loaded: session.bytes_received,
+                  status: "error",
+                  error: session.error ?? "The file import failed.",
+                },
+              ],
+        );
+        continue;
+      }
+      const persisted = await getPersistedUpload(session.id);
+      if (!persisted) {
+        setUploadItems((items) =>
+          items.some((item) => item.uploadId === session.id)
+            ? items
+            : [
+                ...items,
+                {
+                  id: `resume-${session.id}`,
+                  uploadId: session.id,
+                  name: session.name,
+                  size: session.expected_size,
+                  loaded: session.bytes_received,
+                  status: "error",
+                  error: "Select this file again to resume.",
+                },
+              ],
+        );
+        continue;
+      }
+      const itemId = `resume-${session.id}`;
+      setUploadItems((items) =>
+        items.some((item) => item.uploadId === session.id)
+          ? items
+          : [
+              ...items,
+              {
+                id: itemId,
+                uploadId: session.id,
+                name: session.name,
+                size: session.expected_size,
+                loaded: session.bytes_received,
+                status: "queued",
+              },
+            ],
+      );
+      void runUploadSession(session, persisted.file, itemId);
     }
   };
 
@@ -468,38 +746,58 @@ export default function DeepSpaceLibraryDrawer({
     if (oversized.length)
       setActionError(`${oversized.length} file(s) exceeded the 25 MB secure upload limit.`);
     if (!filesToUpload.length) return;
-    const items = filesToUpload.map((file, index) => ({
-      id: `${Date.now()}-${index}-${file.name}`,
-      name: file.name,
-      size: file.size,
-      loaded: 0,
-      status: "queued" as const,
-    }));
-    setUploadItems(items);
     setImporting(true);
     setActionError(null);
-    const created: LibraryFile[] = [];
-    let nextIndex = 0;
-    const worker = async () => {
-      while (nextIndex < filesToUpload.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        const result = await uploadOne(filesToUpload[index], items[index].id);
-        if (result) created.push(result);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(3, filesToUpload.length) }, () => worker()));
-    if (created.length) {
-      const last = created[created.length - 1];
-      setSelected(last);
-      setDraft(last.content ?? last.extracted_text ?? "");
-      await refresh();
-    }
-    if (created.length !== filesToUpload.length)
-      setActionError(
-        `${created.length} of ${filesToUpload.length} files imported. Failed files are shown below.`,
-      );
+    const sessions = await Promise.all(
+      filesToUpload.map(async (file, index) => {
+        try {
+          const session = await createUploadSession(file);
+          await savePersistedUpload({ uploadId: session.id, conversationId, file });
+          const item = {
+            id: `${Date.now()}-${index}-${file.name}`,
+            uploadId: session.id,
+            name: file.name,
+            size: file.size,
+            loaded: 0,
+            status: "queued" as const,
+          };
+          setUploadItems((items) => [...items, item]);
+          return { session, file, itemId: item.id };
+        } catch (error) {
+          setActionError(
+            error instanceof Error ? error.message : "The upload session could not be created.",
+          );
+          return null;
+        }
+      }),
+    );
+    let next = 0;
+    const workers = Array.from(
+      { length: Math.min(3, sessions.filter(Boolean).length) },
+      async () => {
+        while (next < sessions.length) {
+          const index = next;
+          next += 1;
+          const item = sessions[index];
+          if (item) await runUploadSession(item.session, item.file, item.itemId);
+        }
+      },
+    );
+    await Promise.all(workers);
     setImporting(false);
+  };
+
+  const cancelUpload = async (item: UploadItem) => {
+    if (!conversationId || !item.uploadId) return;
+    uploadControllersRef.current[item.uploadId]?.abort();
+    const response = (await fetchWithAuth(
+      `/deepspace/library/${conversationId}/uploads/${item.uploadId}/cancel`,
+      { method: "POST", timeoutMs: 15_000 },
+    )) as Response;
+    if (response.ok) {
+      await deletePersistedUpload(item.uploadId);
+      updateUploadItem(item.id, { status: "cancelled", error: "Cancelled" });
+    }
   };
 
   const handleClipboardPaste = (event: React.ClipboardEvent) => {
@@ -526,7 +824,11 @@ export default function DeepSpaceLibraryDrawer({
     [embedded, selected],
   );
   const fileList = (
-    <div
+    <motion.div
+      key={currentFolderId ?? "library-root"}
+      initial={{ opacity: 0, x: 10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.16, ease: "easeOut" }}
       className={`custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2 ${dragActive ? "bg-primary/[0.06]" : ""}`}
       onDragEnter={(event) => {
         event.preventDefault();
@@ -542,6 +844,7 @@ export default function DeepSpaceLibraryDrawer({
       }}
       onDrop={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         setDragActive(false);
         if (event.dataTransfer.files.length) void importFiles(event.dataTransfer.files);
       }}
@@ -616,9 +919,13 @@ export default function DeepSpaceLibraryDrawer({
               className="sr-only"
               disabled={importing}
               onChange={(event) => {
-                const files = event.target.files;
+                // Copy the FileList before clearing the input.  Some browsers
+                // clear the FileList immediately when value is reset, which
+                // made the button appear to do nothing while drag/drop still
+                // worked.
+                const files = Array.from(event.target.files ?? []);
                 event.target.value = "";
-                if (files?.length) void importFiles(files);
+                if (files.length) void importFiles(files);
               }}
             />
           </label>
@@ -629,6 +936,31 @@ export default function DeepSpaceLibraryDrawer({
       >
         Drop multiple files here or paste copied files with Ctrl/Cmd+V
       </div>
+      {files.length ? (
+        <div className="border-glass-border bg-surface-1/40 mb-2 flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() =>
+              setSelectedFileIds((current) =>
+                current.size === files.length ? new Set() : new Set(files.map((file) => file.id)),
+              )
+            }
+            className="text-foreground/55 hover:text-primary text-[10px] transition"
+          >
+            {selectedFileIds.size === files.length ? "Clear selection" : "Select all"}
+          </button>
+          <button
+            type="button"
+            disabled={selectedFileIds.size === 0}
+            onClick={() => void exportSelectedFiles()}
+            className="border-glass-border bg-surface-2 text-primary inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
+            title="Download selected files; multiple files are packaged as a ZIP"
+          >
+            <Download size={12} />
+            {selectedFileIds.size > 1 ? "Export selected" : "Download selected"}
+          </button>
+        </div>
+      ) : null}
       {uploadItems.length
         ? (() => {
             const total = uploadItems.reduce((sum, item) => sum + item.size, 0);
@@ -661,15 +993,34 @@ export default function DeepSpaceLibraryDrawer({
                             ? "text-rose-300"
                             : item.status === "complete"
                               ? "text-emerald-300"
-                              : "text-foreground/40"
+                              : item.status === "cancelled"
+                                ? "text-foreground/40"
+                                : "text-foreground/40"
                         }
                       >
                         {item.status === "error"
                           ? "failed"
                           : item.status === "complete"
-                            ? "done"
-                            : `${Math.round((item.loaded / Math.max(item.size, 1)) * 100)}%`}
+                            ? "Done"
+                            : item.status === "cancelled"
+                              ? "cancelled"
+                              : item.status === "processing"
+                                ? "processing"
+                                : `${Math.round((item.loaded / Math.max(item.size, 1)) * 100)}%`}
                       </span>
+                      {(item.status === "queued" ||
+                        item.status === "uploading" ||
+                        item.status === "processing") &&
+                      item.uploadId ? (
+                        <button
+                          type="button"
+                          onClick={() => void cancelUpload(item)}
+                          className="text-foreground/50 hover:text-rose-300"
+                          title="Cancel upload"
+                        >
+                          <X size={12} />
+                        </button>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -694,7 +1045,44 @@ export default function DeepSpaceLibraryDrawer({
         </p>
       ) : null}
       {folders.map((folder) => (
-        <div key={folder.id} className="hover:bg-surface-2 mb-1 flex items-center rounded-lg">
+        <div
+          key={folder.id}
+          draggable
+          onDragStart={(event) => {
+            const entry = { kind: "folder" as const, id: folder.id, name: folder.name };
+            draggedEntryRef.current = entry;
+            setDraggedEntry(entry);
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", folder.id);
+          }}
+          onDragEnd={() => {
+            setDraggedEntry(null);
+            draggedEntryRef.current = null;
+            setDropTargetFolderId(null);
+          }}
+          onDragOver={(event) => {
+            const entry = draggedEntryRef.current;
+            if (!entry || entry.id === folder.id) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect =
+              entry.kind === "file" && (event.ctrlKey || event.metaKey) ? "copy" : "move";
+            setDropTargetFolderId(folder.id);
+          }}
+          onDragLeave={() =>
+            setDropTargetFolderId((current) => (current === folder.id ? null : current))
+          }
+          onDrop={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const entry = draggedEntryRef.current ?? draggedEntry;
+            if (entry) {
+              const mode =
+                entry.kind === "file" && (event.ctrlKey || event.metaKey) ? "copy" : "move";
+              void moveEntryToFolder(entry, folder.id, mode);
+            }
+          }}
+          className={`hover:bg-surface-2 mb-1 flex items-center rounded-lg transition-colors duration-200 ${dropTargetFolderId === folder.id ? "bg-primary/[0.12] ring-primary/40 ring-1" : ""}`}
+        >
           {renamingFolderId === folder.id ? (
             <form
               className="flex min-w-0 flex-1 gap-1 px-2 py-1"
@@ -723,7 +1111,15 @@ export default function DeepSpaceLibraryDrawer({
                   setSelected(null);
                   setDraft("");
                 }}
-                className="text-foreground/70 hover:text-primary flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px]"
+                draggable
+                onDragStart={(event) => {
+                  const entry = { kind: "folder" as const, id: folder.id, name: folder.name };
+                  draggedEntryRef.current = entry;
+                  setDraggedEntry(entry);
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", folder.id);
+                }}
+                className="text-foreground/70 hover:text-primary flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] transition-colors duration-200"
               >
                 <FolderOpen size={14} className="text-primary shrink-0" />
                 <span className="truncate">{folder.name}</span>
@@ -752,8 +1148,40 @@ export default function DeepSpaceLibraryDrawer({
         </div>
       ))}
       {files.map((file) => (
-        <div key={file.id} className="hover:bg-surface-2 mb-1 rounded-lg">
-          <div className="flex items-center gap-0.5">
+        <div
+          key={file.id}
+          draggable
+          onDragStart={(event) => {
+            const entry = { kind: "file" as const, id: file.id, name: file.name };
+            draggedEntryRef.current = entry;
+            setDraggedEntry(entry);
+            event.dataTransfer.effectAllowed = "copyMove";
+            event.dataTransfer.setData("text/plain", file.id);
+          }}
+          onDragEnd={() => {
+            setDraggedEntry(null);
+            draggedEntryRef.current = null;
+            setDropTargetFolderId(null);
+          }}
+          className={`hover:bg-surface-2 mb-1 rounded-lg transition-colors duration-200 ${movingEntryId === file.id ? "opacity-50" : ""}`}
+        >
+          <div className="flex cursor-grab items-center gap-0.5 active:cursor-grabbing">
+            <input
+              type="checkbox"
+              checked={selectedFileIds.has(file.id)}
+              onChange={(event) => {
+                event.stopPropagation();
+                setSelectedFileIds((current) => {
+                  const next = new Set(current);
+                  if (event.target.checked) next.add(file.id);
+                  else next.delete(file.id);
+                  return next;
+                });
+              }}
+              onClick={(event) => event.stopPropagation()}
+              aria-label={`Select ${file.name} for download`}
+              className="accent-primary mx-0.5 h-3 w-3 shrink-0 cursor-pointer"
+            />
             <button
               type="button"
               onClick={() => {
@@ -780,6 +1208,14 @@ export default function DeepSpaceLibraryDrawer({
             </button>
             <button
               type="button"
+              draggable
+              onDragStart={(event) => {
+                const entry = { kind: "file" as const, id: file.id, name: file.name };
+                draggedEntryRef.current = entry;
+                setDraggedEntry(entry);
+                event.dataTransfer.effectAllowed = "copyMove";
+                event.dataTransfer.setData("text/plain", file.id);
+              }}
               onClick={() => void selectFile(file)}
               className="text-foreground/65 hover:bg-surface-2 hover:text-primary flex min-w-0 flex-1 items-center gap-2 rounded-l-lg px-2 py-2 text-left text-[11px] transition"
             >
@@ -791,6 +1227,15 @@ export default function DeepSpaceLibraryDrawer({
                 <FileText size={14} className="text-primary shrink-0 opacity-80" />
               )}
               <span className="min-w-0 flex-1 truncate">{file.name}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void downloadFile(file)}
+              aria-label={`Download ${file.name}`}
+              title="Download file"
+              className="text-foreground/40 hover:bg-surface-2 hover:text-primary rounded-md p-1.5 transition"
+            >
+              <Download size={12} />
             </button>
             <button
               type="button"
@@ -854,7 +1299,7 @@ export default function DeepSpaceLibraryDrawer({
           ) : null}
         </div>
       ))}
-    </div>
+    </motion.div>
   );
   if (!open) return null;
 
@@ -910,6 +1355,16 @@ export default function DeepSpaceLibraryDrawer({
           <span className="truncate">{selectedLabel}</span>
         </div>
         <div className="flex items-center gap-1">
+          {selected ? (
+            <button
+              type="button"
+              onClick={() => void downloadFile(selected)}
+              className="border-glass-border bg-surface-2 text-primary inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-semibold"
+              title="Download this file"
+            >
+              <Download size={12} /> Download
+            </button>
+          ) : null}
           {selected && !selected.is_binary ? (
             <button
               type="button"
@@ -933,9 +1388,9 @@ export default function DeepSpaceLibraryDrawer({
       {embedded ? (
         <div className="flex min-h-0 flex-1">
           <aside
-            className={`border-glass-border flex min-h-0 shrink-0 flex-col border-r transition-[width] duration-200 ease-out ${
-              isFilesCollapsed ? "w-11" : "w-[min(30%,18rem)] max-w-[18rem] min-w-[13rem]"
-            }`}
+            ref={filesPanelRef}
+            className={`border-glass-border relative flex min-h-0 shrink-0 flex-col border-r ${isFilesCollapsed ? "w-11" : isResizingFilesPanel ? "transition-none" : "transition-[width] duration-200 ease-out"}`}
+            style={isFilesCollapsed ? undefined : { width: `min(${filesPanelWidth}px, 100%)` }}
           >
             <div
               className={`border-glass-border text-foreground/50 flex items-center border-b py-2 text-[10px] font-semibold tracking-[0.16em] uppercase ${
@@ -955,6 +1410,49 @@ export default function DeepSpaceLibraryDrawer({
               </button>
             </div>
             {!isFilesCollapsed ? fileList : null}
+            {!isFilesCollapsed ? (
+              <div
+                role="separator"
+                aria-label="Resize Library files panel"
+                title="Resize files panel"
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture?.(event.pointerId);
+                  setIsResizingFilesPanel(true);
+                  const startX = event.clientX;
+                  const startWidth = filesPanelWidth;
+                  let latestWidth = startWidth;
+                  let frame: number | null = null;
+                  const maxWidth = () =>
+                    Math.max(220, Math.min(560, Math.floor(window.innerWidth * 0.45)));
+                  const applyWidth = (width: number) => {
+                    latestWidth = Math.max(220, Math.min(maxWidth(), width));
+                    if (frame !== null) window.cancelAnimationFrame(frame);
+                    frame = window.requestAnimationFrame(() => {
+                      if (filesPanelRef.current) {
+                        filesPanelRef.current.style.width = `${latestWidth}px`;
+                      }
+                      frame = null;
+                    });
+                  };
+                  const resize = (move: PointerEvent) => {
+                    applyWidth(startWidth + move.clientX - startX);
+                  };
+                  const stop = () => {
+                    if (frame !== null) window.cancelAnimationFrame(frame);
+                    setFilesPanelWidth(latestWidth);
+                    setIsResizingFilesPanel(false);
+                    window.removeEventListener("pointermove", resize);
+                    window.removeEventListener("pointerup", stop);
+                    window.removeEventListener("pointercancel", stop);
+                  };
+                  window.addEventListener("pointermove", resize);
+                  window.addEventListener("pointerup", stop);
+                  window.addEventListener("pointercancel", stop);
+                }}
+                className="bg-primary/0 hover:bg-primary/40 absolute inset-y-0 right-[-3px] z-20 w-1.5 cursor-col-resize touch-none transition-colors"
+              />
+            ) : null}
           </aside>
           <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
             {selected ? (

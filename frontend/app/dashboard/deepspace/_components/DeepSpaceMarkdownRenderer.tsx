@@ -252,6 +252,22 @@ export default function DeepSpaceMarkdownRenderer({
     [streaming],
   );
   const normalizedContent = useMemo(() => normalizeMarkdown(content), [content]);
+
+  // Markdown is intentionally rendered as stable text during token streaming.
+  // Re-parsing incomplete fences/tables/lists on every token causes React to
+  // replace block nodes and makes the chat viewport flash or jump. The rich
+  // renderer is restored as soon as the stream completes.
+  if (streaming) {
+    return (
+      <div
+        className="text-foreground/90 my-3 leading-8 break-words whitespace-pre-wrap"
+        aria-live="polite"
+      >
+        {normalizedContent || "\u00a0"}
+      </div>
+    );
+  }
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}

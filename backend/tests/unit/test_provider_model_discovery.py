@@ -4,9 +4,31 @@ from app.auth.models.tenant import Tenant
 from app.core.ids import generate_uuid7_with_fallback
 from app.platform.database.session import get_session_factory
 from app.providers.models.provider_config import ProviderConfig
+from app.providers.services.lmstudio_provider import LMStudioProvider
 from app.providers.services.provider_models_service import ProviderModelsService
 from app.providers.services.registry import ProviderRegistry
 from app.providers.services.types import ProviderModelInfo
+
+
+def test_lmstudio_keeps_quantized_model_keys_distinct() -> None:
+    q4 = {
+        "key": "gemma-4-e4b-it@q4_k_m",
+        "display_name": "Gemma 4 E4B Instruct",
+    }
+    q6 = {
+        "key": "gemma-4-e4b-it@q6_k",
+        "display_name": "Gemma 4 E4B Instruct",
+    }
+
+    q4_info = LMStudioProvider()._build_model_info(
+        item=q4, name="gemma-4-e4b-it@q4_k_m", kind="chat"
+    )
+    q6_info = LMStudioProvider()._build_model_info(item=q6, name="gemma-4-e4b-it@q6_k", kind="chat")
+
+    assert q4_info.name != q6_info.name
+    assert q4_info.display_name == q6_info.display_name == "Gemma 4 E4B Instruct"
+    assert q4_info.capabilities["quantization"] == "Q4_K_M"
+    assert LMStudioProvider._extract_model_name(q4) == "gemma-4-e4b-it@q4_k_m"
 
 
 def test_provider_model_discovery_refreshes_chat_and_embedding_models(
@@ -47,7 +69,14 @@ def test_provider_model_discovery_refreshes_chat_and_embedding_models(
                         name="chat-model",
                         kind="chat",
                         capabilities={"runtime": "lmstudio", "supports_chat": True},
-                    )
+                    ),
+                    # Discovery endpoints may return duplicate entries. The
+                    # cache should persist one row per name and kind.
+                    ProviderModelInfo(
+                        name="chat-model",
+                        kind="chat",
+                        capabilities={"runtime": "lmstudio", "supports_chat": True},
+                    ),
                 ]
 
             def list_embedding_models(self):
@@ -76,6 +105,7 @@ def test_provider_model_discovery_refreshes_chat_and_embedding_models(
         )
         assert {row.model_name for row in rows} == {"chat-model", "embed-model"}
         assert {row.model_kind for row in rows} == {"chat", "embedding"}
+        assert len(rows) == 2
     finally:
         session.rollback()
         session.close()

@@ -56,8 +56,13 @@ export default function ProviderModelPicker({
     const parts: string[] = [];
     const runtime =
       typeof model.capabilities_json.runtime === "string" ? model.capabilities_json.runtime : null;
+    const quantization =
+      typeof model.capabilities_json.quantization === "string"
+        ? model.capabilities_json.quantization
+        : null;
 
     if (runtime) parts.push(runtime);
+    if (quantization) parts.push(quantization);
     if (model.context_window) parts.push(`${Math.floor(model.context_window / 1024)}k`);
 
     return parts.length > 0 ? parts.join(" · ") : undefined;

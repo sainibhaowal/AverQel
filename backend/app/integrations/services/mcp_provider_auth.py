@@ -106,7 +106,15 @@ class MCPProviderOAuthProfile:
         """Reject scope escalation and incomplete provider authorization."""
         expected = set(self.scopes_for(provider_slug))
         required = set(self.required_scopes)
-        granted = {item.strip() for item in str(granted_scope or "").split() if item.strip()}
+        # OAuth providers do not all serialize the returned scope list the
+        # same way.  Google returns a space-delimited value while GitHub
+        # returns comma-delimited scopes (and may include optional spaces).
+        # Normalize both forms before applying the strict allowlist below.
+        granted = {
+            item.strip()
+            for item in str(granted_scope or "").replace(",", " ").split()
+            if item.strip()
+        }
         if not granted:
             raise ValueError("OAuth provider did not return granted scopes")
         unexpected = granted - expected
@@ -230,7 +238,9 @@ GITHUB_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol end
     token_endpoint="https://github.com/login/oauth/access_token",
     identity_endpoint="https://api.github.com/user",
     identity_email_endpoint="https://api.github.com/user/emails",
-    revocation_endpoint="https://api.github.com/applications/{client_id}/token",
+    # GitHub's OAuth-authorizations API revokes one app grant at this
+    # endpoint.  The access token is supplied in the JSON request body.
+    revocation_endpoint="https://api.github.com/applications/{client_id}/grant",
     revocation_method="delete_basic",
     default_scopes=("read:user", "user:email", "repo"),
     required_scopes=("read:user", "user:email", "repo"),

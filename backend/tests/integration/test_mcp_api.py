@@ -3,13 +3,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.integrations.catalog.mcp_official_providers import CURATED_MCP_CATALOG_SOURCE
 from app.integrations.models.mcp_server import MCPRegistryEntry
+from app.integrations.services.mcp_oauth_service import MCPServerOAuthService
 from app.integrations.services.mcp_catalog_service import MCPCatalogService
 from tests.conftest import SeededUser
 
@@ -138,3 +139,46 @@ def test_curated_provider_is_visible_but_requires_provider_oauth_configuration(
             delete(MCPRegistryEntry).where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
         )
         db_session.commit()
+
+
+def test_marketplace_connect_rebinds_tenant_context_after_oauth_commit(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    """OAuth setup commits internally; the response must still serialize under RLS."""
+    seeded = seed_user(
+        "tenant-mcp-connect-context",
+        "mcp-connect-context@example.com",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    db_session.execute(
+        delete(MCPRegistryEntry).where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
+    )
+    MCPCatalogService(db_session).sync_official_providers()
+    db_session.commit()
+    settings = get_settings()
+    settings.mcp_google_oauth_client_id = "mcp-google-client-id"
+    settings.mcp_google_oauth_client_secret = "mcp-google-client-secret"
+    settings.mcp_oauth_redirect_uri = "https://averqel.example/api/v1/mcp/oauth/callback"
+
+    def fake_start(self, *, server, user_id):
+        self.db.commit()
+        return "https://accounts.google.com/o/oauth2/v2/auth?state=test"
+
+    monkeypatch.setattr(MCPServerOAuthService, "start", fake_start)
+
+    entry = db_session.execute(
+        select(MCPRegistryEntry).where(MCPRegistryEntry.provider_slug == "google-gmail")
+    ).scalar_one()
+    response = client.post(
+        f"/api/v1/mcp/marketplace/{entry.id}/connect",
+        headers=_auth_headers(seeded),
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["authorization_url"].startswith("https://accounts.google.com/")
+    assert payload["server"]["provider_slug"] == "google-gmail"

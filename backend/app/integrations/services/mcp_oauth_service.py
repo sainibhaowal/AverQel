@@ -37,7 +37,10 @@ class MCPServerOAuthService:
     @staticmethod
     def _safe_scope_list(value: object) -> list[str]:
         if isinstance(value, str):
-            return sorted({item for item in value.split() if item})
+            # GitHub returns OAuth scopes as a comma-delimited string, while
+            # other MCP providers commonly use spaces.  Store one canonical
+            # list regardless of the provider's wire format.
+            return sorted({item for item in value.replace(",", " ").split() if item})
         if isinstance(value, list):
             return sorted({str(item).strip() for item in value if str(item).strip()})
         return []
@@ -459,10 +462,20 @@ class MCPServerOAuthService:
                     endpoint = profile.revocation_endpoint.format(client_id=client_id)
                     with build_safe_sync_client(timeout=15.0) as client:
                         if profile.revocation_method == "delete_basic":
-                            response = client.delete(
+                            # GitHub requires the token in the JSON body for
+                            # DELETE /applications/{client_id}/grant.  Using
+                            # request() is intentional because httpx.delete()
+                            # does not accept a JSON body on all supported
+                            # httpx versions.
+                            response = client.request(
+                                "DELETE",
                                 endpoint,
-                                headers={"Accept": "application/json"},
+                                headers={
+                                    "Accept": "application/vnd.github+json",
+                                    "X-GitHub-Api-Version": "2022-11-28",
+                                },
                                 auth=httpx.BasicAuth(client_id, client_secret),
+                                json={"access_token": token_value},
                             )
                         else:
                             response = client.post(endpoint, data={"token": token_value})

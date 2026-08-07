@@ -110,6 +110,7 @@ class LMStudioProvider(OpenAICompatibleProvider):
             "id",
             "modelKey",
             "model_key",
+            "key",
             "name",
             "displayName",
             "display_name",
@@ -123,6 +124,7 @@ class LMStudioProvider(OpenAICompatibleProvider):
                 "id",
                 "modelKey",
                 "model_key",
+                "key",
                 "name",
                 "displayName",
                 "display_name",
@@ -131,6 +133,20 @@ class LMStudioProvider(OpenAICompatibleProvider):
                 if isinstance(name, str) and name:
                     return name
         return None
+
+    @staticmethod
+    def _extract_display_name(item: dict[str, Any], fallback: str) -> str:
+        for key in ("displayName", "display_name", "name"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        details = item.get("details")
+        if isinstance(details, dict):
+            for key in ("displayName", "display_name", "name"):
+                value = details.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return fallback
 
     @staticmethod
     def _extract_model_items(payload: Any) -> list[dict[str, Any]]:
@@ -203,6 +219,22 @@ class LMStudioProvider(OpenAICompatibleProvider):
         }
         if supports_chat:
             metadata.update(reasoning_capabilities("lmstudio", name, base_url=self.base_url))
+        quantization = item.get("quantization")
+        quantization_name: str | None = None
+        quantization_bits: int | float | None = None
+        if isinstance(quantization, dict):
+            raw_name = quantization.get("name")
+            if isinstance(raw_name, str) and raw_name.strip():
+                quantization_name = raw_name.strip()
+            raw_bits = quantization.get("bits_per_weight")
+            if isinstance(raw_bits, int | float) and not isinstance(raw_bits, bool):
+                quantization_bits = raw_bits
+        if quantization_name is None and "@" in name:
+            quantization_name = name.rsplit("@", 1)[1].strip().upper() or None
+        if quantization_name:
+            metadata["quantization"] = quantization_name
+        if quantization_bits is not None:
+            metadata["quantization_bits"] = quantization_bits
         owned_by = item.get("owned_by")
         if isinstance(owned_by, str) and owned_by:
             metadata["owned_by"] = owned_by
@@ -210,7 +242,7 @@ class LMStudioProvider(OpenAICompatibleProvider):
             name=name,
             kind=kind,
             context_window=self._extract_context_window(item),
-            display_name=name,
+            display_name=self._extract_display_name(item, name),
             capabilities=metadata,
         )
 

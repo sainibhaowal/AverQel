@@ -208,6 +208,7 @@ export default function QueryPageClient() {
       providerId: string;
       modelName: string;
       displayName: string;
+      quantization?: string | null;
       contextWindow?: number | null;
       contextWindowSource?: string | null;
     }>
@@ -253,6 +254,10 @@ export default function QueryPageClient() {
                     providerId: provider.id,
                     modelName: m.model_name,
                     displayName: m.display_name || m.model_name,
+                    quantization:
+                      typeof m.capabilities_json.quantization === "string"
+                        ? m.capabilities_json.quantization
+                        : null,
                     contextWindow: m.context_window,
                     contextWindowSource:
                       typeof m.capabilities_json.context_window_source === "string"

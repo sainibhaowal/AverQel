@@ -542,8 +542,9 @@ export async function fetchWithAuth(
  * same bearer/tenant session used by fetchWithAuth. */
 export async function uploadWithAuthProgress(
   endpoint: string,
-  body: FormData,
+  body: FormData | Blob,
   options: {
+    method?: string;
     onProgress?: (loaded: number, total: number) => void;
     signal?: AbortSignal;
     timeoutMs?: number;
@@ -560,7 +561,7 @@ export async function uploadWithAuthProgress(
       const xhr = new XMLHttpRequest();
       let timedOut = false;
       const timeout = options.timeoutMs ?? 120_000;
-      xhr.open("POST", fullUrl, true);
+      xhr.open(options.method ?? "POST", fullUrl, true);
       xhr.withCredentials = true;
       xhr.timeout = timeout;
       if (accessToken) xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);

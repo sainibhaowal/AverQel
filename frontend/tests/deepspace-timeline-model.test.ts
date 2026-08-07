@@ -1,4 +1,5 @@
 import {
+  findPendingUserQuestion,
   deepSpaceThreadReducer,
   initialDeepSpaceThreadState,
 } from "../app/dashboard/deepspace/_lib/deepspace-thread";
@@ -277,5 +278,63 @@ describe("TimelineStep Model", () => {
       details: "I can now summarize the plan.",
       status: "completed",
     });
+  });
+
+  test("keeps the composer available and resumes an ask_user question", () => {
+    let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "submit_query",
+      query: "Help me choose a format",
+    });
+    const assistantId = state.activeAssistantId;
+    if (!assistantId) throw new Error("No active assistant");
+
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: {
+        event: "tool_result",
+        data: {
+          tool_name: "ask_user",
+          tool_id: "ask-1",
+          step_id: "step-1",
+          success: true,
+          output: '{"awaiting_user":true}',
+        },
+      },
+    });
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: {
+        event: "ask_user_question",
+        data: {
+          tool_name: "ask_user",
+          tool_id: "ask-1",
+          step_id: "step-1",
+          question_id: "question-1",
+          message: "Which format should I use?",
+        },
+      },
+    });
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: { event: "done", data: { status: "awaiting_user" } },
+    });
+
+    expect(state.isStreaming).toBe(false);
+    expect(findPendingUserQuestion(state.messages)).toEqual({
+      messageId: assistantId,
+      questionId: "question-1",
+    });
+
+    state = deepSpaceThreadReducer(state, {
+      type: "resume_user_question",
+      messageId: assistantId,
+      query: "Markdown",
+    });
+    expect(state.isStreaming).toBe(true);
+    expect(
+      state.messages.some((message) => message.role === "user" && message.content === "Markdown"),
+    ).toBe(true);
+    expect(state.messages.find((message) => message.id === assistantId)?.content).toBe("");
+    expect(findPendingUserQuestion(state.messages)).toBeNull();
   });
 });

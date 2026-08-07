@@ -20,7 +20,11 @@ import {
 } from "@/lib/providers-api";
 
 import { useDeepSpaceStream } from "../_hooks/useDeepSpaceStream";
-import { initialDeepSpaceThreadState, deepSpaceThreadReducer } from "../_lib/deepspace-thread";
+import {
+  findPendingUserQuestion,
+  initialDeepSpaceThreadState,
+  deepSpaceThreadReducer,
+} from "../_lib/deepspace-thread";
 import type { DeepSpaceHistoryMessage } from "../_lib/deepspace-stream";
 import { resolveLatestEditableMessageId } from "../_lib/edit-target";
 
@@ -183,6 +187,7 @@ export default function DeepSpaceChatClient({
       providerId: string;
       modelName: string;
       displayName: string;
+      quantization?: string | null;
       contextWindow?: number | null;
       contextWindowSource?: string | null;
     }>
@@ -330,13 +335,19 @@ export default function DeepSpaceChatClient({
           chatProviders.map(async (provider) => {
             try {
               const models = await listProviderModels(provider.id);
-              const chatOnly = models.filter((m) => m.model_kind === "chat");
+              const chatOnly = models.filter(
+                (m) => m.model_kind === "chat" && m.is_available !== false,
+              );
               if (active) {
                 allChatModels.push(
                   ...chatOnly.map((m) => ({
                     providerId: provider.id,
                     modelName: m.model_name,
                     displayName: m.display_name || m.model_name,
+                    quantization:
+                      typeof m.capabilities_json.quantization === "string"
+                        ? m.capabilities_json.quantization
+                        : null,
                     contextWindow: m.context_window,
                     contextWindowSource:
                       typeof m.capabilities_json.context_window_source === "string"
@@ -725,7 +736,14 @@ export default function DeepSpaceChatClient({
   const submitQuery = useCallback(
     async (nextQuery?: string) => {
       const effectiveQuery = (nextQuery ?? query).trim();
-      if (!effectiveQuery || state.isStreaming || submissionInFlightRef.current) return;
+      const pendingUserQuestion = findPendingUserQuestion(state.messages);
+      const answeringUserQuestion = Boolean(pendingUserQuestion);
+      if (
+        !effectiveQuery ||
+        (state.isStreaming && !answeringUserQuestion) ||
+        submissionInFlightRef.current
+      )
+        return;
 
       submissionInFlightRef.current = true;
       try {
@@ -734,7 +752,15 @@ export default function DeepSpaceChatClient({
         setCompletionPulse(false);
         setQuery("");
         autoFollowRef.current = true;
-        dispatch({ type: "submit_query", query: effectiveQuery });
+        if (pendingUserQuestion) {
+          dispatch({
+            type: "resume_user_question",
+            messageId: pendingUserQuestion.messageId,
+            query: effectiveQuery,
+          });
+        } else {
+          dispatch({ type: "submit_query", query: effectiveQuery });
+        }
         pendingHistorySyncRef.current = true;
         const requestId = crypto.randomUUID();
         activeRequestIdRef.current = requestId;
@@ -746,13 +772,23 @@ export default function DeepSpaceChatClient({
             conversation_id: state.currentConversationId,
             client_request_id: requestId,
             thinking_enabled: thinkingEnabled,
+            ...(pendingUserQuestion
+              ? { resume_user_question_id: pendingUserQuestion.questionId }
+              : {}),
           },
         });
       } finally {
         submissionInFlightRef.current = false;
       }
     },
-    [query, state.currentConversationId, state.isStreaming, stream, thinkingEnabled],
+    [
+      query,
+      state.currentConversationId,
+      state.isStreaming,
+      state.messages,
+      stream,
+      thinkingEnabled,
+    ],
   );
 
   const startNewChat = useCallback(() => {
@@ -1023,6 +1059,7 @@ export default function DeepSpaceChatClient({
           message.agentSteps?.length ||
           message.status === "streaming"),
     );
+  const pendingUserQuestion = findPendingUserQuestion(state.messages);
   const runtimeActivity = useMemo(() => {
     const hasError = Boolean(state.streamError || latestAssistant?.error);
     const activeSteps = (latestAssistant?.agentSteps ?? []).filter(
@@ -1185,7 +1222,7 @@ export default function DeepSpaceChatClient({
           <div className="flex w-full shrink-0 flex-col items-center">
             <DeepSpaceComposer
               query={query}
-              isStreaming={state.isStreaming}
+              isStreaming={state.isStreaming && !pendingUserQuestion}
               modelName={effectiveModelName}
               onQueryChange={setQuery}
               onSubmit={() => void submitQuery()}

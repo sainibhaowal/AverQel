@@ -120,6 +120,16 @@ export default function MCPMarketplaceCard({
   const preview = entry.tool_preview || [];
   const connectable = entry.connectable;
   const tintStyle = { "--card-tint": cardTint(entry) } as CSSProperties;
+  // Marketplace health is catalog-level and may remain ``not_checked`` even
+  // after this user has connected the account. Prefer the tenant-owned live
+  // connection status when one exists so the card reflects the account the
+  // user can actually use.
+  const displayHealth = connectedServer
+    ? {
+        status: connectedServer.status === "connected" ? "healthy" : connectedServer.status,
+        last_checked_at: connectedServer.config?.mcp_catalog_last_sync_at || null,
+      }
+    : entry.health;
   return (
     <article
       style={tintStyle}
@@ -185,7 +195,7 @@ export default function MCPMarketplaceCard({
           </div>
         )}
         <div className="mt-4 border-t border-white/5 pt-3">
-          <MCPHealthStatus health={entry.health} compact />
+          <MCPHealthStatus health={displayHealth} compact />
         </div>
         {!connectable && entry.connectability_reason && (
           <p className="mt-3 text-xs text-amber-200/80">{entry.connectability_reason}</p>

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -218,6 +221,8 @@ MANAGED_SENTENCE_TRANSFORMERS_PROVIDER_TYPE = "sentence-transformers"
 MANAGED_EMBEDDINGS_PROVIDER_NAME = "AverQel Server Embeddings"
 MANAGED_RERANKER_PROVIDER_NAME = "AverQel Server ReRanker"
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(slots=True)
 class ProviderManagementService:
@@ -250,7 +255,14 @@ class ProviderManagementService:
         actor_user_id: uuid.UUID | None = None,
         workspace_id: uuid.UUID | None = None,
     ) -> list[ProviderConfig]:
-        self._ensure_managed_sentence_transformer_providers(tenant_id=tenant_id)
+        # Provider discovery is also responsible for keeping the built-in
+        # embedding/reranker rows and their model cache current.  Multiple
+        # browser surfaces can request this endpoint at the same time.  Use a
+        # transaction-scoped PostgreSQL advisory lock so only one request does
+        # that maintenance work for a tenant; other requests remain read-only
+        # and can return the already persisted provider rows immediately.
+        if self._try_acquire_managed_provider_seed_lock(tenant_id=tenant_id):
+            self._ensure_managed_sentence_transformer_providers(tenant_id=tenant_id)
         return list(
             self.configs.list_by_workspace(
                 tenant_id=tenant_id,
@@ -258,6 +270,35 @@ class ProviderManagementService:
                 owner_user_id=actor_user_id,
             )
         )
+
+    def _try_acquire_managed_provider_seed_lock(self, *, tenant_id: uuid.UUID) -> bool:
+        """Try to serialize managed-provider maintenance for one tenant.
+
+        This is deliberately non-blocking.  A busy seed must never make the
+        read-only provider list wait behind a row lock or turn a model picker
+        request into a 500.  If the advisory-lock query itself is unavailable
+        (for example during a database upgrade), fail open and retain the
+        existing maintenance behavior rather than making provider listing
+        unavailable.
+        """
+
+        try:
+            acquired = self.db.execute(
+                text("SELECT pg_try_advisory_xact_lock(" "hashtextextended(:lock_key, 0))"),
+                {"lock_key": f"averqel:managed-provider-seed:{tenant_id}"},
+            ).scalar_one()
+            return bool(acquired)
+        except SQLAlchemyError:
+            # A failed statement leaves the transaction unusable until it is
+            # rolled back.  The caller can still safely perform the original
+            # maintenance path after the rollback.
+            self.db.rollback()
+            logger.warning(
+                "Managed provider advisory lock unavailable; continuing without it.",
+                extra={"tenant_id": str(tenant_id)},
+                exc_info=True,
+            )
+            return True
 
     def get_provider(
         self,

@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import posixpath
 import re
 import uuid
+import zipfile
 from datetime import UTC, datetime
 from typing import Literal
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func as sa_func
@@ -21,6 +25,7 @@ from app.auth.rbac import require_permissions
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.deepspace.models.conversation import Conversation
+from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
@@ -30,12 +35,16 @@ from app.deepspace.services.library_storage import (
     read_archive_entry,
     safe_archive_entries,
 )
+from app.deepspace.workers.library_uploads import finalize_library_upload
 from app.platform.database.session import get_db
 from app.system.services.storage_service import StorageService, StorageServiceError
 
 router = APIRouter(prefix="/deepspace/library", tags=["deepspace-library"])
 _SAFE_FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,254}$")
 _MAX_LIBRARY_CONTENT_LENGTH = 8_000_000
+_LIBRARY_UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
+_MAX_LIBRARY_EXPORT_FILES = 100
+_MAX_LIBRARY_EXPORT_BYTES = 250 * 1024 * 1024
 _LIBRARY_CONTENT_TYPES = {
     "text/css",
     "text/csv",
@@ -173,6 +182,49 @@ class WorkspaceFileCreate(BaseModel):
         return normalized
 
 
+class LibraryUploadCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    size_bytes: int = Field(gt=0)
+    content_type: str = Field(default="application/octet-stream", max_length=127)
+    parent_folder_id: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("name")
+    @classmethod
+    def safe_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not _SAFE_FILE_NAME.fullmatch(normalized) or normalized in {".", ".."}:
+            raise ValueError(
+                "File names may contain only letters, numbers, spaces, dots, underscores, and hyphens."
+            )
+        return normalized
+
+    @field_validator("content_type")
+    @classmethod
+    def normalized_content_type(cls, value: str) -> str:
+        return value.strip().lower().split(";", 1)[0] or "application/octet-stream"
+
+
+class LibraryUploadSchema(BaseModel):
+    id: str
+    name: str
+    content_type: str
+    expected_size: int
+    chunk_size: int
+    total_chunks: int
+    received_chunks: list[int]
+    bytes_received: int
+    progress_percent: int
+    status: str
+    file_id: str | None = None
+    error: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class WorkspaceFileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     content: str | None = Field(default=None, max_length=_MAX_LIBRARY_CONTENT_LENGTH)
@@ -234,6 +286,18 @@ class WorkspaceFileCopy(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     parent_folder_id: str | None = None
     mode: Literal["copy", "move"] = "copy"
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class LibraryExportRequest(BaseModel):
+    """The selected Library files to package for an authenticated download."""
+
+    file_ids: list[uuid.UUID] = Field(
+        min_length=1,
+        max_length=_MAX_LIBRARY_EXPORT_FILES,
+        description="One or more files owned by the current DeepSpace workspace.",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -322,6 +386,45 @@ def _owned_folder(
     return folder
 
 
+def _library_file_payload(*, file: DeepSpaceWorkspaceFile, settings: Settings) -> bytes:
+    """Read a file's original bytes without exposing object-storage URLs."""
+    if not file.is_binary:
+        return (file.content or "").encode("utf-8")
+    if not file.storage_bucket or not file.storage_key:
+        raise ApiError(
+            code="STORAGE_OBJECT_NOT_FOUND",
+            message="Library file payload is missing.",
+            status_code=404,
+        )
+    try:
+        return StorageService(settings).get_bytes(
+            bucket=file.storage_bucket, object_key=file.storage_key
+        )
+    except StorageServiceError as exc:
+        raise ApiError(code=exc.code, message=exc.message, status_code=503) from exc
+
+
+def _library_folder_path(
+    file: DeepSpaceWorkspaceFile,
+    folders: dict[uuid.UUID, DeepSpaceWorkspaceFolder],
+) -> str:
+    """Build a safe relative ZIP path from the Library folder hierarchy."""
+    parts: list[str] = [file.name]
+    current = file.parent_folder_id
+    visited: set[uuid.UUID] = set()
+    while current is not None and current not in visited and len(parts) < 256:
+        visited.add(current)
+        folder = folders.get(current)
+        if folder is None:
+            break
+        parts.append(folder.name)
+        current = folder.parent_folder_id
+    path = posixpath.normpath("/".join(reversed(parts)))
+    if path.startswith("/") or path == "." or path == ".." or path.startswith("../"):
+        return file.name
+    return path
+
+
 def _parse_optional_uuid(value: str | None, label: str) -> uuid.UUID | None:
     if not value:
         return None
@@ -351,6 +454,303 @@ def _add_version(db: Session, file: DeepSpaceWorkspaceFile) -> None:
             metadata_json={"is_binary": file.is_binary},
         )
     )
+
+
+def _serialize_upload(upload: DeepSpaceLibraryUpload) -> LibraryUploadSchema:
+    return LibraryUploadSchema(
+        id=str(upload.id),
+        name=upload.filename,
+        content_type=upload.content_type,
+        expected_size=upload.expected_size,
+        chunk_size=upload.chunk_size,
+        total_chunks=upload.total_chunks,
+        received_chunks=sorted(int(index) for index in (upload.received_chunks or [])),
+        bytes_received=upload.bytes_received,
+        progress_percent=(
+            min(100, int(upload.bytes_received * 100 / upload.expected_size))
+            if upload.expected_size
+            else 0
+        ),
+        status=upload.status,
+        file_id=str(upload.file_id) if upload.file_id else None,
+        error=upload.error_message,
+        created_at=upload.created_at,
+        updated_at=upload.updated_at,
+    )
+
+
+def _owned_upload(
+    *, db: Session, auth: AuthContext, conversation_id: uuid.UUID, upload_id: uuid.UUID
+) -> DeepSpaceLibraryUpload:
+    upload = db.execute(
+        select(DeepSpaceLibraryUpload).where(
+            DeepSpaceLibraryUpload.id == upload_id,
+            DeepSpaceLibraryUpload.tenant_id == auth.tenant_id,
+            DeepSpaceLibraryUpload.user_id == auth.user_id,
+            DeepSpaceLibraryUpload.conversation_id == conversation_id,
+        )
+    ).scalar_one_or_none()
+    if upload is None:
+        raise ApiError(code="NOT_FOUND", message="Library upload not found.", status_code=404)
+    return upload
+
+
+@router.post(
+    "/{conversation_id}/uploads",
+    response_model=LibraryUploadSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def create_library_upload(
+    conversation_id: uuid.UUID,
+    payload: LibraryUploadCreate,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> LibraryUploadSchema:
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    if payload.size_bytes > settings.upload_max_bytes:
+        raise ApiError(
+            code="DOC_TOO_LARGE",
+            message="The file exceeds the configured upload limit.",
+            status_code=413,
+        )
+    parent_id = _parse_optional_uuid(payload.parent_folder_id, "parent_folder_id")
+    if parent_id:
+        _owned_folder(db=db, auth=auth, conversation_id=conversation_id, folder_id=parent_id)
+    duplicate_query = select(DeepSpaceWorkspaceFile.id).where(
+        DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
+        DeepSpaceWorkspaceFile.user_id == auth.user_id,
+        DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+        DeepSpaceWorkspaceFile.name == payload.name,
+    )
+    duplicate_query = duplicate_query.where(
+        DeepSpaceWorkspaceFile.parent_folder_id.is_(None)
+        if parent_id is None
+        else DeepSpaceWorkspaceFile.parent_folder_id == parent_id
+    )
+    if db.execute(duplicate_query).scalar_one_or_none() is not None:
+        raise ApiError(
+            code="IDEMPOTENCY_CONFLICT",
+            message="A file with that name already exists in this workspace.",
+            status_code=409,
+        )
+    content_type = payload.content_type
+    if content_type not in _LIBRARY_CONTENT_TYPES:
+        content_type = _content_type_for_name(payload.name)
+    if content_type not in _LIBRARY_CONTENT_TYPES:
+        raise ApiError(
+            code="INVALID_UPLOAD_TYPE",
+            message="This file type is not supported in the DeepSpace Library.",
+            status_code=422,
+        )
+    total_chunks = (
+        payload.size_bytes + _LIBRARY_UPLOAD_CHUNK_SIZE - 1
+    ) // _LIBRARY_UPLOAD_CHUNK_SIZE
+    upload = DeepSpaceLibraryUpload(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        parent_folder_id=parent_id,
+        filename=payload.name,
+        content_type=content_type,
+        expected_size=payload.size_bytes,
+        chunk_size=_LIBRARY_UPLOAD_CHUNK_SIZE,
+        total_chunks=total_chunks,
+        received_chunks=[],
+        bytes_received=0,
+        status="pending",
+    )
+    db.add(upload)
+    db.commit()
+    db.refresh(upload)
+    return _serialize_upload(upload)
+
+
+@router.get(
+    "/{conversation_id}/uploads",
+    response_model=list[LibraryUploadSchema],
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def list_library_uploads(
+    conversation_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> list[LibraryUploadSchema]:
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    uploads = db.execute(
+        select(DeepSpaceLibraryUpload)
+        .where(
+            DeepSpaceLibraryUpload.tenant_id == auth.tenant_id,
+            DeepSpaceLibraryUpload.user_id == auth.user_id,
+            DeepSpaceLibraryUpload.conversation_id == conversation_id,
+            DeepSpaceLibraryUpload.status.in_(
+                ["pending", "uploading", "queued", "processing", "failed"]
+            ),
+        )
+        .order_by(DeepSpaceLibraryUpload.created_at.desc())
+        .limit(50)
+    ).scalars()
+    return [_serialize_upload(upload) for upload in uploads]
+
+
+@router.get(
+    "/{conversation_id}/uploads/{upload_id}",
+    response_model=LibraryUploadSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def get_library_upload(
+    conversation_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> LibraryUploadSchema:
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    return _serialize_upload(
+        _owned_upload(db=db, auth=auth, conversation_id=conversation_id, upload_id=upload_id)
+    )
+
+
+@router.put(
+    "/{conversation_id}/uploads/{upload_id}/chunks/{chunk_index}",
+    response_model=LibraryUploadSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def upload_library_chunk(
+    conversation_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    chunk_index: int,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> LibraryUploadSchema:
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    upload = _owned_upload(db=db, auth=auth, conversation_id=conversation_id, upload_id=upload_id)
+    if upload.status in {"cancelled", "completed", "processing", "failed"}:
+        raise ApiError(
+            code="UPLOAD_NOT_ACTIVE",
+            message="This upload is no longer accepting chunks.",
+            status_code=409,
+        )
+    if chunk_index < 0 or chunk_index >= upload.total_chunks:
+        raise ApiError(
+            code="INVALID_CHUNK", message="The upload chunk number is invalid.", status_code=422
+        )
+    declared_length = request.headers.get("content-length")
+    if declared_length:
+        try:
+            if int(declared_length) > upload.chunk_size:
+                raise ApiError(
+                    code="INVALID_CHUNK", message="The upload chunk is too large.", status_code=413
+                )
+        except ValueError:
+            raise ApiError(
+                code="INVALID_CHUNK", message="The upload chunk length is invalid.", status_code=422
+            ) from None
+    body_parts: list[bytes] = []
+    body_size = 0
+    async for part in request.stream():
+        body_size += len(part)
+        if body_size > upload.chunk_size:
+            raise ApiError(
+                code="INVALID_CHUNK", message="The upload chunk is too large.", status_code=413
+            )
+        body_parts.append(part)
+    body = b"".join(body_parts)
+    expected_length = min(upload.chunk_size, upload.expected_size - chunk_index * upload.chunk_size)
+    if len(body) != expected_length or len(body) > upload.chunk_size:
+        raise ApiError(
+            code="INVALID_CHUNK", message="The upload chunk size is invalid.", status_code=422
+        )
+    try:
+        StorageService(settings).put_upload_chunk(
+            tenant_id=auth.tenant_id,
+            upload_id=upload.id,
+            chunk_index=chunk_index,
+            payload=body,
+        )
+    except StorageServiceError as exc:
+        raise ApiError(code=exc.code, message=exc.message, status_code=503) from exc
+    received = {int(index) for index in (upload.received_chunks or [])}
+    received.add(chunk_index)
+    upload.received_chunks = sorted(received)
+    upload.bytes_received = sum(
+        min(upload.chunk_size, upload.expected_size - index * upload.chunk_size)
+        for index in received
+    )
+    upload.status = "uploading"
+    upload.error_message = None
+    db.commit()
+    db.refresh(upload)
+    return _serialize_upload(upload)
+
+
+@router.post(
+    "/{conversation_id}/uploads/{upload_id}/complete",
+    response_model=LibraryUploadSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def complete_library_upload(
+    conversation_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> LibraryUploadSchema:
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    upload = _owned_upload(db=db, auth=auth, conversation_id=conversation_id, upload_id=upload_id)
+    if upload.status == "completed":
+        return _serialize_upload(upload)
+    if upload.status == "cancelled":
+        raise ApiError(
+            code="UPLOAD_CANCELLED", message="This upload was cancelled.", status_code=409
+        )
+    if (
+        len(upload.received_chunks or []) != upload.total_chunks
+        or upload.bytes_received != upload.expected_size
+    ):
+        raise ApiError(
+            code="UPLOAD_INCOMPLETE",
+            message="Some upload chunks are still missing.",
+            status_code=409,
+        )
+    upload.status = "queued"
+    db.commit()
+    try:
+        finalize_library_upload.delay(upload_id=str(upload.id), tenant_id=str(auth.tenant_id))
+    except Exception as exc:  # noqa: BLE001
+        upload.status = "failed"
+        upload.error_message = "The Library upload worker could not be started."
+        db.commit()
+        raise ApiError(
+            code="UPLOAD_QUEUE_UNAVAILABLE", message=upload.error_message, status_code=503
+        ) from exc
+    db.refresh(upload)
+    return _serialize_upload(upload)
+
+
+@router.post(
+    "/{conversation_id}/uploads/{upload_id}/cancel",
+    response_model=LibraryUploadSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def cancel_library_upload(
+    conversation_id: uuid.UUID,
+    upload_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> LibraryUploadSchema:
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    upload = _owned_upload(db=db, auth=auth, conversation_id=conversation_id, upload_id=upload_id)
+    if upload.status not in {"completed", "cancelled"}:
+        upload.status = "cancelled"
+        upload.error_message = "Upload cancelled by the user."
+        db.commit()
+        StorageService(settings).delete_upload_chunks(
+            tenant_id=auth.tenant_id, upload_id=upload.id, total_chunks=upload.total_chunks
+        )
+        db.refresh(upload)
+    return _serialize_upload(upload)
 
 
 @router.get(
@@ -596,6 +996,101 @@ async def delete_workspace_folder(
                 storage.delete_object(bucket=item.storage_bucket, object_key=item.storage_key)
     db.delete(folder)
     db.commit()
+
+
+@router.post(
+    "/{conversation_id}/files/export",
+    response_model=None,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def export_workspace_files(
+    conversation_id: uuid.UUID,
+    payload: LibraryExportRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> StreamingResponse:
+    """Package selected Library files into a private, authenticated ZIP download."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    requested_ids = list(dict.fromkeys(payload.file_ids))
+    if len(requested_ids) != len(payload.file_ids):
+        raise ApiError(
+            code="INVALID_REQUEST", message="A file may only be selected once.", status_code=422
+        )
+    files = (
+        db.execute(
+            select(DeepSpaceWorkspaceFile).where(
+                DeepSpaceWorkspaceFile.id.in_(requested_ids),
+                DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
+                DeepSpaceWorkspaceFile.user_id == auth.user_id,
+                DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(files) != len(requested_ids):
+        raise ApiError(
+            code="NOT_FOUND",
+            message="One or more selected Library files were not found.",
+            status_code=404,
+        )
+    total_size = sum(max(0, file.size_bytes) for file in files)
+    if total_size > _MAX_LIBRARY_EXPORT_BYTES:
+        raise ApiError(
+            code="EXPORT_TOO_LARGE",
+            message="The selected files exceed the safe export size limit.",
+            status_code=413,
+        )
+    folder_rows = (
+        db.execute(
+            select(DeepSpaceWorkspaceFolder).where(
+                DeepSpaceWorkspaceFolder.tenant_id == auth.tenant_id,
+                DeepSpaceWorkspaceFolder.user_id == auth.user_id,
+                DeepSpaceWorkspaceFolder.conversation_id == conversation_id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    folders = {folder.id: folder for folder in folder_rows}
+    archive = io.BytesIO()
+    used_names: set[str] = set()
+    exported_bytes = 0
+    with zipfile.ZipFile(archive, mode="w", compression=zipfile.ZIP_DEFLATED) as output:
+        # Keep the user's selection order, rather than database ordering.
+        files_by_id = {file.id: file for file in files}
+        for file_id in requested_ids:
+            file = files_by_id[file_id]
+            entry_name = _library_folder_path(file, folders)
+            if entry_name in used_names:
+                stem, dot, suffix = entry_name.rpartition(".")
+                base = stem if dot else entry_name
+                extension = f".{suffix}" if dot else ""
+                index = 2
+                candidate = f"{base} ({index}){extension}"
+                while candidate in used_names:
+                    index += 1
+                    candidate = f"{base} ({index}){extension}"
+                entry_name = candidate
+            used_names.add(entry_name)
+            file_payload = _library_file_payload(file=file, settings=settings)
+            exported_bytes += len(file_payload)
+            if exported_bytes > _MAX_LIBRARY_EXPORT_BYTES:
+                raise ApiError(
+                    code="EXPORT_TOO_LARGE",
+                    message="The selected files exceed the safe export size limit.",
+                    status_code=413,
+                )
+            output.writestr(entry_name, file_payload)
+    payload_bytes = archive.getvalue()
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+        "Content-Length": str(len(payload_bytes)),
+        "Content-Disposition": "attachment; filename=deepspace-library-export.zip",
+    }
+    return StreamingResponse(iter([payload_bytes]), media_type="application/zip", headers=headers)
 
 
 @router.get(
@@ -1042,31 +1537,25 @@ async def restore_workspace_file_version(
 async def stream_workspace_file_content(
     conversation_id: uuid.UUID,
     file_id: uuid.UUID,
+    download: bool = Query(default=False),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse | PlainTextResponse:
     _conversation(db=db, auth=auth, conversation_id=conversation_id)
     file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    disposition = "attachment" if download else "inline"
+    safe_name = quote(file.name, safe="._-")
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",
-        "Content-Disposition": f'inline; filename="{file.name.replace(chr(34), "")}"',
+        "Content-Disposition": f"{disposition}; filename=\"{file.name}\"; filename*=UTF-8''{safe_name}",
     }
+    payload = _library_file_payload(file=file, settings=settings)
     if not file.is_binary:
-        return PlainTextResponse(file.content or "", media_type=file.content_type, headers=headers)
-    if not file.storage_bucket or not file.storage_key:
-        raise ApiError(
-            code="STORAGE_OBJECT_NOT_FOUND",
-            message="Library file payload is missing.",
-            status_code=404,
+        return PlainTextResponse(
+            payload.decode("utf-8", errors="replace"), media_type=file.content_type, headers=headers
         )
-    try:
-        payload = StorageService(settings).get_bytes(
-            bucket=file.storage_bucket, object_key=file.storage_key
-        )
-    except StorageServiceError as exc:
-        raise ApiError(code=exc.code, message=exc.message, status_code=503) from exc
     headers["Content-Length"] = str(len(payload))
     return StreamingResponse(iter([payload]), media_type=file.content_type, headers=headers)
 

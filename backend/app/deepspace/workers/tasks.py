@@ -56,6 +56,7 @@ def run_deepspace_task(
     client_request_id: str,
     thinking_enabled: bool,
     resume_approval_id: str | None = None,
+    resume_user_question_id: str | None = None,
 ) -> str:
     """Run a DeepSpace turn outside the browser request lifecycle."""
     settings = get_settings()
@@ -112,6 +113,7 @@ def run_deepspace_task(
                 thinking_enabled=thinking_enabled,
                 request=None,
                 resume_approval_id=resume_approval_id,
+                resume_user_question_id=resume_user_question_id,
             ):
                 # Every frame is committed before Redis fan-out. This is what
                 # makes a later browser reconnect lossless.

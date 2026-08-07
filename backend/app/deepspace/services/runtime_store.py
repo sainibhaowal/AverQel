@@ -207,6 +207,44 @@ class DeepSpaceRuntimeStore:
                 return run
         return None
 
+    def get_run_for_user_question(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        question_id: str,
+    ) -> DeepSpaceAgentRun | None:
+        """Return only a user-owned run waiting for this clarification answer."""
+        runs = (
+            self.db.execute(
+                select(DeepSpaceAgentRun)
+                .where(
+                    DeepSpaceAgentRun.tenant_id == tenant_id,
+                    DeepSpaceAgentRun.user_id == user_id,
+                    DeepSpaceAgentRun.conversation_id == conversation_id,
+                    # A clarification can be answered exactly once.  Once a
+                    # worker claims it, the run is switched to ``running``;
+                    # rejecting a second answer prevents two workers from
+                    # resuming the same provider turn concurrently.
+                    DeepSpaceAgentRun.status == "awaiting_user",
+                )
+                .order_by(DeepSpaceAgentRun.updated_at.desc())
+                .limit(25)
+            )
+            .scalars()
+            .all()
+        )
+        for run in runs:
+            checkpoint = run.checkpoint if isinstance(run.checkpoint, dict) else {}
+            pending = checkpoint.get("pending_user_question")
+            if (
+                isinstance(pending, dict)
+                and str(pending.get("question_id") or "") == question_id
+            ):
+                return run
+        return None
+
     def resolve_approval(
         self,
         *,

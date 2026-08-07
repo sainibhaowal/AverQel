@@ -134,6 +134,14 @@ export default function ProviderModelsPanel({
                       <span className="text-foreground/30 text-[9px] font-bold tracking-widest uppercase">
                         {model.model_kind}
                       </span>
+                      {typeof model.capabilities_json.quantization === "string" && (
+                        <>
+                          <span className="text-foreground/20 text-[9px]">•</span>
+                          <span className="text-[9px] font-bold tracking-widest text-cyan-300/70 uppercase">
+                            {model.capabilities_json.quantization}
+                          </span>
+                        </>
+                      )}
                       <span className="text-foreground/20 text-[9px]">•</span>
                       <span className="text-foreground/30 text-[9px] font-bold tracking-widest uppercase">
                         {model.context_window

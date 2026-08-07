@@ -1530,11 +1530,23 @@ class DeepSpaceChatService:
         thinking_enabled: bool = False,
         request: Any | None = None,
         resume_approval_id: str | None = None,
+        resume_user_question_id: str | None = None,
     ) -> AsyncIterator[str]:
         prompt = " ".join(prompt.strip().split())
         client_request_id = str(client_request_id or "").strip() or None
         resume_approval_id = str(resume_approval_id or "").strip() or None
+        resume_user_question_id = str(resume_user_question_id or "").strip() or None
+        if resume_approval_id and resume_user_question_id:
+            yield sse(
+                "error",
+                {
+                    "code": "INVALID_RESUME_REQUEST",
+                    "message": "Only one pending DeepSpace request can be resumed at a time.",
+                },
+            )
+            return
         resumed_pending: dict[str, Any] | None = None
+        resumed_user_question: dict[str, Any] | None = None
         resume_denied = False
         run_id: uuid.UUID | None = None
 
@@ -1610,6 +1622,102 @@ class DeepSpaceChatService:
             run_id = run.id
             resumed_pending = dict(pending)
             resume_denied = str(pending.get("decision")) == "denied"
+        elif resume_user_question_id:
+            if conversation_id is None:
+                yield sse(
+                    "error",
+                    {
+                        "code": "QUESTION_CONVERSATION_REQUIRED",
+                        "message": "A conversation is required to answer this question.",
+                    },
+                )
+                return
+            if not prompt:
+                yield sse(
+                    "error",
+                    {"code": "EMPTY_MESSAGE", "message": "An answer is required."},
+                )
+                return
+            run = self.runtime.get_run_for_user_question(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                question_id=resume_user_question_id,
+            )
+            if run is None:
+                yield sse(
+                    "error",
+                    {
+                        "code": "QUESTION_NOT_FOUND",
+                        "message": "This DeepSpace question is no longer awaiting an answer.",
+                    },
+                )
+                return
+            checkpoint = run.checkpoint if isinstance(run.checkpoint, dict) else {}
+            pending = checkpoint.get("pending_user_question")
+            if not isinstance(pending, dict):
+                yield sse(
+                    "error",
+                    {
+                        "code": "QUESTION_NOT_FOUND",
+                        "message": "This DeepSpace question is no longer awaiting an answer.",
+                    },
+                )
+                return
+            assistant_message_id = run.assistant_message_id
+            if assistant_message_id is None:
+                yield sse(
+                    "error",
+                    {
+                        "code": "QUESTION_RUN_INVALID",
+                        "message": "The question run is missing its assistant message.",
+                    },
+                )
+                return
+            assistant_message = self.chat.get_message_by_conversation(
+                tenant_id=auth.tenant_id,
+                conversation_id=conversation_id,
+                message_id=assistant_message_id,
+                user_id=auth.user_id,
+            )
+            if assistant_message is None:
+                yield sse(
+                    "error",
+                    {
+                        "code": "QUESTION_MESSAGE_NOT_FOUND",
+                        "message": "The question message no longer exists.",
+                    },
+                )
+                return
+            previous = self._messages(
+                auth=auth,
+                conversation_id=conversation_id,
+                exclude_message_id=assistant_message.id,
+            )
+            run_id = run.id
+            resumed_user_question = dict(pending)
+            resumed_user_question["answer"] = prompt
+            self.chat.add_message(
+                tenant_id=auth.tenant_id,
+                conversation_id=conversation_id,
+                role="user",
+                content=prompt,
+                metadata_json={
+                    "answer_to_question_id": resume_user_question_id,
+                    **({"client_request_id": client_request_id} if client_request_id else {}),
+                },
+            )
+            self.db.commit()
+            self.runtime.update_checkpoint(
+                run_id=run_id,
+                status="running",
+                checkpoint={
+                    **checkpoint,
+                    "status": "running",
+                    "phase": "question_resumed",
+                    "pending_user_question": resumed_user_question,
+                },
+            )
         elif not prompt:
             yield sse("error", {"code": "EMPTY_MESSAGE", "message": "Message cannot be empty."})
             return
@@ -1619,7 +1727,7 @@ class DeepSpaceChatService:
                 request=request, user_id=str(auth.user_id)
             )
 
-        if not resume_approval_id:
+        if not resume_approval_id and not resume_user_question_id:
             if client_request_id:
                 lock_request_id = getattr(self.chat, "lock_request_id", None)
                 if callable(lock_request_id):
@@ -1708,7 +1816,7 @@ class DeepSpaceChatService:
                 "started_at": started_at,
             },
         )
-        if not resume_approval_id:
+        if not resume_approval_id and not resume_user_question_id:
             try:
                 run = self.runtime.create_run(
                     tenant_id=auth.tenant_id,
@@ -1915,7 +2023,59 @@ class DeepSpaceChatService:
                 f"{attached_services}. When the user explicitly requests one of these services, "
                 "call its provided MCP tool; do not claim that the connection is unavailable."
             )
-        if not resume_approval_id:
+        if resumed_user_question is not None:
+            pending_call_id = str(resumed_user_question.get("call_id") or "")
+            pending_question = str(
+                resumed_user_question.get("question")
+                or "Please provide the requested information."
+            )
+            pending_options = resumed_user_question.get("options")
+            pending_tool_input = resumed_user_question.get("tool_input")
+            if not isinstance(pending_tool_input, dict):
+                pending_tool_input = {
+                    "question": pending_question,
+                    "options": pending_options if isinstance(pending_options, list) else [],
+                }
+            if pending_call_id:
+                conversation_messages.extend(
+                    [
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": pending_call_id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": "ask_user",
+                                        "arguments": json.dumps(
+                                            pending_tool_input,
+                                            ensure_ascii=False,
+                                            separators=(",", ":"),
+                                        ),
+                                    },
+                                }
+                            ],
+                        },
+                        {
+                            "role": "tool",
+                            "tool_call_id": pending_call_id,
+                            "content": json.dumps(
+                                {
+                                    "awaiting_user": True,
+                                    "question": pending_question,
+                                    "options": pending_options if isinstance(pending_options, list) else [],
+                                },
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ]
+                )
+            else:
+                conversation_messages.append({"role": "user", "content": prompt})
+        elif not resume_approval_id:
             conversation_messages.append({"role": "user", "content": prompt})
         answer_parts: list[str] = []
         thinking_parts: list[str] = []
@@ -2822,7 +2982,15 @@ class DeepSpaceChatService:
                             },
                         )
                         if tool_name == "ask_user" and tool_payload.get("awaiting_user"):
-                            awaiting_user = tool_payload
+                            awaiting_user = {
+                                **tool_payload,
+                                "question_id": str(uuid.uuid4()),
+                                "call_id": call_id,
+                                "step_id": step_id,
+                                "tool_name": tool_name,
+                                "tool_input": item["arguments"],
+                                "turn_index": round_index,
+                            }
                             yield sse(
                                 "ask_user_question",
                                 {
@@ -2831,6 +2999,7 @@ class DeepSpaceChatService:
                                     "step_id": step_id,
                                     "message": tool_payload.get("question"),
                                     "options": tool_payload.get("options", []),
+                                    "question_id": awaiting_user["question_id"],
                                     "turn_index": round_index,
                                 },
                             )
@@ -3005,6 +3174,10 @@ class DeepSpaceChatService:
             metadata["thinking"] = {"content": "".join(thinking_parts)}
         if generated_artifacts:
             metadata["artifacts"] = generated_artifacts
+        if awaiting_user is not None:
+            # Keep the clarification identity in history so a reload can
+            # rehydrate the answer control and resume the same durable run.
+            metadata["pending_user_question"] = awaiting_user
         if run_id is not None:
             durable_steps = self.runtime.history_steps_for_message(
                 tenant_id=auth.tenant_id,
@@ -3045,6 +3218,16 @@ class DeepSpaceChatService:
                         "status": "awaiting_approval",
                         "phase": "approval",
                         "pending_approval": awaiting_approval or {},
+                    },
+                )
+            elif terminal_status == "awaiting_user":
+                self.runtime.update_checkpoint(
+                    run_id=run_id,
+                    status="awaiting_user",
+                    checkpoint={
+                        "status": "awaiting_user",
+                        "phase": "question",
+                        "pending_user_question": awaiting_user or {},
                     },
                 )
             else:

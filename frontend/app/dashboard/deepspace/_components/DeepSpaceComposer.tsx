@@ -15,6 +15,7 @@ interface DeepSpaceComposerProps {
     providerId: string;
     modelName: string;
     displayName: string;
+    quantization?: string | null;
     contextWindow?: number | null;
     contextWindowSource?: string | null;
   }>;
@@ -286,7 +287,14 @@ export default function DeepSpaceComposer({
                                   : "text-foreground/80 hover:bg-foreground/[0.04]"
                               }`}
                             >
-                              <span className="truncate">{m.displayName}</span>
+                              <span className="flex min-w-0 items-center gap-1.5 truncate">
+                                <span className="truncate">{m.displayName}</span>
+                                {m.quantization && (
+                                  <span className="text-primary/70 shrink-0 text-[9px] font-semibold tracking-wide uppercase">
+                                    {m.quantization}
+                                  </span>
+                                )}
+                              </span>
                               {selected && (
                                 <Check size={11} className="text-primary ml-2 flex-shrink-0" />
                               )}

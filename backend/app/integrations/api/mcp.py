@@ -902,6 +902,12 @@ def connect_marketplace_entry(
             session.commit()
             set_db_tenant_context(session, auth.tenant_id)
             result.setup_required = True
+    # OAuth setup writes its transaction and lifecycle event in one or more
+    # commits.  ``set_config(..., true)`` is transaction-local, so every
+    # commit clears the RLS tenant context.  Rebind it before serializing the
+    # response; otherwise the policy query is evaluated with an empty UUID and
+    # PostgreSQL returns ``invalid input syntax for type uuid: \"\"``.
+    set_db_tenant_context(session, auth.tenant_id)
     result.server = _connection_payload(session, server)
     return result
 

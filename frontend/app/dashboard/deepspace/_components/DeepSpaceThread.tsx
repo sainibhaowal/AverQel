@@ -276,7 +276,7 @@ const MessageBubble = memo(
         className="mx-auto w-full max-w-[min(100%,74rem)] px-2 py-3 sm:px-3 sm:py-4"
         style={{ containIntrinsicSize: "220px", overflowAnchor: "none" }}
       >
-        <div className="relative flex items-start gap-4 p-0 transition-all duration-300">
+        <div className="relative flex items-start gap-4 p-0">
           {/* Simple Assistant Avatar */}
           <div className="relative mt-1 shrink-0">
             <div className="text-primary/80 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5">
@@ -627,7 +627,15 @@ function areMessageBubblesEqual(previous: DeepSpaceMessage, next: DeepSpaceMessa
     previous.isEditing === next.isEditing &&
     previous.draftContent === next.draftContent &&
     previous.metrics === next.metrics &&
-    previous.agentSteps === next.agentSteps
+    previous.agentSteps === next.agentSteps &&
+    previous.timeline === next.timeline &&
+    previous.blocks === next.blocks &&
+    previous.structured === next.structured &&
+    previous.mission === next.mission &&
+    previous.compaction === next.compaction &&
+    previous.memoryUsed === next.memoryUsed &&
+    previous.artifacts === next.artifacts &&
+    previous.mediaStatus === next.mediaStatus
   );
 }
 
@@ -808,9 +816,17 @@ export default function DeepSpaceThread({
     !scrollMetrics &&
     messages.length > LARGE_THREAD_THRESHOLD &&
     compactedHistoryMessages.length < messages.length;
+  // While a response is streaming, the active message grows on every token.
+  // Virtualization estimates would therefore change the spacer heights on
+  // every render, making the viewport visibly jump and occasionally repaint
+  // the active text. Keep the live turn in a stable, non-virtualized layout;
+  // normal virtualization resumes as soon as generation finishes.
+  const hasStreamingMessage = renderSourceMessages.some(
+    (message) => message.status === "streaming",
+  );
   const windowedMessages = useMemo(
-    () => buildWindowedMessages(renderSourceMessages, scrollMetrics),
-    [renderSourceMessages, scrollMetrics],
+    () => buildWindowedMessages(renderSourceMessages, hasStreamingMessage ? null : scrollMetrics),
+    [hasStreamingMessage, renderSourceMessages, scrollMetrics],
   );
   const shouldVirtualize = windowedMessages.visibleMessages.length < renderSourceMessages.length;
 

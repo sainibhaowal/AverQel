@@ -22,7 +22,15 @@ class ProviderModelCacheRepository(BaseRepository):
     ) -> list[ProviderModelCache]:
         self.apply_tenant_scope(tenant_id)
         persisted: list[ProviderModelCache] = []
+        seen: set[tuple[str, str]] = set()
         for model in models:
+            model_key = (model.model_name, model.model_kind)
+            # Keep the repository safe for callers other than the discovery
+            # service too.  A provider may return duplicate descriptors and
+            # this table deliberately enforces one row per model/kind.
+            if model_key in seen:
+                continue
+            seen.add(model_key)
             stmt = select(ProviderModelCache).where(
                 ProviderModelCache.tenant_id == tenant_id,
                 ProviderModelCache.provider_config_id == provider_config_id,

@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
@@ -63,6 +64,16 @@ OPTIONAL_WORKSPACE_QUERY = Query(default=None)
 OPTIONAL_CODE_QUERY = Query(default=None)
 OPTIONAL_STATE_QUERY = Query(default=None)
 OPTIONAL_TENANT_QUERY = Query(default=None)
+
+
+def _is_database_lock_timeout(exc: OperationalError) -> bool:
+    """Return whether a provider-list failure was caused by a transient lock."""
+
+    original = getattr(exc, "orig", None)
+    if getattr(original, "pgcode", None) == "55P03":
+        return True
+    detail = str(original or exc).lower()
+    return "lock timeout" in detail or "locknotavailable" in detail
 
 
 def _enforce_tenant_scope(request_tenant_id: uuid.UUID, auth: AuthContext) -> None:
@@ -248,11 +259,32 @@ async def list_providers(
     # while its RPC timeout elapses.
     with managed_db_session() as db:
         service = ProviderManagementService(db)
-        items = service.list_providers(
-            tenant_id=auth.tenant_id,
-            actor_user_id=auth.user_id,
-            workspace_id=workspace_id,
-        )
+        try:
+            items = service.list_providers(
+                tenant_id=auth.tenant_id,
+                actor_user_id=auth.user_id,
+                workspace_id=workspace_id,
+            )
+        except OperationalError as exc:
+            # A concurrent maintenance request can still hold a row lock if
+            # it started before advisory locking was deployed.  Serve the
+            # persisted provider configuration instead of surfacing a 500;
+            # the next request will refresh the managed cache once the lock is
+            # free.  Never hide unrelated database failures.
+            if not _is_database_lock_timeout(exc):
+                raise
+            db.rollback()
+            logger.warning(
+                "Provider maintenance was lock-contended; serving persisted provider rows.",
+                extra={"tenant_id": str(auth.tenant_id), "user_id": str(auth.user_id)},
+            )
+            items = list(
+                service.configs.list_by_workspace(
+                    tenant_id=auth.tenant_id,
+                    workspace_id=None,
+                    owner_user_id=auth.user_id,
+                )
+            )
         return ProviderConfigListResponse(
             items=[
                 _provider_config_response(service, tenant_id=auth.tenant_id, provider=item)

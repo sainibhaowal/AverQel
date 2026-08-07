@@ -219,6 +219,17 @@ class ProviderModelsService:
         )
         for model in chat_models + embedding_models + reranker_models:
             kind = model.kind
+            model_key = (model.name, kind)
+            # Provider discovery APIs are not required to return unique
+            # entries.  LM Studio, for example, can expose the same model
+            # more than once when aliases or runtime entries overlap.  The
+            # cache intentionally has a unique constraint for this key, so
+            # collapse duplicates before creating ORM rows.  Keep the first
+            # complete descriptor; the provider will refresh it on the next
+            # successful discovery.
+            if model_key in seen:
+                continue
+            seen.add(model_key)
             is_available = True
             capabilities = dict(model.capabilities)
             if kind == "chat" and provider.provider_type == "lmstudio":
@@ -263,7 +274,6 @@ class ProviderModelsService:
                 is_available=is_available,
             )
             rows.append(row)
-            seen.add((model.name, kind))
 
         persisted = self.cache.upsert_models(
             tenant_id=tenant_id,
