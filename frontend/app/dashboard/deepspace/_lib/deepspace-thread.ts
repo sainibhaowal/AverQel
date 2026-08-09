@@ -1777,27 +1777,10 @@ function normalizeHistoryAgentSteps(raw: unknown): AgentStep[] | undefined {
       .filter((item): item is AgentStep => item !== null && item.type !== "observing"),
   );
 
-  // Older persisted turns stored every provider thinking delta as a separate
-  // step. Collapse those legacy rows when rehydrating history as well.
-  const consolidated: AgentStep[] = [];
-  let thought: AgentStep | undefined;
-  for (const step of steps) {
-    if (step.type !== "thinking") {
-      consolidated.push(step);
-      continue;
-    }
-    if (!thought) {
-      thought = { ...step };
-      consolidated.push(thought);
-    } else {
-      thought.plan = appendStreamingText(thought.plan, step.plan ?? "");
-      thought.toolOutput = appendStreamingText(thought.toolOutput, step.toolOutput ?? "");
-      thought.completedAt = step.completedAt ?? thought.completedAt;
-      thought.durationMs = step.durationMs ?? thought.durationMs;
-    }
-  }
-
-  return consolidated.length > 0 ? consolidated : undefined;
+  // Preserve separate persisted thinking segments. Older code merged every
+  // thought into the first row, which destroyed the tool/thinking order after
+  // a reload. `compactAgentSteps` already merges only matching identities.
+  return steps.length > 0 ? steps : undefined;
 }
 
 function formatToolDeltaChunk(text: string, stream: unknown): string {
@@ -2416,7 +2399,25 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     : undefined;
   // Rehydrate timeline from agentSteps if timeline is not explicitly persisted
   let timeline: TimelineStep[] = [];
-  if (agentSteps) {
+  const rawTimelineEvents = metadata.timeline_events;
+  if (Array.isArray(rawTimelineEvents)) {
+    for (const item of rawTimelineEvents) {
+      if (!item || typeof item !== "object") continue;
+      const record = item as Record<string, unknown>;
+      const eventName = typeof record.event === "string" ? record.event : "";
+      const data =
+        record.data && typeof record.data === "object" && !Array.isArray(record.data)
+          ? (record.data as Record<string, unknown>)
+          : null;
+      if (!eventName || !data) continue;
+      const mapped = mapEventToTimelineStep({
+        event: eventName as DeepSpaceStreamEvent["event"],
+        data,
+      });
+      if (mapped) timeline = upsertTimelineStep(timeline, mapped);
+    }
+  }
+  if (agentSteps && timeline.length === 0) {
     for (const step of agentSteps) {
       const mapped: TimelineStep = {
         id: step.id,
@@ -2507,13 +2508,103 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
   };
 }
 
+function questionTextFromStep(step: AgentStep | undefined): string {
+  const raw = step?.data ?? {};
+  const data =
+    raw.data && typeof raw.data === "object" ? (raw.data as Record<string, unknown>) : raw;
+  return String(data.message ?? data.question ?? data.details ?? "").trim();
+}
+
+function removeQuestionFromContent(content: string, question: string): string {
+  const normalizedQuestion = question.trim();
+  if (!content || !normalizedQuestion) return content;
+  const escaped = normalizedQuestion.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return content
+    .replace(new RegExp(escaped, "gi"), "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n[ \t]*\n[ \t]*\n+/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Answer messages are persisted by the backend for auditability, but they
+ * belong visually to the assistant run that asked the question. Collapse only
+ * those explicitly tagged messages into the matching assistant turn when
+ * rebuilding the chat, so a reload cannot turn a continuation into a second
+ * chat thread.
+ */
+function collapseAnsweredQuestionMessages(
+  rawMessages: DeepSpaceHistoryMessage[],
+  messages: DeepSpaceMessage[],
+): DeepSpaceMessage[] {
+  const answersByQuestionId = new Map<string, string>();
+  const hiddenAnswerIds = new Set<string>();
+  const rawByMessageId = new Map(rawMessages.map((message) => [message.id, message]));
+
+  rawMessages.forEach((message) => {
+    if (message.role !== "user") return;
+    const metadata = message.metadata_json;
+    const questionId =
+      metadata && typeof metadata.answer_to_question_id === "string"
+        ? metadata.answer_to_question_id.trim()
+        : "";
+    if (!questionId || !message.content.trim()) return;
+    answersByQuestionId.set(questionId, message.content);
+    hiddenAnswerIds.add(message.id);
+  });
+
+  if (answersByQuestionId.size === 0) return messages;
+
+  return messages
+    .map((message) => {
+      if (message.role !== "assistant") return message;
+      const rawMetadata = rawByMessageId.get(message.id)?.metadata_json;
+      const rawSteps = rawMetadata?.agent_steps;
+      const questionIds = [
+        ...(message.agentSteps ?? []).map((step) => String(step.data?.question_id ?? "").trim()),
+        ...(Array.isArray(rawSteps)
+          ? rawSteps.map((step) => {
+              if (!step || typeof step !== "object") return "";
+              const raw = step as Record<string, unknown>;
+              const data =
+                raw.data && typeof raw.data === "object"
+                  ? (raw.data as Record<string, unknown>)
+                  : raw;
+              return String(data.question_id ?? raw.question_id ?? "").trim();
+            })
+          : []),
+      ];
+      const questionId = questionIds.find((id) => id && answersByQuestionId.has(id));
+      if (!questionId) return message;
+      const questionStep = (message.agentSteps ?? []).find((step) => {
+        const raw = step.data ?? {};
+        const data =
+          raw.data && typeof raw.data === "object" ? (raw.data as Record<string, unknown>) : raw;
+        return String(data.question_id ?? "").trim() === questionId;
+      });
+      const question = questionTextFromStep(questionStep);
+      const rawContent = removeQuestionFromContent(message.rawContent, question);
+      return {
+        ...message,
+        rawContent,
+        content: normalizeMarkdown(rawContent),
+        userQuestionAnswer: answersByQuestionId.get(questionId),
+        ...(question ? { userQuestionPrompt: question } : {}),
+      };
+    })
+    .filter((message) => !hiddenAnswerIds.has(message.id));
+}
+
 function reduceDeepSpaceThread(
   state: DeepSpaceThreadState,
   action: DeepSpaceThreadAction,
 ): DeepSpaceThreadState {
   switch (action.type) {
     case "load_history": {
-      const incomingMessages = action.messages.map(fromHistoryMessage);
+      const incomingMessages = collapseAnsweredQuestionMessages(
+        action.messages,
+        action.messages.map(fromHistoryMessage),
+      );
       const localMessagesById = new Map(state.messages.map((message) => [message.id, message]));
       const messages = incomingMessages.map((message) => {
         const local = localMessagesById.get(message.id);
@@ -2650,18 +2741,17 @@ function reduceDeepSpaceThread(
       const messageIndex = state.messages.findIndex((m) => m.id === action.messageId);
       if (messageIndex < 0) return state;
       const current = state.messages[messageIndex]!;
-      const answerMessage: DeepSpaceMessage = {
-        id: createClientMessageId("user"),
-        role: "user",
-        content: action.query,
-        rawContent: action.query,
-        createdAt: new Date().toISOString(),
-        status: "ready",
-        blocks: [],
-        structured: null,
-        error: null,
-      };
       const answeredAt = new Date().toISOString();
+      const pendingQuestionStep = [...(current.agentSteps ?? [])]
+        .reverse()
+        .find(
+          (step) =>
+            step.type === "ask_user_question" &&
+            step.status === "awaiting_approval" &&
+            String(step.data?.question_id ?? "").trim(),
+        );
+      const questionId = String(pendingQuestionStep?.data?.question_id ?? "").trim();
+      const question = questionTextFromStep(pendingQuestionStep);
       const answeredSteps = (current.agentSteps ?? []).map((step) =>
         step.type === "ask_user_question" && step.status === "awaiting_approval"
           ? {
@@ -2672,24 +2762,41 @@ function reduceDeepSpaceThread(
             }
           : step,
       );
-      const questionSnapshot: DeepSpaceMessage = {
-        ...current,
-        id: `${current.id}:question`,
-        status: "ready",
-        agentSteps: answeredSteps,
-      };
+      const answeredTimeline = (current.timeline ?? []).map((step) => {
+        const timelineQuestionId = String(step.data?.question_id ?? "").trim();
+        const sameQuestion =
+          step.type === "permission" &&
+          ((questionId && timelineQuestionId === questionId) ||
+            (pendingQuestionStep?.stepId && step.stepId === pendingQuestionStep.stepId));
+        return sameQuestion
+          ? {
+              ...step,
+              status: "completed" as const,
+              completedAt: answeredAt,
+              data: { ...(step.data ?? {}), answer_submitted: true },
+            }
+          : step;
+      });
+      const cleanedRawContent = removeQuestionFromContent(current.rawContent, question);
+      const cleanedContent = extractThinking(cleanedRawContent);
       const resumedAssistant: DeepSpaceMessage = {
         ...current,
         agentSteps: answeredSteps,
-        content: "",
-        rawContent: "",
-        thinkingContent: "",
-        currentTurnText: "",
+        timeline: answeredTimeline,
+        rawContent: cleanedRawContent,
+        content: normalizeMarkdown(cleanedContent.text),
+        thinkingContent: cleanedContent.thinking || current.thinkingContent,
+        userQuestionAnswer: action.query,
+        ...(question ? { userQuestionPrompt: question } : {}),
         status: "streaming",
         error: null,
       };
       const nextMessages = [...state.messages];
-      nextMessages.splice(messageIndex, 1, questionSnapshot, answerMessage, resumedAssistant);
+      // Keep the answer inside the original assistant turn. The backend
+      // continues the same durable run and assistant message; creating a
+      // second assistant row here made the UI look like a brand-new chat and
+      // caused the active run to jump away while it was still streaming.
+      nextMessages[messageIndex] = resumedAssistant;
       return {
         ...state,
         messages: nextMessages,
@@ -2895,7 +3002,11 @@ function reduceDeepSpaceThread(
           (event.data.lane_type === "main_chat" || !state.activeAssistantId))
       ) {
         const rawChunk = String(event.data.text ?? "");
-        const rawContent = appendStreamingText(current.rawContent, rawChunk);
+        const combinedRawContent = appendStreamingText(current.rawContent, rawChunk);
+        const rawContent = removeQuestionFromContent(
+          combinedRawContent,
+          current.userQuestionPrompt ?? "",
+        );
         const chunk = rawContent.slice((current.rawContent ?? "").length);
 
         // Metrics calculation
@@ -2962,7 +3073,10 @@ function reduceDeepSpaceThread(
           compaction: nextCompaction,
         };
       } else if (event.event === "replace") {
-        const content = String(event.data.content ?? "");
+        const content = removeQuestionFromContent(
+          String(event.data.content ?? ""),
+          current.userQuestionPrompt ?? "",
+        );
         const extracted = extractThinking(content);
         nextMessages[index] = {
           ...current,
@@ -3064,7 +3178,11 @@ function reduceDeepSpaceThread(
         // Thinking is streamed in many tiny provider chunks. Keep one
         // consolidated thought for the turn instead of rendering one row
         // per token/chunk (which produced dozens of "Thought for 1ms" rows).
-        const thinkingStepIdx = nextSteps.findIndex((s) => s.type === "thinking");
+        const lastThinkingIndex = nextSteps.length - 1;
+        const thinkingStepIdx =
+          lastThinkingIndex >= 0 && nextSteps[lastThinkingIndex]?.type === "thinking"
+            ? lastThinkingIndex
+            : -1;
 
         if (thinkingStepIdx !== -1) {
           const existingThinkingStep = nextSteps[thinkingStepIdx]!;

@@ -316,6 +316,13 @@ describe("TimelineStep Model", () => {
     });
     state = deepSpaceThreadReducer(state, {
       type: "stream_event",
+      event: {
+        event: "delta",
+        data: { text: "Which format should I use?" },
+      },
+    });
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
       event: { event: "done", data: { status: "awaiting_user" } },
     });
 
@@ -331,10 +338,104 @@ describe("TimelineStep Model", () => {
       query: "Markdown",
     });
     expect(state.isStreaming).toBe(true);
+    expect(state.messages).toHaveLength(2);
     expect(
       state.messages.some((message) => message.role === "user" && message.content === "Markdown"),
-    ).toBe(true);
+    ).toBe(false);
+    expect(state.messages.find((message) => message.id === assistantId)).toMatchObject({
+      status: "streaming",
+      userQuestionAnswer: "Markdown",
+    });
     expect(state.messages.find((message) => message.id === assistantId)?.content).toBe("");
+    expect(
+      state.messages
+        .find((message) => message.id === assistantId)
+        ?.timeline?.find((step) => step.data?.question_id === "question-1")?.status,
+    ).toBe("completed");
     expect(findPendingUserQuestion(state.messages)).toBeNull();
+  });
+
+  test("rehydrates a question answer inside the original assistant turn", () => {
+    const state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conversation-1",
+      messages: [
+        {
+          id: "assistant-question",
+          role: "assistant",
+          content: "Which format should I use? I need one choice before continuing.",
+          created_at: "2026-08-08T10:00:00.000Z",
+          metadata_json: {
+            agent_steps: [
+              {
+                id: "question-step",
+                type: "ask_user_question",
+                status: "completed",
+                startedAt: "2026-08-08T10:00:00.000Z",
+                data: { question_id: "question-1", message: "Which format should I use?" },
+              },
+            ],
+          },
+        },
+        {
+          id: "user-answer",
+          role: "user",
+          content: "Markdown",
+          created_at: "2026-08-08T10:01:00.000Z",
+          metadata_json: { answer_to_question_id: "question-1" },
+        },
+      ],
+    });
+
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]).toMatchObject({
+      id: "assistant-question",
+      userQuestionAnswer: "Markdown",
+    });
+    expect(state.messages[0]?.content).toBe("I need one choice before continuing.");
+  });
+
+  test("rehydrates persisted timeline events without merging thought segments", () => {
+    const state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conversation-ordered",
+      messages: [
+        {
+          id: "assistant-ordered",
+          role: "assistant",
+          content: "Completed answer",
+          created_at: "2026-08-09T10:00:00.000Z",
+          metadata_json: {
+            thinking: { content: "first thoughtsecond thought" },
+            timeline_events: [
+              {
+                event: "thinking",
+                data: { text: "first thought", timestamp: "2026-08-09T10:00:01.000Z" },
+              },
+              {
+                event: "tool_result",
+                data: {
+                  tool_name: "web_search",
+                  tool_id: "call-1",
+                  step_id: "step-1",
+                  success: true,
+                  output: "search complete",
+                  timestamp: "2026-08-09T10:00:02.000Z",
+                },
+              },
+              {
+                event: "thinking",
+                data: { text: "second thought", timestamp: "2026-08-09T10:00:03.000Z" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const timeline = state.messages[0]?.timeline;
+    expect(timeline?.map((step) => step.type)).toEqual(["thinking", "tool_call", "thinking"]);
+    expect(timeline?.[0]?.details).toBe("first thought");
+    expect(timeline?.[2]?.details).toBe("second thought");
   });
 });

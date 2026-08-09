@@ -129,3 +129,81 @@ def frames_after(
     events: Iterable[DeepSpaceRunEvent], *, after_sequence: int = 0
 ) -> list[tuple[int, str]]:
     return [(event.sequence, event.frame) for event in events if event.sequence > after_sequence]
+
+
+_TIMELINE_EVENT_NAMES = {
+    "agent_plan",
+    "thinking",
+    "lane_thinking",
+    "lane_agent_thinking",
+    "agent_thinking",
+    "tool_start",
+    "tool_result",
+    "tool_error",
+    "ask_user_question",
+    "permission_request",
+    "permission_granted",
+    "permission_denied",
+    "agent_testing",
+    "agent_verifying",
+    "agent_self_correct",
+}
+_THINKING_EVENT_NAMES = {
+    "thinking",
+    "lane_thinking",
+    "lane_agent_thinking",
+    "agent_thinking",
+}
+
+
+def timeline_events(
+    events: Iterable[DeepSpaceRunEvent],
+) -> list[dict[str, Any]]:
+    """Return a compact, ordered replay of meaningful UI activity events.
+
+    The full SSE log remains the reconnect source of truth. History only needs
+    semantic timeline events: adjacent thinking frames are coalesced, while
+    tool and approval boundaries are retained so the original order survives
+    a page reload without duplicating every token delta in the history API.
+    """
+
+    result: list[dict[str, Any]] = []
+    for event in events:
+        event_name = event.event_name or event_name_from_frame(event.frame)
+        if event_name not in _TIMELINE_EVENT_NAMES:
+            continue
+        data_line = next(
+            (
+                line.partition(":")[2].strip()
+                for line in event.frame.splitlines()
+                if line.startswith("data:")
+            ),
+            "{}",
+        )
+        try:
+            payload = json.loads(data_line)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        payload = dict(payload)
+        payload.setdefault("timestamp", event.created_at.isoformat())
+        if event_name in _THINKING_EVENT_NAMES and result:
+            previous = result[-1]
+            if previous.get("event") in _THINKING_EVENT_NAMES:
+                previous_data = dict(previous.get("data") or {})
+                previous_data["text"] = (
+                    f"{previous_data.get('text') or ''}{payload.get('text') or ''}"
+                )
+                previous["data"] = previous_data
+                previous["sequence_end"] = event.sequence
+                continue
+        result.append(
+            {
+                "event": event_name,
+                "data": payload,
+                "sequence": event.sequence,
+                "sequence_end": event.sequence,
+            }
+        )
+    return result

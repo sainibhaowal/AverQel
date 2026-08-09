@@ -22,7 +22,11 @@ import {
   FileType,
   ShieldCheck,
   Database,
+  ArrowUp,
+  LoaderCircle,
+  MessageCircleQuestion,
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { memo, useMemo, useState, useEffect, useRef } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
@@ -53,6 +57,7 @@ interface DeepSpaceThreadProps {
   onSaveEdit?: (messageId: string, content: string) => void;
   onActivateVersion?: (messageId: string, versionId: string) => void;
   onResolveApproval?: (approvalId: string, decision: "approved" | "denied") => Promise<void>;
+  onSubmitUserQuestion?: (answer: string) => Promise<void>;
   scrollMetrics?: {
     scrollTop: number;
     viewportHeight: number;
@@ -73,6 +78,151 @@ type MessageLayout = {
   totalHeight: number;
 };
 
+function QuestionCard({
+  question,
+  options,
+  onSubmit,
+}: {
+  question: string;
+  options: string[];
+  onSubmit: (answer: string) => Promise<void>;
+}) {
+  const [customAnswer, setCustomAnswer] = useState("");
+  const [otherOpen, setOtherOpen] = useState(options.length === 0);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const submit = async (answer: string) => {
+    const normalized = answer.trim();
+    if (!normalized || submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await onSubmit(normalized);
+    } catch {
+      setSubmitError("The answer could not be sent. Please try again.");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 14, scale: 0.985 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.24, ease: "easeOut" }}
+      aria-label="DeepSpace question"
+      className="relative mt-5 max-w-2xl overflow-hidden rounded-2xl border border-cyan-300/20 bg-[linear-gradient(135deg,rgba(18,42,42,.82),rgba(8,20,20,.92))] p-4 shadow-[0_18px_60px_-32px_rgba(34,211,238,.7)] backdrop-blur-xl sm:p-5"
+    >
+      <div className="pointer-events-none absolute -top-16 -right-16 h-32 w-32 rounded-full bg-cyan-300/10 blur-3xl" />
+      <div className="relative flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-200/20 bg-cyan-300/10 text-cyan-200 shadow-[0_0_24px_-10px_rgba(103,232,249,.9)]">
+          <MessageCircleQuestion size={17} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-bold tracking-[0.18em] text-cyan-100/70 uppercase">
+              DeepSpace needs your input
+            </span>
+            <span className="rounded-full border border-cyan-200/15 bg-cyan-200/10 px-2 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-cyan-100/60 uppercase">
+              Continue task
+            </span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-white/90">{question}</p>
+        </div>
+      </div>
+
+      {options.length > 0 ? (
+        <div className="relative mt-4 grid gap-2 sm:grid-cols-2">
+          {options.map((option, index) => (
+            <motion.button
+              key={`${option}-${index}`}
+              type="button"
+              disabled={submitting}
+              onClick={() => void submit(option)}
+              whileHover={{ y: -1 }}
+              whileTap={{ scale: 0.985 }}
+              className="group flex min-h-12 items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-2.5 text-left text-xs text-white/75 transition-colors hover:border-cyan-200/35 hover:bg-cyan-200/[0.09] hover:text-white disabled:cursor-wait disabled:opacity-50"
+            >
+              <span className="min-w-0">
+                {index === 0 ? (
+                  <span className="mb-1 block text-[9px] font-bold tracking-[0.14em] text-cyan-200/70 uppercase">
+                    Recommended
+                  </span>
+                ) : null}
+                <span className="block truncate">{option}</span>
+              </span>
+              <ArrowUp
+                size={14}
+                className="shrink-0 -rotate-45 text-cyan-200/50 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+              />
+            </motion.button>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="relative mt-3">
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={() => setOtherOpen((open) => !open)}
+          className="text-xs font-medium text-white/55 transition-colors hover:text-cyan-100 disabled:opacity-50"
+        >
+          {otherOpen ? "Write a different answer" : "Other / write my own answer"}
+        </button>
+        <AnimatePresence initial={false}>
+          {otherOpen ? (
+            <motion.form
+              initial={{ opacity: 0, height: 0, y: -5 }}
+              animate={{ opacity: 1, height: "auto", y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -5 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submit(customAnswer);
+              }}
+              className="mt-2 flex items-end gap-2 overflow-hidden"
+            >
+              <textarea
+                value={customAnswer}
+                onChange={(event) => setCustomAnswer(event.target.value.slice(0, 4000))}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void submit(customAnswer);
+                  }
+                }}
+                autoFocus={options.length === 0}
+                rows={2}
+                disabled={submitting}
+                placeholder="Write your answer…"
+                className="min-h-12 min-w-0 flex-1 resize-none rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-xs leading-5 text-white/85 transition-colors outline-none placeholder:text-white/30 focus:border-cyan-200/45 focus:bg-black/30"
+              />
+              <button
+                type="submit"
+                disabled={!customAnswer.trim() || submitting}
+                aria-label="Send answer"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-200/25 bg-cyan-300/15 text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                {submitting ? (
+                  <LoaderCircle size={16} className="animate-spin" />
+                ) : (
+                  <ArrowUp size={16} />
+                )}
+              </button>
+            </motion.form>
+          ) : null}
+        </AnimatePresence>
+      </div>
+      {submitting ? (
+        <div className="mt-3 flex items-center gap-2 text-[10px] font-medium text-cyan-100/60">
+          <LoaderCircle size={12} className="animate-spin" /> Sending answer and resuming the task…
+        </div>
+      ) : null}
+      {submitError ? <p className="mt-3 text-[11px] text-rose-200/80">{submitError}</p> : null}
+    </motion.section>
+  );
+}
+
 const MessageBubble = memo(
   function MessageBubble({
     message,
@@ -83,6 +233,7 @@ const MessageBubble = memo(
     onSaveEdit,
     onActivateVersion,
     onResolveApproval,
+    onSubmitUserQuestion,
     isLast,
   }: {
     message: DeepSpaceMessage;
@@ -94,6 +245,7 @@ const MessageBubble = memo(
     onActivateVersion: (messageId: string, versionId: string) => void;
     isLast: boolean;
     onResolveApproval?: (approvalId: string, decision: "approved" | "denied") => Promise<void>;
+    onSubmitUserQuestion?: (answer: string) => Promise<void>;
   }) {
     const [copied, setCopied] = useState(false);
     const [feedbackState, setFeedbackState] = useState<"helpful" | "unhelpful" | null>(null);
@@ -106,6 +258,28 @@ const MessageBubble = memo(
       .find((step) => step.type === "permission_request" && step.status === "awaiting_approval");
     const pendingApprovalData = pendingApproval?.data ?? {};
     const pendingApprovalId = String(pendingApprovalData.approval_id ?? "").trim();
+    const pendingQuestion = [...(message.agentSteps ?? [])]
+      .reverse()
+      .find(
+        (step) =>
+          step.type === "ask_user_question" &&
+          step.status === "awaiting_approval" &&
+          typeof step.data?.question_id === "string" &&
+          !step.data.answer_submitted,
+      );
+    const pendingQuestionData = pendingQuestion?.data ?? {};
+    const pendingQuestionText = String(
+      pendingQuestionData.message ??
+        pendingQuestionData.question ??
+        pendingQuestionData.details ??
+        "DeepSpace needs your input before continuing.",
+    ).trim();
+    const pendingQuestionOptions = Array.isArray(pendingQuestionData.options)
+      ? pendingQuestionData.options
+          .map((option) => String(option ?? "").trim())
+          .filter(Boolean)
+          .slice(0, 8)
+      : [];
 
     useEffect(() => {
       function handleClickOutside(event: MouseEvent) {
@@ -364,6 +538,26 @@ const MessageBubble = memo(
                 </div>
               ) : null}
 
+              {pendingQuestion && onSubmitUserQuestion ? (
+                <QuestionCard
+                  question={pendingQuestionText}
+                  options={pendingQuestionOptions}
+                  onSubmit={onSubmitUserQuestion}
+                />
+              ) : null}
+
+              {message.userQuestionAnswer ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-4 flex items-center gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.05] px-3 py-2 text-xs text-cyan-100/80"
+                >
+                  <MessageCircleQuestion size={14} className="shrink-0 text-cyan-300" />
+                  <span className="font-semibold text-cyan-200/80">Your answer</span>
+                  <span className="min-w-0 truncate">{message.userQuestionAnswer}</span>
+                </motion.div>
+              ) : null}
+
               <DeepSpaceMediaArtifacts
                 artifacts={message.artifacts}
                 status={message.mediaStatus}
@@ -371,7 +565,8 @@ const MessageBubble = memo(
               />
 
               <div className="prose-premium prose prose-invert max-w-none">
-                {message.status === "streaming" && message.content.trim() ? (
+                {pendingQuestion ? null : message.status === "streaming" &&
+                  message.content.trim() ? (
                   <DeepSpaceMarkdownRenderer content={message.content} streaming={true} />
                 ) : message.status !== "streaming" ? (
                   <DeepSpaceMarkdownRenderer content={message.content} />
@@ -799,6 +994,7 @@ export default function DeepSpaceThread({
   onSaveEdit = () => {},
   onActivateVersion = () => {},
   onResolveApproval,
+  onSubmitUserQuestion,
   scrollMetrics = null,
 }: DeepSpaceThreadProps) {
   const [revealedHistoryCount, setRevealedHistoryCount] = useState(RECENT_MESSAGE_WINDOW);
@@ -824,9 +1020,27 @@ export default function DeepSpaceThread({
   const hasStreamingMessage = renderSourceMessages.some(
     (message) => message.status === "streaming",
   );
+  // Agent turns contain variable-height thinking panels, tool payloads,
+  // question cards, media, and markdown blocks. The lightweight height
+  // estimator cannot safely represent those rows; virtualizing them causes
+  // spacer drift while the user scrolls, making content appear to vanish.
+  // Keep agentic turns in the normal flow and retain virtualization for
+  // simple text-only history where the estimate is stable.
+  const hasDynamicAgentContent = renderSourceMessages.some(
+    (message) =>
+      (message.agentSteps?.length ?? 0) > 0 ||
+      (message.timeline?.length ?? 0) > 0 ||
+      Boolean(message.thinkingContent?.trim()) ||
+      (message.blocks?.length ?? 0) > 0 ||
+      (message.artifacts?.length ?? 0) > 0,
+  );
   const windowedMessages = useMemo(
-    () => buildWindowedMessages(renderSourceMessages, hasStreamingMessage ? null : scrollMetrics),
-    [hasStreamingMessage, renderSourceMessages, scrollMetrics],
+    () =>
+      buildWindowedMessages(
+        renderSourceMessages,
+        hasStreamingMessage || hasDynamicAgentContent ? null : scrollMetrics,
+      ),
+    [hasDynamicAgentContent, hasStreamingMessage, renderSourceMessages, scrollMetrics],
   );
   const shouldVirtualize = windowedMessages.visibleMessages.length < renderSourceMessages.length;
 
@@ -919,6 +1133,7 @@ export default function DeepSpaceThread({
             onSaveEdit={onSaveEdit}
             onActivateVersion={onActivateVersion}
             onResolveApproval={onResolveApproval}
+            onSubmitUserQuestion={onSubmitUserQuestion}
           />
         );
 

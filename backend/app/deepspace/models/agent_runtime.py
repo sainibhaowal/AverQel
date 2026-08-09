@@ -39,6 +39,9 @@ class DeepSpaceAgentRun(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
+    heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
 
 class DeepSpaceAgentStep(Base):

@@ -140,6 +140,7 @@ export default function DashboardPage() {
   const [overview, setOverview] = useState<DashboardOverview>(EMPTY_OVERVIEW);
   const [loading, setLoading] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [clientClock, setClientClock] = useState<string | null>(null);
 
   const [isUploadOpen, setIsUploadOpen] = useState(false);
 
@@ -158,6 +159,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    setClientClock(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     fetchDashboardData();
   }, [fetchDashboardData]);
 
@@ -416,7 +418,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-1.5">
             <Clock3 size={11} className="opacity-50" />
-            {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {clientClock ?? "--:--"}
           </div>
           <div className="flex items-center gap-1.5">
             <History size={11} className="opacity-50" />
@@ -520,7 +522,9 @@ export default function DashboardPage() {
                           <span>•</span>
                           <span>{formatBytes(document.size_bytes)}</span>
                           <span>•</span>
-                          <span>{formatRelativeDate(document.created_at)}</span>
+                          <span suppressHydrationWarning>
+                            {formatRelativeDate(document.created_at)}
+                          </span>
                         </div>
 
                         {document.collection_names.length > 0 ? (
@@ -606,7 +610,9 @@ export default function DashboardPage() {
                           <p className="text-muted-foreground mt-0.5 text-xs font-medium">
                             {collection.document_count} document
                             {collection.document_count === 1 ? "" : "s"} • updated{" "}
-                            {formatRelativeDate(collection.updated_at)}
+                            <span suppressHydrationWarning>
+                              {formatRelativeDate(collection.updated_at)}
+                            </span>
                           </p>
                         </div>
                       </div>
@@ -684,7 +690,9 @@ export default function DashboardPage() {
                                 <span>•</span>
                                 <span>{isGroup ? `Latest: ${config.detail}` : config.detail}</span>
                                 <span>•</span>
-                                <span>{formatRelativeDate(mainEvent.created_at)}</span>
+                                <span suppressHydrationWarning>
+                                  {formatRelativeDate(mainEvent.created_at)}
+                                </span>
                               </div>
                             </div>
                           </div>
@@ -734,7 +742,9 @@ export default function DashboardPage() {
                                         <div className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[10px]">
                                           <span>{subConfig.detail}</span>
                                           <span>•</span>
-                                          <span>{formatRelativeDate(item.created_at)}</span>
+                                          <span suppressHydrationWarning>
+                                            {formatRelativeDate(item.created_at)}
+                                          </span>
                                         </div>
                                       </div>
                                       <div

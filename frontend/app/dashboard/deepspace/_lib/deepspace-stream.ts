@@ -398,6 +398,10 @@ export interface DeepSpaceMessage {
   mission?: MissionCanvasState | null;
   compaction?: ConversationCompactionState | null;
   currentTurnText?: string;
+  /** Answer submitted to an inline ask_user question, kept in the same run. */
+  userQuestionAnswer?: string;
+  /** The question text, used to remove a transient prompt from final content. */
+  userQuestionPrompt?: string;
   readFilesContents?: Record<string, string>;
   memoryUsed?: Array<{ id: string; key: string; source?: string }>;
   artifacts?: DeepSpaceMediaArtifact[];

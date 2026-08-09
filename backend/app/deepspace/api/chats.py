@@ -59,10 +59,11 @@ from app.deepspace.services.run_events import (
     frames_after,
     is_terminal_event,
     load_events,
+    timeline_events,
 )
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.workers.tasks import run_deepspace_task
-from app.platform.database.session import get_db
+from app.platform.database.session import get_db, managed_db_session
 from app.system.services.rate_limit_service import RateLimitService
 
 router = APIRouter(prefix="/deepspace/chats", tags=["deepspace-chats"])
@@ -307,6 +308,20 @@ async def get_chat_history(
     for item in messages:
         serialized = _serialize_message(item)
         if item.role == "assistant":
+            live_run = runtime.live_worker_run_for_message(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                assistant_message_id=item.id,
+            )
+            if serialized.metadata_json.get("status") == "streaming":
+                serialized.metadata_json = {
+                    **serialized.metadata_json,
+                    "runtime_active": live_run is not None,
+                }
+                if live_run is None:
+                    serialized.metadata_json["status"] = "ready"
+                    serialized.metadata_json["runtime_state"] = "expired"
             durable_steps = runtime.history_steps_for_message(
                 tenant_id=auth.tenant_id,
                 user_id=auth.user_id,
@@ -318,6 +333,22 @@ async def get_chat_history(
                     **serialized.metadata_json,
                     "agent_steps": durable_steps,
                 }
+            request_id = str(serialized.metadata_json.get("client_request_id") or "").strip()
+            if request_id:
+                ordered_events = timeline_events(
+                    load_events(
+                        db,
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        client_request_id=request_id,
+                    )
+                )
+                if ordered_events:
+                    serialized.metadata_json = {
+                        **serialized.metadata_json,
+                        "timeline_events": ordered_events,
+                    }
         serialized_messages.append(serialized)
     return ChatHistoryResponse(messages=serialized_messages)
 
@@ -637,7 +668,6 @@ async def activate_message_version(
 async def stream_deepspace_chat(
     request: Request,
     auth: AuthContext = Depends(get_auth_context),
-    db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
     raw_payload = await request.json()
@@ -645,9 +675,7 @@ async def stream_deepspace_chat(
     conversation_id_raw = raw_payload.get("conversation_id")
     conversation_id = uuid.UUID(str(conversation_id_raw)) if conversation_id_raw else None
     resume_approval_id = str(raw_payload.get("resume_approval_id") or "").strip() or None
-    resume_user_question_id = (
-        str(raw_payload.get("resume_user_question_id") or "").strip() or None
-    )
+    resume_user_question_id = str(raw_payload.get("resume_user_question_id") or "").strip() or None
     if not prompt.strip() and not resume_approval_id and not resume_user_question_id:
 
         async def empty_stream() -> AsyncIterator[str]:
@@ -707,15 +735,19 @@ async def stream_deepspace_chat(
                 # PostgreSQL is the replay source of truth. This also closes
                 # the small race between queue submission and Redis subscribe.
                 if conversation_id is not None:
-                    db.rollback()
-                    stored = load_events(
-                        db,
-                        tenant_id=auth.tenant_id,
-                        user_id=auth.user_id,
-                        conversation_id=conversation_id,
-                        client_request_id=client_request_id,
-                        after_sequence=last_sequence,
-                    )
+                    # Do not keep a request-scoped database session open for
+                    # the lifetime of an SSE stream. Long-running responses
+                    # would otherwise reserve pool connections until the
+                    # model finishes, starving history and other UI requests.
+                    with managed_db_session() as replay_db:
+                        stored = load_events(
+                            replay_db,
+                            tenant_id=auth.tenant_id,
+                            user_id=auth.user_id,
+                            conversation_id=conversation_id,
+                            client_request_id=client_request_id,
+                            after_sequence=last_sequence,
+                        )
                     for sequence, frame in frames_after(stored, after_sequence=last_sequence):
                         last_sequence = sequence
                         yield frame
@@ -801,6 +833,16 @@ async def regenerate_message_stream(
         if user_message.active_version is not None
         else user_message.content
     )
+    repo.create_message_version(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        user_id=auth.user_id,
+        content="",
+        source_type="regenerate",
+        activate=True,
+    )
+    db.commit()
     service = DeepSpaceChatService(db=db, settings=settings)
 
     async def iterator() -> AsyncIterator[str]:
@@ -808,6 +850,7 @@ async def regenerate_message_stream(
             auth=auth,
             conversation_id=conversation_id,
             prompt=source_prompt,
+            existing_assistant_message_id=message_id,
             thinking_enabled=payload.thinking_enabled,
             request=request,
         ):
@@ -842,6 +885,26 @@ async def edit_and_regenerate_stream(
         raise ApiError(
             code="MESSAGE_NOT_FOUND", message="DeepSpace message not found.", status_code=404
         )
+    latest_user, assistant = repo.get_latest_turn_pair(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        user_id=auth.user_id,
+    )
+    if latest_user is None or assistant is None or latest_user.id != message_id:
+        raise ApiError(
+            code="MESSAGE_EDIT_NOT_ALLOWED",
+            message="Only the latest user message can be edited.",
+            status_code=409,
+        )
+    repo.create_message_version(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        message_id=assistant.id,
+        user_id=auth.user_id,
+        content="",
+        source_type="edit_regenerate",
+        activate=True,
+    )
     db.commit()
     service = DeepSpaceChatService(db=db, settings=settings)
 
@@ -850,6 +913,7 @@ async def edit_and_regenerate_stream(
             auth=auth,
             conversation_id=conversation_id,
             prompt=content,
+            existing_assistant_message_id=assistant.id,
             thinking_enabled=bool(raw_payload.get("thinking_enabled", True)),
             request=request,
         ):

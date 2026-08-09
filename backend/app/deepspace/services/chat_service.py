@@ -67,6 +67,7 @@ Planning and execution
 
 Workspace files and generated media
 - The active note remains the primary document. Use write(target='library') only when the user asks for a separate named text or code file, an exportable artifact, or a file would materially improve the work.
+- When the user asks to save an existing assistant answer to Library, use write(target='library', source='previous_assistant', filename=...) so the backend copies persisted content. Do not resend the answer through write. Ask for a filename if one is missing.
 - Use the universal workspace operations with an explicit target when they are available: read, find, write, edit, and delete. Targets are note, library, memory, chat, or tasks. Never guess a target when the user has not identified the resource; find it first or ask a focused question.
 - read(target=library) reads an authorized Library file; write(target=library) creates or updates a named Library text file; edit(target=library) modifies or renames a file; delete(target=library) is destructive and requires clear user intent. These operations never access the operating system.
 - Use read/find/write with target=memory for durable memories, not for arbitrary chat or note content. Use read(target=chat) only for conversation history and read(target=tasks) for the persisted task ledger.
@@ -287,7 +288,7 @@ OBSERVE_TOOL = {
     "type": "function",
     "function": {
         "name": "observe",
-        "description": "Inspect the current note and task state without changing it.",
+        "description": "Inspect current note, task, Library, and active-response state without changing anything.",
         "parameters": {"type": "object", "additionalProperties": False, "properties": {}},
     },
 }
@@ -295,7 +296,7 @@ ANALYZE_TOOL = {
     "type": "function",
     "function": {
         "name": "analyze",
-        "description": "Inspect the current persisted task and note evidence for the supplied focus. Use it when that state helps decide the next safe action; it does not modify anything.",
+        "description": "Evaluate persisted workspace evidence for the supplied focus and recommend the next safe action; it never modifies anything.",
         "parameters": {
             "type": "object",
             "additionalProperties": False,
@@ -375,6 +376,11 @@ UNIVERSAL_WRITE_TOOL = {
                 "target": {"type": "string", "enum": ["note", "library", "memory"]},
                 "content": {"type": "string", "maxLength": 100000},
                 "mode": {"type": "string", "enum": ["replace", "append"]},
+                "source": {
+                    "type": "string",
+                    "enum": ["previous_assistant", "message"],
+                },
+                "source_message_id": {"type": "string", "maxLength": 80},
                 "filename": {"type": "string", "maxLength": 255},
                 "folder_name": {"type": "string", "maxLength": 255},
                 "memory_key": {"type": "string", "maxLength": 120},
@@ -819,6 +825,7 @@ class DeepSpaceChatService:
         request: Any | None,
         mcp_binding: DeepSpaceMCPTool | None = None,
         mcp_approval_granted: bool = False,
+        assistant_message_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         if mcp_binding is not None:
             result = await self.mcp_bridge.execute(
@@ -900,9 +907,37 @@ class DeepSpaceChatService:
                 user_id=auth.user_id,
                 conversation_id=conversation_id,
             )
+            library = self.task_store.list_workspace_entries(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+            )
+            active_response: dict[str, Any] | None = None
+            if assistant_message_id is not None:
+                assistant = self.chat.get_message_by_conversation(
+                    tenant_id=auth.tenant_id,
+                    conversation_id=conversation_id,
+                    message_id=assistant_message_id,
+                    user_id=auth.user_id,
+                )
+                if assistant is not None and assistant.role == "assistant":
+                    active_response = {
+                        "message_id": str(assistant.id),
+                        "content_length": len(
+                            assistant.active_version.content
+                            if assistant.active_version is not None
+                            else assistant.content
+                        ),
+                        "status": str((assistant.metadata_json or {}).get("status") or "ready"),
+                    }
             return {
                 "task_check": tasks,
                 "note": {"length": note["length"], "conversation_id": note["conversation_id"]},
+                "library": {
+                    "file_count": len(library.get("files", [])),
+                    "folder_count": len(library.get("folders", [])),
+                },
+                "active_response": active_response,
             }
         if tool_name == "analyze":
             check = self.task_store.check_tasks(
@@ -1064,6 +1099,53 @@ class DeepSpaceChatService:
                     mode=mode,
                 )
             if target == "library":
+                source = str(arguments.get("source") or "").strip().lower()
+                if source:
+                    if source == "previous_assistant":
+                        messages = self.chat.get_messages(
+                            tenant_id=auth.tenant_id,
+                            conversation_id=conversation_id,
+                            user_id=auth.user_id,
+                        )
+                        source_message = next(
+                            (
+                                item
+                                for item in reversed(messages)
+                                if item.role == "assistant"
+                                and (
+                                    assistant_message_id is None or item.id != assistant_message_id
+                                )
+                            ),
+                            None,
+                        )
+                    elif source == "message":
+                        raw_id = str(arguments.get("source_message_id") or "").strip()
+                        try:
+                            source_id = uuid.UUID(raw_id)
+                        except ValueError as exc:
+                            raise ValueError(
+                                "write message source requires a valid source_message_id."
+                            ) from exc
+                        source_message = self.chat.get_message_by_conversation(
+                            tenant_id=auth.tenant_id,
+                            conversation_id=conversation_id,
+                            message_id=source_id,
+                            user_id=auth.user_id,
+                        )
+                    else:
+                        raise ValueError("write source must be 'previous_assistant' or 'message'.")
+                    if source_message is None or source_message.role != "assistant":
+                        raise ValueError("The requested assistant response could not be found.")
+                    content = str(
+                        source_message.active_version.content
+                        if source_message.active_version is not None
+                        else source_message.content
+                    )
+                    if not content.strip():
+                        raise ValueError(
+                            "The requested assistant response has no saved content yet."
+                        )
+                    mode = "replace"
                 if arguments.get("folder_name"):
                     return self.task_store.create_workspace_folder(
                         tenant_id=auth.tenant_id,
@@ -1075,7 +1157,7 @@ class DeepSpaceChatService:
                 filename = str(arguments.get("filename") or "").strip()
                 if not filename:
                     raise ValueError("write(target='library') requires filename.")
-                return self.task_store.write_workspace_file(
+                file_result = self.task_store.write_workspace_file(
                     tenant_id=auth.tenant_id,
                     user_id=auth.user_id,
                     conversation_id=conversation_id,
@@ -1084,6 +1166,15 @@ class DeepSpaceChatService:
                     mode=mode,
                     parent_folder_id=str(arguments.get("folder_id") or "").strip() or None,
                 )
+                if source:
+                    return {
+                        "operation": "reference_copy",
+                        "source": "assistant_message",
+                        "source_message_id": str(source_message.id),
+                        "destination": "library",
+                        "file": file_result,
+                    }
+                return file_result
             if target == "memory":
                 key = str(arguments.get("memory_key") or "").strip()
                 if not key:
@@ -1283,6 +1374,7 @@ class DeepSpaceChatService:
         write_lock: asyncio.Lock,
         mcp_binding: DeepSpaceMCPTool | None = None,
         mcp_approval_granted: bool = False,
+        assistant_message_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         decision = (
             self.mcp_bridge.policy_for_tool(
@@ -1318,6 +1410,7 @@ class DeepSpaceChatService:
                             request=request,
                             mcp_binding=mcp_binding,
                             mcp_approval_granted=mcp_approval_granted,
+                            assistant_message_id=assistant_message_id,
                         ),
                         timeout=max(5, min(30, loop_deadline - time.monotonic())),
                     )
@@ -1526,6 +1619,7 @@ class DeepSpaceChatService:
         auth: AuthContext,
         conversation_id: uuid.UUID | None,
         prompt: str,
+        existing_assistant_message_id: uuid.UUID | None = None,
         client_request_id: str | None = None,
         thinking_enabled: bool = False,
         request: Any | None = None,
@@ -1718,6 +1812,46 @@ class DeepSpaceChatService:
                     "pending_user_question": resumed_user_question,
                 },
             )
+        elif existing_assistant_message_id is not None:
+            if conversation_id is None:
+                yield sse(
+                    "error",
+                    {
+                        "code": "REGENERATE_CONVERSATION_REQUIRED",
+                        "message": "A conversation is required to regenerate this response.",
+                    },
+                )
+                return
+            assistant_message = self.chat.get_message_by_conversation(
+                tenant_id=auth.tenant_id,
+                conversation_id=conversation_id,
+                message_id=existing_assistant_message_id,
+                user_id=auth.user_id,
+            )
+            if assistant_message is None or assistant_message.role != "assistant":
+                yield sse(
+                    "error",
+                    {
+                        "code": "REGENERATE_MESSAGE_NOT_FOUND",
+                        "message": "The original DeepSpace response could not be found.",
+                    },
+                )
+                return
+            # Reuse the existing assistant row. This keeps regeneration/edit
+            # in the same turn and lets the existing message-version system
+            # preserve the previous answer without appending a new chat entry.
+            previous = self._messages(
+                auth=auth,
+                conversation_id=conversation_id,
+                exclude_message_id=assistant_message.id,
+            )
+            assistant_message.content = ""
+            assistant_message.metadata_json = {
+                "status": "streaming",
+                "surface": "deepspace",
+                "regenerating": True,
+            }
+            self.db.commit()
         elif not prompt:
             yield sse("error", {"code": "EMPTY_MESSAGE", "message": "Message cannot be empty."})
             return
@@ -2026,8 +2160,7 @@ class DeepSpaceChatService:
         if resumed_user_question is not None:
             pending_call_id = str(resumed_user_question.get("call_id") or "")
             pending_question = str(
-                resumed_user_question.get("question")
-                or "Please provide the requested information."
+                resumed_user_question.get("question") or "Please provide the requested information."
             )
             pending_options = resumed_user_question.get("options")
             pending_tool_input = resumed_user_question.get("tool_input")
@@ -2064,7 +2197,9 @@ class DeepSpaceChatService:
                                 {
                                     "awaiting_user": True,
                                     "question": pending_question,
-                                    "options": pending_options if isinstance(pending_options, list) else [],
+                                    "options": (
+                                        pending_options if isinstance(pending_options, list) else []
+                                    ),
                                 },
                                 ensure_ascii=False,
                                 separators=(",", ":"),
@@ -2193,6 +2328,7 @@ class DeepSpaceChatService:
                         write_lock=asyncio.Lock(),
                         mcp_binding=pending_binding,
                         mcp_approval_granted=True,
+                        assistant_message_id=assistant_message.id,
                     )
                     pending_success = bool(pending_result.get("success"))
                     pending_payload = pending_result.get("payload")
@@ -2363,10 +2499,14 @@ class DeepSpaceChatService:
                 )
                 stream_events = getattr(provider, "stream_generate_events", None)
                 cancelled_during_provider_stream = False
+                last_runtime_heartbeat = time.monotonic()
                 if callable(stream_events):
                     async for provider_event in self._cancellable_provider_stream(
                         stream_events(request_payload), run_id=run_id
                     ):
+                        if run_id is not None and time.monotonic() - last_runtime_heartbeat >= 5.0:
+                            self.runtime.heartbeat(run_id=run_id)
+                            last_runtime_heartbeat = time.monotonic()
                         if not isinstance(provider_event, dict):
                             continue
                         event_type = str(provider_event.get("type") or "")
@@ -2526,6 +2666,9 @@ class DeepSpaceChatService:
                     async for chunk in self._cancellable_provider_stream(
                         provider.stream_generate(request_payload), run_id=run_id
                     ):
+                        if run_id is not None and time.monotonic() - last_runtime_heartbeat >= 5.0:
+                            self.runtime.heartbeat(run_id=run_id)
+                            last_runtime_heartbeat = time.monotonic()
                         if isinstance(chunk, dict) and chunk.get("type") == "runtime_cancelled":
                             cancelled_during_provider_stream = True
                             break
@@ -2873,6 +3016,7 @@ class DeepSpaceChatService:
                             read_semaphore=read_semaphore,
                             write_lock=write_lock,
                             mcp_binding=mcp_bindings.get(str(item["tool_name"])),
+                            assistant_message_id=assistant_message.id,
                         )
                         for item in valid_calls
                     )

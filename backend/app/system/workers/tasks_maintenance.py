@@ -20,10 +20,52 @@ from app.system.services.metrics_service import MAINTENANCE_JOB_EVENTS_TOTAL
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
+DEEPSPACE_RUN_STALE_MINUTES = 30
 
 
 @celery_app.task(name="maintenance.heartbeat")  # type: ignore[misc]
 def maintenance_heartbeat() -> str:
+    session = get_session_factory()()
+    stale_total = 0
+    try:
+        session.execute(text("SET ROLE aks_app"))
+        cutoff = datetime.now(tz=UTC) - timedelta(minutes=DEEPSPACE_RUN_STALE_MINUTES)
+        tenant_ids = session.execute(text("SELECT id FROM tenants")).scalars().all()
+        for tenant_id in tenant_ids:
+            session.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": str(tenant_id)},
+            )
+            result = session.execute(
+                text("""
+                    UPDATE deepspace_agent_runs
+                    SET status = CASE WHEN cancel_requested THEN 'cancelled' ELSE 'failed' END,
+                        last_error = CASE
+                            WHEN cancel_requested THEN 'cancelled_after_worker_lease_expired'
+                            ELSE 'worker_lease_expired'
+                        END,
+                        updated_at = CURRENT_TIMESTAMP,
+                        heartbeat_at = NULL
+                    WHERE tenant_id = :tenant_id
+                      AND status IN ('running', 'cancelling')
+                      AND (heartbeat_at IS NULL OR heartbeat_at < :cutoff)
+                """),
+                {"tenant_id": str(tenant_id), "cutoff": cutoff},
+            )
+            stale_total += int(result.rowcount or 0)
+        session.commit()
+        if stale_total:
+            logger.warning("Finalized %d expired DeepSpace worker leases.", stale_total)
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        logger.exception("DeepSpace lease cleanup failed during maintenance heartbeat.")
+    finally:
+        try:
+            session.execute(text("RESET ROLE"))
+            session.commit()
+        except Exception:  # noqa: BLE001
+            session.rollback()
+        session.close()
     MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="heartbeat", status="ok").inc()
     return "ok"
 

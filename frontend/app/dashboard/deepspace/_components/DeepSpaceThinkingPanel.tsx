@@ -383,6 +383,14 @@ export default function DeepSpaceThinkingPanel({
     (step) => step.type !== "thinking" && step.toolName !== "pending_tool",
   );
   const orderedTimeline = timeline.filter((step) => step.toolName !== "pending_tool");
+  // A completed turn is rehydrated from the persisted assistant metadata and
+  // durable tool steps.  The durable step log intentionally contains tools,
+  // not private model text, so do not hide the persisted thinking content just
+  // because a tool timeline is present.  During live streaming, thinking is
+  // represented as a timeline entry; avoid rendering it twice in that case.
+  const hasThinkingTimeline = orderedTimeline.some(
+    (step) => step.type === "thinking" && Boolean(step.details?.trim()),
+  );
   const taskProgress = taskProgressFromTimeline(orderedTimeline);
   if (
     !content.trim() &&
@@ -400,6 +408,17 @@ export default function DeepSpaceThinkingPanel({
       </summary>
       <div className="text-foreground/60 space-y-3 border-t border-white/5 px-4 py-3 text-xs">
         {taskProgress ? <TaskProgressCard progress={taskProgress} /> : null}
+        {content.trim() && !hasThinkingTimeline ? (
+          <div
+            className="rounded-lg border border-white/8 bg-black/10 px-3 py-2"
+            data-testid="deepspace-thinking-stream"
+          >
+            <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
+              Model thinking
+            </div>
+            <DeepSpaceMarkdownRenderer content={content} streaming={isStreaming} />
+          </div>
+        ) : null}
         {orderedTimeline.length ? (
           <ol className="space-y-3" aria-label="Live agent timeline">
             {orderedTimeline.map((step, index) => (
@@ -411,16 +430,6 @@ export default function DeepSpaceThinkingPanel({
               />
             ))}
           </ol>
-        ) : content.trim() ? (
-          <div
-            className="rounded-lg border border-white/8 bg-black/10 px-3 py-2"
-            data-testid="deepspace-thinking-stream"
-          >
-            <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
-              Model thinking
-            </div>
-            <DeepSpaceMarkdownRenderer content={content} streaming={isStreaming} />
-          </div>
         ) : null}
         {!orderedTimeline.length && activitySteps.length ? (
           <div className="space-y-2" aria-label="Tool and agent activity">

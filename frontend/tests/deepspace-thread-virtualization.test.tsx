@@ -82,4 +82,37 @@ describe("DeepSpaceThread virtualization", () => {
     expect(screen.getByText(/^Message 1$/)).toBeInTheDocument();
     expect(screen.getByText(/^Message 80$/)).toBeInTheDocument();
   });
+
+  it("keeps agent timelines in the normal flow while scrolling", () => {
+    const messages = Array.from({ length: 80 }, (_, index) => ({
+      id: `agent-msg-${index + 1}`,
+      role: "assistant" as const,
+      content: `Agent message ${index + 1}`,
+      rawContent: `Agent message ${index + 1}`,
+      createdAt: new Date().toISOString(),
+      status: "ready" as const,
+      agentSteps: [
+        {
+          id: `step-${index + 1}`,
+          type: "thinking" as const,
+          status: "completed" as const,
+          startedAt: new Date().toISOString(),
+          data: { message: "Observed" },
+        },
+      ],
+    }));
+
+    render(
+      <DeepSpaceThread
+        messages={messages}
+        emptyPrompts={[]}
+        scrollMetrics={{ scrollTop: 7000, viewportHeight: 900 }}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/^Agent message 1$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Agent message 80$/)).toBeInTheDocument();
+  });
 });

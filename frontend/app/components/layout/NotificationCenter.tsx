@@ -33,8 +33,9 @@ type NotificationItem = {
 
 const POLL_INTERVAL_MS = 15_000;
 
-function formatWhen(value: string) {
+function formatWhen(value: string, now: number | null) {
   const date = new Date(value);
+  if (now === null) return date.toISOString();
   const diffMin = Math.round((Date.now() - date.getTime()) / 60_000);
   if (diffMin < 1) return "Just now";
   if (diffMin < 60) return `${diffMin}m ago`;
@@ -62,6 +63,7 @@ export default function NotificationCenter() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [now, setNow] = useState<number | null>(null);
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.read_at === null).length,
@@ -84,6 +86,7 @@ export default function NotificationCenter() {
 
   useEffect(() => {
     setMounted(true);
+    setNow(Date.now());
     void loadNotifications();
   }, []);
 
@@ -295,7 +298,7 @@ export default function NotificationCenter() {
                               {item.message}
                             </p>
                             <div className="text-muted-foreground/60 mt-3 flex items-center gap-1.5 text-[9px] font-black tracking-widest uppercase">
-                              <span>{formatWhen(item.created_at)}</span>
+                              <span>{formatWhen(item.created_at, now)}</span>
                               <ChevronRight size={10} />
                               <span>{unread ? "Resolve" : "View"}</span>
                             </div>

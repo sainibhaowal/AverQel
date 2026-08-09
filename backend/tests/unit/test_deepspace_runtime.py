@@ -37,6 +37,7 @@ def test_deepspace_exposes_universal_workspace_tools() -> None:
     }
 
     assert {"read", "find", "write", "edit", "delete"}.issubset(names)
+    assert "save" not in names
     assert "workspace_write" not in names
     assert "memory_search" not in names
 

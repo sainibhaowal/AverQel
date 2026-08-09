@@ -128,6 +128,16 @@ export default function DeepSpaceMarkdownRenderer({
   content: string;
   streaming?: boolean;
 }) {
+  const [displayContent, setDisplayContent] = useState(content);
+
+  // Providers may emit several tiny deltas in one event-loop turn. Coalesce
+  // them into one render per animation frame so ReactMarkdown does not rebuild
+  // the entire document repeatedly and make the answer visibly jump.
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setDisplayContent(content));
+    return () => window.cancelAnimationFrame(frame);
+  }, [content, streaming]);
+
   const components = useMemo<Components>(
     () => ({
       pre: ({ children }) => <>{children}</>,
@@ -251,30 +261,20 @@ export default function DeepSpaceMarkdownRenderer({
     }),
     [streaming],
   );
-  const normalizedContent = useMemo(() => normalizeMarkdown(content), [content]);
-
-  // Markdown is intentionally rendered as stable text during token streaming.
-  // Re-parsing incomplete fences/tables/lists on every token causes React to
-  // replace block nodes and makes the chat viewport flash or jump. The rich
-  // renderer is restored as soon as the stream completes.
-  if (streaming) {
-    return (
-      <div
-        className="text-foreground/90 my-3 leading-8 break-words whitespace-pre-wrap"
-        aria-live="polite"
-      >
-        {normalizedContent || "\u00a0"}
-      </div>
-    );
-  }
+  const normalizedContent = useMemo(() => normalizeMarkdown(displayContent), [displayContent]);
 
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={components}
+    <div
+      className={`text-foreground/90 prose prose-invert my-3 max-w-none leading-8 break-words ${streaming ? "is-streaming" : ""}`}
+      aria-live={streaming ? "polite" : undefined}
     >
-      {normalizedContent}
-    </ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={components}
+      >
+        {normalizedContent || (streaming ? "\u00a0" : "")}
+      </ReactMarkdown>
+    </div>
   );
 }

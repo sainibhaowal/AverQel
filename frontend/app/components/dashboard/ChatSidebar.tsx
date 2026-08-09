@@ -337,6 +337,7 @@ export default function ChatSidebar({
                     ) : null}
                     <p
                       className={`mt-1 text-[11px] font-medium ${currentConversationId === conv.id && !selectionMode ? "text-primary/70 dark:text-primary/70" : "text-foreground/45"}`}
+                      suppressHydrationWarning
                     >
                       {new Date(conv.updated_at).toLocaleDateString([], {
                         month: "short",

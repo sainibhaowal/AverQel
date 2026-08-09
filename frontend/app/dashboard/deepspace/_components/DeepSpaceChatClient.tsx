@@ -655,6 +655,7 @@ export default function DeepSpaceChatClient({
                 ({ message }) =>
                   message.role === "assistant" &&
                   message.metadata_json?.status === "streaming" &&
+                  message.metadata_json?.runtime_active !== false &&
                   typeof message.metadata_json?.client_request_id === "string",
               );
             if (activeAssistant) {
@@ -1216,6 +1217,7 @@ export default function DeepSpaceChatClient({
               onSaveEdit={handleSaveEdit}
               onActivateVersion={handleActivateVersion}
               onResolveApproval={resolveMCPApproval}
+              onSubmitUserQuestion={submitQuery}
             />
           </div>
 

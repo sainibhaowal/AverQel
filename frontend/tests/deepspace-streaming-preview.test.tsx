@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const markdownRendererMock = vi.fn(({ content }: { content: string }) => (
@@ -242,5 +242,50 @@ describe("DeepSpaceThread streaming preview", () => {
     );
 
     expect(markdownRendererMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders an inline question card with selectable and custom answers", async () => {
+    const onSubmitUserQuestion = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_question_1",
+            role: "assistant",
+            content: "Which format should I use?",
+            rawContent: "Which format should I use?",
+            createdAt: new Date().toISOString(),
+            status: "ready",
+            agentSteps: [
+              {
+                id: "question_step_1",
+                type: "ask_user_question",
+                toolName: "ask_user",
+                toolId: "question-call-1",
+                status: "awaiting_approval",
+                startedAt: new Date().toISOString(),
+                data: {
+                  question_id: "question-1",
+                  message: "Which format should I use?",
+                  options: ["Markdown", "Plain text"],
+                },
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+        onSubmitUserQuestion={onSubmitUserQuestion}
+      />,
+    );
+
+    expect(screen.getByLabelText("DeepSpace question")).toBeInTheDocument();
+    expect(screen.getAllByText("Which format should I use?").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Recommended")).toBeInTheDocument();
+    expect(screen.getByText("Other / write my own answer")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Recommended Markdown/i }));
+    await waitFor(() => expect(onSubmitUserQuestion).toHaveBeenCalledWith("Markdown"));
   });
 });

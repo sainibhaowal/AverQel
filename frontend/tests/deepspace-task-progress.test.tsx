@@ -4,6 +4,35 @@ import { describe, expect, it } from "vitest";
 import DeepSpaceThinkingPanel from "../app/dashboard/deepspace/_components/DeepSpaceThinkingPanel";
 
 describe("DeepSpace verified task progress", () => {
+  it("keeps persisted model thinking visible when tool steps are restored", () => {
+    render(
+      <DeepSpaceThinkingPanel
+        content="I checked the sources and will summarize the verified findings."
+        isStreaming={false}
+        timeline={[
+          {
+            id: "search-result",
+            stepId: "search-result",
+            turnIndex: 1,
+            phase: "exploring",
+            type: "tool_call",
+            title: "Searching the web",
+            status: "completed",
+            startedAt: "2026-08-09T00:00:00Z",
+            completedAt: "2026-08-09T00:00:01Z",
+            toolName: "web_search",
+            toolId: "call-1",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("deepspace-thinking-stream")).toHaveTextContent(
+      "I checked the sources",
+    );
+    expect(screen.getByText("Searching the web")).toBeInTheDocument();
+  });
+
   it("derives progress only from a real todo tool result", () => {
     render(
       <DeepSpaceThinkingPanel

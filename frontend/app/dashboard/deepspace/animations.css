@@ -396,6 +396,21 @@
   animation: wave 0.2s ease-in-out infinite;
 }
 
+/* Streaming markdown is updated at animation-frame cadence by the renderer.
+   These rules keep the text compositor-friendly without animating layout or
+   reflowing the surrounding chat thread on every token. */
+.prose-premium .is-streaming {
+  contain: layout style;
+  overflow-wrap: anywhere;
+  text-rendering: optimizeLegibility;
+  transition: opacity 120ms ease-out;
+  will-change: contents;
+}
+
+.prose-premium .is-streaming table {
+  table-layout: auto;
+}
+
 /* Connecting State */
 .status-connecting {
   animation: pulse 1s ease-in-out infinite;

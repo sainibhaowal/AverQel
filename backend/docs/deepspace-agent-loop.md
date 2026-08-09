@@ -8,10 +8,10 @@ DeepSpace uses a bounded, provider-facing tool loop for multi-step productivity 
 - `todo_read` reads the current conversation task plan.
 - `todo_check` verifies completion, blockers, and evidence.
 - `todo_mark` records a task status and evidence.
-- `observe` inspects the active note and task state without mutation.
-- `analyze` evaluates the current task evidence and selects the next task.
-- `read` reads only the active DeepSpace note.
-- `write` writes Markdown only to the active DeepSpace note.
+- `observe` inspects current note, task, Library, and active-response state without mutation.
+- `analyze` evaluates the current task/workspace evidence and recommends the next safe action.
+- `read`, `find`, `write`, `edit`, and `delete` are explicit-target workspace operations for note, Library, memory, chat, and tasks where supported.
+- `write` can copy an already-persisted assistant response directly into a named Library file with `source='previous_assistant'`; it does not resend or regenerate the content.
 - `web_search` searches through the configured server-side provider when current sources are required.
 - `final` is accepted only after the required task list is complete or no task list exists.
 
@@ -21,7 +21,7 @@ Provider and model support is still bounded by the upstream model's capabilities
 
 ## Safety boundaries
 
-Task rows are scoped by tenant, user, and DeepSpace conversation ID. The existing `agent_todos` table is reused, with dependencies and evidence stored in its JSON metadata. Note writes are scoped to the active `deepspace` conversation and rendered through a small escaped Markdown subset. Every loop is bounded by a maximum of 12 rounds, a maximum of 3 web searches, per-tool timeouts, one retry, cancellation checks, and duplicate-call detection.
+Task rows are scoped by tenant, user, and DeepSpace conversation ID. The existing `agent_todos` table is reused, with dependencies and evidence stored in its JSON metadata. Note and Library writes are scoped to the active `deepspace` conversation. Reference saves resolve the source message server-side and return file evidence without copying the content through another model turn. Every loop is bounded by a maximum of 12 rounds, a maximum of 3 web searches, per-tool timeouts, one retry, cancellation checks, and duplicate-call detection.
 
 The frontend receives `agent_status`, `tool_start`, `tool_delta`, `tool_result`, `tool_error`, and `observing` SSE events. Tool argument fragments are streamed as they arrive, so a busy operation remains visible instead of appearing hung.
 

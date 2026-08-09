@@ -1,7 +1,18 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, ChevronDown, Check, Mic, MicOff, Play, Square, Volume2, VolumeX } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  Check,
+  CircleHelp,
+  Mic,
+  MicOff,
+  Play,
+  Square,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 interface DeepSpaceComposerProps {
@@ -77,6 +88,7 @@ export default function DeepSpaceComposer({
   hasRuntimeError = false,
 }: DeepSpaceComposerProps) {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [runtimeLegendOpen, setRuntimeLegendOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -375,6 +387,72 @@ export default function DeepSpaceComposer({
                   {voiceLabel}
                 </span>
               )}
+            </div>
+
+            <div className="relative flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setRuntimeLegendOpen((open) => !open)}
+                aria-label="Show DeepSpace status legend"
+                aria-expanded={runtimeLegendOpen}
+                title="DeepSpace status legend"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-all duration-200 ${
+                  runtimeLegendOpen
+                    ? "border-cyan-400/45 bg-cyan-400/15 text-cyan-200"
+                    : "border-white/10 bg-black/30 text-white/45 hover:border-cyan-400/30 hover:text-cyan-200"
+                }`}
+              >
+                <CircleHelp size={14} />
+              </button>
+              <AnimatePresence>
+                {runtimeLegendOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                    transition={{ duration: 0.14, ease: "easeOut" }}
+                    role="dialog"
+                    aria-label="DeepSpace status legend"
+                    className="border-glass-border bg-surface-0/95 absolute right-0 bottom-full z-[70] mb-2 w-[min(19rem,calc(100vw-2rem))] rounded-xl border p-3 text-[10px] leading-4 text-white/65 shadow-2xl backdrop-blur-xl"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3 text-[11px] font-semibold tracking-wide text-white/90">
+                      <span>DeepSpace status</span>
+                      <button
+                        type="button"
+                        onClick={() => setRuntimeLegendOpen(false)}
+                        className="rounded px-1 text-white/35 hover:text-white/80"
+                        aria-label="Close status legend"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                      {[
+                        ["bg-emerald-400", "Ready / typing"],
+                        ["bg-amber-300", "Submitting"],
+                        ["bg-cyan-300", "Thinking / receiving"],
+                        ["bg-blue-400", "Web/search tool"],
+                        ["bg-emerald-300", "Reading data"],
+                        ["bg-fuchsia-300", "Writing data"],
+                        ["bg-white", "Completed"],
+                        ["bg-red-400", "Error"],
+                      ].map(([color, label]) => (
+                        <span key={label} className="flex items-center gap-1.5">
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${color}`}
+                            aria-hidden="true"
+                          />
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-2 border-t border-white/10 pt-2 text-white/45">
+                      The square button stops a running response; the play button sends your
+                      message. Context glow shifts from cyan to amber/red as the model window fills.
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">

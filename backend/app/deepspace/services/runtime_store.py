@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, select, update
@@ -11,6 +11,8 @@ from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceAgent
 
 DEFAULT_RETAINED_STEPS = 10_000
 ACTIVE_RUN_STATUSES = {"running", "awaiting_user", "awaiting_approval", "cancelling"}
+WORKER_RUN_STATUSES = {"running", "cancelling"}
+DEFAULT_RUN_STALE_AFTER = timedelta(minutes=30)
 
 
 class DeepSpaceRuntimeStore:
@@ -36,6 +38,7 @@ class DeepSpaceRuntimeStore:
             assistant_message_id=assistant_message_id,
             status="running",
             checkpoint=dict(checkpoint or {}),
+            heartbeat_at=datetime.now(UTC),
         )
         self.db.add(run)
         self.db.flush()
@@ -50,17 +53,60 @@ class DeepSpaceRuntimeStore:
         checkpoint: dict[str, object] | None = None,
         last_error: str | None = None,
     ) -> None:
-        values: dict[str, Any] = {"updated_at": datetime.now(UTC)}
+        now = datetime.now(UTC)
+        values: dict[str, Any] = {"updated_at": now}
         if status is not None:
             values["status"] = status
         if checkpoint is not None:
             values["checkpoint"] = dict(checkpoint)
         if last_error is not None:
             values["last_error"] = last_error[:2000]
+        if status in WORKER_RUN_STATUSES or status is None:
+            values["heartbeat_at"] = now
         self.db.execute(
             update(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id).values(**values)
         )
         self.db.commit()
+
+    def heartbeat(self, *, run_id: uuid.UUID) -> bool:
+        now = datetime.now(UTC)
+        result = self.db.execute(
+            update(DeepSpaceAgentRun)
+            .where(
+                DeepSpaceAgentRun.id == run_id,
+                DeepSpaceAgentRun.status.in_(WORKER_RUN_STATUSES),
+                DeepSpaceAgentRun.cancel_requested.is_(False),
+            )
+            .values(heartbeat_at=now, updated_at=now)
+        )
+        self.db.commit()
+        return bool(getattr(result, "rowcount", 0))
+
+    def live_worker_run_for_message(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        assistant_message_id: uuid.UUID,
+        stale_after: timedelta = DEFAULT_RUN_STALE_AFTER,
+    ) -> DeepSpaceAgentRun | None:
+        cutoff = datetime.now(UTC) - stale_after
+        return self.db.execute(
+            select(DeepSpaceAgentRun)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.assistant_message_id == assistant_message_id,
+                DeepSpaceAgentRun.status.in_(WORKER_RUN_STATUSES),
+                DeepSpaceAgentRun.cancel_requested.is_(False),
+                DeepSpaceAgentRun.heartbeat_at.is_not(None),
+                DeepSpaceAgentRun.heartbeat_at >= cutoff,
+            )
+            .order_by(DeepSpaceAgentRun.heartbeat_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
 
     def record_step(
         self,
@@ -97,6 +143,8 @@ class DeepSpaceRuntimeStore:
         run.last_sequence = sequence
         run.step_count = int(run.step_count or 0) + 1
         run.updated_at = datetime.now(UTC)
+        if run.status in WORKER_RUN_STATUSES and not run.cancel_requested:
+            run.heartbeat_at = run.updated_at
         self.db.flush()
         old_step_ids = (
             self.db.execute(
@@ -238,10 +286,7 @@ class DeepSpaceRuntimeStore:
         for run in runs:
             checkpoint = run.checkpoint if isinstance(run.checkpoint, dict) else {}
             pending = checkpoint.get("pending_user_question")
-            if (
-                isinstance(pending, dict)
-                and str(pending.get("question_id") or "") == question_id
-            ):
+            if isinstance(pending, dict) and str(pending.get("question_id") or "") == question_id:
                 return run
         return None
 
@@ -311,7 +356,11 @@ class DeepSpaceRuntimeStore:
         return bool(getattr(result, "rowcount", 0))
 
     def finish(self, *, run_id: uuid.UUID, status: str, error: str | None = None) -> None:
-        values: dict[str, Any] = {"status": status, "updated_at": datetime.now(UTC)}
+        values: dict[str, Any] = {
+            "status": status,
+            "updated_at": datetime.now(UTC),
+            "heartbeat_at": None,
+        }
         if error:
             values["last_error"] = error[:2000]
         self.db.execute(
