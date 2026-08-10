@@ -1128,11 +1128,56 @@ export default function DeepSpaceChatClient({
   );
   const contextUsedTokens =
     latestAssistant?.metrics?.contextUsedTokens ?? latestAssistant?.metrics?.totalTokens ?? null;
+  // Show the request budget live: while typing, include the unsent prompt; while
+  // streaming, include the assistant tokens arriving in the current turn. The
+  // persisted backend metric remains the exact serialized request estimate.
+  const draftTokens = query.trim() ? query.trim().split(/\s+/).length : 0;
+  const streamedOutputTokens = state.isStreaming ? (latestAssistant?.metrics?.totalTokens ?? 0) : 0;
+  const liveContextUsedTokens =
+    contextUsedTokens === null
+      ? draftTokens || null
+      : contextUsedTokens + draftTokens + streamedOutputTokens;
+  const verifiedClientContextLimit = (modelName: string | null): number | null => {
+    const normalized = (modelName ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (normalized.includes("nemotron3ultra") || normalized.includes("nemotron3super")) {
+      return 1_048_576;
+    }
+    if (normalized.startsWith("minimaxm2")) return 204_800;
+    if (normalized.startsWith("qwen3coder480b") || normalized.startsWith("qwen25coder")) {
+      return 256_000;
+    }
+    if (normalized.startsWith("qwen3") || normalized.startsWith("qwen25")) return 128_000;
+    if (normalized.startsWith("deepseekr1") || normalized.startsWith("deepseekv3")) {
+      return 64_000;
+    }
+    return null;
+  };
   const contextLimit =
     selectedModel?.contextWindow ??
     latestAssistant?.metrics?.contextLimit ??
-    state.lastContextLimit;
+    state.lastContextLimit ??
+    verifiedClientContextLimit(effectiveModelName);
   const contextUsageSource = latestAssistant?.metrics?.contextUsageSource ?? null;
+  const contextRemainingTokens = latestAssistant?.metrics?.contextRemainingTokens ?? null;
+  const safeRemainingTokens = latestAssistant?.metrics?.safeRemainingTokens ?? null;
+  const sessionInputTokens = latestAssistant?.metrics?.sessionInputTokens ?? null;
+  const sessionOutputTokens = latestAssistant?.metrics?.sessionOutputTokens ?? null;
+  const sessionTotalTokens = latestAssistant?.metrics?.sessionTotalTokens ?? null;
+  const reservedOutputTokens = latestAssistant?.metrics?.reservedOutputTokens ?? null;
+  const maxOutputTokens = latestAssistant?.metrics?.maxOutputTokens ?? null;
+  const liveSessionOutputTokens =
+    sessionOutputTokens === null ? null : sessionOutputTokens + streamedOutputTokens;
+  const liveSessionTotalTokens =
+    sessionTotalTokens === null ? null : sessionTotalTokens + streamedOutputTokens;
+  const liveSafeRemainingTokens =
+    contextLimit && liveContextUsedTokens !== null
+      ? Math.max(
+          0,
+          contextLimit - liveContextUsedTokens - (reservedOutputTokens ?? maxOutputTokens ?? 0),
+        )
+      : safeRemainingTokens;
+  const contextStatus = latestAssistant?.metrics?.contextStatus ?? null;
+  const contextCompacted = latestAssistant?.metrics?.contextCompacted ?? false;
 
   const handlePromptSelect = useCallback(
     (prompt: string) => {
@@ -1232,9 +1277,18 @@ export default function DeepSpaceChatClient({
               availableModels={availableModels}
               onModelSelect={handleModelSelect}
               voiceState={voiceState}
-              contextUsedTokens={contextUsedTokens}
+              contextUsedTokens={liveContextUsedTokens}
               contextLimit={contextLimit}
               contextUsageSource={contextUsageSource}
+              contextRemainingTokens={contextRemainingTokens}
+              safeRemainingTokens={liveSafeRemainingTokens}
+              sessionInputTokens={sessionInputTokens}
+              sessionOutputTokens={liveSessionOutputTokens}
+              sessionTotalTokens={liveSessionTotalTokens}
+              reservedOutputTokens={reservedOutputTokens}
+              maxOutputTokens={maxOutputTokens}
+              contextStatus={contextStatus}
+              contextCompacted={contextCompacted}
               sttActive={sttActive}
               ttsActive={ttsActive}
               onSttToggle={handleSttToggle}

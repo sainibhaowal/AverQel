@@ -2168,7 +2168,11 @@ export interface DeepSpaceThreadState {
   activeAssistantId: string | null;
   isStreaming: boolean;
   isAgentMode: boolean;
-  streamError: { code: string; message: string } | null;
+  streamError: {
+    code: string;
+    message: string;
+    category?: "provider" | "tool" | "runtime" | "ui";
+  } | null;
   lastModelName: string | null;
   lastProviderType: string | null;
   lastContextLimit: number | null;
@@ -2181,7 +2185,14 @@ export type DeepSpaceThreadAction =
   | { type: "submit_query"; query: string }
   | { type: "stream_interrupted" }
   | { type: "stream_finished" }
-  | { type: "stream_failed"; error: { code: string; message: string } }
+  | {
+      type: "stream_failed";
+      error: {
+        code: string;
+        message: string;
+        category?: "provider" | "tool" | "runtime" | "ui";
+      };
+    }
   | { type: "stream_event"; event: DeepSpaceStreamEvent }
   | { type: "stream_events"; events: DeepSpaceStreamEvent[] }
   | { type: "delete_message_local"; messageId: string }
@@ -2239,10 +2250,9 @@ function rehydrateMetricsFromHistory(
   // visible after a history reload (or refresh), matching what was seen
   // during streaming.
   const rawTimeline = metadata.latency_timeline;
-  if (!Array.isArray(rawTimeline) || rawTimeline.length === 0) {
-    return undefined;
-  }
-  const timeline: MessageMetrics["latencyTimeline"] = rawTimeline
+  const timeline: MessageMetrics["latencyTimeline"] = (
+    Array.isArray(rawTimeline) ? rawTimeline : []
+  )
     .filter(
       (entry): entry is { label: string; atMs: number; detail?: string } =>
         entry !== null &&
@@ -2255,14 +2265,35 @@ function rehydrateMetricsFromHistory(
       atMs: entry.atMs,
       ...(typeof entry.detail === "string" ? { detail: entry.detail } : {}),
     }));
-  if (timeline.length === 0) {
-    return undefined;
-  }
-
   const provider =
     metadata.provider && typeof metadata.provider === "object"
       ? (metadata.provider as Record<string, unknown>)
       : null;
+  const contextLimit =
+    typeof metadata.context_limit === "number"
+      ? (metadata.context_limit as number)
+      : typeof provider?.context_window === "number"
+        ? (provider.context_window as number)
+        : undefined;
+  const readNumber = (key: string): number | undefined =>
+    typeof metadata[key] === "number" && Number.isFinite(metadata[key] as number)
+      ? (metadata[key] as number)
+      : undefined;
+  const contextUsedTokens = readNumber("context_used_tokens");
+  const contextRemainingTokens = readNumber("context_remaining_tokens");
+  const contextUsage = readNumber("context_usage");
+  const sessionInputTokens = readNumber("session_input_tokens");
+  const sessionOutputTokens = readNumber("session_output_tokens");
+  const sessionTotalTokens = readNumber("session_total_tokens");
+  const reservedOutputTokens = readNumber("reserved_output_tokens");
+  const hasContextMetrics =
+    contextUsedTokens !== undefined ||
+    sessionTotalTokens !== undefined ||
+    contextLimit !== undefined;
+  if (timeline.length === 0 && !hasContextMetrics) {
+    return undefined;
+  }
+
   const modelName =
     (typeof provider?.model === "string" && provider.model) ||
     (typeof metadata.model_name === "string" ? (metadata.model_name as string) : undefined) ||
@@ -2271,13 +2302,6 @@ function rehydrateMetricsFromHistory(
     (typeof provider?.type === "string" && provider.type) ||
     (typeof metadata.provider_type === "string" ? (metadata.provider_type as string) : undefined) ||
     undefined;
-
-  const contextLimit =
-    typeof metadata.context_limit === "number"
-      ? (metadata.context_limit as number)
-      : typeof provider?.context_window === "number"
-        ? (provider.context_window as number)
-        : undefined;
 
   // Pick the first non-turn_started entry as the "first activity" phase.
   const firstActivity = timeline.find((entry) => entry.label !== "turn_started");
@@ -2294,8 +2318,21 @@ function rehydrateMetricsFromHistory(
     providerType,
     contextLimit,
     phase,
-    latencyTimeline: timeline,
+    ...(timeline.length > 0 ? { latencyTimeline: timeline } : {}),
     ...(typeof ttftMs === "number" ? { ttftMs } : {}),
+    ...(contextUsedTokens !== undefined ? { contextUsedTokens } : {}),
+    ...(contextRemainingTokens !== undefined ? { contextRemainingTokens } : {}),
+    ...(contextUsage !== undefined ? { contextUsage } : {}),
+    ...(sessionInputTokens !== undefined ? { sessionInputTokens } : {}),
+    ...(sessionOutputTokens !== undefined ? { sessionOutputTokens } : {}),
+    ...(sessionTotalTokens !== undefined ? { sessionTotalTokens } : {}),
+    ...(reservedOutputTokens !== undefined ? { reservedOutputTokens } : {}),
+    ...(typeof metadata.context_usage_source === "string"
+      ? { contextUsageSource: metadata.context_usage_source }
+      : {}),
+    ...(typeof metadata.context_compacted === "boolean"
+      ? { contextCompacted: metadata.context_compacted }
+      : {}),
     startedAt: createdAt,
   };
 }
@@ -2467,7 +2504,11 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
           }
           return "Executing Tool";
         })(),
-        status: step.status,
+        status:
+          persistedStatus !== "streaming" &&
+          (step.status === "running" || step.status === "awaiting_approval")
+            ? "completed"
+            : step.status,
         startedAt: step.startedAt,
         completedAt: step.completedAt,
         durationMs: step.durationMs,
@@ -3254,6 +3295,11 @@ function reduceDeepSpaceThread(
           error: {
             code: String(event.data.code ?? "STREAM_ERROR"),
             message: String(event.data.message ?? "The assistant failed to answer."),
+            category: ["provider", "tool", "runtime", "ui"].includes(
+              String(event.data.error_category),
+            )
+              ? (String(event.data.error_category) as "provider" | "tool" | "runtime" | "ui")
+              : "runtime",
           },
           agentSteps: nextSteps,
           timeline: nextTimeline,
@@ -3268,6 +3314,11 @@ function reduceDeepSpaceThread(
           streamError: {
             code: String(event.data.code ?? "STREAM_ERROR"),
             message: String(event.data.message ?? "The assistant failed to answer."),
+            category: ["provider", "tool", "runtime", "ui"].includes(
+              String(event.data.error_category),
+            )
+              ? (String(event.data.error_category) as "provider" | "tool" | "runtime" | "ui")
+              : "runtime",
           },
         };
       } else if (event.event === "done") {

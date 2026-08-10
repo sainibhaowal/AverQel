@@ -84,6 +84,8 @@ _VERIFIED_CONTEXT_WINDOW_PROVIDER_TYPES = {
     "google",
     "groq",
     "groqopenaicompatible",
+    "lmstudio",
+    "ollama",
     "mistral",
     "opencodezen",
     "openai",
@@ -101,7 +103,11 @@ _VERIFIED_CONTEXT_WINDOW_RULES: tuple[tuple[Callable[[str], bool], int, str], ..
         "official_docs:minimax",
     ),
     (
-        lambda model: model.startswith("nemotron3super") or model.startswith("nemotron4"),
+        lambda model: (
+            model.startswith("nemotron3super")
+            or model.startswith("nemotron4")
+            or "nemotron3ultra" in model
+        ),
         1_048_576,
         "official_docs:nvidia",
     ),

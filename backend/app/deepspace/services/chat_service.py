@@ -32,6 +32,15 @@ logger = logging.getLogger(__name__)
 MAX_TOOL_RETRIES = 1
 DEFAULT_AGENT_TIMEOUT_SECONDS = 1800
 MAX_EMPTY_PROVIDER_RETRIES = 1
+MAX_PROVIDER_STREAM_RETRIES = 2
+# A deadline is a fairness/safety boundary, not a reason to abandon a long
+# task.  Continue the same durable run a bounded number of times so a long
+# horizon task can finish without creating a second assistant message.
+MAX_DEADLINE_CONTINUATIONS = 8
+CONTEXT_WATCH_THRESHOLD = 0.60
+CONTEXT_COMPACT_THRESHOLD = 0.75
+CONTEXT_AUTO_COMPACT_THRESHOLD = 0.85
+CONTEXT_EMERGENCY_THRESHOLD = 0.95
 
 DEEPSPACE_AGENT_POLICY = """
 You are AverQel’s intelligent workspace assistant, operating inside the DeepSpace workspace.
@@ -523,6 +532,47 @@ class DeepSpaceChatService:
                 pending.cancel()
                 await asyncio.gather(pending, return_exceptions=True)
 
+    async def _provider_stream_with_retry(
+        self,
+        stream_factory: Any,
+        *,
+        run_id: uuid.UUID | None,
+        deadline: float,
+        provider_type: str | None = None,
+    ) -> AsyncIterator[Any]:
+        """Retry only provider failures that happen before any stream event.
+
+        Retrying after partial output would duplicate tokens or tool-call
+        fragments. A retry is therefore safe only when the provider failed
+        before emitting usable data. Backoff is bounded by the run deadline.
+        """
+        for attempt in range(MAX_PROVIDER_STREAM_RETRIES + 1):
+            emitted = False
+            try:
+                async for item in self._cancellable_provider_stream(
+                    stream_factory(), run_id=run_id
+                ):
+                    if isinstance(item, dict) and item.get("type") == "runtime_cancelled":
+                        yield item
+                        return
+                    emitted = True
+                    yield item
+                return
+            except (ProviderRequestError, TimeoutError, asyncio.TimeoutError, OSError) as exc:
+                if emitted or attempt >= MAX_PROVIDER_STREAM_RETRIES:
+                    raise
+                normalized_provider = (provider_type or "").strip().lower()
+                base_delay = 0.25 if normalized_provider in {"lmstudio", "ollama", "vllm"} else 0.75
+                delay = min(6.0, base_delay * (2**attempt))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                await asyncio.sleep(min(delay, remaining))
+                logger.warning(
+                    "Retrying provider stream after pre-output failure",
+                    extra={"attempt": attempt + 1, "delay_seconds": delay},
+                )
+
     def _messages(
         self,
         *,
@@ -544,6 +594,40 @@ class DeepSpaceChatService:
                 result.append({"role": message.role, "content": content})
         return result
 
+    def _conversation_session_usage(
+        self,
+        *,
+        auth: AuthContext,
+        conversation_id: uuid.UUID,
+        exclude_message_id: uuid.UUID | None = None,
+    ) -> tuple[int, int]:
+        """Recover cumulative estimated usage from completed assistant turns."""
+        input_total = 0
+        output_total = 0
+        history = self.chat.get_messages(
+            tenant_id=auth.tenant_id,
+            conversation_id=conversation_id,
+            user_id=auth.user_id,
+        )
+        for message in history:
+            if message.role != "assistant" or (
+                exclude_message_id is not None and message.id == exclude_message_id
+            ):
+                continue
+            metadata = message.metadata_json if isinstance(message.metadata_json, dict) else {}
+            for key, accumulator in (
+                ("session_input_tokens", "input"),
+                ("session_output_tokens", "output"),
+            ):
+                value = metadata.get(key)
+                if not isinstance(value, int) or value < 0:
+                    continue
+                if accumulator == "input":
+                    input_total += value
+                else:
+                    output_total += value
+        return input_total, output_total
+
     @staticmethod
     def _estimate_context_tokens(
         messages: list[dict[str, Any]],
@@ -553,6 +637,48 @@ class DeepSpaceChatService:
         payload = {"messages": messages, "tools": tools or []}
         serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         return max(1, (len(serialized) + 3) // 4)
+
+    @staticmethod
+    def _context_budget_state(
+        *,
+        used_tokens: int,
+        context_limit: int | None,
+        reserved_output_tokens: int,
+        compacted: bool,
+    ) -> dict[str, Any]:
+        """Return stable, provider-neutral context-budget metadata.
+
+        Provider APIs do not expose a common tokenizer, so the caller labels
+        this estimate explicitly.  The budget still uses the exact serialized
+        messages and tool definitions sent for the current request.
+        """
+        if not context_limit or context_limit <= 0:
+            return {
+                "contextStatus": "unknown",
+                "contextCompacted": compacted,
+                "reservedOutputTokens": reserved_output_tokens,
+                "safeRemainingTokens": None,
+            }
+        ratio = min(1.0, max(0.0, used_tokens / context_limit))
+        status = "normal"
+        if compacted:
+            status = "compacted"
+        elif ratio >= CONTEXT_EMERGENCY_THRESHOLD:
+            status = "emergency"
+        elif ratio >= CONTEXT_AUTO_COMPACT_THRESHOLD:
+            status = "auto_compact"
+        elif ratio >= CONTEXT_COMPACT_THRESHOLD:
+            status = "compact_soon"
+        elif ratio >= CONTEXT_WATCH_THRESHOLD:
+            status = "watch"
+        return {
+            "contextStatus": status,
+            "contextCompacted": compacted,
+            "reservedOutputTokens": reserved_output_tokens,
+            "safeRemainingTokens": max(
+                0, context_limit - used_tokens - reserved_output_tokens
+            ),
+        }
 
     @classmethod
     def _fit_history_to_context(
@@ -1428,7 +1554,18 @@ class DeepSpaceChatService:
                         except Exception:  # noqa: BLE001
                             logger.warning("DeepSpace tool rollback failed", exc_info=True)
                     if attempt >= MAX_TOOL_RETRIES:
-                        return {"success": False, "error": f"{tool_name} failed safely: {exc}"}
+                        result: dict[str, Any] = {
+                            "success": False,
+                            "error": f"{tool_name} failed safely: {exc}",
+                            "error_category": "tool",
+                        }
+                        if tool_name == "url_read":
+                            result["recovery"] = (
+                                "The URL could not be read safely. Continue with web_search "
+                                "using the URL host/title, or ask the user for another source; "
+                                "do not retry the same blocked URL repeatedly."
+                            )
+                        return result
         return {"success": False, "error": f"{tool_name} failed safely."}
 
     @staticmethod
@@ -1476,6 +1613,8 @@ class DeepSpaceChatService:
             **dict(candidate.metadata),
             "allowed_domains": allowed_domains,
             "time_range": arguments.get("time_range"),
+            "current_date": datetime.now(UTC).date().isoformat(),
+            "date_policy": "Prefer results published within the requested time range and verify publication dates.",
             "tenant_id": str(auth.tenant_id),
             "user_id": str(auth.user_id),
         }
@@ -2238,11 +2377,20 @@ class DeepSpaceChatService:
         )
         loop_deadline = time.monotonic() + max_runtime_seconds
         round_index = 0
+        deadline_continuations = 0
         empty_provider_retries = 0
         terminal_status = "running"
         last_context_used_tokens: int | None = None
         last_context_remaining_tokens: int | None = None
         last_context_usage: float | None = None
+        last_context_compacted = False
+        last_reserved_output_tokens = max(0, int(self.settings.llm_max_tokens_per_request))
+        assert conversation_id is not None
+        session_input_tokens, session_output_tokens = self._conversation_session_usage(
+            auth=auth,
+            conversation_id=conversation_id,
+            exclude_message_id=assistant_message.id,
+        )
         try:
             if resume_denied:
                 terminal_status = "blocked"
@@ -2353,6 +2501,19 @@ class DeepSpaceChatService:
                             input_json=pending_arguments,
                             result_json={"success": pending_success, "output": pending_output},
                         )
+                        self.runtime.update_checkpoint(
+                            run_id=run_id,
+                            status="running",
+                            checkpoint={
+                                "status": "running",
+                                "phase": "tool_result",
+                                "turn_index": 0,
+                                "tool_name": pending_tool_name,
+                                "tool_call_id": pending_call_id,
+                                "tool_success": pending_success,
+                                "next_phase": "model",
+                            },
+                        )
                         self.runtime.clear_pending_approval(run_id=run_id)
                     yield sse(
                         "tool_result" if pending_success else "tool_error",
@@ -2376,11 +2537,55 @@ class DeepSpaceChatService:
                     self.runtime.update_checkpoint(
                         run_id=run_id,
                         status="running",
-                        checkpoint={"turn_index": round_index, "phase": "model"},
+                        checkpoint={
+                            "turn_index": round_index,
+                            "phase": "model",
+                            "continuation_count": deadline_continuations,
+                        },
                     )
                 if time.monotonic() >= loop_deadline:
+                    if deadline_continuations < MAX_DEADLINE_CONTINUATIONS:
+                        deadline_continuations += 1
+                        if run_id is not None:
+                            self.runtime.update_checkpoint(
+                                run_id=run_id,
+                                status="running",
+                                checkpoint={
+                                    "status": "running",
+                                    "phase": "deadline_continuation",
+                                    "turn_index": round_index,
+                                    "continuation_count": deadline_continuations,
+                                    "resume_available": True,
+                                    "next_action": "continue_from_checkpoint",
+                                },
+                                last_error="runtime_deadline_continuing",
+                            )
+                        yield sse(
+                            "run_checkpoint",
+                            {
+                                "phase": "deadline_continuation",
+                                "continuation": deadline_continuations,
+                                "max_continuations": MAX_DEADLINE_CONTINUATIONS,
+                                "message": "DeepSpace saved its checkpoint and is continuing the same task.",
+                            },
+                        )
+                        loop_deadline = time.monotonic() + max_runtime_seconds
+                        continue
                     terminal_status = "blocked"
                     if run_id is not None:
+                        self.runtime.update_checkpoint(
+                            run_id=run_id,
+                            status="blocked",
+                            checkpoint={
+                                "status": "blocked",
+                                "phase": "deadline",
+                                "turn_index": round_index,
+                                "continuation_count": deadline_continuations,
+                                "resume_available": True,
+                                "next_action": "resume_from_checkpoint",
+                            },
+                            last_error="runtime_timeout",
+                        )
                         self.runtime.finish(
                             run_id=run_id, status="blocked", error="runtime_timeout"
                         )
@@ -2421,7 +2626,7 @@ class DeepSpaceChatService:
                 request_messages = list(conversation_messages)
                 if lifecycle_instruction:
                     request_messages.append({"role": "system", "content": lifecycle_instruction})
-                request_messages, _request_compacted = self._fit_history_to_context(
+                request_messages, request_compacted = self._fit_history_to_context(
                     request_messages,
                     context_window=candidate.context_window,
                     max_output_tokens=self.settings.llm_max_tokens_per_request,
@@ -2443,6 +2648,23 @@ class DeepSpaceChatService:
                 last_context_used_tokens = context_used_tokens
                 last_context_remaining_tokens = context_remaining_tokens
                 last_context_usage = context_usage
+                last_context_compacted = request_compacted
+                reserved_output_tokens = (
+                    min(
+                        max(0, int(self.settings.llm_max_tokens_per_request)),
+                        max(0, int(candidate.context_window) - context_used_tokens),
+                    )
+                    if candidate.context_window
+                    else max(0, int(self.settings.llm_max_tokens_per_request))
+                )
+                last_reserved_output_tokens = reserved_output_tokens
+                session_input_tokens += context_used_tokens
+                budget_state = self._context_budget_state(
+                    used_tokens=context_used_tokens,
+                    context_limit=candidate.context_window,
+                    reserved_output_tokens=reserved_output_tokens,
+                    compacted=request_compacted,
+                )
                 yield sse(
                     "metrics",
                     {
@@ -2450,6 +2672,11 @@ class DeepSpaceChatService:
                         "contextRemainingTokens": context_remaining_tokens,
                         "contextUsage": context_usage,
                         "contextUsageSource": "estimated_local",
+                        "sessionInputTokens": session_input_tokens,
+                        "sessionOutputTokens": session_output_tokens,
+                        "sessionTotalTokens": session_input_tokens + session_output_tokens,
+                        "maxOutputTokens": int(self.settings.llm_max_tokens_per_request),
+                        **budget_state,
                         **(
                             {"contextLimit": candidate.context_window}
                             if candidate.context_window
@@ -2501,8 +2728,11 @@ class DeepSpaceChatService:
                 cancelled_during_provider_stream = False
                 last_runtime_heartbeat = time.monotonic()
                 if callable(stream_events):
-                    async for provider_event in self._cancellable_provider_stream(
-                        stream_events(request_payload), run_id=run_id
+                    async for provider_event in self._provider_stream_with_retry(
+                        lambda: stream_events(request_payload),
+                        run_id=run_id,
+                        deadline=loop_deadline,
+                        provider_type=candidate.provider_type,
                     ):
                         if run_id is not None and time.monotonic() - last_runtime_heartbeat >= 5.0:
                             self.runtime.heartbeat(run_id=run_id)
@@ -2663,8 +2893,11 @@ class DeepSpaceChatService:
                             answer_parts.append(text)
                             yield sse("delta", {"text": text})
                 else:
-                    async for chunk in self._cancellable_provider_stream(
-                        provider.stream_generate(request_payload), run_id=run_id
+                    async for chunk in self._provider_stream_with_retry(
+                        lambda: provider.stream_generate(request_payload),
+                        run_id=run_id,
+                        deadline=loop_deadline,
+                        provider_type=candidate.provider_type,
                     ):
                         if run_id is not None and time.monotonic() - last_runtime_heartbeat >= 5.0:
                             self.runtime.heartbeat(run_id=run_id)
@@ -2684,6 +2917,14 @@ class DeepSpaceChatService:
                             run_id=run_id, status="cancelled", error="user_cancelled"
                         )
                     break
+
+                round_output_text = "".join(answer_parts[round_answer_start:]) + "".join(
+                    thinking_parts[round_thinking_start:]
+                )
+                round_output_tokens = self._estimate_context_tokens(
+                    [{"role": "assistant", "content": round_output_text}]
+                ) if round_output_text else 0
+                session_output_tokens += round_output_tokens
 
                 if run_id is not None:
                     self.runtime.record_step(
@@ -2706,6 +2947,35 @@ class DeepSpaceChatService:
                     len(answer_parts) > round_answer_start
                     or len(thinking_parts) > round_thinking_start
                     or len(generated_artifacts) > round_artifact_start
+                )
+                yield sse(
+                    "metrics",
+                    {
+                        "contextUsedTokens": last_context_used_tokens,
+                        "contextRemainingTokens": last_context_remaining_tokens,
+                        "contextUsage": last_context_usage,
+                        "contextUsageSource": "estimated_local",
+                        "sessionInputTokens": session_input_tokens,
+                        "sessionOutputTokens": session_output_tokens,
+                        "sessionTotalTokens": session_input_tokens + session_output_tokens,
+                        "maxOutputTokens": int(self.settings.llm_max_tokens_per_request),
+                        **self._context_budget_state(
+                            used_tokens=last_context_used_tokens or 0,
+                            context_limit=candidate.context_window,
+                            reserved_output_tokens=last_reserved_output_tokens,
+                            compacted=last_context_compacted,
+                        ),
+                        **(
+                            {"contextLimit": candidate.context_window}
+                            if candidate.context_window
+                            else {}
+                        ),
+                        **(
+                            {"contextLimitSource": candidate.context_window_source}
+                            if candidate.context_window_source
+                            else {}
+                        ),
+                    },
                 )
                 if not normalized_calls and not round_has_text:
                     if empty_provider_retries < MAX_EMPTY_PROVIDER_RETRIES:
@@ -2787,6 +3057,7 @@ class DeepSpaceChatService:
                                 "tool_id": call_id,
                                 "step_id": step_id,
                                 "error": output,
+                                "error_category": "tool",
                             },
                         )
                         conversation_messages.append(
@@ -3097,7 +3368,19 @@ class DeepSpaceChatService:
                                     task_lifecycle_stage = "final"
                         output = json.dumps(tool_payload, ensure_ascii=False, separators=(",", ":"))
                     else:
-                        output = str(result.get("error") or f"{tool_name} failed safely.")
+                        output = json.dumps(
+                            {
+                                "error": str(result.get("error") or f"{tool_name} failed safely."),
+                                "error_category": str(result.get("error_category") or "tool"),
+                                **(
+                                    {"recovery": result["recovery"]}
+                                    if result.get("recovery")
+                                    else {}
+                                ),
+                            },
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
                     if run_id is not None:
                         self.runtime.record_step(
                             run_id=run_id,
@@ -3110,6 +3393,22 @@ class DeepSpaceChatService:
                             tool_call_id=call_id,
                             input_json=item["arguments"],
                             result_json={"success": success, "output": output},
+                        )
+                        # Persist the exact post-tool continuation point. A
+                        # reconnect or worker retry can resume from this
+                        # verified result without repeating the tool call.
+                        self.runtime.update_checkpoint(
+                            run_id=run_id,
+                            status="running",
+                            checkpoint={
+                                "status": "running",
+                                "phase": "tool_result",
+                                "turn_index": round_index,
+                                "tool_name": tool_name,
+                                "tool_call_id": call_id,
+                                "tool_success": success,
+                                "next_phase": "model",
+                            },
                         )
                     if success:
                         yield sse(
@@ -3183,7 +3482,14 @@ class DeepSpaceChatService:
                 candidate=candidate,
             )
             logger.warning("DeepSpace provider request failed", exc_info=True)
-            yield sse("error", {"code": "LLM_REQUEST_FAILED", "message": str(exc)})
+            yield sse(
+                "error",
+                {
+                    "code": "LLM_REQUEST_FAILED",
+                    "message": str(exc),
+                    "error_category": "provider",
+                },
+            )
             return
         except DeepSpaceEmptyResponseError as exc:
             terminal_status = "failed"
@@ -3203,7 +3509,14 @@ class DeepSpaceChatService:
                 candidate=candidate,
             )
             logger.warning("DeepSpace provider returned an empty stream: %s", exc)
-            yield sse("error", {"code": "LLM_EMPTY_RESPONSE", "message": message})
+            yield sse(
+                "error",
+                {
+                    "code": "LLM_EMPTY_RESPONSE",
+                    "message": message,
+                    "error_category": "provider",
+                },
+            )
             return
         except Exception:
             terminal_status = "failed"
@@ -3223,6 +3536,7 @@ class DeepSpaceChatService:
                 {
                     "code": "DEEPSPACE_STREAM_FAILED",
                     "message": "DeepSpace could not complete this response.",
+                    "error_category": "runtime",
                 },
             )
             return
@@ -3311,6 +3625,15 @@ class DeepSpaceChatService:
             "provider_type": candidate.provider_type,
             "model_name": candidate.model_name,
             "task_check": final_task_check,
+            "context_used_tokens": last_context_used_tokens,
+            "context_remaining_tokens": last_context_remaining_tokens,
+            "context_usage": last_context_usage,
+            "context_usage_source": "estimated_local",
+            "session_input_tokens": session_input_tokens,
+            "session_output_tokens": session_output_tokens,
+            "session_total_tokens": session_input_tokens + session_output_tokens,
+            "reserved_output_tokens": last_reserved_output_tokens,
+            "context_compacted": last_context_compacted,
         }
         if used_memories:
             metadata["memory"] = {"used": used_memories[:8]}
@@ -3387,6 +3710,16 @@ class DeepSpaceChatService:
             "contextRemainingTokens": last_context_remaining_tokens,
             "contextUsage": last_context_usage,
             "contextUsageSource": "estimated_local",
+            "sessionInputTokens": session_input_tokens,
+            "sessionOutputTokens": session_output_tokens,
+            "sessionTotalTokens": session_input_tokens + session_output_tokens,
+            "maxOutputTokens": int(self.settings.llm_max_tokens_per_request),
+            **self._context_budget_state(
+                used_tokens=last_context_used_tokens or 0,
+                context_limit=candidate.context_window,
+                reserved_output_tokens=last_reserved_output_tokens,
+                compacted=last_context_compacted,
+            ),
         }
         if candidate.context_window is not None:
             metrics["contextLimit"] = candidate.context_window

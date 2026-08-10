@@ -17,6 +17,21 @@ export interface MessageMetrics {
   contextRemainingTokens?: number;
   contextUsage?: number;
   contextUsageSource?: string | null;
+  reservedOutputTokens?: number;
+  safeRemainingTokens?: number | null;
+  sessionInputTokens?: number;
+  sessionOutputTokens?: number;
+  sessionTotalTokens?: number;
+  maxOutputTokens?: number;
+  contextStatus?:
+    | "normal"
+    | "watch"
+    | "compact_soon"
+    | "auto_compact"
+    | "emergency"
+    | "compacted"
+    | "unknown";
+  contextCompacted?: boolean;
   phase?: string;
   activeTools?: string[];
   latencyTimeline?: Array<{ label: string; atMs: number; detail?: string }>;
@@ -383,7 +398,11 @@ export interface DeepSpaceMessage {
   blocks?: StructuredBlock[];
   structured?: StructuredAnswerShape | null;
   thinkingContent?: string;
-  error?: { code: string; message: string } | null;
+  error?: {
+    code: string;
+    message: string;
+    category?: "provider" | "tool" | "runtime" | "ui";
+  } | null;
 
   // Versioning & Editing
   activeVersionId?: string | null;

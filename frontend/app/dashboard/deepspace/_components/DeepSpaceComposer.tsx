@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Check,
   CircleHelp,
+  Gauge,
   Mic,
   MicOff,
   Play,
@@ -35,6 +36,15 @@ interface DeepSpaceComposerProps {
   contextUsedTokens?: number | null;
   contextLimit?: number | null;
   contextUsageSource?: string | null;
+  contextRemainingTokens?: number | null;
+  safeRemainingTokens?: number | null;
+  sessionInputTokens?: number | null;
+  sessionOutputTokens?: number | null;
+  sessionTotalTokens?: number | null;
+  reservedOutputTokens?: number | null;
+  maxOutputTokens?: number | null;
+  contextStatus?: string | null;
+  contextCompacted?: boolean;
   sttActive?: boolean;
   ttsActive?: boolean;
   onSttToggle?: () => void;
@@ -77,6 +87,15 @@ export default function DeepSpaceComposer({
   contextUsedTokens = null,
   contextLimit = null,
   contextUsageSource = null,
+  contextRemainingTokens = null,
+  safeRemainingTokens = null,
+  sessionInputTokens = null,
+  sessionOutputTokens = null,
+  sessionTotalTokens = null,
+  reservedOutputTokens = null,
+  maxOutputTokens = null,
+  contextStatus = null,
+  contextCompacted = false,
   sttActive = false,
   ttsActive = false,
   onSttToggle,
@@ -89,6 +108,7 @@ export default function DeepSpaceComposer({
 }: DeepSpaceComposerProps) {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [runtimeLegendOpen, setRuntimeLegendOpen] = useState(false);
+  const [contextDialogOpen, setContextDialogOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -117,6 +137,7 @@ export default function DeepSpaceComposer({
     contextLimit && contextLimit > 0
       ? Math.min(1, Math.max(0, (contextUsedTokens ?? 0) / contextLimit))
       : 0;
+  const hasContextLimit = Boolean(contextLimit && contextLimit > 0);
   const runtimeStyle = {
     "--deepspace-context-ratio": contextRatio,
     "--deepspace-context-hue": Math.round(155 - contextRatio * 155),
@@ -204,38 +225,104 @@ export default function DeepSpaceComposer({
             disabled={isStreaming}
           />
 
-          {contextLimit && contextLimit > 0 ? (
-            <div className="mt-1 flex items-center gap-2 px-2 text-[9px] text-white/40">
-              <span
-                className="shrink-0 tracking-[0.14em] uppercase"
-                title={
-                  contextUsageSource === "estimated_local"
-                    ? "Estimated from the serialized prompt; the provider's tokenizer may differ slightly."
-                    : "Context tokens used by the selected model."
-                }
-              >
-                Context{contextUsageSource === "estimated_local" ? " (est.)" : ""}
-              </span>
-              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    (contextUsedTokens ?? 0) / contextLimit > 0.9
-                      ? "bg-red-400"
-                      : (contextUsedTokens ?? 0) / contextLimit > 0.7
-                        ? "bg-amber-300"
-                        : "bg-cyan-300"
-                  }`}
-                  style={{
-                    width: `${Math.min(100, Math.max(0, ((contextUsedTokens ?? 0) / contextLimit) * 100))}%`,
-                  }}
-                />
-              </div>
-              <span className="shrink-0 tabular-nums">
-                {(contextUsedTokens ?? 0).toLocaleString()} / {contextLimit.toLocaleString()}
-              </span>
+          <div className="relative mt-1 flex items-center gap-2 px-2 text-[9px] text-white/40">
+            <button
+              type="button"
+              onClick={() => setContextDialogOpen((open) => !open)}
+              className="flex shrink-0 items-center gap-1 tracking-[0.14em] uppercase transition-colors hover:text-cyan-200"
+              aria-expanded={contextDialogOpen}
+              aria-label="Show context usage details"
+            >
+              <Gauge size={11} />
+              Context{contextUsageSource === "estimated_local" ? " (est.)" : ""}
+            </button>
+            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  hasContextLimit && (contextUsedTokens ?? 0) / (contextLimit ?? 1) > 0.9
+                    ? "bg-red-400"
+                    : hasContextLimit && (contextUsedTokens ?? 0) / (contextLimit ?? 1) > 0.7
+                      ? "bg-amber-300"
+                      : "bg-cyan-300"
+                }`}
+                style={{
+                  width: hasContextLimit
+                    ? `${Math.min(100, Math.max(0, ((contextUsedTokens ?? 0) / (contextLimit ?? 1)) * 100))}%`
+                    : "0%",
+                }}
+              />
             </div>
-          ) : null}
-
+            <span className="shrink-0 tabular-nums">
+              {(contextUsedTokens ?? 0).toLocaleString()} /{" "}
+              {hasContextLimit ? contextLimit?.toLocaleString() : "—"} ·{" "}
+              {hasContextLimit ? `${Math.round(contextRatio * 100)}%` : "—"}
+            </span>
+            <AnimatePresence>
+              {contextDialogOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 5, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 3, scale: 0.98 }}
+                  role="dialog"
+                  aria-label="Context usage details"
+                  className="border-glass-border bg-surface-0/95 absolute right-0 bottom-full z-[75] mb-2 w-[min(23rem,calc(100vw-2rem))] rounded-xl border p-3 text-[10px] leading-4 text-white/65 shadow-2xl backdrop-blur-xl"
+                >
+                  <div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-white/90">
+                    <span>Context budget</span>
+                    <button
+                      type="button"
+                      onClick={() => setContextDialogOpen(false)}
+                      className="text-white/40 hover:text-white/80"
+                      aria-label="Close context details"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                      <span className="block text-white/40">Active context</span>
+                      <strong className="text-white/90">
+                        {(contextUsedTokens ?? 0).toLocaleString()} /{" "}
+                        {hasContextLimit ? contextLimit?.toLocaleString() : "Unavailable"}
+                      </strong>
+                      <span className="ml-1 text-cyan-200">
+                        ({Math.round(contextRatio * 100)}%)
+                      </span>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                      <span className="block text-white/40">Safe remaining</span>
+                      <strong className="text-white/90">
+                        {(safeRemainingTokens ?? contextRemainingTokens ?? 0).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                      <span className="block text-white/40">Session processed</span>
+                      <strong className="text-white/90">
+                        {(sessionTotalTokens ?? 0).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                      <span className="block text-white/40">Output reserve</span>
+                      <strong className="text-white/90">
+                        {(reservedOutputTokens ?? maxOutputTokens ?? 0).toLocaleString()}
+                      </strong>
+                    </div>
+                  </div>
+                  <p className="mt-2 border-t border-white/10 pt-2 text-white/45">
+                    Active context is the exact serialized request estimate for the selected model.
+                    Session processed is cumulative across rounds; it does not reset when you switch
+                    models.
+                  </p>
+                  <div className="mt-2 flex items-center justify-between text-white/45">
+                    <span>
+                      Status: <span className="text-white/75">{contextStatus ?? "unknown"}</span>
+                    </span>
+                    {contextCompacted ? <span className="text-emerald-300">Compacted</span> : null}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <div className="border-glass-border/70 mt-2.5 flex items-center justify-between gap-3 border-t pt-2.5">
             <div className="flex min-w-0 flex-grow flex-wrap items-center gap-1.5 sm:gap-2">
               {/* Functional Model Dropdown */}
