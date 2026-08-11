@@ -9,7 +9,7 @@ import re
 import uuid
 import zipfile
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal, cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
@@ -1513,14 +1513,16 @@ async def restore_workspace_file_version(
     ).scalar_one_or_none()
     if snapshot is None:
         raise ApiError(code="NOT_FOUND", message="Library file version not found", status_code=404)
-    file.name = snapshot.name
-    file.content_type = snapshot.content_type
-    file.content = snapshot.content
-    file.storage_bucket = snapshot.storage_bucket
-    file.storage_key = snapshot.storage_key
-    file.checksum_sha256 = snapshot.checksum_sha256
-    file.size_bytes = snapshot.size_bytes
-    file.is_binary = snapshot.content is None
+    # SQLAlchemy's class-level Column typing is not precise for ORM instances.
+    restored_file = cast(Any, file)
+    restored_file.name = snapshot.name
+    restored_file.content_type = snapshot.content_type
+    restored_file.content = snapshot.content
+    restored_file.storage_bucket = snapshot.storage_bucket
+    restored_file.storage_key = snapshot.storage_key
+    restored_file.checksum_sha256 = snapshot.checksum_sha256
+    restored_file.size_bytes = snapshot.size_bytes
+    restored_file.is_binary = snapshot.content is None
     file.version += 1
     file.updated_at = datetime.now(UTC)
     _add_version(db, file)

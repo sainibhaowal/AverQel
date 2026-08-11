@@ -14,7 +14,7 @@ from typing import Any
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.ingestion.services.extractors.router import ExtractorRouter
-from app.system.services.storage_service import StorageService
+from app.system.services.storage_service import StorageService, StoredObject
 
 _DATA_URL = re.compile(r"^data:(?P<type>[^;,]+)(?:;[^,]*)?,(?P<data>.*)$", re.DOTALL)
 _MAX_ARCHIVE_ENTRIES = 10_000
@@ -140,7 +140,7 @@ class LibraryStorageService:
         filename: str,
         content_type: str,
         payload: bytes,
-    ):
+    ) -> StoredObject:
         if len(payload) > self.settings.upload_max_bytes:
             raise ApiError(
                 code="DOC_TOO_LARGE",

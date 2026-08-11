@@ -310,8 +310,12 @@ class DeepSpaceRuntimeStore:
         )
         if run is None:
             return None
-        checkpoint = dict(run.checkpoint) if isinstance(run.checkpoint, dict) else {}
-        pending = dict(checkpoint.get("pending_approval") or {})
+        raw_checkpoint = run.checkpoint
+        checkpoint: dict[str, object] = (
+            dict(raw_checkpoint) if isinstance(raw_checkpoint, dict) else {}
+        )
+        raw_pending = checkpoint.get("pending_approval")
+        pending: dict[str, object] = dict(raw_pending) if isinstance(raw_pending, dict) else {}
         current_decision = str(pending.get("decision") or "")
         if current_decision and current_decision != "pending":
             return {**pending, "status": "already_resolved"}

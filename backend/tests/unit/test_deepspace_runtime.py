@@ -104,3 +104,84 @@ def test_runtime_store_bounds_retained_step_payload() -> None:
 
     assert result["truncated"] is True
     assert len(str(result["preview"])) <= 19_500
+
+
+@pytest.mark.asyncio
+async def test_provider_retry_retries_pre_output_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = object.__new__(DeepSpaceChatService)
+    attempts = 0
+
+    async def stream_factory():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ProviderRequestError("test", 503, "temporary")
+        yield {"type": "delta", "text": "ok"}
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.deepspace.services.chat_service.asyncio.sleep", no_sleep)
+    frames = [
+        item
+        async for item in service._provider_stream_with_retry(
+            stream_factory, run_id=None, deadline=time.monotonic() + 5, provider_type="lmstudio"
+        )
+    ]
+
+    assert attempts == 2
+    assert frames == [{"type": "delta", "text": "ok"}]
+
+
+@pytest.mark.asyncio
+async def test_provider_retry_does_not_duplicate_partial_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = object.__new__(DeepSpaceChatService)
+
+    async def stream_factory():
+        yield {"type": "delta", "text": "partial"}
+        raise ProviderRequestError("test", 502, "connection lost")
+
+    monkeypatch.setattr("app.deepspace.services.chat_service.asyncio.sleep", lambda _: None)
+    with pytest.raises(ProviderRequestError):
+        [
+            item
+            async for item in service._provider_stream_with_retry(
+                stream_factory, run_id=None, deadline=time.monotonic() + 5
+            )
+        ]
+
+
+def test_context_budget_reports_thresholds_and_safe_remaining() -> None:
+    state = DeepSpaceChatService._context_budget_state(
+        used_tokens=195,
+        context_limit=200,
+        reserved_output_tokens=20,
+        compacted=False,
+    )
+
+    assert state["contextStatus"] == "emergency"
+    assert state["safeRemainingTokens"] == 0
+
+    unknown = DeepSpaceChatService._context_budget_state(
+        used_tokens=10,
+        context_limit=None,
+        reserved_output_tokens=20,
+        compacted=False,
+    )
+    assert unknown["contextStatus"] == "unknown"
+    assert unknown["safeRemainingTokens"] is None
+
+
+def test_context_history_fit_preserves_system_and_newest_messages() -> None:
+    messages = [{"role": "system", "content": "rules"}]
+    messages.extend({"role": "user", "content": "x" * 300} for _ in range(12))
+
+    fitted, compacted = DeepSpaceChatService._fit_history_to_context(
+        messages, context_window=700, max_output_tokens=256
+    )
+
+    assert compacted is True
+    assert fitted[0]["role"] == "system"
+    assert fitted[-1] == messages[-1]

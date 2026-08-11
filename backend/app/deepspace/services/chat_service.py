@@ -8,7 +8,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from app.auth.dependencies import AuthContext
 from app.core.config import Settings
@@ -558,7 +558,7 @@ class DeepSpaceChatService:
                     emitted = True
                     yield item
                 return
-            except (ProviderRequestError, TimeoutError, asyncio.TimeoutError, OSError) as exc:
+            except (ProviderRequestError, TimeoutError, OSError):
                 if emitted or attempt >= MAX_PROVIDER_STREAM_RETRIES:
                     raise
                 normalized_provider = (provider_type or "").strip().lower()
@@ -675,9 +675,7 @@ class DeepSpaceChatService:
             "contextStatus": status,
             "contextCompacted": compacted,
             "reservedOutputTokens": reserved_output_tokens,
-            "safeRemainingTokens": max(
-                0, context_limit - used_tokens - reserved_output_tokens
-            ),
+            "safeRemainingTokens": max(0, context_limit - used_tokens - reserved_output_tokens),
         }
 
     @classmethod
@@ -1130,15 +1128,15 @@ class DeepSpaceChatService:
                     raise ValueError("read(target='memory') requires memory_key.")
                 memory_service = MemoryService(self.db, self.settings)
                 preferences = await memory_service.get_preferences(
-                    tenant_id=auth.tenant_id, user_id=auth.user_id
+                    tenant_id=str(auth.tenant_id), user_id=str(auth.user_id)
                 )
                 if not preferences["memory_retrieval_enabled"]:
                     return {"key": key, "value": None, "retrieval_disabled": True}
                 return {
                     "key": key,
                     "value": await memory_service.retrieve_fact(
-                        tenant_id=auth.tenant_id,
-                        user_id=auth.user_id,
+                        tenant_id=str(auth.tenant_id),
+                        user_id=str(auth.user_id),
                         key=key[:120],
                         conversation_id=str(conversation_id),
                     ),
@@ -1164,7 +1162,7 @@ class DeepSpaceChatService:
             if target == "memory":
                 memory_service = MemoryService(self.db, self.settings)
                 preferences = await memory_service.get_preferences(
-                    tenant_id=auth.tenant_id, user_id=auth.user_id
+                    tenant_id=str(auth.tenant_id), user_id=str(auth.user_id)
                 )
                 if not preferences["memory_retrieval_enabled"]:
                     return {
@@ -1177,8 +1175,8 @@ class DeepSpaceChatService:
                     "target": target,
                     "query": query,
                     "memories": await memory_service.search_memories(
-                        tenant_id=auth.tenant_id,
-                        user_id=auth.user_id,
+                        tenant_id=str(auth.tenant_id),
+                        user_id=str(auth.user_id),
                         query=query[:1000],
                         limit=min(10, limit),
                         conversation_id=str(conversation_id),
@@ -1228,7 +1226,7 @@ class DeepSpaceChatService:
                 source = str(arguments.get("source") or "").strip().lower()
                 if source:
                     if source == "previous_assistant":
-                        messages = self.chat.get_messages(
+                        source_messages = self.chat.get_messages(
                             tenant_id=auth.tenant_id,
                             conversation_id=conversation_id,
                             user_id=auth.user_id,
@@ -1236,7 +1234,7 @@ class DeepSpaceChatService:
                         source_message = next(
                             (
                                 item
-                                for item in reversed(messages)
+                                for item in reversed(source_messages)
                                 if item.role == "assistant"
                                 and (
                                     assistant_message_id is None or item.id != assistant_message_id
@@ -1262,10 +1260,11 @@ class DeepSpaceChatService:
                         raise ValueError("write source must be 'previous_assistant' or 'message'.")
                     if source_message is None or source_message.role != "assistant":
                         raise ValueError("The requested assistant response could not be found.")
+                    source_message_obj: Any = source_message
                     content = str(
-                        source_message.active_version.content
-                        if source_message.active_version is not None
-                        else source_message.content
+                        source_message_obj.active_version.content
+                        if source_message_obj.active_version is not None
+                        else source_message_obj.content
                     )
                     if not content.strip():
                         raise ValueError(
@@ -1296,7 +1295,7 @@ class DeepSpaceChatService:
                     return {
                         "operation": "reference_copy",
                         "source": "assistant_message",
-                        "source_message_id": str(source_message.id),
+                        "source_message_id": str(source_message_obj.id),
                         "destination": "library",
                         "file": file_result,
                     }
@@ -1306,8 +1305,8 @@ class DeepSpaceChatService:
                 if not key:
                     raise ValueError("write(target='memory') requires memory_key.")
                 memory_id = await MemoryService(self.db, self.settings).store_fact(
-                    tenant_id=auth.tenant_id,
-                    user_id=auth.user_id,
+                    tenant_id=str(auth.tenant_id),
+                    user_id=str(auth.user_id),
                     key=key[:120],
                     value=content[:10000],
                     scope=str(arguments.get("memory_scope") or "user"),
@@ -1381,8 +1380,8 @@ class DeepSpaceChatService:
                 if not key:
                     raise ValueError("delete(target='memory') requires memory_key.")
                 deleted = await MemoryService(self.db, self.settings).forget_memory(
-                    tenant_id=auth.tenant_id,
-                    user_id=auth.user_id,
+                    tenant_id=str(auth.tenant_id),
+                    user_id=str(auth.user_id),
                     key=key[:120],
                 )
                 return {"key": key, "deleted": deleted}
@@ -1609,7 +1608,7 @@ class DeepSpaceChatService:
             ][:20]
         else:
             allowed_domains = configured_allowed
-        metadata = {
+        metadata: dict[str, Any] = {
             **dict(candidate.metadata),
             "allowed_domains": allowed_domains,
             "time_range": arguments.get("time_range"),
@@ -2078,7 +2077,16 @@ class DeepSpaceChatService:
                     **({"client_request_id": client_request_id} if client_request_id else {}),
                 },
             )
+            if assistant_message is None:
+                raise RuntimeError("DeepSpace could not create the assistant message.")
+            assistant_message = cast(Any, assistant_message)
             self.db.commit()
+
+        # The branch above either creates or validates the conversation.  Keep
+        # the local value narrowed for the rest of this long-lived stream.
+        if conversation_id is None:
+            raise RuntimeError("DeepSpace requires a conversation before streaming.")
+        assert assistant_message is not None
 
         started_at = self._now()
         yield sse(
@@ -2385,7 +2393,8 @@ class DeepSpaceChatService:
         last_context_usage: float | None = None
         last_context_compacted = False
         last_reserved_output_tokens = max(0, int(self.settings.llm_max_tokens_per_request))
-        assert conversation_id is not None
+        if conversation_id is None:
+            raise RuntimeError("DeepSpace requires a conversation before building context.")
         session_input_tokens, session_output_tokens = self._conversation_session_usage(
             auth=auth,
             conversation_id=conversation_id,
@@ -2729,7 +2738,7 @@ class DeepSpaceChatService:
                 last_runtime_heartbeat = time.monotonic()
                 if callable(stream_events):
                     async for provider_event in self._provider_stream_with_retry(
-                        lambda: stream_events(request_payload),
+                        lambda payload=request_payload, stream=stream_events: stream(payload),
                         run_id=run_id,
                         deadline=loop_deadline,
                         provider_type=candidate.provider_type,
@@ -2894,7 +2903,9 @@ class DeepSpaceChatService:
                             yield sse("delta", {"text": text})
                 else:
                     async for chunk in self._provider_stream_with_retry(
-                        lambda: provider.stream_generate(request_payload),
+                        lambda payload=request_payload, stream=provider.stream_generate: stream(
+                            payload
+                        ),
                         run_id=run_id,
                         deadline=loop_deadline,
                         provider_type=candidate.provider_type,
@@ -2921,9 +2932,13 @@ class DeepSpaceChatService:
                 round_output_text = "".join(answer_parts[round_answer_start:]) + "".join(
                     thinking_parts[round_thinking_start:]
                 )
-                round_output_tokens = self._estimate_context_tokens(
-                    [{"role": "assistant", "content": round_output_text}]
-                ) if round_output_text else 0
+                round_output_tokens = (
+                    self._estimate_context_tokens(
+                        [{"role": "assistant", "content": round_output_text}]
+                    )
+                    if round_output_text
+                    else 0
+                )
                 session_output_tokens += round_output_tokens
 
                 if run_id is not None:
@@ -3178,7 +3193,9 @@ class DeepSpaceChatService:
                             {"role": "tool", "tool_call_id": call_id, "content": output}
                         )
                         continue
-                    if mcp_binding is not None and decision.requires_approval:
+                    requires_approval = bool(getattr(decision, "requires_approval", False))
+                    risk_level = str(getattr(decision, "risk_level", "medium"))
+                    if mcp_binding is not None and requires_approval:
                         awaiting_approval = {
                             "approval_id": str(uuid.uuid4()),
                             "call_id": call_id,
@@ -3187,11 +3204,11 @@ class DeepSpaceChatService:
                             "mcp_server": mcp_binding.server.name,
                             "mcp_tool": mcp_binding.raw_name,
                             "tool_input": arguments,
-                            "risk_level": decision.risk_level,
+                            "risk_level": risk_level,
                             "permission_level": "human",
                             "message": (
                                 f"{mcp_binding.server.name} wants to run {mcp_binding.raw_name}. "
-                                f"This {decision.risk_level} action requires your approval."
+                                f"This {risk_level} action requires your approval."
                             ),
                             "decision": "pending",
                             "requested_at": self._now(),
@@ -3338,8 +3355,10 @@ class DeepSpaceChatService:
                                 active_task_id = None
                         elif managed_task_run:
                             if task_lifecycle_stage == "read_plan" and tool_name == "todo_read":
-                                task_check = tool_payload.get("task_check")
-                                if not isinstance(task_check, dict):
+                                raw_task_check = tool_payload.get("task_check")
+                                if isinstance(raw_task_check, dict):
+                                    task_check = raw_task_check
+                                else:
                                     task_check = self.task_store.check_tasks(
                                         tenant_id=auth.tenant_id,
                                         user_id=auth.user_id,
@@ -3607,7 +3626,7 @@ class DeepSpaceChatService:
         answer = self._append_citations(raw_answer, citations)
         if answer != raw_answer and answer.startswith(raw_answer):
             yield sse("delta", {"text": answer[len(raw_answer) :]})
-        metadata = {
+        metadata: dict[str, Any] = {
             "status": (
                 "cancelled"
                 if terminal_status == "cancelled"
@@ -3666,8 +3685,8 @@ class DeepSpaceChatService:
         if terminal_status == "running" and answer.strip() and not memory_written_this_turn:
             try:
                 consolidation = await MemoryService(self.db, self.settings).consolidate_turn(
-                    tenant_id=auth.tenant_id,
-                    user_id=auth.user_id,
+                    tenant_id=str(auth.tenant_id),
+                    user_id=str(auth.user_id),
                     conversation_id=str(conversation_id),
                     prompt=prompt,
                 )

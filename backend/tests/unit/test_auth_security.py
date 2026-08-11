@@ -6,7 +6,14 @@ import pytest
 
 from app.auth.dependencies import build_auth_context, create_access_token, decode_access_token
 from app.auth.roles import canonicalize_role_name
-from app.auth.security import hash_password, hash_refresh_token, verify_password
+from app.auth.security import (
+    generate_secure_token,
+    hash_password,
+    hash_refresh_token,
+    password_hash_needs_rehash,
+    validate_password_policy,
+    verify_password,
+)
 from app.core.config import get_settings
 from app.core.errors import ApiError
 
@@ -59,3 +66,19 @@ def test_refresh_token_hash_is_deterministic_for_same_input() -> None:
     first = hash_refresh_token(token, secret)
     second = hash_refresh_token(token, secret)
     assert first == second
+
+
+def test_security_rejects_empty_inputs_and_handles_invalid_hashes() -> None:
+    with pytest.raises(ValueError):
+        generate_secure_token(0)
+    assert len(generate_secure_token(8)) > 0
+    with pytest.raises(ValueError):
+        hash_password(" ")
+    assert verify_password("password", "not-an-argon2-hash") is False
+    assert password_hash_needs_rehash("not-an-argon2-hash") is False
+    with pytest.raises(ValueError):
+        hash_refresh_token("", "secret")
+    with pytest.raises(ValueError):
+        hash_refresh_token("token", "")
+    with pytest.raises(ValueError):
+        validate_password_policy("")

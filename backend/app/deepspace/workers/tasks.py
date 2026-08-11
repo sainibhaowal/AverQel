@@ -4,10 +4,10 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import redis
-from celery import Task  # type: ignore[import-untyped]
+from celery import Task
 from sqlalchemy import text
 
 from app.auth.dependencies import AuthContext
@@ -166,5 +166,5 @@ def run_deepspace_task(
             session.commit()
         except Exception:  # noqa: BLE001
             session.rollback()
-        session.close()
-        lock.close()
+        cast(Any, session).close()
+        cast(Any, lock).close()

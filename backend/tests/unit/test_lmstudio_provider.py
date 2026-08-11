@@ -112,7 +112,7 @@ def test_lmstudio_provider_prefers_native_models_metadata_for_context_window(
     assert requested_urls == ["http://localhost:1234/api/v1/models"]
     assert len(models) == 1
     assert models[0].name == "qwen2.5-14b-instruct"
-    assert models[0].display_name == "qwen2.5-14b-instruct"
+    assert models[0].display_name == "Qwen2.5 14B Instruct"
     assert models[0].context_window == 131072
     assert models[0].capabilities["runtime"] == "lmstudio"
 

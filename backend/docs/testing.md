@@ -45,6 +45,34 @@ pytest tests/integration -n 4
 pytest tests/unit tests/integration tests/security tests/e2e -n 4
 ```
 
+Coverage is measured against the application source, not test files:
+
+```bash
+pytest --cov=app --cov-report=term-missing --cov-report=json
+```
+
+For the production paths changed most often in DeepSpace, run the focused
+regression set before a full suite:
+
+```bash
+pytest -q \
+  tests/unit/test_auth_security.py \
+  tests/unit/test_deepspace_chat_service.py \
+  tests/unit/test_deepspace_runtime.py \
+  tests/unit/test_deepspace_run_events.py \
+  tests/unit/test_deepspace_task_loop.py \
+  tests/unit/test_deepspace_library_storage.py \
+  tests/unit/test_deepspace_library_uploads.py \
+  tests/integration/test_mcp_api.py \
+  tests/unit/test_provider_selection_service.py
+```
+
+Coverage is expected to grow through behavior-level tests. Do not exclude
+uncovered application code or add tests that only execute lines without
+asserting behavior. New or changed production paths must include focused
+tests in the same change; the repository-wide percentage is a trend signal,
+while critical-path regressions are release blockers.
+
 The worker limit can be tuned after measurement:
 
 ```bash

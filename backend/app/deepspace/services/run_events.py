@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, cast
 
 import redis
 from sqlalchemy import func, select, text
@@ -79,7 +79,9 @@ def append_event(
     try:
         client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
         client.publish(channel_name(normalized_id), payload)
-        client.close()
+        # redis-py does not ship complete typing for the dynamically-created
+        # client; closing it is still the same runtime operation.
+        cast(Any, client).close()
     except Exception:  # noqa: BLE001
         # PostgreSQL is authoritative. A reconnect will replay this event even
         # if Redis is temporarily unavailable.

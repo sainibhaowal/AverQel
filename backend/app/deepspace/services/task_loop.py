@@ -5,7 +5,7 @@ import re
 import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -254,6 +254,7 @@ class DeepSpaceTaskLoopStore:
             # the request-local UUID allocated above, never a model id.
             existing_task_id = requested_id if requested_id in existing else task_id
             task = existing.get(existing_task_id)
+            task_obj: Any = task
             try:
                 priority = max(0, min(int(raw.get("priority") or 0), 1000))
             except (TypeError, ValueError):
@@ -274,14 +275,20 @@ class DeepSpaceTaskLoopStore:
                     automation_json={},
                 )
                 self.db.add(task)
+                task_obj = task
             else:
-                task.content = content
-                task.active_form = str(
+                # SQLAlchemy's legacy Column annotations are narrower than the
+                # instance values returned by the ORM.  Keep the runtime model
+                # unchanged while typing this mutation boundary explicitly.
+                task_obj.content = content
+                task_obj.active_form = str(
                     raw.get("active_form") or raw.get("activeForm") or content
                 ).strip()[:MAX_TASK_TEXT]
-                task.status = status
-                task.priority = priority
-            metadata = dict(task.metadata_json or {})
+                task_obj.status = status
+                task_obj.priority = priority
+            if task is None:
+                raise RuntimeError("Task row disappeared while updating the plan.")
+            metadata: dict[str, Any] = dict(task_obj.metadata_json or {})
             dependencies = raw.get("dependencies") or raw.get("depends_on") or []
             metadata["dependencies"] = [
                 requested_id_map.get(str(item), str(item))
@@ -290,12 +297,12 @@ class DeepSpaceTaskLoopStore:
             ][:MAX_TASKS]
             if isinstance(raw.get("evidence"), list):
                 metadata["evidence"] = [str(item)[:1000] for item in raw["evidence"][:10]]
-            task.metadata_json = metadata
-            retained.add(str(task.id))
-            result.append(self._serialize(task))
+            task_obj.metadata_json = metadata
+            retained.add(str(task_obj.id))
+            result.append(self._serialize(task_obj))
         for task_id, task in existing.items():
             if task_id not in retained:
-                task.status = "deleted"
+                cast(Any, task).status = "deleted"
         self.db.commit()
         return self.read_tasks(
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
@@ -317,9 +324,10 @@ class DeepSpaceTaskLoopStore:
         task = next((item for item in tasks if str(item.id) == task_id), None)
         if task is None:
             raise ValueError("Task not found in this DeepSpace conversation.")
+        task_obj: Any = task
         if status in {"in_progress", "completed"}:
             task_map = {str(item.id): item for item in tasks}
-            dependencies = list((task.metadata_json or {}).get("dependencies") or [])
+            dependencies = list((task_obj.metadata_json or {}).get("dependencies") or [])
             incomplete = [
                 dependency
                 for dependency in dependencies
@@ -328,18 +336,18 @@ class DeepSpaceTaskLoopStore:
             if incomplete:
                 raise ValueError(f"Task dependencies are incomplete: {', '.join(incomplete[:5])}")
         if status == "completed" and not (
-            evidence or list((task.metadata_json or {}).get("evidence") or [])
+            evidence or list((task_obj.metadata_json or {}).get("evidence") or [])
         ):
             raise ValueError("Completed tasks require evidence.")
-        task.status = status
-        metadata = dict(task.metadata_json or {})
+        task_obj.status = status
+        metadata: dict[str, Any] = dict(task_obj.metadata_json or {})
         if evidence and evidence.strip():
             evidence_items = list(metadata.get("evidence") or [])
             evidence_items.append(evidence.strip()[:1000])
             metadata["evidence"] = evidence_items[-10:]
-        task.metadata_json = metadata
+        task_obj.metadata_json = metadata
         self.db.commit()
-        return self._serialize(task)
+        return self._serialize(task_obj)
 
     def check_tasks(
         self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID

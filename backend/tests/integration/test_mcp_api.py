@@ -10,8 +10,8 @@ from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.integrations.catalog.mcp_official_providers import CURATED_MCP_CATALOG_SOURCE
 from app.integrations.models.mcp_server import MCPRegistryEntry
-from app.integrations.services.mcp_oauth_service import MCPServerOAuthService
 from app.integrations.services.mcp_catalog_service import MCPCatalogService
+from app.integrations.services.mcp_oauth_service import MCPServerOAuthService
 from tests.conftest import SeededUser
 
 

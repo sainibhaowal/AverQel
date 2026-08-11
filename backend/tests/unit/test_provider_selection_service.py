@@ -241,7 +241,7 @@ def test_web_search_uses_builtin_searxng_when_no_provider_row_exists(settings) -
         session.close()
 
 
-def test_context_window_does_not_fall_back_to_stale_cache_when_live_discovery_is_unknown(
+def test_context_window_uses_verified_metadata_when_live_discovery_is_unknown(
     settings,
     monkeypatch,
 ) -> None:
@@ -291,8 +291,8 @@ def test_context_window_does_not_fall_back_to_stale_cache_when_live_discovery_is
             model_name="qwen2.5-14b-instruct",
         )
 
-        assert context_window is None
-        assert context_window_source is None
+        assert context_window == 128000
+        assert context_window_source == "official_docs:qwen"
     finally:
         session.rollback()
         session.close()

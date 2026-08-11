@@ -4,9 +4,10 @@ Revision ID: 20260806_0001
 Revises: 20260805_0002
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "20260806_0001"
 down_revision = "20260805_0002"
@@ -59,7 +60,9 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["conversation_id"], ["conversations.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["file_id"], ["deepspace_workspace_files.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["parent_folder_id"], ["deepspace_workspace_folders.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["parent_folder_id"], ["deepspace_workspace_folders.id"], ondelete="SET NULL"
+        ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
@@ -74,13 +77,21 @@ def upgrade() -> None:
         "deepspace_library_uploads",
         ["conversation_id", "status"],
     )
-    op.create_index("ix_deepspace_library_uploads_tenant_id", "deepspace_library_uploads", ["tenant_id"])
-    op.create_index("ix_deepspace_library_uploads_user_id", "deepspace_library_uploads", ["user_id"])
     op.create_index(
-        "ix_deepspace_library_uploads_conversation_id", "deepspace_library_uploads", ["conversation_id"]
+        "ix_deepspace_library_uploads_tenant_id", "deepspace_library_uploads", ["tenant_id"]
     )
     op.create_index(
-        "ix_deepspace_library_uploads_parent_folder_id", "deepspace_library_uploads", ["parent_folder_id"]
+        "ix_deepspace_library_uploads_user_id", "deepspace_library_uploads", ["user_id"]
+    )
+    op.create_index(
+        "ix_deepspace_library_uploads_conversation_id",
+        "deepspace_library_uploads",
+        ["conversation_id"],
+    )
+    op.create_index(
+        "ix_deepspace_library_uploads_parent_folder_id",
+        "deepspace_library_uploads",
+        ["parent_folder_id"],
     )
     op.create_index("ix_deepspace_library_uploads_status", "deepspace_library_uploads", ["status"])
 
