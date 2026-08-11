@@ -119,6 +119,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
   ) => {
     const { theme } = useTheme();
     const [isExporting, setIsExporting] = useState(false);
+    const [exportMessage, setExportMessage] = useState<string | null>(null);
     const [showWidthMenu, setShowWidthMenu] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [showLibrarySave, setShowLibrarySave] = useState(false);
@@ -224,11 +225,12 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
 
     const handleExport = async (format: "pdf" | "docx" | "md") => {
       if (!conversationId) {
-        alert("Cannot export without a saved conversation.");
+        setExportMessage("Save the workspace before exporting it.");
         return;
       }
 
       setIsExporting(true);
+      setExportMessage(null);
       try {
         const response = await fetchWithAuth(
           `/deepspace/export/${conversationId}?format=${format}`,
@@ -251,10 +253,12 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
         a.download = `DeepSpace_Note_${conversationId.substring(0, 8)}.${format}`;
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
+        a.remove();
+        // Keep the object URL alive until the browser has started the download.
+        window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
       } catch (error) {
         console.error("Export error:", error);
-        alert(
+        setExportMessage(
           error instanceof Error ? error.message : "Failed to export document. Please try again.",
         );
       } finally {
@@ -345,8 +349,8 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
     };
 
     return (
-      <div className="flex h-full w-full flex-col overflow-hidden bg-transparent">
-        <div className="border-glass-border bg-surface-1/40 flex flex-col gap-3 border-b p-3 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex h-full w-full flex-col overflow-visible bg-transparent">
+        <div className="border-glass-border bg-surface-1/40 relative z-[80] flex shrink-0 flex-col gap-3 overflow-visible border-b p-3 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <div className="border-glass-border bg-surface-2 text-primary mx-1 flex h-9 w-9 items-center justify-center rounded-xl border shadow-inner">
               <FileEdit size={16} />
@@ -417,6 +421,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
             <div className="relative mr-1" data-deepspace-toolbar-menu>
               <button
                 type="button"
+                onPointerDown={(event) => event.stopPropagation()}
                 aria-expanded={showWidthMenu}
                 aria-haspopup="menu"
                 onClick={() => {
@@ -429,11 +434,12 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                 <span className="capitalize">Width: {marginSize}</span>
               </button>
               <div
-                className={`${showWidthMenu ? "flex" : "hidden"} absolute top-full right-0 z-50 pt-2`}
+                className={`${showWidthMenu ? "flex" : "hidden"} pointer-events-auto absolute top-full right-0 z-[100] pt-2`}
               >
                 <div className="border-glass-border bg-surface-0 flex w-36 flex-col rounded-2xl border p-1 shadow-2xl backdrop-blur-xl">
                   <button
                     type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
                     role="menuitem"
                     onClick={() => {
                       setMarginSize("narrow");
@@ -449,6 +455,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                   </button>
                   <button
                     type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
                     role="menuitem"
                     onClick={() => {
                       setMarginSize("medium");
@@ -464,6 +471,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                   </button>
                   <button
                     type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
                     role="menuitem"
                     onClick={() => {
                       setMarginSize("wide");
@@ -479,6 +487,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                   </button>
                   <button
                     type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
                     role="menuitem"
                     onClick={() => {
                       setMarginSize("full");
@@ -499,6 +508,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
             <div className="relative" data-deepspace-toolbar-menu>
               <button
                 type="button"
+                onPointerDown={(event) => event.stopPropagation()}
                 aria-expanded={showExportMenu}
                 aria-haspopup="menu"
                 disabled={isExporting}
@@ -516,11 +526,12 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                 Export
               </button>
               <div
-                className={`${showExportMenu ? "flex" : "hidden"} absolute top-full right-0 z-50 pt-2`}
+                className={`${showExportMenu ? "flex" : "hidden"} pointer-events-auto absolute top-full right-0 z-[100] pt-2`}
               >
                 <div className="border-glass-border bg-surface-0 flex w-40 flex-col rounded-2xl border p-1 shadow-2xl backdrop-blur-xl">
                   <button
                     type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
                     role="menuitem"
                     onClick={() => {
                       setShowExportMenu(false);
@@ -533,6 +544,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                   </button>
                   <button
                     type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
                     role="menuitem"
                     onClick={() => {
                       setShowExportMenu(false);
@@ -545,6 +557,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                   </button>
                   <button
                     type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
                     role="menuitem"
                     onClick={() => {
                       setShowExportMenu(false);
@@ -558,6 +571,11 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                 </div>
               </div>
             </div>
+            {exportMessage ? (
+              <span role="status" className="text-danger max-w-48 text-[11px] leading-4">
+                {exportMessage}
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="relative flex flex-1 flex-col overflow-hidden">

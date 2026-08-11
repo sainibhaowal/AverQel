@@ -850,8 +850,44 @@ export default function DeepSpaceLibraryDrawer({
       }}
       onPaste={handleClipboardPaste}
     >
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
-        <div className="flex items-center gap-1">
+      <div className="mb-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-foreground/45 text-[9px] font-bold tracking-[0.16em] uppercase">
+            Library actions
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={!clipboardFile}
+              onClick={() => void pasteFile()}
+              title={clipboardMode === "move" ? "Move file here" : "Paste copied file here"}
+              aria-label={clipboardMode === "move" ? "Move file here" : "Paste copied file here"}
+              className="border-glass-border bg-surface-1 text-primary hover:bg-surface-2 inline-flex h-8 w-8 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-35"
+            >
+              <ClipboardPaste size={13} />
+            </button>
+            <label className="border-primary/25 bg-primary/[0.08] text-primary hover:bg-primary/[0.14] inline-flex min-h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-[10px] font-bold transition sm:flex-none">
+              {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+              <span>{importing ? "Importing…" : "Import files"}</span>
+              <input
+                type="file"
+                multiple
+                className="sr-only"
+                disabled={importing}
+                onChange={(event) => {
+                  // Copy the FileList before clearing the input.  Some browsers
+                  // clear the FileList immediately when value is reset, which
+                  // made the button appear to do nothing while drag/drop still
+                  // worked.
+                  const files = Array.from(event.target.files ?? []);
+                  event.target.value = "";
+                  if (files.length) void importFiles(files);
+                }}
+              />
+            </label>
+          </div>
+        </div>
+        <div className="relative grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {currentFolderId ? (
             <button
               type="button"
@@ -863,72 +899,53 @@ export default function DeepSpaceLibraryDrawer({
                 setSelected(null);
                 setDraft("");
               }}
-              className="text-foreground/55 hover:bg-surface-2 hover:text-primary rounded-md p-1.5"
+              aria-label="Back to parent folder"
+              className="text-foreground/55 hover:bg-surface-2 hover:text-primary absolute mt-1 ml-1 rounded-md p-1.5 transition"
               title="Back to parent folder"
             >
               <ArrowLeft size={13} />
             </button>
           ) : null}
-          <form onSubmit={createFolder} className="flex items-center gap-1">
+          <form
+            onSubmit={createFolder}
+            className={`border-glass-border bg-surface-0/60 flex min-w-0 items-center gap-1 rounded-lg border p-1 ${currentFolderId ? "pl-8" : ""}`}
+          >
             <input
               value={newFolderName}
               onChange={(event) => setNewFolderName(event.target.value)}
               placeholder="New folder"
-              className="border-glass-border bg-surface-0 text-foreground w-24 rounded-md border px-2 py-1.5 text-[10px] outline-none"
+              aria-label="New folder name"
+              className="text-foreground placeholder:text-foreground/35 min-w-0 flex-1 bg-transparent px-2 py-1.5 text-[10px] outline-none"
             />
             <button
               type="submit"
               title="Create folder"
-              className="border-glass-border bg-surface-1 text-primary rounded-md border p-1.5"
+              aria-label="Create folder"
+              className="border-glass-border bg-surface-1 text-primary hover:bg-surface-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition"
             >
               <FolderPlus size={12} />
             </button>
           </form>
-          <form onSubmit={createFile} className="flex items-center gap-1">
+          <form
+            onSubmit={createFile}
+            className="border-glass-border bg-surface-0/60 flex min-w-0 items-center gap-1 rounded-lg border p-1"
+          >
             <input
               value={newFileName}
               onChange={(event) => setNewFileName(event.target.value)}
               placeholder="New file.md"
-              className="border-glass-border bg-surface-0 text-foreground w-24 rounded-md border px-2 py-1.5 text-[10px] outline-none"
+              aria-label="New file name"
+              className="text-foreground placeholder:text-foreground/35 min-w-0 flex-1 bg-transparent px-2 py-1.5 text-[10px] outline-none"
             />
             <button
               type="submit"
               title="Create file"
-              className="border-glass-border bg-surface-1 text-primary rounded-md border p-1.5"
+              aria-label="Create file"
+              className="border-glass-border bg-surface-1 text-primary hover:bg-surface-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition"
             >
               <FilePlus2 size={12} />
             </button>
           </form>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            disabled={!clipboardFile}
-            onClick={() => void pasteFile()}
-            title={clipboardMode === "move" ? "Move file here" : "Paste copied file here"}
-            className="border-glass-border bg-surface-1 text-primary rounded-md border p-1.5 disabled:opacity-40"
-          >
-            <ClipboardPaste size={12} />
-          </button>
-          <label className="border-glass-border bg-surface-1 text-muted-foreground hover:bg-surface-2 hover:text-primary inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-semibold transition">
-            {importing ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-            Import files
-            <input
-              type="file"
-              multiple
-              className="sr-only"
-              disabled={importing}
-              onChange={(event) => {
-                // Copy the FileList before clearing the input.  Some browsers
-                // clear the FileList immediately when value is reset, which
-                // made the button appear to do nothing while drag/drop still
-                // worked.
-                const files = Array.from(event.target.files ?? []);
-                event.target.value = "";
-                if (files.length) void importFiles(files);
-              }}
-            />
-          </label>
         </div>
       </div>
       <div

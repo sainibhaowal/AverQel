@@ -245,8 +245,79 @@ class DeepSpaceExportService:
 
     # ------------------------------------------------------------------ MD
     def generate_md(self, html_content: str) -> io.BytesIO:
-        """Basic HTML to Markdown conversion."""
+        """Convert the note HTML into a portable Markdown document.
+
+        BlockNote stores the note as HTML, so returning that HTML with a ``.md``
+        extension produces a file that is not actually Markdown.  Keep the
+        conversion local and deterministic so exports do not depend on a
+        browser or an additional service.
+        """
+        soup = BeautifulSoup(html_content, "html.parser")
+        lines: list[str] = []
+
+        def inline(node: object) -> str:
+            if not isinstance(node, Tag):
+                return str(node)
+            tag = node.name.lower()
+            text = "".join(inline(child) for child in node.children)
+            if tag in {"strong", "b"}:
+                return f"**{text.strip()}**"
+            if tag in {"em", "i"}:
+                return f"*{text.strip()}*"
+            if tag == "code":
+                return f"`{text.strip()}`"
+            if tag == "a":
+                href = str(node.get("href", "")).strip()
+                return f"[{text.strip()}]({href})" if href else text
+            if tag == "br":
+                return "\n"
+            return text
+
+        def render(node: object, level: int = 0) -> None:
+            if not isinstance(node, Tag):
+                return
+            tag = node.name.lower()
+            if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                lines.append(f"{'#' * int(tag[1])} {inline(node).strip()}\n")
+            elif tag == "p":
+                value = inline(node).strip()
+                if value:
+                    lines.append(f"{value}\n")
+            elif tag in {"ul", "ol"}:
+                ordered = tag == "ol"
+                index = 1
+                for child in node.find_all("li", recursive=False):
+                    marker = f"{index}." if ordered else "-"
+                    lines.append(f"{marker} {inline(child).strip()}\n")
+                    index += 1
+                lines.append("\n")
+            elif tag == "blockquote":
+                value = inline(node).strip()
+                if value:
+                    lines.append("\n".join(f"> {line}" for line in value.splitlines()) + "\n")
+            elif tag == "pre":
+                lines.append(f"```\n{node.get_text().rstrip()}\n```\n")
+            elif tag == "table":
+                rows = node.find_all("tr")
+                matrix = [
+                    [inline(cell).strip() for cell in row.find_all(["th", "td"])] for row in rows
+                ]
+                if matrix:
+                    width = max(len(row) for row in matrix)
+                    matrix = [row + [""] * (width - len(row)) for row in matrix]
+                    lines.append("| " + " | ".join(matrix[0]) + " |\n")
+                    lines.append("| " + " | ".join("---" for _ in range(width)) + " |\n")
+                    for row in matrix[1:]:
+                        lines.append("| " + " | ".join(row) + " |\n")
+                    lines.append("\n")
+            elif tag in {"div", "section", "article", "main", "body"}:
+                for child in node.children:
+                    render(child, level)
+
+        for child in soup.children:
+            render(child)
+
         output = io.BytesIO()
-        output.write(html_content.encode("utf-8"))
+        output.write("".join(lines).strip().encode("utf-8"))
         output.seek(0)
         return output

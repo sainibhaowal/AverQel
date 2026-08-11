@@ -15,3 +15,23 @@ def test_pdf_export_handles_unicode_content_without_crashing():
     )
 
     assert pdf.getvalue().startswith(b"%PDF")
+
+
+def test_markdown_export_returns_markdown_not_source_html():
+    service = DeepSpaceExportService()
+
+    markdown = (
+        service.generate_md(
+            "<h1>Title</h1><p>A <strong>bold</strong> paragraph.</p>"
+            "<ul><li>One</li><li>Two</li></ul>"
+            "<table><tr><th>Name</th><th>Value</th></tr><tr><td>A</td><td>1</td></tr></table>"
+        )
+        .getvalue()
+        .decode("utf-8")
+    )
+
+    assert markdown.startswith("# Title")
+    assert "**bold**" in markdown
+    assert "- One" in markdown
+    assert "| Name | Value |" in markdown
+    assert "<h1>" not in markdown

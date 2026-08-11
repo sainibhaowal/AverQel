@@ -360,7 +360,7 @@ export default function DashboardPage() {
           </div>
 
           <div
-            className={`grid grid-cols-2 gap-px overflow-hidden rounded-2xl border ${
+            className={`grid grid-cols-1 gap-px overflow-hidden rounded-2xl border sm:grid-cols-2 ${
               theme === "dark" ? "border-white/5 bg-white/5" : "border-black/5 bg-black/5"
             } xl:w-[26rem]`}
           >
@@ -427,7 +427,7 @@ export default function DashboardPage() {
         </div>
       </motion.section>
 
-      <section className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr_0.95fr]">
+      <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-[0.95fr_1.05fr_0.95fr]">
         <motion.div
           {...CARD_ENTER}
           transition={{ duration: 0.35, delay: 0.05 }}
