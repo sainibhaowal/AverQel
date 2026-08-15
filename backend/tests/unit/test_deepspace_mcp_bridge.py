@@ -123,3 +123,52 @@ def test_bridge_exposes_connected_mcp_tools_without_manual_scope_override() -> N
 
     assert len(bindings) == 1
     assert next(iter(bindings.values())).raw_name == "read_mail"
+
+
+def test_bridge_keeps_stale_catalog_available_and_requests_refresh(monkeypatch) -> None:
+    tenant_id = uuid4()
+    user_id = uuid4()
+    server = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        user_id=user_id,
+        registry_entry_id=None,
+        name="Google Workspace",
+        enabled=True,
+        status="connected",
+        catalog_revision=1,
+        created_at=datetime.now(UTC),
+        config={
+            "mcp_catalog_last_sync_at": "2020-01-01T00:00:00+00:00",
+            "mcp_tools_cache": [{"name": "read_mail", "inputSchema": {}}],
+        },
+    )
+    policy = SimpleNamespace(
+        server_id=server.id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        default_enabled=True,
+        conversation_overrides={},
+    )
+    queued: list[tuple[str, str]] = []
+
+    class _Refresh:
+        @staticmethod
+        def delay(server_id: str, queued_tenant_id: str) -> None:
+            queued.append((server_id, queued_tenant_id))
+
+    monkeypatch.setattr(
+        "app.integrations.workers.tasks_mcp.refresh_server_catalog",
+        _Refresh,
+    )
+    bindings = DeepSpaceMCPBridge(
+        _Db(server, policy),
+        SimpleNamespace(mcp_catalog_max_age_seconds=900),
+    ).tools_for_conversation(
+        auth=SimpleNamespace(tenant_id=tenant_id, user_id=user_id),
+        conversation_id=uuid4(),
+    )
+
+    assert len(bindings) == 1
+    assert next(iter(bindings.values())).raw_name == "read_mail"
+    assert queued == [(str(server.id), str(tenant_id))]

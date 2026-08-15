@@ -55,6 +55,9 @@ class _FakeRepository:
         _FakeRepository.completed_content = kwargs.get("content")
         return None
 
+    def find_turn_by_request_id(self, **kwargs):
+        return None
+
 
 class _FakeTaskStore:
     def __init__(self, db):
@@ -357,6 +360,7 @@ async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
             conversation_id=None,
             prompt="Explain this clearly",
             thinking_enabled=False,
+            client_request_id="request-history-1",
         )
     ]
 
@@ -369,7 +373,20 @@ async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
     assert meta["context_limit_source"] == "live_model"
     assert json.loads(thinking_frames[-1].split("data: ", 1)[1].strip())["text"] == " Then answer."
     assert json.loads(delta_frames[-1].split("data: ", 1)[1].strip())["text"] == "Final answer."
+    assert _FakeRepository.completed_metadata["context_limit"] == 131072
+    assert _FakeRepository.completed_metadata["context_window"] == 131072
+    assert _FakeRepository.completed_metadata["context_limit_source"] == "live_model"
     assert _FakeRepository.completed_metadata["thinking"]["content"] == "Plan first. Then answer."
+    assert _FakeRepository.completed_metadata["client_request_id"] == "request-history-1"
+
+
+def test_clarification_detection_is_conservative():
+    assert chat_service_module.DeepSpaceChatService._looks_like_clarification_request(
+        "I apologize, but your request is unclear. Could you clarify what you want me to check?"
+    )
+    assert not chat_service_module.DeepSpaceChatService._looks_like_clarification_request(
+        "Here are the key questions to consider when evaluating the result."
+    )
 
 
 @pytest.mark.asyncio

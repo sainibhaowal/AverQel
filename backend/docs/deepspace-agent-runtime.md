@@ -88,3 +88,22 @@ This runtime does not modify Query, terminal, file-explorer, connector, or
 operating-system storage behavior. It adds only the DeepSpace adapter and the
 approval/resume path described above; the existing MCP transport and security
 boundary remain unchanged.
+
+### OAuth continuity
+
+MCP OAuth tokens are stored encrypted in `mcp_oauth_tokens`. Each worker
+restores the persisted expiry before opening a session, so the MCP SDK can
+refresh an expired access token with the stored refresh token before the first
+request. Refreshed access tokens are encrypted and persisted again without
+replacing a refresh token when a provider omits it from the refresh response.
+
+Read-only tool calls may make a bounded reconnect attempt after a transient
+session/auth failure. Writes, deletes, and outbound messages are never retried
+automatically because a remote service may already have applied their side
+effect. Remote failures are returned with a stable category and a safe
+recovery message; token values and provider response bodies are not exposed.
+
+If a provider revokes a grant, changes scopes, or disables an account, no
+client can silently repair that authorization. In that case the connection is
+reported as requiring reconnection, while other MCP connections and the chat
+run remain isolated.

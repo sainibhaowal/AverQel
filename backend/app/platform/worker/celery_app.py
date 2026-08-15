@@ -40,6 +40,7 @@ celery_app.conf.update(
         "maintenance.retention_cleanup": {"queue": "maintenance"},
         "maintenance.heartbeat": {"queue": "maintenance"},
         "app.integrations.workers.tasks_connectors.*": {"queue": "maintenance"},
+        "mcp.*": {"queue": "maintenance"},
         "mcp.sync_official_catalog": {"queue": "maintenance"},
         "deepspace.run": {"queue": "deepspace"},
         "deepspace.library_upload_finalize": {"queue": "deepspace"},

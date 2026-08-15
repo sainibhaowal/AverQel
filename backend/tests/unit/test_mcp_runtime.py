@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -11,6 +12,7 @@ from app.integrations.services import mcp_runtime
 from app.integrations.services.mcp_runtime import (
     MCPConnectorRuntime,
     UniversalMCPConnector,
+    classify_mcp_error,
 )
 
 
@@ -110,6 +112,60 @@ def test_runtime_restores_persisted_oauth_expiry_for_worker_refresh() -> None:
     provider = runtime._session_client()
     assert provider is not None
     assert provider.context.token_expiry_time == expiry.timestamp()
+
+
+def test_mcp_error_classification_is_safe_and_actionable() -> None:
+    unauthorized = classify_mcp_error(RuntimeError("HTTP 401 Unauthorized: bearer redacted"))
+    assert unauthorized == {
+        "error_code": "oauth_unauthorized",
+        "error_category": "oauth",
+        "http_status": 401,
+        "requires_reconnect": True,
+        "message": "The connected MCP account rejected its access token. Reconnect it if this persists.",
+    }
+
+    forbidden = classify_mcp_error(RuntimeError("403 Forbidden"))
+    assert forbidden["error_code"] == "mcp_forbidden"
+    assert forbidden["requires_reconnect"] is True
+
+
+def test_mcp_read_call_reconnects_but_side_effect_call_does_not_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = MCPConnectorRuntime(
+        server_url="https://remote.example/mcp",
+        client_metadata=None,
+        storage=SimpleNamespace(),
+        oauth_metadata=None,
+        resource_metadata=None,
+        declared_tools=(),
+        anonymous=True,
+    )
+    calls = 0
+
+    class FailingSession:
+        async def call_tool(self, name: str, arguments: dict) -> None:
+            del name, arguments
+            nonlocal calls
+            calls += 1
+            raise RuntimeError("temporary remote failure")
+
+    @asynccontextmanager
+    async def fake_session(self):
+        yield FailingSession()
+
+    monkeypatch.setattr(MCPConnectorRuntime, "session", fake_session)
+
+    async def run() -> None:
+        with pytest.raises(Exception, match="after reconnect attempts"):
+            await runtime.call_tool("search_threads", {}, allow_retry=True)
+        assert calls == 3
+        calls_before_write = calls
+        with pytest.raises(Exception, match="failed"):
+            await runtime.call_tool("send_message", {}, allow_retry=False)
+        assert calls == calls_before_write + 1
+
+    anyio.run(run)
 
 
 def test_mcp_runtime_snapshot_formats_text_and_structured_payload(monkeypatch) -> None:

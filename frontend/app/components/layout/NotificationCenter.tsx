@@ -36,7 +36,9 @@ const POLL_INTERVAL_MS = 15_000;
 function formatWhen(value: string, now: number | null) {
   const date = new Date(value);
   if (now === null) return date.toISOString();
-  const diffMin = Math.round((Date.now() - date.getTime()) / 60_000);
+  // Use the client clock captured after hydration. Calling Date.now() while
+  // rendering makes server HTML and the first browser render disagree.
+  const diffMin = Math.round((now - date.getTime()) / 60_000);
   if (diffMin < 1) return "Just now";
   if (diffMin < 60) return `${diffMin}m ago`;
   if (diffMin < 24 * 60) return `${Math.round(diffMin / 60)}h ago`;

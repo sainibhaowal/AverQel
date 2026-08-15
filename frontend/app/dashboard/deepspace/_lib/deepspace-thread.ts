@@ -1073,6 +1073,13 @@ function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): T
     toolOutput: incoming.toolOutput
       ? appendStreamingText(existing.toolOutput, incoming.toolOutput)
       : existing.toolOutput,
+    // A persisted tool_result often omits arguments. Do not replace the
+    // earlier tool_start payload with an empty object during replay.
+    toolInput:
+      incoming.toolInput && Object.keys(incoming.toolInput).length > 0
+        ? incoming.toolInput
+        : existing.toolInput,
+    toolId: incoming.toolId || existing.toolId,
     toolInputStream: incoming.toolInputStream
       ? appendStreamingText(existing.toolInputStream, incoming.toolInputStream)
       : existing.toolInputStream,
@@ -1860,11 +1867,6 @@ function getAgentStepIdentity(step: {
     return `step:${stepId.trim()}`;
   }
 
-  const toolName = step.toolName;
-  if (typeof toolName === "string" && toolName.trim()) {
-    return `tool-name:${toolName.trim()}`;
-  }
-
   const id = step.id;
   if (typeof id === "string" && id.trim()) {
     return `id:${id.trim()}`;
@@ -2139,7 +2141,7 @@ function promoteTurnTextToThinking(
     };
   } else {
     nextSteps.push({
-      id: `thinking_${turnIndex ?? Date.now()}`,
+      id: `thinking_${message.id}_${turnIndex ?? nextSteps.length}`,
       type: "thinking",
       status: "completed",
       startedAt: new Date().toISOString(),
@@ -2360,6 +2362,41 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
       : null;
   const metrics = rehydrateMetricsFromHistory(metadata, message.created_at);
   let agentSteps = normalizeHistoryAgentSteps(metadata.agent_steps);
+  const pendingApproval = metadata.pending_approval;
+  if (
+    persistedStatus === "awaiting_approval" &&
+    pendingApproval &&
+    typeof pendingApproval === "object" &&
+    !Array.isArray(pendingApproval)
+  ) {
+    const pending = pendingApproval as Record<string, unknown>;
+    const approvalId = String(pending.approval_id ?? "").trim();
+    if (approvalId) {
+      const existingApproval = (agentSteps ?? []).some(
+        (step) => String(step.data?.approval_id ?? "") === approvalId,
+      );
+      if (!existingApproval) {
+        agentSteps = [
+          ...(agentSteps ?? []),
+          {
+            id: `approval_${approvalId}`,
+            type: "permission_request",
+            stepId: String(pending.step_id ?? ""),
+            toolName: String(pending.tool_name ?? ""),
+            toolInput:
+              pending.tool_input && typeof pending.tool_input === "object"
+                ? (pending.tool_input as Record<string, unknown>)
+                : {},
+            toolId: String(pending.call_id ?? ""),
+            permissionLevel: String(pending.permission_level ?? "human"),
+            status: "awaiting_approval",
+            startedAt: String(message.created_at),
+            data: pending,
+          },
+        ];
+      }
+    }
+  }
   const pendingQuestion = metadata.pending_user_question;
   if (
     persistedStatus === "awaiting_user" &&
@@ -2524,6 +2561,25 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
       timeline = upsertTimelineStep(timeline, mapped);
     }
   }
+  // The durable timeline intentionally excludes the terminal `done` frame.
+  // Once a saved response is no longer streaming, close any thought segment
+  // that was persisted without an explicit status so it cannot show a live
+  // spinner after reload.
+  if (
+    persistedStatus !== "streaming" &&
+    persistedStatus !== "awaiting_user" &&
+    persistedStatus !== "awaiting_approval"
+  ) {
+    timeline = timeline.map((step) =>
+      step.type === "thinking" && (step.status === "running" || step.status === "awaiting_approval")
+        ? {
+            ...step,
+            status: "completed" as const,
+            completedAt: step.completedAt ?? message.created_at,
+          }
+        : step,
+    );
+  }
 
   return {
     id: message.id,
@@ -2531,7 +2587,14 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     content,
     rawContent: message.content,
     createdAt: message.created_at,
-    status: persistedError ? "error" : "ready",
+    // Keep an active durable run visibly streaming while the browser
+    // reconnects. Previously history always converted this to `ready`, which
+    // made a refresh look like the run had disappeared for a moment.
+    status: persistedError
+      ? "error"
+      : persistedStatus === "streaming" && metadata.runtime_active !== false
+        ? "streaming"
+        : "ready",
     blocks: Array.isArray(metadata.blocks) ? (metadata.blocks as StructuredBlock[]) : [],
     structured,
     thinkingContent: thinking || undefined,
@@ -2661,12 +2724,30 @@ function reduceDeepSpaceThread(
           thinkingContent: local.thinkingContent ?? message.thinkingContent,
         };
       });
+      const activeHistoryIds = new Set(
+        action.messages
+          .filter(
+            (message) =>
+              message.role === "assistant" &&
+              message.metadata_json?.status === "streaming" &&
+              message.metadata_json?.runtime_active !== false,
+          )
+          .map((message) => message.id),
+      );
+      const activeAssistant = [...messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === "assistant" &&
+            message.status === "streaming" &&
+            activeHistoryIds.has(message.id),
+        );
       return {
         ...state,
         messages,
         currentConversationId: action.conversationId,
-        activeAssistantId: null,
-        isStreaming: false,
+        activeAssistantId: activeAssistant?.id ?? null,
+        isStreaming: Boolean(activeAssistant),
         streamError: null,
         lastModelName:
           readModelName(
@@ -3090,8 +3171,14 @@ function reduceDeepSpaceThread(
           };
         } else if (thinkingText.trim()) {
           // Create a new thinking step if the last one was closed or didn't exist
+          // Keep this identity stable across streamed reducer updates. Date.now()
+          // created a new DOM row whenever a batch arrived in a different frame,
+          // which made the activity panel re-mount and visibly jump.
+          const thinkingStepIndex = nextAgentSteps.filter(
+            (step) => step.type === "thinking",
+          ).length;
           nextAgentSteps.push({
-            id: `monologue_${Date.now()}`,
+            id: `monologue_${current.id}_${thinkingStepIndex}`,
             type: "thinking",
             status: "running",
             startedAt: new Date().toISOString(),
@@ -3233,8 +3320,9 @@ function reduceDeepSpaceThread(
             toolOutput: appendStreamingText(existingThinkingStep.toolOutput, chunk),
           };
         } else {
+          const thinkingStepIndex = nextSteps.filter((step) => step.type === "thinking").length;
           nextSteps.push({
-            id: `thinking_${stepId || Date.now()}`,
+            id: `thinking_${current.id}_${stepId || thinkingStepIndex}`,
             stepId,
             type: "thinking",
             status: "running",
@@ -3491,8 +3579,17 @@ function reduceDeepSpaceThread(
         const text = formatToolDeltaChunk(String(event.data.text ?? ""), event.data.stream);
         const turnIndex =
           typeof event.data.turn_index === "number" ? event.data.turn_index : undefined;
+        const stepKey = String(
+          event.data.step_id ??
+            event.data.tool_id ??
+            event.data.approval_id ??
+            event.data.mission_id ??
+            turnIndex ??
+            current.agentSteps?.length ??
+            0,
+        );
         const step: AgentStep = {
-          id: `step_${Date.now()}`,
+          id: `permission_${current.id}_${stepKey}`,
           type: "tool_start",
           stepId,
           toolName,
@@ -3688,8 +3785,17 @@ function reduceDeepSpaceThread(
       } else if (event.event === "ask_user_question") {
         const turnIndex =
           typeof event.data.turn_index === "number" ? event.data.turn_index : undefined;
+        const stepKey = String(
+          event.data.question_id ??
+            event.data.step_id ??
+            event.data.tool_id ??
+            event.data.mission_id ??
+            turnIndex ??
+            current.agentSteps?.length ??
+            0,
+        );
         const step: AgentStep = {
-          id: `step_${Date.now()}`,
+          id: `question_${current.id}_${stepKey}`,
           type: "ask_user_question",
           stepId: String(event.data.step_id ?? ""),
           toolName: String(event.data.tool_name ?? "ask_user_question"),

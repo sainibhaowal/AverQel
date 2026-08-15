@@ -276,43 +276,78 @@ async def get_chat_history(
 ) -> ChatHistoryResponse:
     from app.deepspace.integrations.client_proxy import client_proxy_registry
 
+    proxied_messages: list[MessageSchema] | None = None
     if client_proxy_registry.is_storage_connected(str(auth.tenant_id), str(auth.user_id)):
-        data = await client_proxy_registry.db_proxy_call(
-            str(auth.tenant_id),
-            str(auth.user_id),
-            "db.chats.get_chat_history",
-            {"conversation_id": str(conversation_id), "user_id": str(auth.user_id)},
-            channel="storage",
-        )
-        return ChatHistoryResponse(messages=[MessageSchema.model_validate(item) for item in data])
+        try:
+            data = await client_proxy_registry.db_proxy_call(
+                str(auth.tenant_id),
+                str(auth.user_id),
+                "db.chats.get_chat_history",
+                {"conversation_id": str(conversation_id), "user_id": str(auth.user_id)},
+                channel="storage",
+            )
+            proxied_messages = [MessageSchema.model_validate(item) for item in data]
+        except Exception:  # noqa: BLE001
+            # A suspended browser-side storage proxy must not hide the
+            # server's durable chat history. Fall through to PostgreSQL,
+            # which also contains the run/event journal used for reconnect.
+            logger.warning(
+                "DeepSpace storage proxy history read failed; using server history", exc_info=True
+            )
 
-    repo = DeepSpaceChatRepository(db)
-    conversation = repo.get_conversation(
-        tenant_id=auth.tenant_id,
-        conversation_id=conversation_id,
-        user_id=auth.user_id,
-        kind=CONVERSATION_KIND,
-    )
-    if conversation is None:
-        raise ApiError(
-            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+    # A connected proxy can be alive but briefly return an empty snapshot while
+    # the server-side worker has already persisted the turn. Prefer the local
+    # durable snapshot in that case when the conversation exists here.
+    if proxied_messages == []:
+        local_repo = DeepSpaceChatRepository(db)
+        if (
+            local_repo.get_conversation(
+                tenant_id=auth.tenant_id,
+                conversation_id=conversation_id,
+                user_id=auth.user_id,
+                kind=CONVERSATION_KIND,
+            )
+            is not None
+        ):
+            proxied_messages = None
+
+    if proxied_messages is None:
+        repo = DeepSpaceChatRepository(db)
+        conversation = repo.get_conversation(
+            tenant_id=auth.tenant_id,
+            conversation_id=conversation_id,
+            user_id=auth.user_id,
+            kind=CONVERSATION_KIND,
         )
-    messages = repo.get_messages(
-        tenant_id=auth.tenant_id,
-        conversation_id=conversation_id,
-        user_id=auth.user_id,
-        kind=CONVERSATION_KIND,
-    )
+        if conversation is None:
+            raise ApiError(
+                code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+            )
+        messages = repo.get_messages(
+            tenant_id=auth.tenant_id,
+            conversation_id=conversation_id,
+            user_id=auth.user_id,
+            kind=CONVERSATION_KIND,
+        )
+    else:
+        messages = None
     runtime = DeepSpaceRuntimeStore(db)
-    serialized_messages: list[MessageSchema] = []
-    for item in messages:
-        serialized = _serialize_message(item)
-        if item.role == "assistant":
+    serialized_messages = proxied_messages or []
+    if messages is not None:
+        serialized_messages = [_serialize_message(item) for item in messages]
+    for serialized in serialized_messages:
+        if serialized.role == "assistant":
+            try:
+                assistant_message_id = uuid.UUID(str(serialized.id))
+            except (TypeError, ValueError):
+                # A malformed proxy record must not prevent the rest of the
+                # conversation from loading.
+                continue
             live_run = runtime.live_worker_run_for_message(
                 tenant_id=auth.tenant_id,
                 user_id=auth.user_id,
                 conversation_id=conversation_id,
-                assistant_message_id=item.id,
+                assistant_message_id=assistant_message_id,
             )
             if serialized.metadata_json.get("status") == "streaming":
                 serialized.metadata_json = {
@@ -326,7 +361,7 @@ async def get_chat_history(
                 tenant_id=auth.tenant_id,
                 user_id=auth.user_id,
                 conversation_id=conversation_id,
-                assistant_message_id=item.id,
+                assistant_message_id=assistant_message_id,
             )
             if durable_steps:
                 serialized.metadata_json = {
@@ -349,7 +384,8 @@ async def get_chat_history(
                         **serialized.metadata_json,
                         "timeline_events": ordered_events,
                     }
-        serialized_messages.append(serialized)
+        # The list is already populated for both the proxy and PostgreSQL
+        # paths; this loop only enriches each message in place.
     return ChatHistoryResponse(messages=serialized_messages)
 
 

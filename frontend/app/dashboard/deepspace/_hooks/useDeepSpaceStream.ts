@@ -73,6 +73,7 @@ export function useDeepSpaceStream({
       try {
         for (let attempt = 0; attempt <= MAX_INITIAL_STREAM_RETRIES; attempt += 1) {
           let receivedAnyEvent = false;
+          let cleanupQueuedEvents: (() => void) | null = null;
           try {
             const response = (await fetchWithAuth(endpoint, {
               method: "POST",
@@ -115,12 +116,42 @@ export function useDeepSpaceStream({
             const decoder = new TextDecoder();
             let buffer = "";
             let terminalEventReceived = false;
+            let queuedEvents: DeepSpaceStreamEvent[] = [];
+            let flushFrame: number | null = null;
+            const flushEvents = () => {
+              flushFrame = null;
+              if (!queuedEvents.length) return;
+              const eventsToDispatch = compactQueuedEvents(queuedEvents);
+              queuedEvents = [];
+              if (onEventsRef.current) onEventsRef.current(eventsToDispatch);
+              else eventsToDispatch.forEach((event) => onEventRef.current(event));
+            };
+            const flushImmediately = () => {
+              if (flushFrame !== null) {
+                window.cancelAnimationFrame(flushFrame);
+                flushFrame = null;
+              }
+              flushEvents();
+            };
+            cleanupQueuedEvents = () => {
+              if (flushFrame !== null) window.cancelAnimationFrame(flushFrame);
+              flushFrame = null;
+              queuedEvents = [];
+            };
+            const scheduleFlush = () => {
+              if (flushFrame !== null) return;
+              flushFrame = window.requestAnimationFrame(flushEvents);
+            };
             const dispatchEvents = (events: DeepSpaceStreamEvent[]) => {
               if (events.some((event) => event.event === "done" || event.event === "error")) {
                 terminalEventReceived = true;
               }
-              if (onEventsRef.current) onEventsRef.current(events);
-              else events.forEach((event) => onEventRef.current(event));
+              queuedEvents.push(...events);
+              // Keep the event order intact, but let React reconcile at most
+              // once per animation frame. Terminal events are flushed first so
+              // completion/error state is never delayed behind a queued frame.
+              if (terminalEventReceived) flushImmediately();
+              else scheduleFlush();
             };
             while (true) {
               const { done, value } = await reader.read();
@@ -142,6 +173,7 @@ export function useDeepSpaceStream({
                 dispatchEvents(parsed.events);
               }
             }
+            flushImmediately();
             if (!terminalEventReceived && !controller.signal.aborted) {
               onTransportErrorRef.current({
                 code: "STREAM_INCOMPLETE",
@@ -167,6 +199,10 @@ export function useDeepSpaceStream({
             }
             onTransportErrorRef.current({ code: "STREAM_TRANSPORT_ERROR", message });
             return;
+          } finally {
+            // A cancelled/errored reader must not leave a frame holding stale
+            // events that could be delivered to a later stream.
+            cleanupQueuedEvents?.();
           }
         }
       } finally {

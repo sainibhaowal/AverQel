@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceAgentStep
@@ -367,10 +368,23 @@ class DeepSpaceRuntimeStore:
         }
         if error:
             values["last_error"] = error[:2000]
-        self.db.execute(
-            update(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id).values(**values)
-        )
-        self.db.commit()
+        try:
+            self.db.execute(
+                update(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id).values(**values)
+            )
+            self.db.commit()
+        except SQLAlchemyError:
+            # A preceding policy/tool query may have aborted this transaction.
+            # Cleanup must never mask the original stream error or leave the
+            # run looking active forever.
+            self.db.rollback()
+            try:
+                self.db.execute(
+                    update(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id).values(**values)
+                )
+                self.db.commit()
+            except SQLAlchemyError:
+                self.db.rollback()
 
     @staticmethod
     def _bounded_json(value: dict[str, object] | None) -> dict[str, object]:

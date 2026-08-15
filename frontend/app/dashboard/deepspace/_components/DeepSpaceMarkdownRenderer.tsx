@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { memo, useEffect, useId, useMemo, useState } from "react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
@@ -121,7 +121,7 @@ function DiffPreview({ source }: { source: string }) {
   );
 }
 
-export default function DeepSpaceMarkdownRenderer({
+const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
   content,
   streaming = false,
 }: {
@@ -277,4 +277,6 @@ export default function DeepSpaceMarkdownRenderer({
       </ReactMarkdown>
     </div>
   );
-}
+});
+
+export default DeepSpaceMarkdownRenderer;

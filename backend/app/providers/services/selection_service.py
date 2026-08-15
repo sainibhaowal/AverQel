@@ -951,6 +951,31 @@ class ProviderSelectionService:
                 return model.context_window, context_window_source
             break
 
+        # Use the provider's persisted discovery metadata before falling back
+        # to the verified family registry. This keeps the selected model's
+        # actual context window attached to the inference candidate even when
+        # live discovery is disabled for a normal chat request.
+        cached_model = self.model_cache.get_model(
+            tenant_id=tenant_id,
+            provider_config_id=provider_config_id,
+            model_name=model_name,
+            model_kind="chat",
+        )
+        if cached_model is not None:
+            cached_context_window = cached_model.context_window
+            if isinstance(cached_context_window, int) and cached_context_window > 0:
+                capabilities = cached_model.capabilities_json or {}
+                cached_source = (
+                    capabilities.get("context_window_source")
+                    if isinstance(capabilities, dict)
+                    else None
+                )
+                # A cache row without provenance may be legacy/stale data;
+                # retain the verified family fallback in that case. Discovery
+                # rows carry their source explicitly and are safe to reuse.
+                if isinstance(cached_source, str) and cached_source.strip():
+                    return cached_context_window, cached_source.strip()
+
         verified_context_window = resolve_verified_context_window(
             model_name,
             provider_type=provider.provider_type,

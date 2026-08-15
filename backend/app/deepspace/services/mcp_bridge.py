@@ -8,12 +8,14 @@ accounts and forwards approved calls through that service.
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext
@@ -27,6 +29,24 @@ from app.integrations.services.mcp_runtime import (
     mcp_catalog_is_fresh,
     mcp_server_provider_available,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _request_catalog_refresh(server: MCPServer, tenant_id: uuid.UUID) -> None:
+    """Ask the maintenance worker to refresh a stale MCP catalog.
+
+    Discovery must remain non-blocking: a temporarily slow remote MCP server
+    must not prevent ordinary chat from starting.  The current cached catalog
+    is still usable for this request while the worker refreshes it.
+    """
+    try:
+        from app.integrations.workers.tasks_mcp import refresh_server_catalog
+
+        refresh_server_catalog.delay(str(server.id), str(tenant_id))
+    except Exception:  # noqa: BLE001
+        # Queue availability must never make connected tools disappear.
+        logger.warning("Unable to schedule MCP catalog refresh for %s", server.id, exc_info=True)
 
 
 def _safe_function_name(value: str) -> str:
@@ -42,6 +62,11 @@ class DeepSpaceMCPTool:
     server: MCPServer
     raw_name: str
     catalog: dict[str, Any]
+    # Capture this while the discovery query is still live.  MCP execution
+    # commits its own audit/policy work, which may expire the ORM server
+    # instance.  Policy checks must not lazily refresh that instance later.
+    catalog_revision: int
+    server_name: str
 
     @property
     def definition(self) -> dict[str, Any]:
@@ -116,13 +141,20 @@ class DeepSpaceMCPBridge:
         max_age = int(getattr(self.settings, "mcp_catalog_max_age_seconds", 3600))
         for server in servers:
             provider_available, _reason = mcp_server_provider_available(self.db, server)
-            if not provider_available or not mcp_catalog_is_fresh(server, max_age_seconds=max_age):
+            if not provider_available:
                 continue
 
             config = server.config if isinstance(server.config, dict) else {}
             cached_tools = config.get("mcp_tools_cache")
             if not isinstance(cached_tools, list):
                 continue
+            if not mcp_catalog_is_fresh(server, max_age_seconds=max_age):
+                # Keep the last known catalog available to DeepSpace while a
+                # worker refreshes it.  Previously this branch silently hid a
+                # connected Gmail/GitHub/etc. server after the cache aged out.
+                # The execution policy still verifies ownership, connection,
+                # risk, and approval before every call.
+                _request_catalog_refresh(server, auth.tenant_id)
 
             policy = self.db.execute(
                 select(MCPConnectionPolicy).where(
@@ -145,6 +177,8 @@ class DeepSpaceMCPBridge:
                     server=server,
                     raw_name=raw_name,
                     catalog=dict(raw_tool),
+                    catalog_revision=int(server.catalog_revision or 0),
+                    server_name=str(server.name),
                 )
         return bindings
 
@@ -155,16 +189,38 @@ class DeepSpaceMCPBridge:
         conversation_id: uuid.UUID,
         binding: DeepSpaceMCPTool,
     ) -> MCPToolPolicyDecision:
+        # Always use a fresh, tenant-owned row.  A previous MCP call may have
+        # committed on this Session and expired ``binding.server``; touching
+        # an expired attribute would issue an implicit refresh in the middle
+        # of the stream and can poison the transaction.
+        try:
+            server = self.db.execute(
+                select(MCPServer)
+                .execution_options(populate_existing=True)
+                .where(
+                    MCPServer.id == binding.server.id,
+                    MCPServer.tenant_id == auth.tenant_id,
+                    MCPServer.user_id == auth.user_id,
+                )
+            ).scalar_one_or_none()
+        except SQLAlchemyError:
+            self.db.rollback()
+            logger.exception("MCP policy lookup failed for %s", binding.exposed_name)
+            return MCPToolPolicyDecision(False, reason="MCP connection database check failed.")
+        if server is None:
+            return MCPToolPolicyDecision(False, reason="MCP connection is no longer available.")
         return evaluate_mcp_tool_policy(
             db=self.db,
-            server=binding.server,
+            server=server,
             tool_name=binding.raw_name,
             tenant_id=auth.tenant_id,
             user_id=auth.user_id,
             conversation_id=conversation_id,
             tool=binding.catalog,
-            expected_catalog_revision=binding.server.catalog_revision,
-            max_age_seconds=int(getattr(self.settings, "mcp_catalog_max_age_seconds", 3600)),
+            expected_catalog_revision=binding.catalog_revision,
+            # Catalog freshness is handled with stale-while-revalidate during
+            # discovery.  Do not reject a connected tool between refreshes.
+            max_age_seconds=None,
         )
 
     async def execute(
@@ -176,10 +232,24 @@ class DeepSpaceMCPBridge:
         arguments: dict[str, Any],
         approval_granted: bool = False,
     ) -> dict[str, Any]:
+        # Do not execute against an expired ORM object after a prior tool
+        # commit.  The runtime receives the same tenant/user-owned row that
+        # policy evaluation verified.
+        server = self.db.execute(
+            select(MCPServer)
+            .execution_options(populate_existing=True)
+            .where(
+                MCPServer.id == binding.server.id,
+                MCPServer.tenant_id == auth.tenant_id,
+                MCPServer.user_id == auth.user_id,
+            )
+        ).scalar_one_or_none()
+        if server is None:
+            raise RuntimeError("MCP connection is no longer available.")
         return await execute_mcp_server_tool(
             db=self.db,
             settings=self.settings,
-            server=binding.server,
+            server=server,
             tool_name=binding.raw_name,
             arguments=arguments,
             conversation_id=conversation_id,

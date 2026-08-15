@@ -172,6 +172,8 @@ services:
       - .env.localprod
     environment:
       AKS_ENV: ${AKS_ENV:-development}
+      AKS_WORKER_QUEUES: ${AKS_WORKER_QUEUES:-deepspace}
+      AKS_WORKER_CONCURRENCY: ${AKS_WORKER_CONCURRENCY:-2}
       AKS_DATABASE_URL: postgresql+psycopg://${AVERQEL_POSTGRES_USER}:${AVERQEL_POSTGRES_PASSWORD}@postgres:5432/${AVERQEL_POSTGRES_DB:-knowledge}
       AKS_REDIS_URL: redis://:${AVERQEL_REDIS_PASSWORD}@redis:6379/0
       AKS_MINIO_ENDPOINT: minio:9000
@@ -200,6 +202,22 @@ services:
       - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  maintenance-worker:
+    extends:
+      service: worker
+    container_name: averqel-maintenance-worker
+    environment:
+      AKS_WORKER_QUEUES: maintenance
+      AKS_WORKER_CONCURRENCY: ${AKS_MAINTENANCE_WORKER_CONCURRENCY:-1}
+
+  ingestion-worker:
+    extends:
+      service: worker
+    container_name: averqel-ingestion-worker
+    environment:
+      AKS_WORKER_QUEUES: ingestion_heavy,ingestion_light
+      AKS_WORKER_CONCURRENCY: ${AKS_INGESTION_WORKER_CONCURRENCY:-1}
 
   scheduler:
     container_name: averqel-scheduler

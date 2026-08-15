@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useEffect, useState } from "react";
 import { BrainCircuit } from "lucide-react";
 import {
   CheckCircle2,
@@ -202,7 +203,8 @@ function StepIcon({ step }: { step: AgentStep }) {
   return <Wrench size={13} className="text-cyan-300" />;
 }
 
-function ActivityStep({ step }: { step: AgentStep }) {
+const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
+  const [outputOpen, setOutputOpen] = useState(step.status === "running");
   const input = formatDetail(step.toolInput ?? step.data?.tool_input);
   const output = formatDetail(step.toolOutput ?? step.plan ?? step.data?.message);
   const toolName = step.toolName?.trim();
@@ -242,7 +244,8 @@ function ActivityStep({ step }: { step: AgentStep }) {
       ) : null}
       {output ? (
         <details
-          open={step.status === "running"}
+          open={outputOpen}
+          onToggle={(event) => setOutputOpen(event.currentTarget.open)}
           className="mt-2 rounded border border-white/6 bg-black/15"
         >
           <summary className="text-foreground/45 cursor-pointer px-2 py-1 text-[10px]">
@@ -255,7 +258,7 @@ function ActivityStep({ step }: { step: AgentStep }) {
       ) : null}
     </div>
   );
-}
+});
 
 function TimelineIcon({ step }: { step: TimelineStep }) {
   if (step.status === "running") {
@@ -280,7 +283,7 @@ function timelineStatus(step: TimelineStep): string {
   return step.status;
 }
 
-function TimelineEntry({
+const TimelineEntry = memo(function TimelineEntry({
   step,
   index,
   isLast,
@@ -289,6 +292,9 @@ function TimelineEntry({
   index: number;
   isLast: boolean;
 }) {
+  const [outputOpen, setOutputOpen] = useState(
+    step.status === "running" || step.status === "failed",
+  );
   const details = formatDetail(step.details);
   const inputStream = formatDetail(step.toolInputStream);
   const input = formatDetail(step.toolInput);
@@ -321,8 +327,11 @@ function TimelineEntry({
         {details ? (
           <div
             className={`text-foreground/70 mt-2 whitespace-pre-wrap ${
-              step.type === "thinking" ? "max-h-64 overflow-auto leading-6" : "leading-5"
+              step.type === "thinking"
+                ? "max-h-64 overflow-auto overscroll-contain leading-6"
+                : "leading-5"
             }`}
+            data-thinking-scroll={step.type === "thinking" ? "true" : undefined}
           >
             {details}
           </div>
@@ -332,7 +341,7 @@ function TimelineEntry({
             <div className="mb-1 text-[9px] font-semibold tracking-[0.12em] text-cyan-200/60 uppercase">
               Live tool arguments
             </div>
-            <pre className="max-h-40 overflow-auto text-[10px] leading-5 break-words whitespace-pre-wrap text-cyan-100/70">
+            <pre className="max-h-40 overflow-auto overscroll-contain text-[10px] leading-5 break-words whitespace-pre-wrap text-cyan-100/70">
               {inputStream}
             </pre>
           </div>
@@ -342,20 +351,21 @@ function TimelineEntry({
             <summary className="text-foreground/45 cursor-pointer px-2 py-1 text-[10px]">
               Request details
             </summary>
-            <pre className="text-foreground/60 max-h-48 overflow-auto border-t border-white/6 px-2 py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
+            <pre className="text-foreground/60 max-h-48 overflow-auto overscroll-contain border-t border-white/6 px-2 py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
               {input}
             </pre>
           </details>
         ) : null}
         {output ? (
           <details
-            open={step.status === "running" || step.status === "failed"}
+            open={outputOpen}
+            onToggle={(event) => setOutputOpen(event.currentTarget.open)}
             className="mt-2 rounded border border-white/6 bg-black/15"
           >
             <summary className="text-foreground/45 cursor-pointer px-2 py-1 text-[10px]">
               {step.status === "running" ? "Live tool output" : "Tool result"}
             </summary>
-            <pre className="text-foreground/60 max-h-56 overflow-auto border-t border-white/6 px-2 py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
+            <pre className="text-foreground/60 max-h-56 overflow-auto overscroll-contain border-t border-white/6 px-2 py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
               {output}
             </pre>
           </details>
@@ -363,7 +373,7 @@ function TimelineEntry({
       </div>
     </li>
   );
-}
+});
 
 export default function DeepSpaceThinkingPanel({
   content,
@@ -376,6 +386,15 @@ export default function DeepSpaceThinkingPanel({
   agentSteps?: AgentStep[];
   timeline?: TimelineStep[];
 }) {
+  const [panelOpen, setPanelOpen] = useState(isStreaming);
+
+  // Opening a newly active run should remain automatic, but completion must
+  // not forcibly collapse the panel or override a user's expand/collapse
+  // choice during reconciliation.
+  useEffect(() => {
+    if (isStreaming) setPanelOpen(true);
+  }, [isStreaming]);
+
   // Providers may emit argument fragments before the function name. The
   // backend labels that transient fragment `pending_tool`; it is not a
   // second execution and must not appear as a failed duplicate row.
@@ -401,12 +420,19 @@ export default function DeepSpaceThinkingPanel({
     return null;
   }
   return (
-    <details open={isStreaming} className="mb-4 rounded-lg border border-white/5 bg-white/[0.02]">
+    <details
+      open={panelOpen}
+      onToggle={(event) => setPanelOpen(event.currentTarget.open)}
+      className="mb-4 rounded-lg border border-white/5 bg-white/[0.02]"
+    >
       <summary className="text-foreground/50 flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[11px] font-bold tracking-wider uppercase">
         <BrainCircuit size={13} className="text-primary/60" />
         {isStreaming ? "Thinking & activity…" : "Thinking & activity"}
       </summary>
-      <div className="text-foreground/60 space-y-3 border-t border-white/5 px-4 py-3 text-xs">
+      <div
+        className="text-foreground/60 space-y-3 overscroll-contain border-t border-white/5 px-4 py-3 text-xs"
+        data-thinking-activity="true"
+      >
         {taskProgress ? <TaskProgressCard progress={taskProgress} /> : null}
         {content.trim() && !hasThinkingTimeline ? (
           <div

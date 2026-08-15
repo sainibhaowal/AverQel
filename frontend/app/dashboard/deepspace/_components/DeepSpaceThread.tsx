@@ -253,10 +253,18 @@ const MessageBubble = memo(
     const [showExportMenu, setShowExportMenu] = useState(false);
     const exportMenuRef = useRef<HTMLDivElement>(null);
     const [approvalBusy, setApprovalBusy] = useState(false);
-    const pendingApproval = [...(message.agentSteps ?? [])]
+    const pendingApprovalStep = [...(message.agentSteps ?? [])]
       .reverse()
       .find((step) => step.type === "permission_request" && step.status === "awaiting_approval");
-    const pendingApprovalData = pendingApproval?.data ?? {};
+    // History and live replay can contain the approval in either the durable
+    // agent-step list or the reconstructed timeline. Use both sources so a
+    // permission card cannot disappear when only timeline events were saved.
+    const pendingApprovalTimeline = [...(message.timeline ?? [])]
+      .reverse()
+      .find((step) => step.type === "permission" && step.status === "awaiting_approval");
+    const pendingApprovalData =
+      pendingApprovalStep?.data ?? pendingApprovalTimeline?.data ?? ({} as Record<string, unknown>);
+    const pendingApproval = pendingApprovalStep ?? pendingApprovalTimeline;
     const pendingApprovalId = String(pendingApprovalData.approval_id ?? "").trim();
     const pendingQuestion = [...(message.agentSteps ?? [])]
       .reverse()
@@ -490,7 +498,7 @@ const MessageBubble = memo(
                         <span>•</span>
                         <span>
                           {String(
-                            pendingApprovalData.mcp_tool ?? pendingApproval.toolName ?? "Tool",
+                            pendingApprovalData.mcp_tool ?? pendingApproval?.toolName ?? "Tool",
                           )}
                         </span>
                         <span>•</span>

@@ -6,6 +6,94 @@ import {
 } from "../app/dashboard/deepspace/_lib/deepspace-thread";
 
 describe("deepSpaceThreadReducer tool streaming", () => {
+  it("keeps a durable streaming turn active while history reconnects", () => {
+    const reloaded = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conv-reconnect",
+      messages: [
+        {
+          id: "assistant-running",
+          role: "assistant",
+          content: "",
+          created_at: new Date().toISOString(),
+          metadata_json: {
+            status: "streaming",
+            runtime_active: true,
+            client_request_id: "request-running",
+          },
+        },
+      ],
+    });
+
+    expect(reloaded.isStreaming).toBe(true);
+    expect(reloaded.activeAssistantId).toBe("assistant-running");
+    expect(reloaded.messages[0]?.status).toBe("streaming");
+  });
+
+  it("rehydrates the model context limit after a completed response", () => {
+    const reloaded = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conv-context",
+      messages: [
+        {
+          id: "assistant-context",
+          role: "assistant",
+          content: "Answer",
+          created_at: new Date().toISOString(),
+          metadata_json: {
+            model_name: "provider-model",
+            context_limit: 128000,
+            context_limit_source: "live_model",
+            context_used_tokens: 4773,
+          },
+        },
+      ],
+    });
+
+    expect(reloaded.lastContextLimit).toBe(128000);
+    expect(reloaded.messages[0]?.metrics?.contextLimit).toBe(128000);
+  });
+
+  it("rehydrates an MCP approval card after history reload", () => {
+    const reloaded = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conv-approval",
+      messages: [
+        {
+          id: "assistant-approval",
+          role: "assistant",
+          content:
+            "DeepSpace is waiting for your approval before running the connected MCP action.",
+          created_at: new Date().toISOString(),
+          metadata_json: {
+            status: "awaiting_approval",
+            pending_approval: {
+              approval_id: "approval-1",
+              call_id: "call-1",
+              step_id: "step-1",
+              tool_name: "mcp_gmail_search_threads",
+              mcp_server: "Google Gmail",
+              mcp_tool: "search_threads",
+              tool_input: { pageSize: 5 },
+              risk_level: "read",
+              permission_level: "human",
+              message: "Google Gmail wants to run search_threads.",
+            },
+          },
+        },
+      ],
+    });
+
+    expect(
+      reloaded.messages[0]?.agentSteps?.some(
+        (step) =>
+          step.type === "permission_request" &&
+          step.status === "awaiting_approval" &&
+          step.data?.approval_id === "approval-1",
+      ),
+    ).toBe(true);
+  });
+
   it("keeps streamed thinking visible after completion and history reload", () => {
     let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "stream_event",
@@ -140,6 +228,57 @@ describe("deepSpaceThreadReducer tool streaming", () => {
     expect(finalSteps[1]?.tool_id).toBe("call-2");
     expect(finalSteps[1]?.status).toBe("completed");
     expect(finalSteps[1]?.toolOutput).toBe("beta result");
+  });
+
+  it("preserves tool arguments and closes replayed thinking after reload", () => {
+    const reloaded = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conv-replay",
+      messages: [
+        {
+          id: "assistant-replay",
+          role: "assistant",
+          content: "Done",
+          created_at: new Date().toISOString(),
+          metadata_json: {
+            status: "ready",
+            client_request_id: "request-replay",
+            timeline_events: [
+              {
+                event: "thinking",
+                data: { text: "I will inspect the mailbox." },
+              },
+              {
+                event: "tool_start",
+                data: {
+                  step_id: "step-1",
+                  tool_id: "call-1",
+                  tool_name: "search_threads",
+                  tool_input: { query: "in:inbox", pageSize: 5 },
+                },
+              },
+              {
+                event: "tool_result",
+                data: {
+                  step_id: "step-1",
+                  tool_id: "call-1",
+                  tool_name: "search_threads",
+                  output: "result",
+                  success: true,
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const timeline = reloaded.messages[0]?.timeline ?? [];
+    expect(timeline.find((step) => step.type === "tool_call")?.toolInput).toEqual({
+      query: "in:inbox",
+      pageSize: 5,
+    });
+    expect(timeline.find((step) => step.type === "thinking")?.status).toBe("completed");
   });
 
   it("appends tool_delta output to the running tool pane", () => {

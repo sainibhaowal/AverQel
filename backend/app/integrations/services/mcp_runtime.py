@@ -175,6 +175,63 @@ class MCPRuntimeError(RuntimeError):
     """Raised when MCP-backed connector runtime work fails."""
 
 
+_MCP_HTTP_STATUS_RE = re.compile(r"\b(?:HTTP\s*)?(401|403)\b", re.IGNORECASE)
+
+
+def classify_mcp_error(error: BaseException) -> dict[str, Any]:
+    """Return a safe, provider-neutral classification for an MCP failure.
+
+    Remote MCP implementations expose failures through different exception
+    types (HTTPX, the SDK, and provider-specific wrappers).  We deliberately
+    classify from the redacted exception text only; credentials and response
+    bodies are never copied into the returned metadata.
+    """
+    text = str(error or "").strip()
+    lowered = text.lower()
+    status_match = _MCP_HTTP_STATUS_RE.search(text)
+    http_status = int(status_match.group(1)) if status_match else None
+    if http_status == 401 or any(
+        marker in lowered
+        for marker in (
+            "unauthorized",
+            "invalid_token",
+            "token expired",
+            "no refresh token",
+            "oauth flow error",
+        )
+    ):
+        return {
+            "error_code": "oauth_unauthorized",
+            "error_category": "oauth",
+            "http_status": 401,
+            "requires_reconnect": True,
+            "message": "The connected MCP account rejected its access token. Reconnect it if this persists.",
+        }
+    if http_status == 403 or any(
+        marker in lowered for marker in ("forbidden", "insufficient_scope", "permission denied")
+    ):
+        return {
+            "error_code": "mcp_forbidden",
+            "error_category": "remote",
+            "http_status": 403,
+            "requires_reconnect": True,
+            "message": "The connected MCP account or requested scope was rejected by the remote service. Reconnect it if the permission has changed.",
+        }
+    if any(marker in lowered for marker in ("timeout", "timed out")):
+        return {
+            "error_code": "mcp_timeout",
+            "error_category": "remote",
+            "requires_reconnect": False,
+            "message": "The MCP service did not respond in time. Please retry.",
+        }
+    return {
+        "error_code": "mcp_remote_error",
+        "error_category": "remote",
+        "requires_reconnect": False,
+        "message": "The connected MCP service returned an error. Please retry.",
+    }
+
+
 class _InMemoryTokenStorage:
     def __init__(
         self,
@@ -1086,7 +1143,10 @@ def build_mcp_server_runtime(
         token_record.secret_ciphertext = encrypted.ciphertext
         token_record.secret_nonce = encrypted.nonce
         token_record.secret_kid = encrypted.kid
-        expires_in = payload.get("expires_in")
+        # Only use the value from the refresh response.  Some OAuth servers
+        # omit ``expires_in`` on refresh; falling back to the old payload would
+        # incorrectly reset the database expiry from a stale token response.
+        expires_in = refreshed.get("expires_in")
         if expires_in is not None:
             from datetime import UTC, datetime, timedelta
 
@@ -1094,20 +1154,29 @@ def build_mcp_server_runtime(
                 token_record.expires_at = datetime.now(UTC) + timedelta(seconds=int(expires_in))
             except (TypeError, ValueError):
                 pass
-        db.add(token_record)
-        from app.integrations.repositories.mcp_events import MCPEventsRepository
+        try:
+            db.add(token_record)
+            from app.integrations.repositories.mcp_events import MCPEventsRepository
 
-        MCPEventsRepository(db).append(
-            tenant_id=server.tenant_id,
-            server_id=server.id,
-            user_id=server.user_id,
-            event_type="oauth_token_refreshed",
-            payload={
-                "has_refresh_token": bool(payload.get("refresh_token")),
-                "expires_in": payload.get("expires_in"),
-            },
-        )
-        db.commit()
+            MCPEventsRepository(db).append(
+                tenant_id=server.tenant_id,
+                server_id=server.id,
+                user_id=server.user_id,
+                event_type="oauth_token_refreshed",
+                payload={
+                    "has_refresh_token": bool(payload.get("refresh_token")),
+                    "expires_in": expires_in,
+                },
+            )
+            db.commit()
+        except Exception:  # noqa: BLE001
+            # A database hiccup must not turn a successful remote refresh into
+            # a failed Gmail/Drive/GitHub request or poison the Session used by
+            # the surrounding chat turn.  The next request will retry the
+            # refresh and the maintenance worker will surface persistence
+            # health separately.
+            db.rollback()
+            logger.exception("Unable to persist refreshed MCP OAuth token")
 
     return build_mcp_runtime(
         {"auth_mode": "mcp", "credentials": credentials, **config},
@@ -1140,13 +1209,6 @@ async def execute_mcp_server_tool(
             "error_code": "server_not_connected",
             "is_error": True,
         }
-    if not mcp_catalog_is_fresh(server, max_age_seconds=settings.mcp_catalog_max_age_seconds):
-        return {
-            "status": "error",
-            "message": "MCP tool catalog is stale; reconnect or refresh the server",
-            "error_code": "stale_catalog",
-            "is_error": True,
-        }
     cached_tools = (
         config.get("mcp_tools_cache") if isinstance(config.get("mcp_tools_cache"), list) else []
     )
@@ -1171,7 +1233,11 @@ async def execute_mcp_server_tool(
         deepspace_id=deepspace_id,
         tool=catalog_tool,
         expected_catalog_revision=server.catalog_revision,
-        max_age_seconds=settings.mcp_catalog_max_age_seconds,
+        # DeepSpace uses stale-while-revalidate: a connected account's last
+        # known tool remains callable while the maintenance worker refreshes
+        # its catalog. Ownership, connection, policy, schema, and approval
+        # checks still run for every invocation.
+        max_age_seconds=None,
     )
     if not policy_decision.allowed:
         return {
@@ -1218,7 +1284,15 @@ async def execute_mcp_server_tool(
         db.commit()
         return {"status": "error", "message": "MCP server is not authenticated", "is_error": True}
     try:
-        result = await runtime.call_tool(tool_name, arguments)
+        # A read-only request can safely be retried after a fresh OAuth/session
+        # setup.  Never retry writes, deletes, or outbound messages because a
+        # remote server may have applied the side effect before the connection
+        # failed.
+        result = await runtime.call_tool(
+            tool_name,
+            arguments,
+            allow_retry=policy_decision.risk_level == "read",
+        )
         payload = serialize_mcp_result(result)
         events.append(
             tenant_id=server.tenant_id,
@@ -1230,15 +1304,33 @@ async def execute_mcp_server_tool(
         db.commit()
         return payload
     except Exception as exc:  # noqa: BLE001
+        failure = classify_mcp_error(exc)
         events.append(
             tenant_id=server.tenant_id,
             user_id=server.user_id,
             server_id=server.id,
             event_type="tool_call_failed",
-            payload={"tool": tool_name, "error_code": type(exc).__name__},
+            payload={
+                "tool": tool_name,
+                "error_code": failure["error_code"],
+                "error_category": failure["error_category"],
+                "http_status": failure.get("http_status"),
+                "requires_reconnect": failure["requires_reconnect"],
+            },
         )
-        db.commit()
-        return {"status": "error", "message": str(exc), "is_error": True}
+        try:
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            logger.exception("Unable to persist MCP tool failure event")
+        return {
+            "status": "error",
+            "message": failure["message"],
+            "error_code": failure["error_code"],
+            "error_category": failure["error_category"],
+            "requires_reconnect": failure["requires_reconnect"],
+            "is_error": True,
+        }
 
 
 def render_mcp_result_text(result: Any) -> str:
@@ -1547,8 +1639,12 @@ async def execute_mcp_tool(
         secret.secret_ciphertext = encrypted.ciphertext
         secret.secret_nonce = encrypted.nonce
         secret.secret_kid = encrypted.kid
-        db.add(secret)
-        db.commit()
+        try:
+            db.add(secret)
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            logger.exception("Unable to persist refreshed connector OAuth token")
 
     # 2. Build runtime config
     config = {
@@ -1571,9 +1667,13 @@ async def execute_mcp_tool(
         return serialize_mcp_result(result)
     except Exception as exc:
         logger.exception("MCP tool execution failed: %s", exc)
+        failure = classify_mcp_error(exc)
         return {
             "status": "error",
-            "message": str(exc),
+            "message": failure["message"],
+            "error_code": failure["error_code"],
+            "error_category": failure["error_category"],
+            "requires_reconnect": failure["requires_reconnect"],
             "is_error": True,
         }
 

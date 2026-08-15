@@ -837,6 +837,33 @@ class DeepSpaceChatService:
             if isinstance(item.get("function"), dict)
         }
 
+    @staticmethod
+    def _looks_like_clarification_request(text: str) -> bool:
+        """Recognize a model clarification that should use ``ask_user``.
+
+        This deliberately requires both a question mark and explicit
+        clarification language, so ordinary answers containing questions or
+        rhetorical prose are not converted into an interactive pause.
+        """
+        normalized = " ".join(text.lower().split())
+        if "?" not in normalized or len(normalized) < 20:
+            return False
+        markers = (
+            "could you clarify",
+            "please clarify",
+            "what would you like",
+            "what are you trying to",
+            "which action",
+            "which one would you like",
+            "please provide",
+            "what do you mean",
+            "are you asking",
+            "i'm not sure what you mean",
+            "your request is unclear",
+            "request is unclear",
+        )
+        return any(marker in normalized for marker in markers)
+
     @classmethod
     def _tools_for_task_lifecycle(
         cls,
@@ -962,7 +989,9 @@ class DeepSpaceChatService:
             if result.get("is_error") or result.get("status") == "error":
                 raise ValueError(str(result.get("message") or "MCP tool execution failed."))
             return {
-                "mcp_server": mcp_binding.server.name,
+                # Use the discovery snapshot; the MCP runtime commits audit
+                # data and may expire the ORM server instance.
+                "mcp_server": mcp_binding.server_name,
                 "mcp_tool": mcp_binding.raw_name,
                 **result,
             }
@@ -2367,6 +2396,11 @@ class DeepSpaceChatService:
         memory_written_this_turn = False
         forced_answer: str | None = None
         seen_tool_calls: dict[str, int] = {}
+        # A remote MCP outage can otherwise make a model replay the same call
+        # with slightly different arguments forever. Track failures separately
+        # from successful call de-duplication so one transient error gets a
+        # retry, while a repeated identical outage becomes an actionable stop.
+        repeated_mcp_failures: dict[str, int] = {}
         pending_images: list[str] = []
         awaiting_user: dict[str, Any] | None = None
         awaiting_approval: dict[str, Any] | None = None
@@ -2387,6 +2421,7 @@ class DeepSpaceChatService:
         round_index = 0
         deadline_continuations = 0
         empty_provider_retries = 0
+        clarification_retries = 0
         terminal_status = "running"
         last_context_used_tokens: int | None = None
         last_context_remaining_tokens: int | None = None
@@ -3024,6 +3059,61 @@ class DeepSpaceChatService:
                             "required structured tool call. The plan and its unfinished work remain saved."
                         )
                         break
+                    prose_answer = "".join(answer_parts[round_answer_start:]).strip()
+                    if available_tools and self._looks_like_clarification_request(prose_answer):
+                        if clarification_retries < 1:
+                            clarification_retries += 1
+                            # The first response was streamed optimistically.
+                            # Replace it in the UI before retrying so users do
+                            # not see a duplicate prose question above the
+                            # eventual interactive card.
+                            del answer_parts[round_answer_start:]
+                            del thinking_parts[round_thinking_start:]
+                            yield sse("replace", {"content": "", "replayed": False})
+                            conversation_messages.append(
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "Your last response asked the user for clarification in prose. "
+                                        "This turn requires an interactive clarification: call the ask_user "
+                                        "tool now with one concise question and optional choices. Do not answer "
+                                        "in prose and do not call another tool first."
+                                    ),
+                                }
+                            )
+                            continue
+                        # A second provider response still asked for missing
+                        # information without using ask_user. Convert only
+                        # this narrowly detected case into the same persisted
+                        # question lifecycle used by a real tool call.
+                        question_id = str(uuid.uuid4())
+                        awaiting_user = {
+                            "awaiting_user": True,
+                            "question": prose_answer[:2000],
+                            "options": [],
+                            "question_id": question_id,
+                            "call_id": f"clarification_{question_id}",
+                            "step_id": f"clarification_{round_index}",
+                            "tool_name": "ask_user",
+                            "tool_input": {"question": prose_answer[:2000], "options": []},
+                            "turn_index": round_index,
+                        }
+                        del answer_parts[round_answer_start:]
+                        del thinking_parts[round_thinking_start:]
+                        yield sse("replace", {"content": "", "replayed": False})
+                        yield sse(
+                            "ask_user_question",
+                            {
+                                "tool_name": "ask_user",
+                                "tool_id": awaiting_user["call_id"],
+                                "step_id": awaiting_user["step_id"],
+                                "message": awaiting_user["question"],
+                                "options": [],
+                                "question_id": question_id,
+                                "turn_index": round_index,
+                            },
+                        )
+                        break
                     task_check = self.task_store.check_tasks(
                         tenant_id=auth.tenant_id,
                         user_id=auth.user_id,
@@ -3470,6 +3560,29 @@ class DeepSpaceChatService:
                             if tool_payload.get("outcome") == "blocked":
                                 terminal_status = "blocked"
                     else:
+                        error_category = str(result.get("error_category") or "tool")
+                        if mcp_bindings.get(tool_name) is not None:
+                            failure_key = hashlib.sha256(
+                                json.dumps(
+                                    {
+                                        "tool": tool_name,
+                                        "category": error_category,
+                                        "error": str(result.get("error") or "")[:500],
+                                    },
+                                    sort_keys=True,
+                                    ensure_ascii=False,
+                                ).encode("utf-8")
+                            ).hexdigest()
+                            repeated_mcp_failures[failure_key] = (
+                                repeated_mcp_failures.get(failure_key, 0) + 1
+                            )
+                            if repeated_mcp_failures[failure_key] >= 2:
+                                forced_answer = (
+                                    "The connected MCP service returned the same failure twice, so "
+                                    "DeepSpace stopped retrying to avoid a loop. Reconnect the service "
+                                    "or try again after it is healthy."
+                                )
+                                terminal_status = "blocked"
                         yield sse(
                             "tool_error",
                             {
@@ -3477,6 +3590,12 @@ class DeepSpaceChatService:
                                 "tool_id": call_id,
                                 "step_id": step_id,
                                 "error": output,
+                                "error_category": error_category,
+                                **(
+                                    {"recovery": result["recovery"]}
+                                    if result.get("recovery")
+                                    else {}
+                                ),
                             },
                         )
                     conversation_messages.append(
@@ -3654,6 +3773,22 @@ class DeepSpaceChatService:
             "reserved_output_tokens": last_reserved_output_tokens,
             "context_compacted": last_context_compacted,
         }
+        # Keep the durable event-log cursor attached to the assistant turn.
+        # History uses it to rebuild the ordered thinking/tool timeline after
+        # navigation or a full page reload. Dropping it here caused reloads to
+        # fall back to one concatenated thinking block and merged tool rows.
+        if client_request_id:
+            metadata["client_request_id"] = client_request_id
+        # Persist the selected model's context metadata with the completed
+        # assistant message.  The live ``meta`` event already carries these
+        # values, but history/reload can only restore what is stored here.
+        # Keeping this provider-agnostic metadata prevents the context meter
+        # from losing its denominator after streaming finishes.
+        if candidate.context_window is not None:
+            metadata["context_limit"] = candidate.context_window
+            metadata["context_window"] = candidate.context_window
+        if candidate.context_window_source:
+            metadata["context_limit_source"] = candidate.context_window_source
         if used_memories:
             metadata["memory"] = {"used": used_memories[:8]}
         if thinking_parts:
@@ -3664,6 +3799,11 @@ class DeepSpaceChatService:
             # Keep the clarification identity in history so a reload can
             # rehydrate the answer control and resume the same durable run.
             metadata["pending_user_question"] = awaiting_user
+        if awaiting_approval is not None:
+            # Keep the approval identity in the assistant message as well as
+            # the durable run checkpoint. History reloads then retain the
+            # actionable approval card instead of only the generic sentence.
+            metadata["pending_approval"] = awaiting_approval
         if run_id is not None:
             durable_steps = self.runtime.history_steps_for_message(
                 tenant_id=auth.tenant_id,

@@ -28,6 +28,9 @@ function normalizeMarkdownText(content: string): string {
     const line = lines[index]!;
     const recoveredTable = recoverCompactTable(line);
     if (recoveredTable) {
+      if (normalizedLines.length && normalizedLines[normalizedLines.length - 1]?.trim()) {
+        normalizedLines.push("");
+      }
       normalizedLines.push(...recoveredTable.split("\n"));
       index += 1;
       continue;
@@ -45,6 +48,9 @@ function normalizeMarkdownText(content: string): string {
         // its separator. Treat this pair as one table only when the next line
         // is unambiguously a Markdown separator, so normal pipe prose stays
         // untouched.
+        if (normalizedLines.length && normalizedLines[normalizedLines.length - 1]?.trim()) {
+          normalizedLines.push("");
+        }
         normalizedLines.push(formatTableRow(headerCells));
         normalizedLines.push(formatTableSeparator(headerCells.length));
         index = separatorIndex + 1;

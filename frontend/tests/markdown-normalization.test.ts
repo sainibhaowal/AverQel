@@ -5,6 +5,8 @@ const compactTable =
   "| Non-Ideality | Impact | Mitigation | | :--- | :--- | :--- | | Clock Jitter | Noise floor | PLL | | Capacitor Mismatch | kT/C noise | Larger caps |";
 const malformedFourColumnTable =
   "| Non-Ideality | Wave Theory / Circuit Origin | Impact on Audio | Mitigation Strategy | | :--- | :--- | :--- | | **Clock Jitter (t_j)** | Aperture uncertainty | Noise floor modulation | PLL with < 100fs RMS jitter | | **Capacitor Mismatch** | Thermal noise kT/C | Gain error | Large unit caps |";
+const compactSectionTable =
+  "| Section | What's Inside |\n|---|---------------| | 1 | **PET Scans** | How antimatter is used in hospitals | | 2 | **Theranostics** | Therapy + diagnostics |";
 
 describe("provider Markdown normalization", () => {
   it.each([
@@ -31,5 +33,13 @@ describe("provider Markdown normalization", () => {
     expect(result).toContain(
       "| **Capacitor Mismatch** | Thermal noise kT/C | Gain error | Large unit caps |",
     );
+  });
+
+  it("recovers a separator and rows joined on one physical line", () => {
+    const result = normalizeDeepSpaceMarkdown(compactSectionTable);
+
+    expect(result).toContain("| Section | What's Inside |");
+    expect(result).toContain("| 1 | **PET Scans** | How antimatter is used in hospitals |");
+    expect(result).toContain("| 2 | **Theranostics** | Therapy + diagnostics |");
   });
 });

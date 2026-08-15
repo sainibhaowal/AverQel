@@ -14,6 +14,7 @@ import { saveMCPActiveContext } from "@/lib/mcp-context";
 import {
   listProviders,
   listProviderModels,
+  refreshProviderModels,
   listAssignments,
   createAssignment,
   updateAssignment,
@@ -26,7 +27,6 @@ import {
   deepSpaceThreadReducer,
 } from "../_lib/deepspace-thread";
 import type { DeepSpaceHistoryMessage } from "../_lib/deepspace-stream";
-import { resolveLatestEditableMessageId } from "../_lib/edit-target";
 
 import DeepSpaceComposer, { type DeepSpaceRuntimePhase } from "./DeepSpaceComposer";
 import type { DeepSpaceAgentNotePreview } from "./DeepSpaceEditor";
@@ -198,6 +198,32 @@ export default function DeepSpaceChatClient({
   const modelSelectionVersionRef = useRef(0);
   const submissionInFlightRef = useRef(false);
 
+  const modelFromProvider = useCallback(
+    (
+      providerId: string,
+      model: {
+        model_name: string;
+        display_name?: string | null;
+        context_window?: number | null;
+        capabilities_json?: Record<string, unknown>;
+      },
+    ) => ({
+      providerId,
+      modelName: model.model_name,
+      displayName: model.display_name || model.model_name,
+      quantization:
+        typeof model.capabilities_json?.quantization === "string"
+          ? model.capabilities_json.quantization
+          : null,
+      contextWindow: model.context_window,
+      contextWindowSource:
+        typeof model.capabilities_json?.context_window_source === "string"
+          ? model.capabilities_json.context_window_source
+          : null,
+    }),
+    [],
+  );
+
   const [sttActive, setSttActive] = useState(false);
   const [ttsActive, setTtsActive] = useState(false);
   const [voiceState, setVoiceState] = useState<"idle" | "listening" | "thinking" | "speaking">(
@@ -334,27 +360,33 @@ export default function DeepSpaceChatClient({
         await Promise.all(
           chatProviders.map(async (provider) => {
             try {
-              const models = await listProviderModels(provider.id);
+              let models = await listProviderModels(provider.id);
+              const selectedAssignmentForProvider =
+                chatAssignment?.provider_config_id === provider.id && chatAssignment.model_name;
+              const cachedSelectedModel = selectedAssignmentForProvider
+                ? models.find(
+                    (model) =>
+                      model.model_name === chatAssignment.model_name && model.model_kind === "chat",
+                  )
+                : null;
+              // A newly added model may not exist in the cache yet, or its
+              // cache row may predate context metadata. Refresh only the
+              // currently assigned provider to keep startup lightweight.
+              if (
+                selectedAssignmentForProvider &&
+                (!cachedSelectedModel || cachedSelectedModel.context_window == null)
+              ) {
+                try {
+                  models = await refreshProviderModels(provider.id);
+                } catch (refreshError) {
+                  console.warn("Failed to refresh assigned model metadata", refreshError);
+                }
+              }
               const chatOnly = models.filter(
                 (m) => m.model_kind === "chat" && m.is_available !== false,
               );
               if (active) {
-                allChatModels.push(
-                  ...chatOnly.map((m) => ({
-                    providerId: provider.id,
-                    modelName: m.model_name,
-                    displayName: m.display_name || m.model_name,
-                    quantization:
-                      typeof m.capabilities_json.quantization === "string"
-                        ? m.capabilities_json.quantization
-                        : null,
-                    contextWindow: m.context_window,
-                    contextWindowSource:
-                      typeof m.capabilities_json.context_window_source === "string"
-                        ? m.capabilities_json.context_window_source
-                        : null,
-                  })),
-                );
+                allChatModels.push(...chatOnly.map((m) => modelFromProvider(provider.id, m)));
               }
             } catch (err) {
               console.error(`Failed to list models for provider ${provider.id}`, err);
@@ -403,7 +435,7 @@ export default function DeepSpaceChatClient({
     return () => {
       active = false;
     };
-  }, []);
+  }, [modelFromProvider]);
 
   const handleModelSelect = useCallback(
     (providerId: string, modelName: string) => {
@@ -439,6 +471,35 @@ export default function DeepSpaceChatClient({
               });
             }
 
+            // Refresh the selected provider after the assignment is saved. This
+            // picks up newly-added models and authoritative per-model metadata
+            // (especially context windows) without resetting the conversation.
+            try {
+              const refreshedModels = await refreshProviderModels(providerId);
+              const refreshedChatModels = refreshedModels
+                .filter((model) => model.model_kind === "chat" && model.is_available !== false)
+                .map((model) => modelFromProvider(providerId, model));
+              if (
+                refreshedChatModels.length > 0 &&
+                selectionVersion === modelSelectionVersionRef.current
+              ) {
+                setAvailableModels((current) => {
+                  const merged = new Map(
+                    current.map((model) => [`${model.providerId}:${model.modelName}`, model]),
+                  );
+                  for (const model of refreshedChatModels) {
+                    merged.set(`${model.providerId}:${model.modelName}`, model);
+                  }
+                  return [...merged.values()];
+                });
+              }
+            } catch (refreshError) {
+              // Assignment success must not be rolled back merely because a
+              // metadata refresh is unavailable. The backend still supplies
+              // verified fallbacks for known model families.
+              console.warn("Failed to refresh selected model metadata", refreshError);
+            }
+
             toast.success(`Switched model to ${modelName}`, { id: toastId });
           } catch (err) {
             console.error("Failed to switch model", err);
@@ -456,7 +517,7 @@ export default function DeepSpaceChatClient({
       });
       return operation;
     },
-    [selectedModelOverride, selectedProviderOverride],
+    [modelFromProvider, selectedModelOverride, selectedProviderOverride],
   );
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -988,17 +1049,24 @@ export default function DeepSpaceChatClient({
       if (state.isStreaming || !activeConversationId) return;
 
       dispatch({ type: "cancel_edit", messageId });
+      // Keep the edited prompt in its original timeline position immediately.
+      // The API still validates that this is the latest editable user turn;
+      // using the clicked id prevents an edit from silently jumping to a
+      // different turn when history contains multiple message versions.
+      dispatch({
+        type: "update_message",
+        messageId,
+        data: {
+          content,
+          rawContent: content,
+          draftContent: null,
+          isEditing: false,
+        },
+      });
       pendingHistorySyncRef.current = true;
 
-      const editableMessageId = await resolveLatestEditableMessageId({
-        fetcher: fetchWithAuth,
-        endpointBase: "/deepspace/chats",
-        conversationId: activeConversationId,
-        fallbackMessageId: messageId,
-      });
-
       await stream.start({
-        endpoint: `/deepspace/chats/${activeConversationId}/messages/${editableMessageId}/edit-and-regenerate/stream`,
+        endpoint: `/deepspace/chats/${activeConversationId}/messages/${messageId}/edit-and-regenerate/stream`,
         body: {
           content,
           thinking_enabled: thinkingEnabled,
@@ -1199,12 +1267,15 @@ export default function DeepSpaceChatClient({
     if (!threadRoot) return;
 
     const observer = new ResizeObserver(() => {
-      scheduleScrollToBottom();
+      // A growing streamed answer should follow the bottom only while the
+      // reader is already following it. Never pull the viewport back while
+      // the user is inspecting an earlier thinking/tool step.
+      if (autoFollowRef.current) scheduleScrollToBottom();
     });
     observer.observe(threadRoot);
 
     return () => observer.disconnect();
-  }, [scheduleScrollToBottom]);
+  }, [state.isStreaming, scheduleScrollToBottom]);
 
   const handleUserScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {

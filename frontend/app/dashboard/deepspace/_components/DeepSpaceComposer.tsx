@@ -500,7 +500,7 @@ export default function DeepSpaceComposer({
                     transition={{ duration: 0.14, ease: "easeOut" }}
                     role="dialog"
                     aria-label="DeepSpace status legend"
-                    className="border-glass-border bg-surface-0/95 absolute right-0 bottom-full z-[70] mb-2 w-[min(19rem,calc(100vw-2rem))] rounded-xl border p-3 text-[10px] leading-4 text-white/65 shadow-2xl backdrop-blur-xl"
+                    className="border-glass-border absolute right-0 bottom-full isolate z-[70] mb-2 w-[min(19rem,calc(100vw-2rem))] rounded-xl border bg-[#0b1411] p-3 text-[10px] leading-4 text-white/65 shadow-2xl ring-1 ring-black/50"
                   >
                     <div className="mb-2 flex items-center justify-between gap-3 text-[11px] font-semibold tracking-wide text-white/90">
                       <span>DeepSpace status</span>
@@ -519,7 +519,7 @@ export default function DeepSpaceComposer({
                         ["bg-amber-300", "Submitting"],
                         ["bg-cyan-300", "Thinking / receiving"],
                         ["bg-blue-400", "Web/search tool"],
-                        ["bg-emerald-300", "Reading data"],
+                        ["bg-violet-300", "Reading data"],
                         ["bg-fuchsia-300", "Writing data"],
                         ["bg-white", "Completed"],
                         ["bg-red-400", "Error"],
