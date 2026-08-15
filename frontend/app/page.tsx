@@ -6,6 +6,7 @@ import HeroSection from "@/app/components/marketing/HeroSection";
 import SupportedFormats from "@/app/components/marketing/SupportedFormats";
 import HowItWorks from "@/app/components/marketing/HowItWorks";
 import ProductWalkthrough from "@/app/components/marketing/ProductWalkthrough";
+import WorkspaceOrbit from "@/app/components/marketing/WorkspaceOrbit";
 import WorkspaceIntelligence from "@/app/components/marketing/WorkspaceIntelligence";
 import PlatformSurfaces from "@/app/components/marketing/PlatformSurfaces";
 import ProductScreenshotGallery from "@/app/components/marketing/ProductScreenshotGallery";
@@ -36,6 +37,7 @@ export default function Home() {
         <HeroSection />
         <SupportedFormats />
         <HowItWorks />
+        <WorkspaceOrbit />
         <ProductWalkthrough />
         <PlatformSurfaces />
         <WorkspaceIntelligence />
