@@ -15,8 +15,8 @@ import AverQelLogo from "../ui/AverQelLogo";
 const navLinks = [
   { label: "How It Works", href: "#how-it-works" },
   { label: "Surfaces", href: "#platform-surfaces" },
-  { label: "Features", href: "#features" },
-  { label: "Security", href: "#security" },
+  { label: "Use Cases", href: "#use-cases" },
+  { label: "Control", href: "#control" },
   { label: "Docs", href: "/documentation" },
 ];
 

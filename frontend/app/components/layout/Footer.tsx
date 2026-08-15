@@ -13,6 +13,7 @@ const links = [
       { label: "How It Works", href: "#how-it-works" },
       { label: "Surfaces", href: "#platform-surfaces" },
       { label: "Features", href: "#features" },
+      { label: "Use Cases", href: "#use-cases" },
       { label: "Security", href: "#security" },
       { label: "Docs", href: "/documentation" },
     ],
@@ -32,6 +33,7 @@ const links = [
       { label: "Sign Up", href: "/auth/signup" },
       { label: "Log In", href: "/auth/login" },
       { label: "Security Overview", href: "/legal/security" },
+      { label: "Support Centre", href: "/documentation/support" },
     ],
   },
 ];

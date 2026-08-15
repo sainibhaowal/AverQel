@@ -6,9 +6,12 @@ import HeroSection from "@/app/components/marketing/HeroSection";
 import SupportedFormats from "@/app/components/marketing/SupportedFormats";
 import HowItWorks from "@/app/components/marketing/HowItWorks";
 import ProductWalkthrough from "@/app/components/marketing/ProductWalkthrough";
+import WorkspaceIntelligence from "@/app/components/marketing/WorkspaceIntelligence";
 import PlatformSurfaces from "@/app/components/marketing/PlatformSurfaces";
 import ProductScreenshotGallery from "@/app/components/marketing/ProductScreenshotGallery";
 import FeaturesGrid from "@/app/components/marketing/FeaturesGrid";
+import UseCases from "@/app/components/marketing/UseCases";
+import ControlCenter from "@/app/components/marketing/ControlCenter";
 import TrustCommitments from "@/app/components/marketing/TrustCommitments";
 import TechStackMarquee from "@/app/components/marketing/TechStackMarquee";
 import CallToAction from "@/app/components/marketing/CallToAction";
@@ -35,8 +38,11 @@ export default function Home() {
         <HowItWorks />
         <ProductWalkthrough />
         <PlatformSurfaces />
+        <WorkspaceIntelligence />
         <ProductScreenshotGallery />
+        <UseCases />
         <FeaturesGrid />
+        <ControlCenter />
         <TrustCommitments />
         <TechStackMarquee />
         <CallToAction />
