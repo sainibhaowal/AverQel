@@ -86,9 +86,7 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div className="border-glass-border mt-12 flex flex-col items-center justify-between gap-4 border-t pt-6 sm:mt-14 sm:flex-row sm:pt-8">
-          <p className="text-muted-foreground/40 text-xs">
-            {new Date().getFullYear()} {BRAND_NAME}
-          </p>
+          <p className="text-muted-foreground/40 text-xs">© {BRAND_NAME}</p>
           <p className="text-muted-foreground/40 text-xs">
             Privacy, security, and trust documentation stay aligned with the live build.
           </p>

@@ -25,6 +25,21 @@ interface Conversation {
   live_mission_id?: string | null;
 }
 
+function formatConversationDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+
+  // Do not use the browser's default locale or timezone in SSR output. A
+  // deterministic format keeps the server and first browser render identical.
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+  }).format(date);
+}
+
 interface ChatSidebarProps {
   currentConversationId: string | null;
   onSelectConversation: (id: string) => void;
@@ -337,14 +352,8 @@ export default function ChatSidebar({
                     ) : null}
                     <p
                       className={`mt-1 text-[11px] font-medium ${currentConversationId === conv.id && !selectionMode ? "text-primary/70 dark:text-primary/70" : "text-foreground/45"}`}
-                      suppressHydrationWarning
                     >
-                      {new Date(conv.updated_at).toLocaleDateString([], {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatConversationDate(conv.updated_at)}
                     </p>
                   </div>
                   {!selectionMode ? (

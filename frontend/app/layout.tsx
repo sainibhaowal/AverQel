@@ -39,9 +39,17 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Browser extensions can add attributes to <html> before React hydrates.
+  // The document root is deliberately hydration-tolerant; application UI
+  // remains checked normally below it.
   return (
-    <html lang="en" className="scroll-smooth" data-scroll-behavior="smooth">
-      <body className="antialiased">
+    <html
+      lang="en"
+      className="scroll-smooth"
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
+    >
+      <body className="antialiased" suppressHydrationWarning>
         <ThemeProvider>
           <CursorSweepProvider />
           <ToastProvider>
