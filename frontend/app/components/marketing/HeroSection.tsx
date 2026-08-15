@@ -24,37 +24,37 @@ const pipelineSteps = [
   {
     icon: Globe,
     accent: "text-[#00b8ff]",
-    label: "CONNECTING",
-    title: "Drive folder | Gmail inbox | research brief | team workspace",
-    detail: "authenticate | scope access | sync sources | build live context",
+    label: "ORGANIZING",
+    title: "Documents Hub + Collections",
+    detail: "upload | inspect | organize | keep the right context together",
   },
   {
     icon: Zap,
     accent: "text-[#00ffa3]",
-    label: "STREAMING",
-    title: "DeepSpace runtime",
-    detail: "plan | lane activity | tool delta | approval | answer stream",
+    label: "GROUNDING",
+    title: "Query answers with source evidence",
+    detail: "retrieve | cite | inspect | save useful material to notes",
   },
   {
     icon: Hexagon,
     accent: "text-amber-300",
-    label: "DELEGATING",
-    title: '"Research, edit, validate, then prepare the final answer"',
-    detail: "memory | providers | policy | MCP",
+    label: "WORKING",
+    title: "DeepSpace for research and deliverables",
+    detail: "draft | analyze | use memory | export notes | review progress",
   },
   {
     icon: Shield,
     accent: "text-white",
-    label: "VISIBLE",
-    title: "Your work stays in one focused conversation",
-    detail: "chat | documents | memory | tenant isolation",
+    label: "CONNECTING",
+    title: "Providers and supported MCP apps",
+    detail: "choose a runtime | authorize an account | apply policy | approve actions",
   },
 ];
 
 const signalCards = [
-  { value: "Mission", label: "canvas + lane visibility" },
-  { value: "Local + Cloud", label: "provider routing" },
-  { value: "Approval", label: "gated execution control" },
+  { value: "Documents", label: "source-aware workspaces" },
+  { value: "Grounded Query", label: "evidence-backed answers" },
+  { value: "Your control", label: "approval-gated connections" },
 ];
 
 export default function HeroSection() {
@@ -120,22 +120,21 @@ export default function HeroSection() {
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#00ffa3]/14 text-[#00ffa3]">
                   <Cpu size={13} />
                 </span>
-                Operator-Grade Agentic Operating Layer
+                Your Private AI Workspace
               </div>
 
               <h1
                 className={`${landingHeroTitleClass} ${landingTitleGradientBySection.hero} mb-7 max-w-[12ch] text-left sm:max-w-none`}
               >
-                The operator-grade agentic system for your{" "}
-                <span className="text-inherit">research, documents, and productive work</span>
+                Turn your documents into{" "}
+                <span className="text-inherit">grounded answers and useful work</span>
               </h1>
 
               <p className="max-w-2xl text-base leading-8 text-slate-300/88 sm:text-lg sm:leading-9">
-                AverQel connects Google Drive, Gmail, Calendar, Notion, Slack, web search, web
-                fetch, crawling, and your team knowledge into one live DeepSpace runtime. It turns
-                user requests into useful answers, notes, diagrams, and approval-gated actions with
-                cloud-or-local model routing while keeping every action tenant-isolated, audited,
-                and under your authority.
+                Upload and organize documents, ask source-backed questions, then use DeepSpace to
+                research, draft, save notes, and create exportable deliverables. Add your preferred
+                cloud or local AI provider, and connect supported apps only when you choose to
+                authorize them.
               </p>
 
               <div className="mt-10 flex flex-wrap items-center gap-4">
@@ -203,7 +202,7 @@ export default function HeroSection() {
                 <div className="space-y-5 p-6 font-mono text-sm sm:p-7">
                   <div className="text-slate-200">
                     <span className="mr-2 text-[#00ffa3]">$</span>
-                    averqel pipeline | watch
+                    averqel workspace | guide
                   </div>
 
                   {pipelineSteps.map((step, index) => {
@@ -246,7 +245,7 @@ export default function HeroSection() {
                       SSE <span className="text-slate-500">state streaming</span>
                     </span>
                   </div>
-                  <span>account: tenant isolated</span>
+                  <span>your workspace, your controls</span>
                 </div>
               </div>
             </div>

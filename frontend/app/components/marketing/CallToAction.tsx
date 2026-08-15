@@ -13,13 +13,13 @@ import {
 } from "./landingType";
 
 const highlights = [
-  { icon: FileText, text: "Connect GitHub, Drive, Gmail, Calendar, Notion, Slack" },
-  { icon: Search, text: "DeepSpace chat for research, drafting, and analysis" },
-  { icon: Database, text: "Persistent memory and durable conversation history" },
-  { icon: Users, text: "Grounded answers, workspace deliverables, and approval-based sharing" },
+  { icon: FileText, text: "Documents Hub, Collections, and source inspection" },
+  { icon: Search, text: "Grounded Query for evidence-backed answers" },
+  { icon: Database, text: "DeepSpace notes, memory, and durable conversation history" },
+  { icon: Users, text: "Deliverables, exports, and controlled collection sharing" },
   {
     icon: Shield,
-    text: "Private-by-default accounts, approvals, audit logs, and tenant isolation",
+    text: "Supported MCP connections with policy and approval controls",
   },
 ];
 
@@ -40,13 +40,13 @@ export default function CallToAction() {
           className="mx-auto max-w-4xl space-y-6 sm:space-y-8"
         >
           <h2 className={`${landingSectionTitleClass} ${landingTitleGradientBySection.cta}`}>
-            Ready to turn your entire ecosystem into{" "}
-            <span className="text-inherit">a focused productivity workspace</span>?
+            Ready to turn your source material into{" "}
+            <span className="text-inherit">grounded, useful work</span>?
           </h2>
           <p className={`${landingSectionLeadClass} text-muted-foreground/90 mx-auto max-w-2xl`}>
-            Stop stitching together disconnected tools manually. Connect your workspace, ask
-            questions, create notes and diagrams, approve sensitive actions when needed, and turn
-            results into durable work backed by real evidence and production safety boundaries.
+            Start with a provider and your documents. Use grounded answers to understand the source
+            material, then use DeepSpace to research, draft, organize, and export—with connected
+            apps available only when you explicitly authorize them.
           </p>
 
           {/* Highlights */}

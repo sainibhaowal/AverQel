@@ -31,46 +31,46 @@ import {
 const stages = [
   {
     step: "01",
-    title: "Connect your ecosystem",
+    title: "Choose a provider and add your source material",
     description:
-      "Bring your production sources into AverQel. Connect Google Drive folders, Gmail inboxes, Google Calendar, Notion, Slack, web search, and web crawling into one tenant-scoped runtime.",
+      "Start with a cloud or local AI provider, then upload supported documents into the Documents Hub. Connected apps are optional and are authorized separately through the MCP marketplace.",
     icon: Upload,
     accent: "blue",
     details: [
-      { icon: FileText, text: "GitHub | Drive | Gmail | Calendar | Notion | Slack" },
-      { icon: Layers, text: "Web crawler, web search, fetch, and connected documents" },
-      { icon: BarChart3, text: "Automated synchronization with live health and audit trails" },
+      { icon: FileText, text: "Documents Hub for supported files and source inspection" },
+      { icon: Layers, text: "Optional supported app connections through OAuth" },
+      { icon: BarChart3, text: "Provider, connection, and processing status stay visible" },
     ],
   },
   {
     step: "02",
-    title: "Autonomous intelligence pipeline",
+    title: "Make documents ready for grounded work",
     description:
-      "Every source is parsed, split into retrievable chunks, converted to semantic embeddings, and indexed automatically. You can monitor real-time status for every item: connected, syncing, parsing, chunking, embedding, indexed.",
+      "AverQel processes supported documents into searchable context. You can follow accepted, processing, indexed, retry, and extraction-quality states instead of assuming every file succeeded.",
     icon: Cpu,
     accent: "cyan",
     details: [
-      { icon: Layers, text: "Parse | chunk | embed | index | every stage visible" },
-      { icon: Brain, text: "Semantic embeddings via local or cloud providers" },
-      { icon: CheckCheck, text: "Quarantine and retry paths for problematic or low-quality data" },
+      { icon: Layers, text: "Parse | chunk | embed | index | source inspection" },
+      { icon: Brain, text: "Grounded retrieval context for accessible documents" },
+      { icon: CheckCheck, text: "Retry and quarantine paths for problematic data" },
     ],
   },
   {
     step: "03",
-    title: "Agentic DeepSpace Intelligence",
+    title: "Ask, verify, then move into DeepSpace",
     description:
-      "DeepSpace is the live control surface. It streams plans, tool calls, tool deltas, approvals, and answer tokens while using the right tools for the job. Read-only actions run automatically; writes and side effects wait for your approval.",
+      "Use Grounded Query when evidence from documents is the priority. Use DeepSpace when you need research, drafting, notes, memory, or a controlled tool-assisted workflow in the same conversation.",
     icon: MessageSquareText,
     accent: "violet",
     details: [
-      { icon: Quote, text: "Plan | act | recover | cite | audit from the same conversation" },
-      { icon: BarChart3, text: "Confidence and source evidence stay visible with every turn" },
-      { icon: Brain, text: "Streaming SSE events keep the UI in sync with every step" },
+      { icon: Quote, text: "Grounded answers, citations, and source inspection" },
+      { icon: BarChart3, text: "DeepSpace activity, notes, memory, and saved history" },
+      { icon: Brain, text: "External effects stay behind policy and approval controls" },
     ],
   },
   {
     step: "04",
-    title: "Share with approval-based collections",
+    title: "Organize and share with deliberate scope",
     description:
       "Organize documents into collections and share them through invitation and approval workflows. You choose exactly which documents to include, and owners keep control of what is visible.",
     icon: Users,
@@ -245,13 +245,13 @@ export default function HowItWorks() {
           </div>
 
           <h2 className={`${landingSectionTitleClass} ${landingTitleGradientBySection.howItWorks}`}>
-            From raw sources to a streamed agent workflow in four steps
+            A clear path from documents to grounded answers and finished work
           </h2>
 
           <p className={`${landingSectionLeadClass} mt-4`}>
-            AverQel is not a file bucket or a generic chatbot. It is a structured production
-            pipeline that turns your workspace into live, retrievable, and actionable context with
-            explicit approvals and tenant-scoped execution.
+            AverQel is not only a file bucket or a generic chatbot. It gives users a practical path:
+            create a private workspace, organize material, ask grounded questions, do deeper work,
+            and connect external apps only under explicit controls.
           </p>
 
           {/* Meta chips — stagger in after header */}

@@ -5,8 +5,10 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   Activity,
-  BellRing,
+  Cable,
   Database,
+  FileText,
+  FolderKanban,
   MessageSquareText,
   Network,
   NotebookPen,
@@ -28,16 +30,42 @@ import {
 
 const surfaces = [
   {
-    eyebrow: "Command Surface",
-    title: "Grounded Chat & Query",
+    eyebrow: "Document Surface",
+    title: "Documents Hub",
+    icon: FileText,
+    accent: "cyan",
+    description:
+      "Bring supported files into one private workspace. Follow processing progress, inspect extracted text and chunks, review document state, and download the original file.",
+    bullets: [
+      "Upload, processing progress, retry, and reingest support",
+      "Document text, chunks, versions, and extraction signals",
+      "A source workspace for grounded questions and notes",
+    ],
+  },
+  {
+    eyebrow: "Retrieval Surface",
+    title: "Grounded Query",
     icon: MessageSquareText,
     accent: "blue",
     description:
-      "Start with grounded answers, broad planning, citations, and live workspace-aware questioning before escalating into heavier DeepSpace execution.",
+      "Ask evidence-backed questions over the documents you can access. Results stay connected to source material, citations, and inspection flows.",
     bullets: [
       "Grounded answers tied to source evidence",
-      "Broad-task planning with model-aware routing",
-      "Normal chat and agentic work stay connected",
+      "Rich answers, diagrams, charts, and structured output",
+      "Save selected research into DeepSpace notes",
+    ],
+  },
+  {
+    eyebrow: "Organization Surface",
+    title: "Collections",
+    icon: FolderKanban,
+    accent: "emerald",
+    description:
+      "Create focused document sets for projects, teams, or topics. Collection ownership and sharing rules keep the scope deliberate rather than making all content globally visible.",
+    bullets: [
+      "Focused reusable document groups",
+      "Explicit invitations and owner-controlled access",
+      "Distinct roles and selective document inclusion",
     ],
   },
   {
@@ -55,8 +83,8 @@ const surfaces = [
     ],
   },
   {
-    eyebrow: "Workspace Surface",
-    title: "Editor + Files",
+    eyebrow: "Deliverable Surface",
+    title: "Notes + Exports",
     icon: NotebookPen,
     accent: "blue",
     description:
@@ -68,16 +96,29 @@ const surfaces = [
     ],
   },
   {
-    eyebrow: "Runtime Surface",
-    title: "Connectors + Providers",
-    icon: Network,
-    accent: "violet",
+    eyebrow: "Integration Surface",
+    title: "MCP Connections",
+    icon: Cable,
+    accent: "amber",
     description:
-      "Attach live external systems and choose the runtime stack behind the work, from cloud providers to local models and web tooling.",
+      "Authorize supported remote apps through OAuth. Each external tool is checked for ownership, connection health, catalog freshness, policy, and approval before use.",
     bullets: [
-      "GitHub, Drive, Gmail, Calendar, Notion, Slack, web tools",
-      "OpenRouter, Anthropic, Google, OpenAI-compatible, Ollama, LM Studio",
-      "Tenant-scoped configuration with masked secrets and health visibility",
+      "Supported apps such as GitHub, Drive, Gmail, Calendar, Notion, and Slack",
+      "Per-tool permissions, read-only mode, risk limits, and approvals",
+      "Connection status and health are visible, not assumed",
+    ],
+  },
+  {
+    eyebrow: "Runtime Surface",
+    title: "Providers",
+    icon: Network,
+    accent: "rose",
+    description:
+      "Choose the configured cloud or local runtime behind your work. Provider credentials are private to the account that adds them and are not exposed in the interface.",
+    bullets: [
+      "Cloud and local routes for chat, retrieval, and web work",
+      "OpenRouter, Anthropic, Google, OpenAI-compatible, Ollama, and LM Studio",
+      "Masked credentials, health visibility, and capability-aware selection",
     ],
   },
 ];
@@ -107,15 +148,35 @@ const accentStyles: Record<
     text: "text-emerald-300",
     chip: "bg-emerald-500/[0.08] border-emerald-400/20 text-emerald-200",
   },
+  amber: {
+    border: "border-amber-400/20",
+    bg: "bg-amber-500/[0.08]",
+    glow: "bg-amber-500/[0.08]",
+    text: "text-amber-300",
+    chip: "bg-amber-500/[0.08] border-amber-400/20 text-amber-100",
+  },
+  cyan: {
+    border: "border-cyan-400/20",
+    bg: "bg-cyan-500/[0.08]",
+    glow: "bg-cyan-500/[0.08]",
+    text: "text-cyan-300",
+    chip: "bg-cyan-500/[0.08] border-cyan-400/20 text-cyan-100",
+  },
+  rose: {
+    border: "border-rose-400/20",
+    bg: "bg-rose-500/[0.08]",
+    glow: "bg-rose-500/[0.08]",
+    text: "text-rose-300",
+    chip: "bg-rose-500/[0.08] border-rose-400/20 text-rose-100",
+  },
 };
 
 const guarantees = [
   { icon: ShieldCheck, text: "Tenant-isolated" },
   { icon: CheckCircle2, text: "Approval-gated" },
   { icon: Database, text: "Session-persistent" },
-  { icon: TimerReset, text: "Auto-compaction aware" },
-  { icon: BellRing, text: "Proactive notifications" },
-  { icon: Workflow, text: "Connector automation" },
+  { icon: TimerReset, text: "Reload-recoverable" },
+  { icon: Workflow, text: "Policy-controlled" },
 ];
 
 export default function PlatformSurfaces() {
@@ -143,12 +204,12 @@ export default function PlatformSurfaces() {
           <h2
             className={`${landingSectionTitleClass} ${landingTitleGradientBySection.platformSurfaces}`}
           >
-            The landing page now maps the real product surfaces users actually work in
+            Six connected surfaces for document-first AI work
           </h2>
           <p className={landingSectionLeadClass}>
-            AverQel is no longer only a single chat interface. It now spans grounded query, the
-            DeepSpace chat, editor and deliverable workflows, persistent memory, connectors, and
-            provider control across cloud and local runtimes.
+            Start with documents and evidence, then move into DeepSpace for deeper work.
+            Collections, MCP connections, and provider control remain visible parts of the same
+            workspace.
           </p>
         </motion.div>
 

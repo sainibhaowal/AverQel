@@ -35,30 +35,30 @@ import {
 
 const features = [
   {
-    title: "Autonomous Intelligence Pipeline",
+    title: "Documents + Grounded Retrieval",
     description:
-      "Every ingestion source flows through a real-time monitored pipeline. AverQel keeps parsing, chunking, embedding, indexing, retries, and source health visible instead of hiding ingestion behind a simple success badge.",
+      "AverQel turns supported documents into inspectable, retrievable context. Processing state, extracted text, chunks, source details, retry paths, and quality signals remain visible.",
     icon: FileStack,
     accent: "blue",
     size: "large",
     capabilities: [
-      { icon: ScanSearch, text: "Source search | grounded document context" },
-      { icon: FileText, text: "Structured drafting | persistent memory" },
-      { icon: BarChart3, text: "Extraction confidence, coverage, and source health metrics" },
-      { icon: Shield, text: "Durable memory, todo ledgers, and session recovery" },
+      { icon: ScanSearch, text: "Source-backed grounded answers" },
+      { icon: FileText, text: "Document text, chunks, versions, and downloads" },
+      { icon: BarChart3, text: "Processing, retry, and extraction-quality visibility" },
+      { icon: Shield, text: "Accessible-document boundaries enforced server-side" },
     ],
   },
   {
-    title: "DeepSpace Agentic Brain",
+    title: "DeepSpace Productivity Workspace",
     description:
-      "DeepSpace is the durable runtime brain of AverQel. Every new chat can plan, reason, stream tool calls, checkpoint progress, survive restarts, enforce approvals, verify results, repair failures, and execute complex instructions across your live workspace and connector graph.",
+      "DeepSpace is the focused workspace for research, drafting, analysis, notes, memory, and tool-assisted work. Users can follow visible activity, preserve useful work, and recover saved conversation history.",
     icon: BrainCircuit,
     accent: "violet",
     size: "large",
     capabilities: [
-      { icon: Bot, text: "Action authority | autonomous task execution" },
-      { icon: Search, text: "Web fetch, web search, and crawler intelligence" },
-      { icon: BrainCircuit, text: "Research mode | focused reasoning | safe actions" },
+      { icon: Bot, text: "Research, drafting, analysis, and structured task work" },
+      { icon: Search, text: "Available web and workspace tools when appropriate" },
+      { icon: BrainCircuit, text: "Visible activity, approval prompts, and saved progress" },
       {
         icon: FileText,
         text: "Streaming answers, approvals, and saved conversation history",
@@ -66,35 +66,38 @@ const features = [
     ],
   },
   {
-    title: "Workspace Editor + Deliverables",
+    title: "Notes + Deliverables",
     description:
-      "AverQel includes a real working surface for notes, drafts, exports, equations, and markdown import so conversations can turn into usable output.",
+      "Move from an answer into editable notes, drafts, equations, diagrams, and exportable deliverables without leaving the workspace.",
     icon: NotebookPen,
     accent: "cyan",
     size: "medium",
     capabilities: [
-      { icon: FileText, text: "Notes, drafts, exports, and focused workspaces" },
-      { icon: FileCode, text: "Structured support for research and document tasks" },
-      { icon: Sparkles, text: "Markdown, Mermaid, math blocks, charts, and rich rendering" },
+      { icon: FileText, text: "Split chat-plus-notes and focused workspace modes" },
+      { icon: FileCode, text: "Markdown and HTML import with rich block editing" },
+      { icon: Sparkles, text: "Math, diagrams, and exports to PDF, DOCX, or Markdown" },
     ],
   },
   {
-    title: "Universal Ecosystem Connectors",
+    title: "Permissioned MCP Connections",
     description:
-      "Unify your knowledge across the tools you already use. AverQel turns live connectors into a searchable, actionable, and approval-aware intelligence layer.",
+      "Connect supported remote MCP services through OAuth. Every external call remains subject to ownership, connection status, tool policy, risk limits, and approvals.",
     icon: Workflow,
     accent: "emerald",
     size: "medium",
     capabilities: [
-      { icon: FileStack, text: "GitHub, Drive, Gmail, Calendar, Notion, Slack" },
-      { icon: HeartHandshake, text: "Encrypted OAuth2 and PAT security protocols" },
-      { icon: BarChart3, text: "Scheduled sync, on-demand sync, and crawler control" },
+      {
+        icon: FileStack,
+        text: "Supported services: GitHub, Drive, Gmail, Calendar, Notion, Slack",
+      },
+      { icon: HeartHandshake, text: "OAuth authorization with encrypted credential storage" },
+      { icon: BarChart3, text: "Health, catalog, scope, and permission visibility" },
     ],
   },
   {
     title: "Flexible AI Providers",
     description:
-      "Connect cloud providers or local runtimes without exposing secret values. Each provider belongs to the user who added it and can be selected for chat or research.",
+      "Use configured cloud providers or local runtimes without exposing secret values. Each provider belongs to the account that added it and can be selected for the relevant workflow.",
     icon: Cpu,
     accent: "rose",
     size: "medium",
@@ -104,32 +107,32 @@ const features = [
         text: "OpenRouter, OpenAI-compatible, Anthropic, Google, LM Studio, Ollama",
       },
       { icon: KeyRound, text: "Encrypted secrets with masked display only" },
-      { icon: HeartHandshake, text: "Health checks, fallback routing, and capability detection" },
+      { icon: HeartHandshake, text: "Health visibility and capability-aware model selection" },
     ],
   },
   {
-    title: "Zero-Knowledge E2EE Bridge",
+    title: "Security + Control Boundaries",
     description:
-      "Establish secure 1:1 or group connections. All texts, files, and reactions are encrypted client-side using PBKDF2 key derivation and AES-GCM 256-bit cryptography before leaving your browser. The server has zero access.",
+      "AverQel keeps ownership, tenant isolation, encrypted provider and OAuth credentials, workspace policy, approval controls, and audit-safe execution boundaries in the product path.",
     icon: Lock,
     accent: "emerald",
     size: "large",
     capabilities: [
       {
         icon: ShieldCheck,
-        text: "Safety Numbers | Hashed cryptographic fingerprints verify peer identity",
+        text: "Tenant- and user-scoped workspaces, conversations, and connections",
       },
       {
         icon: Database,
-        text: "Password-Encrypted Backups | Export/Import local IndexedDB chat logs securely",
+        text: "Encrypted provider secrets and connector OAuth credentials",
       },
       {
         icon: Lock,
-        text: "Self-Destruct Timers | Expire and purge messages from server & browser caches automatically",
+        text: "Read-only modes, risk ceilings, and per-tool permission controls",
       },
       {
         icon: Volume2,
-        text: "E2EE Media & Audio | Real-time waveforms, files, typing indicators & delivery status ticks",
+        text: "Approval gates for external writes, deletes, and messages",
       },
     ],
   },
@@ -229,7 +232,7 @@ const accentMap: Record<
 
 // ─── Header meta chips ────────────────────────────────────────────────────────
 const headerMeta = [
-  { dot: "bg-blue-400", label: "7 integrated systems" },
+  { dot: "bg-blue-400", label: "6 connected product systems" },
   { dot: "bg-emerald-400", label: "Production controls" },
   { dot: "bg-violet-400", label: "Operator-grade" },
 ];
@@ -258,13 +261,12 @@ export default function FeaturesGrid() {
           </div>
 
           <h2 className={`${landingSectionTitleClass} ${landingTitleGradientBySection.features}`}>
-            One platform, seven integrated production systems
+            The complete workspace, without hiding how it works
           </h2>
 
           <p className={`${landingSectionLeadClass} mt-4`}>
-            Ingestion, grounded querying, visible DeepSpace execution, operator diagnostics,
-            workspace delivery, connector automation, enterprise security, and provider flexibility
-            work together as one cohesive agentic operating environment.
+            Documents, grounded retrieval, DeepSpace, notes, MCP connections, providers, and
+            security boundaries work together while remaining visible and user-controlled.
           </p>
 
           {/* Meta chips strip */}

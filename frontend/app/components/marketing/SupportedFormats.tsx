@@ -25,56 +25,56 @@ import {
 const formats = [
   {
     name: "GitHub",
-    description: "Repo | Commits | Issues",
+    description: "Supported MCP connection",
     icon: FileCode,
     color: "text-slate-200",
     bg: "bg-slate-500/[0.08] border-slate-400/20",
   },
   {
     name: "Google Drive",
-    description: "Docs | Sheets | Folders",
+    description: "Supported MCP connection",
     icon: FileText,
     color: "text-blue-400",
     bg: "bg-blue-500/[0.08] border-blue-400/20",
   },
   {
     name: "Notion",
-    description: "Pages | Databases",
+    description: "Supported MCP connection",
     icon: BookOpen,
     color: "text-slate-100",
     bg: "bg-slate-500/[0.08] border-slate-400/20",
   },
   {
     name: "Slack",
-    description: "Channels | History",
+    description: "Supported MCP connection",
     icon: MessageSquareText,
     color: "text-violet-400",
     bg: "bg-violet-500/[0.08] border-violet-400/20",
   },
   {
     name: "Web Crawler",
-    description: "High-speed URL indexing",
+    description: "Configured web research",
     icon: ScanSearch,
     color: "text-emerald-400",
     bg: "bg-emerald-500/[0.08] border-emerald-400/20",
   },
   {
     name: "PDF",
-    description: "Standard and scanned",
+    description: "Document processing",
     icon: FileText,
     color: "text-red-400",
     bg: "bg-red-500/[0.08] border-red-400/20",
   },
   {
     name: "DOCX",
-    description: "Microsoft Word",
+    description: "Document processing",
     icon: FileText,
     color: "text-blue-400",
     bg: "bg-blue-500/[0.08] border-blue-400/20",
   },
   {
     name: "Gmail",
-    description: "Threads | Attachments",
+    description: "Supported MCP connection",
     icon: Mail,
     color: "text-red-400",
     bg: "bg-red-500/[0.08] border-red-400/20",
@@ -83,8 +83,8 @@ const formats = [
 
 const pipelineStages = [
   { label: "Queued", description: "Upload accepted | job created | worker dispatch" },
-  { label: "Download", description: "Object storage fetch | connector payload hydrate" },
-  { label: "Parse", description: "Extractor route | OCR | language detect | coverage score" },
+  { label: "Prepare", description: "Secure storage | source metadata | processing job" },
+  { label: "Parse", description: "Supported extractor route | text coverage | quality signals" },
   { label: "Chunk", description: "Structured blocks | overlap windows | sanitized chunks" },
   { label: "Embed", description: "Batch vectors | provider metadata | chunk embeddings" },
   { label: "Index", description: "Chunk records | embeddings stored | query-ready state" },
@@ -116,9 +116,9 @@ export default function SupportedFormats() {
                 Unify your entire production knowledge ecosystem
               </h2>
               <p className={landingSectionLeadClass}>
-                AverQel connects to the tools you use every day. Whether it is a GitHub repo, a
-                Notion workspace, a Gmail inbox, or a local PDF, the platform automatically parses,
-                syncs, and indexes everything inside your private account.
+                Start with supported files in Documents Hub, then add supported remote apps only if
+                they are useful to your work. Remote access depends on your OAuth consent,
+                connection health, selected scopes, and workspace policy.
               </p>
             </div>
 
@@ -154,9 +154,11 @@ export default function SupportedFormats() {
             <div className="theme-panel border-glass-border hover:border-primary/25 mt-8 flex items-start gap-4 rounded-[1.35rem] border p-6 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_50px_rgba(0,255,163,0.08)] sm:mt-10">
               <ScanSearch size={18} className="text-primary shrink-0" />
               <p className="text-muted-foreground text-sm leading-6">
-                <span className="text-foreground font-bold">Intelligent OCR | Crawler</span> |
-                Scanned documents, images, live websites, and connector sources are automatically
-                indexed through high-fidelity extraction pipelines.
+                <span className="text-foreground font-bold">
+                  Document processing and web research
+                </span>{" "}
+                | AverQel shows processing, extraction, retry, and quality states so users can see
+                whether a source is ready instead of assuming every import succeeded.
               </p>
             </div>
           </motion.div>
@@ -203,7 +205,7 @@ export default function SupportedFormats() {
               {/* Status preview */}
               <div className="border-glass-border bg-muted/20 mt-5 rounded-xl border p-4">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">Each document shows real-time status:</span>
+                  <span className="text-slate-500">Document processing states can include:</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {[
