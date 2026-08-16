@@ -39,6 +39,7 @@ celery_app.conf.update(
         "maintenance.process_data_deletion": {"queue": "maintenance"},
         "maintenance.retention_cleanup": {"queue": "maintenance"},
         "maintenance.heartbeat": {"queue": "maintenance"},
+        "maintenance.storage_cleanup": {"queue": "maintenance"},
         "app.integrations.workers.tasks_connectors.*": {"queue": "maintenance"},
         "mcp.*": {"queue": "maintenance"},
         "mcp.sync_official_catalog": {"queue": "maintenance"},
@@ -53,6 +54,10 @@ celery_app.conf.update(
         "maintenance-retention-cleanup": {
             "task": "maintenance.retention_cleanup",
             "schedule": crontab(hour=2, minute=0),
+        },
+        "maintenance-storage-cleanup": {
+            "task": "maintenance.storage_cleanup",
+            "schedule": crontab(minute="*/5"),
         },
         "connector-sync-all": {
             "task": "app.integrations.workers.tasks_connectors.sync_all_connectors",

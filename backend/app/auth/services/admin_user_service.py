@@ -27,6 +27,7 @@ from app.query.models.comment import Comment
 from app.query.models.conversation import Conversation
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
+from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.services.audit_service import AuditService
 from app.system.services.storage_service import StorageService
 
@@ -82,6 +83,8 @@ class AdminTenantSummary:
     created_at: datetime
     updated_at: datetime
     stats: AdminTenantStats
+    status: str
+    last_activity_at: datetime | None
 
 
 class AdminUserService:
@@ -224,11 +227,8 @@ class AdminUserService:
         )
 
     def list_tenants_global(self) -> list[AdminTenantSummary]:
-        tenants = [
-            tenant
-            for tenant in self.tenants.list_all()
-            if self.users.count_by_tenant(tenant.id) > 0
-        ]
+        # Include empty tenants so platform operators can see their full lifecycle.
+        tenants = self.tenants.list_all()
         if not tenants:
             return []
         tenant_ids = [tenant.id for tenant in tenants]
@@ -240,6 +240,8 @@ class AdminUserService:
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
                 stats=stats[tenant.id],
+                status="active" if stats[tenant.id].users_count else "empty",
+                last_activity_at=tenant.updated_at,
             )
             for tenant in tenants
         ]
@@ -361,10 +363,21 @@ class AdminUserService:
                 )
             ).all()
         )
+        cleanup_pending = 0
         for bucket, object_key in objects:
             try:
                 self.storage.delete_object(bucket=str(bucket), object_key=str(object_key))
             except Exception:  # noqa: BLE001
+                self.db.add(
+                    StorageCleanupJob(
+                        tenant_id=tenant_id,
+                        owner_user_id=user.id,
+                        bucket=str(bucket),
+                        object_key=str(object_key),
+                        last_error="storage_delete_failed",
+                    )
+                )
+                cleanup_pending += 1
                 logger.warning(
                     "Failed to delete user-owned object from storage.",
                     extra={
@@ -409,6 +422,7 @@ class AdminUserService:
                 **{k: str(v) for k, v in counts.items()},
             },
         )
+        counts["storage_cleanup_pending"] = cleanup_pending
         self.db.commit()
 
         return AdminUserDeleteResult(

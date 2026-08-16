@@ -15,12 +15,15 @@ from app.core.config import get_settings
 from app.documents.services.deletion_service import DeletionService
 from app.platform.database.session import get_session_factory
 from app.platform.worker.celery_app import celery_app  # type: ignore[attr-defined]
+from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.services.audit_service import AuditService
 from app.system.services.metrics_service import MAINTENANCE_JOB_EVENTS_TOTAL
+from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 DEEPSPACE_RUN_STALE_MINUTES = 30
+STORAGE_CLEANUP_MAX_ATTEMPTS = 12
 
 
 @celery_app.task(name="maintenance.heartbeat")  # type: ignore[misc]
@@ -186,6 +189,68 @@ def retention_cleanup() -> dict[str, int]:
             except Exception:  # noqa: BLE001
                 logger.debug("Maintenance rollback after role reset failed.", exc_info=True)
 
+        session.close()
+
+
+@celery_app.task(name="maintenance.storage_cleanup")  # type: ignore[misc]
+def storage_cleanup() -> dict[str, int]:
+    """Retry failed object deletion without depending on the deleted user row."""
+    session = get_session_factory()()
+    succeeded = failed = 0
+    try:
+        session.execute(text("SET ROLE aks_app"))
+        # Select jobs across tenants only in the trusted maintenance worker.
+        session.execute(text("SELECT set_config('app.tenant_id', 'bypass', true)"))
+        now = datetime.now(tz=UTC)
+        jobs = list(
+            session.query(StorageCleanupJob)
+            .filter(
+                StorageCleanupJob.status == "pending",
+                StorageCleanupJob.next_attempt_at <= now,
+                StorageCleanupJob.attempts < STORAGE_CLEANUP_MAX_ATTEMPTS,
+            )
+            .order_by(StorageCleanupJob.next_attempt_at.asc())
+            .limit(100)
+            .with_for_update(skip_locked=True)
+            .all()
+        )
+        for job in jobs:
+            session.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": str(job.tenant_id)},
+            )
+            try:
+                StorageService(get_settings()).delete_object(
+                    bucket=job.bucket,
+                    object_key=job.object_key,
+                )
+                job.status = "completed"
+                job.last_error = None
+                succeeded += 1
+            except Exception as exc:  # noqa: BLE001
+                job.attempts += 1
+                job.last_error = str(exc)[:2000]
+                if job.attempts >= STORAGE_CLEANUP_MAX_ATTEMPTS:
+                    job.status = "failed"
+                else:
+                    job.next_attempt_at = now + timedelta(
+                        minutes=min(60, 2 ** min(job.attempts, 6))
+                    )
+                failed += 1
+        session.commit()
+        MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="storage_cleanup", status="ok").inc()
+        return {"succeeded": succeeded, "failed": failed}
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="storage_cleanup", status="error").inc()
+        logger.exception("Storage cleanup retry task failed.")
+        raise
+    finally:
+        try:
+            session.execute(text("RESET ROLE"))
+            session.commit()
+        except Exception:  # noqa: BLE001
+            session.rollback()
         session.close()
 
 

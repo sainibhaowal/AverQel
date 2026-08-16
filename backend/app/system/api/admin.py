@@ -36,6 +36,8 @@ from app.auth.schemas.admin import (
     DataDeletionRequest,
     DataDeletionRequestResponse,
     DataDeletionStatusResponse,
+    StorageCleanupJobResponse,
+    StorageCleanupListResponse,
 )
 from app.auth.services.admin_user_service import (
     AdminTenantSummary,
@@ -49,6 +51,7 @@ from app.documents.repositories.documents import DocumentsRepository
 from app.documents.services.deletion_service import DeletionService
 from app.platform.database.session import get_db
 from app.system.models.break_glass_grant import BreakGlassGrant
+from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.services.audit_service import AuditService
 from app.system.workers.tasks_maintenance import process_data_deletion
 
@@ -95,6 +98,8 @@ def _to_admin_tenant_response(
         name=summary.name,
         created_at=summary.created_at,
         updated_at=summary.updated_at,
+        status=summary.status,
+        last_activity_at=summary.last_activity_at,
         stats=AdminTenantStatsResponse(
             users_count=summary.stats.users_count,
             active_users_count=summary.stats.active_users_count,
@@ -210,12 +215,48 @@ def list_audit_logs(
                 resource_id=item.resource_id,
                 status=item.status,
                 trace_id=item.trace_id,
+                ip_address=item.ip_address,
                 created_at=item.created_at,
                 details=_safe_details_map(item.details),
             )
             for item in page.items
         ],
         page=CursorPage(next_cursor=page.next_cursor, has_more=page.has_more),
+    )
+
+
+@router.get(
+    "/storage-cleanup",
+    response_model=StorageCleanupListResponse,
+    dependencies=[Depends(require_permissions("admin:users:read"))],
+)
+def list_storage_cleanup(
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> StorageCleanupListResponse:
+    jobs = (
+        db.query(StorageCleanupJob)
+        .filter(StorageCleanupJob.tenant_id == tenant_context.tenant_id)
+        .order_by(StorageCleanupJob.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    return StorageCleanupListResponse(
+        items=[
+            StorageCleanupJobResponse(
+                id=job.id,
+                tenant_id=job.tenant_id,
+                owner_user_id=job.owner_user_id,
+                bucket=job.bucket,
+                object_key=job.object_key,
+                status=job.status,
+                attempts=job.attempts,
+                last_error=job.last_error,
+                next_attempt_at=job.next_attempt_at,
+                created_at=job.created_at,
+            )
+            for job in jobs
+        ]
     )
 
 

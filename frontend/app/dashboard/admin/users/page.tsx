@@ -189,7 +189,16 @@ export default function AdminUsersPage() {
         const body = await res.json().catch(() => null);
         throw new Error(body?.error?.message || `Request failed (${res.status})`);
       }
+      const body = (await res.json().catch(() => null)) as {
+        deleted_counts?: { storage_cleanup_pending?: number };
+      } | null;
       toast.success(successMessage);
+      const pending = body?.deleted_counts?.storage_cleanup_pending ?? 0;
+      if (actionKey.startsWith("delete:") && pending > 0) {
+        toast(`Storage cleanup queued for ${pending} object${pending === 1 ? "" : "s"}.`, {
+          icon: "🧹",
+        });
+      }
       await refreshAll();
     } catch (error) {
       console.error(error);

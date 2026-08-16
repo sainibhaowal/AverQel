@@ -15,6 +15,7 @@ class AuditLogItem(BaseModel):
     resource_id: str | None
     status: str
     trace_id: str
+    ip_address: str | None = None
     created_at: datetime
     details: dict[str, str] = Field(default_factory=dict)
 
@@ -129,6 +130,27 @@ class AdminUserDeleteResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class StorageCleanupJobResponse(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    owner_user_id: UUID
+    bucket: str
+    object_key: str
+    status: str
+    attempts: int
+    last_error: str | None
+    next_attempt_at: datetime
+    created_at: datetime
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class StorageCleanupListResponse(BaseModel):
+    items: list[StorageCleanupJobResponse]
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class AdminTenantStatsResponse(BaseModel):
     users_count: int
     active_users_count: int
@@ -144,6 +166,8 @@ class AdminTenantSummaryResponse(BaseModel):
     name: str
     created_at: datetime
     updated_at: datetime
+    status: str = "active"
+    last_activity_at: datetime | None = None
     stats: AdminTenantStatsResponse
 
     model_config = ConfigDict(extra="forbid")

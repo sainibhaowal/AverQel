@@ -110,6 +110,7 @@ interface AuditLogItem {
   resource_id: string | null;
   status: string;
   trace_id: string;
+  ip_address?: string | null;
   created_at: string;
   details: Record<string, string>;
 }
@@ -198,7 +199,7 @@ export default function AuditLogsPage() {
       <div className="flex flex-none items-end justify-between gap-4">
         <DashboardSectionHeader
           title="Audit Logs"
-          subtitle="Immutable Security Event Ledger"
+          subtitle="Current Workspace Security Event History"
           icon={ShieldAlert}
           accentClassName="bg-rose-500 text-rose-500"
           accentGlowClassName="shadow-[0_0_20px_rgba(244,63,94,0.4)]"
@@ -359,6 +360,14 @@ export default function AuditLogsPage() {
                                     </p>
                                     <p className="truncate font-mono text-xs text-slate-400">
                                       {log.id}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] font-bold text-slate-600 uppercase">
+                                      IP address
+                                    </p>
+                                    <p className="truncate font-mono text-xs text-slate-400">
+                                      {log.ip_address || "Not recorded"}
                                     </p>
                                   </div>
                                   <div>

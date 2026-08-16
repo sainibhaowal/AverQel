@@ -20,6 +20,8 @@ interface TenantSummary {
   name: string;
   created_at: string;
   updated_at: string;
+  status?: "active" | "empty" | "suspended" | "pending_deletion";
+  last_activity_at?: string | null;
   stats: TenantStats;
 }
 
@@ -173,7 +175,7 @@ export default function AdminTenantsPage() {
                   </div>
                   <div className="space-y-2 xl:text-right">
                     <div className="theme-chip justify-center rounded-full px-3 py-1 text-[10px] font-bold tracking-[0.18em] uppercase xl:ml-auto xl:w-fit">
-                      Updated {formatDate(tenant.updated_at)}
+                      {tenant.status ?? "active"} · Updated {formatDate(tenant.updated_at)}
                     </div>
                   </div>
                 </div>

@@ -63,6 +63,7 @@ from app.query.models.query_citation import QueryCitation
 from app.system.models.audit_log import AuditLog
 from app.system.models.break_glass_grant import BreakGlassGrant
 from app.system.models.idempotency_key import IdempotencyKey
+from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.models.support_ticket import SupportTicket
 from app.system.models.usage_record import UsageRecord
 
@@ -97,6 +98,7 @@ __all__ = [
     "AuditLog",
     "BreakGlassGrant",
     "DataDeletion",
+    "StorageCleanupJob",
     "Conversation",
     "Message",
     "MessageVersion",
