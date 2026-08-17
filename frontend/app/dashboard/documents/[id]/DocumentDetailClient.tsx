@@ -281,7 +281,7 @@ export default function DocumentDetailPage() {
       <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
         <AlertCircle size={48} className="text-red-500" />
         <p className="text-foreground text-xl font-bold">Document Not Found</p>
-        <Link href="/dashboard/documents" className="text-primary hover:underline">
+        <Link href="/dashboard/documents" prefetch={false} className="text-primary hover:underline">
           Return to list
         </Link>
       </div>
@@ -347,6 +347,7 @@ export default function DocumentDetailPage() {
     <div className="space-y-8 pb-12">
       <Link
         href="/dashboard/documents"
+        prefetch={false}
         className="hover:text-foreground group mb-4 inline-flex items-center gap-2 text-slate-700 transition-colors dark:text-slate-400"
       >
         <ArrowLeft size={18} className="transition-transform group-hover:-translate-x-1" />
@@ -378,6 +379,7 @@ export default function DocumentDetailPage() {
                   </button>
                   <Link
                     href={`/dashboard/query?docId=${doc.document_id}`}
+                    prefetch={false}
                     className="bg-primary text-primary-foreground flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-[0_12px_24px_rgba(var(--primary),0.2)] transition-all hover:shadow-[0_12px_32px_rgba(var(--primary),0.35)]"
                   >
                     <Search size={16} />
@@ -759,6 +761,7 @@ export default function DocumentDetailPage() {
                     <Link
                       key={v.document_id}
                       href={`/dashboard/documents/${v.document_id}`}
+                      prefetch={false}
                       className={`flex items-center justify-between rounded-xl border p-3 transition-all ${
                         v.document_id === id
                           ? "border-primary/30 bg-primary/10 text-primary"

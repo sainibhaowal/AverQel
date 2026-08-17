@@ -567,6 +567,7 @@ export default function DocumentsPage() {
                         <div className="min-w-0">
                           <Link
                             href={`/dashboard/documents/${doc.document_id}`}
+                            prefetch={false}
                             className="text-foreground hover:text-primary focus-visible:ring-primary/50 block truncate text-sm leading-tight font-bold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                             aria-label={`Open ${doc.filename}`}
                           >
@@ -687,6 +688,7 @@ export default function DocumentsPage() {
                     <div className="min-w-0">
                       <Link
                         href={`/dashboard/documents/${doc.document_id}`}
+                        prefetch={false}
                         className="text-foreground hover:text-primary focus-visible:ring-primary/50 block truncate text-sm leading-tight font-bold transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                         aria-label={`Open ${doc.filename}`}
                       >

@@ -43,6 +43,7 @@ export default function CitationCard({
           </div>
           <Link
             href={`/dashboard/documents/${documentId}`}
+            prefetch={false}
             className="text-muted-foreground hover:text-primary flex items-center gap-2 text-xs font-bold tracking-widest uppercase transition-colors"
           >
             <FileText size={14} />
