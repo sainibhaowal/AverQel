@@ -35,6 +35,7 @@ from app.deepspace.schemas.chats import (
     ApprovalDecisionRequest,
     BulkDeleteRequest,
     ChatHistoryResponse,
+    ConversationAppendContentRequest,
     ConversationCreateRequest,
     ConversationListResponse,
     ConversationSchema,
@@ -430,6 +431,35 @@ async def update_conversation(
             message="Conversation not found after update",
             status_code=404,
         )
+    return ConversationSchema.model_validate(conversation)
+
+
+@router.post(
+    "/{conversation_id}/append-content",
+    response_model=ConversationSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def append_conversation_content(
+    conversation_id: uuid.UUID,
+    payload: ConversationAppendContentRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> ConversationSchema:
+    """Append document text to the current user's active DeepSpace note."""
+    repo = DeepSpaceChatRepository(db)
+    conversation = repo.append_conversation_content(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        user_id=auth.user_id,
+        content_html=payload.content_html,
+        title=payload.title,
+        kind=CONVERSATION_KIND,
+    )
+    if conversation is None:
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+        )
+    db.commit()
     return ConversationSchema.model_validate(conversation)
 
 

@@ -24,6 +24,7 @@ import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
 import EmptyState from "@/app/components/ui/EmptyState";
 import { useHotkeys } from "@/app/hooks/useHotkeys";
 import { readApiErrorMessage } from "@/app/lib/api/documents";
+import { saveDocumentContentToDeepSpace } from "@/app/lib/deepspace-document-notes";
 import toast from "react-hot-toast";
 import { useAuth } from "@/app/context/AuthContext";
 import { normalizeRole } from "@/lib/roles";
@@ -153,6 +154,9 @@ export default function DocumentsPage() {
   const [isRawLoading, setIsRawLoading] = useState(false);
   const [viewerMode, setViewerMode] = useState<"raw" | "text">("raw");
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
+  const [pasteDraft, setPasteDraft] = useState("");
+  const [rawLoadingPhase, setRawLoadingPhase] = useState<"secure" | "text" | "ready">("secure");
   const [mounted, setMounted] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingDocumentAction | null>(null);
   const [documentActionBusy, setDocumentActionBusy] = useState(false);
@@ -272,6 +276,7 @@ export default function DocumentsPage() {
     setRawTextContent(null);
     setRawFileUrl(null);
     setRawFileContentType(null);
+    setRawLoadingPhase("secure");
     setViewerMode("raw"); // Default to the original source file
     try {
       // Fetch both for seamless switching
@@ -289,6 +294,7 @@ export default function DocumentsPage() {
         }
       }
 
+      setRawLoadingPhase("text");
       if (fullTextRes.ok) {
         const data = await (fullTextRes as Response).json();
         setRawTextContent(data.content);
@@ -298,6 +304,7 @@ export default function DocumentsPage() {
     } catch (err) {
       console.error("Error loading raw document", err);
     } finally {
+      setRawLoadingPhase("ready");
       setIsRawLoading(false);
     }
   };
@@ -309,8 +316,9 @@ export default function DocumentsPage() {
       let finalContent = "";
       let titlePrefix = "Research";
 
-      if (customText) {
-        finalContent = textToSafeNoteHtml(customText);
+      const selectedText = customText?.trim() || selection?.text?.trim();
+      if (selectedText) {
+        finalContent = textToSafeNoteHtml(selectedText);
         titlePrefix = "Highlight";
       } else if (mode === "selection") {
         try {
@@ -319,15 +327,9 @@ export default function DocumentsPage() {
           finalContent = textToSafeNoteHtml(text);
           titlePrefix = "Insight";
         } catch {
-          // Fallback if clipboard fails (rare on modern browsers)
-          if (selection?.text) {
-            finalContent = `<p>${selection.text.replace(/\n/g, "<br/>")}</p>`;
-            titlePrefix = "Highlight";
-          } else {
-            toast.error("Please copy the text from the PDF first.");
-            setIsRawLoading(false);
-            return;
-          }
+          setPasteDialogOpen(true);
+          setIsRawLoading(false);
+          return;
         }
       } else {
         // Use pre-fetched text if available
@@ -341,30 +343,28 @@ export default function DocumentsPage() {
         }
       }
 
-      // Create note in DeepSpace (Correct endpoint is /deepspace/chats)
-      const noteRes = await fetchWithAuth("/deepspace/chats", {
-        method: "POST",
-        body: JSON.stringify({
-          title: `${titlePrefix}: ${rawViewerTarget.name}`,
-          content_html: finalContent,
-        }),
+      await saveDocumentContentToDeepSpace({
+        title: `${titlePrefix}: ${rawViewerTarget.name}`,
+        contentHtml: finalContent,
       });
-
-      if (noteRes.ok) {
-        setDocuments((prev) =>
-          prev.map((d) => (d.document_id === rawViewerTarget.id ? { ...d, has_notes: true } : d)),
-        );
-        setSelection(null);
-        toast.success("Document content sent to DeepSpace Notes.");
-      } else {
-        throw new Error("Failed to save note");
-      }
+      setSelection(null);
+      setPasteDialogOpen(false);
+      setPasteDraft("");
+      toast.success("Content added to your active DeepSpace note.");
     } catch (err) {
       console.error("Failed to save note", err);
       toast.error(err instanceof Error ? err.message : "Unable to send content to notes.");
     } finally {
       setIsRawLoading(false);
     }
+  };
+
+  const handlePasteSelection = async () => {
+    if (selection?.text) {
+      await saveToNotes("selection", selection.text);
+      return;
+    }
+    await saveToNotes("selection");
   };
 
   const handleTextSelection = () => {
@@ -395,6 +395,8 @@ export default function DocumentsPage() {
     setRawViewerTarget(null);
     setRawFileUrl(null);
     setRawFileContentType(null);
+    setPasteDialogOpen(false);
+    setPasteDraft("");
   };
 
   const downloadRawFile = () => {
@@ -435,7 +437,7 @@ export default function DocumentsPage() {
           method: "POST",
         })) as Response;
         if (res.ok) {
-          await fetchDocuments();
+          await fetchDocuments(false);
           toast.success(`"${action.filename}" queued for re-ingestion.`);
         } else {
           toast.error(await readApiErrorMessage(res, "Failed to re-ingest document."));
@@ -785,7 +787,7 @@ export default function DocumentsPage() {
       <UploadModal
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
-        onSuccess={fetchDocuments}
+        onSuccess={() => fetchDocuments(false)}
       />
 
       <DocumentInspector
@@ -893,10 +895,10 @@ export default function DocumentsPage() {
                     <div className="flex items-center gap-3">
                       <div className="bg-foreground/5 flex items-center rounded-xl p-1 backdrop-blur-sm">
                         <button
-                          onClick={() => saveToNotes("selection")}
+                          onClick={handlePasteSelection}
                           disabled={isRawLoading}
                           className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
-                          title="Select text in Intelligence View, then click here"
+                          title="Paste copied text or save the selected Intelligence View text"
                         >
                           <Plus size={14} className="stroke-[2.5]" />
                           <span>Paste Selection</span>
@@ -925,18 +927,42 @@ export default function DocumentsPage() {
                   </div>
                   <div className="relative flex-1 overflow-hidden bg-white/5">
                     {isRawLoading ? (
-                      <div className="flex h-full flex-col items-center justify-center gap-4">
-                        <div className="bg-primary h-1 w-32 overflow-hidden rounded-full opacity-20">
-                          <motion.div
-                            initial={{ x: "-100%" }}
-                            animate={{ x: "100%" }}
-                            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                            className="bg-primary h-full w-full"
-                          />
+                      <div className="flex h-full flex-col items-center justify-center gap-6 p-8 text-center">
+                        <div className="relative flex h-20 w-20 items-center justify-center rounded-full border border-primary/20 bg-primary/5">
+                          <div className="absolute inset-1 animate-spin rounded-full border-2 border-transparent border-t-primary border-r-primary/40" />
+                          <Eye size={25} className="text-primary" />
                         </div>
-                        <p className="text-foreground/30 text-[10px] font-bold tracking-widest uppercase">
-                          Fetching Secure Asset...
-                        </p>
+                        <div className="w-full max-w-sm space-y-3">
+                          <p className="text-foreground text-sm font-black tracking-wide">
+                            Preparing secure preview
+                          </p>
+                          <div className="grid grid-cols-3 gap-2 text-[9px] font-black tracking-widest uppercase">
+                            {[
+                              ["secure", "Secure fetch"],
+                              ["text", "Text index"],
+                              ["ready", "Preview"],
+                            ].map(([phase, label]) => (
+                              <div
+                                key={phase}
+                                className={`rounded-lg border px-2 py-2 transition-colors ${
+                                  rawLoadingPhase === phase
+                                    ? "border-primary/40 bg-primary/10 text-primary"
+                                    : "border-foreground/10 text-foreground/30"
+                                }`}
+                              >
+                                <span
+                                  className={`mx-auto mb-1 block h-1.5 w-1.5 rounded-full ${rawLoadingPhase === phase ? "animate-pulse bg-primary" : "bg-foreground/20"}`}
+                                />
+                                {label}
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-foreground/40 text-[10px] font-bold tracking-widest uppercase">
+                            {rawLoadingPhase === "secure"
+                              ? "Fetching original file securely"
+                              : "Loading extracted text without reloading the page"}
+                          </p>
+                        </div>
                       </div>
                     ) : viewerMode === "raw" && rawFileUrl ? (
                       rawFileContentType?.startsWith("image/") ? (
@@ -993,6 +1019,69 @@ export default function DocumentsPage() {
                     )}
                   </div>
                 </motion.div>
+
+                <AnimatePresence>
+                  {pasteDialogOpen && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-5 backdrop-blur-sm"
+                    >
+                      <motion.form
+                        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          if (pasteDraft.trim()) void saveToNotes("selection", pasteDraft);
+                        }}
+                        className="bg-surface-0 border-glass-border w-full max-w-lg rounded-2xl border p-5 shadow-2xl"
+                      >
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                          <div>
+                            <h4 className="text-foreground text-sm font-black">Paste selection</h4>
+                            <p className="text-foreground/50 mt-1 text-xs">
+                              Paste text here when the browser blocks direct clipboard access.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPasteDialogOpen(false)}
+                            className="text-foreground/40 hover:text-foreground rounded-lg p-1"
+                            aria-label="Close paste dialog"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                        <textarea
+                          autoFocus
+                          value={pasteDraft}
+                          onChange={(event) => setPasteDraft(event.target.value)}
+                          placeholder="Paste copied text here..."
+                          rows={8}
+                          className="bg-foreground/[0.03] text-foreground placeholder:text-foreground/30 focus:border-primary/60 w-full resize-y rounded-xl border border-foreground/10 p-3 text-sm outline-none"
+                        />
+                        <div className="mt-4 flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPasteDialogOpen(false)}
+                            className="text-foreground/60 hover:text-foreground rounded-xl px-4 py-2 text-xs font-bold"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={!pasteDraft.trim() || isRawLoading}
+                            className="bg-primary text-primary-foreground rounded-xl px-4 py-2 text-xs font-black uppercase disabled:opacity-40"
+                          >
+                            Save to active note
+                          </button>
+                        </div>
+                      </motion.form>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </>
             )}
           </AnimatePresence>,

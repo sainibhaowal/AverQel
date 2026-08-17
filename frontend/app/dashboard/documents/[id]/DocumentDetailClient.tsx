@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Database,
   Shield,
+  ShieldCheck,
   Clock,
   CheckCircle2,
   Loader2,
@@ -20,6 +21,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { fetchWithAuth } from "@/lib/api";
+import { saveDocumentContentToDeepSpace } from "@/app/lib/deepspace-document-notes";
+import toast from "react-hot-toast";
 import Link from "next/link";
 
 interface DocumentMetadata {
@@ -119,6 +122,7 @@ export default function DocumentDetailPage() {
   const [hasMoreChunks, setHasMoreChunks] = useState(false);
   const [loadingMoreChunks, setLoadingMoreChunks] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [fullTextLoading, setFullTextLoading] = useState(true);
   const [fullText, setFullText] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"reader" | "technical">("reader");
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -163,6 +167,10 @@ export default function DocumentDetailPage() {
         console.error("Failed to fetch versions", e);
       }
 
+      // The document shell and fragments are useful immediately. Full text
+      // can be large, so it must not block the first render of the page.
+      setLoading(false);
+
       try {
         const fullRes = (await fetchWithAuth(`/documents/${id}/full-text`)) as Response;
         if (fullRes.ok) {
@@ -171,6 +179,8 @@ export default function DocumentDetailPage() {
         }
       } catch (e) {
         console.error("Failed to fetch full text", e);
+      } finally {
+        setFullTextLoading(false);
       }
     } catch (error) {
       console.error("Failed to fetch document details", error);
@@ -193,29 +203,14 @@ export default function DocumentDetailPage() {
 
   const handleSendToNote = async (content: string) => {
     try {
-      // 1. Create a new conversation/note
-      const createRes = (await fetchWithAuth("/deepspace/chats", {
-        method: "POST",
-      })) as Response;
-
-      if (!createRes.ok) throw new Error("Failed to create note");
-      const newNote = await createRes.json();
-
-      // 2. Update it with the content
-      const updateRes = (await fetchWithAuth(`/deepspace/chats/${newNote.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          title: `Extract: ${doc?.filename.slice(0, 20)}...`,
-          content_html: textToSafeNoteHtml(content),
-        }),
-      })) as Response;
-
-      if (!updateRes.ok) throw new Error("Failed to save content");
-
-      alert("Successfully sent to your DeepSpace Notes!");
+      await saveDocumentContentToDeepSpace({
+        title: `Extract: ${doc?.filename.slice(0, 40) || "Document"}`,
+        contentHtml: textToSafeNoteHtml(content),
+      });
+      toast.success("Content added to your active DeepSpace note.");
     } catch (err) {
       console.error("Send to note failed", err);
-      alert("Failed to send to notes.");
+      toast.error(err instanceof Error ? err.message : "Failed to send to notes.");
     }
   };
 
@@ -302,6 +297,7 @@ export default function DocumentDetailPage() {
   };
 
   const steps = [
+    { id: "security", label: "Security scan", icon: <ShieldCheck size={18} /> },
     { id: "queued", label: "Queued", icon: <Clock size={18} /> },
     { id: "downloading", label: "Downloading", icon: <Download size={18} /> },
     { id: "parsing", label: "Parsing", icon: <Maximize2 size={18} /> },
@@ -314,7 +310,10 @@ export default function DocumentDetailPage() {
     status?.active_stage || status?.ingestion_status || status?.status || doc.status;
   const normalizedStatus = activePipelineStatus === "completed" ? "indexed" : activePipelineStatus;
   const currentStepIdx = steps.findIndex((s) => s.id === normalizedStatus);
-  const boundedStepIndex = currentStepIdx >= 0 ? currentStepIdx : 0;
+  // Documents are created only after the upload security gate passes. Keep
+  // that gate visible as a completed first step without inventing a worker
+  // status that the ingestion API does not expose.
+  const boundedStepIndex = currentStepIdx >= 0 ? currentStepIdx : 1;
   const isFailed =
     (status?.status || doc.status) === "failed" ||
     (status?.status || doc.status) === "dead_lettered";
@@ -565,9 +564,15 @@ export default function DocumentDetailPage() {
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-4 py-24">
-                      <Loader2 size={32} className="text-primary/20 animate-spin" />
+                      {fullTextLoading ? (
+                        <Loader2 size={32} className="text-primary/20 animate-spin" />
+                      ) : (
+                        <AlertCircle size={32} className="text-foreground/20" />
+                      )}
                       <p className="text-foreground/30 text-[10px] font-bold tracking-widest uppercase">
-                        Reconstructing Knowledge Stream...
+                        {fullTextLoading
+                          ? "Loading document text without blocking the page"
+                          : "No extracted text available"}
                       </p>
                     </div>
                   )

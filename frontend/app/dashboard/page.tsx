@@ -22,6 +22,8 @@ import {
   ShieldCheck,
   Settings2,
   Sparkles,
+  CheckCircle2,
+  CircleAlert,
 } from "lucide-react";
 
 import Link from "next/link";
@@ -87,6 +89,20 @@ interface DashboardActivityItem {
   created_at: string;
 }
 
+interface DashboardTrendPoint {
+  date: string;
+  documents: number;
+  queries: number;
+  failures: number;
+}
+
+interface DashboardProviderTrendPoint {
+  date: string;
+  checks: number;
+  failures: number;
+  average_latency_ms: number | null;
+}
+
 interface DashboardOverview {
   stats: DashboardStats;
   document_breakdown: DashboardDocumentBreakdown;
@@ -94,6 +110,8 @@ interface DashboardOverview {
   provider_runtimes: DashboardProviderRuntime[];
   collections: DashboardCollectionSummary[];
   recent_activity: DashboardActivityItem[];
+  activity_trend: DashboardTrendPoint[];
+  provider_trend: DashboardProviderTrendPoint[];
 }
 
 type AttentionTone = "healthy" | "working" | "risk" | "neutral";
@@ -130,6 +148,8 @@ const EMPTY_OVERVIEW: DashboardOverview = {
   provider_runtimes: [],
   collections: [],
   recent_activity: [],
+  activity_trend: [],
+  provider_trend: [],
 };
 
 export default function DashboardPage() {
@@ -171,9 +191,9 @@ export default function DashboardPage() {
   const topStats = useMemo(
     () => [
       {
-        label: "Indexed docs",
+        label: "Workspace documents",
         value: stats.total_documents,
-        detail: "Grounded files ready",
+        detail: "Non-deleted source files",
         icon: FileText,
       },
       {
@@ -426,6 +446,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </motion.section>
+
+      <DashboardTelemetry overview={overview} loading={loading} theme={theme} />
+      <DashboardTrends overview={overview} loading={loading} />
 
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-[0.95fr_1.05fr_0.95fr]">
         <motion.div
@@ -839,7 +862,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-muted-foreground/60 mt-1.5 text-[9px] font-black tracking-widest uppercase">
-                        {runtime.latency_ms ? `${runtime.latency_ms} ms` : "No latency yet"}
+                        {runtime.latency_ms ? `${runtime.latency_ms} ms` : "No health sample"}
                       </p>
                     </div>
                   </div>
@@ -933,6 +956,457 @@ export default function DashboardPage() {
           fetchDashboardData();
         }}
       />
+    </div>
+  );
+}
+
+function DashboardTelemetry({
+  overview,
+  loading,
+  theme,
+}: {
+  overview: DashboardOverview;
+  loading: boolean;
+  theme: string;
+}) {
+  const breakdown = overview.document_breakdown;
+  const pipeline = [
+    {
+      label: "Indexed",
+      value: breakdown.indexed,
+      tone: "bg-emerald-400",
+      text: "text-emerald-400",
+    },
+    {
+      label: "Processing",
+      value: breakdown.processing,
+      tone: "bg-cyan-400",
+      text: "text-cyan-300",
+    },
+    { label: "Queued", value: breakdown.queued, tone: "bg-amber-400", text: "text-amber-300" },
+    { label: "Failed", value: breakdown.failed, tone: "bg-rose-400", text: "text-rose-300" },
+    {
+      label: "Quarantined",
+      value: breakdown.quarantined,
+      tone: "bg-violet-400",
+      text: "text-violet-300",
+    },
+  ];
+  const pipelineTotal = pipeline.reduce((sum, item) => sum + item.value, 0);
+  const activityCounts = overview.recent_activity.reduce<Record<string, number>>((counts, item) => {
+    const key = item.action.split(".")[0] || "other";
+    counts[key] = (counts[key] ?? 0) + 1;
+    return counts;
+  }, {});
+  const maxActivity = Math.max(1, ...Object.values(activityCounts));
+  const healthyProviders = overview.provider_runtimes.filter(
+    (provider) => provider.health_status?.toLowerCase() === "healthy",
+  ).length;
+  const configuredProviders = overview.provider_runtimes.filter(
+    (provider) => provider.provider_type !== "unconfigured",
+  ).length;
+
+  return (
+    <motion.section
+      {...CARD_ENTER}
+      transition={{ duration: 0.45, delay: 0.12 }}
+      className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr_1fr]"
+      aria-label="Workspace telemetry"
+    >
+      <div className="theme-panel relative overflow-hidden rounded-[1.45rem] p-5">
+        <div className="pointer-events-none absolute -top-20 -right-16 h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl" />
+        <SectionHeader eyebrow="Pipeline telemetry" title="Document flow" chip="Live snapshot" />
+        <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center">
+          <div className="relative mx-auto h-36 w-36 shrink-0 sm:mx-0">
+            <svg
+              viewBox="0 0 120 120"
+              className="h-full w-full -rotate-90"
+              role="img"
+              aria-label="Document pipeline distribution"
+            >
+              <circle
+                cx="60"
+                cy="60"
+                r="46"
+                fill="none"
+                stroke={theme === "dark" ? "rgba(255,255,255,.07)" : "rgba(15,23,42,.08)"}
+                strokeWidth="12"
+              />
+              {pipeline.map((item, index) => {
+                const previous = pipeline
+                  .slice(0, index)
+                  .reduce((sum, entry) => sum + entry.value, 0);
+                const circumference = 2 * Math.PI * 46;
+                const length = pipelineTotal ? (item.value / pipelineTotal) * circumference : 0;
+                const offset = -(previous / Math.max(1, pipelineTotal)) * circumference;
+                const color = item.tone.replace("bg-", "").replace("-400", "");
+                const stroke =
+                  color === "emerald"
+                    ? "#34d399"
+                    : color === "cyan"
+                      ? "#22d3ee"
+                      : color === "amber"
+                        ? "#fbbf24"
+                        : color === "rose"
+                          ? "#fb7185"
+                          : "#a78bfa";
+                return (
+                  <motion.circle
+                    key={item.label}
+                    cx="60"
+                    cy="60"
+                    r="46"
+                    fill="none"
+                    stroke={stroke}
+                    strokeWidth="12"
+                    strokeLinecap="round"
+                    strokeDasharray={`${length} ${circumference - length}`}
+                    initial={{ strokeDashoffset: 0, opacity: 0 }}
+                    animate={{ strokeDashoffset: offset, opacity: 1 }}
+                    transition={{ duration: 0.8, delay: index * 0.08, ease: "easeOut" }}
+                  />
+                );
+              })}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-2xl font-black">{loading ? "..." : pipelineTotal}</span>
+              <span className="text-muted-foreground text-[9px] font-bold tracking-widest uppercase">
+                tracked
+              </span>
+            </div>
+          </div>
+          <div className="grid flex-1 grid-cols-2 gap-x-5 gap-y-3">
+            {pipeline.map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-2 text-xs">
+                <span className="text-muted-foreground flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${item.tone}`} />
+                  {item.label}
+                </span>
+                <span className={`font-black ${item.text}`}>{loading ? "..." : item.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="theme-panel rounded-[1.45rem] p-5">
+        <SectionHeader eyebrow="Workspace load" title="Live capacity" chip="Current" />
+        <div className="mt-5 space-y-5">
+          <TelemetryMeter
+            label="Active jobs"
+            value={overview.stats.active_jobs}
+            max={Math.max(1, overview.stats.active_jobs, breakdown.processing)}
+            tone="cyan"
+          />
+          <TelemetryMeter
+            label="Queries recorded"
+            value={overview.stats.total_queries}
+            max={Math.max(1, overview.stats.total_queries)}
+            tone="violet"
+          />
+          <div>
+            <div className="mb-2 flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Storage footprint</span>
+              <span className="font-bold">{formatBytes(overview.stats.storage_used_bytes)}</span>
+            </div>
+            <div className="bg-foreground/10 h-2 overflow-hidden rounded-full dark:bg-white/10">
+              <motion.div
+                className="to-primary h-full rounded-full bg-gradient-to-r from-cyan-400"
+                initial={{ width: 0 }}
+                animate={{ width: overview.stats.storage_used_bytes ? "100%" : "0%" }}
+                transition={{ duration: 0.8 }}
+              />
+            </div>
+            <p className="text-muted-foreground/60 mt-2 text-[10px]">
+              Used storage reported by the workspace. No quota percentage is shown because no quota
+              is configured.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="theme-panel rounded-[1.45rem] p-5">
+        <SectionHeader
+          eyebrow="Operational signals"
+          title="Routes and activity"
+          chip={`${overview.recent_activity.length} recent events`}
+        />
+        <div className="mt-5 space-y-4">
+          <div className="border-foreground/5 bg-foreground/[0.02] flex items-center justify-between rounded-xl border p-3 dark:border-white/5 dark:bg-white/[0.02]">
+            <div className="flex items-center gap-3">
+              {healthyProviders === configuredProviders && configuredProviders > 0 ? (
+                <CheckCircle2 className="text-emerald-400" size={18} />
+              ) : (
+                <CircleAlert className="text-amber-300" size={18} />
+              )}
+              <div>
+                <p className="text-sm font-semibold">Provider readiness</p>
+                <p className="text-muted-foreground text-[10px]">
+                  {healthyProviders} healthy of {configuredProviders} configured
+                </p>
+              </div>
+            </div>
+            <span className="text-muted-foreground text-xs font-bold">
+              {overview.provider_runtimes.length} routes
+            </span>
+          </div>
+          {Object.keys(activityCounts).length > 0 ? (
+            Object.entries(activityCounts)
+              .slice(0, 4)
+              .map(([label, value], index) => (
+                <div key={label}>
+                  <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold tracking-wider uppercase">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span>{value}</span>
+                  </div>
+                  <div className="bg-foreground/10 h-1.5 overflow-hidden rounded-full dark:bg-white/10">
+                    <motion.div
+                      className={`h-full rounded-full ${index % 2 ? "bg-primary" : "bg-cyan-400"}`}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(value / maxActivity) * 100}%` }}
+                      transition={{ duration: 0.55, delay: index * 0.08 }}
+                    />
+                  </div>
+                </div>
+              ))
+          ) : (
+            <p className="text-muted-foreground py-5 text-center text-xs">
+              Activity telemetry will appear after workspace actions occur.
+            </p>
+          )}
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
+function DashboardTrends({ overview, loading }: { overview: DashboardOverview; loading: boolean }) {
+  const activity = overview.activity_trend ?? [];
+  const provider = overview.provider_trend ?? [];
+  const activityTotal = activity.reduce((sum, point) => sum + point.documents + point.queries, 0);
+  const failures = activity.reduce((sum, point) => sum + point.failures, 0);
+  const checks = provider.reduce((sum, point) => sum + point.checks, 0);
+  const providerFailures = provider.reduce((sum, point) => sum + point.failures, 0);
+  const latestLatency = [...provider].reverse().find((point) => point.average_latency_ms !== null);
+
+  return (
+    <motion.section
+      {...CARD_ENTER}
+      transition={{ duration: 0.45, delay: 0.18 }}
+      className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]"
+      aria-label="Workspace trends"
+    >
+      <div className="theme-panel rounded-[1.45rem] p-5">
+        <SectionHeader
+          eyebrow="Last 7 days"
+          title="Workspace pulse"
+          chip={loading ? "Loading" : activityTotal > 0 ? "Live telemetry" : "No activity yet"}
+        />
+        <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+          <TrendLegend color="bg-cyan-400" label="Documents" />
+          <TrendLegend color="bg-violet-400" label="Queries" />
+          <span className="text-muted-foreground ml-auto">
+            {loading ? "Loading telemetry" : `${activityTotal} actions recorded`}
+          </span>
+        </div>
+        <TrendChart points={activity} loading={loading} />
+        <p className="text-muted-foreground/70 mt-2 text-[11px]">
+          Counts come from persisted documents and grounded queries in this workspace. A zero state
+          means there was no recorded document or query activity during the last seven days.
+        </p>
+      </div>
+      <div className="theme-panel rounded-[1.45rem] p-5">
+        <SectionHeader eyebrow="Provider operations" title="Reliability pulse" chip="Last 7 days" />
+        <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+          <PulseStat
+            label="Health checks"
+            value={loading ? "..." : checks}
+            detail="Recorded checks"
+          />
+          <PulseStat
+            label="Check failures"
+            value={loading ? "..." : providerFailures}
+            detail={providerFailures ? "Review provider health" : "No failed checks recorded"}
+            tone={providerFailures ? "risk" : "healthy"}
+          />
+          <PulseStat
+            label="Latest latency"
+            value={
+              loading
+                ? "..."
+                : latestLatency
+                  ? `${latestLatency.average_latency_ms} ms`
+                  : "Not measured"
+            }
+            detail="Most recent recorded average"
+          />
+        </div>
+        <div className="border-foreground/5 bg-foreground/[0.02] mt-4 rounded-xl border p-3 text-xs dark:border-white/5 dark:bg-white/[0.02]">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Failures in workspace activity</span>
+            <span className={failures ? "font-bold text-rose-300" : "font-bold text-emerald-300"}>
+              {loading ? "..." : failures}
+            </span>
+          </div>
+          <p className="text-muted-foreground/70 mt-2 text-[11px]">
+            Only recorded events are shown. AverQel does not invent a healthy status when no check
+            exists.
+          </p>
+        </div>
+      </div>
+    </motion.section>
+  );
+}
+
+function TrendLegend({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="text-muted-foreground flex items-center gap-2">
+      <span className={`h-2 w-2 rounded-full ${color}`} />
+      {label}
+    </span>
+  );
+}
+
+function PulseStat({
+  label,
+  value,
+  detail,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  detail: string;
+  tone?: "neutral" | "healthy" | "risk";
+}) {
+  return (
+    <div className="border-foreground/5 bg-foreground/[0.02] rounded-xl border p-3 dark:border-white/5 dark:bg-white/[0.02]">
+      <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
+        {label}
+      </p>
+      <p
+        className={`mt-2 text-xl font-black ${tone === "healthy" ? "text-emerald-300" : tone === "risk" ? "text-rose-300" : ""}`}
+      >
+        {value}
+      </p>
+      <p className="text-muted-foreground/70 mt-1 text-[11px]">{detail}</p>
+    </div>
+  );
+}
+
+function TrendChart({ points, loading }: { points: DashboardTrendPoint[]; loading: boolean }) {
+  const width = 640;
+  const height = 150;
+  const max = Math.max(1, ...points.flatMap((point) => [point.documents, point.queries]));
+  const hasActivity = points.some((point) => point.documents > 0 || point.queries > 0);
+  const makePath = (key: "documents" | "queries") =>
+    points
+      .map((point, index) => {
+        const x = points.length <= 1 ? width / 2 : (index / (points.length - 1)) * width;
+        const y = height - 16 - (point[key] / max) * (height - 32);
+        return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      })
+      .join(" ");
+
+  return (
+    <div className="border-foreground/5 mt-3 overflow-hidden rounded-xl border bg-black/10 px-2 py-3 dark:border-white/5">
+      {loading || points.length === 0 || !hasActivity ? (
+        <div className="flex h-[150px] flex-col items-center justify-center gap-2 text-center">
+          <span className="text-foreground/70 text-xs font-bold">
+            {loading ? "Loading workspace activity..." : "No activity recorded in the last 7 days"}
+          </span>
+          {!loading && (
+            <span className="text-muted-foreground max-w-sm text-[11px]">
+              Upload a document or run a grounded query to start your workspace pulse.
+            </span>
+          )}
+        </div>
+      ) : (
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="h-[150px] w-full"
+          role="img"
+          aria-label="Seven day workspace activity trend"
+        >
+          {[0, 1, 2].map((line) => {
+            const y = 16 + (line / 2) * (height - 32);
+            return (
+              <line
+                key={line}
+                x1="0"
+                x2={width}
+                y1={y}
+                y2={y}
+                stroke="currentColor"
+                className="text-foreground/10"
+              />
+            );
+          })}
+          <motion.path
+            d={makePath("documents")}
+            fill="none"
+            stroke="#22d3ee"
+            strokeWidth="3"
+            strokeLinecap="round"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 0.9 }}
+          />
+          <motion.path
+            d={makePath("queries")}
+            fill="none"
+            stroke="#a78bfa"
+            strokeWidth="3"
+            strokeLinecap="round"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 0.9, delay: 0.1 }}
+          />
+          {points.map((point, index) => {
+            const x = points.length <= 1 ? width / 2 : (index / (points.length - 1)) * width;
+            return (
+              <text
+                key={point.date}
+                x={x}
+                y={height - 2}
+                textAnchor="middle"
+                className="text-muted-foreground fill-current text-[10px]"
+              >
+                {point.date.slice(5)}
+              </text>
+            );
+          })}
+        </svg>
+      )}
+    </div>
+  );
+}
+
+function TelemetryMeter({
+  label,
+  value,
+  max,
+  tone,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  tone: "cyan" | "violet";
+}) {
+  const percentage = Math.min(100, Math.max(0, (value / Math.max(1, max)) * 100));
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-bold">{value}</span>
+      </div>
+      <div className="bg-foreground/10 h-2 overflow-hidden rounded-full dark:bg-white/10">
+        <motion.div
+          className={`h-full rounded-full ${tone === "cyan" ? "bg-cyan-400" : "bg-violet-400"}`}
+          initial={{ width: 0 }}
+          animate={{ width: `${percentage}%` }}
+          transition={{ duration: 0.65, ease: "easeOut" }}
+        />
+      </div>
     </div>
   );
 }

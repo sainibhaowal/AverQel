@@ -108,6 +108,41 @@ class DeepSpaceChatRepository:
         )
         return bool(getattr(result, "rowcount", 0))
 
+    def append_conversation_content(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        user_id: uuid.UUID,
+        content_html: str,
+        title: str | None = None,
+        kind: str = "deepspace",
+    ) -> Conversation | None:
+        """Append content under a row lock without replacing existing notes."""
+        conversation = self.db.execute(
+            select(Conversation)
+            .where(
+                Conversation.tenant_id == tenant_id,
+                Conversation.id == conversation_id,
+                Conversation.user_id == user_id,
+                Conversation.kind == kind,
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
+        if conversation is None:
+            return None
+
+        separator = '<hr data-averqel-document-separator="true" />'
+        existing = (conversation.content_html or "").strip()
+        conversation.content_html = (
+            f"{existing}{separator}{content_html}" if existing else content_html
+        )
+        if title and conversation.title.strip().lower() in {"", "untitled note"}:
+            conversation.title = title
+        conversation.updated_at = datetime.now(UTC)
+        self.db.flush()
+        return conversation
+
     def delete_conversation(
         self,
         *,

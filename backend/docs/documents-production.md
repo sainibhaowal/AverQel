@@ -16,6 +16,17 @@ The Documents Hub is a tenant-scoped upload, extraction, indexing, preview, and 
 6. Delete removes searchable data immediately and deletes the original object. If storage is
    temporarily unavailable, a durable `storage_cleanup_jobs` retry is created.
 
+The upload dialog shows the real request lifecycle at the user boundary: local validation, the
+ClamAV security gate, private object storage, and the background indexing queue. The security gate
+finishes before the upload response is accepted; a successful upload therefore means the original
+file passed the required scan. Existing documents show that gate as the first completed step in the
+detail-page ingestion timeline.
+
+Document text actions use `POST /deepspace/chats/{conversation_id}/append-content` to append safely
+to the authenticated user's active DeepSpace note. If the browser has no valid active note, the
+client creates one with `POST /deepspace/chats`. Both routes enforce tenant, user, and conversation
+kind ownership.
+
 ## Supported formats
 
 The source of truth is `ExtractorRouter.describe_supported_formats()` and the `/documents/supported-formats`

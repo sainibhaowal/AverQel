@@ -76,6 +76,25 @@ class ConversationUpdate(BaseModel):
         return str(value).strip() or None
 
 
+class ConversationAppendContentRequest(BaseModel):
+    content_html: str = Field(min_length=1, max_length=2_000_000)
+    title: str | None = Field(default=None, min_length=1, max_length=100)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("content_html", mode="before")
+    @classmethod
+    def normalize_content(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_append_title(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return str(value).strip() or None
+
+
 class ChatHistoryResponse(BaseModel):
     messages: list[MessageSchema]
 
