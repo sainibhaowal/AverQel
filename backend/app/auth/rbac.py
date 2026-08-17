@@ -66,7 +66,11 @@ PERMISSIONS_BY_ROLE: Final[dict[str, frozenset[str]]] = {
             "auth:login_self",
             "auth:refresh_self",
             "auth:logout_self",
+            # Free users and paid editors have the same normal workspace
+            # capabilities. Admin-only controls remain separate admin:* permissions.
+            "documents:upload",
             "documents:read",
+            "documents:delete",
             "collections:read",
             "collections:write",
             "queries:run",

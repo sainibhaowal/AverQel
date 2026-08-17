@@ -159,8 +159,7 @@ export default function DocumentsPage() {
   const drawerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const normalizedRoles = user?.roles.map(normalizeRole) ?? [];
-  const canDeleteDocuments = normalizedRoles.some((role) => role === "admin" || role === "editor");
-  const canReingestDocuments = normalizedRoles.some((role) =>
+  const canManageDocuments = normalizedRoles.some((role) =>
     ["admin", "editor", "user"].includes(role),
   );
 
@@ -646,7 +645,7 @@ export default function DocumentsPage() {
                         >
                           <Database size={17} className="stroke-[2.5]" />
                         </button>
-                        {canReingestDocuments &&
+                        {canManageDocuments &&
                           (doc.status === "failed" || doc.status === "dead_lettered") && (
                           <button
                             onClick={() => reingestDocument(doc.document_id, doc.filename)}
@@ -656,7 +655,7 @@ export default function DocumentsPage() {
                             <RefreshCcw size={17} className="stroke-[2.5]" />
                           </button>
                         )}
-                        {canDeleteDocuments && (
+                        {canManageDocuments && (
                           <button
                             onClick={() => deleteDocument(doc.document_id, doc.filename)}
                             className="text-foreground/40 hover:text-danger hover:bg-danger/10 rounded-xl p-2.5 transition-all"
@@ -719,7 +718,7 @@ export default function DocumentsPage() {
                     >
                       <Database size={15} />
                     </button>
-                    {canReingestDocuments &&
+                    {canManageDocuments &&
                       (doc.status === "failed" || doc.status === "dead_lettered") && (
                         <button
                           onClick={() => reingestDocument(doc.document_id, doc.filename)}
@@ -729,7 +728,7 @@ export default function DocumentsPage() {
                           <RefreshCcw size={15} />
                         </button>
                       )}
-                    {canDeleteDocuments && (
+                    {canManageDocuments && (
                       <button
                         onClick={() => deleteDocument(doc.document_id, doc.filename)}
                         aria-label={`Delete ${doc.filename}`}
