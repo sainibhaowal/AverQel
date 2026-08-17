@@ -95,6 +95,19 @@ interface ChunksResponse {
 
 const CHUNK_PAGE_SIZE = 25;
 
+function textToSafeNoteHtml(value: string): string {
+  const escaped = value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+  return escaped
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${paragraph.replace(/\n/g, "<br/>")}</p>`)
+    .join("");
+}
+
 export default function DocumentDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -109,6 +122,7 @@ export default function DocumentDetailPage() {
   const [fullText, setFullText] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"reader" | "technical">("reader");
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const fetchChunks = useCallback(
     async (offset: number, append: boolean) => {
@@ -192,7 +206,7 @@ export default function DocumentDetailPage() {
         method: "PATCH",
         body: JSON.stringify({
           title: `Extract: ${doc?.filename.slice(0, 20)}...`,
-          content_html: `<p>${content.replace(/\n/g, "<br/>")}</p>`,
+          content_html: textToSafeNoteHtml(content),
         }),
       })) as Response;
 
@@ -202,6 +216,29 @@ export default function DocumentDetailPage() {
     } catch (err) {
       console.error("Send to note failed", err);
       alert("Failed to send to notes.");
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!doc || downloading) return;
+    setDownloading(true);
+    try {
+      const response = (await fetchWithAuth(`/documents/${doc.document_id}/download`)) as Response;
+      if (!response.ok) throw new Error("Unable to download the original file.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = doc.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Document download failed", error);
+      alert(error instanceof Error ? error.message : "Unable to download the original file.");
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -330,13 +367,24 @@ export default function DocumentDetailPage() {
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex items-center justify-between gap-4">
                 <h1 className="text-foreground truncate text-3xl font-bold">{doc.filename}</h1>
-                <Link
-                  href={`/dashboard/query?docId=${doc.document_id}`}
-                  className="bg-primary text-primary-foreground flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-[0_12px_24px_rgba(var(--primary),0.2)] transition-all hover:shadow-[0_12px_32px_rgba(var(--primary),0.35)]"
-                >
-                  <Search size={16} />
-                  <span>Ask Questions</span>
-                </Link>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    className="border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold transition disabled:opacity-60"
+                  >
+                    <Download size={16} className={downloading ? "animate-bounce" : ""} />
+                    <span>{downloading ? "Downloading" : "Download"}</span>
+                  </button>
+                  <Link
+                    href={`/dashboard/query?docId=${doc.document_id}`}
+                    className="bg-primary text-primary-foreground flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-[0_12px_24px_rgba(var(--primary),0.2)] transition-all hover:shadow-[0_12px_32px_rgba(var(--primary),0.35)]"
+                  >
+                    <Search size={16} />
+                    <span>Ask Questions</span>
+                  </Link>
+                </div>
               </div>
               <div className="flex gap-4 text-sm font-medium text-slate-700 dark:text-slate-400">
                 <span className="flex items-center gap-1.5">

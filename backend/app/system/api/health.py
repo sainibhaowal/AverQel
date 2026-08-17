@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
+from app.ingestion.services.security.malware_scan_service import MalwareScanService
 from app.platform.database.session import get_engine
 from app.system.schemas.common import HealthResponse
 from app.system.services.cache_service import get_redis_client
@@ -18,7 +20,7 @@ def live() -> HealthResponse:
 
 
 @router.get("/ready", response_model=HealthResponse)
-def ready() -> HealthResponse:
+def ready(settings: Settings = Depends(get_settings)) -> HealthResponse:
     try:
         with get_engine().connect() as connection:
             connection.execute(text("SELECT 1"))
@@ -38,5 +40,13 @@ def ready() -> HealthResponse:
             message="Redis dependency is not ready.",
             status_code=503,
         ) from exc
+
+    if settings.malware_scan_enabled and settings.malware_scan_required:
+        if not MalwareScanService(settings).check_available():
+            raise ApiError(
+                code="MALWARE_SCANNER_NOT_READY",
+                message="Malware scanner dependency is not ready.",
+                status_code=503,
+            )
 
     return HealthResponse(status="ok")

@@ -25,6 +25,8 @@ import EmptyState from "@/app/components/ui/EmptyState";
 import { useHotkeys } from "@/app/hooks/useHotkeys";
 import { readApiErrorMessage } from "@/app/lib/api/documents";
 import toast from "react-hot-toast";
+import { useAuth } from "@/app/context/AuthContext";
+import { normalizeRole } from "@/lib/roles";
 
 interface Document {
   document_id: string;
@@ -64,6 +66,19 @@ const PIPELINE_STAGE_ORDER: Record<string, number> = {
 };
 
 const TERMINAL_DOCUMENT_STATUSES = new Set(["completed", "indexed", "failed", "dead_lettered"]);
+
+function textToSafeNoteHtml(value: string): string {
+  const escaped = value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+  return escaped
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${paragraph.replace(/\n/g, "<br/>")}</p>`)
+    .join("");
+}
 
 function mergeDocumentStatus(current: Document, incoming: DocumentStatusUpdate): Document {
   const currentTime = current.updated_at ? Date.parse(current.updated_at) : NaN;
@@ -133,6 +148,7 @@ export default function DocumentsPage() {
   const [inspectorTarget, setInspectorTarget] = useState<{ id: string; name: string } | null>(null);
   const [rawViewerTarget, setRawViewerTarget] = useState<{ id: string; name: string } | null>(null);
   const [rawFileUrl, setRawFileUrl] = useState<string | null>(null);
+  const [rawFileContentType, setRawFileContentType] = useState<string | null>(null);
   const [rawTextContent, setRawTextContent] = useState<string | null>(null);
   const [isRawLoading, setIsRawLoading] = useState(false);
   const [viewerMode, setViewerMode] = useState<"raw" | "text">("raw");
@@ -141,6 +157,12 @@ export default function DocumentsPage() {
   const [pendingAction, setPendingAction] = useState<PendingDocumentAction | null>(null);
   const [documentActionBusy, setDocumentActionBusy] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+  const normalizedRoles = user?.roles.map(normalizeRole) ?? [];
+  const canDeleteDocuments = normalizedRoles.some((role) => role === "admin" || role === "editor");
+  const canReingestDocuments = normalizedRoles.some((role) =>
+    ["admin", "editor", "user"].includes(role),
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -177,36 +199,44 @@ export default function DocumentsPage() {
 
   // Real-time updates via SSE
   useEffect(() => {
-    const token = localStorage.getItem("averqel_token");
-    if (!token) return;
+    let cancelled = false;
+    let eventSource: EventSource | null = null;
 
-    // Construct SSE URL using the same logic as fetchWithAuth
-    const streamUrl = `${getApiBaseUrl().replace(/\/+$/, "")}/documents/events/stream?token=${token}`;
-
-    const eventSource = new EventSource(streamUrl);
-
-    eventSource.onmessage = (event) => {
+    const connect = async () => {
       try {
-        const update = JSON.parse(event.data) as DocumentStatusUpdate;
-        setDocuments((prev) =>
-          prev.map((doc) => {
-            if (doc.document_id === update.document_id) {
-              return mergeDocumentStatus(doc, update);
-            }
-            return doc;
-          }),
-        );
+        const ticketResponse = (await fetchWithAuth("/documents/events/ticket")) as Response;
+        if (!ticketResponse.ok || cancelled) return;
+        const payload = (await ticketResponse.json()) as { ticket?: string };
+        if (!payload.ticket || cancelled) return;
+
+        const streamUrl = `${getApiBaseUrl().replace(/\/+$/, "")}/documents/events/stream?ticket=${encodeURIComponent(payload.ticket)}`;
+        eventSource = new EventSource(streamUrl);
+        eventSource.onmessage = (event) => {
+          try {
+            const update = JSON.parse(event.data) as DocumentStatusUpdate;
+            setDocuments((prev) =>
+              prev.map((doc) =>
+                doc.document_id === update.document_id ? mergeDocumentStatus(doc, update) : doc,
+              ),
+            );
+          } catch (err) {
+            console.error("SSE parse error:", err);
+          }
+        };
+        eventSource.onerror = (err) => {
+          console.error("SSE connection error:", err);
+          eventSource?.close();
+        };
       } catch (err) {
-        console.error("SSE parse error:", err);
+        if (!cancelled) console.error("Failed to establish document event stream:", err);
       }
     };
 
-    eventSource.onerror = (err) => {
-      console.error("SSE connection error:", err);
-      eventSource.close();
+    void connect();
+    return () => {
+      cancelled = true;
+      eventSource?.close();
     };
-
-    return () => eventSource.close();
   }, []);
 
   // SSE is the fast path, but this authoritative refresh repairs a missed or
@@ -237,11 +267,13 @@ export default function DocumentsPage() {
   }, []);
 
   const openRawViewer = async (id: string, name: string) => {
+    if (rawFileUrl) URL.revokeObjectURL(rawFileUrl);
     setRawViewerTarget({ id, name });
     setIsRawLoading(true);
     setRawTextContent(null);
     setRawFileUrl(null);
-    setViewerMode("raw"); // Default to raw PDF
+    setRawFileContentType(null);
+    setViewerMode("raw"); // Default to the original source file
     try {
       // Fetch both for seamless switching
       const [downloadRes, fullTextRes] = await Promise.all([
@@ -251,9 +283,10 @@ export default function DocumentsPage() {
 
       if (downloadRes.ok) {
         const contentType = downloadRes.headers.get("content-type") || "";
-        if (contentType.includes("pdf")) {
+        if (contentType) {
           const blob = await (downloadRes as Response).blob();
           setRawFileUrl(URL.createObjectURL(blob));
+          setRawFileContentType(contentType);
         }
       }
 
@@ -278,13 +311,13 @@ export default function DocumentsPage() {
       let titlePrefix = "Research";
 
       if (customText) {
-        finalContent = `<p>${customText.replace(/\n/g, "<br/>")}</p>`;
+        finalContent = textToSafeNoteHtml(customText);
         titlePrefix = "Highlight";
       } else if (mode === "selection") {
         try {
           const text = await navigator.clipboard.readText();
           if (!text) throw new Error("Clipboard empty");
-          finalContent = `<p>${text.replace(/\n/g, "<br/>")}</p>`;
+          finalContent = textToSafeNoteHtml(text);
           titlePrefix = "Insight";
         } catch {
           // Fallback if clipboard fails (rare on modern browsers)
@@ -300,12 +333,12 @@ export default function DocumentsPage() {
       } else {
         // Use pre-fetched text if available
         if (rawTextContent) {
-          finalContent = rawTextContent;
+          finalContent = textToSafeNoteHtml(rawTextContent);
         } else {
           const res = await fetchWithAuth(`/documents/${rawViewerTarget.id}/full-text`);
           if (!res.ok) throw new Error("Failed to fetch source text");
           const data = await (res as Response).json();
-          finalContent = data.content;
+          finalContent = textToSafeNoteHtml(data.content);
         }
       }
 
@@ -315,11 +348,6 @@ export default function DocumentsPage() {
         body: JSON.stringify({
           title: `${titlePrefix}: ${rawViewerTarget.name}`,
           content_html: finalContent,
-          source_document_id: rawViewerTarget.id,
-          tags: [
-            "research",
-            customText ? "highlight" : mode === "selection" ? "selection" : "full-document",
-          ],
         }),
       });
 
@@ -367,6 +395,17 @@ export default function DocumentsPage() {
     if (rawFileUrl) URL.revokeObjectURL(rawFileUrl);
     setRawViewerTarget(null);
     setRawFileUrl(null);
+    setRawFileContentType(null);
+  };
+
+  const downloadRawFile = () => {
+    if (!rawFileUrl || !rawViewerTarget) return;
+    const anchor = document.createElement("a");
+    anchor.href = rawFileUrl;
+    anchor.download = rawViewerTarget.name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
   };
 
   const deleteDocument = (id: string, filename: string) => {
@@ -607,7 +646,8 @@ export default function DocumentsPage() {
                         >
                           <Database size={17} className="stroke-[2.5]" />
                         </button>
-                        {(doc.status === "failed" || doc.status === "dead_lettered") && (
+                        {canReingestDocuments &&
+                          (doc.status === "failed" || doc.status === "dead_lettered") && (
                           <button
                             onClick={() => reingestDocument(doc.document_id, doc.filename)}
                             className="text-foreground/40 rounded-xl p-2.5 transition-all hover:bg-emerald-500/10 hover:text-emerald-500"
@@ -616,13 +656,16 @@ export default function DocumentsPage() {
                             <RefreshCcw size={17} className="stroke-[2.5]" />
                           </button>
                         )}
-                        <button
-                          onClick={() => deleteDocument(doc.document_id, doc.filename)}
-                          className="text-foreground/40 hover:text-danger hover:bg-danger/10 rounded-xl p-2.5 transition-all"
-                          title="Permanent Delete"
-                        >
-                          <Trash2 size={17} className="stroke-[2.5]" />
-                        </button>
+                        {canDeleteDocuments && (
+                          <button
+                            onClick={() => deleteDocument(doc.document_id, doc.filename)}
+                            className="text-foreground/40 hover:text-danger hover:bg-danger/10 rounded-xl p-2.5 transition-all"
+                            title="Delete document"
+                            aria-label={`Delete ${doc.filename}`}
+                          >
+                            <Trash2 size={17} className="stroke-[2.5]" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -662,16 +705,39 @@ export default function DocumentsPage() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => openRawViewer(doc.document_id, doc.filename)}
+                      aria-label={`View ${doc.filename}`}
                       className="text-foreground/40 bg-foreground/5 flex h-9 w-9 items-center justify-center rounded-lg"
                     >
                       <Eye size={15} />
                     </button>
                     <button
-                      onClick={() => deleteDocument(doc.document_id, doc.filename)}
-                      className="text-foreground/40 bg-danger/5 flex h-9 w-9 items-center justify-center rounded-lg"
+                      onClick={() =>
+                        setInspectorTarget({ id: doc.document_id, name: doc.filename })
+                      }
+                      aria-label={`Inspect ${doc.filename}`}
+                      className="text-foreground/40 bg-foreground/5 flex h-9 w-9 items-center justify-center rounded-lg"
                     >
-                      <Trash2 size={15} />
+                      <Database size={15} />
                     </button>
+                    {canReingestDocuments &&
+                      (doc.status === "failed" || doc.status === "dead_lettered") && (
+                        <button
+                          onClick={() => reingestDocument(doc.document_id, doc.filename)}
+                          aria-label={`Re-ingest ${doc.filename}`}
+                          className="text-foreground/40 bg-emerald-500/5 flex h-9 w-9 items-center justify-center rounded-lg"
+                        >
+                          <RefreshCcw size={15} />
+                        </button>
+                      )}
+                    {canDeleteDocuments && (
+                      <button
+                        onClick={() => deleteDocument(doc.document_id, doc.filename)}
+                        aria-label={`Delete ${doc.filename}`}
+                        className="text-foreground/40 bg-danger/5 flex h-9 w-9 items-center justify-center rounded-lg"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -703,7 +769,7 @@ export default function DocumentsPage() {
           <EmptyState
             icon={<FolderOpen size={48} className="text-primary opacity-20" />}
             title="Knowledge Base Empty"
-            description="Start building your intelligence engine by uploading your first PDF, TXT, or Markdown file."
+            description="Start building your intelligence engine by uploading your first supported source file."
             action={
               <button
                 onClick={() => setIsUploadOpen(true)}
@@ -831,7 +897,7 @@ export default function DocumentsPage() {
                           onClick={() => saveToNotes("selection")}
                           disabled={isRawLoading}
                           className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
-                          title="Copy text from PDF first, then click here"
+                          title="Select text in Intelligence View, then click here"
                         >
                           <Plus size={14} className="stroke-[2.5]" />
                           <span>Paste Selection</span>
@@ -850,12 +916,12 @@ export default function DocumentsPage() {
                           <span>Save Full Doc</span>
                         </button>
                       </div>
-                      <button
-                        onClick={closeRawViewer}
+                        <button
+                          onClick={closeRawViewer}
                         className="bg-foreground/5 text-foreground/40 hover:text-danger hover:bg-danger/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
                       >
-                        <X size={22} className="stroke-[2.5]" />
-                      </button>
+                          <X size={22} className="stroke-[2.5]" />
+                        </button>
                     </div>
                   </div>
                   <div className="relative flex-1 overflow-hidden bg-white/5">
@@ -874,18 +940,49 @@ export default function DocumentsPage() {
                         </p>
                       </div>
                     ) : viewerMode === "raw" && rawFileUrl ? (
-                      <iframe
-                        src={rawFileUrl}
-                        className="h-full w-full border-none"
-                        title="Original Document"
-                      />
-                    ) : rawTextContent ? (
+                      rawFileContentType?.startsWith("image/") ? (
+                        <div className="flex h-full items-center justify-center overflow-auto p-8">
+                          {/* Blob URLs cannot be optimized by Next Image. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={rawFileUrl}
+                            alt={`Original ${rawViewerTarget.name}`}
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        </div>
+                      ) : rawFileContentType?.includes("pdf") ? (
+                        <iframe
+                          src={rawFileUrl}
+                          className="h-full w-full border-none"
+                          title="Original Document"
+                        />
+                      ) : (
+                        <div className="flex h-full flex-col items-center justify-center gap-5 p-8 text-center">
+                          <Database size={42} className="text-primary/40" />
+                          <div>
+                            <p className="text-foreground text-sm font-bold">
+                              Source file is ready to download
+                            </p>
+                            <p className="text-foreground/40 mt-2 max-w-sm text-xs leading-relaxed">
+                              This file type cannot be rendered safely in the browser. Download the
+                              original file to open it with its native application.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={downloadRawFile}
+                            className="bg-primary text-primary-foreground rounded-xl px-5 py-3 text-xs font-black tracking-widest uppercase shadow-lg transition hover:brightness-110"
+                          >
+                            Download source file
+                          </button>
+                        </div>
+                      )
+                    ) : viewerMode === "text" && rawTextContent ? (
                       <div className="bg-surface-0 h-full overflow-y-auto px-12 py-16">
                         <div className="mx-auto max-w-3xl">
-                          <div
-                            className="prose prose-invert prose-slate selection:bg-primary/40 max-w-none selection:text-white"
-                            dangerouslySetInnerHTML={{ __html: rawTextContent }}
-                          />
+                          <pre className="text-foreground/90 selection:bg-primary/40 max-w-none whitespace-pre-wrap font-mono text-sm leading-7 selection:text-white">
+                            {rawTextContent}
+                          </pre>
                         </div>
                       </div>
                     ) : (

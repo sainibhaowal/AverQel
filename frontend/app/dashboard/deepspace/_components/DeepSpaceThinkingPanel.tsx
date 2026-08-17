@@ -392,7 +392,9 @@ export default function DeepSpaceThinkingPanel({
   // not forcibly collapse the panel or override a user's expand/collapse
   // choice during reconciliation.
   useEffect(() => {
-    if (isStreaming) setPanelOpen(true);
+    if (!isStreaming) return;
+    const timer = window.setTimeout(() => setPanelOpen(true), 0);
+    return () => window.clearTimeout(timer);
   }, [isStreaming]);
 
   // Providers may emit argument fragments before the function name. The

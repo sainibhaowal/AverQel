@@ -305,6 +305,7 @@ def test_documents_are_private_between_users_in_same_tenant(
         f"/api/v1/documents/{document_id}",
         f"/api/v1/documents/{document_id}/status",
         f"/api/v1/documents/{document_id}/chunks",
+        f"/api/v1/documents/{document_id}/full-text",
         f"/api/v1/documents/{document_id}/view",
         f"/api/v1/documents/{document_id}/versions",
     ):

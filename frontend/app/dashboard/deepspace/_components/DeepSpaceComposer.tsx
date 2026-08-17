@@ -89,8 +89,6 @@ export default function DeepSpaceComposer({
   contextUsageSource = null,
   contextRemainingTokens = null,
   safeRemainingTokens = null,
-  sessionInputTokens = null,
-  sessionOutputTokens = null,
   sessionTotalTokens = null,
   reservedOutputTokens = null,
   maxOutputTokens = null,

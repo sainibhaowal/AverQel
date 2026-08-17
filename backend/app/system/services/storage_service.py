@@ -209,7 +209,13 @@ class StorageService:
                 retryable=True,
             ) from exc
 
-    def delete_object(self, *, bucket: str, object_key: str) -> None:
+    def delete_object(
+        self,
+        *,
+        bucket: str,
+        object_key: str,
+        raise_on_error: bool = False,
+    ) -> None:
         client = self._get_client()
         try:
             client.delete_object(Bucket=bucket, Key=object_key)
@@ -219,6 +225,12 @@ class StorageService:
                 exc_info=exc,
                 extra={"bucket": bucket, "object_key": object_key},
             )
+            if raise_on_error:
+                raise StorageServiceError(
+                    code="STORAGE_UNAVAILABLE",
+                    message="Unable to delete document from object storage.",
+                    retryable=True,
+                ) from exc
 
     def copy_object(
         self,

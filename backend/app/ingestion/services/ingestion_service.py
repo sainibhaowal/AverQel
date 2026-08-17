@@ -190,7 +190,7 @@ class IngestionService:
         self.chunks = ChunksRepository(db)
         self.idempotency = IdempotencyService(IdempotencyKeysRepository(db))
         self.storage = storage_service or StorageService(settings)
-        self.malware = malware_scan_service or MalwareScanService()
+        self.malware = malware_scan_service or MalwareScanService(settings)
         self.parser = parser_service or ParserService()
         self.extractor_router = extractor_router or ExtractorRouter(settings=settings)
         self.chunking = chunking_service or ChunkingService()

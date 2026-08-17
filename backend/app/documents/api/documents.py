@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import secrets
 import time
 import uuid
 from collections.abc import AsyncIterator, Iterable
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
@@ -50,6 +53,7 @@ from app.ingestion.models.ingestion_job import IngestionJob
 from app.ingestion.services.extraction_quality import confidence_band
 from app.ingestion.services.ingestion_service import IngestionService
 from app.platform.database.session import get_db
+from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.services.audit_service import AuditService
 from app.system.services.rate_limit_service import RateLimitService
 from app.system.services.storage_service import StorageService
@@ -132,6 +136,44 @@ def _safe_audit_commit(
         )
 
 
+def _delete_document_object_or_queue(
+    *,
+    db: Session,
+    settings: Settings,
+    document: Document,
+) -> None:
+    """Delete a document's private blob, with durable retry on storage failure."""
+    if not document.storage_bucket or not document.storage_object_key:
+        return
+
+    try:
+        StorageService(settings).delete_object(
+            bucket=document.storage_bucket,
+            object_key=document.storage_object_key,
+            raise_on_error=True,
+        )
+        return
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "Document blob deletion deferred to durable cleanup.",
+            extra={
+                "tenant_id": str(document.tenant_id),
+                "document_id": str(document.id),
+                "bucket": document.storage_bucket,
+                "object_key": document.storage_object_key,
+            },
+            exc_info=exc,
+        )
+        db.add(
+            StorageCleanupJob(
+                tenant_id=document.tenant_id,
+                owner_user_id=document.uploaded_by_user_id,
+                bucket=document.storage_bucket,
+                object_key=document.storage_object_key,
+            )
+        )
+
+
 def _document_metadata_response(doc: Document) -> DocumentMetadataResponse:
     return DocumentMetadataResponse(
         document_id=doc.id,
@@ -163,6 +205,11 @@ def _choose_ingestion_queue(filename: str | None) -> str:
     return "ingestion_heavy" if suffix in _HEAVY_EXTENSIONS else "ingestion_light"
 
 
+def _inline_content_disposition(filename: str) -> str:
+    safe_name = Path(filename).name.replace("\r", "").replace("\n", "") or "document"
+    return f"inline; filename*=UTF-8''{quote(safe_name)}"
+
+
 def _single_chunk_iter(payload: bytes) -> Iterable[bytes]:
     yield payload
 
@@ -183,6 +230,55 @@ def _build_stream_auth_context(
 
     claims = decode_access_token(cleaned, settings)
     auth = build_auth_context_from_jwt(claims=claims, x_tenant_id=None, db=db)
+    granted = resolve_permissions(
+        roles=frozenset(auth.roles),
+        direct_permissions=getattr(auth, "permissions", frozenset()),
+    )
+    if "documents:read" not in granted:
+        raise ApiError(
+            code="FORBIDDEN",
+            message="Insufficient permissions for document event streaming.",
+            status_code=403,
+            details={"missing_permissions": ["documents:read"]},
+        )
+    return auth
+
+
+def _consume_stream_ticket(*, ticket: str, db: Session, settings: Settings) -> AuthContext:
+    cleaned = ticket.strip()
+    if not cleaned:
+        raise ApiError(
+            code="AUTH_REQUIRED",
+            message="A document event stream ticket is required.",
+            status_code=401,
+        )
+
+    service = IngestionService(db=db, settings=settings)
+    key = f"document_event_stream_ticket:{cleaned}"
+    raw = service.redis.get(key)
+    if raw is None:
+        raise ApiError(
+            code="AUTH_REQUIRED",
+            message="The document event stream ticket is invalid or expired.",
+            status_code=401,
+        )
+    service.redis.delete(key)
+    try:
+        payload = json.loads(raw)
+        auth = AuthContext(
+            user_id=uuid.UUID(str(payload["user_id"])),
+            tenant_id=uuid.UUID(str(payload["tenant_id"])),
+            roles=frozenset(str(role) for role in payload.get("roles", [])),
+            permissions=frozenset(str(permission) for permission in payload.get("permissions", [])),
+            token_id=str(payload.get("token_id") or "document-stream-ticket"),
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ApiError(
+            code="AUTH_REQUIRED",
+            message="The document event stream ticket is invalid.",
+            status_code=401,
+        ) from exc
+
     granted = resolve_permissions(
         roles=frozenset(auth.roles),
         direct_permissions=getattr(auth, "permissions", frozenset()),
@@ -236,30 +332,42 @@ def get_document_full_text(
     request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
     """Retrieve the full reconstructed text of a document."""
     _enforce_tenant_scope(request_tenant_id, auth)
 
-    # Verify document exists and belongs to tenant
-    doc = (
-        db.query(Document)
-        .filter(Document.id == document_id, Document.tenant_id == auth.tenant_id)
-        .first()
+    service = IngestionService(db=db, settings=settings)
+    doc = service.documents.get_accessible_by_id(
+        tenant_id=auth.tenant_id,
+        document_id=document_id,
+        user_id=auth.user_id,
+        include_quarantined=True,
     )
-
     if not doc:
         raise ApiError(code="DOCUMENT_NOT_FOUND", message="Document not found", status_code=404)
 
     # Get all chunks sorted by index
     chunks = (
         db.query(DocumentChunk)
-        .filter(DocumentChunk.document_id == document_id)
+        .filter(
+            DocumentChunk.document_id == document_id,
+            DocumentChunk.tenant_id == auth.tenant_id,
+        )
         .order_by(DocumentChunk.chunk_index.asc())
         .all()
     )
 
     full_text = "".join([c.content for c in chunks])
 
+    _safe_audit_commit(
+        db=db,
+        tenant_id=auth.tenant_id,
+        action="documents.full_text",
+        resource_type="document",
+        resource_id=str(document_id),
+        actor_user_id=auth.user_id,
+    )
     return {"content": full_text, "filename": doc.filename}
 
 
@@ -308,7 +416,7 @@ def download_document(
     return StreamingResponse(
         file_stream,
         media_type=doc.content_type or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="{doc.filename}"'},
+        headers={"Content-Disposition": _inline_content_disposition(doc.filename)},
     )
 
 
@@ -419,14 +527,53 @@ async def upload_document(
     )
 
 
+@router.get(
+    "/events/ticket",
+    dependencies=[Depends(require_permissions("documents:read"))],
+)
+def create_document_event_stream_ticket(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, int | str]:
+    service = IngestionService(db=db, settings=settings)
+    ticket = secrets.token_urlsafe(32)
+    service.redis.setex(
+        f"document_event_stream_ticket:{ticket}",
+        settings.document_event_stream_ticket_ttl_seconds,
+        json.dumps(
+            {
+                "user_id": str(auth.user_id),
+                "tenant_id": str(auth.tenant_id),
+                "roles": sorted(auth.roles),
+                "permissions": sorted(getattr(auth, "permissions", frozenset())),
+                "token_id": auth.token_id,
+            }
+        ),
+    )
+    return {"ticket": ticket, "expires_in_seconds": settings.document_event_stream_ticket_ttl_seconds}
+
+
 @router.get("/events/stream")
 async def stream_document_events(
     request: Request,
-    token: str = Query(..., min_length=1),
+    token: str | None = Query(default=None, min_length=1),
+    ticket: str | None = Query(default=None, min_length=1),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> StreamingResponse:
-    auth = _build_stream_auth_context(token=token, db=db, settings=settings)
+    if ticket:
+        auth = _consume_stream_ticket(ticket=ticket, db=db, settings=settings)
+    elif token:
+        # Backward-compatible API-key path for existing clients. The web UI
+        # uses one-time tickets so bearer tokens never appear in URLs.
+        auth = _build_stream_auth_context(token=token, db=db, settings=settings)
+    else:
+        raise ApiError(
+            code="AUTH_REQUIRED",
+            message="A document event stream ticket is required.",
+            status_code=401,
+        )
     service = IngestionService(db=db, settings=settings)
     pubsub = cast(Any, service.redis).pubsub()
     channel = f"document_updates:{auth.tenant_id}:{auth.user_id}"
@@ -535,7 +682,7 @@ def view_document_file(
         _single_chunk_iter(payload),
         media_type=document.content_type,
         headers={
-            "Content-Disposition": f'inline; filename="{document.filename}"',
+            "Content-Disposition": _inline_content_disposition(document.filename),
             "Cache-Control": "private, max-age=3600",
         },
     )
@@ -732,6 +879,8 @@ def delete_document(
     service.documents.soft_delete_batch(tenant_id=auth.tenant_id, document_ids=[document_id])
     service.chunks.delete_by_document_ids(tenant_id=auth.tenant_id, document_ids=[document_id])
     db.commit()
+    _delete_document_object_or_queue(db=db, settings=settings, document=doc)
+    db.commit()
 
     _safe_audit_commit(
         db=db,
@@ -770,8 +919,19 @@ def batch_delete_documents(
     if not to_delete:
         return DeleteBatchResponse(deleted_count=0)
 
+    documents_to_delete = [
+        document
+        for document in service.documents.list_by_ids(
+            tenant_id=auth.tenant_id,
+            document_ids=to_delete,
+        )
+        if document.id in accessible
+    ]
     service.documents.soft_delete_batch(tenant_id=auth.tenant_id, document_ids=to_delete)
     service.chunks.delete_by_document_ids(tenant_id=auth.tenant_id, document_ids=to_delete)
+    db.commit()
+    for document in documents_to_delete:
+        _delete_document_object_or_queue(db=db, settings=settings, document=document)
     db.commit()
 
     _safe_audit_commit(

@@ -54,6 +54,20 @@ services:
       timeout: 5s
       retries: 20
 
+  clamav:
+    container_name: averqel-clamav
+    image: clamav/clamav:1.4.3
+    restart: always
+    stop_grace_period: 30s
+    expose:
+      - "3310"
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 3:15 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
   api:
     container_name: averqel-api
     build:
@@ -76,6 +90,11 @@ services:
       AKS_MINIO_SECRET_KEY: ${AKS_MINIO_SECRET_KEY:?set AKS_MINIO_SECRET_KEY}
       AKS_MINIO_SECURE: ${AKS_MINIO_SECURE:-false}
       AKS_MINIO_VERIFY_SSL: ${AKS_MINIO_VERIFY_SSL:-false}
+      AKS_MALWARE_SCAN_ENABLED: ${AKS_MALWARE_SCAN_ENABLED:-true}
+      AKS_MALWARE_SCAN_REQUIRED: ${AKS_MALWARE_SCAN_REQUIRED:-false}
+      AKS_MALWARE_SCAN_HOST: ${AKS_MALWARE_SCAN_HOST:-clamav}
+      AKS_MALWARE_SCAN_PORT: ${AKS_MALWARE_SCAN_PORT:-3310}
+      AKS_MALWARE_SCAN_TIMEOUT_SECONDS: ${AKS_MALWARE_SCAN_TIMEOUT_SECONDS:-15}
       AKS_CORS_ORIGINS: ${AKS_CORS_ORIGINS:-["http://localhost:1030"]}
       AKS_JWT_SECRET: ${AKS_JWT_SECRET:?set AKS_JWT_SECRET}
       AKS_REFRESH_TOKEN_HASH_SECRET: ${AKS_REFRESH_TOKEN_HASH_SECRET:?set AKS_REFRESH_TOKEN_HASH_SECRET}
@@ -90,6 +109,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      clamav:
         condition: service_healthy
       inference:
         condition: service_healthy
@@ -181,6 +202,11 @@ services:
       AKS_MINIO_SECRET_KEY: ${AKS_MINIO_SECRET_KEY:?set AKS_MINIO_SECRET_KEY}
       AKS_MINIO_SECURE: ${AKS_MINIO_SECURE:-false}
       AKS_MINIO_VERIFY_SSL: ${AKS_MINIO_VERIFY_SSL:-false}
+      AKS_MALWARE_SCAN_ENABLED: ${AKS_MALWARE_SCAN_ENABLED:-true}
+      AKS_MALWARE_SCAN_REQUIRED: ${AKS_MALWARE_SCAN_REQUIRED:-false}
+      AKS_MALWARE_SCAN_HOST: ${AKS_MALWARE_SCAN_HOST:-clamav}
+      AKS_MALWARE_SCAN_PORT: ${AKS_MALWARE_SCAN_PORT:-3310}
+      AKS_MALWARE_SCAN_TIMEOUT_SECONDS: ${AKS_MALWARE_SCAN_TIMEOUT_SECONDS:-15}
       AKS_JWT_SECRET: ${AKS_JWT_SECRET:?set AKS_JWT_SECRET}
       AKS_REFRESH_TOKEN_HASH_SECRET: ${AKS_REFRESH_TOKEN_HASH_SECRET:?set AKS_REFRESH_TOKEN_HASH_SECRET}
       AKS_PROVIDER_SECRET_ACTIVE_KID: ${AKS_PROVIDER_SECRET_ACTIVE_KID:?set AKS_PROVIDER_SECRET_ACTIVE_KID}
@@ -193,6 +219,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      clamav:
         condition: service_healthy
       inference:
         condition: service_healthy

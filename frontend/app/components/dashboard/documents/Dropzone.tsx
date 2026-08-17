@@ -161,7 +161,7 @@ export default function Dropzone({ onSuccess, onCancel, allowedExtensions }: Dro
           ref={fileInputRef}
           onChange={handleFileChange}
           className="hidden"
-          accept=".pdf,.txt,.md,.py,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.tiff"
+          accept={allowedExtensions.length > 0 ? allowedExtensions.join(",") : undefined}
         />
 
         {status === "success" ? (

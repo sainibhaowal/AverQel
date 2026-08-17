@@ -39,6 +39,23 @@ export default function GroundedQueryDocsPage() {
         </ul>
       </DocsSection>
 
+      <DocsSection title="Document Hub file and security contract">
+        <p>
+          The Hub advertises its extractor registry at upload time. Native support includes PDF,
+          TXT, Markdown, OCR-capable images, DOCX, PPTX, XLSX, and the configured code/text
+          formats. Legacy DOC, PPT, and XLS files are converted through the server-side LibreOffice
+          worker when that feature is enabled. Arbitrary binary files, archives, audio, and video
+          are rejected.
+        </p>
+        <p>
+          Every upload is checked against the configured extension and detected MIME type, archive
+          safety limits, and the production ClamAV service before it enters object storage. The
+          original file can be downloaded from the detail view; browser rendering is limited to
+          safe PDF and image previews, while other binary formats are downloaded for native
+          opening.
+        </p>
+      </DocsSection>
+
       <DocsSection title="How it differs from DeepSpace chat">
         <p>
           Grounded query is best when the user wants evidence-backed answers over documents.

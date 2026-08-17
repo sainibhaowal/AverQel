@@ -223,6 +223,7 @@ def storage_cleanup() -> dict[str, int]:
                 StorageService(get_settings()).delete_object(
                     bucket=job.bucket,
                     object_key=job.object_key,
+                    raise_on_error=True,
                 )
                 job.status = "completed"
                 job.last_error = None

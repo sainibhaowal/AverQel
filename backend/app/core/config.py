@@ -298,6 +298,15 @@ class Settings(BaseSettings):
     upload_max_bytes: int = 26_214_400
     tenant_max_storage_bytes: int = 1_073_741_824
 
+    # Upload security. Production deployments must provide a reachable
+    # ClamAV daemon; uploads fail closed when the scanner is unavailable.
+    malware_scan_enabled: bool = True
+    malware_scan_required: bool = False
+    malware_scan_host: str = "clamav"
+    malware_scan_port: int = 3310
+    malware_scan_timeout_seconds: int = 15
+    document_event_stream_ticket_ttl_seconds: int = 30
+
     upload_allowed_mime_types: list[str] = Field(
         default_factory=lambda: [
             "application/pdf",
@@ -682,6 +691,9 @@ class Settings(BaseSettings):
         "auth_lockout_minutes",
         "upload_max_bytes",
         "tenant_max_storage_bytes",
+        "malware_scan_port",
+        "malware_scan_timeout_seconds",
+        "document_event_stream_ticket_ttl_seconds",
         "legacy_conversion_timeout_seconds",
         "ocr_timeout_seconds",
         "ocr_max_pages",
@@ -1027,6 +1039,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Production requires connector_oauth_frontend_redirect_uri to use https"
             )
+
+        if not self.malware_scan_enabled or not self.malware_scan_required:
+            raise ValueError("Production requires malware scanning to be enabled and required")
+        if not self.malware_scan_host.strip():
+            raise ValueError("Production requires malware_scan_host")
 
         if self.mcp_oauth_redirect_uri and not self.mcp_oauth_redirect_uri.startswith("https://"):
             raise ValueError("Production requires mcp_oauth_redirect_uri to use https")
