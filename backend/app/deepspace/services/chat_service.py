@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -41,6 +42,15 @@ CONTEXT_WATCH_THRESHOLD = 0.60
 CONTEXT_COMPACT_THRESHOLD = 0.75
 CONTEXT_AUTO_COMPACT_THRESHOLD = 0.85
 CONTEXT_EMERGENCY_THRESHOLD = 0.95
+MAX_PROTOCOL_RECOVERY_RETRIES = 2
+
+# Some local/third-party model adapters occasionally emit their control
+# vocabulary or a function payload as ordinary text.  Those bytes are not a
+# valid tool call and must never be executed.  Keep this filtering narrow and
+# apply it only to provider output; user prompts and tool arguments are left
+# untouched.
+_MODEL_CONTROL_TOKEN_RE = re.compile(r"<(?:(?:[|｜])|(?:｜))[^<>\n]{1,160}(?:[|｜])>")
+_TASK_PAYLOAD_RE = re.compile(r"\{[^{}]{0,2000}\}", re.DOTALL)
 
 DEEPSPACE_AGENT_POLICY = """
 You are AverQel’s intelligent workspace assistant, operating inside the DeepSpace workspace.
@@ -487,6 +497,60 @@ class DeepSpaceChatService:
     @staticmethod
     def _now() -> str:
         return datetime.now(UTC).isoformat()
+
+    @staticmethod
+    def _clean_provider_text(text: str) -> str:
+        """Remove leaked model control markers from user-visible output.
+
+        This is deliberately not a general HTML/Markdown sanitizer and does
+        not alter normal assistant prose.  It only removes the special token
+        syntax emitted by a few model adapters when they fail to keep their
+        internal protocol separate from content.
+        """
+
+        return _MODEL_CONTROL_TOKEN_RE.sub("", text)
+
+    @staticmethod
+    def _looks_like_pseudo_tool_output(text: str) -> bool:
+        """Return true when a model printed a task tool payload as prose.
+
+        A printed payload is never converted into a call.  The caller uses
+        this signal to ask the model for a real structured call, bounded by a
+        retry counter.
+        """
+
+        normalized = text.replace("```json", "").replace("```", "").strip()
+        candidates = [normalized]
+        candidates.extend(match.group(0) for match in _TASK_PAYLOAD_RE.finditer(normalized))
+        for candidate in candidates:
+            try:
+                payload = json.loads(candidate)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            task_id = payload.get("task_id")
+            status = payload.get("status")
+            if isinstance(task_id, str) and task_id.strip() and status in {
+                "in_progress",
+                "completed",
+                "blocked",
+                "failed",
+            }:
+                return True
+        return False
+
+    @classmethod
+    def _contains_protocol_leak(cls, *, answer: str, thinking: str) -> bool:
+        combined = f"{answer}\n{thinking}"
+        if cls._looks_like_pseudo_tool_output(combined):
+            return True
+        lowered = combined.casefold()
+        return (
+            "<｜" in combined
+            or "<|begin" in lowered
+            or ("todo_mark" in lowered and "tool" in lowered and "json" in lowered)
+        )
 
     @staticmethod
     def _is_native_media_model(model_name: str) -> bool:
@@ -2422,6 +2486,7 @@ class DeepSpaceChatService:
         deadline_continuations = 0
         empty_provider_retries = 0
         clarification_retries = 0
+        protocol_recovery_retries = 0
         terminal_status = "running"
         last_context_used_tokens: int | None = None
         last_context_remaining_tokens: int | None = None
@@ -2654,6 +2719,7 @@ class DeepSpaceChatService:
                 round_answer_start = len(answer_parts)
                 round_thinking_start = len(thinking_parts)
                 round_artifact_start = len(generated_artifacts)
+                round_thinking_events: list[str] = []
                 request_images = list(pending_images)
                 pending_images.clear()
                 tools_for_round = available_tools
@@ -2926,14 +2992,21 @@ class DeepSpaceChatService:
                                 or provider_event.get("thinking")
                             )
                             if isinstance(provider_reasoning, str) and provider_reasoning:
-                                thinking_parts.append(provider_reasoning)
-                                yield sse("thinking", {"text": provider_reasoning})
+                                provider_reasoning = self._clean_provider_text(provider_reasoning)
+                                if provider_reasoning:
+                                    thinking_parts.append(provider_reasoning)
+                                    round_thinking_events.append(provider_reasoning)
                         if not isinstance(text, str) or not text:
                             continue
                         if event_type in {"thinking", "reasoning", "reasoning_delta"}:
-                            thinking_parts.append(text)
-                            yield sse("thinking", {"text": text})
+                            text = self._clean_provider_text(text)
+                            if text:
+                                thinking_parts.append(text)
+                                round_thinking_events.append(text)
                         elif event_type in {"delta", "text", "content"}:
+                            text = self._clean_provider_text(text)
+                            if not text:
+                                continue
                             answer_parts.append(text)
                             yield sse("delta", {"text": text})
                 else:
@@ -2953,8 +3026,10 @@ class DeepSpaceChatService:
                             break
                         if not chunk:
                             continue
-                        answer_parts.append(chunk)
-                        yield sse("delta", {"text": chunk})
+                        chunk = self._clean_provider_text(chunk)
+                        if chunk:
+                            answer_parts.append(chunk)
+                            yield sse("delta", {"text": chunk})
 
                 if cancelled_during_provider_stream:
                     terminal_status = "cancelled"
@@ -2963,6 +3038,40 @@ class DeepSpaceChatService:
                             run_id=run_id, status="cancelled", error="user_cancelled"
                         )
                     break
+
+                round_answer = "".join(answer_parts[round_answer_start:])
+                round_thinking = "".join(thinking_parts[round_thinking_start:])
+                if self._contains_protocol_leak(answer=round_answer, thinking=round_thinking):
+                    # Never interpret text as a tool call.  Clear the
+                    # optimistically streamed answer, discard leaked private
+                    # reasoning, and give the provider one bounded chance to
+                    # emit the real structured call.
+                    del answer_parts[round_answer_start:]
+                    del thinking_parts[round_thinking_start:]
+                    if protocol_recovery_retries < MAX_PROTOCOL_RECOVERY_RETRIES:
+                        protocol_recovery_retries += 1
+                        yield sse("replace", {"content": "", "replayed": False})
+                        conversation_messages.append(
+                            {
+                                "role": "system",
+                                "content": (
+                                    "Your previous response exposed a tool payload as plain text. "
+                                    "Do not print JSON, internal reasoning, or control tokens. Call the "
+                                    "provided tool through the structured tool interface now."
+                                ),
+                            }
+                        )
+                        continue
+                    terminal_status = "blocked"
+                    forced_answer = (
+                        "DeepSpace stopped safely because the selected model did not return a real "
+                        "structured tool call. No task or external tool action was performed. "
+                        "Please retry with a tool-capable model."
+                    )
+                    break
+
+                for thinking_text in round_thinking_events:
+                    yield sse("thinking", {"text": thinking_text})
 
                 round_output_text = "".join(answer_parts[round_answer_start:]) + "".join(
                     thinking_parts[round_thinking_start:]
