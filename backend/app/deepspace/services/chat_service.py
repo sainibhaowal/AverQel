@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -41,6 +42,9 @@ CONTEXT_WATCH_THRESHOLD = 0.60
 CONTEXT_COMPACT_THRESHOLD = 0.75
 CONTEXT_AUTO_COMPACT_THRESHOLD = 0.85
 CONTEXT_EMERGENCY_THRESHOLD = 0.95
+MAX_CONNECTED_TOOL_RECOVERY_RETRIES = 2
+_FAKE_TOOL_MARKER_RE = re.compile(r"<(?:/?function-call|/?tool_call|/?think)>", re.IGNORECASE)
+_JSON_OBJECT_RE = re.compile(r"\{[^{}]{0,4000}\}", re.DOTALL)
 
 DEEPSPACE_AGENT_POLICY = """
 You are AverQel’s intelligent workspace assistant, operating inside the DeepSpace workspace.
@@ -487,6 +491,25 @@ class DeepSpaceChatService:
     @staticmethod
     def _now() -> str:
         return datetime.now(UTC).isoformat()
+
+    @staticmethod
+    def _looks_like_fake_tool_output(text: str) -> bool:
+        """Detect tool syntax printed as prose, without ever executing it."""
+
+        if _FAKE_TOOL_MARKER_RE.search(text):
+            return True
+        normalized = text.replace("```json", "").replace("```", "").strip()
+        for candidate in [normalized, *(match.group(0) for match in _JSON_OBJECT_RE.finditer(normalized))]:
+            try:
+                payload = json.loads(candidate)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if isinstance(payload, dict) and (
+                "function-call" in payload
+                or ("tool_name" in payload and ("arguments" in payload or "tool_input" in payload))
+            ):
+                return True
+        return False
 
     @staticmethod
     def _is_native_media_model(model_name: str) -> bool:
@@ -2304,6 +2327,7 @@ class DeepSpaceChatService:
         task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(initial_task_check)
         task_has_work_evidence = False
         task_lifecycle_prompt_retries = 0
+        connected_tool_recovery_retries = 0
 
         conversation_messages: list[dict[str, Any]] = [
             {
@@ -3035,6 +3059,40 @@ class DeepSpaceChatService:
                         f"{candidate.provider_type}/{candidate.model_name} returned no answer, reasoning, or tool events."
                     )
                 if not normalized_calls:
+                    prose_answer = "".join(answer_parts[round_answer_start:]).strip()
+                    fake_tool_output = self._looks_like_fake_tool_output(prose_answer)
+                    if fake_tool_output or connected_service_tool_required:
+                        del answer_parts[round_answer_start:]
+                        del thinking_parts[round_thinking_start:]
+                        if connected_tool_recovery_retries < MAX_CONNECTED_TOOL_RECOVERY_RETRIES:
+                            connected_tool_recovery_retries += 1
+                            yield sse("replace", {"content": "", "replayed": False})
+                            conversation_messages.append(
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "This request requires a real structured call to the attached service. "
+                                        "Do not print <function-call>, JSON, XML, or internal reasoning as text. "
+                                        "Call the appropriate provided MCP tool now. If no suitable tool exists, "
+                                        "say so only after this structured-call attempt."
+                                    ),
+                                }
+                            )
+                            continue
+                        if connected_service_tool_required:
+                            terminal_status = "blocked"
+                            forced_answer = (
+                                "DeepSpace could not obtain a real structured call for the connected service. "
+                                "No Gmail or external-service action was performed."
+                            )
+                            break
+                        if fake_tool_output:
+                            terminal_status = "blocked"
+                            forced_answer = (
+                                "DeepSpace stopped safely because the selected model printed a fake tool "
+                                "call instead of using the structured tool interface. No tool action was performed."
+                            )
+                            break
                     if managed_task_run:
                         task_lifecycle_prompt_retries += 1
                         if task_lifecycle_prompt_retries <= MAX_EMPTY_PROVIDER_RETRIES + 1:
@@ -3059,7 +3117,6 @@ class DeepSpaceChatService:
                             "required structured tool call. The plan and its unfinished work remain saved."
                         )
                         break
-                    prose_answer = "".join(answer_parts[round_answer_start:]).strip()
                     if available_tools and self._looks_like_clarification_request(prose_answer):
                         if clarification_retries < 1:
                             clarification_retries += 1
@@ -3176,6 +3233,11 @@ class DeepSpaceChatService:
                         lifecycle_error = (
                             "A new managed plan must begin with one todo_write call. Wait for its persisted "
                             "result before selecting the next tool."
+                        )
+                    elif connected_service_tool_required and tool_name == "todo_write":
+                        lifecycle_error = (
+                            "This request explicitly targets a connected service. Use its real MCP tool first; "
+                            "do not create a todo plan for this direct service lookup."
                         )
                     elif managed_task_run:
                         if call_index != first_call_index:
