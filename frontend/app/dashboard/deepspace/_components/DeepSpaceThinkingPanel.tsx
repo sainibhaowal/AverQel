@@ -127,7 +127,7 @@ function TaskProgressCard({ progress }: { progress: TaskProgress }) {
     <section
       aria-label="Verified task progress"
       data-testid="deepspace-task-progress"
-      className="rounded-lg border border-cyan-300/15 bg-cyan-300/[0.035] px-3 py-2.5"
+      className="border-b border-cyan-300/15 pb-3"
     >
       <div className="flex items-center justify-between gap-3 text-[10px] font-semibold tracking-[0.12em] text-cyan-100/75 uppercase">
         <span>Verified task progress</span>
@@ -217,7 +217,7 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
 
   return (
     <div
-      className="rounded-lg border border-white/8 bg-black/15 px-3 py-2"
+      className="border-b border-white/8 pb-3"
       data-testid="deepspace-activity-step"
     >
       <div className="text-foreground/65 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
@@ -233,11 +233,11 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
         </span>
       </div>
       {input ? (
-        <details className="mt-2 rounded border border-white/6 bg-black/15">
-          <summary className="text-foreground/45 cursor-pointer px-2 py-1 text-[10px]">
+        <details className="mt-2 border-t border-white/6 pt-1">
+          <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
             Input
           </summary>
-          <pre className="text-foreground/60 max-h-48 overflow-auto border-t border-white/6 px-2 py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
+          <pre className="text-foreground/60 max-h-48 overflow-auto py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
             {input}
           </pre>
         </details>
@@ -246,12 +246,12 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
         <details
           open={outputOpen}
           onToggle={(event) => setOutputOpen(event.currentTarget.open)}
-          className="mt-2 rounded border border-white/6 bg-black/15"
+          className="mt-2 border-t border-white/6 pt-1"
         >
-          <summary className="text-foreground/45 cursor-pointer px-2 py-1 text-[10px]">
+          <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
             Output / progress
           </summary>
-          <pre className="text-foreground/60 max-h-56 overflow-auto border-t border-white/6 px-2 py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
+          <pre className="text-foreground/60 max-h-56 overflow-auto py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
             {output}
           </pre>
         </details>
@@ -309,7 +309,7 @@ const TimelineEntry = memo(function TimelineEntry({
       <span className="absolute top-2 left-0 flex h-4 w-4 items-center justify-center rounded-full border border-white/10 bg-[#101713]">
         <TimelineIcon step={step} />
       </span>
-      <div className="rounded-lg border border-white/8 bg-black/15 px-3 py-2.5">
+      <div className="border-b border-white/8 pb-3">
         <div className="text-foreground/65 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
           <span className="text-foreground/30 tabular-nums">
             {String(index + 1).padStart(2, "0")}
@@ -337,7 +337,7 @@ const TimelineEntry = memo(function TimelineEntry({
           </div>
         ) : null}
         {inputStream ? (
-          <div className="mt-2 rounded border border-cyan-300/10 bg-cyan-300/[0.03] px-2 py-2">
+          <div className="mt-2 border-l border-cyan-300/25 pl-3 py-1">
             <div className="mb-1 text-[9px] font-semibold tracking-[0.12em] text-cyan-200/60 uppercase">
               Live tool arguments
             </div>
@@ -347,11 +347,11 @@ const TimelineEntry = memo(function TimelineEntry({
           </div>
         ) : null}
         {input ? (
-          <details className="mt-2 rounded border border-white/6 bg-black/15">
-            <summary className="text-foreground/45 cursor-pointer px-2 py-1 text-[10px]">
+          <details className="mt-2 border-t border-white/6 pt-1">
+            <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
               Request details
             </summary>
-            <pre className="text-foreground/60 max-h-48 overflow-auto overscroll-contain border-t border-white/6 px-2 py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
+            <pre className="text-foreground/60 max-h-48 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
               {input}
             </pre>
           </details>
@@ -360,12 +360,12 @@ const TimelineEntry = memo(function TimelineEntry({
           <details
             open={outputOpen}
             onToggle={(event) => setOutputOpen(event.currentTarget.open)}
-            className="mt-2 rounded border border-white/6 bg-black/15"
+            className="mt-2 border-t border-white/6 pt-1"
           >
-            <summary className="text-foreground/45 cursor-pointer px-2 py-1 text-[10px]">
+            <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
               {step.status === "running" ? "Live tool output" : "Tool result"}
             </summary>
-            <pre className="text-foreground/60 max-h-56 overflow-auto overscroll-contain border-t border-white/6 px-2 py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
+            <pre className="text-foreground/60 max-h-56 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
               {output}
             </pre>
           </details>
@@ -425,22 +425,19 @@ export default function DeepSpaceThinkingPanel({
     <details
       open={panelOpen}
       onToggle={(event) => setPanelOpen(event.currentTarget.open)}
-      className="mb-4 rounded-lg border border-white/5 bg-white/[0.02]"
+      className="mb-4"
     >
-      <summary className="text-foreground/50 flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[11px] font-bold tracking-wider uppercase">
+      <summary className="text-foreground/50 flex cursor-pointer list-none items-center gap-2 border-b border-white/8 py-2 text-[11px] font-bold tracking-wider uppercase">
         <BrainCircuit size={13} className="text-primary/60" />
         {isStreaming ? "Thinking & activity…" : "Thinking & activity"}
       </summary>
       <div
-        className="text-foreground/60 space-y-3 overscroll-contain border-t border-white/5 px-4 py-3 text-xs"
+        className="text-foreground/60 space-y-3 overscroll-contain py-3 text-xs"
         data-thinking-activity="true"
       >
         {taskProgress ? <TaskProgressCard progress={taskProgress} /> : null}
         {content.trim() && !hasThinkingTimeline ? (
-          <div
-            className="rounded-lg border border-white/8 bg-black/10 px-3 py-2"
-            data-testid="deepspace-thinking-stream"
-          >
+          <div className="border-b border-white/8 pb-3" data-testid="deepspace-thinking-stream">
             <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
               Model thinking
             </div>
