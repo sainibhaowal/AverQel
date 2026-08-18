@@ -133,7 +133,7 @@ interface DeepSpaceChatClientProps {
   onAgentNotePreview?: (preview: DeepSpaceAgentNotePreview & { conversationId: string }) => void;
   onAgentNoteCommitted?: (update: { conversationId: string; contentHtml: string }) => void;
   onSelectNote?: (noteId: string) => void;
-  onNewNote?: () => void;
+  onNewNote?: () => Promise<unknown> | void;
   onConversationRenamed?: (note: {
     id: string;
     title: string;
@@ -170,6 +170,7 @@ export default function DeepSpaceChatClient({
 }: DeepSpaceChatClientProps) {
   const [state, dispatch] = useReducer(deepSpaceThreadReducer, initialDeepSpaceThreadState);
   const [query, setQuery] = useState("");
+  const [creatingNewChat, setCreatingNewChat] = useState(false);
   const [completionPulse, setCompletionPulse] = useState(false);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
   const historyOpen = isHistoryOpen !== undefined ? isHistoryOpen : localHistoryOpen;
@@ -802,6 +803,7 @@ export default function DeepSpaceChatClient({
       const answeringUserQuestion = Boolean(pendingUserQuestion);
       if (
         !effectiveQuery ||
+        creatingNewChat ||
         (state.isStreaming && !answeringUserQuestion) ||
         submissionInFlightRef.current
       )
@@ -848,17 +850,24 @@ export default function DeepSpaceChatClient({
       state.currentConversationId,
       state.isStreaming,
       state.messages,
+      creatingNewChat,
       stream,
       thinkingEnabled,
     ],
   );
 
-  const startNewChat = useCallback(() => {
+  const startNewChat = useCallback(async () => {
     stream.cancel();
     setQuery("");
     pendingHistorySyncRef.current = false;
     dispatch({ type: "reset_thread" });
-    onNewNote?.();
+    if (!onNewNote) return;
+    setCreatingNewChat(true);
+    try {
+      await onNewNote();
+    } finally {
+      setCreatingNewChat(false);
+    }
   }, [stream, onNewNote]);
 
   const stopStreaming = useCallback(() => {

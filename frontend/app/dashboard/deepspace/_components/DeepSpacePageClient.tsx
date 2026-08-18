@@ -621,7 +621,7 @@ export default function DeepSpacePageClient() {
                     }
                   }}
                   onNewNote={() => {
-                    createNote();
+                    return createNote();
                   }}
                   onInsertLatestAnswer={insertAnswer}
                   onAgentNotePreview={handleAgentNotePreview}
