@@ -2719,6 +2719,7 @@ class DeepSpaceChatService:
                 round_answer_start = len(answer_parts)
                 round_thinking_start = len(thinking_parts)
                 round_artifact_start = len(generated_artifacts)
+                round_thinking_events: list[str] = []
                 request_images = list(pending_images)
                 pending_images.clear()
                 tools_for_round = available_tools
@@ -2984,18 +2985,24 @@ class DeepSpaceChatService:
                                     emitted_tool_argument_lengths[call_index] = len(arguments)
                             continue
                         text = provider_event.get("text")
-                        # Provider reasoning fields are private model content.
-                        # Keep them out of the user-visible timeline and
-                        # history; real tool calls/results remain visible as
-                        # activity.
+                        if event_type not in {"thinking", "reasoning", "reasoning_delta"}:
+                            provider_reasoning = (
+                                provider_event.get("reasoning_content")
+                                or provider_event.get("reasoning")
+                                or provider_event.get("thinking")
+                            )
+                            if isinstance(provider_reasoning, str) and provider_reasoning:
+                                provider_reasoning = self._clean_provider_text(provider_reasoning)
+                                if provider_reasoning:
+                                    thinking_parts.append(provider_reasoning)
+                                    round_thinking_events.append(provider_reasoning)
                         if not isinstance(text, str) or not text:
                             continue
                         if event_type in {"thinking", "reasoning", "reasoning_delta"}:
-                            # Do not expose raw chain-of-thought as "Internal
-                            # Thought". This also preserves event ordering:
-                            # tool activity and the final answer are emitted
-                            # in the provider's real order.
-                            continue
+                            text = self._clean_provider_text(text)
+                            if text:
+                                thinking_parts.append(text)
+                                round_thinking_events.append(text)
                         elif event_type in {"delta", "text", "content"}:
                             text = self._clean_provider_text(text)
                             if not text:
@@ -3062,6 +3069,9 @@ class DeepSpaceChatService:
                         "Please retry with a tool-capable model."
                     )
                     break
+
+                for thinking_text in round_thinking_events:
+                    yield sse("thinking", {"text": thinking_text})
 
                 round_output_text = "".join(answer_parts[round_answer_start:]) + "".join(
                     thinking_parts[round_thinking_start:]
