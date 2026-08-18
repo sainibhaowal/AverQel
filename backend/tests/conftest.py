@@ -344,6 +344,32 @@ class TestDatabaseBootstrapUnavailableError(RuntimeError):
     """Raised when the test database cannot be prepared in this environment."""
 
 
+def _assert_test_database_is_not_source() -> None:
+    """Refuse to run when the reset target could be the source database.
+
+    The bootstrap drops and recreates the configured database from the
+    source template. AKS_DATABASE_URL must target a dedicated "*_test"
+    database. When it points at the source database itself (for example the
+    production "knowledge" database instead of "knowledge_test"), the reset
+    would destroy the source's data. xdist workers append "_gw<N>" to the
+    configured database, so the base name (with any "_gw<N>" suffix stripped)
+    must still be a "*_test" database.
+    """
+    base_name = re.sub(r"_gw\d+$", "", TEST_DATABASE_NAME)
+    if not base_name.endswith("_test"):
+        raise TestDatabaseBootstrapUnavailableError(
+            "refusing to run tests: AKS_DATABASE_URL database "
+            f"{base_name!r} is not a dedicated '*_test' database; "
+            "tests must target a separate '*_test' database"
+        )
+    if TEST_DATABASE_NAME == SOURCE_DATABASE_NAME:
+        raise TestDatabaseBootstrapUnavailableError(
+            "refusing to run tests: AKS_DATABASE_URL database "
+            f"{TEST_DATABASE_NAME!r} is the schema source database; "
+            "tests must target a separate '*_test' database"
+        )
+
+
 def _ensure_default_roles(session) -> None:
     bind = session.get_bind()
     if bind is not None and not sa_inspect(bind).has_table(Role.__tablename__):
@@ -692,6 +718,7 @@ def _reset_test_database_from_template() -> None:
     operation, avoiding a pg_dump/restore and Alembic run for every xdist
     worker.
     """
+    _assert_test_database_is_not_source()
     RUNTIME_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     lock_path = RUNTIME_CACHE_DIR / "pytest-postgres-clone.lock"
     with filelock.FileLock(str(lock_path)):

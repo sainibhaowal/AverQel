@@ -814,7 +814,14 @@ async def stream_deepspace_chat(
                             client_request_id=client_request_id,
                             after_sequence=last_sequence,
                         )
-                    for sequence, frame in frames_after(stored, after_sequence=last_sequence):
+                        # Materialize plain (sequence, frame) tuples while the
+                        # ORM session is still open. Accessing ORM attributes
+                        # after managed_db_session() rolls back and closes the
+                        # session raises DetachedInstanceError, which aborts the
+                        # SSE stream with no terminal event and makes the UI
+                        # report "The chat provider returned an empty stream."
+                        replay_frames = frames_after(stored, after_sequence=last_sequence)
+                    for sequence, frame in replay_frames:
                         last_sequence = sequence
                         yield frame
                         terminal = is_terminal_event(event_name_from_frame(frame))
