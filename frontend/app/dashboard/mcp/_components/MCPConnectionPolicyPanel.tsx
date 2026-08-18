@@ -18,6 +18,7 @@ type EditablePolicy = Pick<
   | "risk_ceiling"
   | "approval_rules"
   | "tool_modes"
+  | "default_tool_mode"
   | "default_enabled"
   | "deepspace_overrides"
   | "conversation_overrides"
@@ -105,27 +106,58 @@ export default function MCPConnectionPolicyPanel({
           </span>
         </label>
       </div>
-      <label className="mt-4 block text-sm text-white">
-        Maximum risk level
-        <select
-          value={draft.risk_ceiling}
-          onChange={(event) =>
-            setDraft({ ...draft, risk_ceiling: event.target.value as MCPRiskLabel })
-          }
-          className="mt-2 w-full rounded-lg border border-white/10 bg-[#111512] px-3 py-2 text-sm text-white sm:max-w-sm"
-        >
-          {RISK_OPTIONS.map((risk) => (
-            <option key={risk} value={risk}>
-              {risk.replaceAll("_", " ")}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <label className="block text-sm text-white">
+          Master tool permission
+          <select
+            aria-label="Master tool permission"
+            value={draft.default_tool_mode}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                default_tool_mode: event.target.value as MCPToolMode,
+                tool_modes: {},
+              })
+            }
+            className="mt-2 w-full rounded-lg border border-white/10 bg-[#111512] px-3 py-2 text-sm text-white"
+          >
+            {MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {mode.replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-white/45">
+            Applies to every current and future tool. Choosing a value clears individual overrides;
+            you can customize tools again afterward.
+          </span>
+        </label>
+        <label className="block text-sm text-white">
+          Master risk ceiling
+          <select
+            aria-label="Master risk ceiling"
+            value={draft.risk_ceiling}
+            onChange={(event) =>
+              setDraft({ ...draft, risk_ceiling: event.target.value as MCPRiskLabel })
+            }
+            className="mt-2 w-full rounded-lg border border-white/10 bg-[#111512] px-3 py-2 text-sm text-white sm:max-w-sm"
+          >
+            {RISK_OPTIONS.map((risk) => (
+              <option key={risk} value={risk}>
+                {risk.replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-white/45">
+            No tool can run above this risk level. Read-only mode remains an additional hard block.
+          </span>
+        </label>
+      </div>
       <div className="mt-5">
-        <h3 className="text-sm font-semibold text-white">High-risk approval defaults</h3>
+        <h3 className="text-sm font-semibold text-white">Risk safeguards</h3>
         <p className="mt-1 text-xs text-white/45">
-          Platform safety still requires confirmation for remote side effects, even when a tool is
-          set to always allow.
+          These are risk guardrails, not a second per-tool permission list. Platform safety still
+          requires confirmation for remote side effects, even when a tool is set to always allow.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           {RISK_OPTIONS.filter((risk) => risk !== "read").map((risk) => (
@@ -155,9 +187,9 @@ export default function MCPConnectionPolicyPanel({
         </div>
       </div>
       <p className="mt-5 rounded-xl border border-white/10 bg-black/15 p-3 text-xs leading-5 text-white/50">
-        Once this account is connected and enabled, its permitted tools are available automatically
-        in every DeepSpace conversation. Tool access is checked again immediately before each remote
-        call.
+        Decision order: connection ownership and provider safety first, then the master risk ceiling
+        and read-only guard, then explicit tool blocks, then a per-tool override or the master tool
+        permission. Every decision is checked again immediately before the remote call.
       </p>
     </section>
   );
@@ -171,6 +203,7 @@ function toEditable(policy: MCPConnectionPolicy): EditablePolicy {
     risk_ceiling: policy.risk_ceiling,
     approval_rules: { ...policy.approval_rules },
     tool_modes: { ...policy.tool_modes },
+    default_tool_mode: policy.default_tool_mode,
     default_enabled: policy.default_enabled,
     deepspace_overrides: { ...policy.deepspace_overrides },
     conversation_overrides: { ...policy.conversation_overrides },

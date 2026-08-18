@@ -66,6 +66,7 @@ def _server(
             "external_message": "needs_approval",
         },
         tool_modes={"read_inbox": "always_allow", "send_message": "needs_approval"},
+        default_tool_mode="needs_approval",
         default_enabled=True,
         deepspace_overrides={},
         conversation_overrides={},
@@ -158,6 +159,26 @@ def test_phase5_policy_matrix_is_deny_first(
     )
     assert risk_blocked_decision.allowed is False
     assert "risk-level policy" in risk_blocked_decision.reason
+
+    policy.approval_rules = {}
+    policy.tool_modes = {}
+    policy.default_tool_mode = "blocked"
+    db_session.commit()
+    set_db_tenant_context(db_session, seeded.tenant_id)
+    master_blocked_decision = evaluate_mcp_tool_policy(
+        db=db_session,
+        server=server,
+        tool_name="read_inbox",
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        conversation_id=conversation.id,
+        deepspace_id=mission.mission_id,
+        tool={"name": "read_inbox", "risk_labels": ["read"]},
+        expected_catalog_revision=7,
+        max_age_seconds=300,
+    )
+    assert master_blocked_decision.allowed is False
+    assert "effective permission" in master_blocked_decision.reason
 
 
 def test_phase5_scope_provider_and_catalog_guards(

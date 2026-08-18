@@ -18,6 +18,7 @@ def test_mcp_connection_policy_has_conservative_fields_and_defaults() -> None:
         "risk_ceiling",
         "approval_rules",
         "tool_modes",
+        "default_tool_mode",
         "default_enabled",
         "deepspace_overrides",
         "conversation_overrides",
@@ -28,6 +29,7 @@ def test_mcp_connection_policy_has_conservative_fields_and_defaults() -> None:
     assert "true" in str(columns["default_enabled"].server_default.arg).lower()
     assert "read" in str(columns["risk_ceiling"].server_default.arg)
     assert "needs_approval" in str(columns["approval_rules"].server_default.arg)
+    assert "needs_approval" in str(columns["default_tool_mode"].server_default.arg)
 
 
 @pytest.mark.unit_no_db

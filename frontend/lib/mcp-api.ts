@@ -113,6 +113,7 @@ export type MCPConnectionPolicy = {
   risk_ceiling: MCPRiskLabel;
   approval_rules: Record<string, MCPToolMode>;
   tool_modes: Record<string, MCPToolMode>;
+  default_tool_mode: MCPToolMode;
   default_enabled: boolean;
   deepspace_overrides: Record<string, boolean>;
   conversation_overrides: Record<string, boolean>;

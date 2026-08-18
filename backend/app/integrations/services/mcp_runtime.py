@@ -1010,9 +1010,13 @@ def evaluate_mcp_tool_policy(
         configured_mode
         if configured_mode in {"always_allow", "needs_approval", "blocked"}
         else (
-            approval_rule
-            if approval_rule in {"always_allow", "needs_approval", "blocked"}
-            else "needs_approval"
+            policy.default_tool_mode
+            if policy.default_tool_mode in {"always_allow", "blocked"}
+            else (
+                approval_rule
+                if approval_rule in {"always_allow", "needs_approval", "blocked"}
+                else "needs_approval"
+            )
         )
     )
     if mode == "blocked":
@@ -1020,7 +1024,7 @@ def evaluate_mcp_tool_policy(
             False,
             mode=mode,
             risk_level=risk_level,
-            reason="MCP tool is blocked by its per-tool policy.",
+            reason="MCP tool is blocked by its effective permission policy.",
         )
     approval_requirement: Literal["auto", "human", "block"] = "human"
     if mode == "always_allow" and risk_level == "read":

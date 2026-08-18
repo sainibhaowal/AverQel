@@ -43,6 +43,7 @@ vi.mock("@/lib/mcp-api", () => ({
     risk_ceiling: "read",
     approval_rules: {},
     tool_modes: {},
+    default_tool_mode: "needs_approval",
     default_enabled: false,
     deepspace_overrides: {},
     conversation_overrides: {},
@@ -75,7 +76,7 @@ describe("MCP inspector", () => {
     render(<MCPInspector />);
     await waitFor(() => expect(screen.getByText("owner@example.com")).toBeInTheDocument());
     expect(screen.getByText("search_mail")).toBeInTheDocument();
-    expect(screen.getByText(/Blocked tools will not be offered to DeepSpace/i)).toBeInTheDocument();
+    expect(screen.getByText(/Individual changes override the master tool permission/i)).toBeInTheDocument();
     expect(screen.getAllByText(/DeepSpace/i).length).toBeGreaterThan(0);
   });
 });

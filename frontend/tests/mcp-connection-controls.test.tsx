@@ -72,6 +72,7 @@ const policy: MCPConnectionPolicy = {
     external_message: "needs_approval",
   },
   tool_modes: {},
+  default_tool_mode: "needs_approval",
   default_enabled: false,
   deepspace_overrides: {},
   conversation_overrides: {},
@@ -156,7 +157,7 @@ describe("MCP connection controls", () => {
       ),
     );
     expect(
-      screen.getByText(/available automatically in every DeepSpace conversation/i),
+      screen.getByText(/available automatically in every conversation/i),
     ).toBeInTheDocument();
   });
 });

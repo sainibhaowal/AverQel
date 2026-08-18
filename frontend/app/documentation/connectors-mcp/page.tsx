@@ -131,6 +131,10 @@ export default function ConnectorsMcpDocsPage() {
           <li>Allowlist and denylist checks.</li>
           <li>Read-only mode and the connection risk ceiling.</li>
           <li>
+            A master tool permission applies to every tool by default. Individual tool settings
+            can override it after the master setting is saved.
+          </li>
+          <li>
             Per-tool mode: <strong>Always allow</strong>, <strong>Needs approval</strong>, or{" "}
             <strong>Blocked</strong>.
           </li>
@@ -140,6 +144,11 @@ export default function ConnectorsMcpDocsPage() {
           Always allow permits a tool only after all higher-level checks pass. Needs approval pauses
           before the remote side effect. Blocked tools are not offered to DeepSpace and cannot be
           executed through the MCP runtime.
+        </p>
+        <p>
+          The MCP inspector provides one master permission selector for fast account-wide changes
+          and one master risk ceiling for the maximum allowed risk. Risk safeguards are separate
+          safety limits, not a duplicate per-tool permission system.
         </p>
         <p>
           A connected server is automatically available to the owning user&apos;s DeepSpace

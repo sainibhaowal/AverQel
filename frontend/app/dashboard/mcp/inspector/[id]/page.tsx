@@ -222,7 +222,19 @@ export default function MCPInspector() {
           )}
         </section>
       )}
-      <MCPConnectionPolicyPanel serverId={server.id} policy={policy} onSaved={setPolicy} />
+      <MCPConnectionPolicyPanel
+        serverId={server.id}
+        policy={policy}
+        onSaved={(saved) => {
+          setPolicy(saved);
+          setTools((current) =>
+            current.map((tool) => ({
+              ...tool,
+              mode: saved.tool_modes[tool.name] || saved.default_tool_mode,
+            })),
+          );
+        }}
+      />
       <MCPToolPermissionTable serverId={server.id} tools={tools} onChanged={setTools} />
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
         <h2 className="text-lg font-semibold text-white">OAuth and catalog status</h2>

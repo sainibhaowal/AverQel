@@ -96,7 +96,11 @@ def _marketplace_tool_preview(entry: MCPRegistryEntry) -> list[dict[str, Any]]:
         {
             "name": str(item.get("name") or "").strip(),
             "description": str(item.get("description") or "").strip() or None,
-            "category": str(item.get("category") or "").strip() or None,
+            "category": _tool_category(
+                str(item.get("name") or ""),
+                _safe_string_list(item.get("risk_labels")),
+                item.get("category"),
+            ),
             "risk_labels": _safe_string_list(item.get("risk_labels")),
         }
         for item in preview
@@ -121,7 +125,11 @@ def _marketplace_tools(entry: MCPRegistryEntry) -> list[dict[str, Any]]:
         {
             "name": str(item.get("name") or "").strip(),
             "description": str(item.get("description") or "").strip() or None,
-            "category": str(item.get("category") or "").strip() or None,
+            "category": _tool_category(
+                str(item.get("name") or ""),
+                _safe_string_list(item.get("risk_labels")),
+                item.get("category"),
+            ),
             "risk_labels": _safe_string_list(item.get("risk_labels")),
         }
         for item in values
@@ -215,6 +223,32 @@ def _safe_string_list(value: object) -> list[str]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
+def _tool_category(tool_name: str, risk_labels: list[str], category: object) -> str:
+    """Return a stable user-facing category when providers omit one."""
+    explicit = str(category or "").strip()
+    if explicit:
+        return explicit
+    labels = {label.casefold() for label in risk_labels}
+    if "external_message" in labels:
+        return "External communication"
+    if "delete" in labels:
+        return "Delete"
+    if "write" in labels:
+        return "Write"
+    if "read" in labels:
+        return "Read"
+    normalized = tool_name.casefold()
+    if any(word in normalized for word in ("send", "message", "email", "post", "comment")):
+        return "External communication"
+    if any(word in normalized for word in ("delete", "remove", "destroy", "revoke")):
+        return "Delete"
+    if any(word in normalized for word in ("create", "update", "write", "upload", "append")):
+        return "Write"
+    if any(word in normalized for word in ("search", "list", "get", "read", "find", "fetch")):
+        return "Read"
+    return "General"
+
+
 def _safe_badges(value: object) -> dict[str, bool]:
     if not isinstance(value, dict):
         return {}
@@ -280,6 +314,7 @@ def _policy_defaults(server: MCPServer) -> MCPConnectionPolicy:
             "external_message": "needs_approval",
         },
         tool_modes={},
+        default_tool_mode="needs_approval",
         # A user-authorized connection is available to that user's DeepSpace
         # conversations by default. Tool-level policy and approvals remain
         # enforced at execution time.
@@ -358,7 +393,7 @@ def _tool_payload(server: MCPServer, tool_name: str, mode: str) -> MCPToolRead:
     return MCPToolRead(
         name=tool_name,
         description=str(item.get("description") or "").strip() or None,
-        category=str(item.get("category") or "").strip() or None,
+        category=_tool_category(tool_name, risk_labels, item.get("category")),
         risk_labels=risk_labels,
         mode=mode if mode in {"always_allow", "needs_approval", "blocked"} else "needs_approval",
     )
@@ -389,6 +424,7 @@ def _apply_policy_update(policy: MCPConnectionPolicy, payload: MCPConnectionPoli
         "external_message": "needs_approval",
     }
     policy.tool_modes = dict(payload.tool_modes)
+    policy.default_tool_mode = payload.default_tool_mode
     policy.default_enabled = payload.default_enabled
     policy.deepspace_overrides = dict(payload.deepspace_overrides)
     policy.conversation_overrides = dict(payload.conversation_overrides)
@@ -404,7 +440,11 @@ def _tool_mode(policy: MCPConnectionPolicy | None, tool_name: str) -> str:
     return (
         configured
         if configured in {"always_allow", "needs_approval", "blocked"}
-        else "needs_approval"
+        else (
+            policy.default_tool_mode
+            if policy.default_tool_mode in {"always_allow", "needs_approval", "blocked"}
+            else "needs_approval"
+        )
     )
 
 

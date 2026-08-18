@@ -60,6 +60,7 @@ export const policy: MCPConnectionPolicy = {
     external_message: "needs_approval",
   },
   tool_modes: {},
+  default_tool_mode: "needs_approval",
   default_enabled: false,
   deepspace_overrides: {},
   conversation_overrides: {},

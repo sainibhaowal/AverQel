@@ -89,6 +89,7 @@ class MCPConnectionPolicyRead(BaseModel):
     risk_ceiling: MCPRiskCeiling
     approval_rules: dict[str, MCPToolMode]
     tool_modes: dict[str, MCPToolMode]
+    default_tool_mode: MCPToolMode
     default_enabled: bool
     deepspace_overrides: dict[str, bool]
     conversation_overrides: dict[str, bool]
@@ -105,6 +106,7 @@ class MCPConnectionPolicyUpdate(BaseModel):
     risk_ceiling: MCPRiskCeiling = "read"
     approval_rules: dict[str, MCPToolMode] = Field(default_factory=dict)
     tool_modes: dict[str, MCPToolMode] = Field(default_factory=dict)
+    default_tool_mode: MCPToolMode = "needs_approval"
     default_enabled: bool = False
     deepspace_overrides: dict[str, bool] = Field(default_factory=dict)
     conversation_overrides: dict[str, bool] = Field(default_factory=dict)

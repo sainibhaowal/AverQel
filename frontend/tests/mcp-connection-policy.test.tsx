@@ -30,4 +30,18 @@ describe("MCPConnectionPolicyPanel", () => {
     );
     expect(screen.getByText(/blocked or disabled tool is removed/i)).toBeInTheDocument();
   });
+
+  it("applies the master permission to all tools by clearing individual overrides", async () => {
+    render(<MCPConnectionPolicyPanel serverId="server-1" policy={policy} />);
+    fireEvent.change(screen.getByRole("combobox", { name: "Master tool permission" }), {
+      target: { value: "always_allow" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save policy" }));
+    await waitFor(() =>
+      expect(updateMCPPolicy).toHaveBeenCalledWith(
+        "server-1",
+        expect.objectContaining({ default_tool_mode: "always_allow", tool_modes: {} }),
+      ),
+    );
+  });
 });

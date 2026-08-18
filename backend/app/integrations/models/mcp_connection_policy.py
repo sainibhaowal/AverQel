@@ -29,6 +29,10 @@ class MCPConnectionPolicy(Base):
             "risk_ceiling IN ('read', 'write', 'delete', 'external_message')",
             name="ck_mcp_connection_policies_risk_ceiling",
         ),
+        CheckConstraint(
+            "default_tool_mode IN ('always_allow', 'needs_approval', 'blocked')",
+            name="ck_mcp_connection_policies_default_tool_mode",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -65,6 +69,9 @@ class MCPConnectionPolicy(Base):
     )
     tool_modes: Mapped[dict[str, str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    default_tool_mode: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'needs_approval'")
     )
     default_enabled: Mapped[bool] = mapped_column(nullable=False, server_default=text("true"))
     deepspace_overrides: Mapped[dict[str, bool]] = mapped_column(

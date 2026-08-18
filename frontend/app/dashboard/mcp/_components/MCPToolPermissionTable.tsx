@@ -40,7 +40,8 @@ export default function MCPToolPermissionTable({
         <div>
           <h2 className="text-lg font-semibold text-white">Tool permissions</h2>
           <p className="mt-1 text-sm text-white/55">
-            Blocked tools will not be offered to DeepSpace.
+            Individual changes override the master tool permission. Risk and connection safeguards
+            can still require approval or block a tool.
           </p>
         </div>
         <span className="text-xs text-white/45">{items.length} tools</span>
@@ -67,7 +68,7 @@ export default function MCPToolPermissionTable({
                       {tool.description || "No description provided."}
                     </p>
                   </td>
-                  <td className="py-3 pr-4 text-white/55">{tool.category || "Uncategorized"}</td>
+                  <td className="py-3 pr-4 text-white/55">{tool.category || "General"}</td>
                   <td className="py-3 pr-4">
                     <div className="flex flex-wrap gap-1">
                       {(tool.risk_labels.length ? tool.risk_labels : ["read"]).map((risk) => (
