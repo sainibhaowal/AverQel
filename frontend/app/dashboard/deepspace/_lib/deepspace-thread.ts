@@ -2113,53 +2113,6 @@ function computeLineDiff(oldText: string, newText: string) {
   return { additions, deletions, diffLines };
 }
 
-function promoteTurnTextToThinking(
-  message: DeepSpaceMessage,
-  turnIndex: number | undefined,
-): DeepSpaceMessage {
-  const currentTurnText = message.currentTurnText ?? "";
-  if (!currentTurnText) {
-    return message;
-  }
-
-  let rawContent = message.rawContent;
-  if (rawContent.endsWith(currentTurnText)) {
-    rawContent = rawContent.slice(0, rawContent.length - currentTurnText.length);
-  }
-
-  const nextSteps = [...(message.agentSteps ?? [])];
-  const thinkingStepIdx = nextSteps.findIndex(
-    (s) => s.type === "thinking" && s.turnIndex === turnIndex,
-  );
-
-  if (thinkingStepIdx !== -1) {
-    const existing = nextSteps[thinkingStepIdx]!;
-    nextSteps[thinkingStepIdx] = {
-      ...existing,
-      plan: `${existing.plan ?? ""}${currentTurnText}`,
-      toolOutput: `${existing.toolOutput ?? ""}${currentTurnText}`,
-    };
-  } else {
-    nextSteps.push({
-      id: `thinking_${message.id}_${turnIndex ?? nextSteps.length}`,
-      type: "thinking",
-      status: "completed",
-      startedAt: new Date().toISOString(),
-      plan: currentTurnText,
-      toolOutput: currentTurnText,
-      turnIndex,
-    });
-  }
-
-  return {
-    ...message,
-    rawContent,
-    content: normalizeMarkdown(rawContent),
-    currentTurnText: "",
-    agentSteps: nextSteps,
-  };
-}
-
 function compactAgentSteps(rawSteps: AgentStep[]): AgentStep[] {
   return rawSteps.reduce<AgentStep[]>((acc, step) => upsertAgentStep(acc, step), []);
 }
@@ -3153,49 +3106,19 @@ function reduceDeepSpaceThread(
           }
         }
 
-        const currentTurnText = appendStreamingText(current.currentTurnText, chunk);
         const extracted = extractThinking(rawContent);
-
-        const nextAgentSteps = [...(current.agentSteps ?? [])];
-
-        // Find the last active step if it's a thinking/monologue step
-        const lastStep = nextAgentSteps[nextAgentSteps.length - 1];
-        const thinkingText = extracted.thinking || currentTurnText;
-
-        if (lastStep && lastStep.type === "thinking" && lastStep.status === "running") {
-          // Update the existing active thinking step
-          nextAgentSteps[nextAgentSteps.length - 1] = {
-            ...lastStep,
-            plan: thinkingText,
-            toolOutput: thinkingText,
-          };
-        } else if (thinkingText.trim()) {
-          // Create a new thinking step if the last one was closed or didn't exist
-          // Keep this identity stable across streamed reducer updates. Date.now()
-          // created a new DOM row whenever a batch arrived in a different frame,
-          // which made the activity panel re-mount and visibly jump.
-          const thinkingStepIndex = nextAgentSteps.filter(
-            (step) => step.type === "thinking",
-          ).length;
-          nextAgentSteps.push({
-            id: `monologue_${current.id}_${thinkingStepIndex}`,
-            type: "thinking",
-            status: "running",
-            startedAt: new Date().toISOString(),
-            plan: thinkingText,
-            toolOutput: thinkingText,
-          });
-        }
 
         nextMessages[index] = {
           ...current,
           rawContent,
-          thinkingContent: extracted.thinking || current.thinkingContent,
+          // A normal delta is user-visible answer content. Only explicit
+          // `thinking` stream events may add content to Thinking & Activity.
+          // We still remove accidental <think> markup from the answer, but do
+          // not persist or display that leaked provider text as activity.
+          thinkingContent: current.thinkingContent,
           content: normalizeMarkdown(extracted.text),
-          currentTurnText,
           status: "streaming",
           metrics,
-          agentSteps: nextAgentSteps,
           timeline: nextTimeline,
           mission: nextMission,
           compaction: nextCompaction,
@@ -3563,10 +3486,9 @@ function reduceDeepSpaceThread(
           turnIndex,
           diffStats: previewDiffStats,
         };
-        const promoted = promoteTurnTextToThinking(current, turnIndex);
         nextMessages[index] = {
-          ...promoted,
-          agentSteps: upsertAgentStep(promoted.agentSteps ?? [], step),
+          ...current,
+          agentSteps: upsertAgentStep(current.agentSteps ?? [], step),
           timeline: nextTimeline,
           mission: nextMission,
           compaction: nextCompaction,
@@ -3601,10 +3523,9 @@ function reduceDeepSpaceThread(
           tool_id: toolId,
           turnIndex,
         };
-        const promoted = promoteTurnTextToThinking(current, turnIndex);
         nextMessages[index] = {
-          ...promoted,
-          agentSteps: upsertAgentStep(promoted.agentSteps ?? [], step),
+          ...current,
+          agentSteps: upsertAgentStep(current.agentSteps ?? [], step),
           timeline: nextTimeline,
           mission: nextMission,
           compaction: nextCompaction,
@@ -3774,10 +3695,9 @@ function reduceDeepSpaceThread(
           data: event.data,
           turnIndex,
         };
-        const promoted = promoteTurnTextToThinking(current, turnIndex);
         nextMessages[index] = {
-          ...promoted,
-          agentSteps: upsertAgentStep(promoted.agentSteps ?? [], step),
+          ...current,
+          agentSteps: upsertAgentStep(current.agentSteps ?? [], step),
           timeline: nextTimeline,
           mission: nextMission,
           compaction: nextCompaction,
@@ -3808,10 +3728,9 @@ function reduceDeepSpaceThread(
           data: event.data,
           turnIndex,
         };
-        const promoted = promoteTurnTextToThinking(current, turnIndex);
         nextMessages[index] = {
-          ...promoted,
-          agentSteps: upsertAgentStep(promoted.agentSteps ?? [], step),
+          ...current,
+          agentSteps: upsertAgentStep(current.agentSteps ?? [], step),
           timeline: nextTimeline,
           mission: nextMission,
           compaction: nextCompaction,

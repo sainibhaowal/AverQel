@@ -30,6 +30,64 @@ describe("TimelineStep Model", () => {
     const message = state.messages.find((m) => m.id === assistantId);
     expect(message?.rawContent).toBe("The user wants");
     expect(message?.content).toBe("The user wants");
+    expect(message?.thinkingContent).toBeFalsy();
+    expect(message?.agentSteps).toEqual([]);
+  });
+
+  test("keeps provisional answer text out of activity when a retry replaces it", () => {
+    let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "submit_query",
+      query: "Help me plan this",
+    });
+    const assistantId = state.activeAssistantId;
+    if (!assistantId) throw new Error("No active assistant");
+
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: { event: "delta", data: { text: "I need one more detail first." } },
+    });
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: { event: "replace", data: { content: "" } },
+    });
+
+    const message = state.messages.find((item) => item.id === assistantId);
+    expect(message?.content).toBe("");
+    expect(message?.thinkingContent).toBeFalsy();
+    expect(message?.agentSteps).toEqual([]);
+  });
+
+  test("keeps an answer visible when a real tool begins", () => {
+    let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "submit_query",
+      query: "Check my calendar",
+    });
+    const assistantId = state.activeAssistantId;
+    if (!assistantId) throw new Error("No active assistant");
+
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: { event: "delta", data: { text: "I will check your calendar." } },
+    });
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: {
+        event: "tool_start",
+        data: {
+          step_id: "calendar-1",
+          tool_id: "calendar-1",
+          tool_name: "list_events",
+          tool_input: {},
+        },
+      },
+    });
+
+    const message = state.messages.find((item) => item.id === assistantId);
+    expect(message?.content).toBe("I will check your calendar.");
+    expect(message?.thinkingContent).toBeFalsy();
+    expect(message?.agentSteps).toEqual([
+      expect.objectContaining({ type: "tool_start", toolName: "list_events" }),
+    ]);
   });
 
   test("keeps a real streamed media artifact on the assistant message", () => {
