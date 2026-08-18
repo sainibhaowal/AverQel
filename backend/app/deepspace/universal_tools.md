@@ -47,3 +47,19 @@ execution.
 The dispatcher is inside the existing chat service. Existing SSE event types
 and the frontend timeline are unchanged. New calls appear as ordinary real
 tool events with their operation, target, arguments, result, and status.
+
+## MCP routing boundary
+
+Connected MCP catalogs are discovered through the authenticated bridge, but
+their schemas are exposed to the model only when the user explicitly names the
+corresponding connected service (for example, Gmail, Drive, Calendar, GitHub,
+Slack, or Notion). General research, drafting, Library, note, and workspace
+requests use the native DeepSpace tools such as `web_search` and `write` and do
+not receive unrelated MCP tools.
+
+This is a model-routing boundary, not a security boundary. Every selected MCP
+call still passes the existing tenant/user ownership, connection status,
+catalog revision, allowlist, read-only, risk ceiling, approval, and audit
+checks. A printed `<function-call>`, DSML, XML, or JSON fragment is never
+executed as a tool; it is treated as invalid provider output and retried only
+within the bounded chat recovery policy.

@@ -496,7 +496,16 @@ class DeepSpaceChatService:
     def _looks_like_fake_tool_output(text: str) -> bool:
         """Detect tool syntax printed as prose, without ever executing it."""
 
-        if _FAKE_TOOL_MARKER_RE.search(text):
+        lowered = text.casefold()
+        if _FAKE_TOOL_MARKER_RE.search(text) or any(
+            marker in lowered
+            for marker in (
+                "function_calls",
+                "function_call>",
+                "｜dsml｜invoke",
+                "｜dsml｜parameter",
+            )
+        ):
             return True
         normalized = text.replace("```json", "").replace("```", "").strip()
         for candidate in [normalized, *(match.group(0) for match in _JSON_OBJECT_RE.finditer(normalized))]:
@@ -986,6 +995,65 @@ class DeepSpaceChatService:
         return any(name and name in lowered for name in service_names) and any(
             term in lowered for term in action_terms
         )
+
+    @classmethod
+    def _mcp_bindings_for_prompt(
+        cls, prompt: str, mcp_bindings: dict[str, DeepSpaceMCPTool]
+    ) -> dict[str, DeepSpaceMCPTool]:
+        """Expose only the explicitly requested connected service to the model.
+
+        MCP connections remain discovered and authorized by the bridge, but
+        unrelated MCP schemas must not compete with DeepSpace's native tools
+        such as ``web_search`` or ``write``.  This is routing only; execution
+        still goes through the existing ownership, catalog, risk, approval,
+        and audit checks.
+        """
+
+        if not mcp_bindings:
+            return {}
+        lowered = prompt.casefold()
+        if not any(
+            token in lowered
+            for token in (
+                "gmail",
+                "email",
+                "inbox",
+                "google drive",
+                "drive",
+                "google calendar",
+                "calendar",
+                "github",
+                "git hub",
+                "slack",
+                "notion",
+                "mcp",
+            )
+        ):
+            return {}
+
+        aliases = {
+            "gmail": ("gmail", "email", "inbox", "mail"),
+            "drive": ("drive", "file", "document"),
+            "calendar": ("calendar", "event", "meeting", "schedule"),
+            "github": ("github", "git hub", "repository", "repo", "pull request", "issue"),
+            "slack": ("slack", "channel", "workspace message"),
+            "notion": ("notion", "page", "database page"),
+        }
+        selected: dict[str, DeepSpaceMCPTool] = {}
+        for exposed_name, binding in mcp_bindings.items():
+            server_name = str(binding.server.name or "").casefold()
+            matches_service = False
+            for service, tokens in aliases.items():
+                if service not in lowered and not any(token in lowered for token in tokens):
+                    continue
+                if service in server_name or any(token in server_name for token in tokens):
+                    matches_service = True
+                    break
+            if matches_service:
+                selected[exposed_name] = binding
+            elif "mcp" in lowered and server_name and server_name in lowered:
+                selected[exposed_name] = binding
+        return selected
 
     async def _execute_productivity_tool(
         self,
@@ -2306,6 +2374,8 @@ class DeepSpaceChatService:
                 exc_info=True,
             )
             mcp_bindings = {}
+        discovered_mcp_bindings = mcp_bindings
+        mcp_bindings = self._mcp_bindings_for_prompt(prompt, discovered_mcp_bindings)
         mcp_tools = [binding.definition for binding in mcp_bindings.values()]
         available_tools: list[dict[str, Any]] = [*productivity_tools, *web_tools, *mcp_tools]
         connected_service_tool_required = self._requires_connected_service_tool(
@@ -3060,7 +3130,10 @@ class DeepSpaceChatService:
                     )
                 if not normalized_calls:
                     prose_answer = "".join(answer_parts[round_answer_start:]).strip()
-                    fake_tool_output = self._looks_like_fake_tool_output(prose_answer)
+                    round_thinking = "".join(thinking_parts[round_thinking_start:])
+                    fake_tool_output = self._looks_like_fake_tool_output(
+                        f"{prose_answer}\n{round_thinking}"
+                    )
                     if fake_tool_output or connected_service_tool_required:
                         del answer_parts[round_answer_start:]
                         del thinking_parts[round_thinking_start:]
@@ -3624,6 +3697,21 @@ class DeepSpaceChatService:
                     else:
                         error_category = str(result.get("error_category") or "tool")
                         if mcp_bindings.get(tool_name) is not None:
+                            mcp_error_text = str(result.get("error") or "").casefold()
+                            policy_block_markers = (
+                                "risk ceiling",
+                                "read-only mode",
+                                "blocked by policy",
+                                "not in the connection allowlist",
+                                "connection policy is not configured",
+                            )
+                            if any(marker in mcp_error_text for marker in policy_block_markers):
+                                forced_answer = (
+                                    "The connected MCP action was blocked by its configured policy. "
+                                    "No external action was performed; update that connection's policy "
+                                    "only if this action is intended."
+                                )
+                                terminal_status = "blocked"
                             failure_key = hashlib.sha256(
                                 json.dumps(
                                     {
