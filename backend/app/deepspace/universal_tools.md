@@ -47,6 +47,17 @@ stale filename is not found, the tool returns a safe `not_found` result with
 the authorized entries for that conversation so the agent can find the real
 file before retrying. It never falls back to host filesystem access.
 
+Malformed provider tool arguments are shown as a failed activity step but are
+removed from the next provider request before one bounded schema-correction
+retry. This prevents an invalid function transcript from causing a secondary
+provider failure. Raw HTML returned by a provider is reduced to a bounded,
+plain-language health error before it is persisted or streamed to the UI.
+
+For managed tasks, `todo_mark` is not offered as a completion action until a
+successful research, workspace, or connected-service call has produced work
+evidence after the task started. Existing evidence requirements remain strict;
+the model cannot satisfy them with an unsupported prose claim.
+
 ## Streaming
 
 The dispatcher is inside the existing chat service. Existing SSE event types

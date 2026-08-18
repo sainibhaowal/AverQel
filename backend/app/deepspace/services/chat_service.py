@@ -825,6 +825,20 @@ class DeepSpaceChatService:
         return parsed if isinstance(parsed, dict) else None
 
     @staticmethod
+    def _safe_provider_error_message(exc: ProviderRequestError) -> str:
+        """Return a bounded user-facing provider error without raw HTML."""
+
+        message = str(exc).strip()
+        if not message or re.search(r"<!doctype\s+html|<html\b", message, re.IGNORECASE):
+            return (
+                f"The selected {exc.provider_name} provider returned HTTP {exc.status_code}. "
+                "DeepSpace stopped safely; retry or check that provider's health."
+            )
+        message = re.sub(r"<[^>]+>", " ", message)
+        message = " ".join(message.split())
+        return message[:1000]
+
+    @staticmethod
     def _tool_name(call: dict[str, Any]) -> str:
         function = call.get("function")
         return str(function.get("name") or "unknown") if isinstance(function, dict) else "unknown"
@@ -922,6 +936,7 @@ class DeepSpaceChatService:
         *,
         stage: str,
         all_tools: list[dict[str, Any]],
+        has_work_evidence: bool = False,
     ) -> list[dict[str, Any]]:
         allowed_names: set[str]
         if stage == "read_plan":
@@ -942,12 +957,51 @@ class DeepSpaceChatService:
                 "todo_check",
                 "final",
             }
-        return [
+        selected_tools = [
             item
             for item in all_tools
             if isinstance(item.get("function"), dict)
             and str(item["function"].get("name") or "") in allowed_names
         ]
+        if stage == "work" and not has_work_evidence:
+            restricted_tools: list[dict[str, Any]] = []
+            for item in selected_tools:
+                function = item.get("function")
+                if not isinstance(function, dict) or function.get("name") != "todo_mark":
+                    restricted_tools.append(item)
+                    continue
+                parameters = function.get("parameters")
+                properties = (
+                    parameters.get("properties")
+                    if isinstance(parameters, dict)
+                    else None
+                )
+                status_schema = properties.get("status") if isinstance(properties, dict) else None
+                restricted_status = {
+                    **(status_schema if isinstance(status_schema, dict) else {}),
+                    "enum": ["blocked", "failed"],
+                }
+                restricted_tools.append(
+                    {
+                        **item,
+                        "function": {
+                            **function,
+                            "description": (
+                                "Mark the active task blocked or failed. Completion becomes available only "
+                                "after a successful work tool produces evidence."
+                            ),
+                            "parameters": {
+                                **(parameters if isinstance(parameters, dict) else {}),
+                                "properties": {
+                                    **(properties if isinstance(properties, dict) else {}),
+                                    "status": restricted_status,
+                                },
+                            },
+                        },
+                    }
+                )
+            return restricted_tools
+        return selected_tools
 
     @staticmethod
     def _task_lifecycle_instruction(*, stage: str, task_id: str | None) -> str:
@@ -2797,6 +2851,7 @@ class DeepSpaceChatService:
                     tools_for_round = self._tools_for_task_lifecycle(
                         stage=task_lifecycle_stage,
                         all_tools=available_tools,
+                        has_work_evidence=task_has_work_evidence,
                     )
                     lifecycle_instruction = self._task_lifecycle_instruction(
                         stage=task_lifecycle_stage,
@@ -3303,6 +3358,7 @@ class DeepSpaceChatService:
                         )
                         continue
                     break
+                tool_exchange_start = len(conversation_messages)
                 conversation_messages.append(
                     {
                         "role": "assistant",
@@ -3312,6 +3368,7 @@ class DeepSpaceChatService:
                 )
                 valid_calls: list[dict[str, Any]] = []
                 invalid_tool_arguments = False
+                invalid_tool_call_ids: set[str] = set()
                 permitted_tool_names = self._tool_names(tools_for_round)
                 first_call_index = normalized_call_items[0][0]
                 starts_managed_plan = not managed_task_run and any(
@@ -3327,6 +3384,7 @@ class DeepSpaceChatService:
                     step_id = f"tool_stream_{round_index}_{call_index}"
                     if arguments is None:
                         invalid_tool_arguments = True
+                        invalid_tool_call_ids.add(call_id)
                         output = f"The {tool_name} arguments were invalid JSON."
                         yield sse(
                             "tool_error",
@@ -3491,6 +3549,32 @@ class DeepSpaceChatService:
                             "step_id": step_id,
                         }
                     )
+
+                if invalid_tool_call_ids:
+                    assistant_tool_message = conversation_messages[tool_exchange_start]
+                    retained_calls = [
+                        call
+                        for call in assistant_tool_message.get("tool_calls", [])
+                        if str(call.get("id") or "") not in invalid_tool_call_ids
+                    ]
+                    retained_messages = [
+                        message
+                        for message in conversation_messages[tool_exchange_start + 1 :]
+                        if not (
+                            message.get("role") == "tool"
+                            and str(message.get("tool_call_id") or "")
+                            in invalid_tool_call_ids
+                        )
+                    ]
+                    del conversation_messages[tool_exchange_start:]
+                    if retained_calls:
+                        conversation_messages.append(
+                            {
+                                **assistant_tool_message,
+                                "tool_calls": retained_calls,
+                            }
+                        )
+                    conversation_messages.extend(retained_messages)
 
                 if invalid_tool_arguments and not valid_calls and awaiting_approval is None:
                     if invalid_tool_argument_retries < MAX_TOOL_RETRIES:
@@ -3823,14 +3907,19 @@ class DeepSpaceChatService:
                     break
         except ProviderRequestError as exc:
             terminal_status = "failed"
+            safe_provider_message = self._safe_provider_error_message(exc)
             if run_id is not None:
-                self.runtime.finish(run_id=run_id, status=terminal_status, error=str(exc))
+                self.runtime.finish(
+                    run_id=run_id,
+                    status=terminal_status,
+                    error=safe_provider_message,
+                )
             self._persist_stream_failure(
                 assistant_message=assistant_message,
                 auth=auth,
                 conversation_id=conversation_id,
                 code="LLM_REQUEST_FAILED",
-                message=str(exc),
+                message=safe_provider_message,
                 candidate=candidate,
             )
             logger.warning("DeepSpace provider request failed", exc_info=True)
@@ -3838,7 +3927,7 @@ class DeepSpaceChatService:
                 "error",
                 {
                     "code": "LLM_REQUEST_FAILED",
-                    "message": str(exc),
+                    "message": safe_provider_message,
                     "error_category": "provider",
                 },
             )

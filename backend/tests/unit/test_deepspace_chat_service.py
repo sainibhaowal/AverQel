@@ -8,6 +8,7 @@ import pytest
 
 from app.deepspace.services import chat_service as chat_service_module
 from app.deepspace.services.chat_service import DEEPSPACE_AGENT_POLICY, DeepSpaceChatService
+from app.providers.services.base import ProviderRequestError
 from app.providers.services.types import WebSearchResponse, WebSearchResultItem
 
 
@@ -198,6 +199,54 @@ class _ToolRegistry(_FakeRegistry):
                 )
 
         return _SearchProvider()
+
+
+class _MalformedThenValidToolProvider:
+    calls = 0
+    retry_messages = None
+
+    async def stream_generate_events(self, request):
+        self.calls += 1
+        if self.calls == 1:
+            yield {
+                "type": "tool_calls_delta",
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_bad_write",
+                        "function": {
+                            "name": "write",
+                            "arguments": '{"target":"note","content":"Saved"',
+                        },
+                    }
+                ],
+            }
+            return
+        if self.calls == 2:
+            self.retry_messages = request.messages
+            yield {
+                "type": "tool_calls_delta",
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_good_write",
+                        "function": {
+                            "name": "write",
+                            "arguments": '{"target":"note","content":"Saved"}',
+                        },
+                    }
+                ],
+            }
+            return
+        yield {"type": "delta", "text": "Saved correctly."}
+
+
+class _MalformedThenValidToolRegistry(_FakeRegistry):
+    def __init__(self, settings):
+        self.provider = _MalformedThenValidToolProvider()
+
+    def get_chat_provider_from_selection(self, candidate):
+        return self.provider
 
 
 class _LifecycleTaskStore:
@@ -630,6 +679,81 @@ def test_tool_arguments_recover_json_wrapped_by_provider_fence() -> None:
     )
 
     assert parsed == {"target": "library", "filename": "news.md"}
+
+
+def test_provider_html_error_is_never_exposed_to_the_user() -> None:
+    message = DeepSpaceChatService._safe_provider_error_message(
+        ProviderRequestError("openai-compatible", 500, "<!DOCTYPE html><html>Error</html>")
+    )
+
+    assert "<html" not in message.casefold()
+    assert "HTTP 500" in message
+
+
+def test_task_completion_is_hidden_until_real_work_succeeds() -> None:
+    tools = [
+        {"type": "function", "function": {"name": "web_search"}},
+        chat_service_module.TODO_MARK_TOOL,
+        {"type": "function", "function": {"name": "final"}},
+    ]
+
+    before_work = DeepSpaceChatService._tools_for_task_lifecycle(
+        stage="work", all_tools=tools, has_work_evidence=False
+    )
+    after_work = DeepSpaceChatService._tools_for_task_lifecycle(
+        stage="work", all_tools=tools, has_work_evidence=True
+    )
+
+    assert DeepSpaceChatService._tool_names(before_work) == {"web_search", "todo_mark"}
+    assert DeepSpaceChatService._tool_names(after_work) == {"web_search", "todo_mark"}
+    restricted_mark = next(
+        item for item in before_work if item["function"]["name"] == "todo_mark"
+    )
+    assert restricted_mark["function"]["parameters"]["properties"]["status"]["enum"] == [
+        "blocked",
+        "failed",
+    ]
+    full_mark = next(item for item in after_work if item["function"]["name"] == "todo_mark")
+    assert "completed" in full_mark["function"]["parameters"]["properties"]["status"]["enum"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_tool_json_is_not_replayed_to_provider(monkeypatch) -> None:
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(
+        chat_service_module,
+        "ProviderRegistry",
+        _MalformedThenValidToolRegistry,
+    )
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+    _MalformedThenValidToolProvider.calls = 0
+    _MalformedThenValidToolProvider.retry_messages = None
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+            conversation_id=None,
+            prompt="Save this to my note",
+            thinking_enabled=False,
+        )
+    ]
+
+    retry_messages = _MalformedThenValidToolProvider.retry_messages or []
+    assert not any(
+        call.get("id") == "call_bad_write"
+        for message in retry_messages
+        for call in message.get("tool_calls", [])
+    )
+    assert any(frame.startswith("event: tool_error") for frame in frames)
+    assert any(frame.startswith("event: tool_result") for frame in frames)
+    assert any(frame.startswith("event: done") for frame in frames)
+    assert _FakeRepository.completed_content == "Saved correctly."
 
 
 def test_agent_policy_keeps_identity_and_mcp_safety_rules() -> None:
