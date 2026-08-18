@@ -128,16 +128,6 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
   content: string;
   streaming?: boolean;
 }) {
-  const [displayContent, setDisplayContent] = useState(content);
-
-  // Providers may emit several tiny deltas in one event-loop turn. Coalesce
-  // them into one render per animation frame so ReactMarkdown does not rebuild
-  // the entire document repeatedly and make the answer visibly jump.
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => setDisplayContent(content));
-    return () => window.cancelAnimationFrame(frame);
-  }, [content, streaming]);
-
   const components = useMemo<Components>(
     () => ({
       pre: ({ children }) => <>{children}</>,
@@ -261,7 +251,13 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
     }),
     [streaming],
   );
-  const normalizedContent = useMemo(() => normalizeMarkdown(displayContent), [displayContent]);
+  // Stream events are already batched once per animation frame by
+  // useDeepSpaceStream. Deferring a second time here caused each new delta to
+  // cancel the renderer's pending frame, leaving paragraph-shaped stale text
+  // onscreen until the provider paused or completed. Render the current live
+  // value directly so Markdown structure appears as soon as its marker is
+  // complete.
+  const normalizedContent = useMemo(() => normalizeMarkdown(content), [content]);
 
   return (
     <div
