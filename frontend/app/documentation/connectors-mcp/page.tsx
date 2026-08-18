@@ -40,7 +40,9 @@ export default function ConnectorsMcpDocsPage() {
           <li>Sign in and approve the requested scopes at Google, GitHub, or another provider.</li>
           <li>
             AverQel returns to the connection inspector, captures only safe account identity,
-            refreshes the catalog, and shows the available tools.
+            refreshes the catalog, and shows the available tools. The provider account may use a
+            different email address from the AverQel login; the connection remains bound to the
+            authenticated AverQel user and tenant.
           </li>
           <li>
             Configure the connection policy. A connection or scope remains unavailable when it has

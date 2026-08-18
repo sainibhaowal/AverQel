@@ -49,6 +49,8 @@ class _FakeClient:
             return _FakeResponse(
                 200, {"sub": "google-subject", "email": "owner@example.com", "name": "Owner"}
             )
+        if url.endswith("/gmail/v1/users/me/profile"):
+            return _FakeResponse(403, {})
         raise AssertionError(f"Unexpected identity URL: {url}")
 
 

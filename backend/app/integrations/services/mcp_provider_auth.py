@@ -131,6 +131,21 @@ class MCPProviderOAuthProfile:
             "Accept": "application/json",
         }
 
+    def identity_endpoints(self, provider_slug: str) -> tuple[str, ...]:
+        """Return provider-specific identity endpoints in safe fallback order.
+
+        Google userinfo is not authorized by every curated service scope. Gmail
+        can identify the connected mailbox through its read-only profile
+        endpoint, so a Gmail OAuth connection does not need to request the
+        broader userinfo.profile scope merely to display its account label.
+        """
+        if provider_slug == "google-gmail":
+            return (
+                "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+                self.identity_endpoint,
+            )
+        return (self.identity_endpoint,)
+
     def extract_identity(
         self,
         payload: object,
@@ -140,7 +155,7 @@ class MCPProviderOAuthProfile:
         data = payload if isinstance(payload, dict) else {}
         identity: dict[str, str | int] = {}
         subject = data.get("sub") or data.get("id")
-        email = data.get("email")
+        email = data.get("email") or data.get("emailAddress")
         display_name = data.get("name") or data.get("login") or data.get("email")
         if isinstance(subject, str | int) and str(subject).strip():
             identity["provider_subject"] = subject

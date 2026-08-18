@@ -297,12 +297,16 @@ class MCPServerOAuthService:
         except Exception as exc:  # noqa: BLE001
             raise ValueError("MCP OAuth provider returned an invalid token") from exc
 
-    def _fetch_static_identity(self, *, profile: Any, access_token: str) -> dict[str, str | int]:
+    def _fetch_static_identity(
+        self, *, profile: Any, provider_slug: str, access_token: str
+    ) -> dict[str, str | int]:
         headers = profile.identity_headers(access_token)
         try:
             with build_safe_sync_client(timeout=15.0) as client:
-                response = client.get(profile.identity_endpoint, headers=headers)
-                if response.status_code == 200:
+                for endpoint in profile.identity_endpoints(provider_slug):
+                    response = client.get(endpoint, headers=headers)
+                    if response.status_code != 200:
+                        continue
                     identity_payload = response.json()
                     email_payload = None
                     if profile.identity_email_endpoint:
@@ -311,17 +315,21 @@ class MCPServerOAuthService:
                         )
                         if email_response.status_code == 200:
                             email_payload = email_response.json()
-                    return profile.extract_identity(identity_payload, email_payload)
+                    try:
+                        return profile.extract_identity(identity_payload, email_payload)
+                    except ValueError:
+                        continue
         except Exception:  # noqa: BLE001, B110 - static fallback preserves OAuth availability
-            return {
-                "provider_subject": f"{profile.key}-user",
-                "account_id": f"{profile.key}-user",
-                "display_name": f"{profile.label} Account",
-            }
+            pass
+        # External account identity is informational. A provider that does not
+        # expose profile data must not reject an otherwise valid OAuth account.
+        # Ownership remains bound to the AverQel user/tenant on the server row
+        # and encrypted token record.
         return {
             "provider_subject": f"{profile.key}-user",
             "account_id": f"{profile.key}-user",
             "display_name": f"{profile.label} Account",
+            "identity_source": "provider_unavailable",
         }
 
     def _finish_static_profile(
@@ -357,6 +365,7 @@ class MCPServerOAuthService:
         )
         identity = self._fetch_static_identity(
             profile=profile,
+            provider_slug=server.provider_slug or "",
             access_token=str(token.access_token),
         )
         token_payload = token.model_dump(mode="json", exclude_none=True)

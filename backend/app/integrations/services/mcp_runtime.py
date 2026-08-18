@@ -76,6 +76,13 @@ _MCP_RISK_RANK: dict[str, int] = {
 _MCP_RISK_LABELS = set(_MCP_RISK_RANK)
 
 
+def _safe_remote_detail(value: Any, *, limit: int = 500) -> str:
+    """Keep provider diagnostics useful without returning credentials or URLs."""
+    detail = re.sub(r"https?://[^\s]+", "[remote-endpoint]", str(value or "")).strip()
+    detail = re.sub(r"(?i)(bearer|token|access_token|refresh_token)[=: ]+[^\s,;]+", r"\1=[redacted]", detail)
+    return detail[:limit]
+
+
 @dataclass(frozen=True, slots=True)
 class MCPToolPolicyDecision:
     """One deny-first decision shared by planning and remote execution."""
@@ -175,7 +182,7 @@ class MCPRuntimeError(RuntimeError):
     """Raised when MCP-backed connector runtime work fails."""
 
 
-_MCP_HTTP_STATUS_RE = re.compile(r"\b(?:HTTP\s*)?(401|403)\b", re.IGNORECASE)
+_MCP_HTTP_STATUS_RE = re.compile(r"\b(?:HTTP\s*)?(400|401|403|422)\b", re.IGNORECASE)
 
 
 def classify_mcp_error(error: BaseException) -> dict[str, Any]:
@@ -223,6 +230,17 @@ def classify_mcp_error(error: BaseException) -> dict[str, Any]:
             "error_category": "remote",
             "requires_reconnect": False,
             "message": "The MCP service did not respond in time. Please retry.",
+        }
+    if http_status in {400, 422}:
+        return {
+            "error_code": "mcp_invalid_request",
+            "error_category": "remote",
+            "http_status": http_status,
+            "requires_reconnect": False,
+            "message": (
+                "The MCP provider rejected the request. "
+                f"{_safe_remote_detail(text) or 'Check the provider account and tool arguments.'}"
+            ),
         }
     return {
         "error_code": "mcp_remote_error",
@@ -595,18 +613,36 @@ class MCPConnectorRuntime:
 
         if transport == "sse":
             auth = self._session_client()
-            async with build_safe_async_client(
-                headers=self.headers or None, auth=auth
-            ) as http_client:
-                async with sse_client(self.server_url, http_client=http_client) as streams:
-                    read_stream, write_stream = streams
-                    async with ClientSession(
-                        read_stream,
-                        write_stream,
-                        message_handler=self.message_handler or _handle_message,
-                    ) as session:
-                        await session.initialize()
-                        yield session
+            # MCP SDK versions expose different SSE constructor contracts.
+            # Current versions accept an ``httpx_client_factory`` rather than
+            # the ``http_client`` object accepted by streamable HTTP. Keep the
+            # SSRF-safe client while using the installed SDK's supported hook.
+            def _safe_sse_client_factory(
+                headers: dict[str, str] | None = None,
+                timeout: Any | None = None,
+                auth: Any | None = None,
+            ) -> Any:
+                return build_safe_async_client(
+                    headers={**(self.headers or {}), **(headers or {})} or None,
+                    timeout=timeout or self.timeout,
+                    auth=auth,
+                )
+
+            async with sse_client(
+                self.server_url,
+                headers=self.headers or None,
+                timeout=self.timeout,
+                auth=auth,
+                httpx_client_factory=_safe_sse_client_factory,
+            ) as streams:
+                read_stream, write_stream = streams
+                async with ClientSession(
+                    read_stream,
+                    write_stream,
+                    message_handler=self.message_handler or _handle_message,
+                ) as session:
+                    await session.initialize()
+                    yield session
             return
 
         auth = self._session_client()
@@ -1298,6 +1334,41 @@ async def execute_mcp_server_tool(
             allow_retry=policy_decision.risk_level == "read",
         )
         payload = serialize_mcp_result(result)
+        if payload.get("is_error"):
+            provider_detail = _safe_remote_detail(payload.get("rendered_text"))
+            message = "The MCP provider returned a tool error."
+            if provider_detail:
+                message = f"{message} {provider_detail}"
+            if (
+                server.provider_slug
+                and server.provider_slug.startswith("google-")
+                and "caller does not have permission" in provider_detail.casefold()
+            ):
+                message = (
+                    f"{message} Verify that the matching Google MCP API is enabled in the Google Cloud "
+                    "project that owns this OAuth client, then reconnect the provider."
+                )
+            events.append(
+                tenant_id=server.tenant_id,
+                user_id=server.user_id,
+                server_id=server.id,
+                event_type="tool_call_failed",
+                payload={
+                    "tool": tool_name,
+                    "error_code": "mcp_provider_tool_error",
+                    "error_category": "remote",
+                    "requires_reconnect": False,
+                },
+            )
+            db.commit()
+            return {
+                "status": "error",
+                "message": message,
+                "error_code": "mcp_provider_tool_error",
+                "error_category": "remote",
+                "requires_reconnect": False,
+                "is_error": True,
+            }
         events.append(
             tenant_id=server.tenant_id,
             user_id=server.user_id,

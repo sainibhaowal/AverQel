@@ -86,6 +86,7 @@ export type MCPSafeAccountIdentity = {
   display_name?: string;
   provider_subject?: string;
   account_id?: string;
+  identity_source?: string;
 };
 
 export type MCPSafeConfig = {

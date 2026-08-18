@@ -107,3 +107,22 @@ If a provider revokes a grant, changes scopes, or disables an account, no
 client can silently repair that authorization. In that case the connection is
 reported as requiring reconnection, while other MCP connections and the chat
 run remain isolated.
+
+The external provider account does not need to use the same email address as
+the AverQel login. OAuth is started by the authenticated AverQel user, but the
+Google or GitHub account selected in the consent screen is stored as that
+user's encrypted MCP connection. Tenant and user ownership are still checked
+on every discovery and tool call; a different provider email never grants
+cross-user access.
+
+SSE transport uses the installed MCP SDK's client-factory contract and the
+same SSRF-safe HTTP client as Streamable HTTP. Provider tool errors are
+returned as redacted actionable diagnostics, while access tokens and raw
+credentials remain excluded from events and responses.
+
+For Google Workspace connections, the Google product API and its matching MCP
+API must both be enabled in the Google Cloud project. For Gmail these are
+`gmail.googleapis.com` and `gmailmcp.googleapis.com`. A successful Gmail API
+profile check does not prove that the Gmail MCP API is enabled; the remote MCP
+server can still return `The caller does not have permission` until that
+service is enabled and the OAuth consent configuration is saved.

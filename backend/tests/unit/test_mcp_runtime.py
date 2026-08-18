@@ -128,6 +128,13 @@ def test_mcp_error_classification_is_safe_and_actionable() -> None:
     assert forbidden["error_code"] == "mcp_forbidden"
     assert forbidden["requires_reconnect"] is True
 
+    invalid_request = classify_mcp_error(
+        RuntimeError("HTTP 422 Unprocessable Entity: provider rejected arguments")
+    )
+    assert invalid_request["error_code"] == "mcp_invalid_request"
+    assert invalid_request["http_status"] == 422
+    assert invalid_request["requires_reconnect"] is False
+
 
 def test_mcp_read_call_reconnects_but_side_effect_call_does_not_retry(
     monkeypatch: pytest.MonkeyPatch,

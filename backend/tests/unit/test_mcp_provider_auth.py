@@ -89,3 +89,10 @@ def test_identity_capture_is_restricted_to_safe_account_labels() -> None:
         "display_name": "Ravi",
     }
     assert "private_token" not in identity
+
+
+@pytest.mark.unit_no_db
+def test_gmail_identity_uses_mailbox_profile_before_broader_userinfo() -> None:
+    assert GOOGLE_MCP_OAUTH_PROFILE.identity_endpoints("google-gmail")[0].endswith(
+        "/gmail/v1/users/me/profile"
+    )
