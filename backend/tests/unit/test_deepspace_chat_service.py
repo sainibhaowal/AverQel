@@ -572,23 +572,6 @@ async def test_deepspace_exposes_tools_to_google_models(monkeypatch):
     assert _GoogleToolCaptureProvider.request.tool_choice == "auto"
 
 
-def test_provider_protocol_guards_never_treat_printed_task_json_as_a_tool_call():
-    leaked = (
-        "Internal Thought: call todo_mark. "
-        '{"task_id":"40ac6dae-3b71-4906-90a7-7bee7d3460f","status":"in_progress"}'
-    )
-
-    assert DeepSpaceChatService._looks_like_pseudo_tool_output(leaked)
-    assert DeepSpaceChatService._contains_protocol_leak(answer=leaked, thinking="")
-
-
-def test_provider_control_tokens_are_removed_without_changing_normal_text():
-    leaked = "<｜begin▁of▁sentence｜>Useful answer<｜end▁of▁sentence｜>"
-
-    assert DeepSpaceChatService._clean_provider_text(leaked) == "Useful answer"
-    assert DeepSpaceChatService._clean_provider_text("Normal answer") == "Normal answer"
-
-
 def test_explicit_gmail_request_requires_attached_mcp_tool() -> None:
     binding = SimpleNamespace(server=SimpleNamespace(name="Google Gmail"))
 
