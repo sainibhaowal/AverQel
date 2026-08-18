@@ -809,6 +809,29 @@ body {
   }
 }
 
+/* Marketing headings use a slow, restrained color travel to keep the product story alive. */
+.landing-animated-gradient-text {
+  animation: landing-gradient-travel 12s ease-in-out infinite alternate;
+  will-change: background-position;
+}
+
+@keyframes landing-gradient-travel {
+  from {
+    background-position: 0% 50%;
+  }
+
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-animated-gradient-text {
+    animation: none;
+    background-position: 50% 50%;
+  }
+}
+
 @keyframes dash-flow {
   to {
     stroke-dashoffset: -20;

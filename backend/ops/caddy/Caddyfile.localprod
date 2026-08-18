@@ -22,9 +22,9 @@ https://{$AVERQEL_DOMAIN}, https://localhost, https://127.0.0.1 {
   @streaming path /api/v1/queries/stream /api/v1/chats/*/stream /api/v1/deepspace/chats/stream /api/v1/deepspace/chats/*/stream /api/v1/documents/events/stream
 
   handle @streaming {
-    # Use the published host port instead of Docker service DNS. This keeps
-    # the local gateway reachable while api is being recreated/restarted.
-    reverse_proxy host.docker.internal:1000 {
+    # Route through Docker DNS so the gateway follows the healthy API service
+    # even when its container is recreated or restarted.
+    reverse_proxy api:1000 {
       flush_interval -1
       transport http {
         versions 1.1
@@ -44,7 +44,7 @@ https://{$AVERQEL_DOMAIN}, https://localhost, https://127.0.0.1 {
   respond @metrics 403
 
   handle /api/* {
-    reverse_proxy host.docker.internal:1000 {
+    reverse_proxy api:1000 {
       transport http {
         max_conns_per_host 200
       }
@@ -58,7 +58,7 @@ https://{$AVERQEL_DOMAIN}, https://localhost, https://127.0.0.1 {
   }
 
   handle {
-    reverse_proxy host.docker.internal:1030 {
+    reverse_proxy frontend:1030 {
       transport http {
         max_conns_per_host 200
       }

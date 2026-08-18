@@ -88,7 +88,7 @@ const features = [
     capabilities: [
       {
         icon: FileStack,
-        text: "Supported services: GitHub, Drive, Gmail, Calendar, Notion, Slack",
+        text: "Reviewed services: GitHub, Drive, Gmail, Calendar, Chat, and People",
       },
       { icon: HeartHandshake, text: "OAuth authorization with encrypted credential storage" },
       { icon: BarChart3, text: "Health, catalog, scope, and permission visibility" },
@@ -309,12 +309,12 @@ export default function FeaturesGrid() {
                   isLarge ? "md:col-span-2 lg:col-span-1" : ""
                 }`}
               >
-                {/* 2px top accent gradient bar — primary visual differentiator */}
+                {/* 2px top accent gradient bar, primary visual differentiator */}
                 <div
                   className={`absolute top-0 right-0 left-0 h-[2px] bg-gradient-to-r ${accent.topBar}`}
                 />
 
-                {/* Hover glow blob — revealed on group-hover */}
+                {/* Hover glow blob, revealed on group-hover */}
                 <div
                   className={`pointer-events-none absolute -top-24 -left-20 h-56 w-56 rounded-full blur-[90px] ${accent.glowBlob} opacity-0 transition-opacity duration-700 group-hover:opacity-100`}
                 />
@@ -330,7 +330,7 @@ export default function FeaturesGrid() {
                       <Icon size={19} className={accent.iconText} />
                     </div>
 
-                    {/* Monospace counter — editorial feel */}
+                    {/* Monospace counter, editorial feel */}
                     <span
                       className={`font-mono text-[11px] tracking-widest tabular-nums select-none ${accent.counterText} transition-opacity duration-300 group-hover:opacity-100`}
                     >
@@ -357,7 +357,7 @@ export default function FeaturesGrid() {
                     <div className="h-px flex-1 bg-white/[0.06] transition-colors duration-300 group-hover:bg-white/10" />
                   </div>
 
-                  {/* ── Capability rows — precision readout style ────────────── */}
+                  {/* Capability rows, precision readout style */}
                   {/* Large cards: 2-col grid. Medium: single column */}
                   <div
                     className={`grid gap-x-4 gap-y-0 ${isLarge ? "sm:grid-cols-2" : "grid-cols-1"}`}

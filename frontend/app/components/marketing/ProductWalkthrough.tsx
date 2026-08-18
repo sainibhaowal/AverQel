@@ -2,7 +2,17 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Activity, Cable, FileText, FolderKanban, Network, Search } from "lucide-react";
+import {
+  Activity,
+  Cable,
+  CheckCircle2,
+  FileText,
+  FolderKanban,
+  Gauge,
+  Network,
+  Search,
+  ShieldCheck,
+} from "lucide-react";
 import { useLandingSectionMotion } from "./landingMotion";
 import {
   landingContentClass,
@@ -24,6 +34,11 @@ const steps = [
     bg: "bg-rose-500/[0.08]",
     body: "Add a cloud or local model provider for chat, research, embeddings, reranking, or web search. Your configured provider remains private to your account.",
     outcome: "A ready AI runtime, chosen by you.",
+    signals: [
+      ["Runtime route", "Cloud or local", "Selected per workspace capability"],
+      ["Model inventory", "Discovered", "Context and capability metadata stay visible"],
+      ["Credentials", "Protected", "Masked in the user interface"],
+    ],
   },
   {
     title: "Bring in documents",
@@ -34,6 +49,11 @@ const steps = [
     bg: "bg-cyan-500/[0.08]",
     body: "Upload supported files and watch their processing state. Inspect text, chunks, versions, extraction signals, and the original file from one document workspace.",
     outcome: "Private source material that is ready to search.",
+    signals: [
+      ["Pipeline", "Queued to indexed", "Worker progress remains visible"],
+      ["Source detail", "Inspectable", "Text, chunks, versions, and extraction state"],
+      ["Recovery", "Available", "Retry and reingest paths are explicit"],
+    ],
   },
   {
     title: "Keep context focused",
@@ -44,6 +64,11 @@ const steps = [
     bg: "bg-emerald-500/[0.08]",
     body: "Group the documents that belong together, then share only the collection you intend to share through explicit ownership and permission controls.",
     outcome: "A deliberate scope for each project or team.",
+    signals: [
+      ["Membership", "Invite-based", "Owner and member roles remain explicit"],
+      ["Conversation", "Real time", "Encrypted messages and attachments"],
+      ["Documents", "Shared by reference", "Members use only approved collection sources"],
+    ],
   },
   {
     title: "Ask grounded questions",
@@ -54,6 +79,11 @@ const steps = [
     bg: "bg-blue-500/[0.08]",
     body: "Ask questions over the documents you can access. Review evidence, citations, rich results, and source details instead of relying on an ungrounded answer.",
     outcome: "Answers you can trace back to source material.",
+    signals: [
+      ["Retrieval", "Scoped", "Only accessible document context is eligible"],
+      ["Evidence", "Linked", "Sources stay attached to the answer"],
+      ["Output", "Structured", "Rich text, tables, diagrams, and export paths"],
+    ],
   },
   {
     title: "Do the deeper work",
@@ -64,6 +94,11 @@ const steps = [
     bg: "bg-violet-500/[0.08]",
     body: "Use a durable chat for research, drafting, notes, memory, and tool-assisted work. Save results into the workspace and export the finished deliverable when ready.",
     outcome: "A continuous place to turn information into work.",
+    signals: [
+      ["Activity", "Visible", "Thinking, tools, approvals, and progress"],
+      ["State", "Durable", "Saved history and reconnectable runs"],
+      ["Workspace", "Connected", "Notes, Library, memory, and deliverables"],
+    ],
   },
   {
     title: "Connect apps deliberately",
@@ -74,6 +109,11 @@ const steps = [
     bg: "bg-amber-500/[0.08]",
     body: "Authorize supported remote apps through OAuth. AverQel checks connection health, scope, policy, and any required approval before an external tool is used.",
     outcome: "Useful integrations without giving up control.",
+    signals: [
+      ["Connection", "OAuth", "Health and catalog state are checked"],
+      ["Permission", "Policy-bound", "Read, write, delete, and message risk levels"],
+      ["Execution", "Human-aware", "Approval can be required before remote effects"],
+    ],
   },
 ];
 
@@ -178,6 +218,34 @@ export default function ProductWalkthrough() {
                   What you get
                 </p>
                 <p className={`mt-2 text-sm font-bold ${active.color}`}>{active.outcome}</p>
+              </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                {active.signals.map(([label, value, detail], index) => (
+                  <motion.div
+                    key={label}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.08 + index * 0.06, duration: 0.22 }}
+                    className="rounded-2xl border border-white/[0.08] bg-black/20 p-3"
+                  >
+                    <p className="text-[9px] font-bold tracking-[0.16em] text-slate-500 uppercase">
+                      {label}
+                    </p>
+                    <p className={`mt-2 text-sm font-black ${active.color}`}>{value}</p>
+                    <p className="mt-1 text-[10px] leading-4 text-slate-500">{detail}</p>
+                  </motion.div>
+                ))}
+              </div>
+              <div className="mt-6 flex flex-wrap items-center gap-3 text-[10px] font-bold tracking-[0.15em] text-slate-500 uppercase">
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircle2 size={13} className="text-emerald-300" /> Verified path
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <ShieldCheck size={13} className="text-cyan-300" /> Policy boundary
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Gauge size={13} className="text-violet-300" /> Observable state
+                </span>
               </div>
               <div
                 className="mt-8 flex items-center gap-2"

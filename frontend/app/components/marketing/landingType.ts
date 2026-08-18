@@ -10,6 +10,9 @@ export const landingSectionLeadClass =
 export const landingHeroTitleClass =
   "max-w-[16ch] text-4xl leading-[0.9] font-semibold tracking-[-0.01em] sm:max-w-none sm:text-6xl lg:text-[4.8rem] [font-family:var(--font-landing-display),var(--font-display),var(--font-inter),sans-serif]";
 
+export const landingAnimatedGradientTextClass =
+  "landing-animated-gradient-text bg-[length:220%_100%]";
+
 export const landingFeatureTitleClass =
   "text-3xl leading-[0.95] font-semibold tracking-[-0.01em] sm:text-4xl lg:text-[3.4rem] [font-family:var(--font-landing-display),var(--font-display),var(--font-inter),sans-serif]";
 

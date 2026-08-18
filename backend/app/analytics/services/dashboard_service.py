@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session
 
 from app.analytics.schemas.dashboard import (
@@ -11,19 +14,23 @@ from app.analytics.schemas.dashboard import (
     DashboardDocumentBreakdownResponse,
     DashboardOverviewResponse,
     DashboardProviderRuntimeResponse,
+    DashboardProviderTrendPointResponse,
     DashboardRecentDocumentResponse,
     DashboardStatsResponse,
+    DashboardTrendPointResponse,
 )
 from app.core.config import get_settings
 from app.documents.models.document import Document
 from app.documents.repositories.collections import CollectionsRepository
 from app.documents.repositories.documents import DocumentsRepository
 from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
+from app.providers.models.provider_health_check import ProviderHealthCheck
 from app.providers.repositories.provider_configs import ProviderConfigsRepository
 from app.providers.repositories.provider_health_checks import (
     ProviderHealthChecksRepository,
 )
 from app.providers.services.selection_service import ProviderSelectionService
+from app.query.models.query import Query
 from app.system.models.audit_log import AuditLog
 from app.system.services.metrics_service import observe_db_query
 
@@ -35,6 +42,8 @@ _NOISY_DASHBOARD_ACTIONS = {
     "provider.selection.resolve",
     "documents.read",
     "dashboard.read",
+    "auth.login",
+    "auth.logout",
 }
 
 
@@ -93,7 +102,96 @@ class DashboardService:
             provider_runtimes=self._get_provider_runtimes(tenant_id=tenant_id),
             collections=self._get_collection_summaries(tenant_id=tenant_id, user_id=user_id),
             recent_activity=self._get_recent_activity(tenant_id=tenant_id),
+            activity_trend=self._get_activity_trend(tenant_id=tenant_id),
+            provider_trend=self._get_provider_trend(tenant_id=tenant_id),
         )
+
+    @staticmethod
+    def _last_seven_dates() -> list[datetime]:
+        today = datetime.now(UTC).date()
+        return [
+            datetime.combine(today - timedelta(days=offset), datetime.min.time(), tzinfo=UTC)
+            for offset in range(6, -1, -1)
+        ]
+
+    def _get_activity_trend(self, *, tenant_id: uuid.UUID) -> list[DashboardTrendPointResponse]:
+        dates = self._last_seven_dates()
+        start = dates[0]
+        document_day = func.date_trunc("day", Document.created_at)
+        document_rows = self.db.execute(
+            select(document_day, func.count(Document.id))
+            .where(
+                Document.tenant_id == tenant_id,
+                Document.is_deleted.is_(False),
+                Document.created_at >= start,
+            )
+            .group_by(document_day)
+        ).all()
+        query_day = func.date_trunc("day", Query.created_at)
+        query_rows = self.db.execute(
+            select(query_day, func.count(Query.id))
+            .where(Query.tenant_id == tenant_id, Query.created_at >= start)
+            .group_by(query_day)
+        ).all()
+        failure_day = func.date_trunc("day", AuditLog.created_at)
+        failure_rows = self.db.execute(
+            select(failure_day, func.count(AuditLog.id))
+            .where(
+                AuditLog.tenant_id == tenant_id,
+                AuditLog.created_at >= start,
+                AuditLog.status.in_(["failed", "error"]),
+            )
+            .group_by(failure_day)
+        ).all()
+
+        def index(rows: Sequence[Any]) -> dict[str, int]:
+            return {row[0].date().isoformat(): int(row[1] or 0) for row in rows}
+
+        documents, queries, failures = map(index, (document_rows, query_rows, failure_rows))
+        return [
+            DashboardTrendPointResponse(
+                date=day.date().isoformat(),
+                documents=documents.get(day.date().isoformat(), 0),
+                queries=queries.get(day.date().isoformat(), 0),
+                failures=failures.get(day.date().isoformat(), 0),
+            )
+            for day in dates
+        ]
+
+    def _get_provider_trend(
+        self, *, tenant_id: uuid.UUID
+    ) -> list[DashboardProviderTrendPointResponse]:
+        dates = self._last_seven_dates()
+        start = dates[0]
+        provider_day = func.date_trunc("day", ProviderHealthCheck.checked_at)
+        rows = self.db.execute(
+            select(
+                provider_day,
+                func.count(ProviderHealthCheck.id),
+                func.sum(func.cast(ProviderHealthCheck.status != "healthy", Integer)),
+                func.avg(ProviderHealthCheck.latency_ms),
+            )
+            .where(
+                ProviderHealthCheck.tenant_id == tenant_id, ProviderHealthCheck.checked_at >= start
+            )
+            .group_by(provider_day)
+        ).all()
+        grouped = {
+            row[0].date().isoformat(): (int(row[1] or 0), int(row[2] or 0), row[3]) for row in rows
+        }
+        return [
+            DashboardProviderTrendPointResponse(
+                date=day.date().isoformat(),
+                checks=grouped.get(day.date().isoformat(), (0, 0, None))[0],
+                failures=grouped.get(day.date().isoformat(), (0, 0, None))[1],
+                average_latency_ms=(
+                    round(grouped[day.date().isoformat()][2])
+                    if grouped.get(day.date().isoformat(), (0, 0, None))[2] is not None
+                    else None
+                ),
+            )
+            for day in dates
+        ]
 
     def _get_total_queries(self, *, tenant_id: uuid.UUID) -> int:
         with observe_db_query("dashboard.total_queries"):

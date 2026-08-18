@@ -69,6 +69,24 @@ class DashboardActivityItemResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DashboardTrendPointResponse(BaseModel):
+    date: str
+    documents: int = 0
+    queries: int = 0
+    failures: int = 0
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DashboardProviderTrendPointResponse(BaseModel):
+    date: str
+    checks: int = 0
+    failures: int = 0
+    average_latency_ms: int | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DashboardOverviewResponse(BaseModel):
     stats: DashboardStatsResponse
     document_breakdown: DashboardDocumentBreakdownResponse
@@ -76,5 +94,7 @@ class DashboardOverviewResponse(BaseModel):
     provider_runtimes: list[DashboardProviderRuntimeResponse]
     collections: list[DashboardCollectionSummaryResponse]
     recent_activity: list[DashboardActivityItemResponse]
+    activity_trend: list[DashboardTrendPointResponse]
+    provider_trend: list[DashboardProviderTrendPointResponse]
 
     model_config = ConfigDict(extra="forbid")

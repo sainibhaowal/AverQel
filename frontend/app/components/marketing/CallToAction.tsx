@@ -31,7 +31,7 @@ export default function CallToAction() {
     <motion.section
       ref={ref}
       style={style}
-      className="landing-trace-frame relative overflow-hidden px-4 py-18 sm:px-8 sm:py-24 lg:px-12 lg:py-32"
+      className="landing-trace-frame relative overflow-hidden px-4 py-12 sm:px-8 sm:py-16 lg:px-12 lg:py-20"
     >
       <div className="relative mx-auto w-full max-w-[1800px] overflow-hidden rounded-[2.5rem] border border-emerald-300/15 bg-[radial-gradient(circle_at_18%_25%,rgba(0,255,163,0.14),transparent_26%),radial-gradient(circle_at_80%_70%,rgba(0,184,255,0.16),transparent_28%),linear-gradient(135deg,rgba(6,15,14,0.97),rgba(5,10,19,0.96))] shadow-[0_45px_150px_rgba(0,0,0,0.44)] sm:rounded-[3rem]">
         <div
@@ -51,13 +51,13 @@ export default function CallToAction() {
           transition={{ duration: 42, repeat: Infinity, ease: "linear" }}
         />
 
-        <div className="relative grid items-center gap-12 px-6 py-12 sm:px-10 sm:py-16 lg:grid-cols-[1fr_auto_1fr] lg:px-16 xl:px-20">
+        <div className="relative grid items-center gap-10 px-6 py-10 sm:px-10 sm:py-12 md:grid-cols-2 lg:grid-cols-[1fr_auto_1fr] lg:gap-10 lg:px-16 lg:py-14 xl:px-20">
           <motion.div
             initial={{ opacity: 0, x: -22 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ type: "spring", stiffness: 90, damping: 20 }}
-            className="max-w-xl lg:text-left"
+            className="max-w-xl min-w-0 lg:text-left"
           >
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-300/[0.08] px-3 py-1.5 font-mono text-[10px] font-bold tracking-[0.2em] text-emerald-200 uppercase">
               <Sparkles size={13} /> Your next workspace
@@ -70,11 +70,11 @@ export default function CallToAction() {
             </h2>
             <p className="mt-6 max-w-lg text-sm leading-7 text-slate-300 sm:text-base sm:leading-8">
               Start with a provider and your documents. Move from source-backed answers into
-              DeepSpace work, saved notes, and exportable deliverables—while connections remain
+              DeepSpace work, saved notes, and exportable deliverables while connections remain
               under your control.
             </p>
 
-            <div className="mt-8 grid gap-2.5 sm:grid-cols-3 lg:grid-cols-1">
+            <div className="mt-8 grid gap-2.5 sm:grid-cols-3 md:grid-cols-1 lg:grid-cols-1">
               {signals.map((signal, index) => {
                 const Icon = signal.icon;
                 return (
@@ -107,6 +107,13 @@ export default function CallToAction() {
             className="relative mx-auto hidden h-56 w-56 items-center justify-center lg:flex"
           >
             <motion.div
+              className="absolute h-32 w-32 rounded-full bg-emerald-300/10 blur-2xl"
+              animate={
+                reduceMotion ? undefined : { opacity: [0.35, 0.7, 0.35], scale: [0.82, 1.18, 0.82] }
+              }
+              transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <motion.div
               className="absolute inset-0 rounded-full border border-cyan-200/20"
               animate={reduceMotion ? undefined : { rotate: 360 }}
               transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
@@ -120,9 +127,31 @@ export default function CallToAction() {
             >
               <span className="absolute bottom-3 left-0 h-2.5 w-2.5 rounded-full bg-emerald-200 shadow-[0_0_18px_#6ee7b7]" />
             </motion.div>
-            <div className="relative flex h-24 w-24 items-center justify-center rounded-[1.8rem] border border-white/15 bg-slate-950/75 shadow-[0_0_70px_rgba(0,255,163,0.16)] backdrop-blur-xl">
-              <Bot size={34} className="text-emerald-200" />
-            </div>
+            <motion.div
+              className="relative flex h-24 w-24 items-center justify-center rounded-[1.8rem] border border-white/15 bg-slate-950/80 backdrop-blur-xl"
+              animate={
+                reduceMotion
+                  ? undefined
+                  : {
+                      y: [0, -5, 0, 3, 0],
+                      scale: [1, 1.035, 1, 1.02, 1],
+                      boxShadow: [
+                        "0 0 42px rgba(0,255,163,0.14)",
+                        "0 0 82px rgba(0,255,163,0.28)",
+                        "0 0 42px rgba(0,255,163,0.14)",
+                      ],
+                    }
+              }
+              transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <motion.span
+                aria-hidden="true"
+                className="absolute inset-3 rounded-[1.2rem] border border-emerald-200/20"
+                animate={reduceMotion ? undefined : { opacity: [0.25, 0.7, 0.25] }}
+                transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <Bot size={34} className="relative text-emerald-200" />
+            </motion.div>
           </motion.div>
 
           <motion.div
@@ -130,7 +159,7 @@ export default function CallToAction() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: "-100px" }}
             transition={{ type: "spring", stiffness: 90, damping: 20, delay: 0.08 }}
-            className="rounded-[1.8rem] border border-white/[0.12] bg-slate-950/55 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.26)] backdrop-blur-xl sm:p-6"
+            className="min-w-0 rounded-[1.8rem] border border-white/[0.12] bg-slate-950/55 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.26)] backdrop-blur-xl sm:p-6"
           >
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 font-mono text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">

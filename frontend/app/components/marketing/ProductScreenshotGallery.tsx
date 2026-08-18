@@ -25,28 +25,31 @@ const stages = [
   {
     label: "01",
     title: "Bring in the material",
-    detail: "Documents Hub and Collections keep source material scoped to the work.",
+    detail:
+      "A workspace tree keeps files, folders, and shared sources visible at the start of the route.",
     icon: FolderTree,
     tone: "cyan",
   },
   {
     label: "02",
     title: "Ask with evidence",
-    detail: "Grounded Query links answers back to accessible source material.",
+    detail: "A query trace shows the evidence path before a result becomes part of the work.",
     icon: FileSearch,
     tone: "violet",
   },
   {
     label: "03",
     title: "Do the deeper work",
-    detail: "DeepSpace turns research into structured drafting, notes, and progress.",
+    detail:
+      "The active workspace turns that result into a draft, note, or next action with visible progress.",
     icon: CheckCircle2,
     tone: "emerald",
   },
   {
     label: "04",
     title: "Connect deliberately",
-    detail: "MCP tools are exposed only after connection, policy, and approval checks.",
+    detail:
+      "A final boundary makes external actions explicit: connection health, policy, and approval are visible.",
     icon: ShieldCheck,
     tone: "amber",
   },

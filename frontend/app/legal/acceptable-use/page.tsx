@@ -6,24 +6,26 @@ export default function AcceptableUsePage() {
     <PolicyLayout
       eyebrow="Acceptable Use"
       title="Acceptable Use Policy"
-      intro="AverQel should be used for legitimate document search, analysis, and productivity work. This page sets the baseline rules for abuse, misuse, and unsafe activity."
+      intro="Effective 15 August 2026. This policy sets the baseline rules for lawful document, research, productivity, and collaboration use of the independently operated AverQel project."
     >
       <PolicySection title="Allowed use">
         <p>
-          Use AverQel for your own lawful documents, research, private analysis, and approved
-          collection sharing.
+          Use AverQel for lawful documents, research, analysis, drafting, private work, and
+          collection sharing where you have the necessary rights and permissions.
         </p>
       </PolicySection>
       <PolicySection title="Not allowed">
         <p>
-          Do not use AverQel for malware, credential theft, privacy invasion, unlawful surveillance,
-          harassment, or uploading content you do not have the right to use.
+          Do not use AverQel for malware, credential theft, unauthorized access, privacy invasion,
+          unlawful surveillance, harassment, deceptive impersonation, abusive automation, or
+          uploading, sharing, or processing content you do not have the right to use.
         </p>
       </PolicySection>
       <PolicySection title="Enforcement">
         <p>
-          Accounts may be suspended or terminated when activity presents abuse, security, or legal
-          risk to the service or other users.
+          Access may be limited, suspended, or terminated when activity creates abuse, security, or
+          legal risk. Where appropriate, AverQel may preserve relevant security records and provide
+          a route to contact support.
         </p>
       </PolicySection>
     </PolicyLayout>

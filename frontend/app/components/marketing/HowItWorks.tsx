@@ -254,7 +254,7 @@ export default function HowItWorks() {
             and connect external apps only under explicit controls.
           </p>
 
-          {/* Meta chips — stagger in after header */}
+          {/* Meta chips, stagger in after header */}
           <motion.div
             className="mt-8 flex flex-wrap gap-2"
             initial="hidden"
@@ -289,7 +289,7 @@ export default function HowItWorks() {
 
         {/* ── Steps ────────────────────────────────────────────────────────── */}
         <div className="relative" ref={lineRef}>
-          {/* Vertical connector line — draws in with scaleY on scroll */}
+          {/* Vertical connector line, draws in with scaleY on scroll */}
           <motion.div
             initial={{ scaleY: 0, opacity: 0 }}
             animate={lineInView ? { scaleY: 1, opacity: 1 } : {}}
@@ -317,7 +317,7 @@ export default function HowItWorks() {
                   {/* Pulsing timeline dot */}
                   <PulseDot accentKey={stage.accent} pulseDelay={index * 0.35} />
 
-                  {/* Hover lift wrapper — separate from scroll animation */}
+                  {/* Hover lift wrapper, separate from scroll animation */}
                   <motion.div
                     whileHover={{ y: -3 }}
                     transition={{ type: "spring", stiffness: 380, damping: 28 }}
@@ -335,7 +335,7 @@ export default function HowItWorks() {
                       {stage.step}
                     </span>
 
-                    {/* ── Hover glow blob — top-right corner ───────────────── */}
+                    {/* Hover glow blob, top-right corner */}
                     <div
                       className={`pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full blur-[80px] ${styles.glowBg} opacity-0 transition-opacity duration-700 group-hover:opacity-100`}
                     />
@@ -350,7 +350,7 @@ export default function HowItWorks() {
                           >
                             Stage {stage.step}
                           </span>
-                          {/* Mobile icon — hidden on xl (desktop uses timeline dot) */}
+                          {/* Mobile icon, hidden on xl */}
                           <div
                             className={`flex h-9 w-9 items-center justify-center rounded-xl border xl:hidden ${styles.icon}`}
                           >
@@ -367,14 +367,14 @@ export default function HowItWorks() {
                         </p>
                       </div>
 
-                      {/* Right: Detail rows — staggered slide-in */}
+                      {/* Right: Detail rows, staggered slide-in */}
                       <motion.div
                         initial="hidden"
                         whileInView="visible"
                         viewport={{ once: true, margin: "-60px" }}
                         variants={detailContainerVariants}
                       >
-                        {/* Separator label — mobile only */}
+                        {/* Separator label, mobile only */}
                         <div className="mb-3 flex items-center gap-3 xl:hidden">
                           <div className="h-px flex-1 bg-white/[0.06]" />
                           <span className="font-mono text-[9px] tracking-[0.18em] text-white/[0.22] uppercase">
@@ -394,7 +394,7 @@ export default function HowItWorks() {
                                 isLastDetail ? "" : "border-b border-white/[0.05]"
                               }`}
                             >
-                              {/* Left accent bar — grows on row hover */}
+                              {/* Left accent bar, grows on row hover */}
                               <div
                                 className={`mt-[5px] h-3 w-[2px] shrink-0 rounded-full ${styles.detailBar} transition-all duration-200 group-hover/row:h-4`}
                               />

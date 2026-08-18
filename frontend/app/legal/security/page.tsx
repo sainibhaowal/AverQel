@@ -5,34 +5,33 @@ export default function SecurityPage() {
   return (
     <PolicyLayout
       eyebrow="Trust And Security"
-      title="The security posture users should expect from AverQel."
-      intro="AverQel should make its security model understandable: strong authentication, limited privileged access, user isolation, encrypted transport, encrypted provider secrets, and documented owner controls."
+      title="How the current AverQel deployment protects accounts and workspaces."
+      intro="This is a technical overview, not a guarantee that security risk can be eliminated. Controls can change as the independent project and its infrastructure evolve."
     >
       <PolicySection title="Authentication and account security">
         <p>
-          AverQel supports password-based authentication, secure session handling, logout
-          revocation, logout-all-devices, and time-based 2FA using authenticator apps.
+          The application supports password authentication, OAuth login where configured, session
+          revocation, logout-all-devices, and authenticator-app 2FA.
         </p>
       </PolicySection>
 
       <PolicySection title="Privileged access">
         <p>
-          Platform-owner access should be limited to operational oversight, account control, abuse
-          response, and security handling. Normal admin views should show metadata, status, usage,
-          and audit records rather than private document or chat content.
+          Privileged access is intended for operational oversight, account control, abuse response,
+          and security handling. Administrative surfaces are designed around metadata, status,
+          usage, and audit records rather than routine browsing of private content.
         </p>
         <p>
-          Administrative actions such as disabling users, forcing logout, or running deletion
-          workflows should not require routine access to raw provider secrets or private content
-          bodies.
+          Administrative actions such as disabling users, forcing logout, and running deletion
+          workflows do not require routine access to raw provider secrets.
         </p>
       </PolicySection>
 
       <PolicySection title="Isolation and service boundaries">
         <p>
-          AverQel should maintain strict separation between user-owned documents, chats, queries,
-          collections, and provider configurations. Personal provider secrets should stay encrypted,
-          masked, and unavailable to other users.
+          Documents, chats, queries, collections, memories, and provider configurations are scoped
+          by tenant, user, workspace, ownership, and role checks. Provider secrets are encrypted and
+          masked in ordinary views.
         </p>
         <p>
           AverQel is a server-side SaaS, which means the platform hosts and processes product data.
@@ -43,8 +42,9 @@ export default function SecurityPage() {
 
       <PolicySection title="User trust expectations">
         <p>
-          Users should never have to guess what is collected, who can access it, or how to ask for
-          help. AverQel should make that visible in the product, not only in backend code.
+          Users should be able to review connection, approval, retention, and deletion controls in
+          the product. Questions or suspected incidents should be reported through the Support
+          Centre.
         </p>
       </PolicySection>
     </PolicyLayout>

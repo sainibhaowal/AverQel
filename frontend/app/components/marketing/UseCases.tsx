@@ -33,10 +33,10 @@ const useCases = [
     body: "Use local or cloud providers, organize reference files, inspect supported code and text files in the Library, and connect approved tools when they are needed.",
   },
   {
-    title: "Controlled collaboration",
+    title: "Team delivery",
     icon: UsersRound,
     accent: "text-amber-300 border-amber-400/25 bg-amber-500/[0.08]",
-    body: "Share selected document collections deliberately, keep ownership clear, and use permission-aware connections instead of exposing an entire workspace by default.",
+    body: "Turn a shared project into a clear handoff: discuss the work, keep decisions with the source material, and move the finished result into a usable deliverable.",
   },
 ];
 

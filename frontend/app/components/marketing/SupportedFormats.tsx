@@ -4,12 +4,13 @@ import { motion } from "framer-motion";
 import {
   FileText,
   FileCode,
-  BookOpen,
   ScanSearch,
   Layers,
   ArrowRight,
   MessageSquareText,
   Mail,
+  ContactRound,
+  CalendarDays,
 } from "lucide-react";
 import { useLandingSectionMotion } from "./landingMotion";
 import {
@@ -25,38 +26,45 @@ import {
 const formats = [
   {
     name: "GitHub",
-    description: "Supported MCP connection",
+    description: "MCP · OAuth setup",
     icon: FileCode,
     color: "text-slate-200",
     bg: "bg-slate-500/[0.08] border-slate-400/20",
   },
   {
     name: "Google Drive",
-    description: "Supported MCP connection",
+    description: "MCP · developer preview",
     icon: FileText,
     color: "text-blue-400",
     bg: "bg-blue-500/[0.08] border-blue-400/20",
   },
   {
-    name: "Notion",
-    description: "Supported MCP connection",
-    icon: BookOpen,
-    color: "text-slate-100",
-    bg: "bg-slate-500/[0.08] border-slate-400/20",
+    name: "Google Calendar",
+    description: "MCP · developer preview",
+    icon: CalendarDays,
+    color: "text-blue-300",
+    bg: "bg-blue-500/[0.08] border-blue-400/20",
   },
   {
-    name: "Slack",
-    description: "Supported MCP connection",
+    name: "Google Chat",
+    description: "MCP · developer preview",
     icon: MessageSquareText,
-    color: "text-violet-400",
-    bg: "bg-violet-500/[0.08] border-violet-400/20",
+    color: "text-indigo-300",
+    bg: "bg-indigo-500/[0.08] border-indigo-400/20",
   },
   {
-    name: "Web Crawler",
-    description: "Configured web research",
-    icon: ScanSearch,
-    color: "text-emerald-400",
+    name: "Google People",
+    description: "MCP · developer preview",
+    icon: ContactRound,
+    color: "text-emerald-300",
     bg: "bg-emerald-500/[0.08] border-emerald-400/20",
+  },
+  {
+    name: "Web Search",
+    description: "Provider capability",
+    icon: ScanSearch,
+    color: "text-cyan-300",
+    bg: "bg-cyan-500/[0.08] border-cyan-400/20",
   },
   {
     name: "PDF",
@@ -74,7 +82,7 @@ const formats = [
   },
   {
     name: "Gmail",
-    description: "Supported MCP connection",
+    description: "MCP · developer preview",
     icon: Mail,
     color: "text-red-400",
     bg: "bg-red-500/[0.08] border-red-400/20",
@@ -109,16 +117,16 @@ export default function SupportedFormats() {
             className={`flex h-full flex-col items-center text-center ${landingHeaderWrapClass} xl:mb-0 xl:max-w-none`}
           >
             <div className="w-full">
-              <p className={landingEyebrowClass}>Connected Sources</p>
+              <p className={landingEyebrowClass}>Supported Sources &amp; Connections</p>
               <h2
                 className={`${landingSectionTitleClass} ${landingTitleGradientBySection.supportedFormats}`}
               >
                 Unify your entire production knowledge ecosystem
               </h2>
               <p className={landingSectionLeadClass}>
-                Start with supported files in Documents Hub, then add supported remote apps only if
-                they are useful to your work. Remote access depends on your OAuth consent,
-                connection health, selected scopes, and workspace policy.
+                Start with supported files in Documents Hub, then connect a reviewed remote service
+                only when it is useful to your work. Remote access is never implied: it depends on
+                OAuth consent, connection health, selected scopes, and workspace policy.
               </p>
             </div>
 

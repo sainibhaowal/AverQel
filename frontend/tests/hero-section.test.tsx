@@ -38,15 +38,15 @@ vi.mock("framer-motion", async () => {
 import HeroSection from "../app/components/marketing/HeroSection";
 
 describe("HeroSection", () => {
-  it("renders the landing hero with particle-era copy and terminal monitor", () => {
+  it("renders the current landing hero and runtime monitor", () => {
     render(<HeroSection />);
 
     const heading = screen.getByRole("heading", { level: 1 });
-    expect(heading).toHaveTextContent(/The operator-grade agentic system for your/i);
-    expect(heading).toHaveTextContent(/research, documents, and productive work/i);
-    expect(screen.getByText(/Operator-Grade Agentic Operating Layer/i)).toBeInTheDocument();
+    expect(heading).toHaveTextContent(/Turn your documents into/i);
+    expect(heading).toHaveTextContent(/grounded answers and useful work/i);
+    expect(screen.getByText(/Your Private AI Workspace/i)).toBeInTheDocument();
     expect(screen.getByText(/Start Using AverQel/i)).toBeInTheDocument();
     expect(screen.getByText(/averqel \| productivity runtime/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/DeepSpace runtime/i)).not.toHaveLength(0);
+    expect(screen.getByText(/DeepSpace for research and deliverables/i)).toBeInTheDocument();
   });
 });

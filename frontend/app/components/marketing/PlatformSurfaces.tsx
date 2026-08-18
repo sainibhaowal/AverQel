@@ -103,7 +103,7 @@ const surfaces = [
     description:
       "Authorize supported remote apps through OAuth. Each external tool is checked for ownership, connection health, catalog freshness, policy, and approval before use.",
     bullets: [
-      "Supported apps such as GitHub, Drive, Gmail, Calendar, Notion, and Slack",
+      "Reviewed connections such as GitHub, Drive, Gmail, Calendar, Chat, and People",
       "Per-tool permissions, read-only mode, risk limits, and approvals",
       "Connection status and health are visible, not assumed",
     ],
@@ -204,7 +204,7 @@ export default function PlatformSurfaces() {
           <h2
             className={`${landingSectionTitleClass} ${landingTitleGradientBySection.platformSurfaces}`}
           >
-            Six connected surfaces for document-first AI work
+            Seven connected surfaces for document-first AI work
           </h2>
           <p className={landingSectionLeadClass}>
             Start with documents and evidence, then move into DeepSpace for deeper work.

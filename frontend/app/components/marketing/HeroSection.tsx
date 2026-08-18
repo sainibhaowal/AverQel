@@ -9,7 +9,11 @@ import HeroMorphingBackground from "./HeroMorphingBackground";
 import MobileNav from "./MobileNav";
 import { useLandingSectionMotion } from "./landingMotion";
 import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
-import { landingHeroTitleClass, landingTitleGradientBySection } from "./landingType";
+import {
+  landingAnimatedGradientTextClass,
+  landingHeroTitleClass,
+  landingTitleGradientBySection,
+} from "./landingType";
 import AverQelLogo from "../ui/AverQelLogo";
 
 const navLinks = [
@@ -113,9 +117,9 @@ export default function HeroSection() {
           <MobileNav />
         </nav>
 
-        <main className="flex flex-1 flex-col justify-center gap-10 py-10 lg:py-14">
-          <div className="flex flex-col items-start gap-14 text-left xl:flex-row xl:items-start xl:gap-14 xl:text-left">
-            <div className="flex w-full max-w-4xl min-w-0 flex-1 flex-col items-start text-left">
+        <main className="flex flex-1 flex-col justify-start gap-8 py-8 sm:gap-10 sm:py-10 lg:justify-center lg:py-14">
+          <div className="grid items-start gap-10 text-left lg:grid-cols-[1.05fr_0.95fr] lg:gap-12 xl:gap-16 xl:text-left">
+            <div className="flex w-full min-w-0 flex-col items-start text-left">
               <div className="mb-8 inline-flex max-w-full items-center gap-3 rounded-full border border-[#00ffa3]/25 bg-[#07110d]/70 px-4 py-2 text-[11px] font-bold tracking-[0.28em] text-slate-300 uppercase shadow-[0_0_24px_rgba(0,255,163,0.08)] backdrop-blur-md">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#00ffa3]/14 text-[#00ffa3]">
                   <Cpu size={13} />
@@ -124,7 +128,7 @@ export default function HeroSection() {
               </div>
 
               <h1
-                className={`${landingHeroTitleClass} ${landingTitleGradientBySection.hero} mb-7 max-w-[12ch] text-left sm:max-w-none`}
+                className={`${landingHeroTitleClass} ${landingTitleGradientBySection.hero} ${landingAnimatedGradientTextClass} mb-7 max-w-[12ch] text-left sm:max-w-none 2xl:text-[5.6rem]`}
               >
                 Turn your documents into{" "}
                 <span className="text-inherit">grounded answers and useful work</span>
@@ -176,7 +180,7 @@ export default function HeroSection() {
               </div>
             </div>
 
-            <div className="relative w-full min-w-0 flex-1">
+            <div className="relative w-full min-w-0">
               <div className="absolute inset-x-[8%] top-[18%] h-40 rounded-full bg-[#00ffa3]/12 blur-[110px]" />
               <div className="absolute inset-x-[16%] bottom-[10%] h-36 rounded-full bg-[#00b8ff]/10 blur-[110px]" />
 
@@ -199,7 +203,7 @@ export default function HeroSection() {
                   </div>
                 </div>
 
-                <div className="space-y-5 p-6 font-mono text-sm sm:p-7">
+                <div className="space-y-3 p-4 font-mono text-xs sm:space-y-4 sm:p-6 sm:text-sm xl:p-8">
                   <div className="text-slate-200">
                     <span className="mr-2 text-[#00ffa3]">$</span>
                     averqel workspace | guide
@@ -218,14 +222,18 @@ export default function HeroSection() {
                             : "border-white/[0.05] bg-white/[0.02]"
                         }`}
                       >
-                        <div className="flex items-center gap-3 text-slate-200">
+                        <div className="flex min-w-0 items-center gap-2 text-slate-200 sm:gap-3">
                           <Icon size={14} className={step.accent} />
                           <span className={`text-xs font-black tracking-[0.22em] ${step.accent}`}>
                             {step.label}
                           </span>
-                          <span className="truncate text-sm text-slate-200/95">{step.title}</span>
+                          <span className="truncate text-xs text-slate-200/95 sm:text-sm">
+                            {step.title}
+                          </span>
                         </div>
-                        <div className="pt-1 pl-6 text-xs text-slate-500">{step.detail}</div>
+                        <div className="pt-1 pl-6 text-[10px] leading-5 text-slate-500 sm:text-xs">
+                          {step.detail}
+                        </div>
                       </div>
                     );
                   })}
