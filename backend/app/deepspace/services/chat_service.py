@@ -44,7 +44,6 @@ CONTEXT_AUTO_COMPACT_THRESHOLD = 0.85
 CONTEXT_EMERGENCY_THRESHOLD = 0.95
 MAX_CONNECTED_TOOL_RECOVERY_RETRIES = 2
 _FAKE_TOOL_MARKER_RE = re.compile(r"<(?:/?function-call|/?tool_call|/?think)>", re.IGNORECASE)
-_JSON_OBJECT_RE = re.compile(r"\{[^{}]{0,4000}\}", re.DOTALL)
 
 DEEPSPACE_AGENT_POLICY = """
 You are AverQel’s intelligent workspace assistant, operating inside the DeepSpace workspace.
@@ -508,17 +507,53 @@ class DeepSpaceChatService:
         ):
             return True
         normalized = text.replace("```json", "").replace("```", "").strip()
-        for candidate in [normalized, *(match.group(0) for match in _JSON_OBJECT_RE.finditer(normalized))]:
-            try:
-                payload = json.loads(candidate)
-            except (TypeError, json.JSONDecodeError):
+        decoder = json.JSONDecoder()
+        candidates: list[object] = []
+        for index, character in enumerate(normalized):
+            if character not in "[{":
                 continue
-            if isinstance(payload, dict) and (
-                "function-call" in payload
-                or ("tool_name" in payload and ("arguments" in payload or "tool_input" in payload))
+            try:
+                payload, _end = decoder.raw_decode(normalized[index:])
+            except json.JSONDecodeError:
+                continue
+            candidates.append(payload)
+
+        def is_tool_payload(payload: object) -> bool:
+            if isinstance(payload, list):
+                return any(is_tool_payload(item) for item in payload)
+            if not isinstance(payload, dict):
+                return False
+            keys = {str(key).casefold() for key in payload}
+            if "function-call" in keys:
+                return True
+            if "tool_name" in keys and keys.intersection(
+                {"arguments", "parameters", "tool_input", "input"}
             ):
                 return True
+            return any(is_tool_payload(value) for value in payload.values())
+
+        if any(is_tool_payload(payload) for payload in candidates):
+            return True
         return False
+
+    @staticmethod
+    def _is_non_work_greeting(prompt: str) -> bool:
+        """Keep social greetings from accidentally resuming an old task plan."""
+
+        normalized = re.sub(r"[^a-z]+", " ", prompt.casefold()).strip()
+        return normalized in {
+            "hi",
+            "hi there",
+            "hello",
+            "hello there",
+            "hey",
+            "hey there",
+            "good morning",
+            "good afternoon",
+            "good evening",
+            "thanks",
+            "thank you",
+        }
 
     @staticmethod
     def _is_native_media_model(model_name: str) -> bool:
@@ -2483,10 +2518,12 @@ class DeepSpaceChatService:
         # A task ledger is entered only when a previous real todo_write exists.
         # The model—not keyword matching—decides whether a new request merits
         # planning, direct answer, research, observation, or a question.
+        defer_task_for_greeting = self._is_non_work_greeting(prompt)
         managed_task_run = (
             provider_supports_tools
             and not native_media_model
             and bool(initial_task_check.get("task_count"))
+            and not defer_task_for_greeting
         )
         task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(initial_task_check)
         task_has_work_evidence = False
@@ -2520,6 +2557,16 @@ class DeepSpaceChatService:
                 f" The following MCP service connection(s) are attached to this conversation: "
                 f"{attached_services}. When the user explicitly requests one of these services, "
                 "call its provided MCP tool; do not claim that the connection is unavailable."
+            )
+        if defer_task_for_greeting:
+            conversation_messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "The user sent a simple social greeting. Reply naturally without tools. "
+                        "Do not resume, complete, alter, or discuss any saved task unless the user asks."
+                    ),
+                }
             )
         if resumed_user_question is not None:
             pending_call_id = str(resumed_user_question.get("call_id") or "")
@@ -3236,15 +3283,22 @@ class DeepSpaceChatService:
                         if connected_tool_recovery_retries < MAX_CONNECTED_TOOL_RECOVERY_RETRIES:
                             connected_tool_recovery_retries += 1
                             yield sse("replace", {"content": "", "replayed": False})
+                            recovery_instruction = (
+                                "Your prior response printed tool-shaped JSON, XML, DSML, or function-call "
+                                "syntax as ordinary text. Do not print tool syntax. Reply to the user in "
+                                "plain language, or use a real structured tool call only when the task needs one."
+                            )
+                            if connected_service_tool_required:
+                                recovery_instruction = (
+                                    "This request requires a real structured call to the attached service. "
+                                    "Do not print <function-call>, JSON, XML, or internal reasoning as text. "
+                                    "Call the appropriate provided MCP tool now. If no suitable tool exists, "
+                                    "say so only after this structured-call attempt."
+                                )
                             conversation_messages.append(
                                 {
                                     "role": "system",
-                                    "content": (
-                                        "This request requires a real structured call to the attached service. "
-                                        "Do not print <function-call>, JSON, XML, or internal reasoning as text. "
-                                        "Call the appropriate provided MCP tool now. If no suitable tool exists, "
-                                        "say so only after this structured-call attempt."
-                                    ),
+                                    "content": recovery_instruction,
                                 }
                             )
                             continue
@@ -3258,8 +3312,12 @@ class DeepSpaceChatService:
                         if fake_tool_output:
                             terminal_status = "blocked"
                             forced_answer = (
-                                "DeepSpace stopped safely because the selected model printed a fake tool "
-                                "call instead of using the structured tool interface. No tool action was performed."
+                                "Hello! How can I help you in DeepSpace today?"
+                                if defer_task_for_greeting
+                                else (
+                                    "DeepSpace stopped safely because the selected model printed a fake tool "
+                                    "call instead of using the structured tool interface. No tool action was performed."
+                                )
                             )
                             break
                     if managed_task_run:
@@ -4039,6 +4097,7 @@ class DeepSpaceChatService:
             and final_task_check["task_count"]
             and not final_task_check["complete"]
             and forced_answer is None
+            and not defer_task_for_greeting
         ):
             terminal_status = "blocked"
             raw_answer = (
@@ -4125,7 +4184,12 @@ class DeepSpaceChatService:
             metadata_json=metadata,
         )
         self.db.commit()
-        if terminal_status == "running" and answer.strip() and not memory_written_this_turn:
+        if (
+            terminal_status == "running"
+            and answer.strip()
+            and not memory_written_this_turn
+            and not defer_task_for_greeting
+        ):
             try:
                 consolidation = await MemoryService(self.db, self.settings).consolidate_turn(
                     tenant_id=str(auth.tenant_id),

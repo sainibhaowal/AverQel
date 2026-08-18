@@ -58,6 +58,12 @@ successful research, workspace, or connected-service call has produced work
 evidence after the task started. Existing evidence requirements remain strict;
 the model cannot satisfy them with an unsupported prose claim.
 
+Simple social greetings such as `hi` and `thank you` do not resume an
+unfinished managed task. The task ledger remains intact for a later explicit
+request. If a model prints nested JSON-array tool syntax instead of making a
+real tool call, DeepSpace clears that text, asks once for a plain-language
+response, and never executes the printed payload.
+
 ## Streaming
 
 The dispatcher is inside the existing chat service. Existing SSE event types

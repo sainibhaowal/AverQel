@@ -668,6 +668,22 @@ def test_dsml_fake_tool_markup_is_detected() -> None:
     )
 
 
+def test_nested_json_array_fake_tool_markup_is_detected() -> None:
+    assert DeepSpaceChatService._looks_like_fake_tool_output(
+        '[{"tool_name":"todo_mark","parameters":'
+        '{"task_id":"old-task","status":"completed"}}]'
+    )
+    assert not DeepSpaceChatService._looks_like_fake_tool_output(
+        "Here is a normal JSON array: [1, 2, 3]."
+    )
+
+
+def test_simple_greetings_do_not_resume_saved_work() -> None:
+    assert DeepSpaceChatService._is_non_work_greeting("Hi")
+    assert DeepSpaceChatService._is_non_work_greeting("good morning!")
+    assert not DeepSpaceChatService._is_non_work_greeting("Hi, continue the saved task")
+
+
 def test_tool_arguments_recover_json_wrapped_by_provider_fence() -> None:
     parsed = DeepSpaceChatService._parse_tool_arguments(
         {
