@@ -42,6 +42,11 @@ authenticated content streaming are exposed by the Library API and preview;
 the agent receives bounded extracted text/metadata rather than unsafe binary
 execution.
 
+A Library read by filename is exact and conversation-scoped. If a guessed or
+stale filename is not found, the tool returns a safe `not_found` result with
+the authorized entries for that conversation so the agent can find the real
+file before retrying. It never falls back to host filesystem access.
+
 ## Streaming
 
 The dispatcher is inside the existing chat service. Existing SSE event types

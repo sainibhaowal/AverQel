@@ -19,6 +19,8 @@ function normalizeMarkdownText(content: string): string {
   // pair. Keep a fully recoverable compact table intact so its existing
   // column-aware recovery remains authoritative.
   const lines = rawLines.flatMap((line) => {
+    const repairedListLine = repairCompactOrderedListLine(line);
+    if (repairedListLine.length > 1) return repairedListLine;
     if (!line.trim().startsWith("|") || recoverCompactTable(line)) return [line];
     return normalizeCompactPipeLine(line).split("\n");
   });
@@ -93,7 +95,44 @@ function normalizeMarkdownText(content: string): string {
     index += 1;
   }
 
-  return normalizedLines.join("\n");
+  return repairOrderedListNumbers(normalizedLines).join("\n");
+}
+
+function repairCompactOrderedListLine(line: string): string[] {
+  // Providers occasionally stream `1. First ... site2. Second ...` as one
+  // paragraph. Split only an ordered-list marker followed by a title-like
+  // token; ordinary prose such as `version 2.0` remains untouched.
+  if (!/^\s*\d{1,3}\.\s+/.test(line)) return [line];
+  const repaired = line.replace(
+    /(?<=\S)(?=\d{1,3}\.\s+(?:\*\*|__|\[|[A-Z]))/g,
+    "\n",
+  );
+  return repaired.split("\n");
+}
+
+function repairOrderedListNumbers(lines: string[]): string[] {
+  const counters = new Map<string, number>();
+  let listActive = false;
+  return lines.map((line) => {
+    const match = line.match(/^(\s*)\d{1,3}\.\s+(.*)$/);
+    if (match) {
+      const indent = match[1] ?? "";
+      const next = (counters.get(indent) ?? 0) + 1;
+      counters.set(indent, next);
+      for (const key of counters.keys()) {
+        if (key.length > indent.length) counters.delete(key);
+      }
+      listActive = true;
+      return `${indent}${next}. ${match[2]}`;
+    }
+
+    // Detail bullets and blank lines belong to the preceding ordered list.
+    // A normal paragraph or heading ends it and resets numbering.
+    if (listActive && (line.trim() === "" || /^\s*[-*+]\s+/.test(line))) return line;
+    counters.clear();
+    listActive = false;
+    return line;
+  });
 }
 
 function isTableSeparator(cells: string[]): boolean {

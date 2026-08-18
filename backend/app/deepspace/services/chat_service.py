@@ -801,6 +801,26 @@ class DeepSpaceChatService:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
+            # Recover only a complete JSON object when a provider adds a code
+            # fence or a short transport fragment. Never evaluate Python-like
+            # text or guess missing values.
+            candidate = raw.strip()
+            candidate = re.sub(
+                r"^```(?:json)?\s*|\s*```$",
+                "",
+                candidate,
+                flags=re.IGNORECASE,
+            )
+            decoder = json.JSONDecoder()
+            for offset, character in enumerate(candidate):
+                if character != "{":
+                    continue
+                try:
+                    recovered, end = decoder.raw_decode(candidate[offset:])
+                except json.JSONDecodeError:
+                    continue
+                if not candidate[offset + end :].strip() and isinstance(recovered, dict):
+                    return recovered
             return None
         return parsed if isinstance(parsed, dict) else None
 
@@ -1223,13 +1243,33 @@ class DeepSpaceChatService:
                         conversation_id=conversation_id,
                         parent_folder_id=str(arguments.get("folder_id") or "").strip() or None,
                     )
-                return self.task_store.read_workspace_file(
-                    tenant_id=auth.tenant_id,
-                    user_id=auth.user_id,
-                    conversation_id=conversation_id,
-                    file_id=str(arguments.get("file_id") or "").strip() or None,
-                    filename=str(arguments.get("filename") or "").strip() or None,
-                )
+                try:
+                    return self.task_store.read_workspace_file(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        file_id=str(arguments.get("file_id") or "").strip() or None,
+                        filename=str(arguments.get("filename") or "").strip() or None,
+                    )
+                except ValueError as exc:
+                    if "file not found" not in str(exc).casefold():
+                        raise
+                    # Return an actionable, authorization-scoped result so
+                    # the model can find the real file instead of retrying a
+                    # guessed filename and turning a recoverable miss into a
+                    # failed run.
+                    entries = self.task_store.list_workspace_entries(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                    )
+                    return {
+                        "status": "not_found",
+                        "message": "The requested Library file does not exist in this conversation.",
+                        "requested_file_id": str(arguments.get("file_id") or "").strip() or None,
+                        "requested_filename": str(arguments.get("filename") or "").strip() or None,
+                        "available_entries": entries,
+                    }
             if target == "tasks":
                 tasks = self.task_store.read_tasks(
                     tenant_id=auth.tenant_id,
@@ -2516,6 +2556,7 @@ class DeepSpaceChatService:
         deadline_continuations = 0
         empty_provider_retries = 0
         clarification_retries = 0
+        invalid_tool_argument_retries = 0
         terminal_status = "running"
         last_context_used_tokens: int | None = None
         last_context_remaining_tokens: int | None = None
@@ -3270,6 +3311,7 @@ class DeepSpaceChatService:
                     }
                 )
                 valid_calls: list[dict[str, Any]] = []
+                invalid_tool_arguments = False
                 permitted_tool_names = self._tool_names(tools_for_round)
                 first_call_index = normalized_call_items[0][0]
                 starts_managed_plan = not managed_task_run and any(
@@ -3284,6 +3326,7 @@ class DeepSpaceChatService:
                     # arrives after an earlier streamed argument fragment.
                     step_id = f"tool_stream_{round_index}_{call_index}"
                     if arguments is None:
+                        invalid_tool_arguments = True
                         output = f"The {tool_name} arguments were invalid JSON."
                         yield sse(
                             "tool_error",
@@ -3448,6 +3491,27 @@ class DeepSpaceChatService:
                             "step_id": step_id,
                         }
                     )
+
+                if invalid_tool_arguments and not valid_calls and awaiting_approval is None:
+                    if invalid_tool_argument_retries < MAX_TOOL_RETRIES:
+                        invalid_tool_argument_retries += 1
+                        conversation_messages.append(
+                            {
+                                "role": "system",
+                                "content": (
+                                    "Your previous structured tool arguments were invalid JSON. Retry the same "
+                                    "action using exactly one valid JSON object matching the tool schema. Do not "
+                                    "write tool markup or prose, and do not invent missing values."
+                                ),
+                            }
+                        )
+                        continue
+                    forced_answer = (
+                        "The selected model returned invalid tool arguments twice, so DeepSpace stopped safely. "
+                        "No workspace or external action was performed. Please retry the request."
+                    )
+                    terminal_status = "failed"
+                    break
 
                 if awaiting_approval is not None:
                     valid_calls = []

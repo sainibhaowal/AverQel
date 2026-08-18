@@ -32,4 +32,15 @@ describe("DeepSpace markdown normalization", () => {
       "| Section | What's Inside |\n| --- | --- |\n| 1 | **PET Scans** — hospital imaging |\n| 2 | **Theranostics** — targeted therapy |",
     );
   });
+
+  it("repairs compact numbered sources and renders sequential numbering", () => {
+    const normalized = normalizeMarkdown(
+      "1. **First source** - brave site2. **Second source** - Google site3. **Third source** - Reuters\n\n- supporting detail",
+    );
+
+    expect(normalized).toContain("1. **First source**");
+    expect(normalized).toContain("2. **Second source**");
+    expect(normalized).toContain("3. **Third source**");
+    expect(normalized).not.toContain("site2.");
+  });
 });

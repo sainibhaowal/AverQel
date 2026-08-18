@@ -619,6 +619,19 @@ def test_dsml_fake_tool_markup_is_detected() -> None:
     )
 
 
+def test_tool_arguments_recover_json_wrapped_by_provider_fence() -> None:
+    parsed = DeepSpaceChatService._parse_tool_arguments(
+        {
+            "function": {
+                "name": "write",
+                "arguments": '```json\n{"target":"library","filename":"news.md"}\n```',
+            }
+        }
+    )
+
+    assert parsed == {"target": "library", "filename": "news.md"}
+
+
 def test_agent_policy_keeps_identity_and_mcp_safety_rules() -> None:
     assert "AverQel’s intelligent workspace assistant" in DEEPSPACE_AGENT_POLICY
     assert "Do not say a connected service is unavailable" in DEEPSPACE_AGENT_POLICY
