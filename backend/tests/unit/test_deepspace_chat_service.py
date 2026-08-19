@@ -632,6 +632,14 @@ def test_explicit_gmail_request_requires_attached_mcp_tool() -> None:
     )
 
 
+def test_personal_inbox_request_requires_the_selected_gmail_tool() -> None:
+    binding = SimpleNamespace(server=SimpleNamespace(name="Google Gmail"))
+
+    assert DeepSpaceChatService._requires_connected_service_tool(
+        "check my inbox for recent invoices", {"gmail_search": binding}
+    )
+
+
 def test_general_research_does_not_expose_connected_mcp_tools() -> None:
     gmail = SimpleNamespace(
         server=SimpleNamespace(name="Google Gmail"),
@@ -660,6 +668,58 @@ def test_explicit_gmail_request_exposes_only_gmail_mcp_tools() -> None:
     )
 
     assert set(selected) == {"gmail_tool"}
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    (
+        "Find the latest AI news and save a summary to my Library",
+        "Draft an email to my colleague about the launch",
+        "Create a document with the meeting notes",
+        "Investigate this issue and propose a fix",
+        "Plan a meeting schedule for next week",
+        "Explain how a repository works",
+    ),
+)
+def test_ordinary_words_never_expose_connected_mcp_tools(prompt: str) -> None:
+    bindings = {
+        "gmail_tool": SimpleNamespace(server=SimpleNamespace(name="Google Gmail")),
+        "drive_tool": SimpleNamespace(server=SimpleNamespace(name="Google Drive")),
+        "calendar_tool": SimpleNamespace(server=SimpleNamespace(name="Google Calendar")),
+        "github_tool": SimpleNamespace(server=SimpleNamespace(name="GitHub")),
+        "chat_tool": SimpleNamespace(server=SimpleNamespace(name="Google Chat")),
+        "people_tool": SimpleNamespace(server=SimpleNamespace(name="Google People")),
+    }
+
+    assert DeepSpaceChatService._mcp_bindings_for_prompt(prompt, bindings) == {}
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    (
+        ("Check my inbox for recent invoices", {"gmail_tool"}),
+        ("Find the files in my Google Drive", {"drive_tool"}),
+        ("What is on my calendar tomorrow?", {"calendar_tool"}),
+        ("List my GitHub pull requests", {"github_tool"}),
+        ("Search my Google Chat spaces", {"chat_tool"}),
+        ("Find my contacts in Google People", {"people_tool"}),
+    ),
+)
+def test_explicit_connected_service_request_exposes_only_its_catalog(
+    prompt: str, expected: set[str]
+) -> None:
+    bindings = {
+        "gmail_tool": SimpleNamespace(server=SimpleNamespace(name="Google Gmail")),
+        "drive_tool": SimpleNamespace(server=SimpleNamespace(name="Google Drive")),
+        "calendar_tool": SimpleNamespace(server=SimpleNamespace(name="Google Calendar")),
+        "github_tool": SimpleNamespace(server=SimpleNamespace(name="GitHub")),
+        "chat_tool": SimpleNamespace(server=SimpleNamespace(name="Google Chat")),
+        "people_tool": SimpleNamespace(server=SimpleNamespace(name="Google People")),
+    }
+
+    selected = DeepSpaceChatService._mcp_bindings_for_prompt(prompt, bindings)
+
+    assert set(selected) == expected
 
 
 def test_dsml_fake_tool_markup_is_detected() -> None:

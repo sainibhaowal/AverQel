@@ -1079,16 +1079,6 @@ class DeepSpaceChatService:
         if "mcp" in lowered and any(token in lowered for token in ("tool", "call", "connect")):
             return True
 
-        service_names = {
-            binding.server.name.casefold().strip()
-            for binding in mcp_bindings.values()
-            if binding.server.name.strip()
-        }
-        # Google Gmail is commonly requested simply as "Gmail" rather than
-        # its full marketplace connection name.
-        if any("gmail" in name for name in service_names):
-            service_names.add("gmail")
-
         action_terms = (
             "check",
             "read",
@@ -1100,10 +1090,21 @@ class DeepSpaceChatService:
             "get",
             "open",
             "use",
+            "retrieve",
+            "sync",
+            "create",
+            "add",
+            "update",
+            "delete",
+            "send",
+            "schedule",
+            "cancel",
         )
-        return any(name and name in lowered for name in service_names) and any(
-            term in lowered for term in action_terms
-        )
+        # ``mcp_bindings`` has already passed the strict service-specific
+        # router.  Therefore an action verb here means the user is asking to
+        # act on that selected account, including natural requests such as
+        # "check my inbox" that do not spell out the marketplace name.
+        return any(re.search(rf"\b{re.escape(term)}\b", lowered) for term in action_terms)
 
     @classmethod
     def _mcp_bindings_for_prompt(
@@ -1121,46 +1122,73 @@ class DeepSpaceChatService:
         if not mcp_bindings:
             return {}
         lowered = prompt.casefold()
-        if not any(
-            token in lowered
-            for token in (
-                "gmail",
-                "email",
-                "inbox",
-                "google drive",
-                "drive",
-                "google calendar",
-                "calendar",
-                "github",
-                "git hub",
-                "slack",
-                "notion",
-                "mcp",
-            )
-        ):
+
+        # This is deliberately stricter than keyword matching.  Broad words
+        # such as "file", "document", "email", "meeting", "issue", or
+        # "chat" occur in ordinary work every day and must not turn a general
+        # request into a connected-account request.  A tool catalog is only
+        # supplied when the newest user message clearly points to a particular
+        # service (or a clearly personal resource inside that service).
+        service_patterns: dict[str, tuple[str, ...]] = {
+            "gmail": (
+                r"\bgmail\b",
+                r"\bgoogle\s+mail\b",
+                r"\b(?:my|the)\s+(?:email|emails|inbox|mailbox)\b",
+            ),
+            "drive": (
+                r"\bgoogle\s+drive\b",
+                r"\bmy\s+drive\b",
+                r"\b(?:file|files|folder|folders|document|documents)\s+"
+                r"(?:in|from|on)\s+(?:my\s+)?(?:google\s+)?drive\b",
+            ),
+            "calendar": (
+                r"\bgoogle\s+calendar\b",
+                r"\bmy\s+calendar\b",
+            ),
+            "github": (r"\bgithub\b", r"\bgit\s+hub\b"),
+            "google_chat": (
+                r"\bgoogle\s+chat\b",
+                r"\bmy\s+(?:google\s+)?chat\s+(?:space|spaces|message|messages)\b",
+            ),
+            "google_people": (
+                r"\bgoogle\s+(?:people|contacts)\b",
+                r"\bmy\s+contacts\b",
+            ),
+            "slack": (r"\bslack\b",),
+            "notion": (r"\bnotion\b",),
+        }
+        requested_services = {
+            service
+            for service, patterns in service_patterns.items()
+            if any(re.search(pattern, lowered) for pattern in patterns)
+        }
+        if not requested_services:
             return {}
 
-        aliases = {
-            "gmail": ("gmail", "email", "inbox", "mail"),
-            "drive": ("drive", "file", "document"),
-            "calendar": ("calendar", "event", "meeting", "schedule"),
-            "github": ("github", "git hub", "repository", "repo", "pull request", "issue"),
-            "slack": ("slack", "channel", "workspace message"),
-            "notion": ("notion", "page", "database page"),
-        }
+        def service_for_server(server_name: str) -> str | None:
+            normalized = server_name.casefold()
+            if "gmail" in normalized or "google mail" in normalized:
+                return "gmail"
+            if "drive" in normalized:
+                return "drive"
+            if "calendar" in normalized:
+                return "calendar"
+            if "github" in normalized or "git hub" in normalized:
+                return "github"
+            if "chat" in normalized:
+                return "google_chat"
+            if "people" in normalized or "contacts" in normalized:
+                return "google_people"
+            if "slack" in normalized:
+                return "slack"
+            if "notion" in normalized:
+                return "notion"
+            return None
+
         selected: dict[str, DeepSpaceMCPTool] = {}
         for exposed_name, binding in mcp_bindings.items():
             server_name = str(binding.server.name or "").casefold()
-            matches_service = False
-            for service, tokens in aliases.items():
-                if service not in lowered and not any(token in lowered for token in tokens):
-                    continue
-                if service in server_name or any(token in server_name for token in tokens):
-                    matches_service = True
-                    break
-            if matches_service:
-                selected[exposed_name] = binding
-            elif "mcp" in lowered and server_name and server_name in lowered:
+            if service_for_server(server_name) in requested_services:
                 selected[exposed_name] = binding
         return selected
 

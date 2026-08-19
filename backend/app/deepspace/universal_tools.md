@@ -73,11 +73,13 @@ tool events with their operation, target, arguments, result, and status.
 ## MCP routing boundary
 
 Connected MCP catalogs are discovered through the authenticated bridge, but
-their schemas are exposed to the model only when the user explicitly names the
-corresponding connected service (for example, Gmail, Drive, Calendar, GitHub,
-Slack, or Notion). General research, drafting, Library, note, and workspace
-requests use the native DeepSpace tools such as `web_search` and `write` and do
-not receive unrelated MCP tools.
+their schemas are exposed to the model only when the newest user message
+clearly identifies the corresponding connected service (for example, Gmail,
+Google Drive, Google Calendar, GitHub, Google Chat, Google People, Slack, or
+Notion). General research, drafting, Library, note, and workspace requests use
+the native DeepSpace tools such as `web_search` and `write` and do not receive
+unrelated MCP tools. Broad ordinary words such as `file`, `document`, `email`,
+`meeting`, `issue`, and `chat` do not select an MCP service by themselves.
 
 This is a model-routing boundary, not a security boundary. Every selected MCP
 call still passes the existing tenant/user ownership, connection status,
