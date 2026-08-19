@@ -98,6 +98,15 @@ function readableValue(value: unknown, indent = ""): string {
   return String(value);
 }
 
+function readablePartialStructuredText(value: string): string | null {
+  if (!/^\s*[\[{]/.test(value)) return null;
+  const fields = [...value.matchAll(/"([^"\\]+)"\s*:\s*(?:"([^"\\]*)|([-\d.]+)|(true|false|null))/g)];
+  if (!fields.length) return "Collecting tool details…";
+  return fields
+    .map((field) => `${humanizeKey(field[1] ?? "Detail")}: ${field[2] ?? field[3] ?? field[4] ?? "—"}`)
+    .join("\n");
+}
+
 function formatDetail(value: unknown): string | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value === "string") {
@@ -105,7 +114,7 @@ function formatDetail(value: unknown): string | null {
     try {
       return truncateDetail(readableValue(sanitizeDetail(JSON.parse(sanitized))));
     } catch {
-      return truncateDetail(sanitized);
+      return truncateDetail(readablePartialStructuredText(sanitized) ?? sanitized);
     }
   }
   try {
