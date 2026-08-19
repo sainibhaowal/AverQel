@@ -138,6 +138,52 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(activity).not.toHaveTextContent('{"count":2');
   });
 
+  it("shows a completed duration summary and keeps the full result expandable", () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_timeline_complete_1",
+            role: "assistant",
+            content: "The summary is ready.",
+            rawContent: "The summary is ready.",
+            createdAt: "2026-08-19T10:00:00.000Z",
+            status: "ready",
+            timeline: [
+              {
+                id: "tool_result_1",
+                stepId: "tool_result_1",
+                turnIndex: 1,
+                phase: "thinking",
+                type: "tool_output",
+                title: "Tool result",
+                status: "completed",
+                startedAt: "2026-08-19T10:00:00.000Z",
+                completedAt: "2026-08-19T10:00:12.000Z",
+                toolName: "web_search",
+                toolOutput: JSON.stringify({
+                  count: 2,
+                  results: ["Reuters — AI policy", "BBC — AI research"],
+                }),
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Worked for 12 seconds")).toBeInTheDocument();
+    expect(screen.getAllByText("Tool result").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Count: 2/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Reuters — AI policy/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Worked for 12 seconds"));
+    expect(screen.getByText("Thinking & activity")).toBeInTheDocument();
+  });
+
   it("does not show the provider's transient pending_tool fragment as a duplicate", () => {
     render(
       <DeepSpaceThread

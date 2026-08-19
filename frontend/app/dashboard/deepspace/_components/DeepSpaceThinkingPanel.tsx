@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { BrainCircuit } from "lucide-react";
 import {
   CheckCircle2,
@@ -18,6 +18,7 @@ import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 import type { AgentStep, TimelineStep } from "../_lib/deepspace-stream";
 
 const MAX_DETAIL_LENGTH = 2400;
+const MAX_EXPANDED_DETAIL_LENGTH = 20000;
 
 type PersistedTask = {
   id: string;
@@ -107,21 +108,49 @@ function readablePartialStructuredText(value: string): string | null {
     .join("\n");
 }
 
-function formatDetail(value: unknown): string | null {
+function formatDetail(value: unknown, limit = MAX_DETAIL_LENGTH): string | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value === "string") {
     const sanitized = String(sanitizeDetail(value));
     try {
-      return truncateDetail(readableValue(sanitizeDetail(JSON.parse(sanitized))));
+      return truncateDetail(readableValue(sanitizeDetail(JSON.parse(sanitized))), limit);
     } catch {
-      return truncateDetail(readablePartialStructuredText(sanitized) ?? sanitized);
+      return truncateDetail(readablePartialStructuredText(sanitized) ?? sanitized, limit);
     }
   }
   try {
-    return truncateDetail(readableValue(sanitizeDetail(value)));
+    return truncateDetail(readableValue(sanitizeDetail(value)), limit);
   } catch {
     return "[detail unavailable]";
   }
+}
+
+function detailPreview(value: string | null): string | null {
+  if (!value) return null;
+  const firstLine = value
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine) return null;
+  return firstLine.length > 120 ? `${firstLine.slice(0, 117)}…` : firstLine;
+}
+
+function formatElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}m ${remainder}s`;
+}
+
+function timelineDurationMs(timeline: TimelineStep[], now: number): number | null {
+  const timestamps = timeline
+    .flatMap((step) => [Date.parse(step.startedAt), Date.parse(step.completedAt ?? "")])
+    .filter((timestamp) => Number.isFinite(timestamp));
+  if (!timestamps.length) return null;
+  const startedAt = Math.min(...timestamps);
+  const completedAt = timeline.some((step) => step.status === "running") ? now : Math.max(...timestamps);
+  return Math.max(0, completedAt - startedAt);
 }
 
 function taskProgressFromTimeline(timeline: TimelineStep[]): TaskProgress | null {
@@ -255,7 +284,11 @@ function StepIcon({ step }: { step: AgentStep }) {
 const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
   const [outputOpen, setOutputOpen] = useState(step.status === "running");
   const input = formatDetail(step.toolInput ?? step.data?.tool_input);
-  const output = formatDetail(step.toolOutput ?? step.plan ?? step.data?.message);
+  const output = formatDetail(
+    step.toolOutput ?? step.plan ?? step.data?.message,
+    MAX_EXPANDED_DETAIL_LENGTH,
+  );
+  const outputPreview = detailPreview(output);
   const toolName = step.toolName?.trim();
   const statusLabel =
     step.status === "awaiting_approval"
@@ -298,7 +331,8 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
           className="mt-2 border-t border-white/6 pt-1"
         >
           <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
-            Output / progress
+            <span>Output / progress</span>
+            {outputPreview ? <span className="ml-2 normal-case">— {outputPreview}</span> : null}
           </summary>
           <pre className="text-foreground/60 max-h-56 overflow-auto py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
             {output}
@@ -348,7 +382,8 @@ const TimelineEntry = memo(function TimelineEntry({
   const details = formatDetail(step.details);
   const inputStream = formatDetail(step.toolInputStream);
   const input = formatDetail(step.toolInput);
-  const output = formatDetail(step.toolOutput);
+  const output = formatDetail(step.toolOutput, MAX_EXPANDED_DETAIL_LENGTH);
+  const outputPreview = detailPreview(output);
   const toolName = step.toolName?.trim();
 
   return (
@@ -413,7 +448,8 @@ const TimelineEntry = memo(function TimelineEntry({
             className="mt-2 border-t border-white/6 pt-1"
           >
             <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
-              {step.status === "running" ? "Live tool output" : "Tool result"}
+            <span>{step.status === "running" ? "Live tool output" : "Tool result"}</span>
+            {outputPreview ? <span className="ml-2 normal-case">— {outputPreview}</span> : null}
             </summary>
             <pre className="text-foreground/60 max-h-56 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
               {output}
@@ -437,14 +473,31 @@ export default function DeepSpaceThinkingPanel({
   timeline?: TimelineStep[];
 }) {
   const [panelOpen, setPanelOpen] = useState(isStreaming);
+  const wasStreaming = useRef(isStreaming);
+  const [clock, setClock] = useState(() => Date.now());
 
   // Opening a newly active run should remain automatic, but completion must
   // not forcibly collapse the panel or override a user's expand/collapse
   // choice during reconciliation.
   useEffect(() => {
+    if (isStreaming) {
+      const timer = window.setTimeout(() => setPanelOpen(true), 0);
+      wasStreaming.current = true;
+      return () => window.clearTimeout(timer);
+    }
+    const timer = wasStreaming.current
+      ? window.setTimeout(() => setPanelOpen(false), 0)
+      : undefined;
+    wasStreaming.current = false;
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [isStreaming]);
+
+  useEffect(() => {
     if (!isStreaming) return;
-    const timer = window.setTimeout(() => setPanelOpen(true), 0);
-    return () => window.clearTimeout(timer);
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, [isStreaming]);
 
   // Providers may emit argument fragments before the function name. The
@@ -463,6 +516,8 @@ export default function DeepSpaceThinkingPanel({
     (step) => step.type === "thinking" && Boolean(step.details?.trim()),
   );
   const taskProgress = taskProgressFromTimeline(orderedTimeline);
+  const elapsedMs = timelineDurationMs(orderedTimeline, clock);
+  const durationLabel = elapsedMs === null ? null : formatElapsed(elapsedMs);
   if (
     !content.trim() &&
     activitySteps.length === 0 &&
@@ -479,7 +534,12 @@ export default function DeepSpaceThinkingPanel({
     >
       <summary className="text-foreground/50 flex cursor-pointer list-none items-center gap-2 border-b border-white/8 py-2 text-[11px] font-bold tracking-wider uppercase">
         <BrainCircuit size={13} className="text-primary/60" />
-        {isStreaming ? "Thinking & activity…" : "Thinking & activity"}
+        <span>{isStreaming ? "Thinking & activity…" : "Thinking & activity"}</span>
+        {durationLabel ? (
+          <span className="text-foreground/35 ml-auto normal-case tracking-normal">
+            {isStreaming ? `Working for ${durationLabel}` : `Worked for ${durationLabel}`}
+          </span>
+        ) : null}
       </summary>
       <div
         className="text-foreground/60 space-y-3 overscroll-contain py-3 text-xs"
