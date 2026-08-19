@@ -3428,6 +3428,22 @@ class DeepSpaceChatService:
                         )
                         continue
                     break
+                # Prose emitted before a real structured tool call is model
+                # narration for this turn, not the final user-facing answer.
+                # Preserve it as a durable timeline step instead of letting
+                # it remain at the bottom and then disappear on completion.
+                prose_before_tools = "".join(answer_parts[round_answer_start:]).strip()
+                if prose_before_tools:
+                    yield sse(
+                        "model_message",
+                        {
+                            "text": prose_before_tools,
+                            "turn_index": round_index,
+                            "status": "completed",
+                        },
+                    )
+                    del answer_parts[round_answer_start:]
+                    yield sse("replace", {"content": "", "replayed": False})
                 tool_exchange_start = len(conversation_messages)
                 conversation_messages.append(
                     {
