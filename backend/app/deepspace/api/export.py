@@ -1,5 +1,7 @@
 import uuid
+import re
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
@@ -12,6 +14,32 @@ from app.deepspace.repositories.chat import DeepSpaceChatRepository
 from app.platform.database.session import get_db
 
 router = APIRouter(prefix="/deepspace/export", tags=["deepspace-export"])
+
+
+def _download_content_disposition(*, title: str, extension: str) -> str:
+    """Return a standards-safe attachment header for any user-authored title.
+
+    HTTP header values must be Latin-1, while note titles are normal Unicode.
+    Keep a conservative ASCII fallback for older clients and an RFC 5987 UTF-8
+    filename for modern browsers.  Removing controls also prevents header
+    injection through a note title.
+    """
+
+    clean_title = "".join(char for char in title if char.isprintable()).strip() or "DeepSpace Note"
+    unicode_filename = f"{clean_title}.{extension}"
+    ascii_filename = "".join(
+        char
+        if ord(char) < 128 and char not in {'\\', '"'} and not char.isspace()
+        else "_"
+        for char in unicode_filename
+    )
+    ascii_filename = re.sub(r"_+", "_", ascii_filename).strip(" ._") or (
+        f"DeepSpace_Note.{extension}"
+    )
+    return (
+        f'attachment; filename="{ascii_filename}"; '
+        f"filename*=UTF-8''{quote(unicode_filename, safe='')}"
+    )
 
 
 @router.get(
@@ -56,10 +84,15 @@ async def export_conversation(
         media_type = "text/markdown"
         extension = "md"
 
-    filename = f"{title.replace(' ', '_')}_{conversation_id.hex[:8]}.{extension}"
+    filename_title = f"{title.replace(' ', '_')}_{conversation_id.hex[:8]}"
 
     return Response(
         content=file_obj.getvalue(),
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": _download_content_disposition(
+                title=filename_title,
+                extension=extension,
+            )
+        },
     )

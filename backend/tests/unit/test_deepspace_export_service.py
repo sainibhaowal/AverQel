@@ -1,4 +1,5 @@
 from app.deepspace.integrations.export_service import DeepSpaceExportService
+from app.deepspace.api.export import _download_content_disposition
 
 
 def test_pdf_export_handles_unicode_content_without_crashing():
@@ -35,3 +36,16 @@ def test_markdown_export_returns_markdown_not_source_html():
     assert "- One" in markdown
     assert "| Name | Value |" in markdown
     assert "<h1>" not in markdown
+
+
+def test_export_header_supports_unicode_note_titles() -> None:
+    disposition = _download_content_disposition(
+        title="Ravi’s research ✓",
+        extension="pdf",
+    )
+
+    # Starlette can encode the fallback header value, and browsers retain the
+    # original title through the RFC 5987 filename parameter.
+    disposition.encode("latin-1")
+    assert 'filename="Ravi_s_research_.pdf"' in disposition
+    assert "filename*=UTF-8''Ravi%E2%80%99s%20research%20%E2%9C%93.pdf" in disposition

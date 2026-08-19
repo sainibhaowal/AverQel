@@ -8,7 +8,7 @@ import {
 import { BlockNoteView, darkDefaultTheme, lightDefaultTheme } from "@blocknote/mantine";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
-import { forwardRef, useImperativeHandle, useEffect, useState } from "react";
+import { forwardRef, useImperativeHandle, useEffect, useRef, useState } from "react";
 import {
   FileEdit,
   Sigma,
@@ -141,16 +141,25 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
     const editor = useCreateBlockNote({
       schema,
     });
+    const loadedConversationIdRef = useRef<string | undefined>(undefined);
 
     useEffect(() => {
+      let cancelled = false;
       const loadInitial = async () => {
-        if (initialContent && editor.document.length <= 1) {
-          const blocks = await editor.tryParseHTMLToBlocks(initialContent);
-          editor.replaceBlocks(editor.document, blocks);
-        }
+        // The editor component stays mounted while users switch notes.  Load
+        // each conversation once by ID, rather than relying on the document
+        // length, so the previous note never remains visible in a new note.
+        if (conversationId && loadedConversationIdRef.current === conversationId) return;
+        const blocks = initialContent ? await editor.tryParseHTMLToBlocks(initialContent) : [];
+        if (cancelled) return;
+        editor.replaceBlocks(editor.document, blocks);
+        loadedConversationIdRef.current = conversationId;
       };
-      loadInitial();
-    }, [editor, initialContent]);
+      void loadInitial();
+      return () => {
+        cancelled = true;
+      };
+    }, [conversationId, editor, initialContent]);
 
     useEffect(() => {
       if (!showWidthMenu && !showExportMenu) return;

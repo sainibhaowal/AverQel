@@ -265,13 +265,19 @@ export default function DeepSpacePageClient() {
     setIsSaving(true);
     saveTimerRef.current = setTimeout(async () => {
       try {
-        await fetchWithAuth(`/deepspace/chats/${activeNote.id}`, {
+        const response = (await fetchWithAuth(`/deepspace/chats/${activeNote.id}`, {
           method: "PATCH",
           body: JSON.stringify({
             content_html: html,
             ...(nextAutoTitle ? { title: nextAutoTitle } : {}),
           }),
-        });
+        })) as Response;
+        if (!response.ok) {
+          throw new Error("The note could not be saved.");
+        }
+      } catch (error) {
+        console.error("Failed to save DeepSpace note", error);
+        addServiceWarning("Your latest note edit could not be saved. Please retry after reconnecting.");
       } finally {
         setIsSaving(false);
       }
