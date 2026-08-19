@@ -698,9 +698,12 @@ def test_ordinary_words_never_expose_connected_mcp_tools(prompt: str) -> None:
     ("prompt", "expected"),
     (
         ("Check my inbox for recent invoices", {"gmail_tool"}),
+        ("Check my sent box", {"gmail_tool"}),
+        ("Read my draft folder", {"gmail_tool"}),
         ("Find the files in my Google Drive", {"drive_tool"}),
         ("What is on my calendar tomorrow?", {"calendar_tool"}),
         ("List my GitHub pull requests", {"github_tool"}),
+        ("Read the README file and save it to my Library", {"github_tool"}),
         ("Search my Google Chat spaces", {"chat_tool"}),
         ("Find my contacts in Google People", {"people_tool"}),
     ),

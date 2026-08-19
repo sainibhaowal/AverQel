@@ -1123,17 +1123,20 @@ class DeepSpaceChatService:
             return {}
         lowered = prompt.casefold()
 
-        # This is deliberately stricter than keyword matching.  Broad words
-        # such as "file", "document", "email", "meeting", "issue", or
-        # "chat" occur in ordinary work every day and must not turn a general
-        # request into a connected-account request.  A tool catalog is only
-        # supplied when the newest user message clearly points to a particular
-        # service (or a clearly personal resource inside that service).
+        # Broad words such as "file", "document", "email", "meeting",
+        # "issue", or "chat" occur in ordinary work every day and must not
+        # turn a general request into a connected-account request.  At the
+        # same time, the router recognises distinctive service-native concepts
+        # (for example, a Gmail Sent folder or a repository README) so users
+        # do not need to repeat a product name for an obvious request.
         service_patterns: dict[str, tuple[str, ...]] = {
             "gmail": (
                 r"\bgmail\b",
                 r"\bgoogle\s+mail\b",
                 r"\b(?:my|the)\s+(?:email|emails|inbox|mailbox)\b",
+                r"\b(?:my\s+)?(?:sent|drafts?|outbox)\s+"
+                r"(?:box|mail|emails?|folder)\b",
+                r"\bmy\s+drafts?\b",
             ),
             "drive": (
                 r"\bgoogle\s+drive\b",
@@ -1145,7 +1148,12 @@ class DeepSpaceChatService:
                 r"\bgoogle\s+calendar\b",
                 r"\bmy\s+calendar\b",
             ),
-            "github": (r"\bgithub\b", r"\bgit\s+hub\b"),
+            "github": (
+                r"\bgithub\b",
+                r"\bgit\s+hub\b",
+                r"\breadme(?:\.md)?\b",
+                r"\b(?:pull\s+request|commit|branch|\.gitignore)\b",
+            ),
             "google_chat": (
                 r"\bgoogle\s+chat\b",
                 r"\bmy\s+(?:google\s+)?chat\s+(?:space|spaces|message|messages)\b",

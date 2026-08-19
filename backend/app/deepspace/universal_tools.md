@@ -80,6 +80,10 @@ Notion). General research, drafting, Library, note, and workspace requests use
 the native DeepSpace tools such as `web_search` and `write` and do not receive
 unrelated MCP tools. Broad ordinary words such as `file`, `document`, `email`,
 `meeting`, `issue`, and `chat` do not select an MCP service by themselves.
+Distinctive service-native concepts do route naturally: Gmail Sent/Drafts/Inbox
+requests select Gmail, while README, pull request, commit, branch, and
+`.gitignore` requests select GitHub. The selected service remains the only MCP
+catalog supplied to the model.
 
 This is a model-routing boundary, not a security boundary. Every selected MCP
 call still passes the existing tenant/user ownership, connection status,
