@@ -12,18 +12,58 @@ import {
   RefreshCw,
   FolderOpen,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import dynamic from "next/dynamic";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ForwardedRef,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { fetchWithAuth } from "@/lib/api";
 import type { Transition } from "framer-motion";
 
 import DeepSpaceChatClient from "./DeepSpaceChatClient";
-import DeepSpaceEditor, {
-  type DeepSpaceAgentNotePreview,
-  type DeepSpaceEditorHandle,
+import type {
+  DeepSpaceAgentNotePreview,
+  DeepSpaceEditorHandle,
+  DeepSpaceEditorProps,
 } from "./DeepSpaceEditor";
 import MemoryPanel from "./MemoryPanel";
 import DeepSpaceLibraryDrawer from "./DeepSpaceLibraryDrawer";
+
+type DeferredEditorProps = DeepSpaceEditorProps & {
+  forwardedRef?: ForwardedRef<DeepSpaceEditorHandle>;
+};
+
+// Keep the heavy BlockNote/Mantine styles out of ordinary dashboard routes.
+// next/dynamic does not forward refs by itself, so this small adapter passes
+// the imperative editor handle through to the real editor after it loads.
+const DeferredDeepSpaceEditor = dynamic<DeferredEditorProps>(
+  () =>
+    import("./DeepSpaceEditor").then(({ default: Editor }) =>
+      function DeferredEditor({ forwardedRef, ...props }: DeferredEditorProps) {
+        return <Editor {...props} ref={forwardedRef} />;
+      },
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="text-muted-foreground flex h-full min-h-48 items-center justify-center text-xs font-medium">
+        Loading note editor…
+      </div>
+    ),
+  },
+);
+
+const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
+  function DeepSpaceEditor(props, ref) {
+    return <DeferredDeepSpaceEditor {...props} forwardedRef={ref} />;
+  },
+);
 
 export interface DeepSpaceNote {
   id: string;

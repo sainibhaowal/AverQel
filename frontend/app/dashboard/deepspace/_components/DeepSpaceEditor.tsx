@@ -6,7 +6,6 @@ import {
   getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
 import { BlockNoteView, darkDefaultTheme, lightDefaultTheme } from "@blocknote/mantine";
-import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { forwardRef, useImperativeHandle, useEffect, useRef, useState } from "react";
 import {
@@ -47,7 +46,7 @@ export interface DeepSpaceEditorHandle {
   clear: () => void;
 }
 
-interface DeepSpaceEditorProps {
+export interface DeepSpaceEditorProps {
   initialContent?: string;
   onChange?: (html: string) => void;
   conversationId?: string;

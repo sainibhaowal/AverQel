@@ -4,7 +4,6 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { Check, Edit3, Sigma } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { BlockMath } from "react-katex";
-import "katex/dist/katex.min.css";
 
 type MathBlockRenderProps = {
   block: { props: { formula: string } };
