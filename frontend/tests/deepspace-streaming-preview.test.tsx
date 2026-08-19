@@ -295,6 +295,47 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(steps[2]?.textContent).toContain("I can now summarize it.");
   });
 
+  it("renders streamed thinking with the Markdown renderer instead of plain paragraph text", () => {
+    markdownRendererMock.mockClear();
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_structured_thinking_1",
+            role: "assistant",
+            content: "",
+            rawContent: "",
+            createdAt: new Date().toISOString(),
+            status: "streaming",
+            timeline: [
+              {
+                id: "thinking_structured_1",
+                stepId: "thinking_structured_1",
+                turnIndex: 1,
+                phase: "thinking",
+                type: "thinking",
+                title: "Internal Thought",
+                status: "running",
+                startedAt: new Date().toISOString(),
+                details: "## Plan\n\n- Inspect the source\n- Summarize the result",
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(markdownRendererMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: "## Plan\n\n- Inspect the source\n- Summarize the result",
+        streaming: true,
+      }),
+    );
+  });
+
   it("does not rerun the markdown renderer when local copy state changes", () => {
     markdownRendererMock.mockClear();
     const message = {

@@ -411,14 +411,21 @@ const TimelineEntry = memo(function TimelineEntry({
         </div>
         {details ? (
           <div
-            className={`text-foreground/70 mt-2 whitespace-pre-wrap ${
+            className={`text-foreground/70 mt-2 ${
               step.type === "thinking"
-                ? "max-h-64 overflow-auto overscroll-contain leading-6"
-                : "leading-5"
+                ? "max-h-64 overflow-auto overscroll-contain"
+                : "leading-5 whitespace-pre-wrap"
             }`}
             data-thinking-scroll={step.type === "thinking" ? "true" : undefined}
           >
-            {details}
+            {step.type === "thinking" ? (
+              <DeepSpaceMarkdownRenderer
+                content={details}
+                streaming={step.status === "running"}
+              />
+            ) : (
+              details
+            )}
           </div>
         ) : null}
         {inputStream ? (
