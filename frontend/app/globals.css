@@ -1621,7 +1621,7 @@ html:not(.dark) .text-white\/40 {
   color: rgba(51, 65, 85, 0.66) !important;
 }
 
-/* Tooltip: native-like box */
+/* AverQel tooltip: compact rounded-square workspace callout. */
 .ui-tooltip {
   position: relative;
 }
@@ -1632,20 +1632,24 @@ html:not(.dark) .text-white\/40 {
   left: 50%;
   top: calc(100% + 8px);
   transform: translateX(-50%);
-  padding: 5px 9px;
-  border-radius: 7px;
-  border: 1px solid var(--border-strong);
-  background: color-mix(in srgb, var(--surface-0) 94%, transparent);
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border-strong));
+  background: color-mix(in srgb, var(--surface-0) 96%, var(--primary) 4%);
   color: var(--text-strong);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
   white-space: normal;
   width: max-content;
   max-width: min(28rem, calc(100vw - 24px));
-  box-shadow: var(--elevation-2);
+  box-shadow: 0 14px 34px color-mix(in srgb, #000 28%, transparent);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 100ms ease;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
   z-index: 9999;
 }
 
@@ -1669,13 +1673,22 @@ html:not(.dark) .text-white\/40 {
 }
 
 .dark .ui-tooltip[data-tooltip]:not([data-tooltip=""])::before {
-  background: color-mix(in srgb, #020617 90%, transparent);
-  color: #e2e8f0;
+  border-color: color-mix(in srgb, var(--primary) 38%, rgba(255, 255, 255, 0.14));
+  background: color-mix(in srgb, #08110e 94%, var(--primary) 6%);
+  color: #ecfdf5;
 }
 
 .ui-tooltip[data-tooltip]:not([data-tooltip=""]):hover::before,
 .ui-tooltip[data-tooltip]:not([data-tooltip=""]):focus-visible::before {
   opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.ui-tooltip-end[data-tooltip]:not([data-tooltip=""]):hover::before,
+.ui-tooltip-end[data-tooltip]:not([data-tooltip=""]):focus-visible::before,
+.ui-tooltip-start[data-tooltip]:not([data-tooltip=""]):hover::before,
+.ui-tooltip-start[data-tooltip]:not([data-tooltip=""]):focus-visible::before {
+  transform: none;
 }
 
 /* Disabled old sweep system */

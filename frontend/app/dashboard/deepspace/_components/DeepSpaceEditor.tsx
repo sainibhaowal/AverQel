@@ -383,8 +383,9 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                 setLibrarySaveMessage("");
                 setShowLibrarySave(true);
               }}
-              className="border-glass-border bg-surface-1 text-muted-foreground hover:border-primary/40 hover:bg-surface-2 hover:text-primary inline-flex h-9 items-center gap-2 rounded-xl border px-3.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-45"
-              title="Save a named copy to DeepSpace Library"
+              aria-label="Save a named copy to DeepSpace Library"
+              data-tooltip="Save a named copy to DeepSpace Library"
+              className="ui-tooltip border-glass-border bg-surface-1 text-muted-foreground hover:border-primary/40 hover:bg-surface-2 hover:text-primary inline-flex h-9 items-center gap-2 rounded-xl border px-3.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Save size={13} className="text-primary/75" /> Save to Library
             </button>
@@ -392,8 +393,9 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
               <div className="border-glass-border bg-surface-0/40 mr-2 flex items-center gap-1 rounded-xl border p-1">
                 <button
                   onClick={() => onSetPanelMode("chat")}
-                  title="Chat only"
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                  aria-label="Chat only"
+                  data-tooltip="Chat only"
+                  className={`ui-tooltip flex h-8 w-8 items-center justify-center rounded-lg transition ${
                     panelMode === "chat"
                       ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-muted-foreground hover:bg-surface-2 hover:text-primary"
@@ -403,8 +405,9 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                 </button>
                 <button
                   onClick={() => onSetPanelMode("split")}
-                  title="Split view"
-                  className={`hidden h-8 w-8 items-center justify-center rounded-lg transition lg:flex ${
+                  aria-label="Split view"
+                  data-tooltip="Split view"
+                  className={`ui-tooltip hidden h-8 w-8 items-center justify-center rounded-lg transition lg:flex ${
                     panelMode === "split"
                       ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-muted-foreground hover:bg-surface-2 hover:text-primary"
@@ -414,8 +417,9 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                 </button>
                 <button
                   onClick={() => onSetPanelMode("notes")}
-                  title="Notes only"
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                  aria-label="Notes only"
+                  data-tooltip="Notes only"
+                  className={`ui-tooltip flex h-8 w-8 items-center justify-center rounded-lg transition ${
                     panelMode === "notes"
                       ? "bg-primary text-primary-foreground shadow-sm"
                       : "text-muted-foreground hover:bg-surface-2 hover:text-primary"
