@@ -10,6 +10,15 @@ vi.mock("@/lib/api", () => ({
   fetchWithAuth: (...args: unknown[]) => fetchWithAuthMock(...args),
 }));
 
+vi.mock("@/lib/providers-api", () => ({
+  listProviders: vi.fn(async () => []),
+  listProviderModels: vi.fn(async () => []),
+  refreshProviderModels: vi.fn(async () => []),
+  listAssignments: vi.fn(async () => []),
+  createAssignment: vi.fn(),
+  updateAssignment: vi.fn(),
+}));
+
 vi.mock("../app/dashboard/deepspace/_hooks/useDeepSpaceStream", () => ({
   useDeepSpaceStream: (options: {
     onEvent: (event: Record<string, unknown>) => void;
@@ -126,6 +135,54 @@ describe("DeepSpaceChatClient history sync", () => {
 
     await waitFor(() => {
       expect(startMock).toHaveBeenCalled();
+    });
+  });
+
+  it("reconnects to an active durable run after a page reload without starting a second run", async () => {
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        return {
+          ok: true,
+          json: async () => ({
+            messages: [
+              {
+                id: "user-running-1",
+                role: "user",
+                content: "Search recent reports",
+                created_at: new Date().toISOString(),
+                metadata_json: {},
+              },
+              {
+                id: "assistant-running-1",
+                role: "assistant",
+                content: "",
+                created_at: new Date().toISOString(),
+                metadata_json: {
+                  status: "streaming",
+                  runtime_active: true,
+                  client_request_id: "request-running-1",
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(<DeepSpaceChatClient activeConversationId="conv-1" />);
+
+    await waitFor(() => {
+      expect(startMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          body: expect.objectContaining({
+            conversation_id: "conv-1",
+            client_request_id: "request-running-1",
+            reconnect: true,
+          }),
+        }),
+      );
     });
   });
 

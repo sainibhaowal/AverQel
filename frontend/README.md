@@ -99,6 +99,16 @@ dependencies are complete.
 The browser keeps the detailed local sequence during the automatic post-stream history refresh, so a
 completed answer does not collapse the visible timeline into one combined thinking block.
 
+An in-flight turn is durable: navigating away or refreshing reloads its saved
+assistant message and reconnects with the same request ID. This is a replay
+attachment, not a second model run, so completed timeline entries, tool state,
+checkpoints, and the final answer remain in their original turn order.
+
+The composer selects the enabled chat assignment when one exists. If it does
+not, it selects the enabled provider's `default_chat_model`; discovered model
+metadata takes precedence over a provider fallback. This makes the context
+meter available immediately without requiring the user to reselect the model.
+
 When an agent uses the DeepSpace `write` tool, the note panel also renders the real streamed Markdown
 arguments as an in-editor **AverQel is writing** preview. The preview is not persisted token by token:
 only the validated, tenant-scoped write-tool result replaces or appends the durable note. If a stream

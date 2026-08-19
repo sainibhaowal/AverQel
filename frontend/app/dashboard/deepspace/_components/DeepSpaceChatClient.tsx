@@ -344,11 +344,6 @@ export default function DeepSpaceChatClient({
         const chatAssignment = assignmentsList.find(
           (assignment) => assignment.feature_scope === "chat" && assignment.enabled,
         );
-        if (chatAssignment?.model_name) {
-          setSelectedModelOverride(chatAssignment.model_name);
-          setSelectedProviderOverride(chatAssignment.provider_config_id);
-        }
-
         const chatProviders = providersList.filter((p) => p.enabled && p.supports_chat);
         const allChatModels: Array<{
           providerId: string;
@@ -419,13 +414,43 @@ export default function DeepSpaceChatClient({
               contextWindowSource: "assignment",
             });
           }
-          const merged = new Map(
-            [...allChatModels, ...fallbackModels].map((model) => [
-              `${model.providerId}:${model.modelName}`,
-              model,
-            ]),
+          // Keep authoritative model discovery metadata (especially the
+          // context window) when a provider default describes the same model.
+          // The previous spread order let a null-metadata fallback overwrite
+          // the discovered row and forced the composer to guess its limit.
+          const merged = new Map<
+            string,
+            (typeof allChatModels)[number]
+          >(
+            fallbackModels.map((model) => [`${model.providerId}:${model.modelName}`, model]),
           );
+          for (const model of allChatModels) {
+            merged.set(`${model.providerId}:${model.modelName}`, model);
+          }
           setAvailableModels([...merged.values()]);
+
+          // A provider-level default is a real chat selection even when the
+          // operator has not created a separate feature assignment. Previously
+          // it appeared in the picker but was never selected, leaving a new
+          // conversation without a model name or context-window denominator
+          // until the user selected that same model again. Do not overwrite a
+          // manual selection that happened while this async load was in flight.
+          const preferredModel =
+            chatAssignment?.model_name && chatAssignment.provider_config_id
+              ? {
+                  providerId: chatAssignment.provider_config_id,
+                  modelName: chatAssignment.model_name,
+                }
+              : fallbackModels[0]
+                ? {
+                    providerId: fallbackModels[0].providerId,
+                    modelName: fallbackModels[0].modelName,
+                  }
+                : null;
+          if (preferredModel && modelSelectionVersionRef.current === 0) {
+            setSelectedModelOverride((current) => current ?? preferredModel.modelName);
+            setSelectedProviderOverride((current) => current ?? preferredModel.providerId);
+          }
         }
       } catch (err) {
         console.error("Failed to load models", err);
