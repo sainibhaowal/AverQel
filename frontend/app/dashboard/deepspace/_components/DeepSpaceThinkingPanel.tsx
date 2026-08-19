@@ -65,11 +65,51 @@ function sanitizeDetail(value: unknown, depth = 0): unknown {
   return value;
 }
 
+function humanizeKey(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function readableValue(value: unknown, indent = ""): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (!value.length) return "None";
+    return value
+      .map((item) => {
+        const formatted = readableValue(item, `${indent}  `);
+        return `${indent}• ${formatted.replace(/\n/g, `\n${indent}  `)}`;
+      })
+      .join("\n");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => {
+        const formatted = readableValue(item, `${indent}  `);
+        return `${indent}${humanizeKey(key)}: ${formatted.replace(/\n/g, `\n${indent}`)}`;
+      })
+      .join("\n");
+  }
+  return String(value);
+}
+
 function formatDetail(value: unknown): string | null {
   if (value === undefined || value === null || value === "") return null;
-  if (typeof value === "string") return truncateDetail(String(sanitizeDetail(value)));
+  if (typeof value === "string") {
+    const sanitized = String(sanitizeDetail(value));
+    try {
+      return truncateDetail(readableValue(sanitizeDetail(JSON.parse(sanitized))));
+    } catch {
+      return truncateDetail(sanitized);
+    }
+  }
   try {
-    return truncateDetail(JSON.stringify(sanitizeDetail(value), null, 2));
+    return truncateDetail(readableValue(sanitizeDetail(value)));
   } catch {
     return "[detail unavailable]";
   }
@@ -269,6 +309,7 @@ function TimelineIcon({ step }: { step: TimelineStep }) {
   }
   if (step.status === "failed") return <XCircle size={13} className="text-red-300" />;
   if (step.type === "thinking") return <BrainCircuit size={13} className="text-violet-300" />;
+  if (step.type === "model_message") return <MessageCircleQuestion size={13} className="text-cyan-300" />;
   if (step.type === "plan") return <ListChecks size={13} className="text-violet-300" />;
   if (step.type === "observation") return <Eye size={13} className="text-sky-300" />;
   if (step.type === "testing") return <FlaskConical size={13} className="text-blue-300" />;

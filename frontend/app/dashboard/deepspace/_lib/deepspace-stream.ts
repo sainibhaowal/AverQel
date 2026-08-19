@@ -83,6 +83,7 @@ export interface DeepSpaceStreamEvent {
     | "meta"
     | "start"
     | "thinking"
+    | "model_message"
     | "delta"
     | "replace"
     | "table"
@@ -363,6 +364,7 @@ export interface TimelineStep {
     | "tool_output"
     | "observation"
     | "thinking"
+    | "model_message"
     | "permission"
     | "testing"
     | "error";

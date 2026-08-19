@@ -48,13 +48,26 @@ describe("TimelineStep Model", () => {
     });
     state = deepSpaceThreadReducer(state, {
       type: "stream_event",
+      event: {
+        event: "model_message",
+        data: { text: "I need one more detail first.", turn_index: 1 },
+      },
+    });
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
       event: { event: "replace", data: { content: "" } },
     });
 
     const message = state.messages.find((item) => item.id === assistantId);
     expect(message?.content).toBe("");
     expect(message?.thinkingContent).toBeFalsy();
-    expect(message?.agentSteps).toEqual([]);
+    expect(message?.timeline).toEqual([
+      expect.objectContaining({
+        type: "model_message",
+        title: "Model message",
+        details: "I need one more detail first.",
+      }),
+    ]);
   });
 
   test("keeps an answer visible when a real tool begins", () => {

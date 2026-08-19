@@ -74,6 +74,28 @@ def test_timeline_events_preserve_thinking_tool_thinking_order() -> None:
     assert replay[3]["data"]["text"] == "second thought"
 
 
+def test_timeline_events_preserve_model_messages_between_tool_steps() -> None:
+    events = [
+        SimpleNamespace(
+            sequence=1,
+            event_name="model_message",
+            created_at=datetime(2026, 8, 9, 10, 0, tzinfo=UTC),
+            frame='event: model_message\ndata: {"text":"I am waiting for search results."}\n\n',
+        ),
+        SimpleNamespace(
+            sequence=2,
+            event_name="tool_start",
+            created_at=datetime(2026, 8, 9, 10, 0, 1, tzinfo=UTC),
+            frame='event: tool_start\ndata: {"tool_name":"web_search"}\n\n',
+        ),
+    ]
+
+    replay = timeline_events(events)
+
+    assert [item["event"] for item in replay] == ["model_message", "tool_start"]
+    assert replay[0]["data"]["text"] == "I am waiting for search results."
+
+
 def test_frames_after_filters_replayed_cursor() -> None:
     events = [SimpleNamespace(sequence=1, frame="one"), SimpleNamespace(sequence=3, frame="three")]
 

@@ -97,6 +97,47 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(screen.getByText("Found 13 threads")).toBeInTheDocument();
   });
 
+  it("renders tool payloads as readable labels instead of raw JSON", () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_readable_tool_1",
+            role: "assistant",
+            content: "",
+            rawContent: "",
+            createdAt: new Date().toISOString(),
+            status: "ready",
+            agentSteps: [
+              {
+                id: "tool_readable_1",
+                type: "tool_result",
+                toolName: "web_search",
+                toolInput: { max_results: 5, query: "recent US and Europe news" },
+                toolOutput: JSON.stringify({
+                  count: 2,
+                  results: ["Reuters", "BBC"],
+                }),
+                status: "completed",
+                success: true,
+                startedAt: new Date().toISOString(),
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    const activity = screen.getByTestId("deepspace-activity-step");
+    expect(activity).toHaveTextContent("Max Results: 5");
+    expect(activity).toHaveTextContent("Query: recent US and Europe news");
+    expect(activity).toHaveTextContent("Results:");
+    expect(activity).not.toHaveTextContent('{"count":2');
+  });
+
   it("does not show the provider's transient pending_tool fragment as a duplicate", () => {
     render(
       <DeepSpaceThread

@@ -136,6 +136,7 @@ def frames_after(
 _TIMELINE_EVENT_NAMES = {
     "agent_plan",
     "thinking",
+    "model_message",
     "lane_thinking",
     "lane_agent_thinking",
     "agent_thinking",

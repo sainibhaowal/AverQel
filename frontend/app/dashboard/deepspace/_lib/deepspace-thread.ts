@@ -1190,6 +1190,20 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         details: String(data.text ?? ""),
         durationMs: typeof data.duration_ms === "number" ? data.duration_ms : undefined,
       };
+    case "model_message":
+      return {
+        id: `model_message_${stepId}`,
+        stepId,
+        turnIndex,
+        phase: "thinking",
+        type: "model_message",
+        title: "Model message",
+        status: "completed",
+        startedAt: timestamp,
+        completedAt: timestamp,
+        details: String(data.text ?? ""),
+        data: { kind: "provisional_model_message" },
+      };
     // These legacy server events contain fixed descriptive text, not a model
     // function call or a real tool result. Keep them out of the agent timeline.
     case "agent_status":
@@ -3136,6 +3150,13 @@ function reduceDeepSpaceThread(
           content: normalizeMarkdown(extracted.text),
           structured: (event.data.structured as StructuredAnswerShape | null | undefined) ?? null,
           status: state.isStreaming ? "streaming" : "ready",
+          timeline: nextTimeline,
+          mission: nextMission,
+          compaction: nextCompaction,
+        };
+      } else if (event.event === "model_message") {
+        nextMessages[index] = {
+          ...current,
           timeline: nextTimeline,
           mission: nextMission,
           compaction: nextCompaction,

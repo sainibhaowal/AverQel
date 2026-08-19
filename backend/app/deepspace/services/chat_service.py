@@ -3282,6 +3282,10 @@ class DeepSpaceChatService:
                         del thinking_parts[round_thinking_start:]
                         if connected_tool_recovery_retries < MAX_CONNECTED_TOOL_RECOVERY_RETRIES:
                             connected_tool_recovery_retries += 1
+                            yield sse(
+                                "model_message",
+                                {"text": prose_answer, "turn_index": round_index, "status": "completed"},
+                            )
                             yield sse("replace", {"content": "", "replayed": False})
                             recovery_instruction = (
                                 "Your prior response printed tool-shaped JSON, XML, DSML, or function-call "
@@ -3353,6 +3357,10 @@ class DeepSpaceChatService:
                             # eventual interactive card.
                             del answer_parts[round_answer_start:]
                             del thinking_parts[round_thinking_start:]
+                            yield sse(
+                                "model_message",
+                                {"text": prose_answer, "turn_index": round_index, "status": "completed"},
+                            )
                             yield sse("replace", {"content": "", "replayed": False})
                             conversation_messages.append(
                                 {
@@ -3384,6 +3392,10 @@ class DeepSpaceChatService:
                         }
                         del answer_parts[round_answer_start:]
                         del thinking_parts[round_thinking_start:]
+                        yield sse(
+                            "model_message",
+                            {"text": prose_answer, "turn_index": round_index, "status": "completed"},
+                        )
                         yield sse("replace", {"content": "", "replayed": False})
                         yield sse(
                             "ask_user_question",
