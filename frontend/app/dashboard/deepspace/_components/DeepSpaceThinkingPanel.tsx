@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 import { BrainCircuit } from "lucide-react";
 import {
   CheckCircle2,
@@ -101,10 +101,14 @@ function readableValue(value: unknown, indent = ""): string {
 
 function readablePartialStructuredText(value: string): string | null {
   if (!/^\s*[\[{]/.test(value)) return null;
-  const fields = [...value.matchAll(/"([^"\\]+)"\s*:\s*(?:"([^"\\]*)|([-\d.]+)|(true|false|null))/g)];
+  const fields = [
+    ...value.matchAll(/"([^"\\]+)"\s*:\s*(?:"([^"\\]*)|([-\d.]+)|(true|false|null))/g),
+  ];
   if (!fields.length) return "Collecting tool details…";
   return fields
-    .map((field) => `${humanizeKey(field[1] ?? "Detail")}: ${field[2] ?? field[3] ?? field[4] ?? "—"}`)
+    .map(
+      (field) => `${humanizeKey(field[1] ?? "Detail")}: ${field[2] ?? field[3] ?? field[4] ?? "—"}`,
+    )
     .join("\n");
 }
 
@@ -149,7 +153,9 @@ function timelineDurationMs(timeline: TimelineStep[], now: number): number | nul
     .filter((timestamp) => Number.isFinite(timestamp));
   if (!timestamps.length) return null;
   const startedAt = Math.min(...timestamps);
-  const completedAt = timeline.some((step) => step.status === "running") ? now : Math.max(...timestamps);
+  const completedAt = timeline.some((step) => step.status === "running")
+    ? now
+    : Math.max(...timestamps);
   return Math.max(0, completedAt - startedAt);
 }
 
@@ -299,7 +305,7 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
 
   return (
     <div
-      className="border-b border-white/8 pb-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
+      className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 border-b border-white/8 pb-3 motion-safe:duration-200"
       data-testid="deepspace-activity-step"
     >
       <div className="text-foreground/65 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
@@ -316,9 +322,7 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
       </div>
       {input ? (
         <details className="mt-2 border-t border-white/6 pt-1">
-          <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
-            Input
-          </summary>
+          <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">Input</summary>
           <pre className="text-foreground/60 max-h-48 overflow-auto py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
             {input}
           </pre>
@@ -352,7 +356,8 @@ function TimelineIcon({ step }: { step: TimelineStep }) {
   }
   if (step.status === "failed") return <XCircle size={13} className="text-red-300" />;
   if (step.type === "thinking") return <BrainCircuit size={13} className="text-violet-300" />;
-  if (step.type === "model_message") return <MessageCircleQuestion size={13} className="text-cyan-300" />;
+  if (step.type === "model_message")
+    return <MessageCircleQuestion size={13} className="text-cyan-300" />;
   if (step.type === "plan") return <ListChecks size={13} className="text-violet-300" />;
   if (step.type === "observation") return <Eye size={13} className="text-sky-300" />;
   if (step.type === "testing") return <FlaskConical size={13} className="text-blue-300" />;
@@ -388,7 +393,7 @@ const TimelineEntry = memo(function TimelineEntry({
 
   return (
     <li
-      className="relative pl-7 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
+      className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 relative pl-7 motion-safe:duration-200"
       data-testid="deepspace-timeline-step"
     >
       {!isLast ? (
@@ -433,7 +438,7 @@ const TimelineEntry = memo(function TimelineEntry({
           </div>
         ) : null}
         {inputStream ? (
-          <div className="mt-2 border-l border-cyan-300/25 pl-3 py-1">
+          <div className="mt-2 border-l border-cyan-300/25 py-1 pl-3">
             <div className="mb-1 text-[9px] font-semibold tracking-[0.12em] text-cyan-200/60 uppercase">
               Live tool arguments
             </div>
@@ -459,8 +464,8 @@ const TimelineEntry = memo(function TimelineEntry({
             className="mt-2 border-t border-white/6 pt-1"
           >
             <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
-            <span>{step.status === "running" ? "Live tool output" : "Tool result"}</span>
-            {outputPreview ? <span className="ml-2 normal-case">— {outputPreview}</span> : null}
+              <span>{step.status === "running" ? "Live tool output" : "Tool result"}</span>
+              {outputPreview ? <span className="ml-2 normal-case">— {outputPreview}</span> : null}
             </summary>
             <pre className="text-foreground/60 max-h-56 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
               {output}
@@ -484,6 +489,7 @@ export default function DeepSpaceThinkingPanel({
   timeline?: TimelineStep[];
 }) {
   const [panelOpen, setPanelOpen] = useState(isStreaming);
+  const activityPanelId = `deepspace-activity-${useId().replace(/:/g, "")}`;
   const wasStreaming = useRef(isStreaming);
   const [clock, setClock] = useState(() => Date.now());
 
@@ -538,59 +544,69 @@ export default function DeepSpaceThinkingPanel({
     return null;
   }
   return (
-    <details
-      open={panelOpen}
-      onToggle={(event) => setPanelOpen(event.currentTarget.open)}
-      className="mb-4"
-    >
-      <summary className="text-foreground/50 flex cursor-pointer list-none items-center gap-2 border-b border-white/8 py-2 text-[11px] font-bold tracking-wider uppercase">
+    <div className="mb-4">
+      <button
+        type="button"
+        aria-expanded={panelOpen}
+        aria-controls={activityPanelId}
+        onClick={() => setPanelOpen((open) => !open)}
+        className="text-foreground/50 hover:text-foreground/80 flex w-full cursor-pointer items-center gap-2 border-b border-white/8 py-2 text-left text-[11px] font-bold tracking-wider uppercase transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300/40 focus-visible:outline-none"
+      >
         <BrainCircuit size={13} className="text-primary/60" />
         <span>{isStreaming ? "Thinking & activity…" : "Thinking & activity"}</span>
         {durationLabel ? (
-          <span className="text-foreground/35 ml-auto normal-case tracking-normal">
+          <span className="text-foreground/35 ml-auto tracking-normal normal-case">
             {isStreaming ? `Working for ${durationLabel}` : `Worked for ${durationLabel}`}
           </span>
         ) : null}
-      </summary>
+      </button>
       <div
-        className="text-foreground/60 space-y-3 overscroll-contain py-3 text-xs"
-        data-thinking-activity="true"
+        id={activityPanelId}
+        aria-hidden={!panelOpen}
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${panelOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
       >
-        {taskProgress ? <TaskProgressCard progress={taskProgress} /> : null}
-        {content.trim() && !hasThinkingTimeline ? (
-          <div className="border-b border-white/8 pb-3" data-testid="deepspace-thinking-stream">
-            <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
-              Model thinking
-            </div>
-            <DeepSpaceMarkdownRenderer content={content} streaming={isStreaming} compact />
+        <div className="min-h-0 overflow-hidden">
+          <div
+            className="text-foreground/60 space-y-3 overscroll-contain py-3 text-xs"
+            data-thinking-activity="true"
+          >
+            {taskProgress ? <TaskProgressCard progress={taskProgress} /> : null}
+            {content.trim() && !hasThinkingTimeline ? (
+              <div className="border-b border-white/8 pb-3" data-testid="deepspace-thinking-stream">
+                <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
+                  Model thinking
+                </div>
+                <DeepSpaceMarkdownRenderer content={content} streaming={isStreaming} compact />
+              </div>
+            ) : null}
+            {orderedTimeline.length ? (
+              <ol className="space-y-3" aria-label="Live agent timeline">
+                {orderedTimeline.map((step, index) => (
+                  <TimelineEntry
+                    key={step.id}
+                    step={step}
+                    index={index}
+                    isLast={index === orderedTimeline.length - 1}
+                  />
+                ))}
+              </ol>
+            ) : null}
+            {!orderedTimeline.length && activitySteps.length ? (
+              <div className="space-y-2" aria-label="Tool and agent activity">
+                {activitySteps.map((step) => (
+                  <ActivityStep key={step.id} step={step} />
+                ))}
+              </div>
+            ) : null}
+            {isStreaming &&
+            !content.trim() &&
+            activitySteps.length === 0 &&
+            orderedTimeline.length === 0 ? (
+              <div className="text-foreground/45">Waiting for the model and tools…</div>
+            ) : null}
           </div>
-        ) : null}
-        {orderedTimeline.length ? (
-          <ol className="space-y-3" aria-label="Live agent timeline">
-            {orderedTimeline.map((step, index) => (
-              <TimelineEntry
-                key={step.id}
-                step={step}
-                index={index}
-                isLast={index === orderedTimeline.length - 1}
-              />
-            ))}
-          </ol>
-        ) : null}
-        {!orderedTimeline.length && activitySteps.length ? (
-          <div className="space-y-2" aria-label="Tool and agent activity">
-            {activitySteps.map((step) => (
-              <ActivityStep key={step.id} step={step} />
-            ))}
-          </div>
-        ) : null}
-        {isStreaming &&
-        !content.trim() &&
-        activitySteps.length === 0 &&
-        orderedTimeline.length === 0 ? (
-          <div className="text-foreground/45">Waiting for the model and tools…</div>
-        ) : null}
+        </div>
       </div>
-    </details>
+    </div>
   );
 }
