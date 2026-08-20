@@ -1,9 +1,10 @@
 "use client";
 
-import { memo, useEffect, useId, useRef, useState } from "react";
+import { memo, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { BrainCircuit } from "lucide-react";
 import {
   CheckCircle2,
+  ChevronDown,
   CircleAlert,
   Eye,
   FlaskConical,
@@ -202,6 +203,47 @@ function taskProgressFromTimeline(timeline: TimelineStep[]): TaskProgress | null
   return null;
 }
 
+function AnimatedActivityDetails({
+  label,
+  preview,
+  defaultOpen = false,
+  children,
+}: {
+  label: string;
+  preview?: string | null;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const id = `deepspace-detail-${useId().replace(/:/g, "")}`;
+
+  return (
+    <div className="mt-2 border-t border-white/6 pt-1">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((value) => !value)}
+        className="text-foreground/45 hover:text-foreground/75 flex w-full cursor-pointer items-center gap-1 py-1 text-left text-[10px] transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300/40 focus-visible:outline-none"
+      >
+        <ChevronDown
+          size={12}
+          className={`shrink-0 transition-transform duration-300 ease-out motion-reduce:transition-none ${open ? "rotate-0" : "-rotate-90"}`}
+        />
+        <span>{label}</span>
+        {preview ? <span className="normal-case">— {preview}</span> : null}
+      </button>
+      <div
+        id={id}
+        aria-hidden={!open}
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+      >
+        <div className="min-h-0 overflow-hidden">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 function TaskProgressCard({ progress }: { progress: TaskProgress }) {
   const total = progress.tasks.length;
   const completed = Math.min(Math.max(progress.completed, 0), total);
@@ -288,7 +330,6 @@ function StepIcon({ step }: { step: AgentStep }) {
 }
 
 const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
-  const [outputOpen, setOutputOpen] = useState(step.status === "running");
   const input = formatDetail(step.toolInput ?? step.data?.tool_input);
   const output = formatDetail(
     step.toolOutput ?? step.plan ?? step.data?.message,
@@ -321,27 +362,22 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
         </span>
       </div>
       {input ? (
-        <details className="mt-2 border-t border-white/6 pt-1">
-          <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">Input</summary>
+        <AnimatedActivityDetails label="Input">
           <pre className="text-foreground/60 max-h-48 overflow-auto py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
             {input}
           </pre>
-        </details>
+        </AnimatedActivityDetails>
       ) : null}
       {output ? (
-        <details
-          open={outputOpen}
-          onToggle={(event) => setOutputOpen(event.currentTarget.open)}
-          className="mt-2 border-t border-white/6 pt-1"
+        <AnimatedActivityDetails
+          label="Output / progress"
+          preview={outputPreview}
+          defaultOpen={step.status === "running"}
         >
-          <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
-            <span>Output / progress</span>
-            {outputPreview ? <span className="ml-2 normal-case">— {outputPreview}</span> : null}
-          </summary>
           <pre className="text-foreground/60 max-h-56 overflow-auto py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
             {output}
           </pre>
-        </details>
+        </AnimatedActivityDetails>
       ) : null}
     </div>
   );
@@ -381,9 +417,6 @@ const TimelineEntry = memo(function TimelineEntry({
   index: number;
   isLast: boolean;
 }) {
-  const [outputOpen, setOutputOpen] = useState(
-    step.status === "running" || step.status === "failed",
-  );
   const details = formatDetail(step.details);
   const inputStream = formatDetail(step.toolInputStream);
   const input = formatDetail(step.toolInput);
@@ -448,29 +481,22 @@ const TimelineEntry = memo(function TimelineEntry({
           </div>
         ) : null}
         {input ? (
-          <details className="mt-2 border-t border-white/6 pt-1">
-            <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
-              Request details
-            </summary>
+          <AnimatedActivityDetails label="Request details">
             <pre className="text-foreground/60 max-h-48 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
               {input}
             </pre>
-          </details>
+          </AnimatedActivityDetails>
         ) : null}
         {output ? (
-          <details
-            open={outputOpen}
-            onToggle={(event) => setOutputOpen(event.currentTarget.open)}
-            className="mt-2 border-t border-white/6 pt-1"
+          <AnimatedActivityDetails
+            label={step.status === "running" ? "Live tool output" : "Tool result"}
+            preview={outputPreview}
+            defaultOpen={step.status === "running" || step.status === "failed"}
           >
-            <summary className="text-foreground/45 cursor-pointer py-1 text-[10px]">
-              <span>{step.status === "running" ? "Live tool output" : "Tool result"}</span>
-              {outputPreview ? <span className="ml-2 normal-case">— {outputPreview}</span> : null}
-            </summary>
             <pre className="text-foreground/60 max-h-56 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
               {output}
             </pre>
-          </details>
+          </AnimatedActivityDetails>
         ) : null}
       </div>
     </li>
