@@ -1,5 +1,8 @@
 import { normalizeMarkdown as normalizeQueryMarkdown } from "../app/dashboard/query/_lib/markdown";
-import { normalizeMarkdown as normalizeDeepSpaceMarkdown } from "../app/dashboard/deepspace/_lib/markdown";
+import {
+  normalizeMarkdown as normalizeDeepSpaceMarkdown,
+  normalizeThinkingDisplay,
+} from "../app/dashboard/deepspace/_lib/markdown";
 
 const compactTable =
   "| Non-Ideality | Impact | Mitigation | | :--- | :--- | :--- | | Clock Jitter | Noise floor | PLL | | Capacitor Mismatch | kT/C noise | Larger caps |";
@@ -41,5 +44,14 @@ describe("provider Markdown normalization", () => {
     expect(result).toContain("| Section | What's Inside |");
     expect(result).toContain("| 1 | **PET Scans** | How antimatter is used in hospitals |");
     expect(result).toContain("| 2 | **Theranostics** | Therapy + diagnostics |");
+  });
+
+  it("removes only the provider's thinking-process wrapper", () => {
+    expect(normalizeThinkingDisplay("'s a thinking process:\n\n1. Check the request.")).toBe(
+      "1. Check the request.",
+    );
+    expect(normalizeThinkingDisplay("Here's a thinking process: Check the request.")).toBe(
+      "Check the request.",
+    );
   });
 });

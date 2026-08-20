@@ -7,7 +7,7 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
-import { normalizeMarkdown } from "../_lib/markdown";
+import { normalizeMarkdown, normalizeThinkingDisplay } from "../_lib/markdown";
 import { isMermaidErrorSvg } from "../../query/_lib/mermaid";
 import { sanitizeMermaidSyntax } from "../../query/_components/CodeBlock";
 
@@ -123,9 +123,11 @@ function DiffPreview({ source }: { source: string }) {
 const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
   content,
   streaming = false,
+  compact = false,
 }: {
   content: string;
   streaming?: boolean;
+  compact?: boolean;
 }) {
   const components = useMemo<Components>(
     () => ({
@@ -170,17 +172,25 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
         </div>
       ),
       h1: ({ children }) => (
-        <h1 className="mt-8 mb-4 border-b border-cyan-300/20 pb-3 text-3xl font-bold tracking-tight text-cyan-50">
+        <h1
+          className={`${compact ? "mt-3 mb-2 pb-1 text-lg" : "mt-8 mb-4 pb-3 text-3xl"} border-b border-cyan-300/20 font-bold tracking-tight text-cyan-50`}
+        >
           {children}
         </h1>
       ),
       h2: ({ children }) => (
-        <h2 className="mt-7 mb-3 text-2xl font-semibold tracking-tight text-cyan-100">
+        <h2
+          className={`${compact ? "mt-3 mb-1 text-base" : "mt-7 mb-3 text-2xl"} font-semibold tracking-tight text-cyan-100`}
+        >
           {children}
         </h2>
       ),
       h3: ({ children }) => (
-        <h3 className="text-foreground mt-6 mb-2 text-xl font-semibold">{children}</h3>
+        <h3
+          className={`text-foreground ${compact ? "mt-2 mb-1 text-sm" : "mt-6 mb-2 text-xl"} font-semibold`}
+        >
+          {children}
+        </h3>
       ),
       h4: ({ children }) => (
         <h4 className="text-foreground mt-5 mb-2 text-base font-semibold">{children}</h4>
@@ -201,7 +211,11 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
       td: ({ children }) => (
         <td className="text-foreground/80 border-b border-white/5 px-4 py-3 text-sm">{children}</td>
       ),
-      p: ({ children }) => <p className="text-foreground/90 my-3 leading-8">{children}</p>,
+      p: ({ children }) => (
+        <p className={`text-foreground/90 ${compact ? "my-1 leading-5" : "my-3 leading-8"}`}>
+          {children}
+        </p>
+      ),
       a: ({ href, children }) => (
         <a
           href={href}
@@ -216,10 +230,22 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
       em: ({ children }) => <em className="text-foreground/90">{children}</em>,
       del: ({ children }) => <del className="text-foreground/50">{children}</del>,
       hr: () => <hr className="my-7 border-white/10" />,
-      ul: ({ children }) => <ul className="my-2 list-disc space-y-2 pl-5">{children}</ul>,
-      ol: ({ children }) => <ol className="my-2 list-decimal space-y-2 pl-5">{children}</ol>,
+      ul: ({ children }) => (
+        <ul className={`${compact ? "my-1 space-y-0.5" : "my-2 space-y-2"} list-disc pl-5`}>
+          {children}
+        </ul>
+      ),
+      ol: ({ children }) => (
+        <ol className={`${compact ? "my-1 space-y-0.5" : "my-2 space-y-2"} list-decimal pl-5`}>
+          {children}
+        </ol>
+      ),
       li: ({ children }) => (
-        <li className="text-foreground/85 pl-1 marker:text-cyan-300">{children}</li>
+        <li
+          className={`text-foreground/85 ${compact ? "leading-5" : ""} pl-1 marker:text-cyan-300`}
+        >
+          {children}
+        </li>
       ),
       input: ({ checked, ...props }) =>
         typeof checked === "boolean" ? (
@@ -248,7 +274,7 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
         />
       ),
     }),
-    [streaming],
+    [compact, streaming],
   );
   // Stream events are already batched once per animation frame by
   // useDeepSpaceStream. Deferring a second time here caused each new delta to
@@ -256,11 +282,14 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
   // onscreen until the provider paused or completed. Render the current live
   // value directly so Markdown structure appears as soon as its marker is
   // complete.
-  const normalizedContent = useMemo(() => normalizeMarkdown(content), [content]);
+  const normalizedContent = useMemo(
+    () => normalizeMarkdown(compact ? normalizeThinkingDisplay(content) : content),
+    [compact, content],
+  );
 
   return (
     <div
-      className={`text-foreground/90 prose prose-invert my-3 max-w-none leading-8 break-words ${streaming ? "is-streaming" : ""}`}
+      className={`text-foreground/90 prose prose-invert my-3 max-w-none break-words ${compact ? "text-xs leading-5" : "leading-8"} ${streaming ? "is-streaming" : ""}`}
       aria-live={streaming ? "polite" : undefined}
     >
       <ReactMarkdown

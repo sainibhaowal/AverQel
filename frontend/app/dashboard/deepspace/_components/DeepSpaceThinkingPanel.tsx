@@ -422,6 +422,7 @@ const TimelineEntry = memo(function TimelineEntry({
               <DeepSpaceMarkdownRenderer
                 content={details}
                 streaming={step.status === "running"}
+                compact
               />
             ) : (
               details
@@ -558,7 +559,7 @@ export default function DeepSpaceThinkingPanel({
             <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
               Model thinking
             </div>
-            <DeepSpaceMarkdownRenderer content={content} streaming={isStreaming} />
+            <DeepSpaceMarkdownRenderer content={content} streaming={isStreaming} compact />
           </div>
         ) : null}
         {orderedTimeline.length ? (

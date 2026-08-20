@@ -10,6 +10,19 @@ export function normalizeMarkdown(content: string): string {
     .trim();
 }
 
+/**
+ * Providers sometimes prefix visible reasoning with a conversational wrapper
+ * such as "Here's a thinking process:". A truncated stream can leave only
+ * "'s a thinking process:". It is presentation noise, not part of the
+ * reasoning, so remove only that exact leading wrapper from the activity view.
+ */
+export function normalizeThinkingDisplay(content: string): string {
+  return content.replace(
+    /^\s*(?:(?:here(?:['’]s|\s+is)?|this\s+is|that\s+is)|['’]s)\s+(?:a\s+)?thinking\s+process\s*:\s*/i,
+    "",
+  );
+}
+
 function normalizeMarkdownText(content: string): string {
   const rawLines = content
     .replace(/<br\s*\/?\s*>/gi, "\n")
