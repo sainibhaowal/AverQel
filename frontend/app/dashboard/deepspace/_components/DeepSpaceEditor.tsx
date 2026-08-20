@@ -5,6 +5,7 @@ import {
   SuggestionMenuController,
   getDefaultReactSlashMenuItems,
 } from "@blocknote/react";
+import { Link } from "@tiptap/extension-link";
 import { BlockNoteView, darkDefaultTheme, lightDefaultTheme } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
 import { forwardRef, useImperativeHandle, useEffect, useRef, useState } from "react";
@@ -139,6 +140,12 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
     void chatVisible;
     const editor = useCreateBlockNote({
       schema,
+      // Keep BlockNote links/autolinking, but avoid its duplicate custom
+      // protocol registration after linkifyjs has already initialized.
+      disableExtensions: ["link"],
+      _tiptapOptions: {
+        extensions: [Link.configure({ protocols: [] })],
+      },
     });
     const loadedConversationIdRef = useRef<string | undefined>(undefined);
 
