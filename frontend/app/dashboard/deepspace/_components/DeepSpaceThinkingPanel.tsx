@@ -299,7 +299,7 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
 
   return (
     <div
-      className="border-b border-white/8 pb-3"
+      className="border-b border-white/8 pb-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
       data-testid="deepspace-activity-step"
     >
       <div className="text-foreground/65 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
@@ -387,7 +387,10 @@ const TimelineEntry = memo(function TimelineEntry({
   const toolName = step.toolName?.trim();
 
   return (
-    <li className="relative pl-7" data-testid="deepspace-timeline-step">
+    <li
+      className="relative pl-7 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
+      data-testid="deepspace-timeline-step"
+    >
       {!isLast ? (
         <span className="absolute top-0 bottom-[-0.75rem] left-[0.4rem] w-px bg-white/8" />
       ) : null}
@@ -418,7 +421,7 @@ const TimelineEntry = memo(function TimelineEntry({
             }`}
             data-thinking-scroll={step.type === "thinking" ? "true" : undefined}
           >
-            {step.type === "thinking" ? (
+            {step.type === "thinking" || step.type === "model_message" ? (
               <DeepSpaceMarkdownRenderer
                 content={details}
                 streaming={step.status === "running"}

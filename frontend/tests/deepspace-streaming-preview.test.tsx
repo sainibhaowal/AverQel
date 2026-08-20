@@ -332,6 +332,48 @@ describe("DeepSpaceThread streaming preview", () => {
       expect.objectContaining({
         content: "## Plan\n\n- Inspect the source\n- Summarize the result",
         streaming: true,
+        compact: true,
+      }),
+    );
+  });
+
+  it("renders model activity messages as Markdown in the timeline", () => {
+    markdownRendererMock.mockClear();
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_model_message_1",
+            role: "assistant",
+            content: "Final answer",
+            rawContent: "Final answer",
+            createdAt: new Date().toISOString(),
+            status: "ready",
+            timeline: [
+              {
+                id: "model_message_1",
+                stepId: "model_message_1",
+                turnIndex: 1,
+                phase: "thinking",
+                type: "model_message",
+                title: "Model message",
+                status: "completed",
+                startedAt: new Date().toISOString(),
+                details: "## Gmail status\n\n- Connection needs attention",
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(markdownRendererMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: "## Gmail status\n\n- Connection needs attention",
+        compact: true,
       }),
     );
   });
