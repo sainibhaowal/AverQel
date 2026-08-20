@@ -747,6 +747,45 @@ def test_simple_greetings_do_not_resume_saved_work() -> None:
     assert not DeepSpaceChatService._is_non_work_greeting("Hi, continue the saved task")
 
 
+def test_unrelated_current_request_does_not_resume_saved_task_plan() -> None:
+    task_check = {
+        "task_count": 2,
+        "complete": False,
+        "tasks": [
+            {"id": "task-1", "content": "Search current AI news", "status": "pending"},
+            {"id": "task-2", "content": "Write the research summary", "status": "pending"},
+        ],
+    }
+
+    assert not DeepSpaceChatService._should_resume_task_plan("check my GitHub", task_check)
+    assert not DeepSpaceChatService._should_resume_task_plan("hi", task_check)
+
+
+def test_explicit_or_matching_follow_up_resumes_saved_task_plan() -> None:
+    task_check = {
+        "task_count": 1,
+        "complete": False,
+        "tasks": [
+            {"id": "task-1", "content": "Search current AI news", "status": "pending"},
+        ],
+    }
+
+    assert DeepSpaceChatService._should_resume_task_plan("continue the saved task", task_check)
+    assert DeepSpaceChatService._should_resume_task_plan("search current AI news", task_check)
+
+
+def test_connected_service_failure_message_names_the_actual_service() -> None:
+    bindings = {
+        "github_search": SimpleNamespace(server=SimpleNamespace(name="GitHub")),
+    }
+
+    message = DeepSpaceChatService._connected_service_failure_message(bindings)
+
+    assert "GitHub" in message
+    assert "Gmail" not in message
+    assert "No GitHub action was performed." in message
+
+
 def test_tool_arguments_recover_json_wrapped_by_provider_fence() -> None:
     parsed = DeepSpaceChatService._parse_tool_arguments(
         {

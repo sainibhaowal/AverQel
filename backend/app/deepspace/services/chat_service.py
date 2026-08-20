@@ -93,6 +93,9 @@ MCP connected services
 - For actions that create, modify, label, send, delete, revoke, publish, or affect external people or systems, respect the runtime approval requirement exactly.
 - Never bypass, weaken, infer, or fabricate approval, identity, tenant, account, scope, recipient, or intent.
 - Before reporting an MCP action as complete, wait for and use the returned tool result.
+- For a vague connected-service request, do not invent a repository, folder, message, or
+  resource name. Use a safe account/profile/list operation when one is clearly available,
+  or ask the user which resource they mean.
 - If an MCP call fails, state that it failed safely, do not repeat unsafe calls blindly, and distinguish connection, authorization, validation, timeout, and provider errors when the result makes that clear.
 - Do not expose sensitive retrieved content beyond what is needed for the user’s request.
 
@@ -554,6 +557,84 @@ class DeepSpaceChatService:
             "thanks",
             "thank you",
         }
+
+    @classmethod
+    def _should_resume_task_plan(cls, prompt: str, task_check: dict[str, Any]) -> bool:
+        """Resume a saved plan only when the current message clearly continues it.
+
+        A persisted task list is workspace state, not an instruction to run that
+        task on every later message.  Explicit continuation language wins; a
+        small amount of meaningful overlap supports natural follow-ups while
+        keeping unrelated service requests independent.
+        """
+
+        if not task_check.get("task_count") or task_check.get("complete"):
+            return False
+        if cls._is_non_work_greeting(prompt):
+            return False
+        normalized = " ".join(prompt.casefold().split())
+        if re.search(
+            r"\b(?:continue|resume|carry on|pick up|keep working|finish|complete|proceed with)\b.*\b(?:task|plan|work|that|this)\b"
+            r"|\b(?:next task|remaining tasks?|unfinished task|saved task|same task|previous task)\b",
+            normalized,
+        ):
+            return True
+
+        stop_words = {
+            "about",
+            "after",
+            "again",
+            "also",
+            "and",
+            "check",
+            "do",
+            "for",
+            "from",
+            "give",
+            "into",
+            "make",
+            "please",
+            "read",
+            "save",
+            "the",
+            "this",
+            "with",
+        }
+        prompt_terms = {
+            term
+            for term in re.findall(r"[a-z0-9]{4,}", normalized)
+            if term not in stop_words
+        }
+        task_terms: set[str] = set()
+        for task in task_check.get("tasks") or []:
+            if not isinstance(task, dict) or task.get("status") == "completed":
+                continue
+            task_text = " ".join(
+                str(task.get(field) or "") for field in ("content", "active_form")
+            ).casefold()
+            task_terms.update(
+                term
+                for term in re.findall(r"[a-z0-9]{4,}", task_text)
+                if term not in stop_words
+            )
+        return len(prompt_terms.intersection(task_terms)) >= 2
+
+    @staticmethod
+    def _connected_service_failure_message(
+        mcp_bindings: dict[str, DeepSpaceMCPTool],
+    ) -> str:
+        service_names = sorted(
+            {
+                binding.server.name
+                for binding in mcp_bindings.values()
+                if getattr(binding, "server", None) is not None
+            }
+        )
+        service_label = ", ".join(service_names) or "the connected service"
+        return (
+            f"DeepSpace could not obtain a real structured call for {service_label}. "
+            f"No {service_label} action was performed."
+        )
 
     @staticmethod
     def _is_native_media_model(model_name: str) -> bool:
@@ -2555,16 +2636,17 @@ class DeepSpaceChatService:
         # The model—not keyword matching—decides whether a new request merits
         # planning, direct answer, research, observation, or a question.
         defer_task_for_greeting = self._is_non_work_greeting(prompt)
+        resume_saved_task = self._should_resume_task_plan(prompt, initial_task_check)
         managed_task_run = (
             provider_supports_tools
             and not native_media_model
-            and bool(initial_task_check.get("task_count"))
-            and not defer_task_for_greeting
+            and resume_saved_task
         )
         task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(initial_task_check)
         task_has_work_evidence = False
         task_lifecycle_prompt_retries = 0
         connected_tool_recovery_retries = 0
+        connected_service_action_completed = False
 
         conversation_messages: list[dict[str, Any]] = [
             {
@@ -3313,7 +3395,9 @@ class DeepSpaceChatService:
                     fake_tool_output = self._looks_like_fake_tool_output(
                         f"{prose_answer}\n{round_thinking}"
                     )
-                    if fake_tool_output or connected_service_tool_required:
+                    if fake_tool_output or (
+                        connected_service_tool_required and not connected_service_action_completed
+                    ):
                         del answer_parts[round_answer_start:]
                         del thinking_parts[round_thinking_start:]
                         if connected_tool_recovery_retries < MAX_CONNECTED_TOOL_RECOVERY_RETRIES:
@@ -3342,12 +3426,9 @@ class DeepSpaceChatService:
                                 }
                             )
                             continue
-                        if connected_service_tool_required:
+                        if connected_service_tool_required and not connected_service_action_completed:
                             terminal_status = "blocked"
-                            forced_answer = (
-                                "DeepSpace could not obtain a real structured call for the connected service. "
-                                "No Gmail or external-service action was performed."
-                            )
+                            forced_answer = self._connected_service_failure_message(mcp_bindings)
                             break
                         if fake_tool_output:
                             terminal_status = "blocked"
@@ -3812,6 +3893,12 @@ class DeepSpaceChatService:
                     raw_tool_payload = result.get("payload")
                     tool_payload = raw_tool_payload if isinstance(raw_tool_payload, dict) else {}
                     if success:
+                        if mcp_bindings.get(tool_name) is not None:
+                            # A successful MCP result satisfies the connected
+                            # service requirement for this turn. The model may
+                            # now provide a normal final answer without being
+                            # forced through another structured-call retry.
+                            connected_service_action_completed = True
                         if tool_name == "write" and item["arguments"].get("target") == "memory":
                             memory_written_this_turn = True
                         raw_image = tool_payload.get("_image_base64")
