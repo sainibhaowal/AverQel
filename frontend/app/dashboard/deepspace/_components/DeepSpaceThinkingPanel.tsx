@@ -555,9 +555,6 @@ export default function DeepSpaceThinkingPanel({
   // not private model text, so do not hide the persisted thinking content just
   // because a tool timeline is present.  During live streaming, thinking is
   // represented as a timeline entry; avoid rendering it twice in that case.
-  const hasThinkingTimeline = orderedTimeline.some(
-    (step) => step.type === "thinking" && Boolean(step.details?.trim()),
-  );
   const taskProgress = taskProgressFromTimeline(orderedTimeline);
   const elapsedMs = timelineDurationMs(orderedTimeline, clock);
   const durationLabel = elapsedMs === null ? null : formatElapsed(elapsedMs);
@@ -597,7 +594,14 @@ export default function DeepSpaceThinkingPanel({
             data-thinking-activity="true"
           >
             {taskProgress ? <TaskProgressCard progress={taskProgress} /> : null}
-            {content.trim() && !hasThinkingTimeline ? (
+            {/*
+              `content` is a legacy, message-wide thinking fallback. Once a
+              durable timeline exists, rendering it above the timeline makes
+              reloads look like all thought was merged into one block. The
+              ordered timeline is authoritative whenever present; retain the
+              fallback only for older messages that have no timeline at all.
+            */}
+            {content.trim() && !orderedTimeline.length ? (
               <div className="border-b border-white/8 pb-3" data-testid="deepspace-thinking-stream">
                 <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
                   Model thinking

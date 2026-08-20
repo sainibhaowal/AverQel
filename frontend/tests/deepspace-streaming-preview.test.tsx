@@ -97,6 +97,47 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(screen.getByText("Found 13 threads")).toBeInTheDocument();
   });
 
+  it("does not render legacy aggregate thinking above a rehydrated timeline", () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_rehydrated_timeline_1",
+            role: "assistant",
+            content: "The weather result is ready.",
+            rawContent: "The weather result is ready.",
+            thinkingContent: "Old aggregate thought that must not appear above the timeline.",
+            createdAt: new Date().toISOString(),
+            status: "ready",
+            timeline: [
+              {
+                id: "timeline_tool_1",
+                stepId: "timeline_tool_1",
+                turnIndex: 0,
+                phase: "exploring",
+                type: "tool_output",
+                title: "Weather search",
+                status: "completed",
+                startedAt: new Date().toISOString(),
+                completedAt: new Date().toISOString(),
+                toolName: "web_search",
+                toolOutput: "Weather result received.",
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(
+      screen.queryByText("Old aggregate thought that must not appear above the timeline."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Weather search")).toBeInTheDocument();
+  });
+
   it("renders tool payloads as readable labels instead of raw JSON", () => {
     render(
       <DeepSpaceThread
