@@ -346,7 +346,7 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
 
   return (
     <div
-      className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 border-b border-white/8 pb-3 motion-safe:duration-200"
+      className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 border-b border-white/8 pb-3 motion-safe:duration-300 motion-safe:ease-out"
       data-testid="deepspace-activity-step"
     >
       <div className="text-foreground/65 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
@@ -426,7 +426,7 @@ const TimelineEntry = memo(function TimelineEntry({
 
   return (
     <li
-      className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 relative pl-7 motion-safe:duration-200"
+      className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 relative pl-7 motion-safe:duration-300 motion-safe:ease-out"
       data-testid="deepspace-timeline-step"
     >
       {!isLast ? (
@@ -570,7 +570,7 @@ export default function DeepSpaceThinkingPanel({
     return null;
   }
   return (
-    <div className="mb-4">
+    <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:ease-out mb-4">
       <button
         type="button"
         aria-expanded={panelOpen}
