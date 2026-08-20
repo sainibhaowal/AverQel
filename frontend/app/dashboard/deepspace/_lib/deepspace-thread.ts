@@ -2209,6 +2209,44 @@ export function findPendingUserQuestion(
   return null;
 }
 
+/** Prevent a pending clarification from capturing an unrelated new request. */
+export function shouldResumePendingUserQuestion(
+  messages: DeepSpaceMessage[],
+  prompt: string,
+): boolean {
+  const pending = findPendingUserQuestion(messages);
+  if (!pending) return false;
+  const normalizedPrompt = prompt.trim().toLowerCase();
+  if (/^(?:hi|hello|hey)(?:\s+there)?[!.]?$/.test(normalizedPrompt)) return false;
+
+  const serviceFromText = (value: string): string | null => {
+    const normalized = value.toLowerCase();
+    if (/\bgit\s*hub\b|\bgithub\b/.test(normalized)) return "github";
+    if (/\bgmail\b|\bgoogle\s+mail\b|\binbox\b|\bdrafts?\b|\bsent\s+box\b/.test(normalized)) {
+      return "gmail";
+    }
+    if (/\bgoogle\s+drive\b|\bmy\s+drive\b/.test(normalized)) return "drive";
+    if (/\bgoogle\s+calendar\b|\bmy\s+calendar\b/.test(normalized)) return "calendar";
+    if (/\bslack\b/.test(normalized)) return "slack";
+    return null;
+  };
+
+  const pendingMessage = messages.find((message) => message.id === pending.messageId);
+  const pendingQuestion = pendingMessage?.agentSteps
+    ?.slice()
+    .reverse()
+    .find(
+      (step) =>
+        step.type === "ask_user_question" &&
+        String(step.data?.question_id ?? "").trim() === pending.questionId,
+    );
+  const pendingService = serviceFromText(
+    String(pendingQuestion?.data?.message ?? pendingQuestion?.data?.question ?? ""),
+  );
+  const requestedService = serviceFromText(normalizedPrompt);
+  return !(pendingService && requestedService && pendingService !== requestedService);
+}
+
 function rehydrateMetricsFromHistory(
   metadata: Record<string, unknown>,
   createdAt: string,

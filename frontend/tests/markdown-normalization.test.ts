@@ -54,4 +54,13 @@ describe("provider Markdown normalization", () => {
       "Check the request.",
     );
   });
+
+  it("splits compact numbered citation sources into readable bullets", () => {
+    const result = normalizeDeepSpaceMarkdown(
+      "[1] [First source](https://example.com/1) [2] [Second source](https://example.com/2)",
+    );
+
+    expect(result).toContain("- [1] [First source](https://example.com/1)");
+    expect(result).toContain("- [2] [Second source](https://example.com/2)");
+  });
 });

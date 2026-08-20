@@ -1,5 +1,6 @@
 import {
   findPendingUserQuestion,
+  shouldResumePendingUserQuestion,
   deepSpaceThreadReducer,
   initialDeepSpaceThreadState,
 } from "../app/dashboard/deepspace/_lib/deepspace-thread";
@@ -402,6 +403,8 @@ describe("TimelineStep Model", () => {
       messageId: assistantId,
       questionId: "question-1",
     });
+    expect(shouldResumePendingUserQuestion(state.messages, "hi")).toBe(false);
+    expect(shouldResumePendingUserQuestion(state.messages, "Markdown")).toBe(true);
 
     state = deepSpaceThreadReducer(state, {
       type: "resume_user_question",

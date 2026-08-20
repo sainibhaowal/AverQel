@@ -23,6 +23,7 @@ import {
 import { useDeepSpaceStream } from "../_hooks/useDeepSpaceStream";
 import {
   findPendingUserQuestion,
+  shouldResumePendingUserQuestion,
   initialDeepSpaceThreadState,
   deepSpaceThreadReducer,
 } from "../_lib/deepspace-thread";
@@ -824,7 +825,9 @@ export default function DeepSpaceChatClient({
   const submitQuery = useCallback(
     async (nextQuery?: string) => {
       const effectiveQuery = (nextQuery ?? query).trim();
-      const pendingUserQuestion = findPendingUserQuestion(state.messages);
+      const pendingUserQuestion = shouldResumePendingUserQuestion(state.messages, effectiveQuery)
+        ? findPendingUserQuestion(state.messages)
+        : null;
       const answeringUserQuestion = Boolean(pendingUserQuestion);
       if (
         !effectiveQuery ||

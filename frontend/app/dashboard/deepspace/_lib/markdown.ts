@@ -32,6 +32,8 @@ function normalizeMarkdownText(content: string): string {
   // pair. Keep a fully recoverable compact table intact so its existing
   // column-aware recovery remains authoritative.
   const lines = rawLines.flatMap((line) => {
+    const repairedCitations = repairCompactCitationLine(line);
+    if (repairedCitations.length > 1) return repairedCitations;
     const repairedListLine = repairCompactOrderedListLine(line);
     if (repairedListLine.length > 1) return repairedListLine;
     if (!line.trim().startsWith("|") || recoverCompactTable(line)) return [line];
@@ -109,6 +111,15 @@ function normalizeMarkdownText(content: string): string {
   }
 
   return repairOrderedListNumbers(normalizedLines).join("\n");
+}
+
+function repairCompactCitationLine(line: string): string[] {
+  const markers = line.match(/\[\d+\](?=\s)/g) ?? [];
+  if (markers.length < 2 || !/^\s*\[1\]\s+/.test(line)) return [line];
+  return line
+    .replace(/\s+(?=\[\d+\]\s)/g, "\n")
+    .split("\n")
+    .map((entry) => (entry.trim() ? `- ${entry.trim()}` : entry));
 }
 
 function repairCompactOrderedListLine(line: string): string[] {
