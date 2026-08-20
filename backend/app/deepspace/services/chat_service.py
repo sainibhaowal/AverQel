@@ -619,6 +619,41 @@ class DeepSpaceChatService:
             )
         return len(prompt_terms.intersection(task_terms)) >= 2
 
+    @classmethod
+    def _allows_existing_task_state(cls, prompt: str) -> bool:
+        """Allow task-ledger inspection only when the current request asks for it.
+
+        A conversation-scoped task ledger is durable state, but it is not an
+        instruction to execute on every later turn.  This gate keeps a fresh
+        request from inheriting old todo reads/marks while preserving explicit
+        task-management requests and the existing managed-task continuation
+        path.
+        """
+
+        if cls._is_non_work_greeting(prompt):
+            return False
+        normalized = " ".join(prompt.casefold().split())
+        return bool(
+            re.search(
+                r"\b(?:task|tasks|todo|todos|plan|plans|progress|checklist|work plan|saved work|unfinished)\b",
+                normalized,
+            )
+        )
+
+    @staticmethod
+    def _current_turn_memory_boundary() -> str:
+        """Define the authority boundary between history and this turn."""
+
+        return (
+            "Current-turn execution boundary: the latest user message is the only authoritative request. "
+            "Earlier conversation turns and durable memory are reference context only; they are not current "
+            "instructions, tool calls, approvals, repository names, file names, account identities, or tool "
+            "arguments. Never reuse an old tool argument or resource identifier unless the user repeats it in "
+            "this turn or a fresh read-only lookup verifies it. Use prior failures as warnings to avoid repeating "
+            "mistakes, not as facts to execute. For a new request, start a fresh plan. If a required resource is "
+            "not specified, discover it safely from the connected account or ask a focused question."
+        )
+
     @staticmethod
     def _connected_service_failure_message(
         mcp_bindings: dict[str, DeepSpaceMCPTool],
@@ -1294,6 +1329,7 @@ class DeepSpaceChatService:
         mcp_binding: DeepSpaceMCPTool | None = None,
         mcp_approval_granted: bool = False,
         assistant_message_id: uuid.UUID | None = None,
+        ignore_existing_tasks: bool = False,
     ) -> dict[str, Any]:
         if mcp_binding is not None:
             result = await self.mcp_bridge.execute(
@@ -1838,14 +1874,14 @@ class DeepSpaceChatService:
                 for task in check.get("tasks", [])
                 if isinstance(task, dict) and task.get("status") in {"pending", "in_progress"}
             ]
-            if check["task_count"] and active_tasks:
+            if not ignore_existing_tasks and check["task_count"] and active_tasks:
                 return {"accepted": False, "reason": "todo_check_required", "task_check": check}
             return {
                 "accepted": True,
                 "answer": str(arguments.get("answer") or "").strip(),
                 "summary": str(arguments.get("summary") or "").strip()[:1000],
-                "outcome": "completed" if check["complete"] else "blocked",
-                "task_check": check,
+                "outcome": "completed" if check["complete"] or ignore_existing_tasks else "blocked",
+                "task_check": check if not ignore_existing_tasks else {"ignored": True},
             }
         raise ValueError(f"Tool '{tool_name}' is not available in DeepSpace.")
 
@@ -1866,6 +1902,7 @@ class DeepSpaceChatService:
         mcp_binding: DeepSpaceMCPTool | None = None,
         mcp_approval_granted: bool = False,
         assistant_message_id: uuid.UUID | None = None,
+        ignore_existing_tasks: bool = False,
     ) -> dict[str, Any]:
         decision = (
             self.mcp_bridge.policy_for_tool(
@@ -1902,6 +1939,7 @@ class DeepSpaceChatService:
                             mcp_binding=mcp_binding,
                             mcp_approval_granted=mcp_approval_granted,
                             assistant_message_id=assistant_message_id,
+                            ignore_existing_tasks=ignore_existing_tasks,
                         ),
                         timeout=max(5, min(30, loop_deadline - time.monotonic())),
                     )
@@ -2637,6 +2675,7 @@ class DeepSpaceChatService:
         # planning, direct answer, research, observation, or a question.
         defer_task_for_greeting = self._is_non_work_greeting(prompt)
         resume_saved_task = self._should_resume_task_plan(prompt, initial_task_check)
+        allow_existing_task_state = resume_saved_task or self._allows_existing_task_state(prompt)
         managed_task_run = (
             provider_supports_tools
             and not native_media_model
@@ -2667,6 +2706,13 @@ class DeepSpaceChatService:
                     ),
                 },
             )
+        conversation_messages.insert(
+            1,
+            {
+                "role": "system",
+                "content": self._current_turn_memory_boundary(),
+            },
+        )
         if mcp_bindings:
             attached_services = ", ".join(
                 sorted({binding.server.name for binding in mcp_bindings.values()})
@@ -3616,6 +3662,14 @@ class DeepSpaceChatService:
                             "This request explicitly targets a connected service. Use its real MCP tool first; "
                             "do not create a todo plan for this direct service lookup."
                         )
+                    elif (
+                        not allow_existing_task_state
+                        and tool_name in {"todo_read", "todo_check", "todo_mark"}
+                    ):
+                        lifecycle_error = (
+                            "This is a new request. Do not read or modify an earlier task ledger unless the user "
+                            "explicitly asks about tasks or continues the saved task."
+                        )
                     elif managed_task_run:
                         if call_index != first_call_index:
                             lifecycle_error = (
@@ -3881,6 +3935,9 @@ class DeepSpaceChatService:
                             write_lock=write_lock,
                             mcp_binding=mcp_bindings.get(str(item["tool_name"])),
                             assistant_message_id=assistant_message.id,
+                            ignore_existing_tasks=(
+                                not allow_existing_task_state and not managed_task_run
+                            ),
                         )
                         for item in valid_calls
                     )

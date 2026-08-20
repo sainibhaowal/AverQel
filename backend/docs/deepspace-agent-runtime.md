@@ -69,6 +69,18 @@ access through this bridge.
 
 ## Durability and safety
 
+### Current-turn memory boundary
+
+Persisted conversation history and approved durable memory are reference
+context, not executable instructions. The latest user message is authoritative
+for the current turn. DeepSpace does not reuse historical MCP arguments,
+repository names, file names, account identities, approvals, or task IDs
+unless the user repeats them in the current request or a fresh read-only
+lookup verifies them. Previous failures may guide recovery, but are not treated
+as current facts. An unfinished task ledger is resumed only by an explicit or
+clearly matching continuation; unrelated requests cannot read or modify that
+old task state or be blocked by it.
+
 `DeepSpaceRuntimeStore` persists each run in `deepspace_agent_runs` and retains
 up to 10,000 bounded step records per run in `deepspace_agent_steps`. Retained
 steps are audit/checkpoint data and are not blindly injected into the model

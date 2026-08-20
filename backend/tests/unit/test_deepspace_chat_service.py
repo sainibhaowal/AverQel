@@ -761,6 +761,21 @@ def test_unrelated_current_request_does_not_resume_saved_task_plan() -> None:
     assert not DeepSpaceChatService._should_resume_task_plan("hi", task_check)
 
 
+def test_fresh_service_request_cannot_use_existing_task_ledger() -> None:
+    assert not DeepSpaceChatService._allows_existing_task_state("check the GitHub")
+    assert not DeepSpaceChatService._allows_existing_task_state("hi")
+    assert DeepSpaceChatService._allows_existing_task_state("show my unfinished tasks")
+    assert DeepSpaceChatService._allows_existing_task_state("continue the saved task")
+
+
+def test_current_turn_memory_boundary_makes_history_reference_only() -> None:
+    boundary = DeepSpaceChatService._current_turn_memory_boundary()
+
+    assert "latest user message is the only authoritative request" in boundary
+    assert "Never reuse an old tool argument" in boundary
+    assert "fresh read-only lookup verifies it" in boundary
+
+
 def test_explicit_or_matching_follow_up_resumes_saved_task_plan() -> None:
     task_check = {
         "task_count": 1,
