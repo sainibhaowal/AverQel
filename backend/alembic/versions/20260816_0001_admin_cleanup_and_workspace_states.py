@@ -49,11 +49,15 @@ def upgrade() -> None:
     )
     op.create_index("ix_storage_cleanup_jobs_tenant_id", "storage_cleanup_jobs", ["tenant_id"])
     op.create_index(
-        "ix_storage_cleanup_jobs_owner_user_id", "storage_cleanup_jobs", ["owner_user_id"]
+        "ix_storage_cleanup_jobs_owner_user_id",
+        "storage_cleanup_jobs",
+        ["owner_user_id"],
     )
     op.create_index("ix_storage_cleanup_jobs_status", "storage_cleanup_jobs", ["status"])
     op.create_index(
-        "ix_storage_cleanup_jobs_next_attempt_at", "storage_cleanup_jobs", ["next_attempt_at"]
+        "ix_storage_cleanup_jobs_next_attempt_at",
+        "storage_cleanup_jobs",
+        ["next_attempt_at"],
     )
     op.execute("ALTER TABLE storage_cleanup_jobs ENABLE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE storage_cleanup_jobs FORCE ROW LEVEL SECURITY")

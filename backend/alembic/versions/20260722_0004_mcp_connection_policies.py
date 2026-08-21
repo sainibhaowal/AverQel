@@ -36,16 +36,32 @@ def upgrade() -> None:
         "mcp_connection_policies",
         sa.Column("id", uuid, primary_key=True),
         sa.Column(
-            "tenant_id", uuid, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+            "tenant_id",
+            uuid,
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
         ),
-        sa.Column("user_id", uuid, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column(
-            "server_id", uuid, sa.ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False
+            "user_id",
+            uuid,
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "server_id",
+            uuid,
+            sa.ForeignKey("mcp_servers.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("allowed_tools", jsonb, nullable=False, server_default=_jsonb_default("[]")),
         sa.Column("denied_tools", jsonb, nullable=False, server_default=_jsonb_default("[]")),
         sa.Column("read_only", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("risk_ceiling", sa.String(32), nullable=False, server_default=sa.text("'read'")),
+        sa.Column(
+            "risk_ceiling",
+            sa.String(32),
+            nullable=False,
+            server_default=sa.text("'read'"),
+        ),
         sa.Column(
             "approval_rules",
             jsonb,
@@ -55,12 +71,23 @@ def upgrade() -> None:
             ),
         ),
         sa.Column("tool_modes", jsonb, nullable=False, server_default=_jsonb_default("{}")),
-        sa.Column("default_enabled", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column(
-            "deepspace_overrides", jsonb, nullable=False, server_default=_jsonb_default("{}")
+            "default_enabled",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
         ),
         sa.Column(
-            "conversation_overrides", jsonb, nullable=False, server_default=_jsonb_default("{}")
+            "deepspace_overrides",
+            jsonb,
+            nullable=False,
+            server_default=_jsonb_default("{}"),
+        ),
+        sa.Column(
+            "conversation_overrides",
+            jsonb,
+            nullable=False,
+            server_default=_jsonb_default("{}"),
         ),
         sa.Column(
             "created_at",

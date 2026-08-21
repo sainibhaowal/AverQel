@@ -7,7 +7,10 @@ from uuid import uuid4
 import pytest
 
 from app.deepspace.services import chat_service as chat_service_module
-from app.deepspace.services.chat_service import DEEPSPACE_AGENT_POLICY, DeepSpaceChatService
+from app.deepspace.services.chat_service import (
+    DEEPSPACE_AGENT_POLICY,
+    DeepSpaceChatService,
+)
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.types import WebSearchResponse, WebSearchResultItem
 
@@ -85,7 +88,11 @@ class _FakeTaskStore:
         return kwargs
 
     def read_note(self, **kwargs):
-        return {"conversation_id": str(kwargs["conversation_id"]), "content_html": "", "length": 0}
+        return {
+            "conversation_id": str(kwargs["conversation_id"]),
+            "content_html": "",
+            "length": 0,
+        }
 
     def write_note(self, **kwargs):
         return self.read_note(**kwargs)
@@ -325,7 +332,10 @@ class _LifecycleProvider:
             '{"task_id":"task-1","status":"completed","evidence":"The result was written to the active note."}',
         ),
         ("todo_check", "{}"),
-        ("final", '{"answer":"The verified result is ready.","summary":"One task completed."}'),
+        (
+            "final",
+            '{"answer":"The verified result is ready.","summary":"One task completed."}',
+        ),
     ]
 
     async def stream_generate_events(self, request):
@@ -439,7 +449,9 @@ def test_clarification_detection_is_conservative():
 
 
 @pytest.mark.asyncio
-async def test_deepspace_rejects_empty_provider_stream_and_persists_failure(monkeypatch):
+async def test_deepspace_rejects_empty_provider_stream_and_persists_failure(
+    monkeypatch,
+):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
     monkeypatch.setattr(chat_service_module, "ProviderRegistry", _EmptyRegistry)
@@ -552,9 +564,15 @@ async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch
     ]
     assert not any(frame.startswith("event: agent_status") for frame in frames)
     assert not any(frame.startswith("event: observing") for frame in frames)
-    assert {"todo_write", "todo_read", "todo_mark", "analyze", "read", "write", "final"}.issubset(
-        _LifecycleProvider.received_tool_sets[0]
-    )
+    assert {
+        "todo_write",
+        "todo_read",
+        "todo_mark",
+        "analyze",
+        "read",
+        "write",
+        "final",
+    }.issubset(_LifecycleProvider.received_tool_sets[0])
     assert _LifecycleProvider.received_tool_choices[0] == "auto"
     assert _LifecycleProvider.received_tool_sets[1] == {"todo_read"}
     assert _LifecycleProvider.received_tool_sets[2] == {"todo_mark"}
@@ -564,7 +582,9 @@ async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_model_can_answer_a_complex_looking_prompt_without_a_forced_plan(monkeypatch):
+async def test_model_can_answer_a_complex_looking_prompt_without_a_forced_plan(
+    monkeypatch,
+):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
     monkeypatch.setattr(chat_service_module, "ProviderRegistry", _FakeRegistry)
@@ -733,8 +753,7 @@ def test_dsml_fake_tool_markup_is_detected() -> None:
 
 def test_nested_json_array_fake_tool_markup_is_detected() -> None:
     assert DeepSpaceChatService._looks_like_fake_tool_output(
-        '[{"tool_name":"todo_mark","parameters":'
-        '{"task_id":"old-task","status":"completed"}}]'
+        '[{"tool_name":"todo_mark","parameters":' '{"task_id":"old-task","status":"completed"}}]'
     )
     assert not DeepSpaceChatService._looks_like_fake_tool_output(
         "Here is a normal JSON array: [1, 2, 3]."
@@ -753,7 +772,11 @@ def test_unrelated_current_request_does_not_resume_saved_task_plan() -> None:
         "complete": False,
         "tasks": [
             {"id": "task-1", "content": "Search current AI news", "status": "pending"},
-            {"id": "task-2", "content": "Write the research summary", "status": "pending"},
+            {
+                "id": "task-2",
+                "content": "Write the research summary",
+                "status": "pending",
+            },
         ],
     }
 
@@ -860,9 +883,7 @@ def test_task_completion_is_hidden_until_real_work_succeeds() -> None:
 
     assert DeepSpaceChatService._tool_names(before_work) == {"web_search", "todo_mark"}
     assert DeepSpaceChatService._tool_names(after_work) == {"web_search", "todo_mark"}
-    restricted_mark = next(
-        item for item in before_work if item["function"]["name"] == "todo_mark"
-    )
+    restricted_mark = next(item for item in before_work if item["function"]["name"] == "todo_mark")
     assert restricted_mark["function"]["parameters"]["properties"]["status"]["enum"] == [
         "blocked",
         "failed",

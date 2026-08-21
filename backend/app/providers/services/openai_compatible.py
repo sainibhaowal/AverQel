@@ -718,7 +718,9 @@ class OpenAICompatibleProvider:
         return bool(request.reasoning_enabled or request.metadata.get("reasoning_mode") == "auto")
 
     @staticmethod
-    def _effective_tool_choice(request: ChatGenerateRequest) -> str | dict[str, Any] | None:
+    def _effective_tool_choice(
+        request: ChatGenerateRequest,
+    ) -> str | dict[str, Any] | None:
         choice = request.tool_choice
         if choice == "required" and not supports_required_tool_choice(
             str(request.metadata.get("provider_type") or ""), request.model

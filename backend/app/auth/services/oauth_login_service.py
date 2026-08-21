@@ -150,7 +150,13 @@ class OAuthLoginService:
             ):
                 raise ValueError("payload")
             return payload
-        except (ValueError, TypeError, KeyError, json.JSONDecodeError, BinasciiError) as exc:
+        except (
+            ValueError,
+            TypeError,
+            KeyError,
+            json.JSONDecodeError,
+            BinasciiError,
+        ) as exc:
             raise ApiError(
                 code="OAUTH_STATE_INVALID",
                 message="OAuth login state is invalid or expired.",
@@ -217,7 +223,10 @@ class OAuthLoginService:
                     "code_verifier": verifier,
                     "grant_type": "authorization_code",
                 },
-                headers={"Accept": "application/json", "User-Agent": "AverQel-Auth/1.0"},
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "AverQel-Auth/1.0",
+                },
                 timeout=10.0,
                 follow_redirects=False,
             )
@@ -278,11 +287,15 @@ class OAuthLoginService:
             profile = response.json()
         except ValueError as exc:
             raise ApiError(
-                code="OAUTH_PROFILE_FAILED", message="OAuth profile was invalid.", status_code=401
+                code="OAUTH_PROFILE_FAILED",
+                message="OAuth profile was invalid.",
+                status_code=401,
             ) from exc
         if not isinstance(profile, dict):
             raise ApiError(
-                code="OAUTH_PROFILE_FAILED", message="OAuth profile was invalid.", status_code=401
+                code="OAUTH_PROFILE_FAILED",
+                message="OAuth profile was invalid.",
+                status_code=401,
             )
         if provider.name == "google":
             subject = str(profile.get("sub") or "").strip()
@@ -397,7 +410,8 @@ class OAuthLoginService:
         set_db_tenant_context(self.db, "bypass")
         identity = self.db.execute(
             select(OAuthIdentity).where(
-                OAuthIdentity.provider == provider.name, OAuthIdentity.subject == subject
+                OAuthIdentity.provider == provider.name,
+                OAuthIdentity.subject == subject,
             )
         ).scalar_one_or_none()
         auth = AuthService(self.db, self.settings)

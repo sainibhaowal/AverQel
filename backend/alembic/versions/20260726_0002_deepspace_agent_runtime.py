@@ -36,7 +36,10 @@ def upgrade() -> None:
     )
     for column in ("tenant_id", "user_id", "conversation_id", "status"):
         op.create_index(
-            f"ix_deepspace_agent_runs_{column}", "deepspace_agent_runs", [column], unique=False
+            f"ix_deepspace_agent_runs_{column}",
+            "deepspace_agent_runs",
+            [column],
+            unique=False,
         )
 
     op.create_table(
@@ -59,7 +62,10 @@ def upgrade() -> None:
     )
     for column in ("run_id", "tenant_id", "user_id", "conversation_id", "sequence"):
         op.create_index(
-            f"ix_deepspace_agent_steps_{column}", "deepspace_agent_steps", [column], unique=False
+            f"ix_deepspace_agent_steps_{column}",
+            "deepspace_agent_steps",
+            [column],
+            unique=False,
         )
 
 

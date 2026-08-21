@@ -23,22 +23,33 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index(
-        "ix_deepspace_mission_snapshots_tenant_id", "deepspace_mission_snapshots", ["tenant_id"]
+        "ix_deepspace_mission_snapshots_tenant_id",
+        "deepspace_mission_snapshots",
+        ["tenant_id"],
     )
     op.create_index(
-        "ix_deepspace_mission_snapshots_user_id", "deepspace_mission_snapshots", ["user_id"]
+        "ix_deepspace_mission_snapshots_user_id",
+        "deepspace_mission_snapshots",
+        ["user_id"],
     )
     op.create_index(
-        "ix_deepspace_mission_snapshots_status", "deepspace_mission_snapshots", ["status"]
+        "ix_deepspace_mission_snapshots_status",
+        "deepspace_mission_snapshots",
+        ["status"],
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_deepspace_mission_snapshots_status", table_name="deepspace_mission_snapshots")
     op.drop_index(
-        "ix_deepspace_mission_snapshots_user_id", table_name="deepspace_mission_snapshots"
+        "ix_deepspace_mission_snapshots_status",
+        table_name="deepspace_mission_snapshots",
     )
     op.drop_index(
-        "ix_deepspace_mission_snapshots_tenant_id", table_name="deepspace_mission_snapshots"
+        "ix_deepspace_mission_snapshots_user_id",
+        table_name="deepspace_mission_snapshots",
+    )
+    op.drop_index(
+        "ix_deepspace_mission_snapshots_tenant_id",
+        table_name="deepspace_mission_snapshots",
     )
     op.drop_table("deepspace_mission_snapshots")

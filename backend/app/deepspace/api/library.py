@@ -313,7 +313,9 @@ def _conversation(*, db: Session, auth: AuthContext, conversation_id: uuid.UUID)
     ).scalar_one_or_none()
     if conversation is None:
         raise ApiError(
-            code="CONVERSATION_NOT_FOUND", message="DeepSpace workspace not found", status_code=404
+            code="CONVERSATION_NOT_FOUND",
+            message="DeepSpace workspace not found",
+            status_code=404,
         )
     return conversation
 
@@ -348,7 +350,7 @@ def _folder_schema(folder: DeepSpaceWorkspaceFolder) -> WorkspaceFolderSchema:
     return WorkspaceFolderSchema(
         id=str(folder.id),
         name=folder.name,
-        parent_folder_id=str(folder.parent_folder_id) if folder.parent_folder_id else None,
+        parent_folder_id=(str(folder.parent_folder_id) if folder.parent_folder_id else None),
         created_at=folder.created_at,
         updated_at=folder.updated_at,
     )
@@ -634,18 +636,24 @@ async def upload_library_chunk(
         )
     if chunk_index < 0 or chunk_index >= upload.total_chunks:
         raise ApiError(
-            code="INVALID_CHUNK", message="The upload chunk number is invalid.", status_code=422
+            code="INVALID_CHUNK",
+            message="The upload chunk number is invalid.",
+            status_code=422,
         )
     declared_length = request.headers.get("content-length")
     if declared_length:
         try:
             if int(declared_length) > upload.chunk_size:
                 raise ApiError(
-                    code="INVALID_CHUNK", message="The upload chunk is too large.", status_code=413
+                    code="INVALID_CHUNK",
+                    message="The upload chunk is too large.",
+                    status_code=413,
                 )
         except ValueError:
             raise ApiError(
-                code="INVALID_CHUNK", message="The upload chunk length is invalid.", status_code=422
+                code="INVALID_CHUNK",
+                message="The upload chunk length is invalid.",
+                status_code=422,
             ) from None
     body_parts: list[bytes] = []
     body_size = 0
@@ -653,14 +661,18 @@ async def upload_library_chunk(
         body_size += len(part)
         if body_size > upload.chunk_size:
             raise ApiError(
-                code="INVALID_CHUNK", message="The upload chunk is too large.", status_code=413
+                code="INVALID_CHUNK",
+                message="The upload chunk is too large.",
+                status_code=413,
             )
         body_parts.append(part)
     body = b"".join(body_parts)
     expected_length = min(upload.chunk_size, upload.expected_size - chunk_index * upload.chunk_size)
     if len(body) != expected_length or len(body) > upload.chunk_size:
         raise ApiError(
-            code="INVALID_CHUNK", message="The upload chunk size is invalid.", status_code=422
+            code="INVALID_CHUNK",
+            message="The upload chunk size is invalid.",
+            status_code=422,
         )
     try:
         StorageService(settings).put_upload_chunk(
@@ -702,7 +714,9 @@ async def complete_library_upload(
         return _serialize_upload(upload)
     if upload.status == "cancelled":
         raise ApiError(
-            code="UPLOAD_CANCELLED", message="This upload was cancelled.", status_code=409
+            code="UPLOAD_CANCELLED",
+            message="This upload was cancelled.",
+            status_code=409,
         )
     if (
         len(upload.received_chunks or []) != upload.total_chunks
@@ -722,7 +736,9 @@ async def complete_library_upload(
         upload.error_message = "The Library upload worker could not be started."
         db.commit()
         raise ApiError(
-            code="UPLOAD_QUEUE_UNAVAILABLE", message=upload.error_message, status_code=503
+            code="UPLOAD_QUEUE_UNAVAILABLE",
+            message=upload.error_message,
+            status_code=503,
         ) from exc
     db.refresh(upload)
     return _serialize_upload(upload)
@@ -747,7 +763,9 @@ async def cancel_library_upload(
         upload.error_message = "Upload cancelled by the user."
         db.commit()
         StorageService(settings).delete_upload_chunks(
-            tenant_id=auth.tenant_id, upload_id=upload.id, total_chunks=upload.total_chunks
+            tenant_id=auth.tenant_id,
+            upload_id=upload.id,
+            total_chunks=upload.total_chunks,
         )
         db.refresh(upload)
     return _serialize_upload(upload)
@@ -773,7 +791,8 @@ async def list_workspace_files(
                 DeepSpaceWorkspaceFile.conversation_id == conversation_id,
             )
             .order_by(
-                DeepSpaceWorkspaceFile.updated_at.desc(), DeepSpaceWorkspaceFile.created_at.desc()
+                DeepSpaceWorkspaceFile.updated_at.desc(),
+                DeepSpaceWorkspaceFile.created_at.desc(),
             )
         )
         .scalars()
@@ -889,7 +908,9 @@ async def update_workspace_folder(
         )
         if parent.id == folder.id:
             raise ApiError(
-                code="INVALID_REQUEST", message="A folder cannot contain itself.", status_code=422
+                code="INVALID_REQUEST",
+                message="A folder cannot contain itself.",
+                status_code=422,
             )
         # Prevent moving a folder into one of its descendants.
         cursor = parent
@@ -901,7 +922,10 @@ async def update_workspace_folder(
                     status_code=422,
                 )
             cursor = _owned_folder(
-                db=db, auth=auth, conversation_id=conversation_id, folder_id=cursor.parent_folder_id
+                db=db,
+                auth=auth,
+                conversation_id=conversation_id,
+                folder_id=cursor.parent_folder_id,
             )
     if payload.name is not None:
         folder.name = payload.name
@@ -1015,7 +1039,9 @@ async def export_workspace_files(
     requested_ids = list(dict.fromkeys(payload.file_ids))
     if len(requested_ids) != len(payload.file_ids):
         raise ApiError(
-            code="INVALID_REQUEST", message="A file may only be selected once.", status_code=422
+            code="INVALID_REQUEST",
+            message="A file may only be selected once.",
+            status_code=422,
         )
     files = (
         db.execute(
@@ -1307,7 +1333,10 @@ async def upload_workspace_file(
     )
     extraction = (
         LibraryStorageService(settings).extract(
-            filename=name, content_type=content_type, payload=payload, tenant_id=auth.tenant_id
+            filename=name,
+            content_type=content_type,
+            payload=payload,
+            tenant_id=auth.tenant_id,
         )
         if content_type in _EXTRACTABLE_LIBRARY_TYPES
         else {"text": None}
@@ -1428,7 +1457,10 @@ async def copy_workspace_file(
             content_type=clone.content_type,
         )
         clone.storage_bucket, clone.storage_key = stored.bucket, stored.object_key
-        clone.metadata_json = {**(source.metadata_json or {}), "copied_from": str(source.id)}
+        clone.metadata_json = {
+            **(source.metadata_json or {}),
+            "copied_from": str(source.id),
+        }
     else:
         db.add(clone)
     try:
@@ -1556,7 +1588,9 @@ async def stream_workspace_file_content(
     payload = _library_file_payload(file=file, settings=settings)
     if not file.is_binary:
         return PlainTextResponse(
-            payload.decode("utf-8", errors="replace"), media_type=file.content_type, headers=headers
+            payload.decode("utf-8", errors="replace"),
+            media_type=file.content_type,
+            headers=headers,
         )
     headers["Content-Length"] = str(len(payload))
     return StreamingResponse(iter([payload]), media_type=file.content_type, headers=headers)
@@ -1591,12 +1625,17 @@ async def read_workspace_archive_entry(
     except StorageServiceError as exc:
         raise ApiError(code=exc.code, message=exc.message, status_code=503) from exc
     content_type = _content_type_for_name(entry_name)
-    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"}
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+    }
     if content_type.startswith(
         ("text/", "application/json", "application/xml", "application/yaml")
     ):
         return PlainTextResponse(
-            payload.decode("utf-8", errors="replace"), media_type=content_type, headers=headers
+            payload.decode("utf-8", errors="replace"),
+            media_type=content_type,
+            headers=headers,
         )
     headers["Content-Length"] = str(len(payload))
     return StreamingResponse(iter([payload]), media_type=content_type, headers=headers)

@@ -180,7 +180,10 @@ def test_phase4_missing_scope_owner_cannot_change_override(
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
     owner = seed_user(
-        "tenant-phase4-owner-2", "phase4-owner-2@example.com", "StrongPass!1234", ("admin",)
+        "tenant-phase4-owner-2",
+        "phase4-owner-2@example.com",
+        "StrongPass!1234",
+        ("admin",),
     )
     server = _server(db_session, owner)
     unknown_id = server.id

@@ -172,7 +172,8 @@ class DashboardService:
                 func.avg(ProviderHealthCheck.latency_ms),
             )
             .where(
-                ProviderHealthCheck.tenant_id == tenant_id, ProviderHealthCheck.checked_at >= start
+                ProviderHealthCheck.tenant_id == tenant_id,
+                ProviderHealthCheck.checked_at >= start,
             )
             .group_by(provider_day)
         ).all()

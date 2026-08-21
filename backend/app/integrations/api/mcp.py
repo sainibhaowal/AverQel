@@ -16,7 +16,11 @@ from app.auth.rbac import require_permissions
 from app.core.config import get_settings
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
 from app.integrations.models.mcp_connection_policy import MCPConnectionPolicy
-from app.integrations.models.mcp_server import MCPOAuthToken, MCPRegistryEntry, MCPServer
+from app.integrations.models.mcp_server import (
+    MCPOAuthToken,
+    MCPRegistryEntry,
+    MCPServer,
+)
 from app.integrations.schemas.mcp import (
     MCPActionResponse,
     MCPCatalogReviewRead,
@@ -210,7 +214,9 @@ def _marketplace_catalog_metadata(entry: MCPRegistryEntry) -> dict[str, Any]:
         result["badges"] = entry.catalog_badges
     result["health"] = {
         "status": entry.health_status,
-        "last_checked_at": entry.health_checked_at.isoformat() if entry.health_checked_at else None,
+        "last_checked_at": (
+            entry.health_checked_at.isoformat() if entry.health_checked_at else None
+        ),
     }
     if entry.health_status == "not_checked":
         result["health"]["detail"] = "Live health is checked only after user authentication."
@@ -252,7 +258,14 @@ def _tool_category(tool_name: str, risk_labels: list[str], category: object) -> 
 def _safe_badges(value: object) -> dict[str, bool]:
     if not isinstance(value, dict):
         return {}
-    allowed = {"official", "community", "new", "trending", "interactive", "developer_preview"}
+    allowed = {
+        "official",
+        "community",
+        "new",
+        "trending",
+        "interactive",
+        "developer_preview",
+    }
     return {key: bool(value[key]) for key in allowed if isinstance(value.get(key), bool)}
 
 
@@ -356,7 +369,7 @@ def _connection_payload(session: Session, server: MCPServer) -> MCPConnectionRea
         )
     return MCPConnectionRead.model_validate(server).model_copy(
         update={
-            "policy": MCPConnectionPolicyRead.model_validate(policy) if policy else None,
+            "policy": (MCPConnectionPolicyRead.model_validate(policy) if policy else None),
             "granted_scopes": granted_scopes,
         }
     )
@@ -395,7 +408,7 @@ def _tool_payload(server: MCPServer, tool_name: str, mode: str) -> MCPToolRead:
         description=str(item.get("description") or "").strip() or None,
         category=_tool_category(tool_name, risk_labels, item.get("category")),
         risk_labels=risk_labels,
-        mode=mode if mode in {"always_allow", "needs_approval", "blocked"} else "needs_approval",
+        mode=(mode if mode in {"always_allow", "needs_approval", "blocked"} else "needs_approval"),
     )
 
 
@@ -570,7 +583,7 @@ def _marketplace_entry_payload(entry: MCPRegistryEntry) -> dict[str, Any]:
         "risk_policy": (
             catalog.get("risk_policy") if isinstance(catalog.get("risk_policy"), dict) else {}
         ),
-        "health": catalog.get("health") if isinstance(catalog.get("health"), dict) else {},
+        "health": (catalog.get("health") if isinstance(catalog.get("health"), dict) else {}),
         "reviewed_at": (
             catalog.get("reviewed_at") if isinstance(catalog.get("reviewed_at"), str) else None
         ),
@@ -803,7 +816,8 @@ def list_deepspace_connections(
 
 
 @router.put(
-    "/deepspaces/{deepspace_id}/connections/{server_id}", response_model=MCPConnectionOverrideRead
+    "/deepspaces/{deepspace_id}/connections/{server_id}",
+    response_model=MCPConnectionOverrideRead,
 )
 def update_deepspace_connection(
     deepspace_id: uuid.UUID,
@@ -824,7 +838,8 @@ def update_deepspace_connection(
 
 
 @router.get(
-    "/conversations/{conversation_id}/connections", response_model=MCPScopedConnectionListRead
+    "/conversations/{conversation_id}/connections",
+    response_model=MCPScopedConnectionListRead,
 )
 def list_conversation_connections(
     conversation_id: uuid.UUID,
@@ -858,7 +873,9 @@ def update_conversation_connection(
 
 
 @router.post(
-    "/marketplace/{entry_id}/connect", response_model=MCPConnectionCreateResponse, status_code=201
+    "/marketplace/{entry_id}/connect",
+    response_model=MCPConnectionCreateResponse,
+    status_code=201,
 )
 def connect_marketplace_entry(
     entry_id: uuid.UUID,
@@ -1203,7 +1220,8 @@ def marketplace(
     # Public users see only records approved by AverQel. Registry intake rows
     # remain internal until source, ownership, endpoint, and auth are checked.
     query = select(MCPRegistryEntry).where(
-        MCPRegistryEntry.remote_url.is_not(None), MCPRegistryEntry.trust_status == "approved"
+        MCPRegistryEntry.remote_url.is_not(None),
+        MCPRegistryEntry.trust_status == "approved",
     )
     if q:
         query = query.where(

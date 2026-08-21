@@ -281,7 +281,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {!isMobile && (
         <div
-          className={`p-3 ${pathname === "/dashboard/query" ? "" : "border-glass-border border-t"}`}
+          className={`space-y-2 p-3 ${pathname === "/dashboard/query" ? "" : "border-glass-border border-t"}`}
         >
           <motion.button
             onClick={() => setSidebarOpen((prev) => !prev)}
@@ -298,6 +298,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </motion.span>
             {sidebarOpen && <span className="text-sm font-bold">Collapse</span>}
           </motion.button>
+          {sidebarOpen && (
+            <div className="bg-primary/5 border-primary/10 text-primary/70 flex items-center justify-center rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.14em] uppercase">
+              {process.env.NEXT_PUBLIC_APP_VERSION || "v1.0.0"}
+              {process.env.NEXT_PUBLIC_GIT_SHA && process.env.NEXT_PUBLIC_GIT_SHA !== "unknown" ? ` • ${String(process.env.NEXT_PUBLIC_GIT_SHA).slice(0, 7)}` : ""}
+            </div>
+          )}
         </div>
       )}
     </>

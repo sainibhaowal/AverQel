@@ -29,11 +29,24 @@ def upgrade() -> None:
         sa.Column("version", sa.String(128), nullable=True),
         sa.Column("documentation_url", sa.String(1000), nullable=True),
         sa.Column(
-            "health_status", sa.String(32), nullable=False, server_default=sa.text("'not_checked'")
+            "health_status",
+            sa.String(32),
+            nullable=False,
+            server_default=sa.text("'not_checked'"),
         ),
         sa.Column("health_checked_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("requested_scopes", jsonb, nullable=False, server_default=_jsonb_default("[]")),
-        sa.Column("supported_products", jsonb, nullable=False, server_default=_jsonb_default("[]")),
+        sa.Column(
+            "requested_scopes",
+            jsonb,
+            nullable=False,
+            server_default=_jsonb_default("[]"),
+        ),
+        sa.Column(
+            "supported_products",
+            jsonb,
+            nullable=False,
+            server_default=_jsonb_default("[]"),
+        ),
         sa.Column("risk_policy", jsonb, nullable=False, server_default=_jsonb_default("{}")),
         sa.Column("oauth_profile", jsonb, nullable=False, server_default=_jsonb_default("{}")),
         sa.Column("author_website_url", sa.String(1000), nullable=True),
@@ -41,8 +54,18 @@ def upgrade() -> None:
         sa.Column("privacy_policy_url", sa.String(1000), nullable=True),
         sa.Column("catalog_badges", jsonb, nullable=False, server_default=_jsonb_default("{}")),
         sa.Column("trusted_logo_key", sa.String(128), nullable=True),
-        sa.Column("tool_categories", jsonb, nullable=False, server_default=_jsonb_default("[]")),
-        sa.Column("tool_risk_summary", jsonb, nullable=False, server_default=_jsonb_default("{}")),
+        sa.Column(
+            "tool_categories",
+            jsonb,
+            nullable=False,
+            server_default=_jsonb_default("[]"),
+        ),
+        sa.Column(
+            "tool_risk_summary",
+            jsonb,
+            nullable=False,
+            server_default=_jsonb_default("{}"),
+        ),
     )
     for column in registry_columns:
         op.add_column("mcp_registry_entries", column)
@@ -135,11 +158,21 @@ def upgrade() -> None:
     op.add_column("mcp_servers", sa.Column("provider_slug", sa.String(240), nullable=True))
     op.add_column(
         "mcp_servers",
-        sa.Column("account_identity", jsonb, nullable=False, server_default=_jsonb_default("{}")),
+        sa.Column(
+            "account_identity",
+            jsonb,
+            nullable=False,
+            server_default=_jsonb_default("{}"),
+        ),
     )
     op.add_column(
         "mcp_servers",
-        sa.Column("catalog_revision", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "catalog_revision",
+            sa.Integer(),
+            nullable=False,
+            server_default=sa.text("0"),
+        ),
     )
     op.create_index("ix_mcp_servers_registry_entry_id", "mcp_servers", ["registry_entry_id"])
     op.create_index("ix_mcp_servers_provider_slug", "mcp_servers", ["provider_slug"])
@@ -172,7 +205,8 @@ def upgrade() -> None:
     # columns are backfilled from the tenant-owned server row and then user_id
     # is made mandatory for every future encrypted MCP token.
     op.add_column(
-        "mcp_oauth_tokens", sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=True)
+        "mcp_oauth_tokens",
+        sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=True),
     )
     op.add_column(
         "mcp_oauth_tokens",
@@ -206,7 +240,9 @@ def upgrade() -> None:
     )
     op.create_index("ix_mcp_oauth_tokens_user_id", "mcp_oauth_tokens", ["user_id"])
     op.create_index(
-        "ix_mcp_oauth_tokens_registry_entry_id", "mcp_oauth_tokens", ["registry_entry_id"]
+        "ix_mcp_oauth_tokens_registry_entry_id",
+        "mcp_oauth_tokens",
+        ["registry_entry_id"],
     )
     op.create_index("ix_mcp_oauth_tokens_provider_slug", "mcp_oauth_tokens", ["provider_slug"])
 

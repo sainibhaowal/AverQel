@@ -32,7 +32,13 @@ class MCPServerRead(BaseModel):
         """Expose only non-secret account labels; never identity credentials."""
         if not isinstance(value, dict):
             return {}
-        allowed = {"email", "display_name", "provider_subject", "account_id", "identity_source"}
+        allowed = {
+            "email",
+            "display_name",
+            "provider_subject",
+            "account_id",
+            "identity_source",
+        }
         return {
             key: value[key] for key in allowed if key in value and isinstance(value[key], str | int)
         }

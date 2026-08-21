@@ -1,5 +1,5 @@
-from app.deepspace.integrations.export_service import DeepSpaceExportService
 from app.deepspace.api.export import _download_content_disposition
+from app.deepspace.integrations.export_service import DeepSpaceExportService
 
 
 def test_pdf_export_handles_unicode_content_without_crashing():

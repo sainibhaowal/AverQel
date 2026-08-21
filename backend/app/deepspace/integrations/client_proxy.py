@@ -115,7 +115,12 @@ class ClientProxyRegistry:
         try:
             # Send RPC packet
             await websocket.send_json(
-                {"event": "rpc_request", "id": req_id, "method": method, "params": params}
+                {
+                    "event": "rpc_request",
+                    "id": req_id,
+                    "method": method,
+                    "params": params,
+                }
             )
 
             # Wait for response from client

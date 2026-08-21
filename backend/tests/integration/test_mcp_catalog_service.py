@@ -116,6 +116,11 @@ def test_sync_official_mcp_catalog_is_idempotent_and_preserves_other_sources(
     }
 
     assert first_result.created == 6
-    assert second_result.as_dict() == {"created": 0, "updated": 0, "unchanged": 6, "total": 6}
+    assert second_result.as_dict() == {
+        "created": 0,
+        "updated": 0,
+        "unchanged": 6,
+        "total": 6,
+    }
     assert current_ids == original_ids
     assert session.get(MCPRegistryEntry, third_party.id) is not None

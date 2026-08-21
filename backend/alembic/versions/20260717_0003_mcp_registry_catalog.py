@@ -35,7 +35,10 @@ def upgrade() -> None:
             server_default=sa.text("'{}'::jsonb"),
         ),
         sa.Column(
-            "categories", postgresql.JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")
+            "categories",
+            postgresql.JSONB,
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
         ),
         sa.Column("official", sa.Boolean, nullable=False, server_default=sa.text("false")),
         sa.Column("verified", sa.Boolean, nullable=False, server_default=sa.text("false")),
@@ -46,7 +49,10 @@ def upgrade() -> None:
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
         sa.Column(
-            "raw_metadata", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+            "raw_metadata",
+            postgresql.JSONB,
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
         ),
         sa.Column("logo_url", sa.String(1000)),
         sa.Column("tool_count", sa.Integer, nullable=False, server_default=sa.text("0")),

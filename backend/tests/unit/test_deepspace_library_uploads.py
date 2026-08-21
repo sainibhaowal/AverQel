@@ -6,7 +6,11 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.errors import ApiError
-from app.deepspace.api.library import LibraryExportRequest, LibraryUploadCreate, _serialize_upload
+from app.deepspace.api.library import (
+    LibraryExportRequest,
+    LibraryUploadCreate,
+    _serialize_upload,
+)
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.services import library_uploads as uploads_module
 from app.deepspace.services.library_uploads import finalize_upload
@@ -84,7 +88,9 @@ class _Db:
         return None
 
 
-def test_finalize_upload_creates_text_file_and_version(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_finalize_upload_creates_text_file_and_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class _Storage:
         def __init__(self, settings: object) -> None:
             self.storage = SimpleNamespace()
@@ -121,7 +127,9 @@ def test_finalize_upload_rejects_size_mismatch() -> None:
         )
 
 
-def test_finalize_upload_stores_binary_object_and_version(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_finalize_upload_stores_binary_object_and_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     stored = SimpleNamespace(bucket="library", object_key="file.bin")
 
     class _Storage:

@@ -47,7 +47,9 @@ def configure_telemetry(settings: Settings) -> None:
     endpoint = settings.otel_exporter_otlp_endpoint.strip()
     if endpoint:
         try:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter,
+            )
 
             provider.add_span_processor(
                 BatchSpanProcessor(
@@ -68,7 +70,9 @@ def configure_telemetry(settings: Settings) -> None:
     _configured = True
 
 
-def _safe_attributes(attributes: Mapping[str, Any] | None) -> dict[str, str | int | float | bool]:
+def _safe_attributes(
+    attributes: Mapping[str, Any] | None,
+) -> dict[str, str | int | float | bool]:
     """Allow only bounded, non-sensitive span values."""
     safe: dict[str, str | int | float | bool] = {}
     for key, value in (attributes or {}).items():
@@ -139,7 +143,7 @@ def trace_async_generator(name: str) -> Callable[[Callable[P, Any]], Callable[P,
 
     def decorator(function: Callable[P, Any]) -> Callable[P, Any]:
         @functools.wraps(function)
-        async def wrapped(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[Any, None]:
+        async def wrapped(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[Any]:
             attributes: dict[str, Any] = {}
             if args:
                 attributes["model.name"] = getattr(args[0], "model_name", None)

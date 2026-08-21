@@ -22,7 +22,9 @@ from app.integrations.services.mcp_runtime import (
 )
 
 
-def test_sync_mcp_client_validates_and_rejects_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sync_mcp_client_validates_and_rejects_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     checked: list[str] = []
     monkeypatch.setattr(
         mcp_http_client,
@@ -42,7 +44,9 @@ def test_sync_mcp_client_validates_and_rejects_redirects(monkeypatch: pytest.Mon
     assert checked == ["https://remote.example/mcp"]
 
 
-def test_async_mcp_client_validates_and_rejects_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_async_mcp_client_validates_and_rejects_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     checked: list[str] = []
     monkeypatch.setattr(
         mcp_http_client,

@@ -75,8 +75,9 @@ if [[ -z "$GIT_SHA" ]]; then
 fi
 
 BUILD_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-API_IMAGE_BASE="${IMAGE_PREFIX}/api"
-WORKER_IMAGE_BASE="${IMAGE_PREFIX}/worker"
+# Use dash naming for GHCR private: ghcr.io/sainibhaowal/averqel-api etc (single repo per service, no nested slash)
+API_IMAGE_BASE="${IMAGE_PREFIX}-api"
+WORKER_IMAGE_BASE="${IMAGE_PREFIX}-worker"
 API_TAG_VERSION="${API_IMAGE_BASE}:${VERSION}"
 API_TAG_SHA="${API_IMAGE_BASE}:${GIT_SHA}"
 WORKER_TAG_VERSION="${WORKER_IMAGE_BASE}:${VERSION}"
@@ -90,6 +91,9 @@ build_cmd_api=(
   -f "$BACKEND_DIR/Dockerfile"
   -t "$API_TAG_VERSION"
   -t "$API_TAG_SHA"
+  --build-arg "GIT_VERSION=$VERSION"
+  --build-arg "GIT_SHA=$GIT_SHA"
+  --build-arg "BUILD_TIMESTAMP=$BUILD_TS"
   --label "org.opencontainers.image.version=$VERSION"
   --label "org.opencontainers.image.revision=$GIT_SHA"
   --label "org.opencontainers.image.created=$BUILD_TS"
@@ -101,6 +105,9 @@ build_cmd_worker=(
   -f "$BACKEND_DIR/Dockerfile.worker"
   -t "$WORKER_TAG_VERSION"
   -t "$WORKER_TAG_SHA"
+  --build-arg "GIT_VERSION=$VERSION"
+  --build-arg "GIT_SHA=$GIT_SHA"
+  --build-arg "BUILD_TIMESTAMP=$BUILD_TS"
   --label "org.opencontainers.image.version=$VERSION"
   --label "org.opencontainers.image.revision=$GIT_SHA"
   --label "org.opencontainers.image.created=$BUILD_TS"

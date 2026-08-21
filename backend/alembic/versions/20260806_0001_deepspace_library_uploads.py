@@ -36,7 +36,10 @@ def upgrade() -> None:
         ),
         sa.Column("bytes_received", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column(
-            "status", sa.String(length=32), server_default=sa.text("'pending'"), nullable=False
+            "status",
+            sa.String(length=32),
+            server_default=sa.text("'pending'"),
+            nullable=False,
         ),
         sa.Column("file_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
@@ -61,7 +64,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["conversation_id"], ["conversations.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["file_id"], ["deepspace_workspace_files.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(
-            ["parent_folder_id"], ["deepspace_workspace_folders.id"], ondelete="SET NULL"
+            ["parent_folder_id"],
+            ["deepspace_workspace_folders.id"],
+            ondelete="SET NULL",
         ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
@@ -78,7 +83,9 @@ def upgrade() -> None:
         ["conversation_id", "status"],
     )
     op.create_index(
-        "ix_deepspace_library_uploads_tenant_id", "deepspace_library_uploads", ["tenant_id"]
+        "ix_deepspace_library_uploads_tenant_id",
+        "deepspace_library_uploads",
+        ["tenant_id"],
     )
     op.create_index(
         "ix_deepspace_library_uploads_user_id", "deepspace_library_uploads", ["user_id"]

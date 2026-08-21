@@ -35,7 +35,9 @@ class AppFeedback(Base):
     )
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     campaign_id = Column(
-        UUID(as_uuid=True), ForeignKey("feedback_campaigns.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("feedback_campaigns.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     subject = Column(String(255), nullable=False)

@@ -27,7 +27,10 @@ def upgrade() -> None:
         sa.Column("conversation_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column(
-            "content_type", sa.String(length=127), nullable=False, server_default="text/markdown"
+            "content_type",
+            sa.String(length=127),
+            nullable=False,
+            server_default="text/markdown",
         ),
         sa.Column("content", sa.Text(), nullable=False, server_default=""),
         sa.Column("source", sa.String(length=32), nullable=False, server_default="user"),
@@ -55,14 +58,20 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
-            "conversation_id", "name", name="uq_deepspace_workspace_files_conversation_name"
+            "conversation_id",
+            "name",
+            name="uq_deepspace_workspace_files_conversation_name",
         ),
     )
     op.create_index(
-        op.f("ix_deepspace_workspace_files_tenant_id"), "deepspace_workspace_files", ["tenant_id"]
+        op.f("ix_deepspace_workspace_files_tenant_id"),
+        "deepspace_workspace_files",
+        ["tenant_id"],
     )
     op.create_index(
-        op.f("ix_deepspace_workspace_files_user_id"), "deepspace_workspace_files", ["user_id"]
+        op.f("ix_deepspace_workspace_files_user_id"),
+        "deepspace_workspace_files",
+        ["user_id"],
     )
     op.create_index(
         op.f("ix_deepspace_workspace_files_conversation_id"),
@@ -111,10 +120,14 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
-        op.f("ix_deepspace_media_artifacts_tenant_id"), "deepspace_media_artifacts", ["tenant_id"]
+        op.f("ix_deepspace_media_artifacts_tenant_id"),
+        "deepspace_media_artifacts",
+        ["tenant_id"],
     )
     op.create_index(
-        op.f("ix_deepspace_media_artifacts_user_id"), "deepspace_media_artifacts", ["user_id"]
+        op.f("ix_deepspace_media_artifacts_user_id"),
+        "deepspace_media_artifacts",
+        ["user_id"],
     )
     op.create_index(
         op.f("ix_deepspace_media_artifacts_conversation_id"),
@@ -122,7 +135,9 @@ def upgrade() -> None:
         ["conversation_id"],
     )
     op.create_index(
-        op.f("ix_deepspace_media_artifacts_message_id"), "deepspace_media_artifacts", ["message_id"]
+        op.f("ix_deepspace_media_artifacts_message_id"),
+        "deepspace_media_artifacts",
+        ["message_id"],
     )
 
 

@@ -15,8 +15,13 @@ router = APIRouter(prefix="/health", tags=["health"])
 
 
 @router.get("/live", response_model=HealthResponse)
-def live() -> HealthResponse:
-    return HealthResponse(status="ok")
+def live(settings: Settings = Depends(get_settings)) -> HealthResponse:
+    return HealthResponse(
+        status="ok",
+        version=settings.release_version or settings.app_version,
+        git_sha=settings.git_sha,
+        build_timestamp_utc=settings.build_timestamp_utc,
+    )
 
 
 @router.get("/ready", response_model=HealthResponse)
@@ -49,4 +54,9 @@ def ready(settings: Settings = Depends(get_settings)) -> HealthResponse:
                 status_code=503,
             )
 
-    return HealthResponse(status="ok")
+    return HealthResponse(
+        status="ok",
+        version=settings.release_version or settings.app_version,
+        git_sha=settings.git_sha,
+        build_timestamp_utc=settings.build_timestamp_utc,
+    )

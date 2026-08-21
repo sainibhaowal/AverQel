@@ -9,4 +9,3 @@ keys:
   devkey: "cohesive-voice-secret-key-1092"
 logging:
   level: info
-

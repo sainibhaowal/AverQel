@@ -43,7 +43,12 @@ class MCPEventsRepository(BaseRepository):
         return event
 
     def list_since(
-        self, *, tenant_id: uuid.UUID, server_id: uuid.UUID, sequence: int = 0, limit: int = 500
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        server_id: uuid.UUID,
+        sequence: int = 0,
+        limit: int = 500,
     ) -> list[MCPEvent]:
         self.apply_tenant_scope(tenant_id)
         statement = (

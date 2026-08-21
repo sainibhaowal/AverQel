@@ -103,7 +103,9 @@ def safe_archive_entries(payload: bytes) -> list[dict[str, Any]]:
             return entries
     except zipfile.BadZipFile as exc:
         raise ApiError(
-            code="CORRUPTED_ARCHIVE", message="The ZIP archive is invalid.", status_code=422
+            code="CORRUPTED_ARCHIVE",
+            message="The ZIP archive is invalid.",
+            status_code=422,
         ) from exc
 
 
@@ -120,7 +122,9 @@ def read_archive_entry(payload: bytes, entry_name: str) -> bytes:
                 return stream.read(_MAX_ARCHIVE_ENTRY_BYTES + 1)
     except (KeyError, zipfile.BadZipFile) as exc:
         raise ApiError(
-            code="CORRUPTED_ARCHIVE", message="The ZIP archive is invalid.", status_code=422
+            code="CORRUPTED_ARCHIVE",
+            message="The ZIP archive is invalid.",
+            status_code=422,
         ) from exc
 
 
@@ -160,7 +164,10 @@ class LibraryStorageService:
     ) -> dict[str, Any]:
         try:
             result = self.extractor.extract(
-                filename=filename, content_type=content_type, payload=payload, tenant_id=tenant_id
+                filename=filename,
+                content_type=content_type,
+                payload=payload,
+                tenant_id=tenant_id,
             )
             return {
                 "text": result.text,
@@ -171,7 +178,11 @@ class LibraryStorageService:
             }
         except ApiError as exc:
             # Binary storage must remain available even when optional extraction is unavailable.
-            return {"text": None, "extraction_error": exc.code, "warnings": [exc.message]}
+            return {
+                "text": None,
+                "extraction_error": exc.code,
+                "warnings": [exc.message],
+            }
 
     @staticmethod
     def checksum(payload: bytes) -> str:

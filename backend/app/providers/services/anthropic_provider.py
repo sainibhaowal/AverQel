@@ -109,7 +109,7 @@ class AnthropicProvider:
             normalized.append(
                 {
                     "role": "assistant" if role == "assistant" else "user",
-                    "content": content if isinstance(content, str | list) else str(content),
+                    "content": (content if isinstance(content, str | list) else str(content)),
                 }
             )
         return ("\n\n".join(system_parts) or None), normalized

@@ -198,7 +198,10 @@ class DeepSpaceChatRepository:
             raise ValueError("DeepSpace conversation not found")
         metadata = dict(metadata_json or {})
         message = Message(
-            conversation_id=conversation_id, role=role, content=content, metadata_json=metadata
+            conversation_id=conversation_id,
+            role=role,
+            content=content,
+            metadata_json=metadata,
         )
         self.db.add(message)
         self.db.flush()
@@ -275,7 +278,10 @@ class DeepSpaceChatRepository:
     ) -> tuple[Message | None, Message | None]:
         messages = list(
             self.get_messages(
-                tenant_id=tenant_id, conversation_id=conversation_id, user_id=user_id, kind=kind
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                kind=kind,
             )
         )
         if len(messages) < 2:

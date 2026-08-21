@@ -153,7 +153,10 @@ WEB_SEARCH_TOOL = {
                     "items": {"type": "string", "maxLength": 120},
                     "maxItems": 20,
                 },
-                "time_range": {"type": "string", "enum": ["day", "week", "month", "year"]},
+                "time_range": {
+                    "type": "string",
+                    "enum": ["day", "week", "month", "year"],
+                },
             },
             "required": ["query"],
         },
@@ -248,7 +251,11 @@ TODO_WRITE_TOOL = {
                                     "failed",
                                 ],
                             },
-                            "priority": {"type": "integer", "minimum": 0, "maximum": 1000},
+                            "priority": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000,
+                            },
                             "dependencies": {
                                 "type": "array",
                                 "items": {"type": "string"},
@@ -268,7 +275,11 @@ TODO_READ_TOOL = {
     "function": {
         "name": "todo_read",
         "description": "Read the current persisted task list and statuses for this conversation.",
-        "parameters": {"type": "object", "additionalProperties": False, "properties": {}},
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {},
+        },
     },
 }
 TODO_CHECK_TOOL = {
@@ -276,7 +287,11 @@ TODO_CHECK_TOOL = {
     "function": {
         "name": "todo_check",
         "description": "Verify task completion, dependencies, blockers, and completion evidence.",
-        "parameters": {"type": "object", "additionalProperties": False, "properties": {}},
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {},
+        },
     },
 }
 TODO_MARK_TOOL = {
@@ -291,7 +306,13 @@ TODO_MARK_TOOL = {
                 "task_id": {"type": "string"},
                 "status": {
                     "type": "string",
-                    "enum": ["pending", "in_progress", "completed", "blocked", "failed"],
+                    "enum": [
+                        "pending",
+                        "in_progress",
+                        "completed",
+                        "blocked",
+                        "failed",
+                    ],
                 },
                 "evidence": {"type": "string", "maxLength": 1000},
             },
@@ -304,7 +325,11 @@ OBSERVE_TOOL = {
     "function": {
         "name": "observe",
         "description": "Inspect current note, task, Library, and active-response state without changing anything.",
-        "parameters": {"type": "object", "additionalProperties": False, "properties": {}},
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {},
+        },
     },
 }
 ANALYZE_TOOL = {
@@ -416,7 +441,10 @@ UNIVERSAL_EDIT_TOOL = {
             "additionalProperties": False,
             "properties": {
                 "target": {"type": "string", "enum": ["note", "library"]},
-                "operation": {"type": "string", "enum": ["replace", "append", "rename", "move"]},
+                "operation": {
+                    "type": "string",
+                    "enum": ["replace", "append", "rename", "move"],
+                },
                 "file_id": {"type": "string", "maxLength": 80},
                 "name": {"type": "string", "maxLength": 255},
                 "content": {"type": "string", "maxLength": 100000},
@@ -630,9 +658,7 @@ class DeepSpaceChatService:
             "with",
         }
         prompt_terms = {
-            term
-            for term in re.findall(r"[a-z0-9]{4,}", normalized)
-            if term not in stop_words
+            term for term in re.findall(r"[a-z0-9]{4,}", normalized) if term not in stop_words
         }
         task_terms: set[str] = set()
         for task in task_check.get("tasks") or []:
@@ -642,9 +668,7 @@ class DeepSpaceChatService:
                 str(task.get(field) or "") for field in ("content", "active_form")
             ).casefold()
             task_terms.update(
-                term
-                for term in re.findall(r"[a-z0-9]{4,}", task_text)
-                if term not in stop_words
+                term for term in re.findall(r"[a-z0-9]{4,}", task_text) if term not in stop_words
             )
         return len(prompt_terms.intersection(task_terms)) >= 2
 
@@ -1151,11 +1175,7 @@ class DeepSpaceChatService:
                     restricted_tools.append(item)
                     continue
                 parameters = function.get("parameters")
-                properties = (
-                    parameters.get("properties")
-                    if isinstance(parameters, dict)
-                    else None
-                )
+                properties = parameters.get("properties") if isinstance(parameters, dict) else None
                 status_schema = properties.get("status") if isinstance(properties, dict) else None
                 restricted_status = {
                     **(status_schema if isinstance(status_schema, dict) else {}),
@@ -1279,8 +1299,7 @@ class DeepSpaceChatService:
                 r"\bgmail\b",
                 r"\bgoogle\s+mail\b",
                 r"\b(?:my|the)\s+(?:email|emails|inbox|mailbox)\b",
-                r"\b(?:my\s+)?(?:sent|drafts?|outbox)\s+"
-                r"(?:box|mail|emails?|folder)\b",
+                r"\b(?:my\s+)?(?:sent|drafts?|outbox)\s+" r"(?:box|mail|emails?|folder)\b",
                 r"\bmy\s+drafts?\b",
             ),
             "drive": (
@@ -1467,7 +1486,10 @@ class DeepSpaceChatService:
                     }
             return {
                 "task_check": tasks,
-                "note": {"length": note["length"], "conversation_id": note["conversation_id"]},
+                "note": {
+                    "length": note["length"],
+                    "conversation_id": note["conversation_id"],
+                },
                 "library": {
                     "file_count": len(library.get("files", [])),
                     "folder_count": len(library.get("folders", [])),
@@ -1785,7 +1807,9 @@ class DeepSpaceChatService:
                     user_id=auth.user_id,
                     conversation_id=conversation_id,
                     file_id=str(arguments.get("file_id")),
-                    name=str(arguments.get("name")) if arguments.get("name") is not None else None,
+                    name=(
+                        str(arguments.get("name")) if arguments.get("name") is not None else None
+                    ),
                     content=(
                         str(arguments.get("content"))
                         if arguments.get("content") is not None
@@ -1840,7 +1864,8 @@ class DeepSpaceChatService:
                 read_url,
                 str(arguments.get("url") or "").strip(),
                 timeout_seconds=min(
-                    30, int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15))
+                    30,
+                    int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15)),
                 ),
                 max_bytes=int(getattr(self.settings, "deepspace_url_read_max_bytes", 2_000_000)),
                 allowed_domains=allowed_domains,
@@ -1873,7 +1898,8 @@ class DeepSpaceChatService:
                 read_image,
                 str(arguments.get("url") or "").strip(),
                 timeout_seconds=min(
-                    30, int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15))
+                    30,
+                    int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15)),
                 ),
                 max_bytes=int(getattr(self.settings, "deepspace_url_read_max_bytes", 2_000_000)),
                 allowed_domains=allowed_domains,
@@ -1904,12 +1930,18 @@ class DeepSpaceChatService:
                 if isinstance(task, dict) and task.get("status") in {"pending", "in_progress"}
             ]
             if not ignore_existing_tasks and check["task_count"] and active_tasks:
-                return {"accepted": False, "reason": "todo_check_required", "task_check": check}
+                return {
+                    "accepted": False,
+                    "reason": "todo_check_required",
+                    "task_check": check,
+                }
             return {
                 "accepted": True,
                 "answer": str(arguments.get("answer") or "").strip(),
                 "summary": str(arguments.get("summary") or "").strip()[:1000],
-                "outcome": "completed" if check["complete"] or ignore_existing_tasks else "blocked",
+                "outcome": (
+                    "completed" if check["complete"] or ignore_existing_tasks else "blocked"
+                ),
                 "task_check": check if not ignore_existing_tasks else {"ignored": True},
             }
         raise ValueError(f"Tool '{tool_name}' is not available in DeepSpace.")
@@ -1943,7 +1975,10 @@ class DeepSpaceChatService:
             else self.tool_policy.before_tool(tool_name, arguments)
         )
         if not decision.allowed:
-            return {"success": False, "error": decision.reason or "Tool blocked by policy."}
+            return {
+                "success": False,
+                "error": decision.reason or "Tool blocked by policy.",
+            }
 
         gate = read_semaphore if decision.mode == "read" else write_lock
         async with gate:
@@ -1954,7 +1989,10 @@ class DeepSpaceChatService:
                         "error": "Tool execution stopped by the runtime policy timeout.",
                     }
                 if run_id is not None and self.runtime.is_cancel_requested(run_id=run_id):
-                    return {"success": False, "error": "Tool execution cancelled by the user."}
+                    return {
+                        "success": False,
+                        "error": "Tool execution cancelled by the user.",
+                    }
                 try:
                     payload = await asyncio.wait_for(
                         self._execute_productivity_tool(
@@ -2073,7 +2111,11 @@ class DeepSpaceChatService:
             }
             for index, item in enumerate(response.results, start=1)
         ]
-        return response, {"query": response.query, "citations": citations, "results": citations}
+        return response, {
+            "query": response.query,
+            "citations": citations,
+            "results": citations,
+        }
 
     @staticmethod
     def _append_citations(answer: str, citations: list[dict[str, Any]]) -> str:
@@ -2424,7 +2466,10 @@ class DeepSpaceChatService:
             }
             self.db.commit()
         elif not prompt:
-            yield sse("error", {"code": "EMPTY_MESSAGE", "message": "Message cannot be empty."})
+            yield sse(
+                "error",
+                {"code": "EMPTY_MESSAGE", "message": "Message cannot be empty."},
+            )
             return
 
         if request is not None and not resume_approval_id:
@@ -2461,7 +2506,9 @@ class DeepSpaceChatService:
                 conversation_id = conversation.id
             elif (
                 self.chat.get_conversation(
-                    tenant_id=auth.tenant_id, conversation_id=conversation_id, user_id=auth.user_id
+                    tenant_id=auth.tenant_id,
+                    conversation_id=conversation_id,
+                    user_id=auth.user_id,
                 )
                 is None
             ):
@@ -2627,10 +2674,16 @@ class DeepSpaceChatService:
         # states we know to be true; never invent a percentage for a provider
         # that only returns a completed binary result.
         if self._is_native_media_model(candidate.model_name):
-            yield sse("media_status", {"phase": "queued", "message": "Media request accepted."})
             yield sse(
                 "media_status",
-                {"phase": "generating", "message": "Generating media with the selected model."},
+                {"phase": "queued", "message": "Media request accepted."},
+            )
+            yield sse(
+                "media_status",
+                {
+                    "phase": "generating",
+                    "message": "Generating media with the selected model.",
+                },
             )
         # Tool access is a connected-account capability, not a provider
         # allowlist or manually entered conversation scope.
@@ -2690,7 +2743,11 @@ class DeepSpaceChatService:
         discovered_mcp_bindings = mcp_bindings
         mcp_bindings = self._mcp_bindings_for_prompt(prompt, discovered_mcp_bindings)
         mcp_tools = [binding.definition for binding in mcp_bindings.values()]
-        available_tools: list[dict[str, Any]] = [*productivity_tools, *web_tools, *mcp_tools]
+        available_tools: list[dict[str, Any]] = [
+            *productivity_tools,
+            *web_tools,
+            *mcp_tools,
+        ]
         connected_service_tool_required = self._requires_connected_service_tool(
             prompt, mcp_bindings
         )
@@ -2705,11 +2762,7 @@ class DeepSpaceChatService:
         defer_task_for_greeting = self._is_non_work_greeting(prompt)
         resume_saved_task = self._should_resume_task_plan(prompt, initial_task_check)
         allow_existing_task_state = resume_saved_task or self._allows_existing_task_state(prompt)
-        managed_task_run = (
-            provider_supports_tools
-            and not native_media_model
-            and resume_saved_task
-        )
+        managed_task_run = provider_supports_tools and not native_media_model and resume_saved_task
         task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(initial_task_check)
         task_has_work_evidence = False
         task_lifecycle_prompt_retries = 0
@@ -2771,7 +2824,7 @@ class DeepSpaceChatService:
             if not isinstance(pending_tool_input, dict):
                 pending_tool_input = {
                     "question": pending_question,
-                    "options": pending_options if isinstance(pending_options, list) else [],
+                    "options": (pending_options if isinstance(pending_options, list) else []),
                 }
             if pending_call_id:
                 conversation_messages.extend(
@@ -2904,12 +2957,18 @@ class DeepSpaceChatService:
                         "function": {
                             "name": pending_tool_name,
                             "arguments": json.dumps(
-                                pending_arguments, ensure_ascii=False, separators=(",", ":")
+                                pending_arguments,
+                                ensure_ascii=False,
+                                separators=(",", ":"),
                             ),
                         },
                     }
                     conversation_messages.append(
-                        {"role": "assistant", "content": None, "tool_calls": [pending_call]}
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [pending_call],
+                        }
                     )
                     pending_step_id = str(
                         resumed_pending.get("step_id") or f"mcp_{pending_call_id}"
@@ -2959,7 +3018,11 @@ class DeepSpaceChatService:
                         else str(pending_result.get("error") or "MCP action failed safely.")
                     )
                     conversation_messages.append(
-                        {"role": "tool", "tool_call_id": pending_call_id, "content": pending_output}
+                        {
+                            "role": "tool",
+                            "tool_call_id": pending_call_id,
+                            "content": pending_output,
+                        }
                     )
                     if run_id is not None:
                         self.runtime.record_step(
@@ -2972,7 +3035,10 @@ class DeepSpaceChatService:
                             tool_name=pending_tool_name,
                             tool_call_id=pending_call_id,
                             input_json=pending_arguments,
-                            result_json={"success": pending_success, "output": pending_output},
+                            result_json={
+                                "success": pending_success,
+                                "output": pending_output,
+                            },
                         )
                         self.runtime.update_checkpoint(
                             run_id=run_id,
@@ -3067,7 +3133,9 @@ class DeepSpaceChatService:
                     terminal_status = "cancelled"
                     if run_id is not None:
                         self.runtime.finish(
-                            run_id=run_id, status="cancelled", error="client_disconnected"
+                            run_id=run_id,
+                            status="cancelled",
+                            error="client_disconnected",
                         )
                     break
                 if run_id is not None and self.runtime.is_cancel_requested(run_id=run_id):
@@ -3288,7 +3356,8 @@ class DeepSpaceChatService:
                                     },
                                 )
                                 yield sse(
-                                    "artifact", {"artifact": artifact, "turn_index": round_index}
+                                    "artifact",
+                                    {"artifact": artifact, "turn_index": round_index},
                                 )
                             continue
                         if event_type in {
@@ -3349,7 +3418,11 @@ class DeepSpaceChatService:
                                     emitted_tool_argument_lengths[call_index] = len(arguments)
                             continue
                         text = provider_event.get("text")
-                        if event_type not in {"thinking", "reasoning", "reasoning_delta"}:
+                        if event_type not in {
+                            "thinking",
+                            "reasoning",
+                            "reasoning_delta",
+                        }:
                             provider_reasoning = (
                                 provider_event.get("reasoning_content")
                                 or provider_event.get("reasoning")
@@ -3414,7 +3487,10 @@ class DeepSpaceChatService:
                         conversation_id=conversation_id,
                         step_type="model_turn",
                         status="completed",
-                        input_json={"turn_index": round_index, "tool_count": len(tool_calls)},
+                        input_json={
+                            "turn_index": round_index,
+                            "tool_count": len(tool_calls),
+                        },
                         result_json={
                             "answer_chars": sum(len(item) for item in answer_parts),
                             "thinking_chars": sum(len(item) for item in thinking_parts),
@@ -3486,7 +3562,11 @@ class DeepSpaceChatService:
                             )
                             yield sse(
                                 "model_message",
-                                {"text": prose_answer, "turn_index": round_index, "status": "completed"},
+                                {
+                                    "text": prose_answer,
+                                    "turn_index": round_index,
+                                    "status": "completed",
+                                },
                             )
                             yield sse("replace", {"content": "", "replayed": False})
                             recovery_instruction = (
@@ -3508,7 +3588,10 @@ class DeepSpaceChatService:
                                 }
                             )
                             continue
-                        if connected_service_tool_required and not connected_service_action_completed:
+                        if (
+                            connected_service_tool_required
+                            and not connected_service_action_completed
+                        ):
                             terminal_status = "blocked"
                             forced_answer = self._connected_service_failure_message(mcp_bindings)
                             break
@@ -3565,7 +3648,11 @@ class DeepSpaceChatService:
                             )
                             yield sse(
                                 "model_message",
-                                {"text": prose_answer, "turn_index": round_index, "status": "completed"},
+                                {
+                                    "text": prose_answer,
+                                    "turn_index": round_index,
+                                    "status": "completed",
+                                },
                             )
                             yield sse("replace", {"content": "", "replayed": False})
                             conversation_messages.append(
@@ -3593,7 +3680,10 @@ class DeepSpaceChatService:
                             "call_id": f"clarification_{question_id}",
                             "step_id": f"clarification_{round_index}",
                             "tool_name": "ask_user",
-                            "tool_input": {"question": prose_answer[:2000], "options": []},
+                            "tool_input": {
+                                "question": prose_answer[:2000],
+                                "options": [],
+                            },
                             "turn_index": round_index,
                         }
                         del answer_parts[round_answer_start:]
@@ -3607,7 +3697,11 @@ class DeepSpaceChatService:
                         )
                         yield sse(
                             "model_message",
-                            {"text": prose_answer, "turn_index": round_index, "status": "completed"},
+                            {
+                                "text": prose_answer,
+                                "turn_index": round_index,
+                                "status": "completed",
+                            },
                         )
                         yield sse("replace", {"content": "", "replayed": False})
                         yield sse(
@@ -3719,10 +3813,11 @@ class DeepSpaceChatService:
                             "This request explicitly targets a connected service. Use its real MCP tool first; "
                             "do not create a todo plan for this direct service lookup."
                         )
-                    elif (
-                        not allow_existing_task_state
-                        and tool_name in {"todo_read", "todo_check", "todo_mark"}
-                    ):
+                    elif not allow_existing_task_state and tool_name in {
+                        "todo_read",
+                        "todo_check",
+                        "todo_mark",
+                    }:
                         lifecycle_error = (
                             "This is a new request. Do not read or modify an earlier task ledger unless the user "
                             "explicitly asks about tasks or continues the saved task."
@@ -3876,8 +3971,7 @@ class DeepSpaceChatService:
                         for message in conversation_messages[tool_exchange_start + 1 :]
                         if not (
                             message.get("role") == "tool"
-                            and str(message.get("tool_call_id") or "")
-                            in invalid_tool_call_ids
+                            and str(message.get("tool_call_id") or "") in invalid_tool_call_ids
                         )
                     ]
                     del conversation_messages[tool_exchange_start:]
@@ -3972,7 +4066,11 @@ class DeepSpaceChatService:
 
                 read_semaphore = asyncio.Semaphore(
                     max(
-                        1, min(int(getattr(self.settings, "deepspace_max_concurrent_tools", 8)), 32)
+                        1,
+                        min(
+                            int(getattr(self.settings, "deepspace_max_concurrent_tools", 8)),
+                            32,
+                        ),
                     )
                 )
                 write_lock = asyncio.Lock()
@@ -4462,7 +4560,10 @@ class DeepSpaceChatService:
                     conversation_id=str(conversation_id),
                     prompt=prompt,
                 )
-                if consolidation and consolidation.get("status") in {"pending", "saved"}:
+                if consolidation and consolidation.get("status") in {
+                    "pending",
+                    "saved",
+                }:
                     yield sse("memory_candidate", consolidation)
             except Exception:  # noqa: BLE001
                 # Memory convenience work must never fail a completed chat response.

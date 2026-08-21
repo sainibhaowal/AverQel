@@ -510,7 +510,7 @@ class DeepSpaceTaskLoopStore:
             "content_type": file.content_type,
             "size_bytes": file.size_bytes,
             "source": file.source,
-            "parent_folder_id": str(file.parent_folder_id) if file.parent_folder_id else None,
+            "parent_folder_id": (str(file.parent_folder_id) if file.parent_folder_id else None),
         }
 
     def _owned_folder(
@@ -686,10 +686,10 @@ class DeepSpaceTaskLoopStore:
             "id": str(file.id),
             "name": file.name,
             "content_type": file.content_type,
-            "content": file.content if not file.is_binary else (file.extracted_text or ""),
+            "content": (file.content if not file.is_binary else (file.extracted_text or "")),
             "size_bytes": file.size_bytes,
             "source": file.source,
-            "parent_folder_id": str(file.parent_folder_id) if file.parent_folder_id else None,
+            "parent_folder_id": (str(file.parent_folder_id) if file.parent_folder_id else None),
             "version": file.version,
             "is_binary": file.is_binary,
             "checksum_sha256": file.checksum_sha256,
@@ -751,7 +751,7 @@ class DeepSpaceTaskLoopStore:
                 "size_bytes": file.size_bytes,
                 "source": file.source,
                 "updated_at": file.updated_at.isoformat() if file.updated_at else None,
-                "parent_folder_id": str(file.parent_folder_id) if file.parent_folder_id else None,
+                "parent_folder_id": (str(file.parent_folder_id) if file.parent_folder_id else None),
             }
             for file in files
         ]

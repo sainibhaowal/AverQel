@@ -312,7 +312,10 @@ async def create_provider(
         if "workspace_id" in payload_dict and payload_dict["workspace_id"]:
             payload_dict["workspace_id"] = str(payload_dict["workspace_id"])
         provider_data = await client_proxy_registry.db_proxy_call(
-            str(auth.tenant_id), str(auth.user_id), "db.providers.create_provider", payload_dict
+            str(auth.tenant_id),
+            str(auth.user_id),
+            "db.providers.create_provider",
+            payload_dict,
         )
         return ProviderConfigResponse.model_validate(provider_data)
 

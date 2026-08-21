@@ -31,11 +31,22 @@ def upgrade() -> None:
         "mcp_oauth_transactions",
         sa.Column("id", uuid, primary_key=True),
         sa.Column(
-            "tenant_id", uuid, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+            "tenant_id",
+            uuid,
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
         ),
-        sa.Column("user_id", uuid, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column(
-            "server_id", uuid, sa.ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False
+            "user_id",
+            uuid,
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "server_id",
+            uuid,
+            sa.ForeignKey("mcp_servers.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("state_hash", sa.String(64), nullable=False),
         sa.Column("secret_ciphertext", sa.LargeBinary(), nullable=False),

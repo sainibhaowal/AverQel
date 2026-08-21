@@ -56,7 +56,9 @@ def upgrade() -> None:
     )
     for column in ("tenant_id", "user_id", "conversation_id", "parent_folder_id"):
         op.create_index(
-            f"ix_deepspace_workspace_folders_{column}", "deepspace_workspace_folders", [column]
+            f"ix_deepspace_workspace_folders_{column}",
+            "deepspace_workspace_folders",
+            [column],
         )
 
     op.add_column(
@@ -68,14 +70,16 @@ def upgrade() -> None:
         sa.Column("storage_bucket", sa.String(length=255), nullable=True),
     )
     op.add_column(
-        "deepspace_workspace_files", sa.Column("storage_key", sa.String(length=1024), nullable=True)
+        "deepspace_workspace_files",
+        sa.Column("storage_key", sa.String(length=1024), nullable=True),
     )
     op.add_column(
         "deepspace_workspace_files",
         sa.Column("checksum_sha256", sa.String(length=64), nullable=True),
     )
     op.add_column(
-        "deepspace_workspace_files", sa.Column("extracted_text", sa.Text(), nullable=True)
+        "deepspace_workspace_files",
+        sa.Column("extracted_text", sa.Text(), nullable=True),
     )
     op.add_column(
         "deepspace_workspace_files",
@@ -170,10 +174,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("deepspace_workspace_file_versions")
     op.drop_index(
-        "ix_deepspace_workspace_files_checksum_sha256", table_name="deepspace_workspace_files"
+        "ix_deepspace_workspace_files_checksum_sha256",
+        table_name="deepspace_workspace_files",
     )
     op.drop_index(
-        "ix_deepspace_workspace_files_parent_folder_id", table_name="deepspace_workspace_files"
+        "ix_deepspace_workspace_files_parent_folder_id",
+        table_name="deepspace_workspace_files",
     )
     op.drop_constraint(
         "fk_deepspace_workspace_files_parent_folder",
@@ -181,7 +187,8 @@ def downgrade() -> None:
         type_="foreignkey",
     )
     op.drop_index(
-        "uq_deepspace_workspace_files_folder_name", table_name="deepspace_workspace_files"
+        "uq_deepspace_workspace_files_folder_name",
+        table_name="deepspace_workspace_files",
     )
     op.drop_index("uq_deepspace_workspace_files_root_name", table_name="deepspace_workspace_files")
     for column in (
@@ -201,6 +208,7 @@ def downgrade() -> None:
     )
     for column in ("parent_folder_id", "conversation_id", "user_id", "tenant_id"):
         op.drop_index(
-            f"ix_deepspace_workspace_folders_{column}", table_name="deepspace_workspace_folders"
+            f"ix_deepspace_workspace_folders_{column}",
+            table_name="deepspace_workspace_folders",
         )
     op.drop_table("deepspace_workspace_folders")

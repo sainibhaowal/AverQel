@@ -29,7 +29,14 @@ def test_official_mcp_catalog_contains_only_the_reviewed_remote_providers() -> N
 @pytest.mark.unit_no_db
 def test_official_mcp_catalog_is_public_metadata_without_credentials() -> None:
     validate_official_mcp_catalog()
-    prohibited = ("secret", "token", "password", "authorization", "client_id", "client_secret")
+    prohibited = (
+        "secret",
+        "token",
+        "password",
+        "authorization",
+        "client_id",
+        "client_secret",
+    )
 
     for provider in OFFICIAL_MCP_PROVIDERS:
         values = provider.registry_values()

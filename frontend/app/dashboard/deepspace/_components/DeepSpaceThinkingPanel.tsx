@@ -434,8 +434,12 @@ const TimelineEntry = memo(function TimelineEntry({
     // A newly active entry is the current working turn. When it finishes,
     // collapse it into its banner automatically. Do not override a user's
     // manual choice while the entry remains in the same state.
-    if (isActive) setOpen(true);
-    else if (wasActive && step.status === "completed") setOpen(false);
+    if (isActive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOpen(true);
+    } else if (wasActive && step.status === "completed") {
+      setOpen(false);
+    }
     previousStatus.current = step.status;
   }, [step.status]);
 

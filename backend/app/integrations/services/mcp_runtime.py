@@ -21,7 +21,11 @@ from app.core.config import Settings
 from app.integrations.models.connector import Connector
 from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.mcp_connection_policy import MCPConnectionPolicy
-from app.integrations.models.mcp_server import MCPOAuthToken, MCPRegistryEntry, MCPServer
+from app.integrations.models.mcp_server import (
+    MCPOAuthToken,
+    MCPRegistryEntry,
+    MCPServer,
+)
 from app.integrations.services.config_utils import (
     resolve_config_dict,
     resolve_config_value,
@@ -79,7 +83,11 @@ _MCP_RISK_LABELS = set(_MCP_RISK_RANK)
 def _safe_remote_detail(value: Any, *, limit: int = 500) -> str:
     """Keep provider diagnostics useful without returning credentials or URLs."""
     detail = re.sub(r"https?://[^\s]+", "[remote-endpoint]", str(value or "")).strip()
-    detail = re.sub(r"(?i)(bearer|token|access_token|refresh_token)[=: ]+[^\s,;]+", r"\1=[redacted]", detail)
+    detail = re.sub(
+        r"(?i)(bearer|token|access_token|refresh_token)[=: ]+[^\s,;]+",
+        r"\1=[redacted]",
+        detail,
+    )
     return detail[:limit]
 
 
@@ -379,7 +387,9 @@ class MCPConnectorRuntime:
             server_url=server_url,
             client_metadata=client_metadata,
             storage=_InMemoryTokenStorage(
-                tokens=tokens, client_info=client_info, on_tokens_updated=on_tokens_updated
+                tokens=tokens,
+                client_info=client_info,
+                on_tokens_updated=on_tokens_updated,
             ),
             oauth_metadata=oauth_metadata,
             resource_metadata=resource_metadata,
@@ -613,6 +623,7 @@ class MCPConnectorRuntime:
 
         if transport == "sse":
             auth = self._session_client()
+
             # MCP SDK versions expose different SSE constructor contracts.
             # Current versions accept an ``httpx_client_factory`` rather than
             # the ``http_client`` object accepted by streamable HTTP. Keep the
@@ -923,7 +934,16 @@ def infer_mcp_tool_risk(tool_name: str, tool: dict[str, Any] | None = None) -> M
         return "external_message"
     if any(
         word in normalized
-        for word in ("create", "update", "write", "upload", "append", "modify", "move", "copy")
+        for word in (
+            "create",
+            "update",
+            "write",
+            "upload",
+            "append",
+            "modify",
+            "move",
+            "copy",
+        )
     ):
         return "write"
     return "read"
@@ -1018,11 +1038,15 @@ def evaluate_mcp_tool_policy(
         risk_ceiling, 0
     ):
         return MCPToolPolicyDecision(
-            False, risk_level=risk_level, reason="MCP tool exceeds the connection risk ceiling."
+            False,
+            risk_level=risk_level,
+            reason="MCP tool exceeds the connection risk ceiling.",
         )
     if policy.read_only and risk_level != "read":
         return MCPToolPolicyDecision(
-            False, risk_level=risk_level, reason="MCP tool is blocked by read-only mode."
+            False,
+            risk_level=risk_level,
+            reason="MCP tool is blocked by read-only mode.",
         )
 
     approval_rule = (
@@ -1178,7 +1202,8 @@ def build_mcp_server_runtime(
         payload = dict(token_payload)
         payload.update(refreshed)
         encrypted = crypto.encrypt(
-            json.dumps(payload, separators=(",", ":")), aad=str(server.tenant_id).encode()
+            json.dumps(payload, separators=(",", ":")),
+            aad=str(server.tenant_id).encode(),
         )
         token_record.secret_ciphertext = encrypted.ciphertext
         token_record.secret_nonce = encrypted.nonce
@@ -1310,7 +1335,10 @@ async def execute_mcp_server_tool(
         user_id=server.user_id,
         server_id=server.id,
         event_type="tool_call_started",
-        payload={"tool": tool_name, "argument_keys": sorted(str(key) for key in arguments)},
+        payload={
+            "tool": tool_name,
+            "argument_keys": sorted(str(key) for key in arguments),
+        },
     )
     runtime = build_mcp_server_runtime(db=db, settings=settings, server=server)
     if runtime is None:
@@ -1322,7 +1350,11 @@ async def execute_mcp_server_tool(
             payload={"tool": tool_name, "error_code": "not_authenticated"},
         )
         db.commit()
-        return {"status": "error", "message": "MCP server is not authenticated", "is_error": True}
+        return {
+            "status": "error",
+            "message": "MCP server is not authenticated",
+            "is_error": True,
+        }
     try:
         # A read-only request can safely be retried after a fresh OAuth/session
         # setup.  Never retry writes, deletes, or outbound messages because a

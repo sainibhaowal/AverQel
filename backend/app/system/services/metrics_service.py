@@ -235,7 +235,7 @@ def increment_maintenance_job_event(*, job: str, status: str) -> None:
 
 
 @contextmanager
-def observe_db_query(operation: str) -> Generator[None, None, None]:
+def observe_db_query(operation: str) -> Generator[None]:
     operation_label = _safe_label(operation)
     start = time.perf_counter()
     try:
@@ -250,7 +250,7 @@ def observe_db_query(operation: str) -> Generator[None, None, None]:
 
 
 @contextmanager
-def observe_worker_stage(stage: str) -> Generator[None, None, None]:
+def observe_worker_stage(stage: str) -> Generator[None]:
     stage_label = _safe_label(stage)
     start = time.perf_counter()
     try:
@@ -264,7 +264,7 @@ def observe_worker_stage(stage: str) -> Generator[None, None, None]:
 
 
 @contextmanager
-def observe_extraction_stage(stage: str) -> Generator[None, None, None]:
+def observe_extraction_stage(stage: str) -> Generator[None]:
     stage_label = _safe_label(stage)
     start = time.perf_counter()
     try:
@@ -276,7 +276,7 @@ def observe_extraction_stage(stage: str) -> Generator[None, None, None]:
 
 
 @contextmanager
-def observe_query_pipeline_segment(segment: str) -> Generator[None, None, None]:
+def observe_query_pipeline_segment(segment: str) -> Generator[None]:
     segment_label = _safe_label(segment)
     start = time.perf_counter()
     try:
@@ -288,7 +288,7 @@ def observe_query_pipeline_segment(segment: str) -> Generator[None, None, None]:
 
 
 @contextmanager
-def observe_embedding_provider(provider: str, model: str) -> Generator[None, None, None]:
+def observe_embedding_provider(provider: str, model: str) -> Generator[None]:
     provider_label = _safe_label(provider)
     model_label = _safe_label(model)
     start = time.perf_counter()
@@ -302,7 +302,7 @@ def observe_embedding_provider(provider: str, model: str) -> Generator[None, Non
 
 
 @contextmanager
-def observe_llm_provider(provider: str, model: str) -> Generator[None, None, None]:
+def observe_llm_provider(provider: str, model: str) -> Generator[None]:
     provider_label = _safe_label(provider)
     model_label = _safe_label(model)
     start = time.perf_counter()

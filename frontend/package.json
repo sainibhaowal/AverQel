@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.1.0-beta.0",
+  "version": "1.0.0",
   "packageManager": "pnpm@10.28.2",
   "private": true,
   "engines": {

@@ -82,7 +82,10 @@ def test_phase5_policy_matrix_is_deny_first(
     seed_user,
 ) -> None:
     seeded = seed_user(
-        "tenant-phase5-policy", "phase5-policy@example.com", "StrongPass!1234", ("admin",)
+        "tenant-phase5-policy",
+        "phase5-policy@example.com",
+        "StrongPass!1234",
+        ("admin",),
     )
     server, conversation, mission = _server(db_session, seeded)
     policy = db_session.query(MCPConnectionPolicy).filter_by(server_id=server.id).one()
@@ -186,7 +189,10 @@ def test_phase5_scope_provider_and_catalog_guards(
     seed_user,
 ) -> None:
     seeded = seed_user(
-        "tenant-phase5-guards", "phase5-guards@example.com", "StrongPass!1234", ("admin",)
+        "tenant-phase5-guards",
+        "phase5-guards@example.com",
+        "StrongPass!1234",
+        ("admin",),
     )
     server, conversation, mission = _server(db_session, seeded)
     policy = db_session.query(MCPConnectionPolicy).filter_by(server_id=server.id).one()
@@ -265,7 +271,10 @@ def test_phase5_remote_call_is_blocked_before_runtime(
     monkeypatch,
 ) -> None:
     seeded = seed_user(
-        "tenant-phase5-boundary", "phase5-boundary@example.com", "StrongPass!1234", ("admin",)
+        "tenant-phase5-boundary",
+        "phase5-boundary@example.com",
+        "StrongPass!1234",
+        ("admin",),
     )
     server, conversation, mission = _server(db_session, seeded)
     policy = db_session.query(MCPConnectionPolicy).filter_by(server_id=server.id).one()

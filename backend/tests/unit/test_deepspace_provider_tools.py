@@ -126,7 +126,10 @@ def test_google_converts_tool_history_to_function_response() -> None:
                         "id": "call-1",
                         "type": "function",
                         "thought_signature": "sig-123",
-                        "function": {"name": "web_search", "arguments": '{"query":"news"}'},
+                        "function": {
+                            "name": "web_search",
+                            "arguments": '{"query":"news"}',
+                        },
                     }
                 ],
             },
@@ -146,7 +149,10 @@ def test_google_extracts_native_function_call() -> None:
             "content": {
                 "parts": [
                     {
-                        "functionCall": {"name": "web_search", "args": {"query": "news"}},
+                        "functionCall": {
+                            "name": "web_search",
+                            "args": {"query": "news"},
+                        },
                         "thoughtSignature": "sig-123",
                     }
                 ]
@@ -188,7 +194,10 @@ def test_anthropic_translates_tools_and_tool_history() -> None:
                     {
                         "id": "toolu-1",
                         "type": "function",
-                        "function": {"name": "web_search", "arguments": '{"query":"news"}'},
+                        "function": {
+                            "name": "web_search",
+                            "arguments": '{"query":"news"}',
+                        },
                     }
                 ],
             },
@@ -206,7 +215,14 @@ def test_anthropic_translates_tools_and_tool_history() -> None:
 
 def test_anthropic_extracts_tool_use_response() -> None:
     text, thinking, calls = AnthropicProvider._extract_text_blocks(
-        [{"type": "tool_use", "id": "toolu-1", "name": "web_search", "input": {"query": "news"}}]
+        [
+            {
+                "type": "tool_use",
+                "id": "toolu-1",
+                "name": "web_search",
+                "input": {"query": "news"},
+            }
+        ]
     )
 
     assert text == ""

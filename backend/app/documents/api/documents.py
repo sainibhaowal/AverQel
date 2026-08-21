@@ -264,7 +264,7 @@ def _consume_stream_ticket(*, ticket: str, db: Session, settings: Settings) -> A
         )
     service.redis.delete(key)
     try:
-        payload = json.loads(raw)
+        payload = json.loads(raw)  # type: ignore[arg-type]
         auth = AuthContext(
             user_id=uuid.UUID(str(payload["user_id"])),
             tenant_id=uuid.UUID(str(payload["tenant_id"])),
@@ -551,7 +551,10 @@ def create_document_event_stream_ticket(
             }
         ),
     )
-    return {"ticket": ticket, "expires_in_seconds": settings.document_event_stream_ticket_ttl_seconds}
+    return {
+        "ticket": ticket,
+        "expires_in_seconds": settings.document_event_stream_ticket_ttl_seconds,
+    }
 
 
 @router.get("/events/stream")

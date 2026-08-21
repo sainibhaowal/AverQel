@@ -219,11 +219,17 @@ class DeepSpaceRuntimeStore:
                         },
                         "started_at": step.created_at.isoformat(),
                         "completed_at": (step.completed_at or step.created_at).isoformat(),
-                        "turn_index": payload.get("turn_index", (step.input_json or {}).get("turn_index", 0)),
+                        "turn_index": payload.get(
+                            "turn_index", (step.input_json or {}).get("turn_index", 0)
+                        ),
                     }
                 )
                 continue
-            if step.step_type not in {"tool_start", "tool_result", "approval_requested"}:
+            if step.step_type not in {
+                "tool_start",
+                "tool_result",
+                "approval_requested",
+            }:
                 continue
             payload = dict(step.result_json or {})
             success = bool(payload.get("success", step.status == "completed"))

@@ -52,13 +52,17 @@ def _parse_range(range_header: str | None, *, total: int) -> tuple[int, int] | N
         requested_size = int(end_text)
         if requested_size <= 0:
             raise ApiError(
-                code="INVALID_REQUEST", message="Invalid media byte range", status_code=416
+                code="INVALID_REQUEST",
+                message="Invalid media byte range",
+                status_code=416,
             )
         start = max(0, total - requested_size)
         end = total - 1
     if start < 0 or end < start or start >= total:
         raise ApiError(
-            code="INVALID_REQUEST", message="Requested media range is unavailable", status_code=416
+            code="INVALID_REQUEST",
+            message="Requested media range is unavailable",
+            status_code=416,
         )
     return start, min(end, total - 1)
 
@@ -105,7 +109,9 @@ async def stream_artifact(
     total = len(payload)
     if total == 0:
         raise ApiError(
-            code="STORAGE_OBJECT_NOT_FOUND", message="Generated media is empty", status_code=404
+            code="STORAGE_OBJECT_NOT_FOUND",
+            message="Generated media is empty",
+            status_code=404,
         )
     byte_range = _parse_range(range_header, total=total)
     safe_filename = re.sub(r'[\r\n"]+', "", artifact.title).strip() or "generated-media"
@@ -126,5 +132,8 @@ async def stream_artifact(
     headers["Content-Length"] = str(len(body))
     headers["Content-Range"] = f"bytes {start}-{end}/{total}"
     return StreamingResponse(
-        _chunk_bytes(body), status_code=206, media_type=artifact.content_type, headers=headers
+        _chunk_bytes(body),
+        status_code=206,
+        media_type=artifact.content_type,
+        headers=headers,
     )

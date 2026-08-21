@@ -354,11 +354,17 @@ OFFICIAL_MCP_PROVIDERS: tuple[CuratedMCPProvider, ...] = (
         ),
         tool_preview=(
             CuratedMCPTool(
-                "get_user_profile", "Read the signed-in user's profile.", "People", ("read",)
+                "get_user_profile",
+                "Read the signed-in user's profile.",
+                "People",
+                ("read",),
             ),
             CuratedMCPTool("search_contacts", "Search the user's contacts.", "People", ("read",)),
             CuratedMCPTool(
-                "search_directory_people", "Search the Workspace directory.", "People", ("read",)
+                "search_directory_people",
+                "Search the Workspace directory.",
+                "People",
+                ("read",),
             ),
         ),
         availability="developer_preview",

@@ -35,7 +35,10 @@ from app.documents.schemas.collection import (
     DocumentCollectionCreate,
     DocumentCollectionResponse,
 )
-from app.documents.schemas.collection_chat import CollectionChatMessage, CreateChatMessage
+from app.documents.schemas.collection_chat import (
+    CollectionChatMessage,
+    CreateChatMessage,
+)
 from app.documents.schemas.collection_expiry import UpdateExpiryPayload
 from app.documents.schemas.documents import DocumentMetadataResponse
 from app.ingestion.services.extraction_quality import confidence_band
@@ -828,7 +831,10 @@ async def remove_documents_from_collection(
         await broadcast_manager.publish_event(
             str(collection_id),
             "document_sync",
-            {"action": "remove", "document_ids": [str(d) for d in payload.document_ids]},
+            {
+                "action": "remove",
+                "document_ids": [str(d) for d in payload.document_ids],
+            },
         )
     except Exception:  # noqa: BLE001
         logger.warning("Collection document remove broadcast failed", exc_info=True)
@@ -887,7 +893,9 @@ def add_permissions(
         )
 
     # Check if a 1:1 direct connection already exists between auth.user_id and target_user.id
-    from app.documents.models.collection import CollectionPermission as DBCollectionPermission
+    from app.documents.models.collection import (
+        CollectionPermission as DBCollectionPermission,
+    )
 
     user_collections = (
         db.query(DBCollectionPermission.collection_id)
@@ -1397,7 +1405,10 @@ async def collection_websocket(
                         await broadcast_manager.publish_event(
                             str(collection_id),
                             "message_reacted",
-                            {"message_id": str(db_msg.id), "reactions": db_msg.reactions},
+                            {
+                                "message_id": str(db_msg.id),
+                                "reactions": db_msg.reactions,
+                            },
                         )
             elif action == "delivered":
                 msg_id = data.get("message_id")
@@ -1447,7 +1458,10 @@ async def collection_websocket(
                         await broadcast_manager.publish_event(
                             str(collection_id),
                             "message_deleted",
-                            {"message_id": str(msg_id), "message": "This message was deleted"},
+                            {
+                                "message_id": str(msg_id),
+                                "message": "This message was deleted",
+                            },
                         )
             elif action == "read":
                 from app.documents.models.collection import (
@@ -1521,7 +1535,9 @@ def get_collection_chats(
     if collection and collection.expiry_days > 0:
         from datetime import timedelta
 
-        from app.documents.models.collection import CollectionChatMessage as DBCollectionChatMessage
+        from app.documents.models.collection import (
+            CollectionChatMessage as DBCollectionChatMessage,
+        )
 
         cutoff = datetime.now(UTC) - timedelta(days=collection.expiry_days)
         db.query(DBCollectionChatMessage).filter(
@@ -1566,7 +1582,9 @@ async def create_collection_chat(
     user = users_repo.get_by_id_global(auth.user_id)
     user_email = user.email if user else "anonymous@averqel.com"
 
-    from app.documents.models.collection import CollectionChatMessage as DBCollectionChatMessage
+    from app.documents.models.collection import (
+        CollectionChatMessage as DBCollectionChatMessage,
+    )
 
     db_msg = DBCollectionChatMessage(
         id=uuid.uuid4(),
@@ -1695,7 +1713,9 @@ async def clear_collection_chats(
         user_id=auth.user_id,
     )
 
-    from app.documents.models.collection import CollectionChatMessage as DBCollectionChatMessage
+    from app.documents.models.collection import (
+        CollectionChatMessage as DBCollectionChatMessage,
+    )
 
     # Delete all E2EE messages
     db.query(DBCollectionChatMessage).filter(

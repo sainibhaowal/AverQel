@@ -107,7 +107,9 @@ def test_runtime_store_bounds_retained_step_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_provider_retry_retries_pre_output_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_provider_retry_retries_pre_output_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     service = object.__new__(DeepSpaceChatService)
     attempts = 0
 
@@ -125,7 +127,10 @@ async def test_provider_retry_retries_pre_output_failures(monkeypatch: pytest.Mo
     frames = [
         item
         async for item in service._provider_stream_with_retry(
-            stream_factory, run_id=None, deadline=time.monotonic() + 5, provider_type="lmstudio"
+            stream_factory,
+            run_id=None,
+            deadline=time.monotonic() + 5,
+            provider_type="lmstudio",
         )
     ]
 

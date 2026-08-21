@@ -7,7 +7,11 @@ from app.providers.models.provider_reembedding_job import ProviderReembeddingJob
 def test_extracted_table_formats_text_and_json() -> None:
     table = ExtractedTable(page_number=2, headers=["Name", "Value"], rows=[["A", "1"]])
     assert table.to_text() == "Name | Value\n--- | ---\nA | 1"
-    assert table.to_json() == {"page_number": 2, "headers": ["Name", "Value"], "rows": [["A", "1"]]}
+    assert table.to_json() == {
+        "page_number": 2,
+        "headers": ["Name", "Value"],
+        "rows": [["A", "1"]],
+    }
     assert ExtractedTable(page_number=1).to_text() == ""
 
 

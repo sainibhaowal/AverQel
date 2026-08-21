@@ -61,7 +61,11 @@ def test_workspace_schemas_accept_valid_payloads() -> None:
 def test_stream_schemas_cover_defaults_and_nested_payloads() -> None:
     assert StreamEventCursor().sequence == 0
     citation = StreamCitationPayload(
-        document_id="d", chunk_id="c", filename="a.md", snippet="s", similarity_score=0.5
+        document_id="d",
+        chunk_id="c",
+        filename="a.md",
+        snippet="s",
+        similarity_score=0.5,
     )
     table = StreamTablePayload(id="t", headers=["a"], rows=[["b"]])
     chart = StreamChartPayload(id="c", series=[StreamChartPoint(label="x", value=1)])

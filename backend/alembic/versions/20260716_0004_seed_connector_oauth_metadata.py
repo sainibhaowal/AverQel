@@ -24,7 +24,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for slug in ("google-drive", "gmail", "google-calendar", "github", "slack", "notion"):
+    for slug in (
+        "google-drive",
+        "gmail",
+        "google-calendar",
+        "github",
+        "slack",
+        "notion",
+    ):
         op.execute(
             f"UPDATE integrations SET ui_metadata = ui_metadata - 'oauth_provider_key' - 'oauth_provider_label' WHERE slug = '{slug}'"
         )

@@ -1,5 +1,5 @@
-import uuid
 import re
+import uuid
 from typing import Literal
 from urllib.parse import quote
 
@@ -28,9 +28,7 @@ def _download_content_disposition(*, title: str, extension: str) -> str:
     clean_title = "".join(char for char in title if char.isprintable()).strip() or "DeepSpace Note"
     unicode_filename = f"{clean_title}.{extension}"
     ascii_filename = "".join(
-        char
-        if ord(char) < 128 and char not in {'\\', '"'} and not char.isspace()
-        else "_"
+        (char if ord(char) < 128 and char not in {"\\", '"'} and not char.isspace() else "_")
         for char in unicode_filename
     )
     ascii_filename = re.sub(r"_+", "_", ascii_filename).strip(" ._") or (

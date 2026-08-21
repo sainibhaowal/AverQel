@@ -51,7 +51,9 @@ def test_state_tampering_is_rejected() -> None:
     assert error.value.code == "OAUTH_STATE_INVALID"
 
 
-def test_google_identity_requires_verified_email(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_google_identity_requires_verified_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     service = OAuthLoginService(None, _settings())
     provider = service.provider("google")
 
@@ -60,7 +62,11 @@ def test_google_identity_requires_verified_email(monkeypatch: pytest.MonkeyPatch
 
         @staticmethod
         def json():
-            return {"sub": "google-user", "email": "person@example.com", "email_verified": False}
+            return {
+                "sub": "google-user",
+                "email": "person@example.com",
+                "email_verified": False,
+            }
 
     monkeypatch.setattr(oauth_login_service.httpx, "get", lambda *args, **kwargs: FakeResponse())
 

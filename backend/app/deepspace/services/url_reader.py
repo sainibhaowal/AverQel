@@ -14,7 +14,10 @@ from app.providers.services.base import ProviderRequestError
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_TEXT_CHARS = 40_000
 MAX_REDIRECTS = 3
-BLOCKED_IPS = {ipaddress.ip_address("169.254.169.254"), ipaddress.ip_address("100.100.100.200")}
+BLOCKED_IPS = {
+    ipaddress.ip_address("169.254.169.254"),
+    ipaddress.ip_address("100.100.100.200"),
+}
 TEXT_TYPES = {
     "text/html",
     "application/xhtml+xml",
@@ -49,7 +52,9 @@ def validate_public_url(value: str, *, allowed_domains: object = None) -> str:
         or parsed.password
     ):
         raise ProviderRequestError(
-            "url_reader", 400, "Only public http(s) URLs without credentials are allowed."
+            "url_reader",
+            400,
+            "Only public http(s) URLs without credentials are allowed.",
         )
     host = parsed.hostname.rstrip(".").lower()
     if isinstance(allowed_domains, list) and allowed_domains:
@@ -62,7 +67,9 @@ def validate_public_url(value: str, *, allowed_domains: object = None) -> str:
             )
     try:
         addresses = socket.getaddrinfo(
-            host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM
+            host,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
         )
     except OSError as exc:
         raise ProviderRequestError("url_reader", 502, "URL host could not be resolved.") from exc
@@ -112,7 +119,9 @@ def _fetch(
                         location = response.headers.get("location")
                         if not location:
                             raise ProviderRequestError(
-                                "url_reader", 502, "URL redirect did not include a location."
+                                "url_reader",
+                                502,
+                                "URL redirect did not include a location.",
                             )
                         current = validate_public_url(
                             urljoin(current, location), allowed_domains=allowed_domains
@@ -120,7 +129,9 @@ def _fetch(
                         continue
                     if response.status_code >= 400:
                         raise ProviderRequestError(
-                            "url_reader", int(response.status_code), "URL returned an error."
+                            "url_reader",
+                            int(response.status_code),
+                            "URL returned an error.",
                         )
                     content_length = response.headers.get("content-length")
                     if content_length:
@@ -128,11 +139,15 @@ def _fetch(
                             declared_length = int(content_length)
                         except ValueError as exc:
                             raise ProviderRequestError(
-                                "url_reader", 502, "URL returned an invalid content length."
+                                "url_reader",
+                                502,
+                                "URL returned an invalid content length.",
                             ) from exc
                         if declared_length > max_bytes:
                             raise ProviderRequestError(
-                                "url_reader", 413, "URL response is larger than the allowed limit."
+                                "url_reader",
+                                413,
+                                "URL response is larger than the allowed limit.",
                             )
                     chunks: list[bytes] = []
                     received = 0

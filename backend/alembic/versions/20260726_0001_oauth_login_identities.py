@@ -40,7 +40,10 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("provider", "subject", name="uq_oauth_identities_provider_subject"),
         sa.UniqueConstraint(
-            "tenant_id", "provider", "user_id", name="uq_oauth_identities_tenant_provider_user"
+            "tenant_id",
+            "provider",
+            "user_id",
+            name="uq_oauth_identities_tenant_provider_user",
         ),
     )
     op.create_index(

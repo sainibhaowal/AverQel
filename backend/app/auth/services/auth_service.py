@@ -318,7 +318,10 @@ class AuthService:
             pending_token = self._mint_pending_2fa_token(user_id=user.id, tenant_id=user.tenant_id)
             self.db.commit()
             return LoginResult(
-                user=user, roles=sorted(role_names), requires_2fa=True, pending_token=pending_token
+                user=user,
+                roles=sorted(role_names),
+                requires_2fa=True,
+                pending_token=pending_token,
             )
 
         access_token = create_access_token(

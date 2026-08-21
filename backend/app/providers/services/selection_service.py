@@ -764,7 +764,10 @@ class ProviderSelectionService:
         if feature_scope == "reranking" and not config.supports_reranking:
             notes.append(f"{source}:missing-reranking-capability:{config.id}")
             return None
-        if feature_scope == "web_search" and config.provider_type not in {"tavily", "searxng"}:
+        if feature_scope == "web_search" and config.provider_type not in {
+            "tavily",
+            "searxng",
+        }:
             notes.append(f"{source}:missing-web-search-capability:{config.id}")
             return None
 

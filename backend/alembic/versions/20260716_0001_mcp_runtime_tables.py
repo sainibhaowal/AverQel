@@ -32,18 +32,34 @@ def upgrade() -> None:
         "mcp_servers",
         sa.Column("id", uuid, primary_key=True),
         sa.Column(
-            "tenant_id", uuid, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+            "tenant_id",
+            uuid,
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
         ),
-        sa.Column("user_id", uuid, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "user_id",
+            uuid,
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("name", sa.String(160), nullable=False),
         sa.Column("transport", sa.String(32), nullable=False),
         sa.Column("config", jsonb, nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column(
-            "status", sa.String(32), nullable=False, server_default=sa.text("'disconnected'")
+            "status",
+            sa.String(32),
+            nullable=False,
+            server_default=sa.text("'disconnected'"),
         ),
         sa.Column("enabled", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("last_error", sa.String(1000)),
-        sa.Column("reconnect_attempts", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "reconnect_attempts",
+            sa.Integer(),
+            nullable=False,
+            server_default=sa.text("0"),
+        ),
         sa.Column("last_connected_at", sa.DateTime(timezone=True)),
         sa.Column(
             "created_at",
@@ -65,11 +81,17 @@ def upgrade() -> None:
         "mcp_events",
         sa.Column("id", uuid, primary_key=True),
         sa.Column(
-            "tenant_id", uuid, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+            "tenant_id",
+            uuid,
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("user_id", uuid, sa.ForeignKey("users.id", ondelete="SET NULL")),
         sa.Column(
-            "server_id", uuid, sa.ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False
+            "server_id",
+            uuid,
+            sa.ForeignKey("mcp_servers.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("event_type", sa.String(80), nullable=False),
         sa.Column("sequence", sa.Integer(), nullable=False, server_default=sa.text("0")),
@@ -90,7 +112,10 @@ def upgrade() -> None:
         "mcp_oauth_tokens",
         sa.Column("id", uuid, primary_key=True),
         sa.Column(
-            "tenant_id", uuid, sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+            "tenant_id",
+            uuid,
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column(
             "server_id",

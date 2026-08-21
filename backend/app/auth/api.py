@@ -228,7 +228,8 @@ def oauth_callback(
         )
         return redirect
     redirect = RedirectResponse(
-        url=f"{frontend_url}?oauth={'2fa' if result.requires_2fa else 'success'}", status_code=303
+        url=f"{frontend_url}?oauth={'2fa' if result.requires_2fa else 'success'}",
+        status_code=303,
     )
     redirect.delete_cookie(OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
     if result.requires_2fa:
@@ -260,7 +261,9 @@ def verify_oauth_2fa(
     pending_token = request.cookies.get(OAUTH_2FA_COOKIE)
     if not pending_token:
         raise ApiError(
-            code="INVALID_2FA_TOKEN", message="OAuth two-factor challenge expired.", status_code=401
+            code="INVALID_2FA_TOKEN",
+            message="OAuth two-factor challenge expired.",
+            status_code=401,
         )
     service = AuthService(db, settings)
     result = service.verify_totp_login(pending_token=pending_token, code=payload.code)

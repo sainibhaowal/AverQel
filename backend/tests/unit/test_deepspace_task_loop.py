@@ -5,7 +5,10 @@ from uuid import uuid4
 
 import pytest
 
-from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore, _markdown_to_safe_html
+from app.deepspace.services.task_loop import (
+    DeepSpaceTaskLoopStore,
+    _markdown_to_safe_html,
+)
 
 
 def _task(task_id: str, status: str, dependencies: list[str] | None = None) -> SimpleNamespace:

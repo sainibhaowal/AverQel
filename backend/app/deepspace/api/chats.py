@@ -83,7 +83,7 @@ def _serialize_message(message: Any) -> MessageSchema:
     return MessageSchema(
         id=message.id,
         role=message.role,
-        content=active_version.content if active_version is not None else message.content,
+        content=(active_version.content if active_version is not None else message.content),
         metadata_json=(
             dict(active_version.metadata_json)
             if active_version is not None
@@ -293,7 +293,8 @@ async def get_chat_history(
             # server's durable chat history. Fall through to PostgreSQL,
             # which also contains the run/event journal used for reconnect.
             logger.warning(
-                "DeepSpace storage proxy history read failed; using server history", exc_info=True
+                "DeepSpace storage proxy history read failed; using server history",
+                exc_info=True,
             )
 
     # A connected proxy can be alive but briefly return an empty snapshot while
@@ -322,7 +323,9 @@ async def get_chat_history(
         )
         if conversation is None:
             raise ApiError(
-                code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+                code="CONVERSATION_NOT_FOUND",
+                message="Conversation not found",
+                status_code=404,
             )
         messages = repo.get_messages(
             tenant_id=auth.tenant_id,
@@ -404,7 +407,9 @@ async def update_conversation(
     repo = DeepSpaceChatRepository(db)
     if payload.title is None and payload.content_html is None:
         raise ApiError(
-            code="INVALID_REQUEST", message="A title or note body is required.", status_code=400
+            code="INVALID_REQUEST",
+            message="A title or note body is required.",
+            status_code=400,
         )
     updated = repo.update_conversation(
         tenant_id=auth.tenant_id,
@@ -416,7 +421,9 @@ async def update_conversation(
     )
     if not updated:
         raise ApiError(
-            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+            code="CONVERSATION_NOT_FOUND",
+            message="Conversation not found",
+            status_code=404,
         )
     db.commit()
     conversation = repo.get_conversation(
@@ -457,7 +464,9 @@ async def append_conversation_content(
     )
     if conversation is None:
         raise ApiError(
-            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+            code="CONVERSATION_NOT_FOUND",
+            message="Conversation not found",
+            status_code=404,
         )
     db.commit()
     return ConversationSchema.model_validate(conversation)
@@ -480,7 +489,9 @@ async def delete_conversation(
         kind=CONVERSATION_KIND,
     ):
         raise ApiError(
-            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+            code="CONVERSATION_NOT_FOUND",
+            message="Conversation not found",
+            status_code=404,
         )
     db.commit()
     return Response(status_code=204)
@@ -519,7 +530,8 @@ async def cancel_deepspace_chat(
         conversation_id=conversation_id,
     )
     return Response(
-        status_code=204, headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"}
+        status_code=204,
+        headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"},
     )
 
 
@@ -565,7 +577,9 @@ async def resolve_deepspace_approval(
     )
     if resolved is None:
         raise ApiError(
-            code="APPROVAL_NOT_FOUND", message="Approval request not found.", status_code=404
+            code="APPROVAL_NOT_FOUND",
+            message="Approval request not found.",
+            status_code=404,
         )
     if resolved.get("status") == "already_resolved":
         raise ApiError(
@@ -745,7 +759,10 @@ async def stream_deepspace_chat(
     if not prompt.strip() and not resume_approval_id and not resume_user_question_id:
 
         async def empty_stream() -> AsyncIterator[str]:
-            yield sse("error", {"code": "EMPTY_MESSAGE", "message": "Message cannot be empty."})
+            yield sse(
+                "error",
+                {"code": "EMPTY_MESSAGE", "message": "Message cannot be empty."},
+            )
 
         return StreamingResponse(
             empty_stream(), media_type="text/event-stream", headers=SSE_HEADERS
@@ -777,7 +794,7 @@ async def stream_deepspace_chat(
                             "user_id": str(auth.user_id),
                             "roles": sorted(auth.roles),
                             "permissions": sorted(auth.permissions),
-                            "conversation_id": str(conversation_id) if conversation_id else None,
+                            "conversation_id": (str(conversation_id) if conversation_id else None),
                             "prompt": prompt,
                             "client_request_id": client_request_id,
                             "thinking_enabled": thinking_enabled,
@@ -880,7 +897,9 @@ async def regenerate_message_stream(
     )
     if source_message is None or source_message.role != "assistant":
         raise ApiError(
-            code="MESSAGE_NOT_FOUND", message="DeepSpace turn not found.", status_code=404
+            code="MESSAGE_NOT_FOUND",
+            message="DeepSpace turn not found.",
+            status_code=404,
         )
     messages = list(
         repo.get_messages(
@@ -892,14 +911,19 @@ async def regenerate_message_stream(
     source_index = next((index for index, item in enumerate(messages) if item.id == message_id), -1)
     if source_index < 0:
         raise ApiError(
-            code="MESSAGE_NOT_FOUND", message="DeepSpace turn not found.", status_code=404
+            code="MESSAGE_NOT_FOUND",
+            message="DeepSpace turn not found.",
+            status_code=404,
         )
     user_message = next(
-        (item for item in reversed(messages[:source_index]) if item.role == "user"), None
+        (item for item in reversed(messages[:source_index]) if item.role == "user"),
+        None,
     )
     if user_message is None:
         raise ApiError(
-            code="MESSAGE_NOT_FOUND", message="DeepSpace source prompt not found.", status_code=404
+            code="MESSAGE_NOT_FOUND",
+            message="DeepSpace source prompt not found.",
+            status_code=404,
         )
     source_prompt = (
         user_message.active_version.content
@@ -956,7 +980,9 @@ async def edit_and_regenerate_stream(
     )
     if edited is None:
         raise ApiError(
-            code="MESSAGE_NOT_FOUND", message="DeepSpace message not found.", status_code=404
+            code="MESSAGE_NOT_FOUND",
+            message="DeepSpace message not found.",
+            status_code=404,
         )
     latest_user, assistant = repo.get_latest_turn_pair(
         tenant_id=auth.tenant_id,
@@ -1167,7 +1193,9 @@ async def forget_memory(
     )
     if not success:
         raise ApiError(
-            code="MEMORY_NOT_FOUND", message=f"Memory key '{key}' not found.", status_code=404
+            code="MEMORY_NOT_FOUND",
+            message=f"Memory key '{key}' not found.",
+            status_code=404,
         )
     return Response(status_code=204)
 

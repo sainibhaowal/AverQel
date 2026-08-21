@@ -97,7 +97,10 @@ def test_timeline_events_preserve_model_messages_between_tool_steps() -> None:
 
 
 def test_frames_after_filters_replayed_cursor() -> None:
-    events = [SimpleNamespace(sequence=1, frame="one"), SimpleNamespace(sequence=3, frame="three")]
+    events = [
+        SimpleNamespace(sequence=1, frame="one"),
+        SimpleNamespace(sequence=3, frame="three"),
+    ]
 
     assert frames_after(events, after_sequence=1) == [(3, "three")]
 
@@ -193,6 +196,10 @@ def test_timeline_coalesces_adjacent_thinking_but_not_across_tools() -> None:
 
     replay = timeline_events(events)
 
-    assert [item["event"] for item in replay] == ["thinking", "agent_testing", "thinking"]
+    assert [item["event"] for item in replay] == [
+        "thinking",
+        "agent_testing",
+        "thinking",
+    ]
     assert replay[0]["data"]["text"] == "ab"
     assert replay[0]["sequence_end"] == 2

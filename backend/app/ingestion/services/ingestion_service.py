@@ -1116,7 +1116,9 @@ class IngestionService:
                 details={"max_bytes": self.settings.upload_max_bytes},
             )
 
-        from app.ingestion.services.security.archive_security import ArchiveSecurityService
+        from app.ingestion.services.security.archive_security import (
+            ArchiveSecurityService,
+        )
 
         ArchiveSecurityService().validate_payload(filename=filename, payload=payload)
 

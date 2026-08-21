@@ -47,7 +47,12 @@ class _FakeClient:
     def get(self, url, **_kwargs):
         if url.endswith("userinfo"):
             return _FakeResponse(
-                200, {"sub": "google-subject", "email": "owner@example.com", "name": "Owner"}
+                200,
+                {
+                    "sub": "google-subject",
+                    "email": "owner@example.com",
+                    "name": "Owner",
+                },
             )
         if url.endswith("/gmail/v1/users/me/profile"):
             return _FakeResponse(403, {})
@@ -164,7 +169,10 @@ def test_static_provider_disconnect_revokes_and_removes_local_token(
         provider_slug="google-gmail",
         name="Google Gmail",
         transport="streamable_http",
-        config={"server_url": "https://gmailmcp.googleapis.com/mcp/v1", "auth_mode": "mcp"},
+        config={
+            "server_url": "https://gmailmcp.googleapis.com/mcp/v1",
+            "auth_mode": "mcp",
+        },
         account_identity={"email": "owner@example.com"},
         status="connected",
     )

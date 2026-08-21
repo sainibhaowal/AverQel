@@ -35,7 +35,12 @@ def percentile(values: list[float], fraction: float) -> float:
 
 
 def request_json(
-    client: httpx.Client, method: str, url: str, *, token: str | None = None, **kwargs: object
+    client: httpx.Client,
+    method: str,
+    url: str,
+    *,
+    token: str | None = None,
+    **kwargs: object,
 ) -> tuple[httpx.Response, dict[str, object]]:
     headers = dict(kwargs.pop("headers", {}) or {})
     if token:
@@ -417,7 +422,9 @@ def main() -> None:
     parser.add_argument("--redis-url", default=None)
     parser.add_argument("--provider-mode", choices=("real", "mock"), default="real")
     parser.add_argument(
-        "--process-pids", default="", help="Comma-separated API/worker PIDs for CPU/RSS samples."
+        "--process-pids",
+        default="",
+        help="Comma-separated API/worker PIDs for CPU/RSS samples.",
     )
     parser.add_argument(
         "--kill-worker-pid",
@@ -479,7 +486,10 @@ def main() -> None:
     api_restart = None
     if args.api_restart_command:
         completed_restart = subprocess.run(
-            shlex.split(args.api_restart_command), check=False, capture_output=True, text=True
+            shlex.split(args.api_restart_command),
+            check=False,
+            capture_output=True,
+            text=True,
         )
         api_restart = {
             "command": args.api_restart_command,
@@ -549,7 +559,7 @@ def main() -> None:
         "sse_reconnect": reconnect,
         "approval_pause_resume": approval,
         "rehydrate": {
-            "status_code": rehydrate_response.status_code if rehydrate_response else None,
+            "status_code": (rehydrate_response.status_code if rehydrate_response else None),
             "message_count": len(rehydrated.get("messages") or []),
             "has_run": bool(rehydrated.get("run")),
         },

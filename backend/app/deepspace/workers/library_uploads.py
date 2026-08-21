@@ -91,7 +91,11 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
         raise
     finally:
         try:
-            if upload is not None and upload.status in {"completed", "failed", "cancelled"}:
+            if upload is not None and upload.status in {
+                "completed",
+                "failed",
+                "cancelled",
+            }:
                 storage.delete_upload_chunks(
                     tenant_id=parsed_tenant_id,
                     upload_id=parsed_upload_id,

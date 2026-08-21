@@ -144,7 +144,12 @@ class SearXNGProvider:
         if isinstance(safe_search, int | str) and str(safe_search) in {"0", "1", "2"}:
             params["safesearch"] = str(safe_search)
         time_range = metadata.get("time_range")
-        if isinstance(time_range, str) and time_range in {"day", "week", "month", "year"}:
+        if isinstance(time_range, str) and time_range in {
+            "day",
+            "week",
+            "month",
+            "year",
+        }:
             params["time_range"] = time_range
         return params
 
@@ -182,7 +187,10 @@ class SearXNGProvider:
             response = httpx_module.get(
                 f"{self.base_url}/search",
                 params=params,
-                headers={"Accept": "application/json", "User-Agent": "AverQel-DeepSpace/1.0"},
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "AverQel-DeepSpace/1.0",
+                },
                 timeout=timeout,
                 follow_redirects=False,
             )
@@ -264,7 +272,7 @@ class SearXNGProvider:
                     url=safe_url,
                     content=snippet,
                     score=float(score) if isinstance(score, int | float) else None,
-                    favicon=item.get("img_src") if isinstance(item.get("img_src"), str) else None,
+                    favicon=(item.get("img_src") if isinstance(item.get("img_src"), str) else None),
                     published_date=_clean_text(published_date, limit=100) or None,
                     source=_clean_text(source, limit=200) or None,
                 )

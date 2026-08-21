@@ -1,4 +1,4 @@
-name: Build Desktop App
+name: Build Desktop App (DEPRECATED - use release-desktop.yml)
 
 on:
   push:

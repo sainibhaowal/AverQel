@@ -93,7 +93,10 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                 )
 
         runtime = build_mcp_server_runtime(
-            db=db, settings=get_settings(), server=server, notification_handler=_notification
+            db=db,
+            settings=get_settings(),
+            server=server,
+            notification_handler=_notification,
         )
         if runtime is None:
             server.status = "failed"
@@ -104,7 +107,10 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
         try:
             catalog = anyio.run(_load_catalog, runtime)
             catalog["tools"] = [
-                {**item, "inputSchema": MCPCatalog.normalize_schema(item.get("inputSchema"))}
+                {
+                    **item,
+                    "inputSchema": MCPCatalog.normalize_schema(item.get("inputSchema")),
+                }
                 for item in catalog["tools"]
                 if isinstance(item, dict)
             ]
@@ -206,7 +212,10 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
 
         try:
             runtime = build_mcp_server_runtime(
-                db=db, settings=get_settings(), server=server, notification_handler=_notification
+                db=db,
+                settings=get_settings(),
+                server=server,
+                notification_handler=_notification,
             )
             if runtime is None:
                 server.status = "needs_auth"

@@ -165,7 +165,9 @@ async def synthesize_and_speak(
             None, lambda: tts.create(text, voice="af_sarah", speed=1.0, lang="en-us")
         )
         logger.info(
-            "TTS synthesis complete. samples_len=%d, sample_rate=%d", len(samples), sample_rate
+            "TTS synthesis complete. samples_len=%d, sample_rate=%d",
+            len(samples),
+            sample_rate,
         )
 
         # Convert float32 -> int16 PCM
@@ -246,7 +248,10 @@ async def _generate_spoken_text(prompt_text: str) -> str:
 
 
 async def _handle_agentic_step(
-    event_type: str, step_data: dict[str, Any], audio_source: rtc.AudioSource, room: rtc.Room
+    event_type: str,
+    step_data: dict[str, Any],
+    audio_source: rtc.AudioSource,
+    room: rtc.Room,
 ) -> None:
     prompt = ""
     if event_type == "agent_plan":
@@ -387,7 +392,10 @@ async def entrypoint(ctx: JobContext) -> None:
     logger.info("Checking pre-existing room participants and tracks...")
     for _p_id, participant in ctx.room.remote_participants.items():
         if participant.identity.startswith("agent-"):
-            logger.info("Ignoring pre-existing agent participant on join: %s", participant.identity)
+            logger.info(
+                "Ignoring pre-existing agent participant on join: %s",
+                participant.identity,
+            )
             continue
         logger.info("Found remote participant on join: %s", participant.identity)
         for _pub_id, publication in participant.track_publications.items():
@@ -402,7 +410,10 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 def run_transcribe(
-    model: WhisperModel, arr: np.ndarray, beam_size: int, initial_prompt: str | None = None
+    model: WhisperModel,
+    arr: np.ndarray,
+    beam_size: int,
+    initial_prompt: str | None = None,
 ) -> str:
     """Run transcription with custom segment filtering to block static noise loop hallucinations."""
     segments, _ = model.transcribe(
@@ -421,7 +432,9 @@ def run_transcribe(
         # 1. Filter out Whisper silent/noisy loop hallucinations
         if s.no_speech_prob > 0.55:
             logger.info(
-                "Ignoring segment due to high no_speech_prob (%.3f): %r", s.no_speech_prob, text
+                "Ignoring segment due to high no_speech_prob (%.3f): %r",
+                s.no_speech_prob,
+                text,
             )
             continue
         if s.compression_ratio > 2.4:
@@ -432,7 +445,11 @@ def run_transcribe(
             )
             continue
         if s.avg_logprob < -1.0:
-            logger.info("Ignoring segment due to low avg_logprob (%.3f): %r", s.avg_logprob, text)
+            logger.info(
+                "Ignoring segment due to low avg_logprob (%.3f): %r",
+                s.avg_logprob,
+                text,
+            )
             continue
 
         # 2. Filter out known static boilerplate sentences
@@ -712,7 +729,8 @@ async def _transcribe_and_respond(
 
         if max_amp < 1500:  # Gated at 1500 to keep low-amplitude background noise out of STT
             logger.info(
-                "Ignoring silent/noise speech segment (amplitude %.1f below 1500 gate)", max_amp
+                "Ignoring silent/noise speech segment (amplitude %.1f below 1500 gate)",
+                max_amp,
             )
             await broadcast_state(room, "listening")
             return

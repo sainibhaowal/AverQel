@@ -186,7 +186,10 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
 
     app_name: str = "AverQel"
-    app_version: str = "0.1.0"
+    app_version: str = Field(default="1.0.0", validation_alias="AKS_APP_VERSION")
+    release_version: str = Field(default="1.0.0", validation_alias="AKS_RELEASE_VERSION")
+    git_sha: str = Field(default="unknown", validation_alias="AKS_GIT_SHA")
+    build_timestamp_utc: str | None = Field(default=None, validation_alias="AKS_BUILD_TIMESTAMP")
     env: str = "development"
     log_level: str = "INFO"
     api_prefix: str = "/api/v1"

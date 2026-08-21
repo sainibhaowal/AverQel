@@ -14,7 +14,11 @@ def test_validate_public_url_enforces_scheme_allowlist_and_dns(monkeypatch) -> N
         url_reader.validate_public_url("https://example.com/a?x=1", allowed_domains=["example.com"])
         == "https://example.com/a?x=1"
     )
-    for value in ("file:///tmp/a", "https://user:pass@example.com", "https://other.test"):
+    for value in (
+        "file:///tmp/a",
+        "https://user:pass@example.com",
+        "https://other.test",
+    ):
         with pytest.raises(ProviderRequestError):
             url_reader.validate_public_url(value, allowed_domains=["example.com"])
 
@@ -54,7 +58,11 @@ def test_read_url_parses_html_and_read_image_rejects_non_image(monkeypatch) -> N
     monkeypatch.setattr(
         url_reader,
         "_fetch",
-        lambda *_args, **_kwargs: ("https://example.com/file", "text/plain", b"not image"),
+        lambda *_args, **_kwargs: (
+            "https://example.com/file",
+            "text/plain",
+            b"not image",
+        ),
     )
     with pytest.raises(ProviderRequestError):
         url_reader.read_image("https://example.com/file")

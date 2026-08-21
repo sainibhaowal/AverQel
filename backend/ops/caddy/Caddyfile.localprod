@@ -74,5 +74,5 @@ https://{$AVERQEL_DOMAIN}, https://localhost, https://127.0.0.1 {
 }
 http://{$AVERQEL_DOMAIN}, http://localhost, http://127.0.0.1 {
   redir https://{host}{uri} 308
-  
+
 }

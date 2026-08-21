@@ -4,7 +4,11 @@ from uuid import UUID
 
 import pytest
 
-from app.auth.dependencies import build_auth_context, create_access_token, decode_access_token
+from app.auth.dependencies import (
+    build_auth_context,
+    create_access_token,
+    decode_access_token,
+)
 from app.auth.roles import canonicalize_role_name
 from app.auth.security import (
     generate_secure_token,

@@ -70,7 +70,7 @@ AverQel chooses the most effective visual medium based on the data type:
   | Column A | Column B | Column C |
   | --- | --- | --- |
   | data | data | data |
-  
+
   Note: This is a correct note placement outside the table.
 
 

@@ -56,7 +56,7 @@ def SessionLocal() -> Session:  # noqa: N802
 
 
 @contextmanager
-def managed_db_session() -> Generator[Session, None, None]:
+def managed_db_session() -> Generator[Session]:
     """Provide a database session with the same safety boundary as ``get_db``."""
     settings = get_settings()
     checkout_start = time.perf_counter()
@@ -108,7 +108,7 @@ def managed_db_session() -> Generator[Session, None, None]:
             logger.warning("Database session close failed.", exc_info=True)
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session]:
     """Yield a request-scoped database session with role setup and cleanup."""
     with managed_db_session() as db:
         yield db

@@ -382,7 +382,7 @@ class MemoryService:
         return {
             "key": key[:120],
             "value": normalized_value,
-            "tags": sorted(set([*tags, memory_type, "explicit" if explicit else "inferred"])),
+            "tags": sorted({*tags, memory_type, "explicit" if explicit else "inferred"}),
             "confidence": max(0.0, min(1.0, confidence)),
             "importance": 0.9 if explicit else 0.65,
             "explicit": explicit,
@@ -395,7 +395,7 @@ class MemoryService:
                 "entities": entity_tokens,
                 "temporal_scope": "persistent",
                 "capture_mode": "explicit" if explicit else "automatic",
-                "source_message": "explicit_user_request" if explicit else "latest_user_turn",
+                "source_message": ("explicit_user_request" if explicit else "latest_user_turn"),
             },
         }
 
@@ -575,7 +575,7 @@ class MemoryService:
                 tags=list(candidate["tags"]),
                 importance_score=float(candidate["importance"]),
                 confidence_score=float(candidate["confidence"]),
-                source="explicit_memory_request" if explicit else "conversation_consolidation",
+                source=("explicit_memory_request" if explicit else "conversation_consolidation"),
                 conversation_id=conversation_id,
                 status=status,
                 metadata_json=metadata,
@@ -691,7 +691,11 @@ class MemoryService:
             existing.confidence_score = max(
                 float(existing.confidence_score or 0.0),
                 max(
-                    0.0, min(1.0, float(confidence_score if confidence_score is not None else 1.0))
+                    0.0,
+                    min(
+                        1.0,
+                        float(confidence_score if confidence_score is not None else 1.0),
+                    ),
                 ),
             )
             existing.content_hash = content_hash
@@ -800,7 +804,11 @@ class MemoryService:
                 content_hash=content_hash,
                 importance_score=importance,
                 confidence_score=max(
-                    0.0, min(1.0, float(confidence_score if confidence_score is not None else 1.0))
+                    0.0,
+                    min(
+                        1.0,
+                        float(confidence_score if confidence_score is not None else 1.0),
+                    ),
                 ),
                 status=normalized_status,
                 source=(str(source).strip()[:120] if source else None),
@@ -1094,7 +1102,7 @@ class MemoryService:
             raise ValueError("value is required")
         if normalized_scope == "global":
             raise ValueError("Only explicitly shared memory may use global scope.")
-        normalized_tags = sorted(set(str(tag).strip() for tag in (tags or []) if str(tag).strip()))
+        normalized_tags = sorted({str(tag).strip() for tag in (tags or []) if str(tag).strip()})
         content_hash = self._content_hash(
             key=memory.key, value=normalized_value, scope=normalized_scope
         )

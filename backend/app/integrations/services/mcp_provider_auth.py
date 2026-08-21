@@ -71,7 +71,10 @@ class MCPProviderOAuthProfile:
     def readiness(self, settings: Settings) -> tuple[bool, str | None]:
         _, _, missing = self.configured_credentials(settings)
         if missing:
-            return False, f"{self.label} MCP OAuth is not configured: {', '.join(missing)}."
+            return (
+                False,
+                f"{self.label} MCP OAuth is not configured: {', '.join(missing)}.",
+            )
         if not (settings.mcp_oauth_redirect_uri or settings.averqel_public_origin):
             return False, "MCP OAuth callback URL is not configured."
         return True, None
@@ -268,7 +271,9 @@ MCP_PROVIDER_OAUTH_PROFILES = (
 )
 
 
-def get_mcp_provider_profile(provider_slug: str | None) -> MCPProviderOAuthProfile | None:
+def get_mcp_provider_profile(
+    provider_slug: str | None,
+) -> MCPProviderOAuthProfile | None:
     for profile in MCP_PROVIDER_OAUTH_PROFILES:
         if profile.matches(provider_slug):
             return profile

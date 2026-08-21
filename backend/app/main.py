@@ -29,7 +29,11 @@ from app.system.api import (
     metrics,
     support,
 )
-from app.system.services.otel import configure_telemetry, instrument_sqlalchemy, telemetry_span
+from app.system.services.otel import (
+    configure_telemetry,
+    instrument_sqlalchemy,
+    telemetry_span,
+)
 
 
 def _build_cors_kwargs(settings: Settings) -> dict[str, object]:
@@ -67,9 +71,12 @@ def create_app() -> FastAPI:
     configure_telemetry(settings)
     instrument_sqlalchemy(get_engine())
 
+    # Real production version: prefer release_version (git tag), fallback to app_version
+    effective_version = settings.release_version or settings.app_version
+
     app = FastAPI(
         title=settings.app_name,
-        version="0.1.0",
+        version=effective_version,
     )
 
     app.add_middleware(

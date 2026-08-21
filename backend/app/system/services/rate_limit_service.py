@@ -77,7 +77,10 @@ class SystemHealthMonitor:
             multiplier = 1.0
 
         return AdaptiveSystemMetrics(
-            cpu_load_ratio=cpu_ratio, memory_usage_pct=mem_pct, multiplier=multiplier, status=status
+            cpu_load_ratio=cpu_ratio,
+            memory_usage_pct=mem_pct,
+            multiplier=multiplier,
+            status=status,
         )
 
 
