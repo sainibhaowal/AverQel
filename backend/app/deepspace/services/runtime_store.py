@@ -179,7 +179,7 @@ class DeepSpaceRuntimeStore:
         conversation_id: uuid.UUID,
         assistant_message_id: uuid.UUID,
     ) -> list[dict[str, object]]:
-        """Return the durable, UI-safe tool trajectory for one assistant turn."""
+        """Return the durable, UI-safe activity trajectory for one assistant turn."""
         run = self.db.execute(
             select(DeepSpaceAgentRun).where(
                 DeepSpaceAgentRun.tenant_id == tenant_id,
@@ -201,6 +201,28 @@ class DeepSpaceRuntimeStore:
         )
         result: list[dict[str, object]] = []
         for step in steps:
+            if step.step_type == "model_message":
+                payload = dict(step.result_json or {})
+                result.append(
+                    {
+                        "type": "model_message",
+                        "step_id": f"runtime_{step.sequence}",
+                        "tool_id": None,
+                        "tool_name": None,
+                        "tool_input": {},
+                        "output": str(payload.get("text") or ""),
+                        "success": True,
+                        "status": step.status,
+                        "data": {
+                            "text": str(payload.get("text") or ""),
+                            "phase": "exploring",
+                        },
+                        "started_at": step.created_at.isoformat(),
+                        "completed_at": (step.completed_at or step.created_at).isoformat(),
+                        "turn_index": payload.get("turn_index", (step.input_json or {}).get("turn_index", 0)),
+                    }
+                )
+                continue
             if step.step_type not in {"tool_start", "tool_result", "approval_requested"}:
                 continue
             payload = dict(step.result_json or {})

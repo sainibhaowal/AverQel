@@ -2506,18 +2506,23 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
         type:
           step.type === "plan"
             ? "plan"
-            : step.type === "thinking"
-              ? "thinking"
-              : step.type === "permission_request" || step.type === "ask_user_question"
-                ? "permission"
-                : step.type === "agent_testing" ||
-                    step.type === "agent_verifying" ||
-                    step.type === "agent_self_correct"
-                  ? "testing"
-                  : ("tool_call" as const),
+            : step.type === "model_message"
+              ? "model_message"
+              : step.type === "thinking"
+                ? "thinking"
+                : step.type === "permission_request" || step.type === "ask_user_question"
+                  ? "permission"
+                  : step.type === "agent_testing" ||
+                      step.type === "agent_verifying" ||
+                      step.type === "agent_self_correct"
+                    ? "testing"
+                    : ("tool_call" as const),
         title: (() => {
           if (step.type === "plan") {
             return (step.data?.title || step.data?.message || "Strategic Plan") as string;
+          }
+          if (step.type === "model_message") {
+            return "Model message";
           }
           if (step.type === "thinking") {
             return "Internal Thought";
@@ -2560,7 +2565,17 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
         toolId: step.tool_id,
         success: step.success,
         diffStats: step.diffStats,
-        details: step.plan,
+        details:
+          step.type === "model_message"
+            ? String(
+                step.data?.text ??
+                  (step.data?.data && typeof step.data.data === "object"
+                    ? (step.data.data as Record<string, unknown>).text
+                    : undefined) ??
+                  step.toolOutput ??
+                  "",
+              )
+            : step.plan,
         data: step.data,
       };
       timeline = upsertTimelineStep(timeline, mapped);

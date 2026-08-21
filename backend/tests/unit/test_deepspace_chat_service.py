@@ -776,6 +776,27 @@ def test_current_turn_memory_boundary_makes_history_reference_only() -> None:
     assert "fresh read-only lookup verifies it" in boundary
 
 
+def test_model_messages_are_persisted_as_durable_activity_steps() -> None:
+    service = object.__new__(DeepSpaceChatService)
+    recorded: list[dict[str, object]] = []
+    service.runtime = SimpleNamespace(record_step=lambda **kwargs: recorded.append(kwargs))
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    service._record_model_message_step(
+        run_id=uuid4(),
+        auth=auth,
+        conversation_id=uuid4(),
+        text="I found the connected GitHub account.",
+        turn_index=2,
+    )
+
+    assert recorded[0]["step_type"] == "model_message"
+    assert recorded[0]["result_json"] == {
+        "text": "I found the connected GitHub account.",
+        "turn_index": 2,
+    }
+
+
 def test_explicit_or_matching_follow_up_resumes_saved_task_plan() -> None:
     task_check = {
         "task_count": 1,

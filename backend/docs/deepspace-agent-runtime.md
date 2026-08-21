@@ -16,6 +16,11 @@ Native provider events are forwarded as DeepSpace SSE events, including
 `thinking`, `delta`, `tool_delta`, `tool_start`, `tool_result`, `tool_error`,
 `observing`, `ask_user_question`, and `agent_status`.
 
+Model narration emitted before a tool call or `ask_user` pause is persisted as
+an ordered activity step. A paused, resumed, cancelled, or reloaded turn keeps
+that narration beside the tool and question events instead of rebuilding the
+turn from only its final answer.
+
 ## Productivity tools
 
 The DeepSpace allowlist contains:

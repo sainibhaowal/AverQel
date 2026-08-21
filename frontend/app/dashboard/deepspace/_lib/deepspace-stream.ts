@@ -452,6 +452,7 @@ export interface AgentStep {
     | "tool_start"
     | "tool_result"
     | "tool_error"
+    | "model_message"
     | "observing"
     | "permission_request"
     | "thinking"

@@ -494,6 +494,35 @@ class DeepSpaceChatService:
     def _now() -> str:
         return datetime.now(UTC).isoformat()
 
+    def _record_model_message_step(
+        self,
+        *,
+        run_id: uuid.UUID | None,
+        auth: AuthContext,
+        conversation_id: uuid.UUID,
+        text: str,
+        turn_index: int,
+    ) -> None:
+        """Persist model narration before a pause can rebuild the turn.
+
+        Model messages are user-visible activity, not the final answer. They
+        still belong to the durable turn timeline so an ask_user pause,
+        resume, reload, or cancellation cannot discard them.
+        """
+
+        if run_id is None or not text.strip():
+            return
+        self.runtime.record_step(
+            run_id=run_id,
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+            step_type="model_message",
+            status="completed",
+            input_json={"turn_index": turn_index},
+            result_json={"text": text, "turn_index": turn_index},
+        )
+
     @staticmethod
     def _looks_like_fake_tool_output(text: str) -> bool:
         """Detect tool syntax printed as prose, without ever executing it."""
@@ -3448,6 +3477,13 @@ class DeepSpaceChatService:
                         del thinking_parts[round_thinking_start:]
                         if connected_tool_recovery_retries < MAX_CONNECTED_TOOL_RECOVERY_RETRIES:
                             connected_tool_recovery_retries += 1
+                            self._record_model_message_step(
+                                run_id=run_id,
+                                auth=auth,
+                                conversation_id=conversation_id,
+                                text=prose_answer,
+                                turn_index=round_index,
+                            )
                             yield sse(
                                 "model_message",
                                 {"text": prose_answer, "turn_index": round_index, "status": "completed"},
@@ -3520,6 +3556,13 @@ class DeepSpaceChatService:
                             # eventual interactive card.
                             del answer_parts[round_answer_start:]
                             del thinking_parts[round_thinking_start:]
+                            self._record_model_message_step(
+                                run_id=run_id,
+                                auth=auth,
+                                conversation_id=conversation_id,
+                                text=prose_answer,
+                                turn_index=round_index,
+                            )
                             yield sse(
                                 "model_message",
                                 {"text": prose_answer, "turn_index": round_index, "status": "completed"},
@@ -3555,6 +3598,13 @@ class DeepSpaceChatService:
                         }
                         del answer_parts[round_answer_start:]
                         del thinking_parts[round_thinking_start:]
+                        self._record_model_message_step(
+                            run_id=run_id,
+                            auth=auth,
+                            conversation_id=conversation_id,
+                            text=prose_answer,
+                            turn_index=round_index,
+                        )
                         yield sse(
                             "model_message",
                             {"text": prose_answer, "turn_index": round_index, "status": "completed"},
@@ -3597,6 +3647,13 @@ class DeepSpaceChatService:
                 # it remain at the bottom and then disappear on completion.
                 prose_before_tools = "".join(answer_parts[round_answer_start:]).strip()
                 if prose_before_tools:
+                    self._record_model_message_step(
+                        run_id=run_id,
+                        auth=auth,
+                        conversation_id=conversation_id,
+                        text=prose_before_tools,
+                        turn_index=round_index,
+                    )
                     yield sse(
                         "model_message",
                         {

@@ -469,6 +469,53 @@ describe("TimelineStep Model", () => {
     expect(state.messages[0]?.content).toBe("I need one choice before continuing.");
   });
 
+  test("keeps model messages emitted before a question after history reload", () => {
+    const state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conversation-1",
+      messages: [
+        {
+          id: "assistant-question-with-context",
+          role: "assistant",
+          content: "Which repository should I inspect?",
+          created_at: "2026-08-08T10:00:00.000Z",
+          metadata_json: {
+            status: "awaiting_user",
+            agent_steps: [
+              {
+                id: "model-message-step",
+                type: "model_message",
+                status: "completed",
+                startedAt: "2026-08-08T10:00:01.000Z",
+                completedAt: "2026-08-08T10:00:02.000Z",
+                data: {
+                  text: "I found the connected GitHub account and will inspect its repositories.",
+                  phase: "exploring",
+                },
+              },
+              {
+                id: "question-step",
+                type: "ask_user_question",
+                status: "awaiting_approval",
+                startedAt: "2026-08-08T10:00:03.000Z",
+                data: { question_id: "question-2", message: "Which repository should I inspect?" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(state.messages[0]?.timeline?.map((step) => step.type)).toEqual([
+      "model_message",
+      "permission",
+    ]);
+    expect(state.messages[0]?.timeline?.[0]).toMatchObject({
+      title: "Model message",
+      details: "I found the connected GitHub account and will inspect its repositories.",
+    });
+  });
+
   test("rehydrates persisted timeline events without merging thought segments", () => {
     const state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "load_history",
