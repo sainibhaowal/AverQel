@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import DeepSpaceThinkingPanel from "../app/dashboard/deepspace/_components/DeepSpaceThinkingPanel";
@@ -66,5 +66,89 @@ describe("DeepSpace verified task progress", () => {
     expect(screen.getByTestId("deepspace-task-progress")).toHaveTextContent("1/2 complete");
     expect(screen.getByTestId("deepspace-task-progress")).toHaveTextContent("Research sources");
     expect(screen.getByTestId("deepspace-task-progress")).toHaveTextContent("Write the report");
+  });
+
+  it("collapses completed timeline entries while keeping the live entry open", () => {
+    const { rerender } = render(
+      <DeepSpaceThinkingPanel
+        content=""
+        isStreaming
+        timeline={[
+          {
+            id: "finished-step",
+            stepId: "finished-step",
+            turnIndex: 1,
+            phase: "exploring",
+            type: "thinking",
+            title: "Completed thought",
+            details: "The completed details remain available when expanded.",
+            status: "completed",
+            startedAt: "2026-08-09T00:00:00Z",
+            completedAt: "2026-08-09T00:00:01Z",
+          },
+          {
+            id: "live-step",
+            stepId: "live-step",
+            turnIndex: 1,
+            phase: "executing",
+            type: "tool_call",
+            title: "Live tool call",
+            status: "running",
+            startedAt: "2026-08-09T00:00:02Z",
+            toolName: "web_search",
+          },
+        ]}
+      />,
+    );
+
+    const completedBanner = screen.getByRole("button", { name: /Completed thought/i });
+    const liveBanner = screen.getByRole("button", { name: /Live tool call/i });
+    expect(completedBanner).toHaveAttribute("aria-expanded", "false");
+    expect(liveBanner).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(completedBanner);
+    expect(completedBanner).toHaveAttribute("aria-expanded", "true");
+
+    rerender(
+      <DeepSpaceThinkingPanel
+        content=""
+        isStreaming={false}
+        timeline={[
+          {
+            id: "finished-step",
+            stepId: "finished-step",
+            turnIndex: 1,
+            phase: "exploring",
+            type: "thinking",
+            title: "Completed thought",
+            details: "The completed details remain available when expanded.",
+            status: "completed",
+            startedAt: "2026-08-09T00:00:00Z",
+            completedAt: "2026-08-09T00:00:01Z",
+          },
+          {
+            id: "live-step",
+            stepId: "live-step",
+            turnIndex: 1,
+            phase: "executing",
+            type: "tool_call",
+            title: "Live tool call",
+            status: "completed",
+            startedAt: "2026-08-09T00:00:02Z",
+            completedAt: "2026-08-09T00:00:03Z",
+            toolName: "web_search",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Completed thought/i })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /Live tool call/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });

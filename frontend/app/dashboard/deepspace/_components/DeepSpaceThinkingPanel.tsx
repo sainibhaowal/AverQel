@@ -417,12 +417,29 @@ const TimelineEntry = memo(function TimelineEntry({
   index: number;
   isLast: boolean;
 }) {
+  const [open, setOpen] = useState(step.status === "running" || step.status === "awaiting_approval");
+  const previousStatus = useRef(step.status);
   const details = formatDetail(step.details);
   const inputStream = formatDetail(step.toolInputStream);
   const input = formatDetail(step.toolInput);
   const output = formatDetail(step.toolOutput, MAX_EXPANDED_DETAIL_LENGTH);
   const outputPreview = detailPreview(output);
   const toolName = step.toolName?.trim();
+
+  useEffect(() => {
+    const wasActive =
+      previousStatus.current === "running" || previousStatus.current === "awaiting_approval";
+    const isActive = step.status === "running" || step.status === "awaiting_approval";
+
+    // A newly active entry is the current working turn. When it finishes,
+    // collapse it into its banner automatically. Do not override a user's
+    // manual choice while the entry remains in the same state.
+    if (isActive) setOpen(true);
+    else if (wasActive && step.status === "completed") setOpen(false);
+    previousStatus.current = step.status;
+  }, [step.status]);
+
+  const detailsId = `deepspace-timeline-details-${step.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 
   return (
     <li
@@ -436,7 +453,17 @@ const TimelineEntry = memo(function TimelineEntry({
         <TimelineIcon step={step} />
       </span>
       <div className="border-b border-white/8 pb-3">
-        <div className="text-foreground/65 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={detailsId}
+          onClick={() => setOpen((value) => !value)}
+          className="text-foreground/65 hover:text-foreground/85 flex w-full cursor-pointer items-center gap-2 rounded-sm text-left text-[10px] font-semibold tracking-[0.12em] uppercase transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300/40 focus-visible:outline-none"
+        >
+          <ChevronDown
+            size={12}
+            className={`shrink-0 transition-transform duration-300 ease-out motion-reduce:transition-none ${open ? "rotate-0" : "-rotate-90"}`}
+          />
           <span className="text-foreground/30 tabular-nums">
             {String(index + 1).padStart(2, "0")}
           </span>
@@ -449,55 +476,63 @@ const TimelineEntry = memo(function TimelineEntry({
           <span className="text-foreground/40 ml-auto shrink-0 text-[9px] tracking-normal normal-case">
             {timelineStatus(step)}
           </span>
+        </button>
+        <div
+          id={detailsId}
+          aria-hidden={!open}
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+        >
+          <div className="min-h-0 overflow-hidden">
+            {details ? (
+              <div
+                className={`text-foreground/70 mt-2 ${
+                  step.type === "thinking"
+                    ? "max-h-64 overflow-auto overscroll-contain"
+                    : "leading-5 whitespace-pre-wrap"
+                }`}
+                data-thinking-scroll={step.type === "thinking" ? "true" : undefined}
+              >
+                {step.type === "thinking" || step.type === "model_message" ? (
+                  <DeepSpaceMarkdownRenderer
+                    content={details}
+                    streaming={step.status === "running"}
+                    compact
+                  />
+                ) : (
+                  details
+                )}
+              </div>
+            ) : null}
+            {inputStream ? (
+              <div className="mt-2 border-l border-cyan-300/25 py-1 pl-3">
+                <div className="mb-1 text-[9px] font-semibold tracking-[0.12em] text-cyan-200/60 uppercase">
+                  Live tool arguments
+                </div>
+                <pre className="max-h-40 overflow-auto overscroll-contain text-[10px] leading-5 break-words whitespace-pre-wrap text-cyan-100/70">
+                  {inputStream}
+                </pre>
+              </div>
+            ) : null}
+            {input ? (
+              <AnimatedActivityDetails label="Request details">
+                <pre className="text-foreground/60 max-h-48 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
+                  {input}
+                </pre>
+              </AnimatedActivityDetails>
+            ) : null}
+            {output ? (
+              <AnimatedActivityDetails
+                label={step.status === "running" ? "Live tool output" : "Tool result"}
+                preview={outputPreview}
+                defaultOpen={step.status === "running" || step.status === "failed"}
+              >
+                <pre className="text-foreground/60 max-h-56 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
+                  {output}
+                </pre>
+              </AnimatedActivityDetails>
+            ) : null}
+          </div>
         </div>
-        {details ? (
-          <div
-            className={`text-foreground/70 mt-2 ${
-              step.type === "thinking"
-                ? "max-h-64 overflow-auto overscroll-contain"
-                : "leading-5 whitespace-pre-wrap"
-            }`}
-            data-thinking-scroll={step.type === "thinking" ? "true" : undefined}
-          >
-            {step.type === "thinking" || step.type === "model_message" ? (
-              <DeepSpaceMarkdownRenderer
-                content={details}
-                streaming={step.status === "running"}
-                compact
-              />
-            ) : (
-              details
-            )}
-          </div>
-        ) : null}
-        {inputStream ? (
-          <div className="mt-2 border-l border-cyan-300/25 py-1 pl-3">
-            <div className="mb-1 text-[9px] font-semibold tracking-[0.12em] text-cyan-200/60 uppercase">
-              Live tool arguments
-            </div>
-            <pre className="max-h-40 overflow-auto overscroll-contain text-[10px] leading-5 break-words whitespace-pre-wrap text-cyan-100/70">
-              {inputStream}
-            </pre>
-          </div>
-        ) : null}
-        {input ? (
-          <AnimatedActivityDetails label="Request details">
-            <pre className="text-foreground/60 max-h-48 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
-              {input}
-            </pre>
-          </AnimatedActivityDetails>
-        ) : null}
-        {output ? (
-          <AnimatedActivityDetails
-            label={step.status === "running" ? "Live tool output" : "Tool result"}
-            preview={outputPreview}
-            defaultOpen={step.status === "running" || step.status === "failed"}
-          >
-            <pre className="text-foreground/60 max-h-56 overflow-auto overscroll-contain py-2 text-[10px] leading-5 break-words whitespace-pre-wrap">
-              {output}
-            </pre>
-          </AnimatedActivityDetails>
-        ) : null}
       </div>
     </li>
   );
@@ -558,6 +593,9 @@ export default function DeepSpaceThinkingPanel({
   const taskProgress = taskProgressFromTimeline(orderedTimeline);
   const elapsedMs = timelineDurationMs(orderedTimeline, clock);
   const durationLabel = elapsedMs === null ? null : formatElapsed(elapsedMs);
+  const hasNarrativeTimeline = orderedTimeline.some(
+    (step) => step.type === "thinking" || step.type === "model_message",
+  );
   if (
     !content.trim() &&
     activitySteps.length === 0 &&
@@ -601,7 +639,7 @@ export default function DeepSpaceThinkingPanel({
               ordered timeline is authoritative whenever present; retain the
               fallback only for older messages that have no timeline at all.
             */}
-            {content.trim() && !orderedTimeline.length ? (
+            {content.trim() && !hasNarrativeTimeline ? (
               <div className="border-b border-white/8 pb-3" data-testid="deepspace-thinking-stream">
                 <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
                   Model thinking
