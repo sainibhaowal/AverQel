@@ -202,11 +202,27 @@ function recoverCompactTable(line: string): string | null {
     remainderIndex = cells.length;
   }
   const remainder = cells.slice(remainderIndex);
-  if (remainder.length > 0 && remainder.length % header.length !== 0) return null;
+  let rowWidth = header.length;
+  let indexedRows = false;
+  if (remainder.length > 0 && remainder.length % rowWidth !== 0) {
+    const indexedRowWidth = header.length + 1;
+    indexedRows =
+      remainder.length % indexedRowWidth === 0 &&
+      Array.from({ length: remainder.length / indexedRowWidth }, (_, rowIndex) =>
+        /^\d+$/.test(remainder[rowIndex * indexedRowWidth] ?? ""),
+      ).every(Boolean);
+    if (indexedRows) rowWidth = indexedRowWidth;
+    else return null;
+  }
 
-  const rows = [`| ${header.join(" | ")} |`, `| ${header.map(() => "---").join(" | ")} |`];
-  for (let index = 0; index < remainder.length; index += header.length) {
-    rows.push(`| ${remainder.slice(index, index + header.length).join(" | ")} |`);
+  const outputHeader = indexedRows ? ["#", ...header] : header;
+  const rows = [
+    `| ${outputHeader.join(" | ")} |`,
+    `| ${outputHeader.map(() => "---").join(" | ")} |`,
+  ];
+  for (let index = 0; index < remainder.length; index += rowWidth) {
+    const row = remainder.slice(index, index + rowWidth);
+    rows.push(`| ${row.join(" | ")} |`);
   }
   return rows.join("\n");
 }

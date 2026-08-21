@@ -23,6 +23,16 @@ describe("DeepSpace markdown normalization", () => {
     expect(normalized).toContain("| **Borderlands 4** | 2025 | Shooter |");
   });
 
+  it("recovers indexed repository rows when the source omitted the index header", () => {
+    const normalized = normalizeMarkdown(
+      "| Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |---|------------|--------|------------|--------|--------|----------------|----|----|------------|1 | Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |2 | Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |",
+    );
+
+    expect(normalized).toContain("| # | Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |");
+    expect(normalized).toContain("| 1 | Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |");
+    expect(normalized).toContain("| 2 | Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |");
+  });
+
   it("joins a table header and separator when a provider inserts a blank line", () => {
     const normalized = normalizeMarkdown(
       "| Section | What's Inside |\n\n|---|---------------| | 1 | **PET Scans** — hospital imaging | | 2 | **Theranostics** — targeted therapy |",
@@ -42,5 +52,15 @@ describe("DeepSpace markdown normalization", () => {
     expect(normalized).toContain("2. **Second source**");
     expect(normalized).toContain("3. **Third source**");
     expect(normalized).not.toContain("site2.");
+  });
+
+  it("recovers a repository table with an inline separator and rows", () => {
+    const normalized = normalizeMarkdown(
+      "| Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |---|------------|--------|------------|--------|--------|----------------|----|----|------------|1 | Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |2 | Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |",
+    );
+
+    expect(normalized).toContain("| Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |");
+    expect(normalized).toContain("| Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |");
+    expect(normalized).toContain("| Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |");
   });
 });
