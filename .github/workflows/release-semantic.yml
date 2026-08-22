@@ -128,6 +128,8 @@ jobs:
           RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
         run: |
           set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git show-ref --verify --quiet "refs/tags/$VERSION"; then
             EXISTING_SHA="$(git rev-parse "refs/tags/$VERSION^{commit}")"
             test "$EXISTING_SHA" = "$RELEASE_SHA" || {
