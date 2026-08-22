@@ -27,13 +27,34 @@ def test_ci_workflow_contains_blocking_gates() -> None:
     assert "continue-on-error: true" not in workflow
 
 
-def test_backend_release_workflow_has_tagged_build_and_vps_deploy() -> None:
-    workflow = _read(ROOT / ".github/workflows/release-backend.yml")
-    assert "workflow_run:" in workflow
-    assert "CI - Mandatory Quality Gates" in workflow
+def test_ci_runs_only_for_pull_requests() -> None:
+    workflow = _read(ROOT / ".github/workflows/ci.yml")
+    assert "pull_request:" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "workflow_run:" not in workflow
+    assert "  push:" not in workflow
+
+
+def test_semantic_release_is_manual_and_does_not_deploy() -> None:
+    workflow = _read(ROOT / ".github/workflows/release-semantic.yml")
+    assert "workflow_dispatch:" in workflow
+    assert "workflow_run:" not in workflow
     assert "release-please" not in workflow.lower()
+    assert ".github/scripts/next-semver.sh" in workflow
+    assert 'git push origin "$VERSION"' in workflow
+    assert "VPS_HOST" not in workflow
+    assert "docker build" not in workflow
+
+
+def test_vps_deployment_is_manual_and_gated_by_image_tests() -> None:
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+    assert "workflow_dispatch:" in workflow
     assert "backend/Dockerfile.base" in workflow
     assert "release_build_images.sh" in workflow
-    assert "refs/tags/$VERSION^{commit}" in workflow
+    assert "Smoke-test built image contents" in workflow
+    assert "Publish tested images to GHCR" in workflow
     assert "/opt/averqel/backend" in workflow
     assert "--no-build" in workflow
+    assert "--remove-orphans" in workflow
+    assert "MODELS_DIR" in workflow
+    assert "docker image prune -f" in workflow
