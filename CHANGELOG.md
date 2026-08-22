@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/sainibhaowal/AverQel/compare/averqel-v1.1.0...averqel-v1.1.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* make pytest unit_no_db report-only for fast CI ([ef5ac80](https://github.com/sainibhaowal/AverQel/commit/ef5ac803abb7d430c9f388b51c23bc6f78d712fc))
+
 ## [1.1.0](https://github.com/sainibhaowal/AverQel/compare/averqel-v1.0.0...averqel-v1.1.0) (2026-08-21)
 
 
