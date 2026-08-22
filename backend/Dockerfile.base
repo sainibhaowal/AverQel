@@ -14,13 +14,13 @@ RUN apt-get update \
 RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser
 
 COPY requirements.txt ./requirements.txt
-RUN mkdir -p /opt/wheelhouse \
-    && TORCH_REQUIREMENT="$(grep -E '^torch==' requirements.txt | head -n 1 || true)" \
-    && test -n "$TORCH_REQUIREMENT" \
-    && grep -v -E "^(--extra-index-url|torch==)" requirements.txt > reqs_no_torch.txt \
-    && pip download --timeout 120 --retries 5 "$TORCH_REQUIREMENT" --extra-index-url https://download.pytorch.org/whl/cpu -d /opt/wheelhouse \
-    && pip download --timeout 120 --retries 5 -r reqs_no_torch.txt --find-links=/opt/wheelhouse --extra-index-url https://download.pytorch.org/whl/cpu -d /opt/wheelhouse \
-    && pip install --no-index --find-links=/opt/wheelhouse -r requirements.txt
+RUN pip install \
+      --no-cache-dir \
+      --no-compile \
+      --prefer-binary \
+      --timeout 120 \
+      --retries 5 \
+      -r requirements.txt
 
 RUN mkdir -p /app/models && chown -R appuser:appgroup /app
 

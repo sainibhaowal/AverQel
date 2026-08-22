@@ -73,11 +73,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ needs.prepare-release.outputs.sha }}
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -85,6 +80,13 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 10.28.2
+
+      - name: Setup Node 22 with pnpm cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: applications/desktop/pnpm-lock.yaml
 
       - name: Install Linux desktop dependencies
         if: matrix.platform == 'ubuntu-22.04'
