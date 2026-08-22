@@ -75,9 +75,6 @@ if [[ -z "$GIT_SHA" ]]; then
 fi
 
 BUILD_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-# Set this in GitHub Actions to enable persistent BuildKit cache storage.
-# Local runs keep using the normal Docker builder when it is unset.
-DOCKER_CACHE_SCOPE="${AVERQEL_DOCKER_CACHE_SCOPE:-}"
 # Use dash naming for GHCR private: ghcr.io/sainibhaowal/averqel-api etc (single repo per service, no nested slash)
 API_IMAGE_BASE="${IMAGE_PREFIX}-api"
 WORKER_IMAGE_BASE="${IMAGE_PREFIX}-worker"
@@ -116,23 +113,6 @@ build_cmd_worker=(
   --label "org.opencontainers.image.created=$BUILD_TS"
   "$BACKEND_DIR"
 )
-
-if [[ -n "$DOCKER_CACHE_SCOPE" ]]; then
-  build_cmd_api=(
-    docker buildx build
-    --load
-    --cache-from "type=gha,scope=${DOCKER_CACHE_SCOPE}-api"
-    --cache-to "type=gha,mode=max,scope=${DOCKER_CACHE_SCOPE}-api"
-    "${build_cmd_api[@]:2}"
-  )
-  build_cmd_worker=(
-    docker buildx build
-    --load
-    --cache-from "type=gha,scope=${DOCKER_CACHE_SCOPE}-worker"
-    --cache-to "type=gha,mode=max,scope=${DOCKER_CACHE_SCOPE}-worker"
-    "${build_cmd_worker[@]:2}"
-  )
-fi
 
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "DRY RUN: ${build_cmd_api[*]}"
