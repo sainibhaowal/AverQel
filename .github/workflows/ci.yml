@@ -2,10 +2,8 @@ name: CI - Mandatory Quality Gates
 
 on:
   push:
-    branches: [main]
-    tags:
-      - "v*.*.*"
-      - "desktop-v*.*.*"
+    branches:
+      - "**"
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -71,17 +69,14 @@ jobs:
       - name: Bandit security
         run: bandit -r app -q --severity-level medium
 
-      - name: Pip-audit (report-only for fast CI - 78 vulns ignored until dependency upgrade window)
-        continue-on-error: true
-        run: pip-audit -s osv --ignore-vuln GHSA-xf7x-x43h-rpqh -r requirements.txt -r requirements-dev.txt || true
+      - name: Pip-audit (blocking; one documented compatibility exception)
+        run: pip-audit -s osv --ignore-vuln GHSA-xf7x-x43h-rpqh -r requirements.txt -r requirements-dev.txt
 
-      - name: Safety check (report-only)
-        continue-on-error: true
-        run: safety check --full-report || true
+      - name: Safety check (blocking)
+        run: safety check --full-report
 
       - name: Pytest (unit_no_db only - fast, no DB)
-        continue-on-error: true
-        run: pytest -q -m unit_no_db --dist=loadgroup || true
+        run: pytest -q -m unit_no_db --dist=loadgroup
 
   frontend-quality:
     name: Frontend Quality Gates
