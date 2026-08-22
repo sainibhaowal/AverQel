@@ -38,44 +38,41 @@ jobs:
           pip install --timeout 1000 --retries 10 -r requirements.txt -r requirements-dev.txt
           pip install bandit safety
 
-      - name: Ruff check
-        run: ruff check .
-
-      - name: Ruff check --fix (no diff allowed)
+      - name: Parallel backend quality and security gates
         run: |
-          ruff check . --fix
-          if ! git diff --exit-code; then
-            echo "::error::ruff --fix produced changes - please run 'ruff check . --fix' locally and commit"
-            git diff
-            exit 1
-          fi
+          set -uo pipefail
 
-      - name: Black --check
-        run: black --check .
+          declare -A GATE_PIDS
+          GATES=(ruff black mypy bandit pip-audit safety pytest)
 
-      - name: Black format verify (no diff)
-        run: |
-          black .
-          if ! git diff --exit-code; then
-            echo "::error::black produced changes - please run 'black .' locally and commit"
-            git diff
-            exit 1
-          fi
+          start_gate() {
+            local name="$1"
+            shift
+            echo "Starting $name"
+            "$@" >"gate-${name}.log" 2>&1 &
+            GATE_PIDS["$name"]=$!
+          }
 
-      - name: Mypy strict
-        run: mypy .
+          start_gate ruff ruff check .
+          start_gate black black --check .
+          start_gate mypy mypy .
+          start_gate bandit bandit -r app -q --severity-level medium
+          start_gate pip-audit pip-audit -s osv --ignore-vuln GHSA-xf7x-x43h-rpqh -r requirements.txt -r requirements-dev.txt
+          start_gate safety safety check --full-report
+          start_gate pytest pytest -q -m unit_no_db --dist=loadgroup
 
-      - name: Bandit security
-        run: bandit -r app -q --severity-level medium
-
-      - name: Pip-audit (blocking; one documented compatibility exception)
-        run: pip-audit -s osv --ignore-vuln GHSA-xf7x-x43h-rpqh -r requirements.txt -r requirements-dev.txt
-
-      - name: Safety check (blocking)
-        run: safety check --full-report
-
-      - name: Pytest (unit_no_db only - fast, no DB)
-        run: pytest -q -m unit_no_db --dist=loadgroup
+          exit_code=0
+          for name in "${GATES[@]}"; do
+            if wait "${GATE_PIDS[$name]}"; then
+              echo "PASS: $name"
+            else
+              code=$?
+              echo "FAIL: $name (exit $code)"
+              cat "gate-${name}.log"
+              exit_code=1
+            fi
+          done
+          exit "$exit_code"
 
   frontend-quality:
     name: Frontend Quality Gates
@@ -100,14 +97,37 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: ESLint
-        run: pnpm lint
+      - name: Parallel frontend quality gates
+        run: |
+          set -uo pipefail
 
-      - name: Typecheck (next build)
-        run: pnpm build
+          declare -A GATE_PIDS
+          GATES=(eslint build vitest)
 
-      - name: Vitest
-        run: pnpm test
+          start_gate() {
+            local name="$1"
+            shift
+            echo "Starting $name"
+            "$@" >"gate-${name}.log" 2>&1 &
+            GATE_PIDS["$name"]=$!
+          }
+
+          start_gate eslint pnpm lint
+          start_gate build pnpm build
+          start_gate vitest pnpm test
+
+          exit_code=0
+          for name in "${GATES[@]}"; do
+            if wait "${GATE_PIDS[$name]}"; then
+              echo "PASS: $name"
+            else
+              code=$?
+              echo "FAIL: $name (exit $code)"
+              cat "gate-${name}.log"
+              exit_code=1
+            fi
+          done
+          exit "$exit_code"
 
   # Single gate for release workflows to depend on
   ci-passed:
