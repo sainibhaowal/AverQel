@@ -57,7 +57,7 @@ jobs:
           start_gate black black --check .
           start_gate mypy mypy .
           start_gate bandit bandit -r app -q --severity-level medium
-          start_gate pip-audit pip-audit -s osv --ignore-vuln GHSA-xf7x-x43h-rpqh -r requirements.txt -r requirements-dev.txt
+          start_gate pip-audit pip-audit -s osv --ignore-vuln GHSA-xf7x-x43h-rpqh -l
           start_gate safety safety check --full-report
           start_gate pytest pytest -q -m unit_no_db --dist=loadgroup
 
