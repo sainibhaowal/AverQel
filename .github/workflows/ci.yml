@@ -7,15 +7,27 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Prevent overlapping runs on same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   backend-quality:
-    name: Backend Quality Gates
+    name: Backend - ${{ matrix.gate }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gate:
+          - ruff
+          - ruff-fix
+          - black
+          - black-format
+          - mypy
+          - bandit
+          - pip-audit
+          - safety
+          - pytest
     defaults:
       run:
         working-directory: backend
@@ -38,45 +50,16 @@ jobs:
           pip install --timeout 1000 --retries 10 -r requirements.txt -r requirements-dev.txt
           pip install bandit safety
 
-      - name: Parallel backend quality and security gates
-        run: |
-          set -uo pipefail
-
-          declare -A GATE_PIDS
-          GATES=(ruff black mypy bandit pip-audit safety pytest)
-
-          start_gate() {
-            local name="$1"
-            shift
-            echo "Starting $name"
-            "$@" >"gate-${name}.log" 2>&1 &
-            GATE_PIDS["$name"]=$!
-          }
-
-          start_gate ruff ruff check .
-          start_gate black black --check .
-          start_gate mypy mypy .
-          start_gate bandit bandit -r app -q --severity-level medium
-          start_gate pip-audit pip-audit -s osv --ignore-vuln GHSA-xf7x-x43h-rpqh -l
-          start_gate safety safety check --full-report
-          start_gate pytest pytest -q -m unit_no_db --dist=loadgroup
-
-          exit_code=0
-          for name in "${GATES[@]}"; do
-            if wait "${GATE_PIDS[$name]}"; then
-              echo "PASS: $name"
-            else
-              code=$?
-              echo "FAIL: $name (exit $code)"
-              cat "gate-${name}.log"
-              exit_code=1
-            fi
-          done
-          exit "$exit_code"
+      - name: Run backend gate
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/run-backend-gate.sh" "${{ matrix.gate }}"
 
   frontend-quality:
-    name: Frontend Quality Gates
+    name: Frontend - ${{ matrix.gate }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [eslint, build, vitest]
     defaults:
       run:
         working-directory: frontend
@@ -84,52 +67,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
       - name: Setup pnpm 10.28.2
         uses: pnpm/action-setup@v4
         with:
           version: 10.28.2
 
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Parallel frontend quality gates
-        run: |
-          set -uo pipefail
+      - name: ESLint
+        if: matrix.gate == 'eslint'
+        run: pnpm lint
 
-          declare -A GATE_PIDS
-          GATES=(eslint build vitest)
+      - name: Typecheck and build
+        if: matrix.gate == 'build'
+        run: pnpm build
 
-          start_gate() {
-            local name="$1"
-            shift
-            echo "Starting $name"
-            "$@" >"gate-${name}.log" 2>&1 &
-            GATE_PIDS["$name"]=$!
-          }
+      - name: Vitest
+        if: matrix.gate == 'vitest'
+        run: pnpm test
 
-          start_gate eslint pnpm lint
-          start_gate build pnpm build
-          start_gate vitest pnpm test
-
-          exit_code=0
-          for name in "${GATES[@]}"; do
-            if wait "${GATE_PIDS[$name]}"; then
-              echo "PASS: $name"
-            else
-              code=$?
-              echo "FAIL: $name (exit $code)"
-              cat "gate-${name}.log"
-              exit_code=1
-            fi
-          done
-          exit "$exit_code"
-
-  # Single gate for release workflows to depend on
+  # Single required status check for branch protection and release.
   ci-passed:
     name: CI Passed
     runs-on: ubuntu-latest

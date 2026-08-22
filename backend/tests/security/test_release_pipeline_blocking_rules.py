@@ -11,6 +11,7 @@ def _read(path: Path) -> str:
 
 def test_ci_workflow_contains_blocking_gates() -> None:
     workflow = _read(ROOT / ".github/workflows/ci.yml")
+    gates = _read(ROOT / ".github/scripts/run-backend-gate.sh")
     required = (
         "ruff check .",
         "black --check .",
@@ -21,7 +22,8 @@ def test_ci_workflow_contains_blocking_gates() -> None:
         "safety check --full-report",
     )
     for gate in required:
-        assert gate in workflow
+        assert gate in gates
+    assert "fail-fast: false" in workflow
     assert "continue-on-error: true" not in workflow
 
 
