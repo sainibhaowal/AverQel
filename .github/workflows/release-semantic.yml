@@ -52,6 +52,11 @@ jobs:
             echo "Calculated release version: $VERSION"
           fi
 
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Invalid release tag '$VERSION'; expected vMAJOR.MINOR.PATCH"
+            exit 1
+          }
+
           SHA="$(git rev-parse "$GITHUB_SHA")"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
@@ -130,6 +135,10 @@ jobs:
           RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
         run: |
           set -euo pipefail
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Refusing non-semantic release tag '$VERSION'"
+            exit 1
+          }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git show-ref --verify --quiet "refs/tags/$VERSION"; then
@@ -156,12 +165,18 @@ jobs:
           tag_name: ${{ needs.prepare-release.outputs.version }}
           name: AverQel ${{ needs.prepare-release.outputs.version }}
           generate_release_notes: true
+          make_latest: true
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
           files: ./desktop-release-artifacts/**/*
           body: |
-            ## AverQel ${{ needs.prepare-release.outputs.version }}
+            # AverQel ${{ needs.prepare-release.outputs.version }}
 
-            Built manually from protected `main` commit `${{ needs.prepare-release.outputs.sha }}`.
+            Production desktop release built from protected `main` commit `${{ needs.prepare-release.outputs.sha }}`.
+
+            Git tag: `${{ needs.prepare-release.outputs.version }}`
+
+            The generated changelog below is based on the merged pull requests and conventional commits included in this release.
 
             Docker/VPS deployment is a separate manual workflow and is not started automatically.
