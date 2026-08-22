@@ -254,9 +254,13 @@ jobs:
             test -f backend/docker-compose.prod.yml || { echo "Missing backend/docker-compose.prod.yml"; exit 1; }
             test -f backend/.env.vps || { echo "Missing backend/.env.vps"; exit 1; }
 
-            # Fetch tags and checkout exact version - no merge
-            git fetch --tags --prune
-            git checkout "$VERSION" || git checkout "origin/main" && git checkout "$VERSION"
+            # Fetch tags and checkout exact version - no merge (skip if not a git repo, pull-only VPS)
+            if [ -d .git ]; then
+              git fetch --tags --prune || true
+              git checkout "$VERSION" 2>/dev/null || git checkout "origin/main" 2>/dev/null && git checkout "$VERSION" 2>/dev/null || echo "Not a git repo or tag not found, using current compose with AVERQEL_RELEASE_VERSION=$VERSION"
+            else
+              echo "No .git on VPS, using current docker-compose.prod.yml with AVERQEL_RELEASE_VERSION=$VERSION"
+            fi
 
             cd backend
 
