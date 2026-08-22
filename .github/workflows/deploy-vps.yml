@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Existing semantic version tag to build and deploy (for example v1.6.1)"
+        description: "Semantic version for this Docker/VPS deployment (for example v1.6.1)"
         required: true
         type: string
 
@@ -20,20 +20,28 @@ env:
   IMAGE_PREFIX: ghcr.io/sainibhaowal/averqel
 
 jobs:
-  resolve-release:
-    name: Resolve exact tagged commit
+  resolve-source:
+    name: Resolve exact main commit
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       sha: ${{ steps.resolve.outputs.sha }}
     steps:
-      - name: Checkout protected main
+      - name: Require the protected main branch
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "::error::Run the Docker/VPS workflow from main, not $GITHUB_REF"
+            exit 1
+          }
+
+      - name: Checkout the selected main commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: main
+          ref: ${{ github.sha }}
 
-      - name: Resolve and validate semantic tag
+      - name: Resolve and validate deployment version
         id: resolve
         env:
           VERSION: ${{ inputs.version }}
@@ -43,29 +51,29 @@ jobs:
             echo "::error::version must be a stable semantic version such as v1.6.1"
             exit 1
           }
-          git fetch --tags --force
-          SHA="$(git rev-parse "refs/tags/$VERSION^{commit}")"
-          git merge-base --is-ancestor "$SHA" origin/main || {
-            echo "::error::Tag $VERSION is not contained in main"
+          git fetch origin main --force
+          SHA="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor "$SHA" FETCH_HEAD || {
+            echo "::error::Selected commit is not contained in origin/main"
             exit 1
           }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "Deploying $VERSION from $SHA"
+          echo "Deploying Docker/VPS version $VERSION from main commit $SHA"
 
   build-and-test-images:
     name: Build and test Docker images
-    needs: resolve-release
+    needs: resolve-source
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Checkout the exact tagged commit
+      - name: Checkout the exact main commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ needs.resolve-release.outputs.sha }}
+          ref: ${{ needs.resolve-source.outputs.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -96,8 +104,8 @@ jobs:
           set -euo pipefail
           chmod +x backend/scripts/release_build_images.sh
           ./backend/scripts/release_build_images.sh \
-            --version "${{ needs.resolve-release.outputs.version }}" \
-            --git-sha "${{ needs.resolve-release.outputs.sha }}" \
+            --version "${{ needs.resolve-source.outputs.version }}" \
+            --git-sha "${{ needs.resolve-source.outputs.sha }}" \
             --image-prefix "$IMAGE_PREFIX"
 
       - name: Build frontend image without publishing yet
@@ -107,23 +115,23 @@ jobs:
           file: ./frontend/Dockerfile
           load: true
           tags: |
-            ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-release.outputs.version }}
-            ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-release.outputs.sha }}
+            ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-source.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-source.outputs.sha }}
           labels: |
-            org.opencontainers.image.version=${{ needs.resolve-release.outputs.version }}
-            org.opencontainers.image.revision=${{ needs.resolve-release.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.resolve-source.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.resolve-source.outputs.sha }}
           build-args: |
             NEXT_PROXY_TARGET=http://api:1000
-            GIT_VERSION=${{ needs.resolve-release.outputs.version }}
-            GIT_SHA=${{ needs.resolve-release.outputs.sha }}
-            BUILD_TIMESTAMP=${{ needs.resolve-release.outputs.version }}
+            GIT_VERSION=${{ needs.resolve-source.outputs.version }}
+            GIT_SHA=${{ needs.resolve-source.outputs.sha }}
+            BUILD_TIMESTAMP=${{ needs.resolve-source.outputs.version }}
           cache-from: type=gha,scope=averqel-frontend
           cache-to: type=gha,mode=max,scope=averqel-frontend
 
       - name: Smoke-test built image contents
         env:
-          VERSION: ${{ needs.resolve-release.outputs.version }}
-          SHA: ${{ needs.resolve-release.outputs.sha }}
+          VERSION: ${{ needs.resolve-source.outputs.version }}
+          SHA: ${{ needs.resolve-source.outputs.sha }}
         run: |
           set -euo pipefail
           API_IMAGE="$IMAGE_PREFIX-api:$VERSION"
@@ -137,8 +145,8 @@ jobs:
 
       - name: Publish tested images to GHCR
         env:
-          VERSION: ${{ needs.resolve-release.outputs.version }}
-          SHA: ${{ needs.resolve-release.outputs.sha }}
+          VERSION: ${{ needs.resolve-source.outputs.version }}
+          SHA: ${{ needs.resolve-source.outputs.sha }}
         run: |
           set -euo pipefail
           for service in api worker frontend; do
@@ -149,12 +157,12 @@ jobs:
       - name: Upload image manifest
         uses: actions/upload-artifact@v4
         with:
-          name: image-manifest-${{ needs.resolve-release.outputs.version }}
-          path: backend/.local/dist/release-manifest-${{ needs.resolve-release.outputs.version }}.json
+          name: image-manifest-${{ needs.resolve-source.outputs.version }}
+          path: backend/.local/dist/release-manifest-${{ needs.resolve-source.outputs.version }}.json
 
   deploy-vps:
     name: Pull tested images and deploy VPS
-    needs: [resolve-release, build-and-test-images]
+    needs: [resolve-source, build-and-test-images]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -171,8 +179,8 @@ jobs:
       - name: SSH deploy without touching VPS-owned files
         uses: appleboy/ssh-action@v1
         env:
-          VERSION: ${{ needs.resolve-release.outputs.version }}
-          SHA: ${{ needs.resolve-release.outputs.sha }}
+          VERSION: ${{ needs.resolve-source.outputs.version }}
+          SHA: ${{ needs.resolve-source.outputs.sha }}
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
