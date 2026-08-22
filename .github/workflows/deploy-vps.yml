@@ -2,11 +2,6 @@ name: Deploy - Manual Docker Build and VPS
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Semantic version for this Docker/VPS deployment (for example v1.6.1)"
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -24,7 +19,7 @@ jobs:
     name: Resolve exact main commit
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.resolve.outputs.version }}
+      image_tag: ${{ steps.resolve.outputs.image_tag }}
       sha: ${{ steps.resolve.outputs.sha }}
     steps:
       - name: Require the protected main branch
@@ -41,25 +36,20 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
-      - name: Resolve and validate deployment version
+      - name: Resolve immutable deployment image tag
         id: resolve
-        env:
-          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo "::error::version must be a stable semantic version such as v1.6.1"
-            exit 1
-          }
           git fetch origin main --force
           SHA="$(git rev-parse HEAD)"
           git merge-base --is-ancestor "$SHA" FETCH_HEAD || {
             echo "::error::Selected commit is not contained in origin/main"
             exit 1
           }
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          IMAGE_TAG="sha-${SHA:0:12}"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "Deploying Docker/VPS version $VERSION from main commit $SHA"
+          echo "Deploying Docker/VPS image $IMAGE_TAG from main commit $SHA"
 
   build-and-test-images:
     name: Build and test Docker images
@@ -104,7 +94,7 @@ jobs:
           set -euo pipefail
           chmod +x backend/scripts/release_build_images.sh
           ./backend/scripts/release_build_images.sh \
-            --version "${{ needs.resolve-source.outputs.version }}" \
+            --version "${{ needs.resolve-source.outputs.image_tag }}" \
             --git-sha "${{ needs.resolve-source.outputs.sha }}" \
             --image-prefix "$IMAGE_PREFIX"
 
@@ -115,22 +105,22 @@ jobs:
           file: ./frontend/Dockerfile
           load: true
           tags: |
-            ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-source.outputs.version }}
+            ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-source.outputs.image_tag }}
             ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-source.outputs.sha }}
           labels: |
-            org.opencontainers.image.version=${{ needs.resolve-source.outputs.version }}
+            org.opencontainers.image.version=${{ needs.resolve-source.outputs.image_tag }}
             org.opencontainers.image.revision=${{ needs.resolve-source.outputs.sha }}
           build-args: |
             NEXT_PROXY_TARGET=http://api:1000
-            GIT_VERSION=${{ needs.resolve-source.outputs.version }}
+            GIT_VERSION=${{ needs.resolve-source.outputs.image_tag }}
             GIT_SHA=${{ needs.resolve-source.outputs.sha }}
-            BUILD_TIMESTAMP=${{ needs.resolve-source.outputs.version }}
+            BUILD_TIMESTAMP=${{ needs.resolve-source.outputs.image_tag }}
           cache-from: type=gha,scope=averqel-frontend
           cache-to: type=gha,mode=max,scope=averqel-frontend
 
       - name: Smoke-test built image contents
         env:
-          VERSION: ${{ needs.resolve-source.outputs.version }}
+          VERSION: ${{ needs.resolve-source.outputs.image_tag }}
           SHA: ${{ needs.resolve-source.outputs.sha }}
         run: |
           set -euo pipefail
@@ -145,7 +135,7 @@ jobs:
 
       - name: Publish tested images to GHCR
         env:
-          VERSION: ${{ needs.resolve-source.outputs.version }}
+          VERSION: ${{ needs.resolve-source.outputs.image_tag }}
           SHA: ${{ needs.resolve-source.outputs.sha }}
         run: |
           set -euo pipefail
@@ -157,8 +147,8 @@ jobs:
       - name: Upload image manifest
         uses: actions/upload-artifact@v4
         with:
-          name: image-manifest-${{ needs.resolve-source.outputs.version }}
-          path: backend/.local/dist/release-manifest-${{ needs.resolve-source.outputs.version }}.json
+          name: image-manifest-${{ needs.resolve-source.outputs.image_tag }}
+          path: backend/.local/dist/release-manifest-${{ needs.resolve-source.outputs.image_tag }}.json
 
   deploy-vps:
     name: Pull tested images and deploy VPS
@@ -179,7 +169,7 @@ jobs:
       - name: SSH deploy without touching VPS-owned files
         uses: appleboy/ssh-action@v1
         env:
-          VERSION: ${{ needs.resolve-source.outputs.version }}
+          VERSION: ${{ needs.resolve-source.outputs.image_tag }}
           SHA: ${{ needs.resolve-source.outputs.sha }}
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
