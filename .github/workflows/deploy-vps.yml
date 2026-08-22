@@ -90,6 +90,7 @@ jobs:
       - name: Build backend images without publishing yet
         env:
           AVERQEL_BACKEND_STATE_DIR: ${{ github.workspace }}/backend/.local
+          AVERQEL_DOCKER_CACHE_SCOPE: averqel-backend-runtime
         run: |
           set -euo pipefail
           chmod +x backend/scripts/release_build_images.sh
