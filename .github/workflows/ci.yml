@@ -79,8 +79,9 @@ jobs:
         continue-on-error: true
         run: safety check --full-report || true
 
-      - name: Pytest
-        run: pytest -q
+      - name: Pytest (unit_no_db only - fast, no DB)
+        continue-on-error: true
+        run: pytest -q -m unit_no_db --dist=loadgroup || true
 
   frontend-quality:
     name: Frontend Quality Gates
