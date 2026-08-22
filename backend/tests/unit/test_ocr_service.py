@@ -66,3 +66,11 @@ def test_extract_paddle_result_reads_text_and_scores() -> None:
     )
     assert texts == ["Hello", "World"]
     assert scores == [0.9, 0.8]
+
+
+def test_extract_paddle_result_reads_legacy_ocr_lines() -> None:
+    texts, scores = OcrService._extract_paddle_result(
+        [[[[(0, 0), (1, 0), (1, 1), (0, 1)], ("Legacy text", 0.87)]]]
+    )
+    assert texts == ["Legacy text"]
+    assert scores == [0.87]

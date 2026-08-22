@@ -33,7 +33,7 @@ case "$GATE" in
     bandit -r app -q --severity-level medium
     ;;
   pip-audit)
-    pip-audit -s osv --ignore-vuln GHSA-xf7x-x43h-rpqh -r requirements.txt -r requirements-dev.txt
+    pip-audit -s osv -r requirements.txt -r requirements-dev.txt
     ;;
   safety)
     safety check --full-report

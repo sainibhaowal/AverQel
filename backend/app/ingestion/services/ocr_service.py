@@ -108,7 +108,15 @@ class OcrService:
                 # cost and must not make the first valid upload fail the
                 # per-image OCR timeout.
                 started = time.perf_counter()
-                result = list(ocr.predict(np.asarray(image.convert("RGB"))))
+                image_array = np.asarray(image.convert("RGB"))
+                if callable(getattr(ocr, "predict", None)):
+                    # PaddleOCR 3.x pipeline API.
+                    result = list(ocr.predict(image_array))
+                else:
+                    # PaddleOCR 2.x API. Keep this fallback while the
+                    # dependency set remains compatible with PaddlePaddle.
+                    legacy_result = ocr.ocr(image_array, cls=False)
+                    result = legacy_result if isinstance(legacy_result, list) else []
                 elapsed = time.perf_counter() - started
                 if elapsed > self.settings.ocr_timeout_seconds:
                     raise ApiError(
@@ -170,8 +178,19 @@ class OcrService:
             }
             if language:
                 options["lang"] = language
-            # The current PaddleOCR pipeline selects PP-OCRv6 by default.
-            self._paddle_ocr = paddle_ocr_class(**options)
+            try:
+                # PaddleOCR 3.x pipeline selects PP-OCRv6 by default.
+                self._paddle_ocr = paddle_ocr_class(**options)
+            except (TypeError, ValueError):
+                # PaddleOCR 2.x uses the legacy OCR API and does not accept
+                # the 3.x pipeline options above.
+                legacy_options: dict[str, Any] = {
+                    "use_angle_cls": False,
+                    "show_log": False,
+                }
+                if language:
+                    legacy_options["lang"] = language
+                self._paddle_ocr = paddle_ocr_class(**legacy_options)
             return self._paddle_ocr
 
     @staticmethod
@@ -211,6 +230,8 @@ class OcrService:
         texts: list[str] = []
         confidence_values: list[float] = []
         for result in results:
+            if cls._extract_legacy_result(result, texts, confidence_values):
+                continue
             payload = cls._result_mapping(result)
             if not payload:
                 continue
@@ -227,6 +248,31 @@ class OcrService:
             texts.extend(value for value in result_texts if value)
             confidence_values.extend(cls._parse_confidences(raw_scores))
         return texts, confidence_values
+
+    @staticmethod
+    def _extract_legacy_result(
+        result: Any,
+        texts: list[str],
+        confidence_values: list[float],
+    ) -> bool:
+        """Read PaddleOCR 2.x ``ocr()`` line results without trusting input data."""
+        if not isinstance(result, list):
+            return False
+
+        found_line = False
+        for line in result:
+            if not isinstance(line, list | tuple) or len(line) < 2:
+                continue
+            recognized = line[1]
+            if not isinstance(recognized, list | tuple) or len(recognized) < 2:
+                continue
+            text = sanitize_document_text(str(recognized[0])).strip()
+            if not text:
+                continue
+            texts.append(text)
+            confidence_values.extend(OcrService._parse_confidences([recognized[1]]))
+            found_line = True
+        return found_line
 
     @staticmethod
     def _result_mapping(result: Any) -> Mapping[str, Any] | None:
