@@ -1,24 +1,31 @@
 name: CI - Mandatory Quality Gates
 
 on:
-  push:
-    branches: [main]
-    tags:
-      - "v*.*.*"
-      - "desktop-v*.*.*"
   pull_request:
     branches: [main]
   workflow_dispatch:
 
-# Prevent overlapping runs on same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   backend-quality:
-    name: Backend Quality Gates
+    name: Backend - ${{ matrix.gate }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gate:
+          - ruff
+          - ruff-fix
+          - black
+          - black-format
+          - mypy
+          - bandit
+          - pip-audit
+          - safety
+          - pytest
     defaults:
       run:
         working-directory: backend
@@ -41,51 +48,16 @@ jobs:
           pip install --timeout 1000 --retries 10 -r requirements.txt -r requirements-dev.txt
           pip install bandit safety
 
-      - name: Ruff check
-        run: ruff check .
-
-      - name: Ruff check --fix (no diff allowed)
-        run: |
-          ruff check . --fix
-          if ! git diff --exit-code; then
-            echo "::error::ruff --fix produced changes - please run 'ruff check . --fix' locally and commit"
-            git diff
-            exit 1
-          fi
-
-      - name: Black --check
-        run: black --check .
-
-      - name: Black format verify (no diff)
-        run: |
-          black .
-          if ! git diff --exit-code; then
-            echo "::error::black produced changes - please run 'black .' locally and commit"
-            git diff
-            exit 1
-          fi
-
-      - name: Mypy strict
-        run: mypy .
-
-      - name: Bandit security
-        run: bandit -r app -q --severity-level medium
-
-      - name: Pip-audit (report-only for fast CI - 78 vulns ignored until dependency upgrade window)
-        continue-on-error: true
-        run: pip-audit -s osv --ignore-vuln GHSA-xf7x-x43h-rpqh -r requirements.txt -r requirements-dev.txt || true
-
-      - name: Safety check (report-only)
-        continue-on-error: true
-        run: safety check --full-report || true
-
-      - name: Pytest (unit_no_db only - fast, no DB)
-        continue-on-error: true
-        run: pytest -q -m unit_no_db --dist=loadgroup || true
+      - name: Run backend gate
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/run-backend-gate.sh" "${{ matrix.gate }}"
 
   frontend-quality:
-    name: Frontend Quality Gates
+    name: Frontend - ${{ matrix.gate }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [eslint, build, vitest]
     defaults:
       run:
         working-directory: frontend
@@ -93,29 +65,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
       - name: Setup pnpm 10.28.2
         uses: pnpm/action-setup@v4
         with:
           version: 10.28.2
 
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
       - name: ESLint
+        if: matrix.gate == 'eslint'
         run: pnpm lint
 
-      - name: Typecheck (next build)
+      - name: Typecheck and build
+        if: matrix.gate == 'build'
         run: pnpm build
 
       - name: Vitest
+        if: matrix.gate == 'vitest'
         run: pnpm test
 
-  # Single gate for release workflows to depend on
+  # Single required status check for branch protection and release.
   ci-passed:
     name: CI Passed
     runs-on: ubuntu-latest
