@@ -166,6 +166,10 @@ jobs:
       - name: Run backend gate
         run: bash "$GITHUB_WORKSPACE/.github/scripts/run-backend-gate.sh" "${{ matrix.gate }}"
 
+      - name: Report outdated Python dependencies
+        if: matrix.gate == 'pip-audit'
+        run: pip list --outdated || true
+
   frontend-quality:
     if: needs.changes.outputs.run_frontend == 'true'
     needs: changes
@@ -200,6 +204,14 @@ jobs:
       - name: ESLint
         if: matrix.gate == 'eslint'
         run: pnpm lint
+
+      - name: Frontend dependency security audit
+        if: matrix.gate == 'eslint'
+        run: pnpm audit --prod --audit-level high
+
+      - name: Report outdated frontend dependencies
+        if: matrix.gate == 'eslint'
+        run: pnpm outdated || true
 
       - name: Typecheck and build
         if: matrix.gate == 'build'
