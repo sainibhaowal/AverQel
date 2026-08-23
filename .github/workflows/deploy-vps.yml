@@ -203,6 +203,25 @@ jobs:
             COMPOSE_FILE="$VPS_BACKEND_DIR/docker-compose.prod.yml"
             ENV_FILE="$VPS_BACKEND_DIR/.env.vps"
             MODELS_DIR="$VPS_BACKEND_DIR/models"
+            COMPOSE_NETWORK_OVERRIDE="$(mktemp)"
+            trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE"' EXIT
+
+            # The gateway container already shares backend_default with AverQel.
+            # Treat that pre-existing network as external instead of asking
+            # Compose to claim it and fail on missing Compose labels.
+            cat > "$COMPOSE_NETWORK_OVERRIDE" <<'YAML'
+            networks:
+              default:
+                name: backend_default
+                external: true
+            YAML
+
+            compose() {
+              docker compose --env-file "$ENV_FILE" \
+                -f "$COMPOSE_FILE" \
+                -f "$COMPOSE_NETWORK_OVERRIDE" \
+                "$@"
+            }
 
             test -d "$VPS_BACKEND_DIR" || { echo "Missing $VPS_BACKEND_DIR"; exit 1; }
             test -d "$MODELS_DIR" || { echo "Missing persistent models directory: $MODELS_DIR"; exit 1; }
@@ -219,13 +238,13 @@ jobs:
             export AVERQEL_GIT_SHA="$SHA"
             export AVERQEL_BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-            docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
-            AVERQEL_RELEASE_VERSION="$VERSION" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull api worker maintenance-worker ingestion-worker scheduler inference frontend
-            AVERQEL_RELEASE_VERSION="$VERSION" AVERQEL_GIT_SHA="$SHA" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-build --wait --wait-timeout 180 --remove-orphans
+            compose config --quiet
+            compose pull api worker maintenance-worker ingestion-worker scheduler inference frontend
+            compose up -d --no-build --wait --wait-timeout 180 --remove-orphans
 
-            docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps
-            docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T api curl -fsS http://localhost:1000/api/v1/health/live
-            READY_RESPONSE="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T api curl -fsS http://localhost:1000/api/v1/health/ready)"
+            compose ps
+            compose exec -T api curl -fsS http://localhost:1000/api/v1/health/live
+            READY_RESPONSE="$(compose exec -T api curl -fsS http://localhost:1000/api/v1/health/ready)"
             echo "$READY_RESPONSE"
             echo "$READY_RESPONSE" | grep -Eq '"version"[[:space:]]*:[[:space:]]*"'"$VERSION"'"'
 
@@ -237,7 +256,7 @@ jobs:
 
             # Cleanup happens only after all health checks pass. It is scoped to
             # AverQel images; volumes and unrelated containers are untouched.
-            ACTIVE_IDS="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" images -q | sort -u)"
+            ACTIVE_IDS="$(compose images -q | sort -u)"
             docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' 'ghcr.io/sainibhaowal/averqel-*' \
               | while read -r IMAGE_REF IMAGE_ID; do
                   if ! grep -Fxq "$IMAGE_ID" <<< "$ACTIVE_IDS"; then
