@@ -120,6 +120,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Stamp the semantic release version into the desktop app
+        shell: bash
         env:
           RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
