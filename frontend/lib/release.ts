@@ -20,3 +20,9 @@ export const DESKTOP_LINUX_DOWNLOAD_URL =
 
 export const DESKTOP_WINDOWS_DOWNLOAD_URL =
   `${DESKTOP_DOWNLOAD_BASE_URL.replace(/\/$/, "")}/AverQel-windows-x64.exe`;
+
+export const DESKTOP_MACOS_DOWNLOAD_URL =
+  `${DESKTOP_DOWNLOAD_BASE_URL.replace(/\/$/, "")}/AverQel-macos-universal.dmg`;
+
+export const DESKTOP_LINUX_RPM_DOWNLOAD_URL =
+  `${DESKTOP_DOWNLOAD_BASE_URL.replace(/\/$/, "")}/AverQel-linux-x86_64.rpm`;

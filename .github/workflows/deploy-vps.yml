@@ -208,15 +208,23 @@ jobs:
           gh release download "$VERSION" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern '*.deb' \
+            --pattern '*.rpm' \
             --pattern '*.exe' \
+            --pattern '*.dmg' \
             --dir release-downloads \
             --clobber
           DEB_PATH="$(find release-downloads -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          RPM_PATH="$(find release-downloads -maxdepth 1 -type f -name '*.rpm' -print -quit)"
           EXE_PATH="$(find release-downloads -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          DMG_PATH="$(find release-downloads -maxdepth 1 -type f -name '*.dmg' -print -quit)"
           test -n "$DEB_PATH" || { echo "::error::Release $VERSION has no .deb asset"; exit 1; }
+          test -n "$RPM_PATH" || { echo "::error::Release $VERSION has no .rpm asset"; exit 1; }
           test -n "$EXE_PATH" || { echo "::error::Release $VERSION has no .exe asset"; exit 1; }
+          test -n "$DMG_PATH" || { echo "::error::Release $VERSION has no .dmg asset"; exit 1; }
           mv "$DEB_PATH" release-downloads/AverQel-linux-amd64.deb
+          mv "$RPM_PATH" release-downloads/AverQel-linux-x86_64.rpm
           mv "$EXE_PATH" release-downloads/AverQel-windows-x64.exe
+          mv "$DMG_PATH" release-downloads/AverQel-macos-universal.dmg
 
       - name: Prepare public desktop download staging directory
         uses: appleboy/ssh-action@v1
@@ -245,7 +253,7 @@ jobs:
           passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
           timeout: 30s
           command_timeout: 5m
-          source: "release-downloads/AverQel-linux-amd64.deb,release-downloads/AverQel-windows-x64.exe"
+          source: "release-downloads/AverQel-linux-amd64.deb,release-downloads/AverQel-linux-x86_64.rpm,release-downloads/AverQel-windows-x64.exe,release-downloads/AverQel-macos-universal.dmg"
           target: "/opt/averqel/backend/downloads/staging-${{ needs.resolve-source.outputs.release_version }}"
 
       - name: SSH deploy without touching VPS-owned files
@@ -316,7 +324,9 @@ jobs:
             test -d "$MODELS_DIR" || { echo "Missing persistent models directory: $MODELS_DIR"; exit 1; }
             test -d "$DOWNLOAD_STAGE_DIR" || { echo "Missing staged desktop downloads: $DOWNLOAD_STAGE_DIR"; exit 1; }
             test -f "$DOWNLOAD_STAGE_DIR/AverQel-linux-amd64.deb" || { echo "Missing staged Linux package"; exit 1; }
+            test -f "$DOWNLOAD_STAGE_DIR/AverQel-linux-x86_64.rpm" || { echo "Missing staged Linux RPM package"; exit 1; }
             test -f "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" || { echo "Missing staged Windows package"; exit 1; }
+            test -f "$DOWNLOAD_STAGE_DIR/AverQel-macos-universal.dmg" || { echo "Missing staged macOS package"; exit 1; }
             mkdir -p "$DOWNLOAD_DIR"
             test -f "$COMPOSE_FILE" || { echo "Missing $COMPOSE_FILE"; exit 1; }
             test -f "$ENV_FILE" || { echo "Missing $ENV_FILE"; exit 1; }
@@ -377,9 +387,24 @@ jobs:
             DOWNLOAD_LATEST_DIR="$DOWNLOAD_DIR/latest"
             mkdir -p "$DOWNLOAD_VERSION_DIR" "$DOWNLOAD_LATEST_DIR"
             install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-amd64.deb" "$DOWNLOAD_VERSION_DIR/AverQel-linux-amd64.deb"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-x86_64.rpm" "$DOWNLOAD_VERSION_DIR/AverQel-linux-x86_64.rpm"
             install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" "$DOWNLOAD_VERSION_DIR/AverQel-windows-x64.exe"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-macos-universal.dmg" "$DOWNLOAD_VERSION_DIR/AverQel-macos-universal.dmg"
             install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-amd64.deb" "$DOWNLOAD_LATEST_DIR/AverQel-linux-amd64.deb"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-x86_64.rpm" "$DOWNLOAD_LATEST_DIR/AverQel-linux-x86_64.rpm"
             install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" "$DOWNLOAD_LATEST_DIR/AverQel-windows-x64.exe"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-macos-universal.dmg" "$DOWNLOAD_LATEST_DIR/AverQel-macos-universal.dmg"
+
+            # Verify that the public reverse proxy serves every published asset
+            # before this deployment is reported successful.
+            for DOWNLOAD_NAME in \
+              AverQel-linux-amd64.deb \
+              AverQel-linux-x86_64.rpm \
+              AverQel-windows-x64.exe \
+              AverQel-macos-universal.dmg; do
+              curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-connrefused \
+                "$PUBLIC_ORIGIN/downloads/latest/$DOWNLOAD_NAME" -o /dev/null
+            done
             rm -rf "$DOWNLOAD_STAGE_DIR"
 
             # Cleanup happens only after all health checks pass. It is scoped to

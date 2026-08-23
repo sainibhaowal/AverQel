@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Activity, ArrowRight, Cpu, Download, FileText, Globe, Hexagon, Shield, Zap } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import HeroBackdrop from "./HeroBackdrop";
 import HeroMorphingBackground from "./HeroMorphingBackground";
 import MobileNav from "./MobileNav";
@@ -18,8 +18,26 @@ import AverQelLogo from "../ui/AverQelLogo";
 import {
   APP_VERSION,
   DESKTOP_LINUX_DOWNLOAD_URL,
+  DESKTOP_LINUX_RPM_DOWNLOAD_URL,
+  DESKTOP_MACOS_DOWNLOAD_URL,
   DESKTOP_WINDOWS_DOWNLOAD_URL,
 } from "@/lib/release";
+
+type DesktopPlatform = "linux" | "windows" | "macos" | "other";
+
+function detectDesktopPlatform(): DesktopPlatform {
+  if (typeof navigator === "undefined") return "other";
+
+  const userAgent = navigator.userAgent.toLowerCase();
+  if (userAgent.includes("android") || userAgent.includes("iphone")) return "other";
+  if (userAgent.includes("windows")) return "windows";
+  if (userAgent.includes("macintosh") || userAgent.includes("mac os")) return "macos";
+  if (userAgent.includes("linux")) return "linux";
+  return "other";
+}
+
+const subscribeToPlatform = () => () => undefined;
+const getServerDesktopPlatform = (): DesktopPlatform => "other";
 
 const navLinks = [
   { label: "How It Works", href: "#how-it-works" },
@@ -72,6 +90,18 @@ export default function HeroSection() {
     scaleRange: [0.994, 1.008],
   });
   const [activeStep, setActiveStep] = useState(0);
+  const desktopPlatform = useSyncExternalStore(
+    subscribeToPlatform,
+    detectDesktopPlatform,
+    getServerDesktopPlatform,
+  );
+
+  const recommendedDownload = {
+    linux: { href: DESKTOP_LINUX_DOWNLOAD_URL, label: "Download for Linux (.deb)" },
+    windows: { href: DESKTOP_WINDOWS_DOWNLOAD_URL, label: "Download for Windows (.exe)" },
+    macos: { href: DESKTOP_MACOS_DOWNLOAD_URL, label: "Download for macOS (.dmg)" },
+    other: { href: DESKTOP_WINDOWS_DOWNLOAD_URL, label: "Download Desktop App" },
+  }[desktopPlatform];
 
   useVisibilityAwareInterval(() => {
     setActiveStep((current) => (current + 1) % pipelineSteps.length);
@@ -161,7 +191,16 @@ export default function HeroSection() {
                   <ArrowRight size={18} />
                 </Link>
                 <a
+                  href={recommendedDownload.href}
+                  download
+                  className="inline-flex items-center gap-2 rounded-full border border-[#00ffa3]/35 bg-[#00ffa3]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00ffa3] hover:bg-[#00ffa3]/20 hover:text-white"
+                >
+                  <Download size={17} />
+                  {recommendedDownload.label}
+                </a>
+                <a
                   href={DESKTOP_LINUX_DOWNLOAD_URL}
+                  download
                   className="inline-flex items-center gap-2 rounded-full border border-[#00b8ff]/35 bg-[#00b8ff]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00b8ff] hover:bg-[#00b8ff]/20 hover:text-white"
                 >
                   <Download size={17} />
@@ -169,10 +208,27 @@ export default function HeroSection() {
                 </a>
                 <a
                   href={DESKTOP_WINDOWS_DOWNLOAD_URL}
+                  download
                   className="inline-flex items-center gap-2 rounded-full border border-[#00b8ff]/35 bg-[#00b8ff]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00b8ff] hover:bg-[#00b8ff]/20 hover:text-white"
                 >
                   <Download size={17} />
                   Download Windows (.exe)
+                </a>
+                <a
+                  href={DESKTOP_MACOS_DOWNLOAD_URL}
+                  download
+                  className="inline-flex items-center gap-2 rounded-full border border-[#00b8ff]/35 bg-[#00b8ff]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00b8ff] hover:bg-[#00b8ff]/20 hover:text-white"
+                >
+                  <Download size={17} />
+                  Download macOS (.dmg)
+                </a>
+                <a
+                  href={DESKTOP_LINUX_RPM_DOWNLOAD_URL}
+                  download
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/45 px-7 py-4 text-sm font-semibold text-white backdrop-blur-md transition-all hover:border-[#00b8ff]/28 hover:bg-slate-900/65"
+                >
+                  <Download size={17} />
+                  Linux (.rpm)
                 </a>
                 <Link
                   href="#security"

@@ -57,6 +57,14 @@ describe("HeroSection", () => {
       "href",
       "/downloads/latest/AverQel-windows-x64.exe",
     );
+    expect(screen.getByRole("link", { name: /Download macOS \(.dmg\)/i })).toHaveAttribute(
+      "href",
+      "/downloads/latest/AverQel-macos-universal.dmg",
+    );
+    expect(screen.getByRole("link", { name: /Linux \(.rpm\)/i })).toHaveAttribute(
+      "href",
+      "/downloads/latest/AverQel-linux-x86_64.rpm",
+    );
     expect(screen.getByText(/AverQel development/i)).toBeInTheDocument();
     expect(screen.getByText(/averqel \| productivity runtime/i)).toBeInTheDocument();
     expect(screen.getByText(/DeepSpace for research and deliverables/i)).toBeInTheDocument();
