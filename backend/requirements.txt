@@ -46,7 +46,7 @@ idna==3.19
 soupsieve==2.9.2
 mcp==1.28.1
 sentence-transformers==5.3.0
-transformers==5.5.0
+transformers==5.15.1
 torch==2.13.0+cpu
 python-magic==0.4.27
 langdetect==1.0.9
