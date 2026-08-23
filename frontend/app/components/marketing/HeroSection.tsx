@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Activity, ArrowRight, Cpu, FileText, Globe, Hexagon, Shield, Zap } from "lucide-react";
+import { Activity, ArrowRight, Cpu, Download, FileText, Globe, Hexagon, Shield, Zap } from "lucide-react";
 import { useState } from "react";
 import HeroBackdrop from "./HeroBackdrop";
 import HeroMorphingBackground from "./HeroMorphingBackground";
@@ -15,6 +15,7 @@ import {
   landingTitleGradientBySection,
 } from "./landingType";
 import AverQelLogo from "../ui/AverQelLogo";
+import { APP_VERSION, DESKTOP_DOWNLOAD_URL } from "@/lib/release";
 
 const navLinks = [
   { label: "How It Works", href: "#how-it-works" },
@@ -141,14 +142,27 @@ export default function HeroSection() {
                 authorize them.
               </p>
 
+              <div className="mt-5 inline-flex items-center rounded-full border border-[#00b8ff]/25 bg-[#06121a]/70 px-3 py-1.5 text-xs font-semibold text-slate-300 backdrop-blur-md">
+                <span className="text-[#69d7ff]">AverQel {APP_VERSION}</span>
+                <span className="mx-2 text-slate-600">•</span>
+                <span>Desktop and web available</span>
+              </div>
+
               <div className="mt-10 flex flex-wrap items-center gap-4">
                 <Link
                   href="/auth/signup"
                   className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#00ffa3_0%,#2dd4bf_48%,#00b8ff_100%)] px-8 py-4 text-sm font-black text-slate-950 shadow-[0_24px_60px_rgba(0,255,163,0.24)] transition-all hover:shadow-[0_28px_72px_rgba(0,255,163,0.34)]"
                 >
-                  Start Using AverQel
+                  Use the Web App
                   <ArrowRight size={18} />
                 </Link>
+                <a
+                  href={DESKTOP_DOWNLOAD_URL}
+                  className="inline-flex items-center gap-2 rounded-full border border-[#00b8ff]/35 bg-[#00b8ff]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00b8ff] hover:bg-[#00b8ff]/20 hover:text-white"
+                >
+                  <Download size={17} />
+                  Download Desktop App
+                </a>
                 <Link
                   href="#security"
                   className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/45 px-7 py-4 text-sm font-semibold text-white backdrop-blur-md transition-all hover:border-[#00ffa3]/28 hover:bg-slate-900/65"
