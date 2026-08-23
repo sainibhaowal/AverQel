@@ -31,7 +31,7 @@ jobs:
           }
 
       - name: Checkout the selected main commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
@@ -67,7 +67,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout the exact main commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ needs.resolve-source.outputs.sha }}
@@ -252,7 +252,7 @@ jobs:
       packages: read
     steps:
       - name: Checkout deployment configuration
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
           ref: ${{ needs.resolve-source.outputs.sha }}
