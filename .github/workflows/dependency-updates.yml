@@ -1,0 +1,38 @@
+name: Dependencies - One Grouped Update PR
+
+on:
+  schedule:
+    - cron: "23 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: dependency-updates
+  cancel-in-progress: true
+
+jobs:
+  renovate:
+    name: Renovate grouped dependency update
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the Renovate repository token
+        env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$RENOVATE_TOKEN" || {
+            echo "::error::Add a RENOVATE_TOKEN repository secret with permission to create branches and pull requests."
+            exit 1
+          }
+
+      - name: Create or update one grouped dependency PR
+        uses: renovatebot/github-action@v43.0.13
+        with:
+          configurationFile: .github/renovate.json
+          token: ${{ secrets.RENOVATE_TOKEN }}
+        env:
+          LOG_LEVEL: info
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
