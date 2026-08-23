@@ -217,6 +217,7 @@ jobs:
             COMPOSE_NETWORK_OVERRIDE="$(mktemp)"
             SEARXNG_CONFIG_DIR="$VPS_BACKEND_DIR/searxng"
             SEARXNG_SETTINGS_PATH="$SEARXNG_CONFIG_DIR/settings.yml"
+            export SEARXNG_CONFIG_DIR
             trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE"' EXIT
 
             # The gateway container already shares backend_default with AverQel.
