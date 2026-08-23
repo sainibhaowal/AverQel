@@ -166,6 +166,21 @@ jobs:
             echo "::warning::GHCR_PAT is not set; deployment will use the short-lived GITHUB_TOKEN"
           fi
 
+      - name: Validate SSH private-key format
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_PASSPHRASE: ${{ secrets.VPS_SSH_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          KEY_FILE="$(mktemp)"
+          trap 'rm -f "$KEY_FILE"' EXIT
+          umask 077
+          printf '%s\n' "$VPS_SSH_KEY" > "$KEY_FILE"
+          ssh-keygen -y -P "$VPS_SSH_PASSPHRASE" -f "$KEY_FILE" >/dev/null || {
+            echo "::error::VPS_SSH_KEY is not a readable private key. Store the full private key in GitHub, not the .pub file."
+            exit 1
+          }
+
       - name: SSH deploy without touching VPS-owned files
         uses: appleboy/ssh-action@v1
         env:
@@ -178,8 +193,10 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          timeout: 30s
+          command_timeout: 30m
           envs: VERSION,SHA,GHCR_PAT,GITHUB_TOKEN,GITHUB_ACTOR
-          script_stop: true
           script: |
             set -euo pipefail
             VPS_BACKEND_DIR="/opt/averqel/backend"
