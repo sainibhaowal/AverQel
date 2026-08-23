@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from http.cookies import SimpleCookie
+from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from fastapi import Response
@@ -74,3 +76,72 @@ def test_google_identity_requires_verified_email(
         service._fetch_identity(provider, "provider-access-token")
 
     assert error.value.code == "OAUTH_EMAIL_UNVERIFIED"
+
+
+def test_new_user_callback_restores_bypass_context_before_identity_insert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An OAuth identity insert follows a commit when OAuth creates a user."""
+
+    tenant_id = UUID("00000000-0000-0000-0000-000000000001")
+    user = SimpleNamespace(
+        id=UUID("00000000-0000-0000-0000-000000000002"),
+        tenant_id=tenant_id,
+    )
+    contexts: list[str] = []
+
+    class FakeSession:
+        def execute(self, *_args, **_kwargs):
+            return SimpleNamespace(scalar_one_or_none=lambda: None)
+
+        def add(self, _identity) -> None:
+            pass
+
+        def flush(self) -> None:
+            pass
+
+    class FakeUsers:
+        @staticmethod
+        def get_by_email_global(_email: str):
+            return None
+
+    class FakeAuthService:
+        def __init__(self, _db, _settings) -> None:
+            self.users = FakeUsers()
+
+        @staticmethod
+        def register(**_kwargs):
+            return user
+
+        @staticmethod
+        def complete_external_login(**_kwargs):
+            return "logged-in"
+
+    service = OAuthLoginService(FakeSession(), _settings())
+    monkeypatch.setattr(oauth_login_service, "AuthService", FakeAuthService)
+    monkeypatch.setattr(
+        oauth_login_service,
+        "set_db_tenant_context",
+        lambda _db, tenant: contexts.append(str(tenant)),
+    )
+    monkeypatch.setattr(
+        service,
+        "_verify_state",
+        lambda _cookie, _provider: {"state": "expected", "verifier": "verifier"},
+    )
+    monkeypatch.setattr(service, "_exchange_code", lambda *_args: "provider-token")
+    monkeypatch.setattr(
+        service,
+        "_fetch_identity",
+        lambda *_args: ("google-subject", "person@example.com", None),
+    )
+
+    result = service.authenticate_callback(
+        provider_name="google",
+        code="code",
+        state="expected",
+        state_cookie="cookie",
+    )
+
+    assert result == "logged-in"
+    assert contexts == ["bypass", "bypass"]
