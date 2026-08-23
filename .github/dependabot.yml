@@ -4,28 +4,48 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 1
+    groups:
+      github-actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: pip
     directory: "/backend"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 1
+    groups:
+      backend-python:
+        patterns:
+          - "*"
 
   - package-ecosystem: npm
     directory: "/frontend"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 1
+    groups:
+      frontend-node:
+        patterns:
+          - "*"
 
   - package-ecosystem: npm
     directory: "/applications/desktop"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 1
+    groups:
+      desktop-node:
+        patterns:
+          - "*"
 
   - package-ecosystem: docker
     directory: "/backend"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 1
+    groups:
+      backend-images:
+        patterns:
+          - "*"
