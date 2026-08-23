@@ -58,7 +58,7 @@ beautifulsoup4==4.13.4
 google-api-python-client==2.160.0
 google-auth-oauthlib==1.2.1
 google-auth-httplib2==0.2.0
-PyGithub==2.5.0
+PyGithub==2.10.0
 livekit==1.1.14
 livekit-agents==1.7.0
 livekit-plugins-silero==1.7.0
