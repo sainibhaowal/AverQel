@@ -57,4 +57,5 @@ def test_vps_deployment_is_manual_and_gated_by_image_tests() -> None:
     assert "--no-build" in workflow
     assert "--remove-orphans" in workflow
     assert "MODELS_DIR" in workflow
-    assert "docker image prune -f" in workflow
+    assert "Keep the previous release image so rollback is immediate." in workflow
+    assert "AVERQEL_IMAGE_TAG" in workflow

@@ -17,6 +17,12 @@
     Alt-Svc "clear"
   }
 
+  @versioned_downloads path_regexp versioned_downloads ^/downloads/v[0-9]+\.[0-9]+\.[0-9]+/.*
+  header @versioned_downloads Cache-Control "public, max-age=31536000, immutable"
+
+  @latest_downloads path /downloads/latest/*
+  header @latest_downloads Cache-Control "public, max-age=300, must-revalidate"
+
   @streaming path /api/v1/queries/stream /api/v1/chats/*/stream /api/v1/deepspace/chats/stream /api/v1/deepspace/chats/*/stream /api/v1/documents/events/stream
 
   handle @streaming {

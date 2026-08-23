@@ -64,6 +64,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
       - name: Checkout the exact main commit
         uses: actions/checkout@v4
@@ -140,6 +141,63 @@ jobs:
           docker run --rm --entrypoint node "$FRONTEND_IMAGE" --version
           echo "Image smoke tests passed for $VERSION ($SHA)"
 
+      - name: Scan API image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}-api:${{ needs.resolve-source.outputs.release_version }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Scan worker image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}-worker:${{ needs.resolve-source.outputs.release_version }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Scan frontend image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-source.outputs.release_version }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Generate image SBOMs
+        run: mkdir -p security-artifacts
+
+      - name: Generate API SBOM
+        uses: anchore/sbom-action@v0.17.8
+        with:
+          image: ${{ env.IMAGE_PREFIX }}-api:${{ needs.resolve-source.outputs.release_version }}
+          format: cyclonedx-json
+          output-file: security-artifacts/averqel-api.cdx.json
+          artifact-name: averqel-api-sbom
+
+      - name: Generate worker SBOM
+        uses: anchore/sbom-action@v0.17.8
+        with:
+          image: ${{ env.IMAGE_PREFIX }}-worker:${{ needs.resolve-source.outputs.release_version }}
+          format: cyclonedx-json
+          output-file: security-artifacts/averqel-worker.cdx.json
+          artifact-name: averqel-worker-sbom
+
+      - name: Generate frontend SBOM
+        uses: anchore/sbom-action@v0.17.8
+        with:
+          image: ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-source.outputs.release_version }}
+          format: cyclonedx-json
+          output-file: security-artifacts/averqel-frontend.cdx.json
+          artifact-name: averqel-frontend-sbom
+
       - name: Publish tested images to GHCR
         env:
           SHA: ${{ needs.resolve-source.outputs.sha }}
@@ -149,6 +207,35 @@ jobs:
             docker push "$IMAGE_PREFIX-$service:${{ needs.resolve-source.outputs.release_version }}"
             docker push "$IMAGE_PREFIX-$service:$SHA"
           done
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Sign and verify tested images
+        env:
+          COSIGN_YES: "true"
+          SHA: ${{ needs.resolve-source.outputs.sha }}
+          COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/deploy-vps.yml@refs/heads/main
+          COSIGN_CERTIFICATE_OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: |
+          set -euo pipefail
+          for service in api worker frontend; do
+            for tag in "${{ needs.resolve-source.outputs.release_version }}" "$SHA"; do
+              IMAGE="$IMAGE_PREFIX-$service:$tag"
+              cosign sign --yes "$IMAGE"
+              cosign verify \
+                --certificate-identity "$COSIGN_CERTIFICATE_IDENTITY" \
+                --certificate-oidc-issuer "$COSIGN_CERTIFICATE_OIDC_ISSUER" \
+                "$IMAGE" >/dev/null
+            done
+          done
+          echo "All published images have verified keyless signatures."
+
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: averqel-security-artifacts-${{ needs.resolve-source.outputs.release_version }}
+          path: security-artifacts/*.json
 
       - name: Upload image manifest
         uses: actions/upload-artifact@v4
@@ -211,8 +298,11 @@ jobs:
             --pattern '*.rpm' \
             --pattern '*.exe' \
             --pattern '*.dmg' \
+            --pattern 'SHA256SUMS.txt' \
             --dir release-downloads \
             --clobber
+          test -f release-downloads/SHA256SUMS.txt || { echo "::error::Release is missing SHA256SUMS.txt"; exit 1; }
+          (cd release-downloads && sha256sum --check SHA256SUMS.txt)
           DEB_PATH="$(find release-downloads -maxdepth 1 -type f -name '*.deb' -print -quit)"
           RPM_PATH="$(find release-downloads -maxdepth 1 -type f -name '*.rpm' -print -quit)"
           EXE_PATH="$(find release-downloads -maxdepth 1 -type f -name '*.exe' -print -quit)"
@@ -225,6 +315,12 @@ jobs:
           mv "$RPM_PATH" release-downloads/AverQel-linux-x86_64.rpm
           mv "$EXE_PATH" release-downloads/AverQel-windows-x64.exe
           mv "$DMG_PATH" release-downloads/AverQel-macos-universal.dmg
+          python3 .github/scripts/create-release-manifest.py \
+            --version "$VERSION" \
+            --git-sha "${{ needs.resolve-source.outputs.sha }}" \
+            --asset-dir release-downloads \
+            --output release-downloads/release-manifest.json \
+            --base-url downloads/latest
 
       - name: Prepare public desktop download staging directory
         uses: appleboy/ssh-action@v1
@@ -253,7 +349,7 @@ jobs:
           passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
           timeout: 30s
           command_timeout: 5m
-          source: "release-downloads/AverQel-linux-amd64.deb,release-downloads/AverQel-linux-x86_64.rpm,release-downloads/AverQel-windows-x64.exe,release-downloads/AverQel-macos-universal.dmg"
+          source: "release-downloads/AverQel-linux-amd64.deb,release-downloads/AverQel-linux-x86_64.rpm,release-downloads/AverQel-windows-x64.exe,release-downloads/AverQel-macos-universal.dmg,release-downloads/release-manifest.json"
           target: "/opt/averqel/backend/downloads/staging-${{ needs.resolve-source.outputs.release_version }}"
 
       - name: SSH deploy without touching VPS-owned files
@@ -276,6 +372,7 @@ jobs:
           script: |
             set -euo pipefail
             VPS_BACKEND_DIR="/opt/averqel/backend"
+            IMAGE_PREFIX="ghcr.io/sainibhaowal/averqel"
             COMPOSE_FILE="$VPS_BACKEND_DIR/docker-compose.prod.yml"
             ENV_FILE="$VPS_BACKEND_DIR/.env.vps"
             MODELS_DIR="$VPS_BACKEND_DIR/models"
@@ -286,7 +383,11 @@ jobs:
             SEARXNG_SETTINGS_PATH="$SEARXNG_CONFIG_DIR/settings.yml"
             export SEARXNG_CONFIG_DIR
             export AVERQEL_DESKTOP_DOWNLOAD_DIR="$DOWNLOAD_DIR"
-            trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE"' EXIT
+            PREVIOUS_VERSION=""
+            PREVIOUS_SHA=""
+            PREVIOUS_LATEST_TARGET=""
+            PREVIOUS_LATEST_DIRECTORY=""
+            DOWNLOAD_LINK_CHANGED="false"
 
             # The gateway container already shares backend_default with AverQel.
             # Treat that pre-existing network as external instead of asking
@@ -320,6 +421,47 @@ jobs:
                 "$@"
             }
 
+            rollback_on_failure() {
+              status=$?
+              trap - EXIT
+              if [[ "$status" -ne 0 && "$DOWNLOAD_LINK_CHANGED" == "true" ]]; then
+                set +e
+                if [[ -n "$PREVIOUS_LATEST_TARGET" ]]; then
+                  RESTORE_LINK="$DOWNLOAD_DIR/.latest-rollback-$VERSION"
+                  ln -s "$PREVIOUS_LATEST_TARGET" "$RESTORE_LINK"
+                  mv -Tf "$RESTORE_LINK" "$DOWNLOAD_DIR/latest"
+                elif [[ -n "$PREVIOUS_LATEST_DIRECTORY" && -d "$PREVIOUS_LATEST_DIRECTORY" ]]; then
+                  rm -f "$DOWNLOAD_DIR/latest"
+                  mv "$PREVIOUS_LATEST_DIRECTORY" "$DOWNLOAD_DIR/latest"
+                else
+                  rm -f "$DOWNLOAD_DIR/latest"
+                fi
+                set -e
+              fi
+              if [[ "$status" -ne 0 && -n "$PREVIOUS_VERSION" && -n "$PREVIOUS_SHA" && "$PREVIOUS_VERSION" != "$VERSION" ]]; then
+                echo "Deployment failed; restoring previous release $PREVIOUS_VERSION"
+                set +e
+                export AVERQEL_RELEASE_VERSION="$PREVIOUS_VERSION"
+                export AVERQEL_IMAGE_TAG="$PREVIOUS_SHA"
+                compose pull api worker maintenance-worker ingestion-worker scheduler inference frontend
+                compose up -d --no-build --wait --wait-timeout 180 --remove-orphans
+                set -e
+              fi
+              rm -f "$COMPOSE_NETWORK_OVERRIDE"
+              exit "$status"
+            }
+            trap rollback_on_failure EXIT
+
+            [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid release version: $VERSION"; exit 1; }
+            PREVIOUS_VERSION="$(docker inspect averqel-api --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' 2>/dev/null || true)"
+            PREVIOUS_SHA="$(docker inspect averqel-api --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
+            if [[ -L "$DOWNLOAD_DIR/latest" ]]; then
+              PREVIOUS_LATEST_TARGET="$(readlink "$DOWNLOAD_DIR/latest")"
+            elif [[ -d "$DOWNLOAD_DIR/latest" ]]; then
+              PREVIOUS_LATEST_DIRECTORY="$DOWNLOAD_DIR/.legacy-latest-$VERSION"
+              mv "$DOWNLOAD_DIR/latest" "$PREVIOUS_LATEST_DIRECTORY"
+            fi
+
             test -d "$VPS_BACKEND_DIR" || { echo "Missing $VPS_BACKEND_DIR"; exit 1; }
             test -d "$MODELS_DIR" || { echo "Missing persistent models directory: $MODELS_DIR"; exit 1; }
             test -d "$DOWNLOAD_STAGE_DIR" || { echo "Missing staged desktop downloads: $DOWNLOAD_STAGE_DIR"; exit 1; }
@@ -327,6 +469,7 @@ jobs:
             test -f "$DOWNLOAD_STAGE_DIR/AverQel-linux-x86_64.rpm" || { echo "Missing staged Linux RPM package"; exit 1; }
             test -f "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" || { echo "Missing staged Windows package"; exit 1; }
             test -f "$DOWNLOAD_STAGE_DIR/AverQel-macos-universal.dmg" || { echo "Missing staged macOS package"; exit 1; }
+            test -f "$DOWNLOAD_STAGE_DIR/release-manifest.json" || { echo "Missing staged release manifest"; exit 1; }
             mkdir -p "$DOWNLOAD_DIR"
             test -f "$COMPOSE_FILE" || { echo "Missing $COMPOSE_FILE"; exit 1; }
             test -f "$ENV_FILE" || { echo "Missing $ENV_FILE"; exit 1; }
@@ -362,6 +505,7 @@ jobs:
 
             cd "$VPS_BACKEND_DIR"
             export AVERQEL_RELEASE_VERSION="$VERSION"
+            export AVERQEL_IMAGE_TAG="$SHA"
             export AVERQEL_GIT_SHA="$SHA"
             export AVERQEL_BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -381,38 +525,88 @@ jobs:
             echo "$PUBLIC_RESPONSE"
             echo "$PUBLIC_RESPONSE" | grep -Eq '"version"[[:space:]]*:[[:space:]]*"'"$VERSION"'"'
 
-            # Publish downloads only after the new application passes all health
-            # checks. Existing versioned downloads are preserved.
+            # Prepare a complete immutable version directory. The public latest
+            # link is changed only after this directory is verified.
             DOWNLOAD_VERSION_DIR="$DOWNLOAD_DIR/$VERSION"
-            DOWNLOAD_LATEST_DIR="$DOWNLOAD_DIR/latest"
-            mkdir -p "$DOWNLOAD_VERSION_DIR" "$DOWNLOAD_LATEST_DIR"
-            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-amd64.deb" "$DOWNLOAD_VERSION_DIR/AverQel-linux-amd64.deb"
-            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-x86_64.rpm" "$DOWNLOAD_VERSION_DIR/AverQel-linux-x86_64.rpm"
-            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" "$DOWNLOAD_VERSION_DIR/AverQel-windows-x64.exe"
-            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-macos-universal.dmg" "$DOWNLOAD_VERSION_DIR/AverQel-macos-universal.dmg"
-            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-amd64.deb" "$DOWNLOAD_LATEST_DIR/AverQel-linux-amd64.deb"
-            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-x86_64.rpm" "$DOWNLOAD_LATEST_DIR/AverQel-linux-x86_64.rpm"
-            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" "$DOWNLOAD_LATEST_DIR/AverQel-windows-x64.exe"
-            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-macos-universal.dmg" "$DOWNLOAD_LATEST_DIR/AverQel-macos-universal.dmg"
+            DOWNLOAD_VERSION_TMP="$DOWNLOAD_DIR/.release-$VERSION"
+            rm -rf "$DOWNLOAD_VERSION_TMP"
+            mkdir -p "$DOWNLOAD_VERSION_TMP"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-amd64.deb" "$DOWNLOAD_VERSION_TMP/AverQel-linux-amd64.deb"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-x86_64.rpm" "$DOWNLOAD_VERSION_TMP/AverQel-linux-x86_64.rpm"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" "$DOWNLOAD_VERSION_TMP/AverQel-windows-x64.exe"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-macos-universal.dmg" "$DOWNLOAD_VERSION_TMP/AverQel-macos-universal.dmg"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/release-manifest.json" "$DOWNLOAD_VERSION_TMP/release-manifest.json"
+            if [[ -e "$DOWNLOAD_VERSION_DIR" ]]; then
+              cmp -s "$DOWNLOAD_VERSION_TMP/release-manifest.json" "$DOWNLOAD_VERSION_DIR/release-manifest.json" || {
+                echo "Existing release directory has a different manifest: $DOWNLOAD_VERSION_DIR"
+                exit 1
+              }
+              rm -rf "$DOWNLOAD_VERSION_TMP"
+            else
+              mv "$DOWNLOAD_VERSION_TMP" "$DOWNLOAD_VERSION_DIR"
+            fi
 
-            # Verify that the public reverse proxy serves every published asset
-            # before this deployment is reported successful.
+            # Verify the immutable version URL before changing latest.
             for DOWNLOAD_NAME in \
               AverQel-linux-amd64.deb \
               AverQel-linux-x86_64.rpm \
               AverQel-windows-x64.exe \
               AverQel-macos-universal.dmg; do
               curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-connrefused \
+                "$PUBLIC_ORIGIN/downloads/$VERSION/$DOWNLOAD_NAME" -o /dev/null
+            done
+
+            # Switch latest atomically to the complete, verified directory.
+            LATEST_LINK_TMP="$DOWNLOAD_DIR/.latest-$VERSION"
+            rm -f "$LATEST_LINK_TMP"
+            ln -s "$VERSION" "$LATEST_LINK_TMP"
+            mv -Tf "$LATEST_LINK_TMP" "$DOWNLOAD_DIR/latest"
+            DOWNLOAD_LINK_CHANGED="true"
+
+            for DOWNLOAD_NAME in \
+              AverQel-linux-amd64.deb \
+              AverQel-linux-x86_64.rpm \
+              AverQel-windows-x64.exe \
+              AverQel-macos-universal.dmg \
+              release-manifest.json; do
+              curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-connrefused \
                 "$PUBLIC_ORIGIN/downloads/latest/$DOWNLOAD_NAME" -o /dev/null
             done
             rm -rf "$DOWNLOAD_STAGE_DIR"
 
+            # Keep the latest five canonical release directories for rollback
+            # and remove only older directories created by this workflow.
+            mapfile -t OLD_DOWNLOADS < <(
+              find "$DOWNLOAD_DIR" -mindepth 1 -maxdepth 1 -type d \
+                -regextype posix-extended -regex '.*/v[0-9]+\.[0-9]+\.[0-9]+' \
+                -printf '%f\n' | sort -V
+            )
+            if (( ${#OLD_DOWNLOADS[@]} > 5 )); then
+              for OLD_VERSION in "${OLD_DOWNLOADS[@]:0:${#OLD_DOWNLOADS[@]}-5}"; do
+                [[ "$OLD_VERSION" != "$VERSION" ]] && rm -rf "$DOWNLOAD_DIR/$OLD_VERSION"
+              done
+            fi
+
             # Cleanup happens only after all health checks pass. It is scoped to
             # AverQel images; volumes and unrelated containers are untouched.
+            # Keep the previous release image so rollback is immediate.
             ACTIVE_IDS="$(compose images -q | sort -u)"
+            if [[ -n "$PREVIOUS_VERSION" ]]; then
+              ROLLBACK_IMAGE_IDS="$DOWNLOAD_DIR/.rollback-image-ids"
+              : > "$ROLLBACK_IMAGE_IDS"
+              for SERVICE in api worker frontend; do
+                docker image inspect "$IMAGE_PREFIX-$SERVICE:$PREVIOUS_SHA" --format '{{.Id}}' 2>/dev/null || true
+              done >> "$ROLLBACK_IMAGE_IDS"
+              ACTIVE_IDS="$(cat "$ROLLBACK_IMAGE_IDS"; printf '%s\n' "$ACTIVE_IDS" | sort -u)"
+              rm -f "$ROLLBACK_IMAGE_IDS"
+            fi
             docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' 'ghcr.io/sainibhaowal/averqel-*' \
               | while read -r IMAGE_REF IMAGE_ID; do
                   if ! grep -Fxq "$IMAGE_ID" <<< "$ACTIVE_IDS"; then
                     docker image rm "$IMAGE_REF" || true
                   fi
                 done
+            if [[ -n "$PREVIOUS_LATEST_DIRECTORY" && -d "$PREVIOUS_LATEST_DIRECTORY" ]]; then
+              rm -rf "$PREVIOUS_LATEST_DIRECTORY"
+            fi
+            DOWNLOAD_LINK_CHANGED="false"
