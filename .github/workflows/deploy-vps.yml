@@ -157,6 +157,16 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout deployment configuration
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: ${{ needs.resolve-source.outputs.sha }}
+
+      - name: Encode SearXNG settings
+        id: searxng-settings
+        run: echo "settings_b64=$(base64 -w0 backend/searxng/settings.yml)" >> "$GITHUB_OUTPUT"
+
       - name: Validate deployment secrets
         run: |
           test -n "${{ secrets.VPS_HOST }}" || { echo "::error::VPS_HOST secret missing"; exit 1; }
@@ -189,6 +199,7 @@ jobs:
           GHCR_PAT: ${{ secrets.GHCR_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
+          SEARXNG_SETTINGS_B64: ${{ steps.searxng-settings.outputs.settings_b64 }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -196,7 +207,7 @@ jobs:
           passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
           timeout: 30s
           command_timeout: 30m
-          envs: VERSION,SHA,GHCR_PAT,GITHUB_TOKEN,GITHUB_ACTOR
+          envs: VERSION,SHA,GHCR_PAT,GITHUB_TOKEN,GITHUB_ACTOR,SEARXNG_SETTINGS_B64
           script: |
             set -euo pipefail
             VPS_BACKEND_DIR="/opt/averqel/backend"
@@ -204,7 +215,11 @@ jobs:
             ENV_FILE="$VPS_BACKEND_DIR/.env.vps"
             MODELS_DIR="$VPS_BACKEND_DIR/models"
             COMPOSE_NETWORK_OVERRIDE="$(mktemp)"
-            trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE"' EXIT
+            SEARXNG_SETTINGS_FILE="$(mktemp)"
+            trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE" "$SEARXNG_SETTINGS_FILE"' EXIT
+
+            printf '%s' "$SEARXNG_SETTINGS_B64" | base64 --decode > "$SEARXNG_SETTINGS_FILE"
+            chmod 600 "$SEARXNG_SETTINGS_FILE"
 
             # The gateway container already shares backend_default with AverQel.
             # Treat that pre-existing network as external instead of asking
@@ -214,6 +229,20 @@ jobs:
               default:
                 name: backend_default
                 external: true
+            services:
+              inference:
+                depends_on:
+                  clamav:
+                    condition: service_healthy
+                environment:
+                  AKS_MALWARE_SCAN_ENABLED: "true"
+                  AKS_MALWARE_SCAN_REQUIRED: "true"
+                  AKS_MALWARE_SCAN_HOST: clamav
+                  AKS_MALWARE_SCAN_PORT: "3310"
+                  AKS_MALWARE_SCAN_TIMEOUT_SECONDS: "15"
+              searxng:
+                volumes:
+                  - ${SEARXNG_SETTINGS_FILE}:/etc/searxng/settings.yml:ro
             YAML
 
             compose() {
