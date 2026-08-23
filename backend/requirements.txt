@@ -35,7 +35,7 @@ prometheus-client==0.22.1
 msgpack==1.2.1
 pyasn1==0.6.4
 Authlib==1.6.12
-opentelemetry-api==1.39.1
+opentelemetry-api==1.44.0
 opentelemetry-sdk==1.39.1
 opentelemetry-exporter-otlp-proto-grpc==1.39.1
 pyotp==2.9.0
