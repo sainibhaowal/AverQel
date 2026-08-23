@@ -175,7 +175,7 @@ jobs:
         run: mkdir -p security-artifacts
 
       - name: Generate API SBOM
-        uses: anchore/sbom-action@v0.17.8
+        uses: anchore/sbom-action@v0.24.0
         with:
           image: ${{ env.IMAGE_PREFIX }}-api:${{ needs.resolve-source.outputs.release_version }}
           format: cyclonedx-json
@@ -183,7 +183,7 @@ jobs:
           artifact-name: averqel-api-sbom
 
       - name: Generate worker SBOM
-        uses: anchore/sbom-action@v0.17.8
+        uses: anchore/sbom-action@v0.24.0
         with:
           image: ${{ env.IMAGE_PREFIX }}-worker:${{ needs.resolve-source.outputs.release_version }}
           format: cyclonedx-json
@@ -191,7 +191,7 @@ jobs:
           artifact-name: averqel-worker-sbom
 
       - name: Generate frontend SBOM
-        uses: anchore/sbom-action@v0.17.8
+        uses: anchore/sbom-action@v0.24.0
         with:
           image: ${{ env.IMAGE_PREFIX }}-frontend:${{ needs.resolve-source.outputs.release_version }}
           format: cyclonedx-json
