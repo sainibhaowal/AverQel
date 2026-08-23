@@ -256,6 +256,11 @@ jobs:
             test -d "$MODELS_DIR" || { echo "Missing persistent models directory: $MODELS_DIR"; exit 1; }
             test -f "$COMPOSE_FILE" || { echo "Missing $COMPOSE_FILE"; exit 1; }
             test -f "$ENV_FILE" || { echo "Missing $ENV_FILE"; exit 1; }
+            test ! -L "$ENV_FILE" || { echo "Refusing symlinked environment file"; exit 1; }
+            chmod 600 "$ENV_FILE"
+            if ! grep -qE '^SEARXNG_SECRET=[^[:space:]#]+$' "$ENV_FILE"; then
+              printf '\nSEARXNG_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$ENV_FILE"
+            fi
 
             REGISTRY_TOKEN="${GHCR_PAT:-${GITHUB_TOKEN:-}}"
             test -n "$REGISTRY_TOKEN" || { echo "Missing GHCR_PAT/GITHUB_TOKEN"; exit 1; }
@@ -292,4 +297,3 @@ jobs:
                     docker image rm "$IMAGE_REF" || true
                   fi
                 done
-            docker image prune -f
