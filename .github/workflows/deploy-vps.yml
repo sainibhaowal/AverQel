@@ -5,7 +5,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: deploy-vps-production
@@ -156,6 +155,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: read
     steps:
       - name: Checkout deployment configuration
         uses: actions/checkout@v4
@@ -215,16 +215,14 @@ jobs:
             ENV_FILE="$VPS_BACKEND_DIR/.env.vps"
             MODELS_DIR="$VPS_BACKEND_DIR/models"
             COMPOSE_NETWORK_OVERRIDE="$(mktemp)"
-            SEARXNG_SETTINGS_FILE="$(mktemp)"
-            trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE" "$SEARXNG_SETTINGS_FILE"' EXIT
-
-            printf '%s' "$SEARXNG_SETTINGS_B64" | base64 --decode > "$SEARXNG_SETTINGS_FILE"
-            chmod 600 "$SEARXNG_SETTINGS_FILE"
+            SEARXNG_CONFIG_DIR="$VPS_BACKEND_DIR/searxng"
+            SEARXNG_SETTINGS_PATH="$SEARXNG_CONFIG_DIR/settings.yml"
+            trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE"' EXIT
 
             # The gateway container already shares backend_default with AverQel.
             # Treat that pre-existing network as external instead of asking
             # Compose to claim it and fail on missing Compose labels.
-            cat > "$COMPOSE_NETWORK_OVERRIDE" <<YAML
+            cat > "$COMPOSE_NETWORK_OVERRIDE" <<'YAML'
             networks:
               default:
                 name: backend_default
@@ -240,9 +238,6 @@ jobs:
                   AKS_MALWARE_SCAN_HOST: clamav
                   AKS_MALWARE_SCAN_PORT: "3310"
                   AKS_MALWARE_SCAN_TIMEOUT_SECONDS: "15"
-              searxng:
-                volumes:
-                  - ${SEARXNG_SETTINGS_FILE}:/etc/searxng/settings.yml:ro
             YAML
 
             compose() {
@@ -256,6 +251,30 @@ jobs:
             test -d "$MODELS_DIR" || { echo "Missing persistent models directory: $MODELS_DIR"; exit 1; }
             test -f "$COMPOSE_FILE" || { echo "Missing $COMPOSE_FILE"; exit 1; }
             test -f "$ENV_FILE" || { echo "Missing $ENV_FILE"; exit 1; }
+            test ! -L "$SEARXNG_CONFIG_DIR" || { echo "Refusing symlinked SearXNG config directory"; exit 1; }
+            test -d "$SEARXNG_CONFIG_DIR" || mkdir -p "$SEARXNG_CONFIG_DIR"
+            test ! -L "$SEARXNG_SETTINGS_PATH" || { echo "Refusing symlinked SearXNG settings path"; exit 1; }
+            if [[ -d "$SEARXNG_SETTINGS_PATH" ]]; then
+              if find "$SEARXNG_SETTINGS_PATH" -mindepth 1 -print -quit | grep -q .; then
+                echo "Refusing non-empty SearXNG settings directory: $SEARXNG_SETTINGS_PATH"
+                exit 1
+              fi
+              rmdir "$SEARXNG_SETTINGS_PATH"
+            fi
+            if [[ -e "$SEARXNG_SETTINGS_PATH" ]]; then
+              test -f "$SEARXNG_SETTINGS_PATH" || {
+                echo "SearXNG settings path is not a regular file: $SEARXNG_SETTINGS_PATH"
+                exit 1
+              }
+            else
+              printf '%s' "$SEARXNG_SETTINGS_B64" | base64 --decode > "$SEARXNG_SETTINGS_PATH"
+            fi
+            chmod 600 "$SEARXNG_SETTINGS_PATH"
+            test ! -L "$ENV_FILE" || { echo "Refusing symlinked environment file"; exit 1; }
+            chmod 600 "$ENV_FILE"
+            if ! grep -qE '^SEARXNG_SECRET=[^[:space:]#]+$' "$ENV_FILE"; then
+              printf '\nSEARXNG_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$ENV_FILE"
+            fi
 
             REGISTRY_TOKEN="${GHCR_PAT:-${GITHUB_TOKEN:-}}"
             test -n "$REGISTRY_TOKEN" || { echo "Missing GHCR_PAT/GITHUB_TOKEN"; exit 1; }
@@ -292,4 +311,3 @@ jobs:
                     docker image rm "$IMAGE_REF" || true
                   fi
                 done
-            docker image prune -f

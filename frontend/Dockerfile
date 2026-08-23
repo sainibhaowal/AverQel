@@ -7,7 +7,7 @@ RUN apk add --no-cache bash
 RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
 
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* .npmrc* ./
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 ARG NEXT_PROXY_TARGET=http://api:1000
