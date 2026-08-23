@@ -222,7 +222,7 @@ jobs:
             # The gateway container already shares backend_default with AverQel.
             # Treat that pre-existing network as external instead of asking
             # Compose to claim it and fail on missing Compose labels.
-            cat > "$COMPOSE_NETWORK_OVERRIDE" <<'YAML'
+            cat > "$COMPOSE_NETWORK_OVERRIDE" <<YAML
             networks:
               default:
                 name: backend_default
@@ -238,6 +238,10 @@ jobs:
                   AKS_MALWARE_SCAN_HOST: clamav
                   AKS_MALWARE_SCAN_PORT: "3310"
                   AKS_MALWARE_SCAN_TIMEOUT_SECONDS: "15"
+              searxng:
+                volumes: !override
+                  - ${SEARXNG_CONFIG_DIR}:/etc/searxng
+                  - searxng_cache:/var/cache/searxng
             YAML
 
             compose() {
