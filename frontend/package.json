@@ -58,7 +58,7 @@
     "docx": "^9.6.0",
     "framer-motion": "^12.34.3",
     "html2canvas": "^1.4.1",
-    "jspdf": "^4.2.0",
+    "jspdf": "^4.2.1",
     "katex": "^0.16.45",
     "livekit-client": "^2.9.2",
     "lucide-react": "^0.575.0",
