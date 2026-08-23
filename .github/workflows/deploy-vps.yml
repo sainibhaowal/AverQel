@@ -215,11 +215,11 @@ jobs:
             ENV_FILE="$VPS_BACKEND_DIR/.env.vps"
             MODELS_DIR="$VPS_BACKEND_DIR/models"
             COMPOSE_NETWORK_OVERRIDE="$(mktemp)"
-            SEARXNG_SETTINGS_FILE="$(mktemp)"
-            trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE" "$SEARXNG_SETTINGS_FILE"' EXIT
+            SEARXNG_SETTINGS_DIR="$(mktemp -d)"
+            trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE" "$SEARXNG_SETTINGS_DIR/settings.yml"; rmdir "$SEARXNG_SETTINGS_DIR" 2>/dev/null || true' EXIT
 
-            printf '%s' "$SEARXNG_SETTINGS_B64" | base64 --decode > "$SEARXNG_SETTINGS_FILE"
-            chmod 600 "$SEARXNG_SETTINGS_FILE"
+            printf '%s' "$SEARXNG_SETTINGS_B64" | base64 --decode > "$SEARXNG_SETTINGS_DIR/settings.yml"
+            chmod 600 "$SEARXNG_SETTINGS_DIR/settings.yml"
 
             # The gateway container already shares backend_default with AverQel.
             # Treat that pre-existing network as external instead of asking
@@ -241,8 +241,8 @@ jobs:
                   AKS_MALWARE_SCAN_PORT: "3310"
                   AKS_MALWARE_SCAN_TIMEOUT_SECONDS: "15"
               searxng:
-                volumes:
-                  - ${SEARXNG_SETTINGS_FILE}:/etc/searxng/settings.yml:ro
+                volumes: !override
+                  - ${SEARXNG_SETTINGS_DIR}:/etc/searxng
             YAML
 
             compose() {
