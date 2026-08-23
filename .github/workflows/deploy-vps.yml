@@ -121,7 +121,7 @@ jobs:
             GIT_VERSION=${{ needs.resolve-source.outputs.release_version }}
             GIT_SHA=${{ needs.resolve-source.outputs.sha }}
             BUILD_TIMESTAMP=${{ needs.resolve-source.outputs.image_tag }}
-            DESKTOP_DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/tag/${{ needs.resolve-source.outputs.release_version }}
+            DESKTOP_DOWNLOAD_BASE_URL=/downloads/latest
           cache-from: type=gha,scope=averqel-frontend
           cache-to: type=gha,mode=max,scope=averqel-frontend
 
@@ -198,6 +198,56 @@ jobs:
             exit 1
           }
 
+      - name: Download public desktop release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.resolve-source.outputs.release_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-downloads
+          gh release download "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.deb' \
+            --pattern '*.exe' \
+            --dir release-downloads \
+            --clobber
+          DEB_PATH="$(find release-downloads -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          EXE_PATH="$(find release-downloads -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          test -n "$DEB_PATH" || { echo "::error::Release $VERSION has no .deb asset"; exit 1; }
+          test -n "$EXE_PATH" || { echo "::error::Release $VERSION has no .exe asset"; exit 1; }
+          mv "$DEB_PATH" release-downloads/AverQel-linux-amd64.deb
+          mv "$EXE_PATH" release-downloads/AverQel-windows-x64.exe
+
+      - name: Prepare public desktop download staging directory
+        uses: appleboy/ssh-action@v1
+        env:
+          VERSION: ${{ needs.resolve-source.outputs.release_version }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          timeout: 30s
+          command_timeout: 30s
+          envs: VERSION
+          script: |
+            set -euo pipefail
+            DOWNLOAD_DIR="/opt/averqel/backend/downloads"
+            mkdir -p "$DOWNLOAD_DIR/staging-$VERSION"
+            chmod 755 "$DOWNLOAD_DIR" "$DOWNLOAD_DIR/staging-$VERSION"
+
+      - name: Upload public desktop release assets to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          timeout: 30s
+          command_timeout: 5m
+          source: "release-downloads/AverQel-linux-amd64.deb,release-downloads/AverQel-windows-x64.exe"
+          target: "/opt/averqel/backend/downloads/staging-${{ needs.resolve-source.outputs.release_version }}"
+
       - name: SSH deploy without touching VPS-owned files
         uses: appleboy/ssh-action@v1
         env:
@@ -221,10 +271,13 @@ jobs:
             COMPOSE_FILE="$VPS_BACKEND_DIR/docker-compose.prod.yml"
             ENV_FILE="$VPS_BACKEND_DIR/.env.vps"
             MODELS_DIR="$VPS_BACKEND_DIR/models"
+            DOWNLOAD_DIR="$VPS_BACKEND_DIR/downloads"
+            DOWNLOAD_STAGE_DIR="$DOWNLOAD_DIR/staging-$VERSION"
             COMPOSE_NETWORK_OVERRIDE="$(mktemp)"
             SEARXNG_CONFIG_DIR="$VPS_BACKEND_DIR/searxng"
             SEARXNG_SETTINGS_PATH="$SEARXNG_CONFIG_DIR/settings.yml"
             export SEARXNG_CONFIG_DIR
+            export AVERQEL_DESKTOP_DOWNLOAD_DIR="$DOWNLOAD_DIR"
             trap 'rm -f "$COMPOSE_NETWORK_OVERRIDE"' EXIT
 
             # The gateway container already shares backend_default with AverQel.
@@ -261,6 +314,10 @@ jobs:
 
             test -d "$VPS_BACKEND_DIR" || { echo "Missing $VPS_BACKEND_DIR"; exit 1; }
             test -d "$MODELS_DIR" || { echo "Missing persistent models directory: $MODELS_DIR"; exit 1; }
+            test -d "$DOWNLOAD_STAGE_DIR" || { echo "Missing staged desktop downloads: $DOWNLOAD_STAGE_DIR"; exit 1; }
+            test -f "$DOWNLOAD_STAGE_DIR/AverQel-linux-amd64.deb" || { echo "Missing staged Linux package"; exit 1; }
+            test -f "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" || { echo "Missing staged Windows package"; exit 1; }
+            mkdir -p "$DOWNLOAD_DIR"
             test -f "$COMPOSE_FILE" || { echo "Missing $COMPOSE_FILE"; exit 1; }
             test -f "$ENV_FILE" || { echo "Missing $ENV_FILE"; exit 1; }
             test ! -L "$SEARXNG_CONFIG_DIR" || { echo "Refusing symlinked SearXNG config directory"; exit 1; }
@@ -313,6 +370,17 @@ jobs:
             PUBLIC_RESPONSE="$(curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-connrefused "$PUBLIC_ORIGIN/api/v1/health/ready")"
             echo "$PUBLIC_RESPONSE"
             echo "$PUBLIC_RESPONSE" | grep -Eq '"version"[[:space:]]*:[[:space:]]*"'"$VERSION"'"'
+
+            # Publish downloads only after the new application passes all health
+            # checks. Existing versioned downloads are preserved.
+            DOWNLOAD_VERSION_DIR="$DOWNLOAD_DIR/$VERSION"
+            DOWNLOAD_LATEST_DIR="$DOWNLOAD_DIR/latest"
+            mkdir -p "$DOWNLOAD_VERSION_DIR" "$DOWNLOAD_LATEST_DIR"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-amd64.deb" "$DOWNLOAD_VERSION_DIR/AverQel-linux-amd64.deb"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" "$DOWNLOAD_VERSION_DIR/AverQel-windows-x64.exe"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-linux-amd64.deb" "$DOWNLOAD_LATEST_DIR/AverQel-linux-amd64.deb"
+            install -m 644 "$DOWNLOAD_STAGE_DIR/AverQel-windows-x64.exe" "$DOWNLOAD_LATEST_DIR/AverQel-windows-x64.exe"
+            rm -rf "$DOWNLOAD_STAGE_DIR"
 
             # Cleanup happens only after all health checks pass. It is scoped to
             # AverQel images; volumes and unrelated containers are untouched.

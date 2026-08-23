@@ -181,6 +181,8 @@ services:
     stop_grace_period: 20s
     environment:
       NEXT_PROXY_TARGET: http://api:1000
+    volumes:
+      - ${AVERQEL_DESKTOP_DOWNLOAD_DIR:-./downloads}:/app/public/downloads:ro
     depends_on:
       api:
         condition: service_healthy

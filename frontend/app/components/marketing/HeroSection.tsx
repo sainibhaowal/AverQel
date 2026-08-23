@@ -15,7 +15,11 @@ import {
   landingTitleGradientBySection,
 } from "./landingType";
 import AverQelLogo from "../ui/AverQelLogo";
-import { APP_VERSION, DESKTOP_DOWNLOAD_URL } from "@/lib/release";
+import {
+  APP_VERSION,
+  DESKTOP_LINUX_DOWNLOAD_URL,
+  DESKTOP_WINDOWS_DOWNLOAD_URL,
+} from "@/lib/release";
 
 const navLinks = [
   { label: "How It Works", href: "#how-it-works" },
@@ -157,11 +161,18 @@ export default function HeroSection() {
                   <ArrowRight size={18} />
                 </Link>
                 <a
-                  href={DESKTOP_DOWNLOAD_URL}
+                  href={DESKTOP_LINUX_DOWNLOAD_URL}
                   className="inline-flex items-center gap-2 rounded-full border border-[#00b8ff]/35 bg-[#00b8ff]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00b8ff] hover:bg-[#00b8ff]/20 hover:text-white"
                 >
                   <Download size={17} />
-                  Download Desktop App
+                  Download Linux (.deb)
+                </a>
+                <a
+                  href={DESKTOP_WINDOWS_DOWNLOAD_URL}
+                  className="inline-flex items-center gap-2 rounded-full border border-[#00b8ff]/35 bg-[#00b8ff]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00b8ff] hover:bg-[#00b8ff]/20 hover:text-white"
+                >
+                  <Download size={17} />
+                  Download Windows (.exe)
                 </a>
                 <Link
                   href="#security"
