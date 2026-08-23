@@ -4,32 +4,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import CodeBlock from "../app/dashboard/query/_components/CodeBlock";
 import TableBlock from "../app/dashboard/query/_components/TableBlock";
 
-const xlsxMocks = vi.hoisted(() => ({
-  writeFileXLSX: vi.fn(),
-  bookAppendSheet: vi.fn(),
+const excelMocks = vi.hoisted(() => ({
+  addRows: vi.fn(),
+  writeBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
 }));
 
-vi.mock("xlsx", () => ({
+vi.mock("exceljs", () => ({
   default: {
-    utils: {
-      aoa_to_sheet: vi.fn((rows: unknown[][]) => ({ rows })),
-      book_new: vi.fn(() => ({ sheets: [] })),
-      book_append_sheet: xlsxMocks.bookAppendSheet,
+    Workbook: class Workbook {
+      xlsx = { writeBuffer: excelMocks.writeBuffer };
+
+      addWorksheet() {
+        return { addRows: excelMocks.addRows };
+      }
     },
-    writeFileXLSX: xlsxMocks.writeFileXLSX,
   },
-  utils: {
-    aoa_to_sheet: vi.fn((rows: unknown[][]) => ({ rows })),
-    book_new: vi.fn(() => ({ sheets: [] })),
-    book_append_sheet: xlsxMocks.bookAppendSheet,
-  },
-  writeFileXLSX: xlsxMocks.writeFileXLSX,
 }));
 
 describe("query block actions", () => {
   beforeEach(() => {
-    xlsxMocks.writeFileXLSX.mockReset();
-    xlsxMocks.bookAppendSheet.mockReset();
+    excelMocks.writeBuffer.mockClear();
+    excelMocks.addRows.mockClear();
     vi.restoreAllMocks();
   });
 
@@ -96,9 +91,14 @@ describe("query block actions", () => {
     });
     expect(writeText).toHaveBeenCalledWith("Name\tValue\nA\t1");
 
-    fireEvent.click(screen.getByLabelText("Export table as Excel"));
-    expect(xlsxMocks.bookAppendSheet).toHaveBeenCalledTimes(1);
-    expect(xlsxMocks.writeFileXLSX).toHaveBeenCalledWith(expect.any(Object), "metrics-table.xlsx");
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Export table as Excel"));
+    });
+    expect(excelMocks.addRows).toHaveBeenCalledWith([
+      ["Name", "Value"],
+      ["A", "1"],
+    ]);
+    expect(excelMocks.writeBuffer).toHaveBeenCalledTimes(1);
   });
 
   it("renders highlighted code tokens with distinct styles", () => {

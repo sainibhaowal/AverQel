@@ -2,7 +2,7 @@
 
 import { memo, useMemo, useState } from "react";
 import { Check, Copy, FileSpreadsheet } from "lucide-react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 import { InlineMarkdown } from "./InlineMarkdown";
 
@@ -64,19 +64,30 @@ function TableBlockInner({ block, isStreaming = false }: TableBlockProps) {
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (tableMatrix.length === 0) {
       return;
     }
 
-    const worksheet = XLSX.utils.aoa_to_sheet(tableMatrix);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Table");
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Table");
+    worksheet.addRows(tableMatrix);
     const safeTitle = (block.title ?? "table")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
-    XLSX.writeFileXLSX(workbook, `${safeTitle || "table"}.xlsx`);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${safeTitle || "table"}.xlsx`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (

@@ -1,8 +1,8 @@
 "use client";
 
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { Archive, FileWarning, Music2, Table2 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 import type { LibraryFileKind } from "./DeepSpaceLibraryFormats";
@@ -113,6 +113,28 @@ function parseArchive(value: string): ArchiveEntry[] {
   return entries;
 }
 
+function spreadsheetRows(workbook: ExcelJS.Workbook): string[][] {
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) return [];
+  const rows: string[][] = [];
+  worksheet.eachRow({ includeEmpty: false }, (row) => {
+    const values = Array.isArray(row.values) ? row.values.slice(1) : [];
+    rows.push(
+      values.map((value) => {
+        if (value === null || value === undefined) return "";
+        if (value instanceof Date) return value.toISOString();
+        if (typeof value === "object") {
+          if ("text" in value && typeof value.text === "string") return value.text;
+          if ("result" in value && value.result !== undefined) return String(value.result);
+          return JSON.stringify(value);
+        }
+        return String(value);
+      }),
+    );
+  });
+  return rows;
+}
+
 function Table({ rows }: { rows: string[][] }) {
   const columns = Math.max(1, ...rows.map((row) => row.length));
   return (
@@ -150,46 +172,34 @@ function Table({ rows }: { rows: string[][] }) {
 }
 
 function SpreadsheetTable({ value, previewUrl }: { value: string; previewUrl?: string | null }) {
-  const [binaryRows, setBinaryRows] = useState<string[][]>([]);
+  const [rows, setRows] = useState<string[][]>([]);
   useEffect(() => {
     let cancelled = false;
-    if (!previewUrl)
-      return () => {
-        cancelled = true;
-      };
-    void fetch(previewUrl)
-      .then((response) => response.arrayBuffer())
-      .then((buffer) => {
-        if (cancelled) return;
-        const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-        const first = workbook.SheetNames[0];
-        setBinaryRows(
-          first
-            ? (XLSX.utils.sheet_to_json(workbook.Sheets[first], { header: 1 }) as string[][])
-            : [],
+    const load = async () => {
+      try {
+        const buffer = previewUrl
+          ? await fetch(previewUrl).then((response) => response.arrayBuffer())
+          : decodeBase64(value);
+        if (!buffer) {
+          if (!cancelled) setRows([]);
+          return;
+        }
+        const workbook = new ExcelJS.Workbook();
+        // ExcelJS accepts ArrayBuffer/Uint8Array in the browser; its bundled
+        // declaration currently exposes the Node Buffer overload only.
+        await workbook.xlsx.load(
+          buffer as unknown as Parameters<typeof workbook.xlsx.load>[0],
         );
-      })
-      .catch(() => {
-        if (!cancelled) setBinaryRows([]);
-      });
+        if (!cancelled) setRows(spreadsheetRows(workbook));
+      } catch {
+        if (!cancelled) setRows([]);
+      }
+    };
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [previewUrl]);
-  const rows = useMemo(() => {
-    if (previewUrl && binaryRows.length) return binaryRows;
-    const bytes = decodeBase64(value);
-    if (!bytes) return [];
-    try {
-      const workbook = XLSX.read(bytes, { type: "array", cellDates: true });
-      const first = workbook.SheetNames[0];
-      return first
-        ? (XLSX.utils.sheet_to_json(workbook.Sheets[first], { header: 1 }) as string[][])
-        : [];
-    } catch {
-      return [];
-    }
-  }, [binaryRows, previewUrl, value]);
+  }, [previewUrl, value]);
   return rows.length ? (
     <Table rows={rows} />
   ) : (
