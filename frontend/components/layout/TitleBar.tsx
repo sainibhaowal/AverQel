@@ -3,6 +3,7 @@
 import Image from "next/image";
 import React, { useEffect, useState } from "react";
 import { X, Minus, Square, Copy } from "lucide-react";
+import { APP_VERSION } from "@/lib/release";
 
 export default function TitleBar() {
   const [isTauri, setIsTauri] = useState(false);
@@ -76,7 +77,7 @@ export default function TitleBar() {
       >
         <Image src="/logo_icon.svg" alt="Logo" width={16} height={16} className="opacity-80" />
         <span className="text-[11px] font-bold tracking-[0.2em] text-slate-400 uppercase">
-          AverQel
+          AverQel {APP_VERSION}
         </span>
       </div>
 

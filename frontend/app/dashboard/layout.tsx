@@ -33,6 +33,7 @@ import { useTheme } from "../context/ThemeContext";
 import AuthGuard from "@/app/components/layout/AuthGuard";
 import NotificationCenter from "@/app/components/layout/NotificationCenter";
 import AverQelLogo from "@/app/components/ui/AverQelLogo";
+import { APP_VERSION } from "@/lib/release";
 import Breadcrumbs from "@/app/components/ui/Breadcrumbs";
 import SystemStatus from "@/app/components/dashboard/SystemStatus";
 import { getRoleLabel, hasAdminRole } from "@/lib/roles";
@@ -300,7 +301,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </motion.button>
           {sidebarOpen && (
             <div className="bg-primary/5 border-primary/10 text-primary/70 flex items-center justify-center rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.14em] uppercase">
-              {process.env.NEXT_PUBLIC_APP_VERSION || "v1.0.0"}
+              {APP_VERSION}
               {process.env.NEXT_PUBLIC_GIT_SHA && process.env.NEXT_PUBLIC_GIT_SHA !== "unknown" ? ` • ${String(process.env.NEXT_PUBLIC_GIT_SHA).slice(0, 7)}` : ""}
             </div>
           )}

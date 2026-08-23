@@ -119,6 +119,13 @@ jobs:
         working-directory: applications/desktop
         run: pnpm install --frozen-lockfile
 
+      - name: Stamp the semantic release version into the desktop app
+        env:
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          node .github/scripts/stamp-desktop-version.mjs "${RELEASE_VERSION#v}"
+
       - name: Build desktop app
         working-directory: applications/desktop
         run: pnpm tauri build

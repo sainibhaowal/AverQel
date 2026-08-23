@@ -45,7 +45,15 @@ describe("HeroSection", () => {
     expect(heading).toHaveTextContent(/Turn your documents into/i);
     expect(heading).toHaveTextContent(/grounded answers and useful work/i);
     expect(screen.getByText(/Your Private AI Workspace/i)).toBeInTheDocument();
-    expect(screen.getByText(/Start Using AverQel/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Use the Web App/i })).toHaveAttribute(
+      "href",
+      "/auth/signup",
+    );
+    expect(screen.getByRole("link", { name: /Download Desktop App/i })).toHaveAttribute(
+      "href",
+      "https://github.com/sainibhaowal/AverQel/releases/latest",
+    );
+    expect(screen.getByText(/AverQel development/i)).toBeInTheDocument();
     expect(screen.getByText(/averqel \| productivity runtime/i)).toBeInTheDocument();
     expect(screen.getByText(/DeepSpace for research and deliverables/i)).toBeInTheDocument();
   });
