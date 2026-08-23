@@ -21,8 +21,8 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "@blocknote/code-block": "^0.48.0",
-    "@blocknote/core": "^0.48.0",
+    "@blocknote/code-block": "^0.54.0",
+    "@blocknote/core": "^0.54.0",
     "@blocknote/mantine": "^0.48.0",
     "@blocknote/react": "^0.48.0",
     "@codemirror/lang-cpp": "^6.0.3",
