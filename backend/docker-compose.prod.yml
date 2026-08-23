@@ -78,6 +78,14 @@ services:
       AKS_LOCAL_INFERENCE_BASE_URL: http://inference:1011
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
+      AKS_MALWARE_SCAN_ENABLED: ${AKS_MALWARE_SCAN_ENABLED:-true}
+      AKS_MALWARE_SCAN_REQUIRED: ${AKS_MALWARE_SCAN_REQUIRED:-true}
+      AKS_MALWARE_SCAN_HOST: ${AKS_MALWARE_SCAN_HOST:-clamav}
+      AKS_MALWARE_SCAN_PORT: ${AKS_MALWARE_SCAN_PORT:-3310}
+      AKS_MALWARE_SCAN_TIMEOUT_SECONDS: ${AKS_MALWARE_SCAN_TIMEOUT_SECONDS:-15}
+    depends_on:
+      clamav:
+        condition: service_healthy
     volumes:
       - ./models:/app/models:ro
       - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
