@@ -222,7 +222,7 @@ jobs:
             # The gateway container already shares backend_default with AverQel.
             # Treat that pre-existing network as external instead of asking
             # Compose to claim it and fail on missing Compose labels.
-            cat > "$COMPOSE_NETWORK_OVERRIDE" <<YAML
+            cat > "$COMPOSE_NETWORK_OVERRIDE" <<'YAML'
             networks:
               default:
                 name: backend_default
