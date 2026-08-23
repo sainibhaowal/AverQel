@@ -249,7 +249,7 @@ jobs:
           esac
 
       - name: Upload desktop packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: averqel-desktop-${{ matrix.platform }}-${{ needs.prepare-release.outputs.version }}
           path: |
