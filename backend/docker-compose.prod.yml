@@ -63,7 +63,7 @@ services:
 
   inference:
     container_name: averqel-inference
-    image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_RELEASE_VERSION:-latest}
+    image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -101,7 +101,7 @@ services:
 
   api:
     container_name: averqel-api
-    image: ghcr.io/sainibhaowal/averqel-api:${AVERQEL_RELEASE_VERSION:-latest}
+    image: ghcr.io/sainibhaowal/averqel-api:${AVERQEL_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -167,7 +167,7 @@ services:
 
   frontend:
     container_name: averqel-frontend
-    image: ghcr.io/sainibhaowal/averqel-frontend:${AVERQEL_RELEASE_VERSION:-latest}
+    image: ghcr.io/sainibhaowal/averqel-frontend:${AVERQEL_IMAGE_TAG:-latest}
     build:
       context: ../frontend
       dockerfile: Dockerfile
@@ -181,6 +181,8 @@ services:
     stop_grace_period: 20s
     environment:
       NEXT_PROXY_TARGET: http://api:1000
+    volumes:
+      - ${AVERQEL_DESKTOP_DOWNLOAD_DIR:-./downloads}:/app/public/downloads:ro
     depends_on:
       api:
         condition: service_healthy
@@ -189,7 +191,7 @@ services:
 
   worker:
     container_name: averqel-worker
-    image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_RELEASE_VERSION:-latest}
+    image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -260,7 +262,7 @@ services:
 
   scheduler:
     container_name: averqel-scheduler
-    image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_RELEASE_VERSION:-latest}
+    image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.worker

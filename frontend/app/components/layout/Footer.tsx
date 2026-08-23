@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import AverQelLogo from "../ui/AverQelLogo";
 import { BRAND_NAME } from "@/lib/brand";
+import { APP_VERSION } from "@/lib/release";
 import { useLandingSectionMotion } from "../marketing/landingMotion";
 
 const links = [
@@ -89,7 +90,7 @@ export default function Footer() {
           <div className="flex items-center gap-3">
             <p className="text-muted-foreground/40 text-xs">© {BRAND_NAME}</p>
             <span className="bg-primary/10 text-primary border-primary/20 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-[0.14em] uppercase">
-              {process.env.NEXT_PUBLIC_APP_VERSION || "v1.0.0"}
+              {APP_VERSION}
               {process.env.NEXT_PUBLIC_GIT_SHA && process.env.NEXT_PUBLIC_GIT_SHA !== "unknown" ? ` • ${String(process.env.NEXT_PUBLIC_GIT_SHA).slice(0, 7)}` : ""}
             </span>
           </div>

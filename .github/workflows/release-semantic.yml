@@ -2,6 +2,12 @@ name: Release - Manual SemVer and Desktop
 
 on:
   workflow_dispatch:
+    inputs:
+      sign_desktop:
+        description: "Sign Windows and notarize macOS packages (requires configured repository secrets)"
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -30,6 +36,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       sha: ${{ steps.version.outputs.sha }}
+      sign_desktop: ${{ steps.version.outputs.sign_desktop }}
     steps:
       - name: Checkout the selected main commit
         uses: actions/checkout@v4
@@ -76,6 +83,32 @@ jobs:
           SHA="$(git rev-parse "$GITHUB_SHA")"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "sign_desktop=${{ inputs.sign_desktop }}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate desktop signing secrets
+        if: inputs.sign_desktop == true
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          for name in \
+            WINDOWS_CERTIFICATE_BASE64 \
+            WINDOWS_CERTIFICATE_PASSWORD \
+            APPLE_CERTIFICATE \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_ID \
+            APPLE_PASSWORD \
+            APPLE_TEAM_ID; do
+            [[ -n "${!name:-}" ]] || { echo "::error::Missing signing secret $name"; exit 1; }
+          done
 
   build-desktop:
     name: Build Desktop ${{ matrix.platform }}
@@ -86,7 +119,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, windows-latest]
+        platform: [ubuntu-22.04, windows-latest, macos-latest]
     steps:
       - name: Checkout the exact release commit
         uses: actions/checkout@v4
@@ -113,13 +146,14 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev libappindicator3-dev librsvg2-dev patchelf rpm
 
       - name: Install desktop dependencies
         working-directory: applications/desktop
         run: pnpm install --frozen-lockfile
 
       - name: Stamp the semantic release version into the desktop app
+        shell: bash
         env:
           RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
         run: |
@@ -129,20 +163,100 @@ jobs:
       - name: Build Linux desktop package
         if: matrix.platform == 'ubuntu-22.04'
         working-directory: applications/desktop
-        run: pnpm tauri build --bundles deb
+        run: pnpm tauri build --bundles deb,rpm
 
       - name: Build Windows desktop package
         if: matrix.platform == 'windows-latest'
         working-directory: applications/desktop
         run: pnpm tauri build --bundles nsis
 
+      - name: Build macOS desktop package
+        if: startsWith(matrix.platform, 'macos-')
+        working-directory: applications/desktop
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          pnpm tauri build --bundles dmg --target universal-apple-darwin
+
+      - name: Sign Windows installer
+        if: matrix.platform == 'windows-latest' && needs.prepare-release.outputs.sign_desktop == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem applications/desktop/src-tauri/target -Recurse -File -Filter '*.exe' |
+            Where-Object { $_.FullName -like '*\bundle\nsis\*' } |
+            Select-Object -First 1
+          if ($null -eq $installer) { throw 'Windows installer was not found' }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'averqel-signing.pfx'
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          $signTool = Get-ChildItem "$env:ProgramFiles(x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -like '*\x64\signtool.exe' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($null -eq $signTool) { throw 'signtool.exe was not found' }
+          & $signTool.FullName sign /fd SHA256 /f $certificatePath /p $env:WINDOWS_CERTIFICATE_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $installer.FullName
+          & $signTool.FullName verify /pa /all $installer.FullName
+
+      - name: Verify signed and notarized macOS package
+        if: startsWith(matrix.platform, 'macos-') && needs.prepare-release.outputs.sign_desktop == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find applications/desktop/src-tauri/target -type d -path '*/bundle/macos/*.app' -print -quit)"
+          DMG_PATH="$(find applications/desktop/src-tauri/target -type f -path '*/bundle/dmg/*.dmg' -print -quit)"
+          test -n "$APP_PATH" && test -n "$DMG_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          xcrun stapler validate "$DMG_PATH"
+
+      - name: Normalize desktop package names
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_VERSION#v}"
+          case "$RUNNER_OS" in
+            Linux)
+              DEB_PATH="$(find applications/desktop/src-tauri/target -type f -path '*/bundle/deb/*.deb' -print -quit)"
+              RPM_PATH="$(find applications/desktop/src-tauri/target -type f -path '*/bundle/rpm/*.rpm' -print -quit)"
+              test -n "$DEB_PATH" && test -n "$RPM_PATH"
+              mv "$DEB_PATH" "$(dirname "$DEB_PATH")/AverQel_${VERSION}_amd64.deb"
+              mv "$RPM_PATH" "$(dirname "$RPM_PATH")/AverQel_${VERSION}_x86_64.rpm"
+              ;;
+            Windows)
+              EXE_PATH="$(find applications/desktop/src-tauri/target -type f -path '*/bundle/nsis/*.exe' -print -quit)"
+              test -n "$EXE_PATH"
+              mv "$EXE_PATH" "$(dirname "$EXE_PATH")/AverQel_${VERSION}_x64-setup.exe"
+              ;;
+            macOS)
+              DMG_PATH="$(find applications/desktop/src-tauri/target -type f -path '*/bundle/dmg/*.dmg' -print -quit)"
+              test -n "$DMG_PATH"
+              mv "$DMG_PATH" "$(dirname "$DMG_PATH")/AverQel_${VERSION}_universal.dmg"
+              ;;
+            *)
+              echo "Unsupported runner OS: $RUNNER_OS" >&2
+              exit 1
+              ;;
+          esac
+
       - name: Upload desktop packages
         uses: actions/upload-artifact@v4
         with:
           name: averqel-desktop-${{ matrix.platform }}-${{ needs.prepare-release.outputs.version }}
           path: |
-            applications/desktop/src-tauri/target/release/bundle/deb/*.deb
-            applications/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            applications/desktop/src-tauri/target/**/bundle/deb/*.deb
+            applications/desktop/src-tauri/target/**/bundle/rpm/*.rpm
+            applications/desktop/src-tauri/target/**/bundle/nsis/*.exe
+            applications/desktop/src-tauri/target/**/bundle/dmg/*.dmg
 
   publish-release:
     name: Publish GitHub Release
@@ -187,6 +301,36 @@ jobs:
           path: ./desktop-release-artifacts
           merge-multiple: true
 
+      - name: Create checksummed release assets and manifest
+        env:
+          RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
+          RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          rm -rf release-assets
+          mkdir -p release-assets
+          find desktop-release-artifacts -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.exe' -o -name '*.dmg' \) -print0 \
+            | while IFS= read -r -d '' asset; do
+                target="release-assets/$(basename "$asset")"
+                test ! -e "$target" || { echo "Duplicate release asset filename: $target"; exit 1; }
+                cp -- "$asset" "$target"
+              done
+
+          VERSION="${RELEASE_VERSION#v}"
+          mv "$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_amd64.deb" -print -quit)" release-assets/AverQel-linux-amd64.deb
+          mv "$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_x86_64.rpm" -print -quit)" release-assets/AverQel-linux-x86_64.rpm
+          mv "$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_x64-setup.exe" -print -quit)" release-assets/AverQel-windows-x64.exe
+          mv "$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_universal.dmg" -print -quit)" release-assets/AverQel-macos-universal.dmg
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 4
+
+          (cd release-assets && sha256sum *) > SHA256SUMS.txt
+          python3 .github/scripts/create-release-manifest.py \
+            --version "$RELEASE_VERSION" \
+            --git-sha "$RELEASE_SHA" \
+            --asset-dir release-assets \
+            --output release-manifest.json \
+            --base-url downloads/latest
+
       - name: Create GitHub release with desktop downloads
         uses: softprops/action-gh-release@v2
         with:
@@ -197,7 +341,10 @@ jobs:
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
-          files: ./desktop-release-artifacts/**/*
+          files: |
+            release-assets/*
+            SHA256SUMS.txt
+            release-manifest.json
           body: |
             # AverQel ${{ needs.prepare-release.outputs.version }}
 
@@ -206,5 +353,10 @@ jobs:
             Git tag: `${{ needs.prepare-release.outputs.version }}`
 
             The generated changelog below is based on the merged pull requests and conventional commits included in this release.
+
+            Desktop packages: `.deb`, `.rpm`, `.exe`, and universal macOS `.dmg`.
+
+            Public downloads are published by the separate manual Docker/VPS deployment at:
+            `https://averqel.com/downloads/latest/`
 
             Docker/VPS deployment is a separate manual workflow and is not started automatically.

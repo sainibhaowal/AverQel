@@ -49,9 +49,21 @@ describe("HeroSection", () => {
       "href",
       "/auth/signup",
     );
-    expect(screen.getByRole("link", { name: /Download Desktop App/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Download Linux \(.deb\)/i })).toHaveAttribute(
       "href",
-      "https://github.com/sainibhaowal/AverQel/releases/latest",
+      "/downloads/latest/AverQel-linux-amd64.deb",
+    );
+    expect(screen.getByRole("link", { name: /Download Windows \(.exe\)/i })).toHaveAttribute(
+      "href",
+      "/downloads/latest/AverQel-windows-x64.exe",
+    );
+    expect(screen.getByRole("link", { name: /Download macOS \(.dmg\)/i })).toHaveAttribute(
+      "href",
+      "/downloads/latest/AverQel-macos-universal.dmg",
+    );
+    expect(screen.getByRole("link", { name: /Linux \(.rpm\)/i })).toHaveAttribute(
+      "href",
+      "/downloads/latest/AverQel-linux-x86_64.rpm",
     );
     expect(screen.getByText(/AverQel development/i)).toBeInTheDocument();
     expect(screen.getByText(/averqel \| productivity runtime/i)).toBeInTheDocument();

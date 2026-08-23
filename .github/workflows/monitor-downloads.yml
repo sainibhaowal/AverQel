@@ -1,0 +1,73 @@
+name: Monitor - Public Desktop Downloads
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      public_origin:
+        description: "Public AverQel origin"
+        required: false
+        default: "https://averqel.com"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify public release manifest and assets
+    runs-on: ubuntu-latest
+    env:
+      PUBLIC_ORIGIN: ${{ inputs.public_origin || vars.AVERQEL_PUBLIC_ORIGIN || 'https://averqel.com' }}
+    steps:
+      - name: Verify the public manifest
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/averqel-release"
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+            "$PUBLIC_ORIGIN/downloads/latest/release-manifest.json" \
+            -o "$RUNNER_TEMP/averqel-release/release-manifest.json"
+          python3 - "$RUNNER_TEMP/averqel-release/release-manifest.json" <<'PY'
+          import json
+          import re
+          import sys
+
+          path = sys.argv[1]
+          data = json.loads(open(path, encoding="utf-8").read())
+          if data.get("product") != "AverQel":
+              raise SystemExit("manifest product is not AverQel")
+          if not re.fullmatch(r"v\d+\.\d+\.\d+", data.get("version", "")):
+              raise SystemExit("manifest version is not canonical SemVer")
+          expected = {
+              "AverQel-linux-amd64.deb",
+              "AverQel-linux-x86_64.rpm",
+              "AverQel-windows-x64.exe",
+              "AverQel-macos-universal.dmg",
+          }
+          assets = data.get("assets", {})
+          if set(assets) != expected:
+              raise SystemExit(f"manifest assets mismatch: {sorted(assets)}")
+          for name, asset in assets.items():
+              if not re.fullmatch(r"[0-9a-f]{64}", asset.get("sha256", "")):
+                  raise SystemExit(f"invalid SHA-256 for {name}")
+              if int(asset.get("size_bytes", 0)) <= 0:
+                  raise SystemExit(f"invalid size for {name}")
+          PY
+
+      - name: Verify every public asset responds successfully
+        run: |
+          set -euo pipefail
+          for name in \
+            AverQel-linux-amd64.deb \
+            AverQel-linux-x86_64.rpm \
+            AverQel-windows-x64.exe \
+            AverQel-macos-universal.dmg; do
+            status="$(curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+              -o /dev/null -w '%{http_code}' -I \
+              "$PUBLIC_ORIGIN/downloads/latest/$name")"
+            test "$status" = "200" || {
+              echo "::error::$name returned HTTP $status"
+              exit 1
+            }
+            echo "$name: HTTP $status"
+          done
