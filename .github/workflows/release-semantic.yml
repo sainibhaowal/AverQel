@@ -114,6 +114,12 @@ jobs:
       - name: Install Electron dependencies
         run: pnpm --dir applications/desktop install --frozen-lockfile
 
+      - name: Install Linux packaging dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
       - name: Build the production frontend for Electron
         env:
           BUILD_TARGET: desktop
