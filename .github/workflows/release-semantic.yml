@@ -116,10 +116,11 @@ jobs:
 
       - name: Build the production frontend for Electron
         env:
+          BUILD_TARGET: desktop
           NEXT_PUBLIC_APP_VERSION: ${{ needs.prepare-release.outputs.version }}
           NEXT_PUBLIC_GIT_SHA: ${{ needs.prepare-release.outputs.sha }}
           NEXT_PUBLIC_DESKTOP_DOWNLOAD_BASE_URL: /downloads/latest
-        run: BUILD_TARGET=desktop pnpm --dir frontend build
+        run: pnpm --dir frontend build
 
       - name: Stamp the semantic release version into the desktop app
         shell: bash
