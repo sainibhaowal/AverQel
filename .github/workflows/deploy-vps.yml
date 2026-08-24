@@ -450,7 +450,7 @@ jobs:
                 set +e
                 export AVERQEL_RELEASE_VERSION="$PREVIOUS_VERSION"
                 export AVERQEL_IMAGE_TAG="$PREVIOUS_SHA"
-                compose pull api worker maintenance-worker ingestion-worker scheduler inference frontend
+                compose pull api worker maintenance-worker mcp-worker ingestion-worker scheduler inference frontend
                 compose up -d --no-build --wait --wait-timeout 180 --remove-orphans
                 set -e
               fi
@@ -517,7 +517,7 @@ jobs:
             export AVERQEL_BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
             compose config --quiet
-            compose pull api worker maintenance-worker ingestion-worker scheduler inference frontend
+            compose pull api worker maintenance-worker mcp-worker ingestion-worker scheduler inference frontend
             compose up -d --no-build --wait --wait-timeout 180 --remove-orphans
 
             compose ps

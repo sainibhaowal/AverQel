@@ -252,6 +252,14 @@ services:
       AKS_WORKER_QUEUES: maintenance
       AKS_WORKER_CONCURRENCY: ${AKS_MAINTENANCE_WORKER_CONCURRENCY:-1}
 
+  mcp-worker:
+    extends:
+      service: worker
+    container_name: averqel-mcp-worker
+    environment:
+      AKS_WORKER_QUEUES: mcp_catalog
+      AKS_WORKER_CONCURRENCY: ${AKS_MCP_WORKER_CONCURRENCY:-2}
+
   ingestion-worker:
     extends:
       service: worker
