@@ -63,8 +63,12 @@ next-env.d.ts
 /.vscode/
 /ZevaConnector/
 /scratch/
-/applications/
-/applications/desktop/
+/applications/*
+!/applications/desktop/
+!/applications/desktop/electron/
+!/applications/desktop/electron/**
+!/applications/desktop/assets/
+!/applications/desktop/assets/**
 /applications/linux/
 /runtime/
 /Runtime/
@@ -79,13 +83,8 @@ DOXWISE_LOCAL_PRODUCTION_DOCKER_COMMANDS.md
 .DOXWISE_LOCAL_PRODUCTION_DOCKER_COMMANDS.md
 DOXWISE_LOCAL_PRODUCTION_DOCKER_COMMANDS.md*
 # Desktop Build Artifacts
-applications/desktop/src-tauri/target/
 applications/desktop/node_modules/
 applications/desktop/dist/
-applications/desktop/src-tauri/binaries/
-
-# Linux Build Artifacts
-applications/linux/src-tauri/target/
 applications/linux/node_modules/
 
 backend/build/

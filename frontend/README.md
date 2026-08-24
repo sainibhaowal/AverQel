@@ -153,7 +153,7 @@ one. Each ready artifact offers **Regenerate variation**, which reruns the exact
 new authenticated DeepSpace request; it preserves the original artifact and re-applies normal model,
 tenant, quota, moderation, and policy checks.
 
-The desktop/Tauri workspace proxy remains single-process because its client registry is process-local.
+The desktop Electron workspace proxy remains single-process because its client registry is process-local.
 Do not increase API worker count without first moving that registry to a shared transport.
 
 This release supports approved remote Streamable HTTP and SSE MCP servers. Stdio, SSH, local process

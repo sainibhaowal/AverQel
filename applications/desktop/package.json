@@ -1,17 +1,73 @@
 {
-  "name": "tauri-app",
+  "name": "averqel-desktop",
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=9.0.0"
+  },
+  "main": "electron/main.cjs",
   "scripts": {
-    "tauri": "tauri"
+    "dev": "electron .",
+    "build": "electron-builder",
+    "build:linux": "electron-builder --linux deb rpm",
+    "build:windows": "electron-builder --win nsis",
+    "build:mac": "electron-builder --mac dmg --universal"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "electron": "^41.0.0",
+    "electron-builder": "^26.0.12"
   },
-  "dependencies": {
-    "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/plugin-autostart": "^2.5.1",
-    "@tauri-apps/plugin-notification": "^2.3.3"
+  "build": {
+    "appId": "com.averqel.app",
+    "productName": "AverQel",
+    "asar": true,
+    "files": [
+      "electron/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../frontend/out",
+        "to": "frontend"
+      }
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "linux": {
+      "category": "Office",
+      "icon": "assets/icon.png",
+      "target": [
+        "deb",
+        "rpm"
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "title": "AverQel"
+    },
+    "publish": null
   }
 }

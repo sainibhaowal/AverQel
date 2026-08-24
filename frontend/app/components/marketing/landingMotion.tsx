@@ -23,6 +23,12 @@ export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
 ) {
   const ref = useRef<T | null>(null);
   const reduceMotion = useReducedMotion();
+  // Electron renders the landing page inside a GPU-composited native window.
+  // Scaling full-width sections there can expose a one-pixel edge while the
+  // spring settles, so keep the decorative web-only parallax disabled in the
+  // desktop shell.
+  const isElectron = typeof window !== "undefined" && Boolean(window.electron);
+  const motionDisabled = Boolean(reduceMotion || isElectron);
   const inView = useInView(ref, {
     margin: "-12% 0px -12% 0px",
     amount: 0.15,
@@ -32,13 +38,13 @@ export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
   const scaleRange = options.scaleRange ?? [0.996, 1.004];
   const baseOffset = depth * 0.22;
   const baseScale = scaleRange[0];
-  const y = useMotionValue(reduceMotion ? 0 : baseOffset);
-  const scale = useMotionValue(reduceMotion ? 1 : baseScale);
+  const y = useMotionValue(motionDisabled ? 0 : baseOffset);
+  const scale = useMotionValue(motionDisabled ? 1 : baseScale);
 
   // Animate only when sections enter or leave the viewport instead of tracking every
   // section continuously on scroll. This preserves the floating feel with far less work.
   useEffect(() => {
-    if (reduceMotion) {
+    if (motionDisabled) {
       y.set(0);
       scale.set(1);
       return;
@@ -63,11 +69,11 @@ export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
       yAnimation.stop();
       scaleAnimation.stop();
     };
-  }, [baseOffset, baseScale, inView, reduceMotion, scale, y]);
+  }, [baseOffset, baseScale, inView, motionDisabled, scale, y]);
 
   return {
     ref,
-    style: reduceMotion
+    style: motionDisabled
       ? undefined
       : {
           y,

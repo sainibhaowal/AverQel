@@ -86,7 +86,10 @@ type DeepSpaceLibraryDrawerProps = {
   onClose: () => void;
 };
 
-const LIBRARY_FILES_COLLAPSED_KEY = "deepspace.library.files.collapsed";
+// Version the preference so older builds cannot restore the Files panel as a
+// thin 44px strip after the layout has changed. Collapsing remains available
+// through the panel control, but the safe default is always the full panel.
+const LIBRARY_FILES_COLLAPSED_KEY = "deepspace.library.files.collapsed.v2";
 
 export default function DeepSpaceLibraryDrawer({
   open,

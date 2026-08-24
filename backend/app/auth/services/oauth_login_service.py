@@ -24,6 +24,7 @@ from app.core.ids import generate_uuid7_with_fallback
 from app.platform.database.session import set_db_tenant_context
 
 OAUTH_STATE_COOKIE = "averqel_auth_oauth_state"
+OAUTH_STATE_COOKIE_PREFIX = f"{OAUTH_STATE_COOKIE}_"
 OAUTH_2FA_COOKIE = "averqel_auth_oauth_2fa"
 OAUTH_STATE_TTL_SECONDS = 600
 
@@ -47,6 +48,10 @@ class OAuthLoginService:
 
     def _cookie_path(self) -> str:
         return f"{self.settings.api_prefix.rstrip('/')}/auth/oauth"
+
+    @staticmethod
+    def _state_cookie_name(cookie_id: str) -> str:
+        return f"{OAUTH_STATE_COOKIE_PREFIX}{cookie_id}"
 
     def provider(self, name: str) -> OAuthProvider:
         normalized = name.strip().lower()
@@ -178,17 +183,19 @@ class OAuthLoginService:
         )
         verifier = self._pkce_verifier()
         state_value = secrets.token_urlsafe(32)
+        cookie_id = secrets.token_urlsafe(18)
         state = self._sign_state(
             {
                 "provider": provider.name,
                 "state": state_value,
                 "verifier": verifier,
+                "cookie_id": cookie_id,
                 "return_to": safe_return_to,
                 "expires_at": int(time.time()) + OAUTH_STATE_TTL_SECONDS,
             }
         )
         response.set_cookie(
-            OAUTH_STATE_COOKIE,
+            self._state_cookie_name(cookie_id),
             state,
             max_age=OAUTH_STATE_TTL_SECONDS,
             httponly=True,
@@ -383,7 +390,13 @@ class OAuthLoginService:
         return subject, email, avatar
 
     def authenticate_callback(
-        self, *, provider_name: str, code: str, state: str, state_cookie: str | None
+        self,
+        *,
+        provider_name: str,
+        code: str,
+        state: str,
+        state_cookie: str | None = None,
+        state_cookies: list[str] | None = None,
     ) -> LoginResult:
         if self.db is None:
             raise ApiError(
@@ -392,14 +405,23 @@ class OAuthLoginService:
                 status_code=500,
             )
         provider = self.provider(provider_name)
-        if not state_cookie or not code or not state:
+        if (not state_cookie and not state_cookies) or not code or not state:
             raise ApiError(
                 code="OAUTH_CALLBACK_INVALID",
                 message="OAuth callback is incomplete.",
                 status_code=400,
             )
-        payload = self._verify_state(state_cookie, provider.name)
-        if not hmac.compare_digest(str(payload["state"]), state):
+        candidates = state_cookies or ([state_cookie] if state_cookie else [])
+        payload: dict[str, Any] | None = None
+        for candidate in candidates:
+            try:
+                candidate_payload = self._verify_state(candidate, provider.name)
+            except ApiError:
+                continue
+            if hmac.compare_digest(str(candidate_payload["state"]), state):
+                payload = candidate_payload
+                break
+        if payload is None:
             raise ApiError(
                 code="OAUTH_STATE_INVALID",
                 message="OAuth login state does not match.",

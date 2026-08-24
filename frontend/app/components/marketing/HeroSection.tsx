@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Activity, ArrowRight, Cpu, Download, FileText, Globe, Hexagon, Shield, Zap } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  Cpu,
+  Download,
+  FileText,
+  Globe,
+  Hexagon,
+  Shield,
+  Zap,
+} from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 import HeroBackdrop from "./HeroBackdrop";
 import HeroMorphingBackground from "./HeroMorphingBackground";

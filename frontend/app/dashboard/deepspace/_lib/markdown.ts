@@ -127,10 +127,7 @@ function repairCompactOrderedListLine(line: string): string[] {
   // paragraph. Split only an ordered-list marker followed by a title-like
   // token; ordinary prose such as `version 2.0` remains untouched.
   if (!/^\s*\d{1,3}\.\s+/.test(line)) return [line];
-  const repaired = line.replace(
-    /(?<=\S)(?=\d{1,3}\.\s+(?:\*\*|__|\[|[A-Z]))/g,
-    "\n",
-  );
+  const repaired = line.replace(/(?<=\S)(?=\d{1,3}\.\s+(?:\*\*|__|\[|[A-Z]))/g, "\n");
   return repaired.split("\n");
 }
 

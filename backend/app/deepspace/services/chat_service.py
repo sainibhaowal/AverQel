@@ -2566,7 +2566,8 @@ class DeepSpaceChatService:
         # the local value narrowed for the rest of this long-lived stream.
         if conversation_id is None:
             raise RuntimeError("DeepSpace requires a conversation before streaming.")
-        assert assistant_message is not None
+        if assistant_message is None:
+            raise RuntimeError("DeepSpace requires an assistant message before streaming.")
 
         started_at = self._now()
         yield sse(

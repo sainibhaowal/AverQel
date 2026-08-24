@@ -30,7 +30,7 @@ def clean_curated_mcp_catalog(db_session: Session) -> Iterator[Session]:
         db_session.commit()
 
 
-def test_sync_official_mcp_catalog_creates_six_safe_entries(
+def test_sync_official_mcp_catalog_creates_eight_safe_entries(
     clean_curated_mcp_catalog: Session,
 ) -> None:
     result = MCPCatalogService(clean_curated_mcp_catalog).sync_official_providers()
@@ -46,7 +46,7 @@ def test_sync_official_mcp_catalog_creates_six_safe_entries(
         .all()
     )
 
-    assert result.as_dict() == {"created": 6, "updated": 0, "unchanged": 0, "total": 6}
+    assert result.as_dict() == {"created": 8, "updated": 0, "unchanged": 0, "total": 8}
     assert [row.server_name for row in rows] == [
         "google-gmail",
         "google-drive",
@@ -54,6 +54,8 @@ def test_sync_official_mcp_catalog_creates_six_safe_entries(
         "google-chat",
         "google-people",
         "github",
+        "notion",
+        "slack",
     ]
     for row in rows:
         catalog = row.raw_metadata["catalog"]
@@ -72,7 +74,10 @@ def test_sync_official_mcp_catalog_creates_six_safe_entries(
         assert row.catalog_badges["official"] is True
         assert row.trusted_logo_key
         assert row.health_status == "not_checked"
-        assert catalog["connection_ready"] is False
+        if row.server_name == "notion":
+            assert catalog["connection_ready"] is True
+        else:
+            assert catalog["connection_ready"] is False
         assert catalog["health"]["status"] == "not_checked"
         assert "client_secret" not in row.raw_metadata
         assert "access_token" not in row.raw_metadata
@@ -115,12 +120,12 @@ def test_sync_official_mcp_catalog_is_idempotent_and_preserves_other_sources(
         .all()
     }
 
-    assert first_result.created == 6
+    assert first_result.created == 8
     assert second_result.as_dict() == {
         "created": 0,
         "updated": 0,
-        "unchanged": 6,
-        "total": 6,
+        "unchanged": 8,
+        "total": 8,
     }
     assert current_ids == original_ids
     assert session.get(MCPRegistryEntry, third_party.id) is not None

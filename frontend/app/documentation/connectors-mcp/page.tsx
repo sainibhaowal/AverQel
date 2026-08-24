@@ -14,7 +14,7 @@ export default function ConnectorsMcpDocsPage() {
           },
           {
             title: "User OAuth",
-            body: "Google or GitHub handles the login and consent screen. AverQel receives the authorization result, never the user's password, and stores token material encrypted.",
+            body: "The provider handles login and consent. AverQel receives the authorization result, never the user's password, and stores token material encrypted.",
           },
           {
             title: "Policy Control",
@@ -37,7 +37,10 @@ export default function ConnectorsMcpDocsPage() {
           <li>
             Select Connect. The browser goes to the provider&apos;s official authorization page.
           </li>
-          <li>Sign in and approve the requested scopes at Google, GitHub, or another provider.</li>
+          <li>
+            Sign in and approve the requested scopes at Google, GitHub, Notion, Slack, or another
+            provider.
+          </li>
           <li>
             AverQel returns to the connection inspector, captures only safe account identity,
             refreshes the catalog, and shows the available tools. The provider account may use a
@@ -113,6 +116,10 @@ export default function ConnectorsMcpDocsPage() {
             supported.
           </li>
           <li>
+            Write and external-message tools remain blocked until the user explicitly approves the
+            individual action.
+          </li>
+          <li>
             Refresh updates encrypted credentials and verified scope metadata without exposing
             secrets to the frontend.
           </li>
@@ -133,8 +140,8 @@ export default function ConnectorsMcpDocsPage() {
           <li>Allowlist and denylist checks.</li>
           <li>Read-only mode and the connection risk ceiling.</li>
           <li>
-            A master tool permission applies to every tool by default. Individual tool settings
-            can override it after the master setting is saved.
+            A master tool permission applies to every tool by default. Individual tool settings can
+            override it after the master setting is saved.
           </li>
           <li>
             Per-tool mode: <strong>Always allow</strong>, <strong>Needs approval</strong>, or{" "}

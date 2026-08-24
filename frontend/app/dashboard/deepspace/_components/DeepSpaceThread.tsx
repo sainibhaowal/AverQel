@@ -332,7 +332,7 @@ const MessageBubble = memo(
     if (message.role === "user") {
       return (
         <article
-          className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 motion-safe:ease-out mx-auto w-full max-w-[min(100%,74rem)] px-2 py-4 sm:px-3"
+          className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 mx-auto w-full max-w-[min(100%,74rem)] px-2 py-4 motion-safe:duration-300 motion-safe:ease-out sm:px-3"
           style={{
             containIntrinsicSize: "120px",
             overflowAnchor: "none",
@@ -455,7 +455,7 @@ const MessageBubble = memo(
 
     return (
       <article
-        className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 motion-safe:ease-out mx-auto w-full max-w-[min(100%,74rem)] px-2 py-3 sm:px-3 sm:py-4"
+        className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 mx-auto w-full max-w-[min(100%,74rem)] px-2 py-3 motion-safe:duration-300 motion-safe:ease-out sm:px-3 sm:py-4"
         style={{ containIntrinsicSize: "220px", overflowAnchor: "none" }}
       >
         <div className="relative flex items-start gap-4 p-0">
@@ -480,7 +480,7 @@ const MessageBubble = memo(
               ) : null}
 
               {pendingApproval && pendingApprovalId && onResolveApproval ? (
-                <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-300 motion-safe:ease-out mb-5 rounded-2xl border border-amber-400/25 bg-amber-400/[0.07] p-4 shadow-[0_12px_40px_-24px_rgba(251,191,36,0.8)]">
+                <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 mb-5 rounded-2xl border border-amber-400/25 bg-amber-400/[0.07] p-4 shadow-[0_12px_40px_-24px_rgba(251,191,36,0.8)] motion-safe:duration-300 motion-safe:ease-out">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 rounded-lg border border-amber-300/20 bg-amber-300/10 p-2 text-amber-200">
                       <ShieldCheck size={16} />
@@ -572,7 +572,7 @@ const MessageBubble = memo(
                 onRegenerate={() => onRegenerate(message.id)}
               />
 
-              <div className="prose-premium prose prose-invert motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:ease-out max-w-none">
+              <div className="prose-premium prose prose-invert motion-safe:animate-in motion-safe:fade-in max-w-none motion-safe:duration-300 motion-safe:ease-out">
                 {pendingQuestion ? null : message.status === "streaming" &&
                   message.content.trim() ? (
                   <DeepSpaceMarkdownRenderer content={message.content} streaming={true} />

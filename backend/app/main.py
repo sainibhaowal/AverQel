@@ -39,12 +39,6 @@ from app.system.services.otel import (
 def _build_cors_kwargs(settings: Settings) -> dict[str, object]:
     origins = list(settings.cors_origins or [])
 
-    # Automatically allow Tauri desktop app origins
-    if "tauri://localhost" not in origins:
-        origins.append("tauri://localhost")
-    if "http://tauri.localhost" not in origins:
-        origins.append("http://tauri.localhost")
-
     # Production-safe behavior:
     # - If explicit origins are configured, use them.
     # - If wildcard is configured, allow all origins explicitly.

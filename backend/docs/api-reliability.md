@@ -7,7 +7,7 @@ The compose files therefore start two Uvicorn workers by default.
 Available environment settings:
 
 - `AKS_API_WORKERS`: Uvicorn worker processes, from 1 to 16. Keep this at 2 or
-  higher for production. Use 1 only when a local Tauri client actively uses
+  higher for production. Use 1 only when a local Electron client actively uses
   the process-local client-owned storage proxy.
 - `AKS_API_LIMIT_CONCURRENCY`: maximum concurrent connections/tasks accepted
   by each worker. Excess load receives a bounded server response instead of

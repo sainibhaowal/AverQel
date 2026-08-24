@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlsplit
+
 import pytest
 
 from app.integrations.services.mcp_provider_auth import (
     GITHUB_MCP_OAUTH_PROFILE,
     GOOGLE_MCP_OAUTH_PROFILE,
+    SLACK_MCP_OAUTH_PROFILE,
     get_mcp_provider_profile,
 )
 
@@ -73,6 +76,66 @@ def test_github_revocation_uses_the_oauth_grant_endpoint() -> None:
         GITHUB_MCP_OAUTH_PROFILE.revocation_endpoint
         == "https://api.github.com/applications/{client_id}/grant"
     )
+
+
+@pytest.mark.unit_no_db
+def test_slack_profile_uses_confidential_user_oauth_and_nested_token_response(settings) -> None:
+    settings.mcp_slack_oauth_client_id = "slack-client-id"
+    settings.mcp_slack_oauth_client_secret = "slack-client-secret"
+    settings.mcp_oauth_redirect_uri = "https://averqel.example/api/v1/mcp/oauth/callback"
+
+    profile = get_mcp_provider_profile("slack")
+    assert profile is SLACK_MCP_OAUTH_PROFILE
+    ready, reason = profile.readiness(settings)
+    assert ready is True
+    assert reason is None
+    assert profile.authorization_scope_param == "scope"
+    assert profile.authorization_endpoint == "https://slack.com/oauth/v2_user/authorize"
+    assert profile.token_endpoint == "https://slack.com/api/oauth.v2.user.access"
+    assert "chat:write" in profile.scopes_for("slack")
+    assert "canvases:write" in profile.scopes_for("slack")
+    authorization_url = profile.authorization_url(
+        client_id="slack-client-id",
+        redirect_uri=settings.mcp_oauth_redirect_uri,
+        state="signed-state",
+        code_challenge="pkce-challenge",
+        scopes=profile.scopes_for("slack"),
+    )
+    query = parse_qs(urlsplit(authorization_url).query)
+    assert "scope" in query
+
+    normalized = profile.normalize_token_response(
+        {
+            "ok": True,
+            "authed_user": {
+                "id": "U123",
+                "access_token": "xoxp-secret",
+                "scope": "users:read,users:read.email",
+            },
+        }
+    )
+    assert normalized["access_token"] == "xoxp-secret"
+    assert normalized["scope"] == "users:read,users:read.email"
+
+
+@pytest.mark.unit_no_db
+def test_slack_identity_uses_safe_auth_test_labels() -> None:
+    identity = SLACK_MCP_OAUTH_PROFILE.extract_identity(
+        {
+            "ok": True,
+            "user_id": "U123",
+            "user": "ravi",
+            "team_id": "T123",
+            "team": "AverQel",
+            "private_token": "must-not-store",
+        }
+    )
+
+    assert identity == {
+        "provider_subject": "U123",
+        "account_id": "U123",
+        "display_name": "ravi",
+    }
 
 
 @pytest.mark.unit_no_db

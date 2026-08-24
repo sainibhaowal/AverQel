@@ -91,11 +91,11 @@ describe("DeepSpace markdown streaming", () => {
   });
 
   it("repairs a heading boundary as soon as its trailing whitespace arrives", () => {
-    const view = render(
-      <DeepSpaceMarkdownRenderer content="Summary.###" streaming={true} />,
-    );
+    const view = render(<DeepSpaceMarkdownRenderer content="Summary.###" streaming={true} />);
 
-    view.rerender(<DeepSpaceMarkdownRenderer content="Summary.### Live heading" streaming={true} />);
+    view.rerender(
+      <DeepSpaceMarkdownRenderer content="Summary.### Live heading" streaming={true} />,
+    );
 
     expect(screen.getByText("Summary.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Live heading" })).toBeInTheDocument();

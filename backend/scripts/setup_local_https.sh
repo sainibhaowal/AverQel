@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 ROOT_DIR="$(cd -- "$BACKEND_DIR/.." && pwd)"
 
-DOMAIN="${AVERQEL_LOCAL_DOMAIN:-averqel.localhost}"
+DOMAIN="${AVERQEL_LOCAL_DOMAIN:-localhost}"
 CERTS_DIR="${AVERQEL_TLS_CERTS_DIR:-$BACKEND_DIR/.local/certs}"
 CERT_FILE="$CERTS_DIR/averqel.localhost.pem"
 KEY_FILE="$CERTS_DIR/averqel.localhost-key.pem"

@@ -650,14 +650,14 @@ export default function DocumentsPage() {
                         </button>
                         {canManageDocuments &&
                           (doc.status === "failed" || doc.status === "dead_lettered") && (
-                          <button
-                            onClick={() => reingestDocument(doc.document_id, doc.filename)}
-                            className="text-foreground/40 rounded-xl p-2.5 transition-all hover:bg-emerald-500/10 hover:text-emerald-500"
-                            title="Retry Vectorization"
-                          >
-                            <RefreshCcw size={17} className="stroke-[2.5]" />
-                          </button>
-                        )}
+                            <button
+                              onClick={() => reingestDocument(doc.document_id, doc.filename)}
+                              className="text-foreground/40 rounded-xl p-2.5 transition-all hover:bg-emerald-500/10 hover:text-emerald-500"
+                              title="Retry Vectorization"
+                            >
+                              <RefreshCcw size={17} className="stroke-[2.5]" />
+                            </button>
+                          )}
                         {canManageDocuments && (
                           <button
                             onClick={() => deleteDocument(doc.document_id, doc.filename)}
@@ -727,7 +727,7 @@ export default function DocumentsPage() {
                         <button
                           onClick={() => reingestDocument(doc.document_id, doc.filename)}
                           aria-label={`Re-ingest ${doc.filename}`}
-                          className="text-foreground/40 bg-emerald-500/5 flex h-9 w-9 items-center justify-center rounded-lg"
+                          className="text-foreground/40 flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/5"
                         >
                           <RefreshCcw size={15} />
                         </button>
@@ -919,19 +919,19 @@ export default function DocumentsPage() {
                           <span>Save Full Doc</span>
                         </button>
                       </div>
-                        <button
-                          onClick={closeRawViewer}
+                      <button
+                        onClick={closeRawViewer}
                         className="bg-foreground/5 text-foreground/40 hover:text-danger hover:bg-danger/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
                       >
-                          <X size={22} className="stroke-[2.5]" />
-                        </button>
+                        <X size={22} className="stroke-[2.5]" />
+                      </button>
                     </div>
                   </div>
                   <div className="relative flex-1 overflow-hidden bg-white/5">
                     {isRawLoading ? (
                       <div className="flex h-full flex-col items-center justify-center gap-6 p-8 text-center">
-                        <div className="relative flex h-20 w-20 items-center justify-center rounded-full border border-primary/20 bg-primary/5">
-                          <div className="absolute inset-1 animate-spin rounded-full border-2 border-transparent border-t-primary border-r-primary/40" />
+                        <div className="border-primary/20 bg-primary/5 relative flex h-20 w-20 items-center justify-center rounded-full border">
+                          <div className="border-t-primary border-r-primary/40 absolute inset-1 animate-spin rounded-full border-2 border-transparent" />
                           <Eye size={25} className="text-primary" />
                         </div>
                         <div className="w-full max-w-sm space-y-3">
@@ -953,7 +953,7 @@ export default function DocumentsPage() {
                                 }`}
                               >
                                 <span
-                                  className={`mx-auto mb-1 block h-1.5 w-1.5 rounded-full ${rawLoadingPhase === phase ? "animate-pulse bg-primary" : "bg-foreground/20"}`}
+                                  className={`mx-auto mb-1 block h-1.5 w-1.5 rounded-full ${rawLoadingPhase === phase ? "bg-primary animate-pulse" : "bg-foreground/20"}`}
                                 />
                                 {label}
                               </div>
@@ -1007,7 +1007,7 @@ export default function DocumentsPage() {
                     ) : viewerMode === "text" && rawTextContent ? (
                       <div className="bg-surface-0 h-full overflow-y-auto px-12 py-16">
                         <div className="mx-auto max-w-3xl">
-                          <pre className="text-foreground/90 selection:bg-primary/40 max-w-none whitespace-pre-wrap font-mono text-sm leading-7 selection:text-white">
+                          <pre className="text-foreground/90 selection:bg-primary/40 max-w-none font-mono text-sm leading-7 whitespace-pre-wrap selection:text-white">
                             {rawTextContent}
                           </pre>
                         </div>
@@ -1062,7 +1062,7 @@ export default function DocumentsPage() {
                           onChange={(event) => setPasteDraft(event.target.value)}
                           placeholder="Paste copied text here..."
                           rows={8}
-                          className="bg-foreground/[0.03] text-foreground placeholder:text-foreground/30 focus:border-primary/60 w-full resize-y rounded-xl border border-foreground/10 p-3 text-sm outline-none"
+                          className="bg-foreground/[0.03] text-foreground placeholder:text-foreground/30 focus:border-primary/60 border-foreground/10 w-full resize-y rounded-xl border p-3 text-sm outline-none"
                         />
                         <div className="mt-4 flex justify-end gap-2">
                           <button

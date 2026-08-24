@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -22,6 +23,8 @@ from app.integrations.services.connector_secret_crypto import ConnectorSecretCry
 from app.integrations.services.mcp_endpoint_security import validate_remote_endpoint
 from app.integrations.services.mcp_http_client import build_safe_sync_client
 from app.integrations.services.mcp_provider_auth import get_mcp_provider_profile
+
+logger = logging.getLogger(__name__)
 
 
 class MCPServerOAuthService:
@@ -293,7 +296,8 @@ class MCPServerOAuthService:
         try:
             from mcp.shared.auth import OAuthToken
 
-            return OAuthToken.model_validate(response.json())
+            payload = profile.normalize_token_response(response.json())
+            return OAuthToken.model_validate(payload)
         except Exception as exc:  # noqa: BLE001
             raise ValueError("MCP OAuth provider returned an invalid token") from exc
 
@@ -320,7 +324,9 @@ class MCPServerOAuthService:
                     except ValueError:
                         continue
         except Exception:  # noqa: BLE001, B110 - static fallback preserves OAuth availability
-            pass
+            logger.debug(
+                "MCP provider identity lookup failed; using fallback identity", exc_info=True
+            )
         # External account identity is informational. A provider that does not
         # expose profile data must not reject an otherwise valid OAuth account.
         # Ownership remains bound to the AverQel user/tenant on the server row
