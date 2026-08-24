@@ -311,10 +311,17 @@ jobs:
           test -n "$RPM_PATH" || { echo "::error::Release $VERSION has no .rpm asset"; exit 1; }
           test -n "$EXE_PATH" || { echo "::error::Release $VERSION has no .exe asset"; exit 1; }
           test -n "$DMG_PATH" || { echo "::error::Release $VERSION has no .dmg asset"; exit 1; }
-          mv "$DEB_PATH" release-downloads/AverQel-linux-amd64.deb
-          mv "$RPM_PATH" release-downloads/AverQel-linux-x86_64.rpm
-          mv "$EXE_PATH" release-downloads/AverQel-windows-x64.exe
-          mv "$DMG_PATH" release-downloads/AverQel-macos-universal.dmg
+          rename_if_needed() {
+            local source="$1"
+            local target="$2"
+            if [[ "$source" != "$target" ]]; then
+              mv -- "$source" "$target"
+            fi
+          }
+          rename_if_needed "$DEB_PATH" release-downloads/AverQel-linux-amd64.deb
+          rename_if_needed "$RPM_PATH" release-downloads/AverQel-linux-x86_64.rpm
+          rename_if_needed "$EXE_PATH" release-downloads/AverQel-windows-x64.exe
+          rename_if_needed "$DMG_PATH" release-downloads/AverQel-macos-universal.dmg
           python3 .github/scripts/create-release-manifest.py \
             --version "$VERSION" \
             --git-sha "${{ needs.resolve-source.outputs.sha }}" \

@@ -170,8 +170,15 @@ jobs:
         working-directory: applications/desktop
         run: pnpm tauri build --bundles nsis
 
-      - name: Build macOS desktop package
-        if: startsWith(matrix.platform, 'macos-')
+      - name: Build macOS desktop package (unsigned)
+        if: startsWith(matrix.platform, 'macos-') && needs.prepare-release.outputs.sign_desktop != 'true'
+        working-directory: applications/desktop
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          pnpm tauri build --bundles dmg --target universal-apple-darwin
+
+      - name: Build macOS desktop package (signed and notarized)
+        if: startsWith(matrix.platform, 'macos-') && needs.prepare-release.outputs.sign_desktop == 'true'
         working-directory: applications/desktop
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -181,6 +188,7 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          set -euo pipefail
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
           pnpm tauri build --bundles dmg --target universal-apple-darwin
 
@@ -224,23 +232,30 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${RELEASE_VERSION#v}"
+          rename_if_needed() {
+            local source="$1"
+            local target="$2"
+            if [[ "$source" != "$target" ]]; then
+              mv -- "$source" "$target"
+            fi
+          }
           case "$RUNNER_OS" in
             Linux)
               DEB_PATH="$(find applications/desktop/src-tauri/target -type f -path '*/bundle/deb/*.deb' -print -quit)"
               RPM_PATH="$(find applications/desktop/src-tauri/target -type f -path '*/bundle/rpm/*.rpm' -print -quit)"
               test -n "$DEB_PATH" && test -n "$RPM_PATH"
-              mv "$DEB_PATH" "$(dirname "$DEB_PATH")/AverQel_${VERSION}_amd64.deb"
-              mv "$RPM_PATH" "$(dirname "$RPM_PATH")/AverQel_${VERSION}_x86_64.rpm"
+              rename_if_needed "$DEB_PATH" "$(dirname "$DEB_PATH")/AverQel_${VERSION}_amd64.deb"
+              rename_if_needed "$RPM_PATH" "$(dirname "$RPM_PATH")/AverQel_${VERSION}_x86_64.rpm"
               ;;
             Windows)
               EXE_PATH="$(find applications/desktop/src-tauri/target -type f -path '*/bundle/nsis/*.exe' -print -quit)"
               test -n "$EXE_PATH"
-              mv "$EXE_PATH" "$(dirname "$EXE_PATH")/AverQel_${VERSION}_x64-setup.exe"
+              rename_if_needed "$EXE_PATH" "$(dirname "$EXE_PATH")/AverQel_${VERSION}_x64-setup.exe"
               ;;
             macOS)
               DMG_PATH="$(find applications/desktop/src-tauri/target -type f -path '*/bundle/dmg/*.dmg' -print -quit)"
               test -n "$DMG_PATH"
-              mv "$DMG_PATH" "$(dirname "$DMG_PATH")/AverQel_${VERSION}_universal.dmg"
+              rename_if_needed "$DMG_PATH" "$(dirname "$DMG_PATH")/AverQel_${VERSION}_universal.dmg"
               ;;
             *)
               echo "Unsupported runner OS: $RUNNER_OS" >&2
