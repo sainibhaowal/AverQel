@@ -4,7 +4,7 @@ export default function ProvidersPage() {
   return (
     <DocsShell
       title="Providers"
-      intro="AverQel has two related provider concepts: model providers for AI runtime routing and MCP providers for user-authorized remote tools such as Gmail and GitHub."
+      intro="AverQel has two related provider concepts: model providers for AI runtime routing and MCP providers for user-authorized remote tools such as Gmail, Notion, Slack, and GitHub."
     >
       <DocsCards
         items={[
@@ -18,7 +18,7 @@ export default function ProvidersPage() {
           },
           {
             title: "MCP Providers",
-            body: "Google Gmail, Drive, Calendar, Chat, People, GitHub, and future approved vendors remain available through the separate MCP surface.",
+            body: "Google Gmail, Drive, Calendar, Chat, People, GitHub, Notion, Slack, and future approved vendors remain available through the separate MCP surface.",
           },
           {
             title: "Provider-Owned Login",
@@ -91,6 +91,27 @@ export default function ProvidersPage() {
           If an OAuth client is not configured, the marketplace entry remains visible but shows
           Setup pending. This is an operator configuration state, not a request for users to give
           AverQel their Google or GitHub password.
+        </p>
+      </DocsSection>
+
+      <DocsSection title="Notion and Slack MCP connections">
+        <p>
+          Notion uses its official remote Streamable HTTP MCP endpoint with OAuth discovery and
+          dynamic client registration. AverQel uses PKCE and stores the resulting credentials only
+          in the encrypted per-user MCP token record.
+        </p>
+        <p>
+          Slack uses its official remote MCP endpoint with confidential OAuth. An administrator must
+          configure an approved Slack app&apos;s <code>AKS_MCP_SLACK_OAUTH_CLIENT_ID</code> and{" "}
+          <code>AKS_MCP_SLACK_OAUTH_CLIENT_SECRET</code> values on the VPS, together with the same
+          HTTPS callback used by the MCP OAuth service. The catalog requests the reviewed Slack read
+          and write user scopes. Read actions are read-only; message sending, channel changes,
+          reactions, and canvas changes require explicit AverQel approval.
+        </p>
+        <p>
+          After the required provider setup is available, both entries use the same flow: Connect,
+          provider consent, signed callback, scope verification, encrypted token storage, live tool
+          discovery, policy checks, and DeepSpace routing.
         </p>
       </DocsSection>
 

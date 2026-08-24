@@ -44,10 +44,11 @@ type DeferredEditorProps = DeepSpaceEditorProps & {
 // the imperative editor handle through to the real editor after it loads.
 const DeferredDeepSpaceEditor = dynamic<DeferredEditorProps>(
   () =>
-    import("./DeepSpaceEditor").then(({ default: Editor }) =>
-      function DeferredEditor({ forwardedRef, ...props }: DeferredEditorProps) {
-        return <Editor {...props} ref={forwardedRef} />;
-      },
+    import("./DeepSpaceEditor").then(
+      ({ default: Editor }) =>
+        function DeferredEditor({ forwardedRef, ...props }: DeferredEditorProps) {
+          return <Editor {...props} ref={forwardedRef} />;
+        },
     ),
   {
     ssr: false,
@@ -317,7 +318,9 @@ export default function DeepSpacePageClient() {
         }
       } catch (error) {
         console.error("Failed to save DeepSpace note", error);
-        addServiceWarning("Your latest note edit could not be saved. Please retry after reconnecting.");
+        addServiceWarning(
+          "Your latest note edit could not be saved. Please retry after reconnecting.",
+        );
       } finally {
         setIsSaving(false);
       }

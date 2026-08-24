@@ -20,9 +20,11 @@ def test_official_mcp_catalog_contains_only_the_reviewed_remote_providers() -> N
         "google-chat",
         "google-people",
         "github",
+        "notion",
+        "slack",
     ]
-    assert len({provider.remote_url for provider in OFFICIAL_MCP_PROVIDERS}) == 6
-    assert len({provider.popularity_rank for provider in OFFICIAL_MCP_PROVIDERS}) == 6
+    assert len({provider.remote_url for provider in OFFICIAL_MCP_PROVIDERS}) == 8
+    assert len({provider.popularity_rank for provider in OFFICIAL_MCP_PROVIDERS}) == 8
     assert CURATED_MCP_CATALOG_SOURCE == "averqel-curated-official-v1"
 
 
@@ -46,8 +48,12 @@ def test_official_mcp_catalog_is_public_metadata_without_credentials() -> None:
         assert not endpoint.username
         assert not endpoint.password
         assert values["trust_status"] == "approved"
-        assert values["catalog_status"] == "oauth_profile_required"
-        assert values["raw_metadata"]["catalog"]["connection_ready"] is False
+        if provider.provider_slug == "notion":
+            assert values["catalog_status"] == "oauth_discovery_ready"
+            assert values["raw_metadata"]["catalog"]["connection_ready"] is True
+        else:
+            assert values["catalog_status"] == "oauth_profile_required"
+            assert values["raw_metadata"]["catalog"]["connection_ready"] is False
         assert values["logo_url"] is None
         assert values["package_metadata"]["tools"] == values["package_metadata"]["tool_preview"]
         assert (

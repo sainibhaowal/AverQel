@@ -59,6 +59,9 @@ class CuratedMCPProvider:
     trusted_logo_key: str
     scope_mode: str = "explicit"
     scope_note: str | None = None
+    catalog_status: str | None = None
+    connection_ready: bool = False
+    connection_readiness_reason: str | None = None
 
     @property
     def transport(self) -> str:
@@ -78,9 +81,9 @@ class CuratedMCPProvider:
     def registry_values(self) -> dict[str, Any]:
         """Return safe values for ``MCPRegistryEntry`` fields.
 
-        ``connection_ready`` remains false until Phase 3 adds a reviewed
-        provider OAuth profile. This prevents the legacy generic OAuth path
-        from handling an official provider prematurely.
+        Static-profile providers remain unavailable until their server-side
+        OAuth credentials are configured. Providers that publish a reviewed
+        MCP OAuth discovery flow can opt into the generic broker safely.
         """
         badges = {
             "official": True,
@@ -127,8 +130,9 @@ class CuratedMCPProvider:
                 "last_checked_at": None,
                 "detail": "Live health is checked only after user authentication.",
             },
-            "connection_ready": False,
-            "connection_readiness_reason": "OAuth provider profile is not configured yet.",
+            "connection_ready": self.connection_ready,
+            "connection_readiness_reason": self.connection_readiness_reason
+            or (None if self.connection_ready else "OAuth provider profile is not configured yet."),
         }
         if self.scope_note:
             catalog_metadata["scope_note"] = self.scope_note
@@ -151,7 +155,7 @@ class CuratedMCPProvider:
             "supported_products": list(self.supported_products),
             "risk_policy": risk_policy,
             "oauth_profile": {
-                "status": "not_configured",
+                "status": "discovery_ready" if self.connection_ready else "not_configured",
                 "provider_slug": self.provider_slug,
             },
             "author_website_url": self.author_website_url,
@@ -206,7 +210,8 @@ class CuratedMCPProvider:
             "verification_source": self.documentation_url,
             "verified_at": CATALOG_REVIEWED_AT,
             "popularity_rank": self.popularity_rank,
-            "catalog_status": "oauth_profile_required",
+            "catalog_status": self.catalog_status
+            or ("oauth_discovery_ready" if self.connection_ready else "oauth_profile_required"),
             "enrichment_error": None,
         }
 
@@ -219,6 +224,45 @@ GITHUB_DOCUMENTATION_URL = "https://github.com/github/github-mcp-server"
 GITHUB_WEBSITE_URL = "https://github.com/"
 GITHUB_SUPPORT_URL = "https://support.github.com/"
 GITHUB_PRIVACY_URL = "https://docs.github.com/site-policy/privacy-policies/github-privacy-statement"
+NOTION_DOCUMENTATION_URL = "https://developers.notion.com/guides/mcp/get-started-with-mcp"
+NOTION_WEBSITE_URL = "https://www.notion.so/"
+NOTION_SUPPORT_URL = "https://www.notion.so/help"
+NOTION_PRIVACY_URL = "https://www.notion.so/help/privacy"
+SLACK_DOCUMENTATION_URL = "https://docs.slack.dev/ai/slack-mcp-server/"
+SLACK_WEBSITE_URL = "https://slack.com/"
+SLACK_SUPPORT_URL = "https://slack.com/help"
+SLACK_PRIVACY_URL = "https://slack.com/trust/privacy-policy"
+
+SLACK_MCP_READ_SCOPES = (
+    "search:read.public",
+    "search:read.private",
+    "search:read.mpim",
+    "search:read.im",
+    "search:read.files",
+    "files:read",
+    "search:read.users",
+    "emoji:read",
+    "channels:read",
+    "groups:read",
+    "mpim:read",
+    "channels:history",
+    "groups:history",
+    "mpim:history",
+    "im:history",
+    "users:read",
+    "users:read.email",
+    "canvases:read",
+)
+SLACK_MCP_WRITE_SCOPES = (
+    "chat:write",
+    "channels:write",
+    "groups:write",
+    "im:write",
+    "mpim:write",
+    "reactions:write",
+    "canvases:write",
+)
+SLACK_MCP_SCOPES = SLACK_MCP_READ_SCOPES + SLACK_MCP_WRITE_SCOPES
 
 
 OFFICIAL_MCP_PROVIDERS: tuple[CuratedMCPProvider, ...] = (
@@ -391,6 +435,127 @@ OFFICIAL_MCP_PROVIDERS: tuple[CuratedMCPProvider, ...] = (
         scope_mode="provider_negotiated",
         scope_note="The reviewed AverQel GitHub OAuth profile will declare the exact requested scopes in Phase 3.",
     ),
+    CuratedMCPProvider(
+        provider_slug="notion",
+        display_name="Notion",
+        publisher="Notion",
+        description="Search, read, and update workspace content through Notion's official remote MCP server.",
+        remote_url="https://mcp.notion.com/mcp",
+        documentation_url=NOTION_DOCUMENTATION_URL,
+        author_website_url=NOTION_WEBSITE_URL,
+        support_url=NOTION_SUPPORT_URL,
+        privacy_policy_url=NOTION_PRIVACY_URL,
+        categories=("Knowledge", "Productivity"),
+        supported_products=("Notion",),
+        requested_scopes=(),
+        tool_preview=(),
+        availability="developer_preview",
+        popularity_rank=7,
+        trusted_logo_key="notion",
+        scope_mode="provider_negotiated",
+        scope_note=(
+            "Notion negotiates OAuth scopes during MCP discovery. AverQel uses PKCE, "
+            "dynamic client registration, encrypted token storage, and live tool discovery."
+        ),
+        catalog_status="oauth_discovery_ready",
+        connection_ready=True,
+    ),
+    CuratedMCPProvider(
+        provider_slug="slack",
+        display_name="Slack",
+        publisher="Slack",
+        description="Search and read Slack messages, files, channels, users, and canvases through Slack's official MCP server.",
+        remote_url="https://mcp.slack.com/mcp",
+        documentation_url=SLACK_DOCUMENTATION_URL,
+        author_website_url=SLACK_WEBSITE_URL,
+        support_url=SLACK_SUPPORT_URL,
+        privacy_policy_url=SLACK_PRIVACY_URL,
+        categories=("Communication", "Productivity"),
+        supported_products=("Slack",),
+        requested_scopes=SLACK_MCP_SCOPES,
+        tool_preview=(
+            CuratedMCPTool(
+                "slack_search_messages",
+                "Search public and private Slack messages the user can access.",
+                "Messages",
+                ("read",),
+            ),
+            CuratedMCPTool(
+                "slack_search_files",
+                "Search Slack files and retrieve permitted file content.",
+                "Files",
+                ("read",),
+            ),
+            CuratedMCPTool(
+                "slack_read_channel",
+                "Read the message history of an accessible Slack channel.",
+                "Messages",
+                ("read",),
+            ),
+            CuratedMCPTool(
+                "slack_read_thread",
+                "Read a complete Slack message thread.",
+                "Messages",
+                ("read",),
+            ),
+            CuratedMCPTool(
+                "slack_search_users",
+                "Search users and profiles in the connected Slack workspace.",
+                "People",
+                ("read",),
+            ),
+            CuratedMCPTool(
+                "slack_search_channels",
+                "Search accessible public and private Slack channels.",
+                "Channels",
+                ("read",),
+            ),
+            CuratedMCPTool(
+                "slack_send_message",
+                "Send a Slack message after explicit user approval.",
+                "Messages",
+                ("write", "external_message"),
+            ),
+            CuratedMCPTool(
+                "slack_create_channel",
+                "Create a Slack channel after explicit user approval.",
+                "Channels",
+                ("write",),
+            ),
+            CuratedMCPTool(
+                "slack_create_conversation",
+                "Create a Slack direct or group conversation after approval.",
+                "Messages",
+                ("write", "external_message"),
+            ),
+            CuratedMCPTool(
+                "slack_add_reaction",
+                "Add a reaction to a Slack message after approval.",
+                "Messages",
+                ("write", "external_message"),
+            ),
+            CuratedMCPTool(
+                "slack_create_canvas",
+                "Create a Slack canvas after explicit user approval.",
+                "Canvases",
+                ("write",),
+            ),
+            CuratedMCPTool(
+                "slack_update_canvas",
+                "Update a Slack canvas after explicit user approval.",
+                "Canvases",
+                ("write",),
+            ),
+        ),
+        availability="developer_preview",
+        popularity_rank=8,
+        trusted_logo_key="slack",
+        scope_note=(
+            "Requires an approved Slack app with confidential OAuth credentials. "
+            "AverQel requests the reviewed read and write user scopes. Read actions "
+            "are read-only; write and external-message actions require approval."
+        ),
+    ),
 )
 
 
@@ -425,7 +590,16 @@ def validate_official_mcp_catalog() -> None:
                 raise ValueError(f"Curated MCP {label} is not a safe HTTPS URL: {value}")
         if provider.transport != "streamable_http":
             raise ValueError(f"Unsupported curated MCP transport: {provider.transport}")
-        if any(not scope.startswith("https://") for scope in provider.requested_scopes):
+        if any(
+            not scope
+            or any(character.isspace() for character in scope)
+            or any(
+                character
+                not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-/"
+                for character in scope
+            )
+            for scope in provider.requested_scopes
+        ):
             raise ValueError(
                 f"Curated MCP provider has an invalid OAuth scope: {provider.provider_slug}"
             )

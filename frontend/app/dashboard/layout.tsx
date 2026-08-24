@@ -302,7 +302,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           {sidebarOpen && (
             <div className="bg-primary/5 border-primary/10 text-primary/70 flex items-center justify-center rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.14em] uppercase">
               {APP_VERSION}
-              {process.env.NEXT_PUBLIC_GIT_SHA && process.env.NEXT_PUBLIC_GIT_SHA !== "unknown" ? ` • ${String(process.env.NEXT_PUBLIC_GIT_SHA).slice(0, 7)}` : ""}
+              {process.env.NEXT_PUBLIC_GIT_SHA && process.env.NEXT_PUBLIC_GIT_SHA !== "unknown"
+                ? ` • ${String(process.env.NEXT_PUBLIC_GIT_SHA).slice(0, 7)}`
+                : ""}
             </div>
           )}
         </div>

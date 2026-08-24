@@ -40,6 +40,7 @@ from app.auth.services.auth_service import AuthService, LoginResult
 from app.auth.services.oauth_login_service import (
     OAUTH_2FA_COOKIE,
     OAUTH_STATE_COOKIE,
+    OAUTH_STATE_COOKIE_PREFIX,
     OAuthLoginService,
 )
 from app.auth.tenancy import get_login_tenant_id
@@ -86,6 +87,32 @@ def _clear_refresh_cookie(response: Response, settings: Settings) -> None:
         path=settings.refresh_cookie_path,
         domain=settings.refresh_cookie_domain,
     )
+
+
+def _oauth_state_cookie_values(request: Request) -> list[str]:
+    """Return current and legacy OAuth state cookies for concurrent login attempts."""
+    return [
+        value
+        for name, value in request.cookies.items()
+        if name == OAUTH_STATE_COOKIE or name.startswith(OAUTH_STATE_COOKIE_PREFIX)
+    ]
+
+
+def _clear_oauth_state_cookies(response: Response, request: Request, settings: Settings) -> None:
+    cookie_path = f"{settings.api_prefix.rstrip('/')}/auth/oauth"
+    for name in request.cookies:
+        if name == OAUTH_STATE_COOKIE or name.startswith(OAUTH_STATE_COOKIE_PREFIX):
+            response.delete_cookie(name, path=cookie_path)
+
+
+def _oauth_error_reason(code: str) -> str:
+    if code in {"OAUTH_STATE_INVALID", "OAUTH_CALLBACK_INVALID"}:
+        return "retry"
+    if code in {"OAUTH_EMAIL_UNVERIFIED", "OAUTH_IDENTITY_INVALID"}:
+        return "account"
+    if code in {"OAUTH_TOKEN_EXCHANGE_FAILED", "OAUTH_PROFILE_FAILED"}:
+        return "provider"
+    return "configuration"
 
 
 def _audit_and_commit(
@@ -208,10 +235,10 @@ def oauth_callback(
     except ApiError:
         frontend_url = "/auth/login"
     if error:
-        redirect = RedirectResponse(url=f"{frontend_url}?oauth=error", status_code=303)
-        redirect.delete_cookie(
-            OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth"
+        redirect = RedirectResponse(
+            url=f"{frontend_url}?oauth=error&provider={provider}&reason=cancelled", status_code=303
         )
+        _clear_oauth_state_cookies(redirect, request, settings)
         return redirect
     try:
         result = service.authenticate_callback(
@@ -219,19 +246,25 @@ def oauth_callback(
             code=code or "",
             state=state or "",
             state_cookie=request.cookies.get(OAUTH_STATE_COOKIE),
+            state_cookies=_oauth_state_cookie_values(request),
         )
-    except ApiError:
+    except ApiError as exc:
         db.rollback()
-        redirect = RedirectResponse(url=f"{frontend_url}?oauth=error", status_code=303)
-        redirect.delete_cookie(
-            OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth"
+        logger.warning(
+            "OAuth callback rejected.",
+            extra={"provider": provider, "error_code": exc.code},
         )
+        redirect = RedirectResponse(
+            url=f"{frontend_url}?oauth=error&provider={provider}&reason={_oauth_error_reason(exc.code)}",
+            status_code=303,
+        )
+        _clear_oauth_state_cookies(redirect, request, settings)
         return redirect
     redirect = RedirectResponse(
-        url=f"{frontend_url}?oauth={'2fa' if result.requires_2fa else 'success'}",
+        url=f"{frontend_url}?oauth={'2fa' if result.requires_2fa else 'success'}&provider={provider}",
         status_code=303,
     )
-    redirect.delete_cookie(OAUTH_STATE_COOKIE, path=f"{settings.api_prefix.rstrip('/')}/auth/oauth")
+    _clear_oauth_state_cookies(redirect, request, settings)
     if result.requires_2fa:
         redirect.set_cookie(
             OAUTH_2FA_COOKIE,

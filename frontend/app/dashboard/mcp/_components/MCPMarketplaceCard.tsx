@@ -11,6 +11,8 @@ import MCPHealthStatus from "./MCPHealthStatus";
 const TRUSTED_LOGOS: Record<string, string> = {
   google: "/mcp/google.svg",
   github: "/mcp/github.svg",
+  notion: "/mcp/notion.svg",
+  slack: "/mcp/slack.svg",
 };
 
 const CARD_TINTS = [

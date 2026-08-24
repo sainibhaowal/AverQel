@@ -156,8 +156,6 @@ describe("MCP connection controls", () => {
         expect.objectContaining({ default_enabled: true, read_only: true, risk_ceiling: "read" }),
       ),
     );
-    expect(
-      screen.getByText(/available automatically in every conversation/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/available automatically in every conversation/i)).toBeInTheDocument();
   });
 });

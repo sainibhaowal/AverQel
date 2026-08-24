@@ -6,6 +6,7 @@ import {
   getAccessTokenExpiry,
   getRequestTenantId,
   invalidateAuthSession,
+  isDesktopEnvironment,
   refreshAccessToken,
   resetAuthSessionState,
   shouldRefreshAccessToken,
@@ -43,9 +44,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     const bootstrapSession = async () => {
-      const storedToken = localStorage.getItem("averqel_token");
+      const desktopSession = isDesktopEnvironment();
+      let storedToken = localStorage.getItem("averqel_token");
       const storedUser = localStorage.getItem("averqel_user");
       const storedRemember = localStorage.getItem("averqel_remember") === "true";
+
+      // Electron keeps the secure refresh cookie in its session cookie store.
+      // Recover a missing access token from that cookie before showing login.
+      if (!storedToken && desktopSession) {
+        storedToken = await refreshAccessToken(null);
+      }
+
       const tokenExpiry = getAccessTokenExpiry(storedToken);
 
       if (storedToken && tokenExpiry === null) {
@@ -56,7 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (storedToken && tokenExpiry && tokenExpiry <= Date.now() && !storedRemember) {
+      if (
+        storedToken &&
+        tokenExpiry &&
+        tokenExpiry <= Date.now() &&
+        !storedRemember &&
+        !desktopSession
+      ) {
         clearClientSession();
         if (!cancelled) {
           setLoading(false);
@@ -73,18 +88,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           return;
         }
+        storedToken = refreshedToken;
       }
 
       if (cancelled) {
         return;
       }
 
+      let restoredUser: User | null = null;
       if (storedUser) {
         try {
-          setUser(JSON.parse(storedUser));
+          restoredUser = JSON.parse(storedUser) as User;
         } catch {
           clearClientSession();
         }
+      }
+
+      // Verify the account on every desktop launch so disabled/deleted users
+      // do not continue with stale local profile data. A temporary profile
+      // outage does not discard an otherwise valid cached session.
+      if (desktopSession && storedToken) {
+        try {
+          const profileResponse = (await fetchWithAuth("/auth/profile", {
+            timeoutMs: 15_000,
+          })) as Response;
+          if (profileResponse.status === 401 || profileResponse.status === 404) {
+            clearClientSession();
+            if (!cancelled) {
+              setLoading(false);
+            }
+            return;
+          }
+          if (profileResponse.ok) {
+            const profile = (await profileResponse.json()) as {
+              user_id?: unknown;
+              tenant_id?: unknown;
+              email?: unknown;
+              roles?: unknown;
+            };
+            if (
+              typeof profile.user_id === "string" &&
+              typeof profile.tenant_id === "string" &&
+              typeof profile.email === "string" &&
+              Array.isArray(profile.roles)
+            ) {
+              restoredUser = {
+                id: profile.user_id,
+                email: profile.email,
+                tenant_id: profile.tenant_id,
+                roles: profile.roles.filter((role): role is string => typeof role === "string"),
+              };
+              localStorage.setItem("averqel_user", JSON.stringify(restoredUser));
+              localStorage.setItem("averqel_tenant_id", restoredUser.tenant_id);
+            }
+          }
+        } catch {
+          // Keep a cached user during a transient network outage. Protected
+          // API calls remain responsible for detecting a genuinely invalid
+          // session and redirecting to login.
+        }
+      }
+
+      if (restoredUser) {
+        setUser(restoredUser);
       }
 
       if (!cancelled) {
@@ -133,11 +199,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = (token: string, tenantId: string, userData: User, remember: boolean = false) => {
+    const persistentSession = remember || isDesktopEnvironment();
     resetAuthSessionState();
     localStorage.setItem("averqel_token", token);
     localStorage.setItem("averqel_tenant_id", tenantId);
     localStorage.setItem("averqel_user", JSON.stringify(userData));
-    localStorage.setItem("averqel_remember", remember ? "true" : "false");
+    localStorage.setItem("averqel_remember", persistentSession ? "true" : "false");
     setUser(userData);
     setUserDisabled(false);
   };

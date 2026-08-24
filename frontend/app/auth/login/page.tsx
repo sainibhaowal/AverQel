@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AverQelLogo from "@/app/components/ui/AverQelLogo";
 import { useAuth } from "../../context/AuthContext";
-import { getApiBaseUrl } from "../../../lib/api";
+import { getApiBaseUrl, isDesktopEnvironment } from "../../../lib/api";
 
 function GoogleMark() {
   return (
@@ -32,13 +32,41 @@ function GoogleMark() {
   );
 }
 
+type OAuthProvider = "google" | "github";
+
 export default function LoginPage() {
   const router = useRouter();
-  const { login: setAuthData } = useAuth();
+  const { login: setAuthData, user, loading: authLoading } = useAuth();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [oauthProvider, setOauthProvider] = useState<OAuthProvider | null>(null);
+
+  const startOAuth = (provider: OAuthProvider) => {
+    if (loading || oauthProvider) {
+      return false;
+    }
+    setError("");
+    setOauthProvider(provider);
+    return true;
+  };
+
+  const oauthErrorMessage = (reason: string | null, providerLabel: string): string => {
+    if (reason === "cancelled") {
+      return `${providerLabel} sign-in was cancelled. You can try again or use email instead.`;
+    }
+    if (reason === "account") {
+      return `This ${providerLabel} account could not be verified for AverQel. Please try another account or use email.`;
+    }
+    if (reason === "provider") {
+      return `${providerLabel} sign-in is temporarily unavailable. Please wait a moment and try again.`;
+    }
+    if (reason === "retry") {
+      return `This ${providerLabel} sign-in attempt expired or was already used. Please start again.`;
+    }
+    return `${providerLabel} sign-in could not be completed. Please try again or use email instead.`;
+  };
 
   // Load remembered credentials on mount
   useEffect(() => {
@@ -60,12 +88,16 @@ export default function LoginPage() {
   // OAuth callbacks return here after the server has exchanged the provider
   // code and set the secure refresh cookie.
   useEffect(() => {
-    const oauthResult = new URLSearchParams(window.location.search).get("oauth");
+    const params = new URLSearchParams(window.location.search);
+    const oauthResult = params.get("oauth");
+    const callbackProvider = params.get("provider");
+    const providerLabel = callbackProvider === "github" ? "GitHub" : "Google";
     if (!oauthResult) {
       return;
     }
 
     if (oauthResult === "2fa") {
+      setOauthProvider(null);
       setOauthTwoFactor(true);
       setShow2fa(true);
       setError("Complete two-factor authentication to finish signing in.");
@@ -74,12 +106,14 @@ export default function LoginPage() {
     }
 
     if (oauthResult !== "success") {
-      setError("Social login could not be completed. Please try again.");
+      setOauthProvider(null);
+      setError(oauthErrorMessage(params.get("reason"), providerLabel));
       router.replace("/auth/login");
       return;
     }
 
     let cancelled = false;
+    setOauthProvider(callbackProvider === "github" ? "github" : "google");
     const finishOAuthLogin = async () => {
       setLoading(true);
       setError("");
@@ -128,7 +162,12 @@ export default function LoginPage() {
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Social login could not be completed.");
+          setOauthProvider(null);
+          setError(
+            err instanceof Error
+              ? `${err.message} Please try again or use email instead.`
+              : "Social sign-in could not be completed. Please try again or use email instead.",
+          );
           router.replace("/auth/login");
         }
       } finally {
@@ -153,6 +192,13 @@ export default function LoginPage() {
   const [pendingToken, setPendingToken] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [verifying2fa, setVerifying2fa] = useState(false);
+
+  useEffect(() => {
+    const oauthResult = new URLSearchParams(window.location.search).get("oauth");
+    if (!authLoading && user && !oauthResult) {
+      router.replace("/dashboard");
+    }
+  }, [authLoading, router, user]);
 
   const readApiErrorMessage = (data: unknown, fallback: string): string => {
     if (!data || typeof data !== "object") {
@@ -188,8 +234,9 @@ export default function LoginPage() {
     emailOverride?: string,
   ) => {
     const email = emailOverride || formData.email;
-    // Save credentials if Remember Me is checked
-    if (rememberMe) {
+    // Desktop sessions are persistent, but passwords are never stored.
+    const persistentSession = rememberMe || isDesktopEnvironment();
+    if (persistentSession) {
       localStorage.setItem("averqel_saved_email", email);
       localStorage.setItem("averqel_remember", "true");
     } else {
@@ -206,7 +253,7 @@ export default function LoginPage() {
         tenant_id: data.user.tenant_id,
         roles: data.user.roles,
       },
-      rememberMe,
+      persistentSession,
     );
     router.push("/dashboard");
   };
@@ -373,20 +420,38 @@ export default function LoginPage() {
               <div className="mb-6 grid gap-3 sm:grid-cols-2">
                 <a
                   href={`${getApiBaseUrl()}/auth/oauth/google/start?return_to=%2Fauth%2Flogin`}
-                  className="border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex min-h-14 items-center justify-center rounded-lg border px-4 py-3 text-sm leading-tight font-semibold transition-colors"
+                  aria-disabled={Boolean(oauthProvider)}
+                  aria-busy={oauthProvider === "google"}
+                  onClick={(event) => {
+                    if (!startOAuth("google")) event.preventDefault();
+                  }}
+                  className={`border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex min-h-14 items-center justify-center rounded-lg border px-4 py-3 text-sm leading-tight font-semibold transition-colors ${oauthProvider ? "cursor-wait opacity-70" : ""}`}
                 >
                   <span className="flex items-center gap-2.5">
                     <GoogleMark />
-                    <span>Continue with Google</span>
+                    <span>
+                      {oauthProvider === "google"
+                        ? "Connecting to Google…"
+                        : "Continue with Google"}
+                    </span>
                   </span>
                 </a>
                 <a
                   href={`${getApiBaseUrl()}/auth/oauth/github/start?return_to=%2Fauth%2Flogin`}
-                  className="border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex min-h-14 items-center justify-center rounded-lg border px-4 py-3 text-sm leading-tight font-semibold transition-colors"
+                  aria-disabled={Boolean(oauthProvider)}
+                  aria-busy={oauthProvider === "github"}
+                  onClick={(event) => {
+                    if (!startOAuth("github")) event.preventDefault();
+                  }}
+                  className={`border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex min-h-14 items-center justify-center rounded-lg border px-4 py-3 text-sm leading-tight font-semibold transition-colors ${oauthProvider ? "cursor-wait opacity-70" : ""}`}
                 >
                   <span className="flex items-center gap-2.5">
                     <Github aria-hidden="true" className="h-6 w-6 shrink-0" strokeWidth={2} />
-                    <span>Continue with GitHub</span>
+                    <span>
+                      {oauthProvider === "github"
+                        ? "Connecting to GitHub…"
+                        : "Continue with GitHub"}
+                    </span>
                   </span>
                 </a>
               </div>

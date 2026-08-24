@@ -1,71 +1,54 @@
 "use client";
 
 import Image from "next/image";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { X, Minus, Square, Copy } from "lucide-react";
 import { APP_VERSION } from "@/lib/release";
 
 export default function TitleBar() {
-  const [isTauri, setIsTauri] = useState(false);
+  const isElectron = useSyncExternalStore(
+    () => () => undefined,
+    () => typeof window !== "undefined" && Boolean(window.electron),
+    () => false,
+  );
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-      setIsTauri(true);
-    }
+    const electron = window.electron;
+    if (!electron) return;
     const checkMaximized = async () => {
       try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const window = getCurrentWindow();
-        setIsMaximized(await window.isMaximized());
-
-        window.onResized(async () => {
-          setIsMaximized(await window.isMaximized());
-        });
+        setIsMaximized(await electron.window.isMaximized());
       } catch {
-        // Not running in Tauri
+        // The native Electron window is not available during SSR or shutdown.
       }
     };
-    checkMaximized();
+    void checkMaximized();
   }, []);
 
   const handleMinimize = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      await getCurrentWindow().minimize();
-    } catch {}
+    await window.electron?.window.minimize();
   };
 
   const handleMaximize = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const window = getCurrentWindow();
-      if (await window.isMaximized()) {
-        await window.unmaximize();
-      } else {
-        await window.maximize();
-      }
-      setIsMaximized(await window.isMaximized());
-    } catch {}
+    const nextState = await window.electron?.window.toggleMaximize();
+    if (typeof nextState === "boolean") setIsMaximized(nextState);
   };
 
   const handleClose = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      await getCurrentWindow().hide();
-    } catch {}
+    await window.electron?.window.hide();
   };
 
-  if (!isTauri) return null;
+  if (!isElectron) return null;
 
   return (
     <div className="fixed top-0 right-0 left-0 z-[9999] flex h-10 items-center justify-between border-b border-white/5 bg-[#0a0a0b]/80 backdrop-blur-md select-none">
       {/* Background drag region */}
       <div
-        data-tauri-drag-region
+        data-electron-drag-region
         className="absolute inset-0 h-full w-full"
         style={{ zIndex: 0 }}
       />

@@ -417,7 +417,9 @@ const TimelineEntry = memo(function TimelineEntry({
   index: number;
   isLast: boolean;
 }) {
-  const [open, setOpen] = useState(step.status === "running" || step.status === "awaiting_approval");
+  const [open, setOpen] = useState(
+    step.status === "running" || step.status === "awaiting_approval",
+  );
   const previousStatus = useRef(step.status);
   const details = formatDetail(step.details);
   const inputStream = formatDetail(step.toolInputStream);
@@ -609,7 +611,7 @@ export default function DeepSpaceThinkingPanel({
     return null;
   }
   return (
-    <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:ease-out mb-4">
+    <div className="motion-safe:animate-in motion-safe:fade-in mb-4 motion-safe:duration-300 motion-safe:ease-out">
       <button
         type="button"
         aria-expanded={panelOpen}

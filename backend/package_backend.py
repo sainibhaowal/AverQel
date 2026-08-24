@@ -68,15 +68,15 @@ def main() -> None:
 
     PyInstaller.__main__.run(args)
 
-    # Move the binary to the tauri binaries directory
+    # Move the binary to the Electron resources directory.
     dist_dir = os.path.join(base_dir, "dist")
     binary_path = os.path.join(dist_dir, target_name)
-    tauri_bin_dir = os.path.abspath(
-        os.path.join(base_dir, "..", "applications", "desktop", "src-tauri", "binaries")
+    electron_resources_dir = os.path.abspath(
+        os.path.join(base_dir, "..", "applications", "desktop", "resources")
     )
 
-    os.makedirs(tauri_bin_dir, exist_ok=True)
-    destination = os.path.join(tauri_bin_dir, target_name)
+    os.makedirs(electron_resources_dir, exist_ok=True)
+    destination = os.path.join(electron_resources_dir, target_name)
 
     print(f"Moving binary to {destination}")
     shutil.move(binary_path, destination)

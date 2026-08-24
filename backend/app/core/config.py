@@ -282,6 +282,8 @@ class Settings(BaseSettings):
     mcp_google_oauth_client_secret: str | None = None
     mcp_github_oauth_client_id: str | None = None
     mcp_github_oauth_client_secret: str | None = None
+    mcp_slack_oauth_client_id: str | None = None
+    mcp_slack_oauth_client_secret: str | None = None
     mcp_oauth_redirect_uri: str | None = None
     mcp_catalog_max_age_seconds: int = Field(default=900, ge=60, le=86_400)
     averqel_domain: str | None = Field(default=None, validation_alias="AVERQEL_DOMAIN")
@@ -843,6 +845,8 @@ class Settings(BaseSettings):
         "mcp_google_oauth_client_secret",
         "mcp_github_oauth_client_id",
         "mcp_github_oauth_client_secret",
+        "mcp_slack_oauth_client_id",
+        "mcp_slack_oauth_client_secret",
         "mcp_oauth_redirect_uri",
         "averqel_domain",
         "averqel_public_origin",
@@ -955,7 +959,7 @@ class Settings(BaseSettings):
                 "mcp_oauth_redirect_uri",
                 f"{public_origin}{self.api_prefix}/mcp/oauth/callback",
             )
-        for provider in ("google", "github"):
+        for provider in ("google", "github", "slack"):
             client_id = getattr(self, f"mcp_{provider}_oauth_client_id")
             client_secret = getattr(self, f"mcp_{provider}_oauth_client_secret")
             if bool(client_id) != bool(client_secret):

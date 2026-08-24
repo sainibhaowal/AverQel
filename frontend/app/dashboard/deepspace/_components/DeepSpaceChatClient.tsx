@@ -419,10 +419,7 @@ export default function DeepSpaceChatClient({
           // context window) when a provider default describes the same model.
           // The previous spread order let a null-metadata fallback overwrite
           // the discovered row and forced the composer to guess its limit.
-          const merged = new Map<
-            string,
-            (typeof allChatModels)[number]
-          >(
+          const merged = new Map<string, (typeof allChatModels)[number]>(
             fallbackModels.map((model) => [`${model.providerId}:${model.modelName}`, model]),
           );
           for (const model of allChatModels) {

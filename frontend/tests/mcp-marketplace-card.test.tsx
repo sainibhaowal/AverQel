@@ -14,6 +14,8 @@ describe("MCPMarketplaceCard", () => {
     expect(screen.getByText("OAuth")).toBeInTheDocument();
     expect(screen.getByText("search_mail")).toBeInTheDocument();
     expect(resolveTrustedLogoPath("google")).toBe("/mcp/google.svg");
+    expect(resolveTrustedLogoPath("notion")).toBe("/mcp/notion.svg");
+    expect(resolveTrustedLogoPath("slack")).toBe("/mcp/slack.svg");
     expect(resolveTrustedLogoPath("https://evil.example/logo.svg")).toBeNull();
   });
 });

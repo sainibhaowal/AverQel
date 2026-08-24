@@ -8,7 +8,7 @@ import pytest
 from fastapi import Response
 
 from app.auth.services import oauth_login_service
-from app.auth.services.oauth_login_service import OAuthLoginService
+from app.auth.services.oauth_login_service import OAUTH_STATE_COOKIE_PREFIX, OAuthLoginService
 from app.core.config import get_settings
 from app.core.errors import ApiError
 
@@ -34,10 +34,32 @@ def test_start_uses_signed_state_and_pkce() -> None:
     assert "code_challenge_method=S256" in url
     cookie = SimpleCookie()
     cookie.load(response.headers["set-cookie"])
-    state = cookie["averqel_auth_oauth_state"].value
+    cookie_name = next(name for name in cookie if name.startswith(OAUTH_STATE_COOKIE_PREFIX))
+    state = cookie[cookie_name].value
     payload = service._verify_state(state, "google")
     assert payload["provider"] == "google"
     assert isinstance(payload["verifier"], str)
+    assert payload["cookie_id"] in cookie_name
+
+
+def test_start_uses_a_distinct_cookie_for_each_login_attempt() -> None:
+    service = OAuthLoginService(None, _settings())
+    first = Response()
+    second = Response()
+
+    service.start(provider_name="google", response=first)
+    service.start(provider_name="google", response=second)
+
+    first_cookie = SimpleCookie()
+    second_cookie = SimpleCookie()
+    first_cookie.load(first.headers["set-cookie"])
+    second_cookie.load(second.headers["set-cookie"])
+    first_names = {name for name in first_cookie if name.startswith(OAUTH_STATE_COOKIE_PREFIX)}
+    second_names = {name for name in second_cookie if name.startswith(OAUTH_STATE_COOKIE_PREFIX)}
+
+    assert len(first_names) == 1
+    assert len(second_names) == 1
+    assert first_names != second_names
 
 
 def test_state_tampering_is_rejected() -> None:
@@ -46,9 +68,10 @@ def test_state_tampering_is_rejected() -> None:
     service.start(provider_name="google", response=response)
     cookie = SimpleCookie()
     cookie.load(response.headers["set-cookie"])
+    cookie_name = next(name for name in cookie if name.startswith(OAUTH_STATE_COOKIE_PREFIX))
 
     with pytest.raises(ApiError) as error:
-        service._verify_state(cookie["averqel_auth_oauth_state"].value + "x", "google")
+        service._verify_state(cookie[cookie_name].value + "x", "google")
 
     assert error.value.code == "OAUTH_STATE_INVALID"
 
@@ -124,11 +147,13 @@ def test_new_user_callback_restores_bypass_context_before_identity_insert(
         "set_db_tenant_context",
         lambda _db, tenant: contexts.append(str(tenant)),
     )
-    monkeypatch.setattr(
-        service,
-        "_verify_state",
-        lambda _cookie, _provider: {"state": "expected", "verifier": "verifier"},
-    )
+
+    def verify_state(cookie: str, _provider: str):
+        if cookie == "stale":
+            raise ApiError(code="OAUTH_STATE_INVALID", message="stale", status_code=400)
+        return {"state": "expected", "verifier": "verifier"}
+
+    monkeypatch.setattr(service, "_verify_state", verify_state)
     monkeypatch.setattr(service, "_exchange_code", lambda *_args: "provider-token")
     monkeypatch.setattr(
         service,
@@ -140,7 +165,7 @@ def test_new_user_callback_restores_bypass_context_before_identity_insert(
         provider_name="google",
         code="code",
         state="expected",
-        state_cookie="cookie",
+        state_cookies=["stale", "cookie"],
     )
 
     assert result == "logged-in"

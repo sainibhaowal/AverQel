@@ -25,7 +25,13 @@ vi.mock("../app/dashboard/deepspace/_hooks/useDeepSpaceStream", () => ({
 }));
 
 vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
-  default: ({ modelName, contextLimit }: { modelName?: string | null; contextLimit?: number | null }) => (
+  default: ({
+    modelName,
+    contextLimit,
+  }: {
+    modelName?: string | null;
+    contextLimit?: number | null;
+  }) => (
     <output data-testid="composer-model-state">
       {modelName ?? "no-model"}|{contextLimit ?? "no-context"}
     </output>
@@ -37,7 +43,9 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceThread", () => ({
 }));
 
 vi.mock("../app/components/dashboard/ChatSidebar", () => ({ default: () => null }));
-vi.mock("../app/dashboard/deepspace/_components/DeepSpaceScrollTracker", () => ({ default: () => null }));
+vi.mock("../app/dashboard/deepspace/_components/DeepSpaceScrollTracker", () => ({
+  default: () => null,
+}));
 
 describe("DeepSpace composer model default", () => {
   beforeEach(() => {

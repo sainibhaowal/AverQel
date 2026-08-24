@@ -14,6 +14,8 @@ from urllib.parse import urlencode
 
 import httpx
 
+from app.integrations.catalog.mcp_official_providers import SLACK_MCP_SCOPES
+
 if TYPE_CHECKING:
     from app.core.config import Settings
 
@@ -47,6 +49,7 @@ class MCPProviderOAuthProfile:
     required_scopes: tuple[str, ...] = ()
     token_endpoint_auth_method: str = "client_secret_post"
     extra_authorization_params: tuple[tuple[str, str], ...] = ()
+    authorization_scope_param: str = "scope"
 
     def matches(self, provider_slug: str | None) -> bool:
         return bool(provider_slug and provider_slug in self.provider_slugs)
@@ -95,7 +98,7 @@ class MCPProviderOAuthProfile:
             "state": state,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
-            "scope": " ".join(scopes),
+            self.authorization_scope_param: " ".join(scopes),
         }
         params.update(dict(self.extra_authorization_params))
         return f"{self.authorization_endpoint}?{urlencode(params)}"
@@ -128,6 +131,23 @@ class MCPProviderOAuthProfile:
             raise ValueError("OAuth provider did not grant the required scopes")
         return tuple(sorted(granted))
 
+    def normalize_token_response(self, payload: object) -> dict[str, object]:
+        """Normalize provider-specific OAuth responses before SDK validation."""
+        if not isinstance(payload, dict):
+            raise ValueError("OAuth provider returned an invalid token response")
+        if self.key != "slack":
+            return dict(payload)
+
+        if payload.get("ok") is False:
+            raise ValueError("Slack OAuth token exchange was rejected")
+        normalized = dict(payload)
+        authed_user = payload.get("authed_user")
+        if isinstance(authed_user, dict):
+            for field in ("access_token", "refresh_token", "token_type", "expires_in", "scope"):
+                if field not in normalized and authed_user.get(field) is not None:
+                    normalized[field] = authed_user[field]
+        return normalized
+
     def identity_headers(self, access_token: str) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {access_token}",
@@ -159,7 +179,11 @@ class MCPProviderOAuthProfile:
         identity: dict[str, str | int] = {}
         subject = data.get("sub") or data.get("id")
         email = data.get("email") or data.get("emailAddress")
-        display_name = data.get("name") or data.get("login") or data.get("email")
+        display_name = (
+            data.get("name") or data.get("login") or data.get("user") or data.get("email")
+        )
+        if subject is None:
+            subject = data.get("user_id")
         if isinstance(subject, str | int) and str(subject).strip():
             identity["provider_subject"] = subject
             identity["account_id"] = subject
@@ -265,9 +289,24 @@ GITHUB_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol end
 )
 
 
+SLACK_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol endpoint profile
+    key="slack",
+    label="Slack",
+    provider_slugs=frozenset({"slack"}),
+    authorization_endpoint="https://slack.com/oauth/v2_user/authorize",
+    token_endpoint="https://slack.com/api/oauth.v2.user.access",
+    identity_endpoint="https://slack.com/api/auth.test",
+    identity_email_endpoint=None,
+    revocation_endpoint="https://slack.com/api/auth.revoke",
+    default_scopes=SLACK_MCP_SCOPES,
+    required_scopes=SLACK_MCP_SCOPES,
+)
+
+
 MCP_PROVIDER_OAUTH_PROFILES = (
     GOOGLE_MCP_OAUTH_PROFILE,
     GITHUB_MCP_OAUTH_PROFILE,
+    SLACK_MCP_OAUTH_PROFILE,
 )
 
 

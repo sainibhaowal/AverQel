@@ -18,7 +18,7 @@ def _clean(session) -> None:
 
 def test_marketplace_catalog_seeds_all_reviewed_providers(db_session) -> None:
     _clean(db_session)
-    catalog_tests.test_sync_official_mcp_catalog_creates_six_safe_entries(db_session)
+    catalog_tests.test_sync_official_mcp_catalog_creates_eight_safe_entries(db_session)
 
 
 def test_marketplace_catalog_sync_is_idempotent_and_source_scoped(db_session) -> None:

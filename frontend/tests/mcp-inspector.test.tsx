@@ -76,7 +76,9 @@ describe("MCP inspector", () => {
     render(<MCPInspector />);
     await waitFor(() => expect(screen.getByText("owner@example.com")).toBeInTheDocument());
     expect(screen.getByText("search_mail")).toBeInTheDocument();
-    expect(screen.getByText(/Individual changes override the master tool permission/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Individual changes override the master tool permission/i),
+    ).toBeInTheDocument();
     expect(screen.getAllByText(/DeepSpace/i).length).toBeGreaterThan(0);
   });
 });

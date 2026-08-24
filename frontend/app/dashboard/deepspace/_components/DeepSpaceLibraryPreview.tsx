@@ -187,9 +187,7 @@ function SpreadsheetTable({ value, previewUrl }: { value: string; previewUrl?: s
         const workbook = new ExcelJS.Workbook();
         // ExcelJS accepts ArrayBuffer/Uint8Array in the browser; its bundled
         // declaration currently exposes the Node Buffer overload only.
-        await workbook.xlsx.load(
-          buffer as unknown as Parameters<typeof workbook.xlsx.load>[0],
-        );
+        await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
         if (!cancelled) setRows(spreadsheetRows(workbook));
       } catch {
         if (!cancelled) setRows([]);

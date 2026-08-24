@@ -8,7 +8,7 @@ import CursorSweepProvider from "@/app/components/layout/CursorSweepProvider";
 import { BRAND_NAME } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: `${BRAND_NAME} | Agentic OS for documents, connectors, and autonomous work`,
+  title: BRAND_NAME,
   description: `${BRAND_NAME} combines grounded chat, DeepSpace execution, proactive workspaces, connector automation, and tenant-isolated security for grounded AI work.`,
   keywords: [
     "document intelligence",

@@ -28,9 +28,15 @@ describe("DeepSpace markdown normalization", () => {
       "| Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |---|------------|--------|------------|--------|--------|----------------|----|----|------------|1 | Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |2 | Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |",
     );
 
-    expect(normalized).toContain("| # | Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |");
-    expect(normalized).toContain("| 1 | Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |");
-    expect(normalized).toContain("| 2 | Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |");
+    expect(normalized).toContain(
+      "| # | Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |",
+    );
+    expect(normalized).toContain(
+      "| 1 | Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |",
+    );
+    expect(normalized).toContain(
+      "| 2 | Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |",
+    );
   });
 
   it("joins a table header and separator when a provider inserts a blank line", () => {
@@ -59,8 +65,14 @@ describe("DeepSpace markdown normalization", () => {
       "| Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |---|------------|--------|------------|--------|--------|----------------|----|----|------------|1 | Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |2 | Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |",
     );
 
-    expect(normalized).toContain("| Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |");
-    expect(normalized).toContain("| Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |");
-    expect(normalized).toContain("| Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |");
+    expect(normalized).toContain(
+      "| Repository | Full Name | Description | Language | Private? | Default Branch | Stars | Forks | Open Issues |",
+    );
+    expect(normalized).toContain(
+      "| Aurelinx | sainibhaowal/Aurelinx | Enterprise HR platform | JavaScript | No | main | 0 | 0 | 0 |",
+    );
+    expect(normalized).toContain(
+      "| Revelith | sainibhaowal/Revelith | Model proxy | TypeScript | No | main | 0 | 0 | 0 |",
+    );
   });
 });

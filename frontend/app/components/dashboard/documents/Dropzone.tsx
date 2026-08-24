@@ -24,7 +24,9 @@ interface DropzoneProps {
 export default function Dropzone({ onSuccess, onCancel, allowedExtensions }: DropzoneProps) {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
-  const [uploadPhase, setUploadPhase] = useState<"validate" | "scan" | "store" | "queue">("validate");
+  const [uploadPhase, setUploadPhase] = useState<"validate" | "scan" | "store" | "queue">(
+    "validate",
+  );
   const [errorMessage, setErrorMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -321,12 +323,14 @@ export default function Dropzone({ onSuccess, onCancel, allowedExtensions }: Dro
             </span>
           </div>
           <div className="grid grid-cols-4 gap-2">
-            {([
-              ["validate", "Validate", CheckCircle2],
-              ["scan", "Malware scan", ShieldCheck],
-              ["store", "Private storage", Database],
-              ["queue", "Index queue", ListChecks],
-            ] as Array<[string, string, LucideIcon]>).map(([phase, label, Icon]) => {
+            {(
+              [
+                ["validate", "Validate", CheckCircle2],
+                ["scan", "Malware scan", ShieldCheck],
+                ["store", "Private storage", Database],
+                ["queue", "Index queue", ListChecks],
+              ] as Array<[string, string, LucideIcon]>
+            ).map(([phase, label, Icon]) => {
               const phases = ["validate", "scan", "store", "queue"];
               const current = status === "success" ? phases.length : phases.indexOf(uploadPhase);
               const index = phases.indexOf(String(phase));

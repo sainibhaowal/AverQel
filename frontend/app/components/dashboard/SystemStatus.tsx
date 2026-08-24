@@ -20,14 +20,20 @@ export default function SystemStatus() {
 
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
-          if (data.version) setVersionInfo(`${data.version}${data.git_sha ? ` • ${String(data.git_sha).slice(0, 7)}` : ""}`);
+          if (data.version)
+            setVersionInfo(
+              `${data.version}${data.git_sha ? ` • ${String(data.git_sha).slice(0, 7)}` : ""}`,
+            );
           setIsHealthy(true);
           setErrorDetails(null);
           return;
         }
 
         const data = await res.json().catch(() => ({}));
-        if (data.version) setVersionInfo(`${data.version}${data.git_sha ? ` • ${String(data.git_sha).slice(0, 7)}` : ""}`);
+        if (data.version)
+          setVersionInfo(
+            `${data.version}${data.git_sha ? ` • ${String(data.git_sha).slice(0, 7)}` : ""}`,
+          );
         setIsHealthy(false);
         setErrorDetails(data.error?.message || `HTTP ${res.status} Error`);
       } catch (error: unknown) {
@@ -53,7 +59,10 @@ export default function SystemStatus() {
             .json()
             .catch(() => ({}))
             .then((data: Record<string, unknown>) => {
-              if (typeof data.version === "string") setVersionInfo(`${data.version}${typeof data.git_sha === "string" ? ` • ${String(data.git_sha).slice(0, 7)}` : ""}`);
+              if (typeof data.version === "string")
+                setVersionInfo(
+                  `${data.version}${typeof data.git_sha === "string" ? ` • ${String(data.git_sha).slice(0, 7)}` : ""}`,
+                );
             });
           setIsHealthy(true);
           setErrorDetails(null);
@@ -79,7 +88,11 @@ export default function SystemStatus() {
     ? "System operational"
     : `System degraded: ${errorDetails ?? "unknown issue"}`;
 
-  const tooltip = versionInfo ? `${isHealthy ? "System Operational" : "System Degraded"} • ${versionInfo}` : isHealthy ? "System Operational" : "System Degraded";
+  const tooltip = versionInfo
+    ? `${isHealthy ? "System Operational" : "System Degraded"} • ${versionInfo}`
+    : isHealthy
+      ? "System Operational"
+      : "System Degraded";
 
   return (
     <div

@@ -1,7 +1,11 @@
 import toast from "react-hot-toast";
 
-function isTauriEnvironment(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+export function isElectronEnvironment(): boolean {
+  return typeof window !== "undefined" && window.electron?.isElectron === true;
+}
+
+export function isDesktopEnvironment(): boolean {
+  return process.env.NEXT_PUBLIC_BUILD_TARGET === "desktop" || isElectronEnvironment();
 }
 
 export function resolveApiBaseUrl(params: {
@@ -12,7 +16,7 @@ export function resolveApiBaseUrl(params: {
 }): string {
   const { hostname, protocol, port } = params;
 
-  if (process.env.NEXT_PUBLIC_BUILD_TARGET === "desktop" || isTauriEnvironment()) {
+  if (isDesktopEnvironment()) {
     return process.env.NEXT_PUBLIC_API_URL || "https://averqel.com/api/v1";
   }
 
@@ -34,17 +38,14 @@ export function resolveApiBaseUrl(params: {
 }
 
 export const getApiBaseUrl = () => {
-  if (process.env.NEXT_PUBLIC_BUILD_TARGET === "desktop" || isTauriEnvironment()) {
+  if (isDesktopEnvironment()) {
     if (typeof window !== "undefined") {
       const { hostname, origin } = window.location;
-      // Tauri development loads the web app from the local Caddy origin.
-      // Keep API calls on that same origin; falling back to averqel.com here
-      // makes the desktop login hang when the production host is unavailable.
+      // Electron development loads the web app from the local HTTPS origin.
+      // Keep API calls on that same origin; packaged builds use the production API.
       if (hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".localhost")) {
-        // Some WebKit/Tauri versions expose a `tauri://` origin even when
-        // loading the remote dev URL. Never construct an API URL from that
-        // non-HTTP origin.
-        return origin.startsWith("http") ? `${origin}/api/v1` : "https://averqel.localhost/api/v1";
+        // Never construct an API URL from a non-HTTP origin.
+        return origin.startsWith("http") ? `${origin}/api/v1` : "https://localhost/api/v1";
       }
     }
     return process.env.NEXT_PUBLIC_API_URL || "https://averqel.com/api/v1";
