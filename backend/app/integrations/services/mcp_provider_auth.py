@@ -30,6 +30,26 @@ GOOGLE_PROVIDER_SLUGS = frozenset(
     }
 )
 
+# Slack can add identity-only scopes to an OAuth grant independently of the
+# user scopes requested for MCP tools. They do not grant workspace or tool
+# access, but must be accepted when validating the returned user token.
+SLACK_MCP_AUTOMATIC_IDENTITY_SCOPES = frozenset(
+    {
+        "identify",
+        "identity.basic",
+        "identity.email",
+        "identity.avatar",
+        "identity.team",
+        "openid",
+        "email",
+        "profile",
+    }
+)
+
+# Slack may also return the legacy aggregate search scope alongside the
+# granular MCP search scopes requested by the app.
+SLACK_MCP_COMPATIBILITY_SCOPES = frozenset({"search:read"})
+
 
 @dataclass(frozen=True, slots=True)
 class MCPProviderOAuthProfile:
@@ -111,6 +131,8 @@ class MCPProviderOAuthProfile:
     ) -> tuple[str, ...]:
         """Reject scope escalation and incomplete provider authorization."""
         expected = set(self.scopes_for(provider_slug))
+        if self.key == "slack":
+            expected.update(SLACK_MCP_AUTOMATIC_IDENTITY_SCOPES | SLACK_MCP_COMPATIBILITY_SCOPES)
         required = set(self.required_scopes)
         # OAuth providers do not all serialize the returned scope list the
         # same way.  Google returns a space-delimited value while GitHub
@@ -125,7 +147,8 @@ class MCPProviderOAuthProfile:
             raise ValueError("OAuth provider did not return granted scopes")
         unexpected = granted - expected
         if unexpected:
-            raise ValueError("OAuth provider returned an unapproved scope")
+            unexpected_names = ", ".join(sorted(unexpected))
+            raise ValueError(f"OAuth provider returned unapproved scope(s): {unexpected_names}")
         missing = required - granted
         if missing:
             raise ValueError("OAuth provider did not grant the required scopes")
