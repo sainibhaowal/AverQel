@@ -119,10 +119,13 @@ def test_slack_profile_uses_confidential_user_oauth_and_nested_token_response(se
 
     granted = profile.verify_scopes(
         provider_slug="slack",
-        granted_scope=" ".join((*profile.scopes_for("slack"), "identity.basic", "identity.email")),
+        granted_scope=" ".join(
+            (*profile.scopes_for("slack"), "identity.basic", "identity.email", "search:read")
+        ),
     )
     assert "identity.basic" in granted
     assert "identity.email" in granted
+    assert "search:read" in granted
 
     with pytest.raises(ValueError, match="unapproved scope.*admin.apps:read"):
         profile.verify_scopes(

@@ -46,6 +46,10 @@ SLACK_MCP_AUTOMATIC_IDENTITY_SCOPES = frozenset(
     }
 )
 
+# Slack may also return the legacy aggregate search scope alongside the
+# granular MCP search scopes requested by the app.
+SLACK_MCP_COMPATIBILITY_SCOPES = frozenset({"search:read"})
+
 
 @dataclass(frozen=True, slots=True)
 class MCPProviderOAuthProfile:
@@ -128,7 +132,7 @@ class MCPProviderOAuthProfile:
         """Reject scope escalation and incomplete provider authorization."""
         expected = set(self.scopes_for(provider_slug))
         if self.key == "slack":
-            expected.update(SLACK_MCP_AUTOMATIC_IDENTITY_SCOPES)
+            expected.update(SLACK_MCP_AUTOMATIC_IDENTITY_SCOPES | SLACK_MCP_COMPATIBILITY_SCOPES)
         required = set(self.required_scopes)
         # OAuth providers do not all serialize the returned scope list the
         # same way.  Google returns a space-delimited value while GitHub
