@@ -74,7 +74,11 @@ next-env.d.ts
 /Runtime/
 /runtime/docs/
 /runtime/docs/*
-/Docs/
+/Docs/*
+!/Docs/README.md
+!/Docs/brand/
+/Docs/brand/*
+!/Docs/brand/averqel-readme-banner.svg
 /docs/
 git_guide.md
 mypy.ini

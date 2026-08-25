@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 420" role="img" aria-labelledby="title desc">
+  <title id="title">AverQel</title>
+  <desc id="desc">AverQel — Agentic OS for documents, connectors, and autonomous work</desc>
+  <rect width="1600" height="420" rx="28" fill="#030508"/>
+  <circle cx="1430" cy="-20" r="300" fill="#00b8ff" opacity=".12"/>
+  <circle cx="1540" cy="370" r="260" fill="#00ffa3" opacity=".08"/>
+  <g transform="translate(0 -8)">
+  <!-- Inline copy of the tracked AverQel product mark so GitHub renders it reliably. -->
+  <g transform="translate(105 105) scale(2.375)">
+    <path d="M16 8h40l8 8v46c0 4-3 8-7 10l-17 6-17-6c-4-2-7-6-7-10V8Z" fill="#3b82f6" fill-opacity=".14" stroke="#26c6da" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M56 8v8h8" stroke="#26c6da" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="m56 8 8 8h-8Z" fill="#06b6d4" fill-opacity=".1"/>
+    <path d="M30 28v26h12c9 0 12-6 12-13s-3-13-12-13Z" fill="none" stroke="#26c6da" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M33 31v20h8c7 0 10-4.5 10-10s-3-10-10-10Z" fill="#3b82f6" fill-opacity=".22"/>
+    <circle cx="50" cy="48" r="5" fill="none" stroke="#06b6d4" stroke-width="2"/>
+    <path d="m54 52 4 4" stroke="#06b6d4" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+  <text x="345" y="82" fill="#00ffa3" font-family="sans-serif" font-size="14" font-weight="700" letter-spacing="3">AVERQEL PLATFORM</text>
+  <text x="345" y="175" fill="#fff7f8" font-family="sans-serif" font-size="68">AverQel</text>
+  <text x="345" y="245" fill="#b7d5de" font-family="sans-serif" font-size="26">Agentic OS for documents, connectors, and autonomous work</text>
+  <rect x="345" y="286" width="410" height="5" rx="2.5" fill="#00ffa3"/>
+  <text x="345" y="336" fill="#8adfd0" font-family="sans-serif" font-size="15" letter-spacing="1.5">SECURE · TENANT-SCOPED · PRODUCTION-READY</text>
+  <g transform="translate(345 356)">
+    <rect width="170" height="38" rx="19" fill="#0b1820" stroke="#00b8ff" stroke-opacity=".45"/>
+    <circle cx="20" cy="19" r="5" fill="#00b8ff"/>
+    <text x="34" y="24" fill="#d7f7ff" font-family="sans-serif" font-size="14" font-weight="600">DOCUMENTS</text>
+    <rect x="185" width="170" height="38" rx="19" fill="#0b1820" stroke="#00ffa3" stroke-opacity=".45"/>
+    <circle cx="205" cy="19" r="5" fill="#00ffa3"/>
+    <text x="219" y="24" fill="#d7fff0" font-family="sans-serif" font-size="14" font-weight="600">DEEPSPACE</text>
+    <rect x="370" width="210" height="38" rx="19" fill="#0b1820" stroke="#00b8ff" stroke-opacity=".45"/>
+    <circle cx="390" cy="19" r="5" fill="#00b8ff"/>
+    <text x="404" y="24" fill="#d7f7ff" font-family="sans-serif" font-size="14" font-weight="600">MCP CONNECTORS</text>
+    <rect x="595" width="175" height="38" rx="19" fill="#0b1820" stroke="#00ffa3" stroke-opacity=".45"/>
+    <circle cx="615" cy="19" r="5" fill="#00ffa3"/>
+    <text x="629" y="24" fill="#d7fff0" font-family="sans-serif" font-size="14" font-weight="600">DESKTOP APP</text>
+  </g>
+  </g>
+</svg>
