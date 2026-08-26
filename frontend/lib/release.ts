@@ -1,19 +1,16 @@
 const SEMVER_TAG = /^v\d+\.\d+\.\d+$/;
 
-function publicBuildValue(
-  name: "NEXT_PUBLIC_APP_VERSION" | "NEXT_PUBLIC_DESKTOP_DOWNLOAD_BASE_URL",
-) {
-  return process.env[name]?.trim() || "";
-}
-
-const configuredVersion = publicBuildValue("NEXT_PUBLIC_APP_VERSION");
+// Keep these references explicit. Next.js inlines NEXT_PUBLIC_* values into
+// browser bundles, but cannot inline a value accessed through process.env[name].
+const configuredVersion = process.env.NEXT_PUBLIC_APP_VERSION?.trim() || "";
 
 /** The release tag embedded into this web or desktop build. */
 export const APP_VERSION = SEMVER_TAG.test(configuredVersion) ? configuredVersion : "development";
 
 /** Public binary directory served by AverQel, with a local fallback. */
 export const DESKTOP_DOWNLOAD_BASE_URL =
-  publicBuildValue("NEXT_PUBLIC_DESKTOP_DOWNLOAD_BASE_URL") || "/downloads/latest";
+  process.env.NEXT_PUBLIC_DESKTOP_DOWNLOAD_BASE_URL?.trim() ||
+  "https://github.com/sainibhaowal/AverQel/releases/latest/download";
 
 export const DESKTOP_LINUX_DOWNLOAD_URL = `${DESKTOP_DOWNLOAD_BASE_URL.replace(/\/$/, "")}/AverQel-linux-amd64.deb`;
 
