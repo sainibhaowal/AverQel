@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import {
   animate,
   motion,
@@ -18,6 +18,10 @@ type LandingSectionMotionOptions = {
   scaleRange?: [number, number];
 };
 
+const subscribeToElectronRuntime = () => () => undefined;
+const getElectronRuntimeSnapshot = () => typeof window !== "undefined" && Boolean(window.electron);
+const getServerElectronRuntimeSnapshot = () => false;
+
 export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
   options: LandingSectionMotionOptions = {},
 ) {
@@ -27,7 +31,13 @@ export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
   // Scaling full-width sections there can expose a one-pixel edge while the
   // spring settles, so keep the decorative web-only parallax disabled in the
   // desktop shell.
-  const isElectron = typeof window !== "undefined" && Boolean(window.electron);
+  // Keep the first browser render identical to the server render. Reading
+  // window directly here changes the section style during hydration in Electron.
+  const isElectron = useSyncExternalStore(
+    subscribeToElectronRuntime,
+    getElectronRuntimeSnapshot,
+    getServerElectronRuntimeSnapshot,
+  );
   const motionDisabled = Boolean(reduceMotion || isElectron);
   const inView = useInView(ref, {
     margin: "-12% 0px -12% 0px",
