@@ -58,7 +58,13 @@ export default function TitleBar() {
         className="pointer-events-none relative flex items-center gap-3 pl-4"
         style={{ zIndex: 10 }}
       >
-        <Image src="/logo_icon.svg" alt="Logo" width={16} height={16} className="opacity-80" />
+        <Image
+          src="/logo_icon.png"
+          alt="AverQel logo"
+          width={28}
+          height={28}
+          className="h-7 w-7 shrink-0 object-contain"
+        />
         <span className="text-[11px] font-bold tracking-[0.2em] text-slate-400 uppercase">
           AverQel {APP_VERSION}
         </span>
