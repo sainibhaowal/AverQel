@@ -3,7 +3,8 @@ FROM node:22-alpine AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
-RUN apk add --no-cache bash
+RUN apk add --no-cache bash \
+    && apk upgrade --no-cache
 RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
 
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* .npmrc* ./
@@ -29,7 +30,11 @@ ENV NODE_ENV=production \
     PORT=1030
 WORKDIR /app
 
-RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001 -G nodejs
+RUN apk upgrade --no-cache \
+    && rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+    && addgroup -g 1001 -S nodejs \
+    && adduser -S nextjs -u 1001 -G nodejs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
