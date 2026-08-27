@@ -33,7 +33,36 @@ case "$GATE" in
     bandit -r app -q --severity-level medium
     ;;
   pip-audit)
-    pip-audit -s osv -r requirements.txt -r requirements-dev.txt
+    # OSV is an external service. Retry only availability failures so a
+    # temporary outage does not fail the gate, while real findings remain
+    # blocking and are returned immediately.
+    max_attempts=4
+    attempt=1
+    while true; do
+      set +e
+      audit_output="$(pip-audit -s osv -r requirements.txt -r requirements-dev.txt 2>&1)"
+      audit_status=$?
+      set -e
+      printf '%s\n' "$audit_output"
+
+      if [ "$audit_status" -eq 0 ]; then
+        break
+      fi
+
+      if ! grep -Eiq 'ServiceError|HTTP (429|500|502|503|504)|timed out|timeout|connection (reset|error)' <<<"$audit_output"; then
+        exit "$audit_status"
+      fi
+
+      if [ "$attempt" -ge "$max_attempts" ]; then
+        echo "::error::pip-audit service was unavailable after $max_attempts attempts"
+        exit "$audit_status"
+      fi
+
+      delay=$((5 * 2 ** (attempt - 1)))
+      echo "::warning::pip-audit service unavailable; retrying in ${delay}s (attempt $((attempt + 1))/$max_attempts)"
+      sleep "$delay"
+      attempt=$((attempt + 1))
+    done
     ;;
   safety)
     safety check --full-report
