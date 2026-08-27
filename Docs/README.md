@@ -4,21 +4,25 @@ This directory contains the technical, product, and operational documentation
 for AverQel. The root [README](../README.md) is the public orientation; this
 index points to the deeper guides.
 
-## Operate and deploy
+## Public operations and contribution guides
 
-- [VPS production runbook](VPS-Production-Runbook.md)
-- [VPS commands](VPS-Command.md)
-- [Docker commands](DockerCMD.md)
 - [Release security controls](../.github/RELEASE_SECURITY.md)
-- [Git workflow](Git_Guide.md)
+- [Contributor guide](../CONTRIBUTING.md)
+- [Desktop development guide](../applications/desktop/README.md)
+- [Frontend development guide](../frontend/README.md)
+- [New feature plans](New%20Features/README.md)
+
+Host-specific VPS runbooks, Docker commands, credentials, and deployment
+addresses are intentionally excluded from the public repository. Keep those
+operator materials in the deployment workspace and never commit environment
+files or secrets.
 
 ## Product and architecture
 
-- [MCP plan and release status](mcp-plan.md)
-- [DeepSpace architecture](brand/README.md)
-- [Agent timeline production plan](Agent-Timeline-Production-Plan.md)
-- [Current implementation notes](current.md)
-- [Tier plans](TierPlans-3.md)
+The public product and architecture overview is maintained in the root
+[README](../README.md) and the implementation documentation in the frontend
+and backend packages. Local design plans are not product promises until the
+implementation, tests, migrations, and release notes are complete.
 
 ## Feature planning
 

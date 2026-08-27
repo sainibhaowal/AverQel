@@ -31,7 +31,10 @@ def main() -> None:
     parser.add_argument("--git-sha", required=True)
     parser.add_argument("--asset-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--base-url", default="downloads/latest")
+    parser.add_argument(
+        "--base-url",
+        default="https://github.com/sainibhaowal/AverQel/releases/latest/download",
+    )
     args = parser.parse_args()
 
     if not args.version.startswith("v"):
@@ -42,8 +45,14 @@ def main() -> None:
         path = args.asset_dir / name
         if not path.is_file() or path.stat().st_size == 0:
             raise SystemExit(f"missing or empty release asset: {path}")
+        base_url = args.base_url.rstrip("/")
+        asset_url = (
+            f"{base_url}/{name}"
+            if base_url.startswith(("http://", "https://"))
+            else f"/{base_url.lstrip('/')}/{name}"
+        )
         assets[name] = {
-            "url": f"/{args.base_url.strip('/')}/{name}",
+            "url": asset_url,
             "sha256": sha256(path),
             "size_bytes": path.stat().st_size,
         }

@@ -9,40 +9,68 @@ export default function ArchitectureDocsPage() {
       <DocsCards
         items={[
           {
-            title: "Frontend surfaces",
-            body: "Dashboard pages, grounded queries, DeepSpace chat, documents, memory, settings, MCP, and documentation are separate product surfaces.",
+            title: "Web and desktop clients",
+            body: "The browser and Electron clients provide the user interface. Electron loads the shared web experience and does not receive provider secrets.",
           },
           {
-            title: "Backend services",
-            body: "Backend services handle authentication, retrieval, answer generation, safe tool execution, memory, providers, and integrations.",
+            title: "API boundary",
+            body: "The FastAPI service authenticates requests, applies tenant and user authorization, orchestrates work, and exposes health endpoints.",
           },
           {
-            title: "Persistence",
-            body: "PostgreSQL stores tenant-scoped conversations, messages, memory, provider configuration, and integration state.",
+            title: "Workers and inference",
+            body: "Celery workers process documents, DeepSpace jobs, MCP work, maintenance, and schedules. The inference service handles local model work.",
           },
           {
-            title: "MCP boundary",
-            body: "MCP discovery, authorization, catalog, and remote tool execution remain isolated from the normal chat and memory surfaces.",
+            title: "State and storage",
+            body: "PostgreSQL stores durable state, Redis coordinates queues and events, MinIO stores private objects, and ClamAV scans files before processing.",
+          },
+          {
+            title: "External providers",
+            body: "OAuth providers, model providers, SearXNG, and approved remote MCP servers are reached by the backend through bounded and policy checked integrations.",
           },
         ]}
       />
 
       <DocsSection title="How a request moves">
         <ol className="list-decimal space-y-3 pl-6">
-          <li>The frontend sends a tenant-authenticated chat or query request.</li>
-          <li>The backend loads scoped history and relevant document or memory context.</li>
+          <li>The browser or Electron client sends a tenant-authenticated request.</li>
           <li>
-            The selected provider generates the answer, with permitted tools available when needed.
+            The API loads authorized history, document context, memory, and provider configuration.
           </li>
-          <li>The result streams to the frontend and is persisted as conversation history.</li>
+          <li>
+            The API selects permitted tools and queues background work when the request needs it.
+          </li>
+          <li>
+            The selected model or remote provider returns data through the backend policy boundary.
+          </li>
+          <li>The result streams to the client and durable conversation state is persisted.</li>
         </ol>
+      </DocsSection>
+
+      <DocsSection title="Runtime boundaries">
+        <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/20 p-4 text-sm leading-6">
+          {`Client
+  -> frontend
+  -> api
+     -> PostgreSQL and Redis
+     -> MinIO and ClamAV
+     -> inference and SearXNG
+     -> approved external providers
+  -> worker, ingestion, MCP, maintenance, and scheduler queues`}
+        </pre>
+        <p className="mt-4">
+          The production service layout is defined by the checked-in backend Compose files. Optional
+          packages, including the separate LiveKit server materials, are not considered active until
+          their service, configuration, networking, and health checks are deployed explicitly.
+        </p>
       </DocsSection>
 
       <DocsSection title="Safety boundaries">
         <p>
           Authentication, tenant isolation, encrypted secrets, provider policy, approval checks, and
-          MCP authorization remain backend responsibilities. Removing the orchestration and
-          IDE-style surfaces does not weaken those boundaries.
+          MCP authorization remain backend responsibilities. Clients display authorized results and
+          request actions, while the backend makes the final authorization decision immediately
+          before execution.
         </p>
       </DocsSection>
     </DocsShell>

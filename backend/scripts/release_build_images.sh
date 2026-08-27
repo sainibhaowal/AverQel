@@ -17,7 +17,7 @@ usage() {
 Usage: scripts/release_build_images.sh --version <version> [options]
 
 Options:
-  --version <version>           Required release version tag (e.g. v1.0.0)
+  --version <version>           Required build version (e.g. v1.0.0 or v0.0.0-main.abc123)
   --git-sha <sha>               Optional git sha (defaults to local git or unknown)
   --image-prefix <prefix>       Image prefix (default: aks)
   --push                        Push images after build
@@ -124,8 +124,28 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "DRY RUN: docker push $WORKER_TAG_SHA"
   fi
 else
-  "${build_cmd_api[@]}"
-  "${build_cmd_worker[@]}"
+  BUILD_LOG_DIR="$(mktemp -d)"
+  cleanup_build_logs() {
+    rm -rf "$BUILD_LOG_DIR"
+  }
+  trap cleanup_build_logs EXIT
+
+  # API and worker share the already-built runtime base and do not depend on
+  # one another. Build them together so a slow service cannot serialize the
+  # other service's build.
+  "${build_cmd_api[@]}" >"$BUILD_LOG_DIR/api.log" 2>&1 &
+  API_PID=$!
+  "${build_cmd_worker[@]}" >"$BUILD_LOG_DIR/worker.log" 2>&1 &
+  WORKER_PID=$!
+  API_STATUS=0
+  WORKER_STATUS=0
+  wait "$API_PID" || API_STATUS=$?
+  wait "$WORKER_PID" || WORKER_STATUS=$?
+  cat "$BUILD_LOG_DIR/api.log" "$BUILD_LOG_DIR/worker.log"
+  if (( API_STATUS != 0 || WORKER_STATUS != 0 )); then
+    echo "Backend image build failed (api=$API_STATUS worker=$WORKER_STATUS)" >&2
+    exit 1
+  fi
   if [[ "$PUSH_IMAGES" == "true" ]]; then
     docker push "$API_TAG_VERSION"
     docker push "$API_TAG_SHA"

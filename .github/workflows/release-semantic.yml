@@ -108,6 +108,18 @@ jobs:
             frontend/pnpm-lock.yaml
             applications/desktop/pnpm-lock.yaml
 
+      - name: Restore desktop build caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            frontend/.next/cache
+            applications/desktop/node_modules/.cache
+          key: desktop-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml', 'applications/desktop/pnpm-lock.yaml') }}
+          restore-keys: |
+            desktop-${{ runner.os }}-
+
       - name: Install frontend dependencies
         run: pnpm --dir frontend install --frozen-lockfile
 
@@ -125,7 +137,7 @@ jobs:
           BUILD_TARGET: desktop
           NEXT_PUBLIC_APP_VERSION: ${{ needs.prepare-release.outputs.version }}
           NEXT_PUBLIC_GIT_SHA: ${{ needs.prepare-release.outputs.sha }}
-          NEXT_PUBLIC_DESKTOP_DOWNLOAD_BASE_URL: /downloads/latest
+          NEXT_PUBLIC_DESKTOP_DOWNLOAD_BASE_URL: https://github.com/sainibhaowal/AverQel/releases/latest/download
         run: pnpm --dir frontend build
 
       - name: Stamp the semantic release version into the desktop app
@@ -267,7 +279,7 @@ jobs:
             --git-sha "$RELEASE_SHA" \
             --asset-dir release-assets \
             --output release-manifest.json \
-            --base-url downloads/latest
+            --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download"
 
       - name: Create GitHub release with desktop downloads
         uses: softprops/action-gh-release@v2
@@ -294,7 +306,7 @@ jobs:
 
             Desktop packages: `.deb`, `.rpm`, `.exe`, and universal macOS `.dmg`.
 
-            Public downloads are published by the separate manual Docker/VPS deployment at:
-            `https://averqel.com/downloads/latest/`
+            Public downloads are provided directly by this GitHub release. The AverQel website uses
+            direct asset URLs and does not copy desktop packages to the VPS.
 
             Docker/VPS deployment is a separate manual workflow and is not started automatically.
