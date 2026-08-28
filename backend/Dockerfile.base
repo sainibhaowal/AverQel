@@ -1,9 +1,10 @@
+# syntax=docker/dockerfile:1.7
+
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DEFAULT_TIMEOUT=1000 \
-    PIP_NO_CACHE_DIR=1
+    PIP_DEFAULT_TIMEOUT=1000
 
 WORKDIR /app
 
@@ -15,8 +16,11 @@ RUN apt-get update \
 RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser
 
 COPY requirements.txt ./requirements.txt
-RUN pip install \
-      --no-cache-dir \
+# Keep the pip cache in a BuildKit cache mount. It is not written into the
+# image layer, but survives between CI builds when the Buildx cache is reused.
+RUN --mount=type=cache,id=averqel-pip,target=/root/.cache/pip \
+    pip install \
+      --cache-dir /root/.cache/pip \
       --no-compile \
       --prefer-binary \
       --timeout 120 \

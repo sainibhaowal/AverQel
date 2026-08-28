@@ -33,8 +33,8 @@ Set `SEARXNG_SECRET` to a random deployment secret. The local Compose fallback i
 
 ## Main implementation locations
 
-- `app/deepspace/services/chat_service.py` — tool schemas, bounded loop, retries, cancellation, SSE deltas, citations, and final verification.
-- `app/deepspace/services/task_loop.py` — tenant/user/conversation-scoped task and note storage.
-- `app/providers/services/searxng_provider.py` — server-side SearXNG client and response normalization.
-- `docker-compose.yml`, `docker-compose.prod.yml`, `searxng/settings.yml` — private SearXNG deployment.
-- `../frontend/app/dashboard/deepspace/_lib/constants.ts` — user-facing tool status labels.
+- `app/deepspace/services/chat_service.py` - tool schemas, bounded loop, retries, cancellation, SSE deltas, citations, and final verification.
+- `app/deepspace/services/task_loop.py` - tenant/user/conversation-scoped task and note storage.
+- `app/providers/services/searxng_provider.py` - server-side SearXNG client and response normalization.
+- `docker-compose.yml`, `docker-compose.prod.yml`, `searxng/settings.yml` - private SearXNG deployment.
+- `../frontend/app/dashboard/deepspace/_lib/constants.ts` - user-facing tool status labels.

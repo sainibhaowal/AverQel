@@ -27,7 +27,8 @@ claimed to be signed.
 ## Images and artifacts
 
 - Desktop releases include `SHA256SUMS.txt` and `release-manifest.json`.
-- Deployment verifies the checksums before uploading anything to the VPS.
+- The release workflow publishes the checksums and manifest with the GitHub
+  Release assets.
 - Docker images are scanned for high and critical vulnerabilities.
 - Published images receive keyless Cosign signatures through GitHub OIDC and
   are verified in the same workflow before deployment.
@@ -35,8 +36,8 @@ claimed to be signed.
 
 ## VPS safety
 
-Downloads are assembled in an immutable version directory and `latest` is
-switched atomically only after health checks and public URL checks succeed.
-The previous application image is kept for immediate rollback. Five canonical
-desktop release directories are retained; unrelated VPS files, volumes, models,
-and containers are not removed.
+Desktop packages are not copied to the VPS. The public website uses direct
+GitHub Release asset URLs, so the VPS does not retain duplicate desktop
+installers. The deployment verifies service health and keeps the previous
+application image for immediate rollback. Unrelated VPS files, volumes,
+models, and containers are not removed.

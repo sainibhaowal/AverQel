@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Docs/brand/averqel-readme-banner.svg" alt="AverQel — Agentic OS for documents, connectors, and autonomous work" width="100%" />
+  <img src="Docs/brand/averqel-readme-banner.svg" alt="AverQel - Agentic OS for documents, connectors, and autonomous work" width="100%" />
 </p>
 
 <p align="center">
@@ -22,39 +22,95 @@ connections, and web/desktop clients into one secure, extensible platform.
 
 ## What AverQel provides
 
-- **Documents Hub** — private ingestion, OCR, malware scanning, indexing,
+- **Documents Hub** - private ingestion, OCR, malware scanning, indexing,
   previews, versions, search, and governed document workflows.
-- **DeepSpace** — plan-aware agent execution with memory, tool calls,
+- **DeepSpace** - plan-aware agent execution with memory, tool calls,
   approvals, durable activity, and bounded parallel work.
-- **MCP Marketplace** — reviewed remote connectors with OAuth, encrypted
+- **MCP Marketplace** - reviewed remote connectors with OAuth, encrypted
   per-user credentials, catalog discovery, policy checks, and risk controls.
-- **Web workspace** — a Next.js application for documents, chat, providers,
+- **Web workspace** - a Next.js application for documents, chat, providers,
   DeepSpace, settings, and administration.
-- **Electron desktop app** — distributable Linux `.deb`/`.rpm`, Windows `.exe`,
+- **Electron desktop app** - distributable Linux `.deb`/`.rpm`, Windows `.exe`,
   and macOS `.dmg` packages using the shared product experience.
-- **Production delivery** — reproducible Docker images, health checks,
+- **Production delivery** - versioned Docker images, health checks,
   vulnerability scanning, SBOMs, image signing, checksums, and rollback-aware
   VPS deployment.
 
 ## Architecture
 
+The following diagram describes the services in
+[`backend/docker-compose.prod.yml`](backend/docker-compose.prod.yml). It
+shows service boundaries and network dependencies, not a claim that every
+optional provider is included in the repository.
+
 ```text
-                         ┌──────────────────────┐
-                         │  Browser / Electron   │
-                         └──────────┬───────────┘
-                                    │
-                         ┌──────────▼───────────┐
-                         │   Next.js frontend   │
-                         └──────────┬───────────┘
-                                    │ authenticated API
-                         ┌──────────▼───────────┐
-                         │   FastAPI backend    │
-                         └──────┬─────┬─────┬───┘
-                                │     │     │
-                         PostgreSQL Redis MinIO
-                                │
-                    Celery workers · DeepSpace · MCP
+Users
+  |
+  +--> Browser ------------------------------+
+  |                                          |
+  +--> Electron desktop client               |
+       packaged: https://averqel.com         |
+       development: 127.0.0.1:1030          |
+                                             v
+                                  +----------------------+
+                                  | frontend              |
+                                  | Next.js, port 1030    |
+                                  +----------+-----------+
+                                             | NEXT_PROXY_TARGET
+                                             v
+                                  +----------------------+
+                                  | api                   |
+                                  | FastAPI, port 1000    |
+                                  +---+-----+------+-----+
+                                      |     |      |
+                         +------------+     |      +--> searxng:8080
+                         |                  |           server-side search
+                         v                  v
+                  postgres:5432       redis:6379
+                  durable data        queues and events
+                         ^                  ^
+                         |                  |
+              +----------+------------------+----------+
+              | worker roles: inference, worker,      |
+              | ingestion, maintenance, MCP, scheduler |
+              +------------------+---------------------+
+                                 |
+                    +------------+-------------+
+                    v                          v
+              minio:9000                  clamav:3310
+              private objects              malware scanning
+
+              inference:1011
+              local model inference for API and workers
+
+External boundaries: OAuth providers, approved MCP servers, model providers,
+and other integrations are reached by the backend. Credentials and provider
+responses do not pass through the Electron process as secrets.
 ```
+
+### Service responsibilities
+
+| Service or boundary | Runtime role |
+| --- | --- |
+| `frontend` | Serves the Next.js application and proxies configured API requests. |
+| `api` | Authenticated FastAPI endpoints, migrations, catalog seeding, and request orchestration. |
+| `worker` | Celery execution for DeepSpace and background queues. |
+| `inference` | Offline local model inference on port `1011`. |
+| `scheduler` | Celery Beat scheduling, or the optional proactive daemon. |
+| `mcp-worker` | Dedicated MCP catalog and connector background queue. |
+| `ingestion-worker` | Heavy and light document-ingestion queues. |
+| `maintenance-worker` | Maintenance queue isolated from user-facing work. |
+| `postgres` | Relational state, tenant metadata, and authorization records. |
+| `redis` | Celery broker and transient coordination state. |
+| `minio` | Private document and artifact object storage. |
+| `clamav` | Malware scanning for uploaded or processed files. |
+| `searxng` | Server-side web-search service used by the configured provider path. |
+| `backend/ops/livekit` | Separate LiveKit server image materials. The current checked-in Compose files do not start this service. |
+
+The self-hosted LiveKit package therefore requires a separate deployment
+service definition, configuration, and RTC port policy before it can be used
+as the production voice server. The Python LiveKit client dependencies alone
+do not start a LiveKit server.
 
 The main components are:
 
@@ -98,18 +154,14 @@ pnpm electron dev
 
 The default local frontend is `http://127.0.0.1:1030`. For local HTTPS or a
 local production-like API, use the environment instructions in the
-[Electron guide](applications/desktop/README.md) and
-[Docker/VPS command guide](Docs/VPS-Command.md).
+[Electron guide](applications/desktop/README.md) and the public
+[documentation index](Docs/README.md).
 
 ### Backend and services
 
 Backend setup is intentionally documented separately because it includes
 databases, Redis, object storage, OCR, malware scanning, model assets, and
-environment-specific secrets. Start with:
-
-- [Docker commands](Docs/DockerCMD.md)
-- [VPS command guide](Docs/VPS-Command.md)
-- [Production VPS runbook](Docs/VPS-Production-Runbook.md)
+environment-specific secrets. Start with the [documentation index](Docs/README.md).
 
 Never commit `.env` files, provider secrets, OAuth credentials, SSH keys, or
 model files.
@@ -167,13 +219,16 @@ Release and deployment are deliberately manual operations from protected
    commit, builds and tests API/worker/frontend images, scans them, generates
    SBOMs, signs images with keyless Cosign, publishes them to GHCR, and deploys
    the tested immutable images to the VPS.
-3. The deployment verifies health and public download assets before switching
-   the public `latest` directory. The previous application image remains
-   available for rollback.
+3. The deployment verifies service health and the deployed version. Desktop
+   packages remain in the GitHub Release and are not copied to the VPS. The
+   previous application image remains available for rollback.
+
+The landing page download buttons use GitHub's direct `latest/download` asset
+URLs. They download the selected installer without opening the release page.
 
 The workflow and operator details are documented in
-[`.github/RELEASE_SECURITY.md`](.github/RELEASE_SECURITY.md) and the
-[VPS production runbook](Docs/VPS-Production-Runbook.md).
+[`.github/RELEASE_SECURITY.md`](.github/RELEASE_SECURITY.md) and the local
+deployment runbook used by the VPS operator.
 
 ## MCP and provider security
 
@@ -184,16 +239,14 @@ ownership, allowlists, risk ceilings, read-only mode, and approval rules.
 
 AverQel currently supports approved remote Streamable HTTP and SSE providers.
 Local processes, SSH servers, and arbitrary vendor repositories are not
-automatically trusted. Read the [MCP plan](Docs/mcp-plan.md) and
-[frontend integration guide](frontend/README.md) before adding a provider.
+automatically trusted. Read the [frontend integration guide](frontend/README.md)
+and the documentation index before adding a provider.
 
 ## Documentation
 
 - [Documentation index](Docs/README.md)
 - [Frontend and DeepSpace guide](frontend/README.md)
 - [Electron desktop guide](applications/desktop/README.md)
-- [MCP plan and release status](Docs/mcp-plan.md)
-- [Production VPS runbook](Docs/VPS-Production-Runbook.md)
 - [Security policy](SECURITY.md)
 - [Support guide](SUPPORT.md)
 - [Changelog](CHANGELOG.md)

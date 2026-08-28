@@ -1,4 +1,6 @@
-const SEMVER_TAG = /^v\d+\.\d+\.\d+$/;
+// Published releases use vX.Y.Z. Manual Docker deployments without a desktop
+// release use an immutable prerelease identifier such as v0.0.0-main.abc123.
+const SEMVER_TAG = /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 // Keep these references explicit. Next.js inlines NEXT_PUBLIC_* values into
 // browser bundles, but cannot inline a value accessed through process.env[name].

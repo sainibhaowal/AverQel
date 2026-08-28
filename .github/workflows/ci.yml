@@ -126,21 +126,8 @@ jobs:
   backend-quality:
     if: needs.changes.outputs.run_backend == 'true'
     needs: changes
-    name: Backend - ${{ matrix.gate }}
+    name: Backend quality gates (parallel)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        gate:
-          - ruff
-          - ruff-fix
-          - black
-          - black-format
-          - mypy
-          - bandit
-          - pip-audit
-          - safety
-          - pytest
     defaults:
       run:
         working-directory: backend
@@ -163,22 +150,40 @@ jobs:
           pip install --no-compile --prefer-binary --timeout 1000 --retries 10 -r requirements.txt -r requirements-dev.txt
           pip install --no-compile --prefer-binary bandit safety
 
-      - name: Run backend gate
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/run-backend-gate.sh" "${{ matrix.gate }}"
+      - name: Run backend quality and security gates in parallel
+        run: |
+          set -euo pipefail
+          LOG_DIR="$(mktemp -d)"
+          declare -A PIDS
+          GATES=(ruff black mypy bandit pip-audit safety pytest)
 
-      - name: Report outdated Python dependencies
-        if: matrix.gate == 'pip-audit'
-        run: pip list --outdated || true
+          # These checks only read the checkout. The old ruff-fix and
+          # black-format matrix entries were duplicate mutation checks; ruff
+          # and black --check provide the same blocking guarantee without
+          # racing on one shared working tree.
+          for gate in "${GATES[@]}"; do
+            bash "$GITHUB_WORKSPACE/.github/scripts/run-backend-gate.sh" "$gate" \
+              >"$LOG_DIR/$gate.log" 2>&1 &
+            PIDS["$gate"]=$!
+          done
+
+          exit_code=0
+          for gate in "${GATES[@]}"; do
+            gate_code=0
+            wait "${PIDS[$gate]}" || gate_code=$?
+            cat "$LOG_DIR/$gate.log"
+            if (( gate_code != 0 )); then
+              echo "::error::Backend gate failed: $gate (exit $gate_code)"
+              exit_code=1
+            fi
+          done
+          exit "$exit_code"
 
   frontend-quality:
     if: needs.changes.outputs.run_frontend == 'true'
     needs: changes
-    name: Frontend - ${{ matrix.gate }}
+    name: Frontend quality gates (parallel)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        gate: [eslint, build, vitest]
     defaults:
       run:
         working-directory: frontend
@@ -201,25 +206,42 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: ESLint
-        if: matrix.gate == 'eslint'
-        run: pnpm lint
+      - name: Run frontend quality and security gates in parallel
+        run: |
+          set -euo pipefail
+          LOG_DIR="$(mktemp -d)"
 
-      - name: Frontend dependency security audit
-        if: matrix.gate == 'eslint'
-        run: pnpm audit --prod --audit-level high
+          # Run the lightweight read-only checks together first. If either
+          # fails, stop early instead of spending runner time on a build.
+          pnpm lint >"$LOG_DIR/eslint.log" 2>&1 &
+          ESLINT_PID=$!
+          pnpm audit --prod --audit-level high >"$LOG_DIR/pnpm-audit.log" 2>&1 &
+          AUDIT_PID=$!
+          ESLINT_STATUS=0
+          AUDIT_STATUS=0
+          wait "$ESLINT_PID" || ESLINT_STATUS=$?
+          wait "$AUDIT_PID" || AUDIT_STATUS=$?
+          cat "$LOG_DIR/eslint.log" "$LOG_DIR/pnpm-audit.log"
+          if (( ESLINT_STATUS != 0 || AUDIT_STATUS != 0 )); then
+            echo "::error::Frontend lint or security audit failed (eslint=$ESLINT_STATUS audit=$AUDIT_STATUS)"
+            exit 1
+          fi
 
-      - name: Report outdated frontend dependencies
-        if: matrix.gate == 'eslint'
-        run: pnpm outdated || true
-
-      - name: Typecheck and build
-        if: matrix.gate == 'build'
-        run: pnpm build
-
-      - name: Vitest
-        if: matrix.gate == 'vitest'
-        run: pnpm test
+          # Build and unit tests are independent, but limiting concurrency to
+          # these two heavy processes avoids exhausting a GitHub-hosted runner.
+          pnpm build >"$LOG_DIR/build.log" 2>&1 &
+          BUILD_PID=$!
+          pnpm test >"$LOG_DIR/vitest.log" 2>&1 &
+          VITEST_PID=$!
+          BUILD_STATUS=0
+          VITEST_STATUS=0
+          wait "$BUILD_PID" || BUILD_STATUS=$?
+          wait "$VITEST_PID" || VITEST_STATUS=$?
+          cat "$LOG_DIR/build.log" "$LOG_DIR/vitest.log"
+          if (( BUILD_STATUS != 0 || VITEST_STATUS != 0 )); then
+            echo "::error::Frontend build or tests failed (build=$BUILD_STATUS vitest=$VITEST_STATUS)"
+            exit 1
+          fi
 
   # This is the only required check configured for protected main.
   ci-passed:

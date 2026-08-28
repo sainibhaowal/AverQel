@@ -1,4 +1,7 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AverQel web workspace
+
+The `frontend/` package is the Next.js web client for AverQel. It runs behind
+the AverQel API in production and is also used by the Electron desktop client.
 
 ## Getting Started
 
@@ -14,19 +17,22 @@ pnpm install --frozen-lockfile
 pnpm test
 ```
 
-First, run the development server:
+Start the web client directly:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The repository's normal desktop development command starts the frontend and
+Electron together:
+
+```bash
+pnpm electron dev
+```
+
+The frontend development server listens on `http://127.0.0.1:1030`.
+
+Open [http://127.0.0.1:1030](http://127.0.0.1:1030) with your browser to see the result.
 
 ## Tavily Web Search Provider
 
@@ -165,21 +171,19 @@ Provider OAuth client credentials are configured by the AverQel operator on the 
 Google or GitHub OAuth profile is configured, the provider can remain visible in the marketplace but
 will show `Setup pending` and cannot start user authorization.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Verification
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm lint
+pnpm test
+pnpm e2e
+pnpm build
+```
 
-## Learn More
+The production Docker image uses Node.js 22 and the repository pins pnpm
+10.28.2. Deployment is handled by the checked-in GitHub Actions workflows and
+the VPS runbook, not by a Vercel deployment.
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See the [Electron guide](../applications/desktop/README.md), the
+[documentation index](../Docs/README.md), and the root
+[contributor guide](../CONTRIBUTING.md) for environment and release details.
