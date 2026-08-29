@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/averqel-release"
-          curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+          curl --fail --location --silent --show-error --retry 5 --retry-delay 3 \
             "$RELEASE_BASE_URL/release-manifest.json" \
             -o "$RUNNER_TEMP/averqel-release/release-manifest.json"
 
@@ -63,7 +63,7 @@ jobs:
             AverQel-linux-x86_64.rpm \
             AverQel-windows-x64.exe \
             AverQel-macos-universal.dmg; do
-            status="$(curl --fail --silent --show-error --retry 5 --retry-delay 3 \
+            status="$(curl --fail --location --silent --show-error --retry 5 --retry-delay 3 \
               -o /dev/null -w '%{http_code}' -I \
               "$RELEASE_BASE_URL/$name")"
             test "$status" = "200" || {

@@ -40,7 +40,10 @@ case "$GATE" in
     attempt=1
     while true; do
       set +e
-      audit_output="$(pip-audit -s osv -r requirements.txt -r requirements-dev.txt 2>&1)"
+      # Requirements are fully pinned. Audit the declared public versions
+      # directly so the CPU-only Torch wheel's local ``+cpu`` build suffix
+      # cannot make pip-audit fall back to the installed distribution.
+      audit_output="$(pip-audit -s osv --disable-pip --no-deps -r requirements.txt 2>&1 && pip-audit -s osv --disable-pip --no-deps -r requirements-dev.txt 2>&1)"
       audit_status=$?
       set -e
       printf '%s\n' "$audit_output"

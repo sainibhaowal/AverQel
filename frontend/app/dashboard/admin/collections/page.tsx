@@ -201,8 +201,10 @@ export default function AdminCollectionsPage() {
 
   useEffect(() => {
     if (showProfileSettings && userProfile) {
-      setPreviewAvatar(userProfile.avatar || DEFAULT_AVATAR_SVG);
-      setZoom(1);
+      queueMicrotask(() => {
+        setPreviewAvatar(userProfile.avatar || DEFAULT_AVATAR_SVG);
+        setZoom(1);
+      });
     }
   }, [showProfileSettings, userProfile]);
   const notifiedPendingRef = useRef(false);
@@ -212,16 +214,16 @@ export default function AdminCollectionsPage() {
     const searchParams = new URLSearchParams(window.location.search);
     const queryId = searchParams.get("id");
     if (queryId) {
-      setActiveCollectionId(queryId);
+      queueMicrotask(() => setActiveCollectionId(queryId));
       return;
     }
 
     const parts = pathname.split("/");
     const pathId = parts[parts.length - 1];
     if (pathId && pathId !== "collections" && pathId !== "admin") {
-      setActiveCollectionId(pathId);
+      queueMicrotask(() => setActiveCollectionId(pathId));
     } else {
-      setActiveCollectionId(null);
+      queueMicrotask(() => setActiveCollectionId(null));
     }
   }, [pathname, searchParams]);
 
@@ -284,7 +286,7 @@ export default function AdminCollectionsPage() {
   };
 
   useEffect(() => {
-    void fetchCollections();
+    queueMicrotask(() => void fetchCollections());
     const interval = window.setInterval(() => {
       void fetchCollections();
     }, 15000);

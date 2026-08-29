@@ -142,11 +142,13 @@ function AssignmentRow({
   const [selectedModel, setSelectedModel] = React.useState(assignment?.model_name || "");
 
   React.useEffect(() => {
-    setSelectedProviderId(
-      assignment?.provider_config_id ||
-        (allowsServerDefault ? "" : compatibleProviders[0]?.id || ""),
-    );
-    setSelectedModel(assignment?.model_name || "");
+    queueMicrotask(() => {
+      setSelectedProviderId(
+        assignment?.provider_config_id ||
+          (allowsServerDefault ? "" : compatibleProviders[0]?.id || ""),
+      );
+      setSelectedModel(assignment?.model_name || "");
+    });
   }, [
     allowsServerDefault,
     assignment?.model_name,

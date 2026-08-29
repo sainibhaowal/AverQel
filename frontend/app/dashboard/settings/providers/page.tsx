@@ -114,7 +114,7 @@ export default function ProvidersSettingsPage() {
   }, []);
 
   useEffect(() => {
-    void loadPage();
+    queueMicrotask(() => void loadPage());
   }, [loadPage]);
 
   useEffect(() => {
@@ -146,7 +146,7 @@ export default function ProvidersSettingsPage() {
       .sort(compareProvidersForDefault);
 
     if (kindProviders.length === 0) {
-      if (selectedProviderId !== null) setSelectedProviderId(null);
+      if (selectedProviderId !== null) queueMicrotask(() => setSelectedProviderId(null));
       return;
     }
 
@@ -155,7 +155,7 @@ export default function ProvidersSettingsPage() {
       : false;
 
     if (!hasSelectedProvider) {
-      setSelectedProviderId(kindProviders[0].id);
+      queueMicrotask(() => setSelectedProviderId(kindProviders[0].id));
     }
   }, [activeTab, browsingCatalog, loading, providers, selectedProviderId, showCreateFlow]);
 
@@ -197,10 +197,10 @@ export default function ProvidersSettingsPage() {
 
   useEffect(() => {
     if (selectedProviderId) {
-      void loadModels(selectedProviderId);
-      if (isNarrowViewport) setIsInventoryExpanded(false); // Auto-collapse on mobile when selected
+      queueMicrotask(() => void loadModels(selectedProviderId));
+      if (isNarrowViewport) queueMicrotask(() => setIsInventoryExpanded(false)); // Auto-collapse on mobile when selected
     } else {
-      setProviderModels([]);
+      queueMicrotask(() => setProviderModels([]));
     }
   }, [loadModels, selectedProviderId, isNarrowViewport]);
 
@@ -233,10 +233,7 @@ export default function ProvidersSettingsPage() {
     }
   }
 
-  const selectedProvider = useMemo(
-    () => providers.find((p) => p.id === selectedProviderId) || null,
-    [providers, selectedProviderId],
-  );
+  const selectedProvider = providers.find((p) => p.id === selectedProviderId) || null;
 
   const selectedCatalogEntry = useMemo(
     () =>

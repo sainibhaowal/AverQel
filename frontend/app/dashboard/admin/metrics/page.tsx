@@ -75,7 +75,7 @@ export default function MetricsPage() {
   }, []);
 
   useEffect(() => {
-    fetchMetrics();
+    queueMicrotask(() => void fetchMetrics());
     const interval = setInterval(fetchMetrics, 15000);
     return () => clearInterval(interval);
   }, [fetchMetrics]);

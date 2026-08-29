@@ -72,7 +72,7 @@ export default function DocumentInspector({
   const statusRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, []);
 
   const isTerminalStatus = useCallback((status: string | null | undefined) => {
@@ -111,9 +111,11 @@ export default function DocumentInspector({
   useEffect(() => {
     if (!isOpen || !documentId) return;
 
-    setShowDeleteConfirm(false);
-    setErrorMessage(null);
-    setData(null);
+    queueMicrotask(() => {
+      setShowDeleteConfirm(false);
+      setErrorMessage(null);
+      setData(null);
+    });
     statusRef.current = null;
 
     let intervalId: number | null = null;

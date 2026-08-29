@@ -15,7 +15,7 @@ export default function MCPToolPermissionTable({
 }) {
   const [items, setItems] = useState(tools);
   const [saving, setSaving] = useState<string | null>(null);
-  useEffect(() => setItems(tools), [tools]);
+  useEffect(() => queueMicrotask(() => setItems(tools)), [tools]);
 
   const changeMode = async (tool: MCPTool, mode: MCPToolMode) => {
     const previous = items;

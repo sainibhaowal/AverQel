@@ -240,11 +240,11 @@ export default function ProfilePage() {
     try {
       const res = (await fetchWithAuth("/auth/logout-all", { method: "POST" })) as Response;
       if (res.ok) {
-        window.location.href = "/auth/login";
+        window.location.replace("/auth/login");
       }
     } catch {
       // still redirect — token is likely revoked
-      window.location.href = "/auth/login";
+      window.location.replace("/auth/login");
     } finally {
       setLogoutAllLoading(false);
     }

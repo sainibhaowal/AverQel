@@ -179,8 +179,10 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    setClientClock(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-    fetchDashboardData();
+    queueMicrotask(() => {
+      setClientClock(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      void fetchDashboardData();
+    });
   }, [fetchDashboardData]);
 
   useVisibilityAwareInterval(fetchDashboardData, 30000);

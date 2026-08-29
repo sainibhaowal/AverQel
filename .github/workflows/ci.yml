@@ -116,9 +116,11 @@ jobs:
             fi
           fi
 
-          echo "run_backend=$run_backend" >> "$GITHUB_OUTPUT"
-          echo "run_frontend=$run_frontend" >> "$GITHUB_OUTPUT"
-          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          {
+            echo "run_backend=$run_backend"
+            echo "run_frontend=$run_frontend"
+            echo "docs_only=$docs_only"
+          } >> "$GITHUB_OUTPUT"
           echo "Backend checks: $run_backend"
           echo "Frontend checks: $run_frontend"
           echo "Documentation only: $docs_only"

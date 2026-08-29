@@ -42,6 +42,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [oauthProvider, setOauthProvider] = useState<OAuthProvider | null>(null);
+  const [show2fa, setShow2fa] = useState(false);
+  const [oauthTwoFactor, setOauthTwoFactor] = useState(false);
+  const [pendingToken, setPendingToken] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [verifying2fa, setVerifying2fa] = useState(false);
 
   const startOAuth = (provider: OAuthProvider) => {
     if (loading || oauthProvider) {
@@ -74,13 +79,15 @@ export default function LoginPage() {
     const savedRemember = localStorage.getItem("averqel_remember") === "true";
 
     if (savedRemember) {
-      setRememberMe(true);
-      if (savedEmail) {
-        setFormData((current) => ({
-          ...current,
-          email: savedEmail,
-        }));
-      }
+      queueMicrotask(() => {
+        setRememberMe(true);
+        if (savedEmail) {
+          setFormData((current) => ({
+            ...current,
+            email: savedEmail,
+          }));
+        }
+      });
       localStorage.removeItem("averqel_saved_pass");
     }
   }, []);
@@ -97,23 +104,27 @@ export default function LoginPage() {
     }
 
     if (oauthResult === "2fa") {
-      setOauthProvider(null);
-      setOauthTwoFactor(true);
-      setShow2fa(true);
-      setError("Complete two-factor authentication to finish signing in.");
-      router.replace("/auth/login");
+      queueMicrotask(() => {
+        setOauthProvider(null);
+        setOauthTwoFactor(true);
+        setShow2fa(true);
+        setError("Complete two-factor authentication to finish signing in.");
+        router.replace("/auth/login");
+      });
       return;
     }
 
     if (oauthResult !== "success") {
-      setOauthProvider(null);
-      setError(oauthErrorMessage(params.get("reason"), providerLabel));
-      router.replace("/auth/login");
+      queueMicrotask(() => {
+        setOauthProvider(null);
+        setError(oauthErrorMessage(params.get("reason"), providerLabel));
+        router.replace("/auth/login");
+      });
       return;
     }
 
     let cancelled = false;
-    setOauthProvider(callbackProvider === "github" ? "github" : "google");
+    queueMicrotask(() => setOauthProvider(callbackProvider === "github" ? "github" : "google"));
     const finishOAuthLogin = async () => {
       setLoading(true);
       setError("");
@@ -186,13 +197,6 @@ export default function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  // 2FA challenge state
-  const [show2fa, setShow2fa] = useState(false);
-  const [oauthTwoFactor, setOauthTwoFactor] = useState(false);
-  const [pendingToken, setPendingToken] = useState("");
-  const [totpCode, setTotpCode] = useState("");
-  const [verifying2fa, setVerifying2fa] = useState(false);
-
   useEffect(() => {
     const oauthResult = new URLSearchParams(window.location.search).get("oauth");
     if (!authLoading && user && !oauthResult) {
@@ -214,7 +218,7 @@ export default function LoginPage() {
     return fallback;
   };
 
-  const safeReadJson = async (response: Response): Promise<unknown | null> => {
+  async function safeReadJson(response: Response): Promise<unknown | null> {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
       return null;
@@ -224,15 +228,15 @@ export default function LoginPage() {
     } catch {
       return null;
     }
-  };
+  }
 
-  const completeLogin = (
+  function completeLogin(
     data: {
       access_token: string;
       user: { user_id: string; tenant_id: string; roles: string[] };
     },
     emailOverride?: string,
-  ) => {
+  ) {
     const email = emailOverride || formData.email;
     // Desktop sessions are persistent, but passwords are never stored.
     const persistentSession = rememberMe || isDesktopEnvironment();
@@ -256,7 +260,7 @@ export default function LoginPage() {
       persistentSession,
     );
     router.push("/dashboard");
-  };
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

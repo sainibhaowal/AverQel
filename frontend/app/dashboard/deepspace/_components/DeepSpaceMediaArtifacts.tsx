@@ -20,8 +20,10 @@ function ArtifactSource({ artifact }: { artifact: DeepSpaceMediaArtifact }) {
   useEffect(() => {
     let active = true;
     let nextObjectUrl: string | null = null;
-    setObjectUrl(null);
-    setError(false);
+    queueMicrotask(() => {
+      setObjectUrl(null);
+      setError(false);
+    });
     void (async () => {
       try {
         const response = (await fetchWithAuth(artifact.url, { timeoutMs: 30_000 })) as Response;

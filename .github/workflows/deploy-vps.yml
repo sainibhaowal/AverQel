@@ -55,9 +55,11 @@ jobs:
             echo "::notice::No release tag is attached to this main commit; using $RELEASE_VERSION"
           fi
           IMAGE_TAG="sha-${SHA:0:12}"
-          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
-          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "image_tag=$IMAGE_TAG"
+            echo "release_version=$RELEASE_VERSION"
+            echo "sha=$SHA"
+          } >> "$GITHUB_OUTPUT"
           echo "Deploying release $RELEASE_VERSION with immutable image tag $IMAGE_TAG from main commit $SHA"
 
   build-and-test-images:
@@ -157,7 +159,7 @@ jobs:
           key: trivy-db-${{ runner.os }}-${{ github.run_id }}
           restore-keys: trivy-db-${{ runner.os }}-
 
-      - name: Scan API, worker, and frontend images in parallel
+      - name: Scan API, worker, and frontend images sequentially
         env:
           RELEASE_VERSION: ${{ needs.resolve-source.outputs.release_version }}
         run: |
@@ -169,17 +171,14 @@ jobs:
               --format table \
               --exit-code 1 \
               --ignore-unfixed \
-              --vuln-type os,library \
+              --pkg-types os,library \
               --severity CRITICAL,HIGH \
               "$IMAGE_PREFIX-$service:$RELEASE_VERSION"
           }
-          scan api > trivy-api.log 2>&1 & API_PID=$!
-          scan worker > trivy-worker.log 2>&1 & WORKER_PID=$!
-          scan frontend > trivy-frontend.log 2>&1 & FRONTEND_PID=$!
           API_STATUS=0; WORKER_STATUS=0; FRONTEND_STATUS=0
-          wait "$API_PID" || API_STATUS=$?
-          wait "$WORKER_PID" || WORKER_STATUS=$?
-          wait "$FRONTEND_PID" || FRONTEND_STATUS=$?
+          scan api > trivy-api.log 2>&1 || API_STATUS=$?
+          scan worker > trivy-worker.log 2>&1 || WORKER_STATUS=$?
+          scan frontend > trivy-frontend.log 2>&1 || FRONTEND_STATUS=$?
           cat trivy-api.log trivy-worker.log trivy-frontend.log
           rm -f trivy-api.log trivy-worker.log trivy-frontend.log
           if (( API_STATUS != 0 || WORKER_STATUS != 0 || FRONTEND_STATUS != 0 )); then

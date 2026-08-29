@@ -62,15 +62,17 @@ export default function MCPInspectorClient() {
 
   useEffect(() => {
     if (!id || typeof window === "undefined") return;
-    void load();
+    queueMicrotask(() => void load());
     if (process.env.NODE_ENV === "test") return;
     const timer = window.setInterval(() => void load(), 10000);
     return () => window.clearInterval(timer);
   }, [id, load]);
   useEffect(() => {
     if (mcpStatusParam === "connected") {
-      setCallbackMessage(
-        "Connected successfully. Your account, tools, and permissions are ready to configure.",
+      queueMicrotask(() =>
+        setCallbackMessage(
+          "Connected successfully. Your account, tools, and permissions are ready to configure.",
+        ),
       );
       const url = new URL(window.location.href);
       url.searchParams.delete("mcp_status");

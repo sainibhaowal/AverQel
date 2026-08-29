@@ -49,8 +49,12 @@ export default function MCPConnectionScopePanel({
   );
 
   useEffect(() => {
-    if (initialConversationId) void loadScope("conversation", initialConversationId);
-    if (initialDeepSpaceId) void loadScope("deepspace", initialDeepSpaceId);
+    if (initialConversationId) {
+      queueMicrotask(() => void loadScope("conversation", initialConversationId));
+    }
+    if (initialDeepSpaceId) {
+      queueMicrotask(() => void loadScope("deepspace", initialDeepSpaceId));
+    }
   }, [initialConversationId, initialDeepSpaceId, loadScope]);
 
   async function toggle(scope: MCPScope, scopeId: string, enabled: boolean) {

@@ -91,11 +91,11 @@ export default function MCPDashboard() {
   }, [query]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => void load());
   }, [load]);
 
   useEffect(() => {
-    setClientReady(true);
+    queueMicrotask(() => setClientReady(true));
   }, []);
 
   useEffect(() => {
@@ -112,8 +112,10 @@ export default function MCPDashboard() {
       );
       return;
     }
-    setTab("marketplace");
-    setCallbackMessage("MCP authorization did not complete.");
+    queueMicrotask(() => {
+      setTab("marketplace");
+      setCallbackMessage("MCP authorization did not complete.");
+    });
     const url = new URL(window.location.href);
     url.searchParams.delete("mcp_status");
     url.searchParams.delete("server_id");

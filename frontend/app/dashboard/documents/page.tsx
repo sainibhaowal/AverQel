@@ -168,7 +168,7 @@ export default function DocumentsPage() {
   );
 
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, []);
 
   const fetchDocuments = async (showLoading = true) => {
@@ -197,7 +197,7 @@ export default function DocumentsPage() {
   };
 
   useEffect(() => {
-    fetchDocuments();
+    queueMicrotask(() => void fetchDocuments());
   }, []);
 
   // Real-time updates via SSE

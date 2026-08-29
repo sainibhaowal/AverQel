@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
 import {
@@ -47,11 +47,13 @@ export function useDeepSpaceStream({
   const onFinallyRef = useRef(onFinally);
   const onUserCancelRef = useRef(onUserCancel);
 
-  onEventRef.current = onEvent;
-  onEventsRef.current = onEvents;
-  onTransportErrorRef.current = onTransportError;
-  onFinallyRef.current = onFinally;
-  onUserCancelRef.current = onUserCancel;
+  useEffect(() => {
+    onEventRef.current = onEvent;
+    onEventsRef.current = onEvents;
+    onTransportErrorRef.current = onTransportError;
+    onFinallyRef.current = onFinally;
+    onUserCancelRef.current = onUserCancel;
+  }, [onEvent, onEvents, onFinally, onTransportError, onUserCancel]);
 
   const cancel = useCallback(() => {
     if (!abortRef.current) return;

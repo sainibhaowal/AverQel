@@ -18,7 +18,7 @@ import {
   User,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { apiV1 } from "@/lib/api";
 
@@ -94,7 +94,7 @@ export default function MemoryPanel() {
   const [importance, setImportance] = useState("0.5");
   const [confirmClear, setConfirmClear] = useState(false);
 
-  const load = async (query = "") => {
+  const load = useCallback(async (query = "") => {
     setLoading(true);
     try {
       const [memoryData, reportData, preferencesData] = await Promise.all([
@@ -115,17 +115,19 @@ export default function MemoryPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    void load();
-  }, []);
+    queueMicrotask(() => void load());
+  }, [load]);
 
   // A completed chat turn can create an inferred memory while this panel is
   // already open. Reconcile from the API when the real stream event arrives;
   // the server remains the source of truth and no optimistic memory is shown.
   const loadRef = useRef(load);
-  loadRef.current = load;
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
   useEffect(() => {
     const handleMemoryUpdate = () => {
       void loadRef.current(searchQuery);

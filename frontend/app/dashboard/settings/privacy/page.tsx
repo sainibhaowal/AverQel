@@ -190,8 +190,10 @@ export default function PrivacySettingsPage() {
     if (showDeleteModal) {
       setTimeout(() => passwordInputRef.current?.focus(), 120);
     } else {
-      setDeletePassword("");
-      setShowPassword(false);
+      queueMicrotask(() => {
+        setDeletePassword("");
+        setShowPassword(false);
+      });
     }
   }, [showDeleteModal]);
 
@@ -238,7 +240,7 @@ export default function PrivacySettingsPage() {
       setShowDeleteModal(false);
       toast.success("Your account has been permanently deleted.");
       await logout();
-      window.location.href = "/auth/login";
+      window.location.replace("/auth/login");
     } catch (error) {
       console.error(error);
       toast.error(error instanceof Error ? error.message : "Delete failed.");

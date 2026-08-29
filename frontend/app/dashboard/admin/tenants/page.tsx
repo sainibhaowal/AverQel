@@ -68,7 +68,7 @@ export default function AdminTenantsPage() {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => void load());
   }, [load]);
 
   return (

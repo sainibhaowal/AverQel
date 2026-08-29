@@ -190,6 +190,7 @@ export default function AdminCollectionDetailPage({
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const reconnectDelayRef = useRef<number>(1000); // Start at 1s
+  const connectWebSocketRef = useRef<(() => void) | null>(null);
   const processedMessageIdsRef = useRef<Set<string>>(new Set());
 
   const scrollChatToBottom = () => {
@@ -199,7 +200,7 @@ export default function AdminCollectionDetailPage({
   // Load text file content dynamically for in-app code/text previews
   useEffect(() => {
     if (!activePreviewFile) {
-      setPreviewTextContent(null);
+      queueMicrotask(() => setPreviewTextContent(null));
       return;
     }
     const { url, filename, mimeType } = activePreviewFile;
@@ -222,7 +223,7 @@ export default function AdminCollectionDetailPage({
       filename.endsWith(".md");
 
     if (isTextReadable) {
-      setLoadingText(true);
+      queueMicrotask(() => setLoadingText(true));
       fetch(url)
         .then((r) => r.text())
         .then((txt) => {
@@ -511,7 +512,7 @@ export default function AdminCollectionDetailPage({
 
       reconnectTimeoutRef.current = window.setTimeout(() => {
         reconnectTimeoutRef.current = null;
-        connectWebSocket();
+        connectWebSocketRef.current?.();
       }, delay);
     };
 
@@ -525,7 +526,14 @@ export default function AdminCollectionDetailPage({
   }, [collectionId, cryptoKey, user?.id]);
 
   useEffect(() => {
-    connectWebSocket();
+    connectWebSocketRef.current = connectWebSocket;
+    return () => {
+      connectWebSocketRef.current = null;
+    };
+  }, [connectWebSocket]);
+
+  useEffect(() => {
+    queueMicrotask(() => connectWebSocket());
     return () => {
       if (socketRef.current) {
         console.log("Closing active collection WebSocket connection");
@@ -544,7 +552,7 @@ export default function AdminCollectionDetailPage({
     };
   }, [collectionId, connectWebSocket]);
 
-  const loadCollectionData = async (showLoadingOverlay = true) => {
+  async function loadCollectionData(showLoadingOverlay = true) {
     if (!collectionId) return;
     if (showLoadingOverlay) {
       setLoading(true);
@@ -609,7 +617,7 @@ export default function AdminCollectionDetailPage({
         setLoading(false);
       }
     }
-  };
+  }
 
   useEffect(() => {
     void loadCollectionData();

@@ -22,7 +22,7 @@ import {
   FilePlus2,
   Download,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { fetchWithAuth, uploadWithAuthProgress } from "@/lib/api";
 
@@ -91,6 +91,25 @@ type DeepSpaceLibraryDrawerProps = {
 // through the panel control, but the safe default is always the full panel.
 const LIBRARY_FILES_COLLAPSED_KEY = "deepspace.library.files.collapsed.v2";
 
+function UploadCancelButton({
+  item,
+  onCancel,
+}: {
+  item: UploadItem;
+  onCancel: (item: UploadItem) => Promise<void>;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => void onCancel(item)}
+      className="text-foreground/50 hover:text-rose-300"
+      title="Cancel upload"
+    >
+      <X size={12} />
+    </button>
+  );
+}
+
 export default function DeepSpaceLibraryDrawer({
   open,
   embedded = false,
@@ -135,6 +154,8 @@ export default function DeepSpaceLibraryDrawer({
   const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
   const [movingEntryId, setMovingEntryId] = useState<string | null>(null);
   const uploadControllersRef = useRef<Record<string, AbortController>>({});
+  const resumeUploadsRef = useRef<(() => Promise<void>) | null>(null);
+  const cancelUploadRef = useRef<((item: UploadItem) => Promise<void>) | null>(null);
   const activeUploadIdsRef = useRef<Set<string>>(new Set());
   const draggedEntryRef = useRef<{
     kind: "file" | "folder";
@@ -146,18 +167,21 @@ export default function DeepSpaceLibraryDrawer({
   useEffect(() => {
     if (!embedded) return;
     try {
-      setIsFilesCollapsed(window.localStorage.getItem(LIBRARY_FILES_COLLAPSED_KEY) === "true");
+      const collapsed = window.localStorage.getItem(LIBRARY_FILES_COLLAPSED_KEY) === "true";
+      queueMicrotask(() => setIsFilesCollapsed(collapsed));
     } catch {
       // Storage can be unavailable in privacy-restricted browser contexts.
     }
   }, [embedded]);
 
   useEffect(() => {
-    setCurrentFolderId(null);
-    setFolderStack([]);
-    setSelected(null);
-    setSelectedFileIds(new Set());
-    setDraft("");
+    queueMicrotask(() => {
+      setCurrentFolderId(null);
+      setFolderStack([]);
+      setSelected(null);
+      setSelectedFileIds(new Set());
+      setDraft("");
+    });
   }, [conversationId]);
 
   const toggleFilesCollapsed = () => {
@@ -203,12 +227,12 @@ export default function DeepSpaceLibraryDrawer({
   };
 
   useEffect(() => {
-    if (open) void refresh();
+    if (open) queueMicrotask(() => void refresh());
   }, [open, conversationId, currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (open && conversationId) void resumeUploads();
-  }, [open, conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (open && conversationId) queueMicrotask(() => void resumeUploadsRef.current?.());
+  }, [open, conversationId]);
 
   useEffect(() => {
     const handleLibraryChanged = () => {
@@ -562,11 +586,11 @@ export default function DeepSpaceLibraryDrawer({
     }
   };
 
-  const updateUploadItem = (id: string, update: Partial<UploadItem>) => {
+  const updateUploadItem = useCallback((id: string, update: Partial<UploadItem>) => {
     setUploadItems((items) =>
       items.map((item) => (item.id === id ? { ...item, ...update } : item)),
     );
-  };
+  }, []);
 
   const readUpload = async (uploadId: string): Promise<LibraryUpload | null> => {
     if (!conversationId) return null;
@@ -673,7 +697,7 @@ export default function DeepSpaceLibraryDrawer({
     return (await response.json()) as LibraryUpload;
   };
 
-  const resumeUploads = async () => {
+  async function resumeUploads() {
     if (!conversationId) return;
     const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/uploads`, {
       timeoutMs: 8_000,
@@ -739,7 +763,14 @@ export default function DeepSpaceLibraryDrawer({
       );
       void runUploadSession(session, persisted.file, itemId);
     }
-  };
+  }
+
+  useEffect(() => {
+    resumeUploadsRef.current = resumeUploads;
+    return () => {
+      resumeUploadsRef.current = null;
+    };
+  });
 
   const importFiles = async (input: File[] | FileList) => {
     if (!conversationId) return;
@@ -790,18 +821,28 @@ export default function DeepSpaceLibraryDrawer({
     setImporting(false);
   };
 
-  const cancelUpload = async (item: UploadItem) => {
-    if (!conversationId || !item.uploadId) return;
-    uploadControllersRef.current[item.uploadId]?.abort();
-    const response = (await fetchWithAuth(
-      `/deepspace/library/${conversationId}/uploads/${item.uploadId}/cancel`,
-      { method: "POST", timeoutMs: 15_000 },
-    )) as Response;
-    if (response.ok) {
-      await deletePersistedUpload(item.uploadId);
-      updateUploadItem(item.id, { status: "cancelled", error: "Cancelled" });
-    }
-  };
+  const cancelUpload = useCallback(
+    async (item: UploadItem) => {
+      if (!conversationId || !item.uploadId) return;
+      uploadControllersRef.current[item.uploadId]?.abort();
+      const response = (await fetchWithAuth(
+        `/deepspace/library/${conversationId}/uploads/${item.uploadId}/cancel`,
+        { method: "POST", timeoutMs: 15_000 },
+      )) as Response;
+      if (response.ok) {
+        await deletePersistedUpload(item.uploadId);
+        updateUploadItem(item.id, { status: "cancelled", error: "Cancelled" });
+      }
+    },
+    [conversationId, updateUploadItem],
+  );
+
+  useEffect(() => {
+    cancelUploadRef.current = cancelUpload;
+    return () => {
+      cancelUploadRef.current = null;
+    };
+  }, [cancelUpload]);
 
   const handleClipboardPaste = (event: React.ClipboardEvent) => {
     const files = Array.from(event.clipboardData.files);
@@ -1032,14 +1073,12 @@ export default function DeepSpaceLibraryDrawer({
                         item.status === "uploading" ||
                         item.status === "processing") &&
                       item.uploadId ? (
-                        <button
-                          type="button"
-                          onClick={() => void cancelUpload(item)}
-                          className="text-foreground/50 hover:text-rose-300"
-                          title="Cancel upload"
-                        >
-                          <X size={12} />
-                        </button>
+                        <UploadCancelButton
+                          item={item}
+                          onCancel={(uploadItem) =>
+                            cancelUploadRef.current?.(uploadItem) ?? Promise.resolve()
+                          }
+                        />
                       ) : null}
                     </div>
                   ))}

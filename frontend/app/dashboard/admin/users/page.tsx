@@ -156,15 +156,15 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    void loadUsers();
+    queueMicrotask(() => void loadUsers());
   }, [loadUsers]);
 
   useEffect(() => {
     if (!selectedUserId) {
-      setDetail(null);
+      queueMicrotask(() => setDetail(null));
       return;
     }
-    void loadDetail(selectedUserId);
+    queueMicrotask(() => void loadDetail(selectedUserId));
   }, [loadDetail, selectedUserId]);
 
   const refreshAll = async (userId?: string) => {

@@ -168,7 +168,7 @@ export default function AuditLogsPage() {
   );
 
   useEffect(() => {
-    fetchLogs();
+    queueMicrotask(() => void fetchLogs());
   }, [fetchLogs]);
 
   const toggleExpand = (id: string) => {
