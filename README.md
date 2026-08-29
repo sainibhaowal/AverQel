@@ -263,7 +263,9 @@ AverQel is open source under the [Apache License 2.0](LICENSE). The license
 allows use, modification, and redistribution under its terms and includes an
 express patent grant. Third-party dependencies and bundled runtimes retain
 their own licenses. AverQel trademarks and logos are not granted for unrelated
-branding use by the Apache license.
+branding use by the Apache license. See [TRADEMARKS.md](TRADEMARKS.md),
+[BRAND.md](BRAND.md), and [NOTICE](NOTICE) for the brand and attribution
+policy.
 
 ## Community standards
 
