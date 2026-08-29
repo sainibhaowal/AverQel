@@ -487,7 +487,7 @@ export async function fetchWithAuth(
 
     // If refresh fails, the session is already invalidated; redirect the current tab.
     if (typeof window !== "undefined" && window.location.pathname !== "/auth/login") {
-      window.location.href = "/auth/login";
+      window.location.replace("/auth/login");
     }
     return response; // Return early for unhandled 401s that bypassed redirect
   }

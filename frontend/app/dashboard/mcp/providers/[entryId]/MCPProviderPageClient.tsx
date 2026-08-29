@@ -59,7 +59,7 @@ export default function MCPProviderPageClient() {
       const result = await connectMarketplaceEntry(value.id);
       if (result.authorization_url) window.location.assign(result.authorization_url);
       else
-        window.location.assign(`/dashboard/mcp/inspector/${encodeURIComponent(result.server.id)}`);
+        window.location.replace(`/dashboard/mcp/inspector/${encodeURIComponent(result.server.id)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to connect provider.");
       setConnecting(false);

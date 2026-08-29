@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
 import {
@@ -44,10 +44,12 @@ export function useQueryStream({
   const onFinallyRef = useRef(onFinally);
   const onUserCancelRef = useRef(onUserCancel);
 
-  onEventRef.current = onEvent;
-  onTransportErrorRef.current = onTransportError;
-  onFinallyRef.current = onFinally;
-  onUserCancelRef.current = onUserCancel;
+  useEffect(() => {
+    onEventRef.current = onEvent;
+    onTransportErrorRef.current = onTransportError;
+    onFinallyRef.current = onFinally;
+    onUserCancelRef.current = onUserCancel;
+  }, [onEvent, onFinally, onTransportError, onUserCancel]);
 
   const cancel = useCallback(() => {
     if (!abortRef.current) {

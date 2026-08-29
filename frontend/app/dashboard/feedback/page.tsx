@@ -60,11 +60,7 @@ export default function FeedbackPage() {
     category: "suggestion" as FeedbackCategory,
   });
 
-  useEffect(() => {
-    fetchCampaigns();
-  }, []);
-
-  const fetchCampaigns = async () => {
+  async function fetchCampaigns() {
     try {
       const res = await fetchWithAuth("/app-feedback/campaigns");
 
@@ -77,7 +73,11 @@ export default function FeedbackPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  useEffect(() => {
+    queueMicrotask(() => void fetchCampaigns());
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

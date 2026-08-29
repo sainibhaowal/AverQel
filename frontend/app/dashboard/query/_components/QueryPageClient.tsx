@@ -151,7 +151,7 @@ export default function QueryPageClient() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, []);
   const [deleteAssistantMessageId, setDeleteAssistantMessageId] = useState<string | null>(null);
   const [deleteAssistantBusy, setDeleteAssistantBusy] = useState(false);
@@ -506,8 +506,10 @@ export default function QueryPageClient() {
   useEffect(() => {
     let active = true;
     if (!selectedCollectionId) {
-      setSelectedCollectionDocumentIds(null);
-      setCollectionScopeLoading(false);
+      queueMicrotask(() => {
+        setSelectedCollectionDocumentIds(null);
+        setCollectionScopeLoading(false);
+      });
       return;
     }
 

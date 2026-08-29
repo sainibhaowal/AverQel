@@ -173,13 +173,13 @@ export default function DeletionPage() {
 
   useEffect(() => {
     if (isAdmin) {
-      void fetchTenants();
+      queueMicrotask(() => void fetchTenants());
     }
   }, [fetchTenants, isAdmin]);
 
   useEffect(() => {
     if (isAdmin && !selectedTenantId) return;
-    void fetchRequests();
+    queueMicrotask(() => void fetchRequests());
   }, [fetchRequests, isAdmin, selectedTenantId]);
 
   useEffect(() => {

@@ -69,7 +69,7 @@ function SupportContent() {
   }, [queryUserId, selectedUserId]);
 
   useEffect(() => {
-    void loadData();
+    queueMicrotask(() => void loadData());
   }, [loadData]);
 
   const handleUpdateStatus = async (ticketId: string, newStatus: string) => {

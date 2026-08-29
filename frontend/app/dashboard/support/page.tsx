@@ -53,7 +53,7 @@ export default function SupportPage() {
   };
 
   useEffect(() => {
-    void loadTickets();
+    queueMicrotask(() => void loadTickets());
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

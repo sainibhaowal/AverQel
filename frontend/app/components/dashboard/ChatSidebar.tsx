@@ -101,7 +101,7 @@ export default function ChatSidebar({
   }, [endpointBase]);
 
   useEffect(() => {
-    fetchConversations();
+    queueMicrotask(() => void fetchConversations());
     const interval = setInterval(fetchConversations, 10000);
     return () => clearInterval(interval);
   }, [fetchConversations]);

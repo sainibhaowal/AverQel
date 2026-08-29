@@ -151,7 +151,7 @@ BLACK_BIN="black"
 PYTEST_BIN="pytest"
 BANDIT_BIN="bandit"
 PIP_AUDIT_BIN="pip-audit"
-PIP_AUDIT_CMD='"$PIP_AUDIT_BIN" -s osv -r requirements.txt -r requirements-dev.txt'
+PIP_AUDIT_CMD='"$PIP_AUDIT_BIN" -s osv --disable-pip --no-deps -r requirements.txt && "$PIP_AUDIT_BIN" -s osv --disable-pip --no-deps -r requirements-dev.txt'
 
 if [[ -x "$BACKEND_DIR/.venv/bin/ruff" ]]; then
   RUFF_BIN="$BACKEND_DIR/.venv/bin/ruff"
@@ -167,7 +167,7 @@ if [[ -x "$BACKEND_DIR/.venv/bin/bandit" ]]; then
 fi
 if [[ -x "$BACKEND_DIR/.venv/bin/pip-audit" ]]; then
   PIP_AUDIT_BIN="$BACKEND_DIR/.venv/bin/pip-audit"
-  PIP_AUDIT_CMD='"$PIP_AUDIT_BIN" -s osv -l'
+  PIP_AUDIT_CMD='"$PIP_AUDIT_BIN" -s osv --disable-pip --no-deps -r requirements.txt && "$PIP_AUDIT_BIN" -s osv --disable-pip --no-deps -r requirements-dev.txt'
 fi
 
 if [[ "$DRY_RUN" == "true" ]]; then

@@ -70,7 +70,7 @@ export default function AdminDocumentsPage() {
   }, []);
 
   useEffect(() => {
-    void loadSummary();
+    queueMicrotask(() => void loadSummary());
   }, [loadSummary]);
 
   return (

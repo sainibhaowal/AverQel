@@ -12,5 +12,9 @@ def test_live_health_endpoint() -> None:
     response = client.get("/api/v1/health/live")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["version"]
+    assert "git_sha" in payload
+    assert "build_timestamp_utc" in payload
     assert response.headers.get("X-Trace-Id")

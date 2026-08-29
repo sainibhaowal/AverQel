@@ -36,7 +36,7 @@ export default function MCPConnectionPolicyPanel({
   const [draft, setDraft] = useState<EditablePolicy>(toEditable(policy));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  useEffect(() => setDraft(toEditable(policy)), [policy]);
+  useEffect(() => queueMicrotask(() => setDraft(toEditable(policy))), [policy]);
 
   const save = async () => {
     setSaving(true);

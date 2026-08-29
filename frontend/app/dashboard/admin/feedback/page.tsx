@@ -48,10 +48,10 @@ export default function AdminFeedbackPage() {
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    queueMicrotask(() => void fetchData());
   }, []);
 
-  const fetchData = async () => {
+  async function fetchData() {
     try {
       const [subRes, campRes] = await Promise.all([
         fetchWithAuth("/app-feedback/admin/submissions"),
@@ -65,7 +65,7 @@ export default function AdminFeedbackPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();

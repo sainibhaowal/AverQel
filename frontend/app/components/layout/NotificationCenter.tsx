@@ -87,15 +87,17 @@ export default function NotificationCenter() {
   };
 
   useEffect(() => {
-    setMounted(true);
-    setNow(Date.now());
-    void loadNotifications();
+    queueMicrotask(() => {
+      setMounted(true);
+      setNow(Date.now());
+      void loadNotifications();
+    });
   }, []);
 
   useVisibilityAwareInterval(() => void loadNotifications({ silent: true }), POLL_INTERVAL_MS);
 
   useEffect(() => {
-    setOpen(false);
+    queueMicrotask(() => setOpen(false));
   }, [pathname]);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Eye, GitBranch, Minimize2, Sparkles } from "lucide-react";
 
@@ -15,13 +15,9 @@ interface DiagramBlockProps {
   isStreaming?: boolean;
 }
 
-// FIX: Stable random ID that doesn't depend on useId format staying stable.
 function useStableId(prefix: string): string {
-  return useMemo(
-    () => `${prefix}-${Math.random().toString(36).slice(2, 10)}`,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  const id = useId();
+  return `${prefix}-${id.replace(/:/g, "")}`;
 }
 
 // FIX: Properly watches for dark mode changes on documentElement instead of
@@ -75,13 +71,15 @@ export default function DiagramBlock({ block, isStreaming = false }: DiagramBloc
 
   useEffect(() => {
     if (!isMermaid) {
-      setSvg(null);
-      setError(null);
-      setIsRendering(false);
+      queueMicrotask(() => {
+        setSvg(null);
+        setError(null);
+        setIsRendering(false);
+      });
       return;
     }
     if (!isExpanded || block.incomplete || !sanitizedSyntax.trim()) {
-      setIsRendering(false);
+      queueMicrotask(() => setIsRendering(false));
       return;
     }
 
@@ -162,7 +160,7 @@ export default function DiagramBlock({ block, isStreaming = false }: DiagramBloc
       }
     }
 
-    setError(null);
+    queueMicrotask(() => setError(null));
     const renderTimer = window.setTimeout(() => void renderDiagram(), 0);
     return () => {
       cancelled = true;

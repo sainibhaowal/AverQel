@@ -23,7 +23,8 @@ def test_ci_workflow_contains_blocking_gates() -> None:
     )
     for gate in required:
         assert gate in gates
-    assert "fail-fast: false" in workflow
+    assert "ci-passed:" in workflow
+    assert "if: always()" in workflow
     assert "continue-on-error: true" not in workflow
 
 
@@ -59,3 +60,23 @@ def test_vps_deployment_is_manual_and_gated_by_image_tests() -> None:
     assert "MODELS_DIR" in workflow
     assert "Keep the previous release image so rollback is immediate." in workflow
     assert "AVERQEL_IMAGE_TAG" in workflow
+
+
+def test_vps_trivy_scans_do_not_contend_for_a_shared_cache() -> None:
+    workflow = _read(ROOT / ".github/workflows/deploy-vps.yml")
+
+    assert "Scan API, worker, and frontend images sequentially" in workflow
+    assert "--pkg-types os,library" in workflow
+    assert "--vuln-type os,library" not in workflow
+    assert "API_PID" not in workflow
+    assert "WORKER_PID" not in workflow
+    assert "FRONTEND_PID" not in workflow
+    assert "scan api > trivy-api.log 2>&1 || API_STATUS=$?" in workflow
+    assert "scan worker > trivy-worker.log 2>&1 || WORKER_STATUS=$?" in workflow
+    assert "scan frontend > trivy-frontend.log 2>&1 || FRONTEND_STATUS=$?" in workflow
+
+
+def test_release_download_monitor_follows_github_redirects() -> None:
+    workflow = _read(ROOT / ".github/workflows/monitor-downloads.yml")
+
+    assert workflow.count("curl --fail --location --silent --show-error") == 2

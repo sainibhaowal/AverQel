@@ -239,7 +239,7 @@ export default function DocumentDetailPage() {
 
   useEffect(() => {
     if (!id) return;
-    fetchData();
+    queueMicrotask(() => void fetchData());
 
     // Auto-poll status if not terminal
     const interval = setInterval(async () => {

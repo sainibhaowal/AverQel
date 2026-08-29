@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Copy,
   Check,
@@ -644,11 +644,8 @@ function createObjectUrl(content: string, mimeType: string): string {
 // Mermaid caches renders by ID. The old code used Math.random() on every
 // effect run which broke the cache and leaked orphaned SVG elements into the DOM.
 function useStableId(prefix: string): string {
-  return useMemo(
-    () => `${prefix}-${Math.random().toString(36).slice(2, 10)}`,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  const id = useId();
+  return `${prefix}-${id.replace(/:/g, "")}`;
 }
 
 // FIX: Reactive dark mode — watches documentElement class changes via
@@ -1866,9 +1863,11 @@ export default function CodeBlock({
   useEffect(() => {
     if (!isExpanded) {
       dragStateRef.current.active = false;
-      setPanEnabled(false);
-      setScale(1);
-      setOffset({ x: 0, y: 0 });
+      queueMicrotask(() => {
+        setPanEnabled(false);
+        setScale(1);
+        setOffset({ x: 0, y: 0 });
+      });
     }
   }, [isExpanded]);
 
@@ -1883,7 +1882,7 @@ export default function CodeBlock({
 
   useEffect(() => {
     if (answerStreaming && isExpanded && normalizedLanguage !== "mermaid") {
-      setIsExpanded(false);
+      queueMicrotask(() => setIsExpanded(false));
     }
   }, [answerStreaming, isExpanded, normalizedLanguage]);
 
@@ -1896,8 +1895,10 @@ export default function CodeBlock({
       !isExpanded &&
       !hasAutoOpened
     ) {
-      setIsExpanded(true);
-      setHasAutoOpened(true);
+      queueMicrotask(() => {
+        setIsExpanded(true);
+        setHasAutoOpened(true);
+      });
     }
   }, [
     answerStreaming,
@@ -2158,8 +2159,10 @@ export default function CodeBlock({
     let cancelled = false;
     let rafId = 0;
 
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
+    queueMicrotask(() => {
+      setScale(1);
+      setOffset({ x: 0, y: 0 });
+    });
 
     const attemptFit = () => {
       if (cancelled) {

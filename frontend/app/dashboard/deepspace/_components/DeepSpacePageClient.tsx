@@ -193,7 +193,7 @@ export default function DeepSpacePageClient() {
   }, []);
 
   useEffect(() => {
-    setMounted(true);
+    queueMicrotask(() => setMounted(true));
   }, []);
 
   // ── Data Fetching ────────────────────────────────────────────────────────
@@ -288,7 +288,7 @@ export default function DeepSpacePageClient() {
       window.localStorage.setItem(ACTIVE_NOTE_KEY, activeNote.id);
     }
     agentPreviewBaseContentRef.current = null;
-    setAgentNotePreview(null);
+    queueMicrotask(() => setAgentNotePreview(null));
   }, [activeNote?.id]);
 
   // ── Auto-save ────────────────────────────────────────────────────────────
@@ -433,7 +433,9 @@ export default function DeepSpacePageClient() {
   const shellTransitionClass = isStackedLayout ? "duration-150" : "duration-300";
 
   useEffect(() => {
-    if (isStackedLayout && panelMode === "split" && !isLibraryOnly) setPanelMode("chat");
+    if (isStackedLayout && panelMode === "split" && !isLibraryOnly) {
+      queueMicrotask(() => setPanelMode("chat"));
+    }
   }, [isLibraryOnly, isStackedLayout, panelMode]);
 
   if (isInitialLoading) {

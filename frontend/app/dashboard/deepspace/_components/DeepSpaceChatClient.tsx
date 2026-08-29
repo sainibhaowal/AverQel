@@ -688,7 +688,9 @@ export default function DeepSpaceChatClient({
     ),
   );
   const streamStartRef = useRef(stream.start);
-  streamStartRef.current = stream.start;
+  useEffect(() => {
+    streamStartRef.current = stream.start;
+  }, [stream.start]);
 
   const resolveMCPApproval = useCallback(
     async (approvalId: string, decision: "approved" | "denied") => {

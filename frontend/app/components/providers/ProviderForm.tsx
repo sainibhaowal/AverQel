@@ -88,7 +88,9 @@ export default function ProviderForm({
   const [apiBaseUrl, setApiBaseUrl] = useState(
     provider?.api_base_url || PROVIDER_BASE_URL_PRESETS[activeProviderType] || "",
   );
-  const [authMode, setAuthMode] = useState(provider?.auth_mode || "api_key");
+  const [authMode, setAuthMode] = useState(
+    provider?.auth_mode || catalogEntry?.auth_modes[0] || "api_key",
+  );
   const [secretValue, setSecretValue] = useState("");
   const [searchLanguage, setSearchLanguage] = useState(
     typeof provider?.metadata_json?.language === "string"
@@ -121,48 +123,33 @@ export default function ProviderForm({
   // Sync when switching to an existing provider
   useEffect(() => {
     if (provider) {
-      setApiBaseUrl(provider.api_base_url || "");
-      setAuthMode(provider.auth_mode || "none");
-      setDefaultChatModel(provider.default_chat_model || "");
-      setDefaultEmbeddingModel(provider.default_embedding_model || "");
-      setDefaultRerankerModel(provider.default_reranker_model || "");
-      setPreviewModels(models);
-      setSecretValue("");
-      setSearchLanguage(
-        typeof provider.metadata_json?.language === "string"
-          ? provider.metadata_json.language
-          : "auto",
-      );
-      setAllowedDomains(
-        Array.isArray(provider.metadata_json?.allowed_domains)
-          ? provider.metadata_json.allowed_domains.join(", ")
-          : "",
-      );
-      setBlockedDomains(
-        Array.isArray(provider.metadata_json?.blocked_domains)
-          ? provider.metadata_json.blocked_domains.join(", ")
-          : "",
-      );
-      setDiscoverError(null);
+      queueMicrotask(() => {
+        setApiBaseUrl(provider.api_base_url || "");
+        setAuthMode(provider.auth_mode || "none");
+        setDefaultChatModel(provider.default_chat_model || "");
+        setDefaultEmbeddingModel(provider.default_embedding_model || "");
+        setDefaultRerankerModel(provider.default_reranker_model || "");
+        setPreviewModels(models);
+        setSecretValue("");
+        setSearchLanguage(
+          typeof provider.metadata_json?.language === "string"
+            ? provider.metadata_json.language
+            : "auto",
+        );
+        setAllowedDomains(
+          Array.isArray(provider.metadata_json?.allowed_domains)
+            ? provider.metadata_json.allowed_domains.join(", ")
+            : "",
+        );
+        setBlockedDomains(
+          Array.isArray(provider.metadata_json?.blocked_domains)
+            ? provider.metadata_json.blocked_domains.join(", ")
+            : "",
+        );
+        setDiscoverError(null);
+      });
     }
   }, [provider, models]);
-
-  // Reset when switching to a different catalog entry (new provider flow)
-  useEffect(() => {
-    if (!provider && catalogEntry) {
-      setAuthMode(catalogEntry.auth_modes[0] || "api_key");
-      setApiBaseUrl(PROVIDER_BASE_URL_PRESETS[catalogEntry.provider_type] || "");
-      setSecretValue("");
-      setSearchLanguage("auto");
-      setAllowedDomains("");
-      setBlockedDomains("");
-      setPreviewModels([]);
-      setDefaultChatModel("");
-      setDefaultEmbeddingModel("");
-      setDefaultRerankerModel("");
-      setDiscoverError(null);
-    }
-  }, [catalogEntry?.provider_type]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const normalizeApiBaseUrl = useCallback(
     (value: string): string => {
@@ -187,6 +174,16 @@ export default function ProviderForm({
   );
   const normalizedSecretValue = useMemo(() => sanitizeInput(secretValue), [secretValue]);
 
+  const handleApiBaseUrlChange = (value: string) => {
+    setApiBaseUrl(value);
+    const normalizedValue = normalizeApiBaseUrl(value);
+    setDiscoverError(
+      normalizedValue && !isValidHttpUrl(normalizedValue)
+        ? "Enter a valid http(s) runtime URL to preview models."
+        : null,
+    );
+  };
+
   const supportsModelListing = Boolean(
     catalogEntry?.supports_model_listing ?? provider?.supports_model_listing,
   );
@@ -201,20 +198,18 @@ export default function ProviderForm({
     if (!authMode) return;
 
     if (authMode !== "api_key" && normalizedSecretValue) {
-      setDiscoverError("Clear the secret value for the selected auth mode.");
-      setDiscoveringModels(false);
+      queueMicrotask(() => {
+        setDiscoverError("Clear the secret value for the selected auth mode.");
+        setDiscoveringModels(false);
+      });
       return;
     }
 
     if (!normalizedPreviewUrl && !previewCanOmitBaseUrl(activeProviderType)) {
-      setDiscoverError(null);
-      setDiscoveringModels(false);
       return;
     }
 
     if (normalizedPreviewUrl && !isValidHttpUrl(normalizedPreviewUrl)) {
-      setDiscoverError("Enter a valid http(s) runtime URL to preview models.");
-      setDiscoveringModels(false);
       return;
     }
 
@@ -383,7 +378,7 @@ export default function ProviderForm({
             authMode={authMode}
             onAuthModeChange={setAuthMode}
             apiBaseUrl={apiBaseUrl}
-            onApiBaseUrlChange={setApiBaseUrl}
+            onApiBaseUrlChange={handleApiBaseUrlChange}
             secretValue={secretValue}
             onSecretValueChange={setSecretValue}
             maskedSummary={provider?.secrets?.[0]?.masked_value || null}
@@ -470,8 +465,10 @@ export default function ProviderForm({
               ) : null}
             </div>
             <div className="text-muted-foreground/60 rounded-2xl border border-white/5 bg-white/[0.02] p-4 text-xs">
-              {discoverError ? (
-                <p className="text-red-400/80">{discoverError}</p>
+              {discoverError || (normalizedPreviewUrl && !isValidHttpUrl(normalizedPreviewUrl)) ? (
+                <p className="text-red-400/80">
+                  {discoverError || "Enter a valid http(s) runtime URL to preview models."}
+                </p>
               ) : discoveringModels ? (
                 <p>Inspecting endpoint and validating credentials...</p>
               ) : (
