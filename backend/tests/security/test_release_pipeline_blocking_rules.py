@@ -55,6 +55,10 @@ def test_vps_deployment_is_manual_and_gated_by_image_tests() -> None:
     assert "Smoke-test built image contents" in workflow
     assert "Publish tested images to GHCR" in workflow
     assert "/opt/averqel/backend" in workflow
+    assert "Encode checked-in production Compose" in workflow
+    assert "COMPOSE_B64" in workflow
+    assert '--project-directory "$VPS_BACKEND_DIR"' in workflow
+    assert "DEPLOY_COMPOSE_FILE" in workflow
     assert "--no-build" in workflow
     assert "--remove-orphans" in workflow
     assert "MODELS_DIR" in workflow

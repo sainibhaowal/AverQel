@@ -283,6 +283,16 @@ jobs:
         id: searxng-settings
         run: echo "settings_b64=$(base64 -w0 backend/searxng/settings.yml)" >> "$GITHUB_OUTPUT"
 
+      - name: Encode checked-in production Compose
+        id: production-compose
+        run: |
+          {
+            echo 'compose_b64<<COMPOSE_EOF'
+            base64 -w0 backend/docker-compose.prod.yml
+            echo
+            echo COMPOSE_EOF
+          } >> "$GITHUB_OUTPUT"
+
       - name: Validate deployment secrets
         run: |
           test -n "${{ secrets.VPS_HOST }}" || { echo "::error::VPS_HOST secret missing"; exit 1; }
@@ -317,6 +327,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
           SEARXNG_SETTINGS_B64: ${{ steps.searxng-settings.outputs.settings_b64 }}
+          COMPOSE_B64: ${{ steps.production-compose.outputs.compose_b64 }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -324,14 +335,16 @@ jobs:
           passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
           timeout: 30s
           command_timeout: 30m
-          envs: VERSION,SHA,GHCR_PAT,GITHUB_TOKEN,GITHUB_ACTOR,SEARXNG_SETTINGS_B64
+          envs: VERSION,SHA,GHCR_PAT,GITHUB_TOKEN,GITHUB_ACTOR,SEARXNG_SETTINGS_B64,COMPOSE_B64
           script: |
             set -euo pipefail
             VPS_BACKEND_DIR="/opt/averqel/backend"
             IMAGE_PREFIX="ghcr.io/sainibhaowal/averqel"
-            COMPOSE_FILE="$VPS_BACKEND_DIR/docker-compose.prod.yml"
             ENV_FILE="$VPS_BACKEND_DIR/.env.vps"
             MODELS_DIR="$VPS_BACKEND_DIR/models"
+            # Use the Compose file checked out for this exact main commit.
+            # The VPS copy is operator-owned and may lag behind the release.
+            DEPLOY_COMPOSE_FILE="$(mktemp)"
             COMPOSE_NETWORK_OVERRIDE="$(mktemp)"
             SEARXNG_CONFIG_DIR="$VPS_BACKEND_DIR/searxng"
             SEARXNG_SETTINGS_PATH="$SEARXNG_CONFIG_DIR/settings.yml"
@@ -365,10 +378,15 @@ jobs:
             YAML
 
             compose() {
-              docker compose --env-file "$ENV_FILE" \
-                -f "$COMPOSE_FILE" \
+              docker compose --project-directory "$VPS_BACKEND_DIR" \
+                --env-file "$ENV_FILE" \
+                -f "$DEPLOY_COMPOSE_FILE" \
                 -f "$COMPOSE_NETWORK_OVERRIDE" \
                 "$@"
+            }
+
+            cleanup_temp_files() {
+              rm -f "$DEPLOY_COMPOSE_FILE" "$COMPOSE_NETWORK_OVERRIDE"
             }
 
             rollback_on_failure() {
@@ -383,7 +401,7 @@ jobs:
                 compose up -d --no-build --wait --wait-timeout 180 --remove-orphans
                 set -e
               fi
-              rm -f "$COMPOSE_NETWORK_OVERRIDE"
+              cleanup_temp_files
               exit "$status"
             }
             trap rollback_on_failure EXIT
@@ -394,8 +412,10 @@ jobs:
 
             test -d "$VPS_BACKEND_DIR" || { echo "Missing $VPS_BACKEND_DIR"; exit 1; }
             test -d "$MODELS_DIR" || { echo "Missing persistent models directory: $MODELS_DIR"; exit 1; }
-            test -f "$COMPOSE_FILE" || { echo "Missing $COMPOSE_FILE"; exit 1; }
             test -f "$ENV_FILE" || { echo "Missing $ENV_FILE"; exit 1; }
+            printf '%s' "$COMPOSE_B64" | base64 --decode > "$DEPLOY_COMPOSE_FILE"
+            chmod 600 "$DEPLOY_COMPOSE_FILE"
+            test -s "$DEPLOY_COMPOSE_FILE" || { echo "Checked-in production Compose is empty"; exit 1; }
             test ! -L "$SEARXNG_CONFIG_DIR" || { echo "Refusing symlinked SearXNG config directory"; exit 1; }
             test -d "$SEARXNG_CONFIG_DIR" || mkdir -p "$SEARXNG_CONFIG_DIR"
             test ! -L "$SEARXNG_SETTINGS_PATH" || { echo "Refusing symlinked SearXNG settings path"; exit 1; }
