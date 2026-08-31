@@ -69,6 +69,10 @@ class _FakeTimeout:
         pass
 
 
+class _FakeConnectError(Exception):
+    pass
+
+
 def _request(model: str, *, reasoning_enabled: bool = False) -> ChatGenerateRequest:
     return ChatGenerateRequest(
         model=model,
@@ -131,6 +135,34 @@ def test_opencode_zen_provider_lists_models_and_parses_context_windows(monkeypat
     assert models[2].context_window == 200000
     assert models[3].context_window == 131072
     assert called_urls == ["https://opencode.ai/zen/v1/models"]
+
+
+def test_opencode_zen_provider_retries_transient_model_discovery_failure(monkeypatch):
+    attempts = 0
+
+    def _fake_get(url, *args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise _FakeConnectError("temporary DNS failure")
+        return _FakeResponse(200, {"data": [{"id": "claude-sonnet-4-6"}]})
+
+    fake_httpx = SimpleNamespace(
+        get=_fake_get,
+        ConnectError=_FakeConnectError,
+        Timeout=_FakeTimeout,
+        AsyncClient=_FakeAsyncClient,
+    )
+    monkeypatch.setitem(sys.modules, "httpx", fake_httpx)
+    monkeypatch.setattr(
+        "app.providers.services.opencode_zen_provider.time.sleep", lambda _delay: None
+    )
+
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="zen_test")
+    models = provider.list_models()
+
+    assert attempts == 2
+    assert [model.name for model in models] == ["claude-sonnet-4-6"]
 
 
 def test_opencode_zen_provider_parses_string_context_windows(monkeypatch):

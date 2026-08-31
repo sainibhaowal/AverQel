@@ -59,7 +59,7 @@ export default function MCPProviderDetails({
   const badges = entry.badges || {};
   const isCommunity = entry.publisher_type === "community" || badges.community;
   return (
-    <main className="mx-auto max-w-6xl space-y-8 px-6 py-8">
+    <main className="mcp-theme-scope mx-auto max-w-6xl space-y-8 px-6 py-8">
       <Link
         href="/dashboard/mcp"
         className="inline-flex items-center gap-2 text-sm text-white/55 hover:text-white"

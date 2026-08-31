@@ -48,7 +48,7 @@ export function MCPLogo({ entry, size = 48 }: { entry: MCPMarketplaceEntry; size
       : null;
   return (
     <div
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-900"
+      className="mcp-logo flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-900"
       style={{ height: size, width: size }}
     >
       {logoPath ? (
@@ -135,7 +135,7 @@ export default function MCPMarketplaceCard({
   return (
     <article
       style={tintStyle}
-      className="group relative isolate flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111815] p-4 shadow-lg shadow-black/20 transition duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-2xl hover:shadow-black/35"
+      className="mcp-marketplace-card group relative isolate flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111815] p-4 shadow-lg shadow-black/20 transition duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:shadow-2xl hover:shadow-black/35"
     >
       <span
         aria-hidden="true"

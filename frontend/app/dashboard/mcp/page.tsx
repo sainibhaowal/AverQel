@@ -149,7 +149,7 @@ export default function MCPDashboard() {
   const categories = facets.categories.length ? facets.categories : FALLBACK_CATEGORIES;
 
   return (
-    <main className="w-full min-w-0 space-y-8 pb-10">
+    <main className="mcp-theme-scope w-full min-w-0 space-y-8 pb-10">
       <header className="space-y-5">
         <DashboardSectionHeader
           title="MCP Marketplace"
@@ -158,7 +158,7 @@ export default function MCPDashboard() {
           accentClassName="bg-cyan-400 text-cyan-300"
           accentGlowClassName="shadow-[0_0_18px_rgba(34,211,238,0.35)]"
           actions={
-            <div className="flex gap-2">
+            <div className="mcp-marketplace-actions flex gap-2">
               <button
                 type="button"
                 className={`rounded px-3 py-2 text-sm ${tab === "marketplace" ? "bg-white/15 text-white" : "border border-white/10 text-slate-300"}`}
@@ -422,7 +422,7 @@ function InstalledCard({
         ? "text-red-300 border-red-500/30 bg-red-500/10"
         : "text-amber-300 border-amber-500/30 bg-amber-500/10";
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+    <article className="mcp-installed-card rounded-2xl border border-white/10 bg-white/[0.04] p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-white">{server.name}</h2>

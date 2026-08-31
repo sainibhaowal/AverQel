@@ -483,7 +483,7 @@ export default function DocumentsPage() {
   };
 
   return (
-    <div className="space-y-10">
+    <div className="documents-theme-scope space-y-10">
       <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
         <DashboardSectionHeader
           title="Documents"
@@ -832,7 +832,7 @@ export default function DocumentsPage() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   onClick={closeRawViewer}
-                  className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
+                  className="documents-viewer-overlay fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
                 />
                 <motion.div
                   ref={drawerRef}
@@ -841,7 +841,7 @@ export default function DocumentsPage() {
                   exit={{ x: "100%" }}
                   onMouseUp={handleTextSelection}
                   transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                  className="border-glass-border/30 bg-surface-0 !fixed !top-0 !right-0 !bottom-0 !left-auto !z-[70] !m-0 flex !h-[100svh] w-full flex-col overflow-hidden !rounded-none border-l shadow-[-20px_0_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl sm:max-w-[75vw] xl:max-w-[50vw]"
+                  className="documents-viewer-drawer border-glass-border/30 bg-surface-0 !fixed !top-0 !right-0 !bottom-0 !left-auto !z-[70] !m-0 flex !h-[100svh] w-full flex-col overflow-hidden !rounded-none border-l shadow-[-20px_0_80px_rgba(0,0,0,0.5)] backdrop-blur-3xl sm:max-w-[75vw] xl:max-w-[50vw]"
                 >
                   <AnimatePresence>
                     {selection && (

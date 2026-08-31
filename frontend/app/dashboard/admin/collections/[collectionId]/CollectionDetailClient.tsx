@@ -2046,7 +2046,7 @@ export default function AdminCollectionDetailPage({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setShowShieldModal(false)}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            className="collections-shield-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           >
             <motion.div
               initial={{ scale: 0.9, y: 15, opacity: 0 }}
@@ -2054,7 +2054,7 @@ export default function AdminCollectionDetailPage({
               exit={{ scale: 0.9, y: 15, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 350 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-background/95 border-foreground/10 relative w-full max-w-md overflow-hidden rounded-[1.8rem] border p-6 shadow-none backdrop-blur-md dark:border-white/5"
+              className="collections-shield-modal bg-background/95 border-foreground/10 relative w-full max-w-md overflow-hidden rounded-[1.8rem] border p-6 shadow-none backdrop-blur-md dark:border-white/5"
             >
               <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600" />
               <div className="flex flex-col items-center space-y-4 text-center">
@@ -2131,7 +2131,7 @@ export default function AdminCollectionDetailPage({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setActivePreviewFile(null)}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+            className="collections-media-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20, opacity: 0 }}
@@ -2139,7 +2139,7 @@ export default function AdminCollectionDetailPage({
               exit={{ scale: 0.9, y: 20, opacity: 0 }}
               transition={{ type: "spring", damping: 28, stiffness: 300 }}
               onClick={(e) => e.stopPropagation()}
-              className="relative flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur-xl"
+              className="collections-media-modal relative flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.8rem] border border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur-xl"
             >
               {/* Top Bar */}
               <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-slate-950/20 px-6 py-4">

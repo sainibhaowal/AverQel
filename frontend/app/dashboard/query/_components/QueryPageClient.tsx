@@ -110,7 +110,7 @@ function IconTooltipButton({
     >
       {icon}
       <span
-        className={`pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-full border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
+        className={`workspace-icon-tooltip pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-full border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
           open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
         }`}
       >
@@ -846,7 +846,7 @@ export default function QueryPageClient() {
     selectedModel?.contextWindow ?? latestAssistant?.metrics?.contextLimit ?? null;
   const activeError = state.streamError;
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-transparent">
+    <div className="query-theme-scope flex h-full min-h-0 w-full overflow-hidden bg-transparent">
       {(() => {
         const portalTarget =
           typeof document !== "undefined"
@@ -955,7 +955,7 @@ export default function QueryPageClient() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[1.5px]"
+              className="query-config-overlay fixed inset-0 z-40 bg-black/35 backdrop-blur-[1.5px]"
               onClick={() => setFiltersOpen(false)}
             />
             <motion.aside
@@ -963,7 +963,7 @@ export default function QueryPageClient() {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 420, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-4 right-4 bottom-4 z-50 flex w-[320px] flex-col overflow-y-auto rounded-[2.5rem] border border-white/10 bg-black/85 p-6 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.7)] backdrop-blur-3xl sm:w-[400px]"
+              className="query-config-drawer fixed top-4 right-4 bottom-4 z-50 flex w-[320px] flex-col overflow-y-auto rounded-[2.5rem] border border-white/10 bg-black/85 p-6 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.7)] backdrop-blur-3xl sm:w-[400px]"
             >
               <div className="mb-6 flex items-center justify-between border-b border-white/10 pb-4">
                 <div className="flex items-center gap-2.5">
@@ -1218,7 +1218,7 @@ export default function QueryPageClient() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[1.5px]"
+              className="query-history-overlay fixed inset-0 z-40 bg-black/35 backdrop-blur-[1.5px]"
               onClick={() => setHistoryOpen(false)}
             />
             <motion.aside
@@ -1226,7 +1226,7 @@ export default function QueryPageClient() {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 420, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-4 right-4 bottom-4 z-50 flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl sm:w-[320px]"
+              className="query-history-drawer fixed top-4 right-4 bottom-4 z-50 flex w-[280px] overflow-hidden rounded-[2rem] border border-white/10 bg-black/72 shadow-2xl backdrop-blur-2xl sm:w-[320px]"
             >
               <ChatSidebar
                 endpointBase={chatEndpointBase}

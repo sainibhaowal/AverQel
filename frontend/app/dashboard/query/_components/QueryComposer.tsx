@@ -53,7 +53,7 @@ function SendIcon() {
 // High-fidelity Neural Pulsar animation for streaming state
 function StreamingIcon() {
   return (
-    <div className="relative flex h-6 w-6 items-center justify-center">
+    <div className="query-streaming-icon relative flex h-6 w-6 items-center justify-center">
       {/* Central Pulsar Core */}
       <motion.div
         className="relative z-10 h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_15px_rgba(255,255,255,0.8)]"
@@ -164,7 +164,7 @@ export default function QueryComposer({
   }, []);
 
   return (
-    <div className="border-glass-border/60 sticky bottom-0 z-20 border-t bg-transparent px-2 pt-3 pb-0 sm:px-5">
+    <div className="query-composer-scope border-glass-border/60 sticky bottom-0 z-20 border-t bg-transparent px-2 pt-3 pb-0 sm:px-5">
       <div className="border-primary/30 bg-surface-1/35 mx-auto w-full max-w-5xl overflow-visible rounded-2xl border p-2.5 shadow-lg backdrop-blur-md transition-all duration-300 sm:p-3">
         <textarea
           ref={textareaRef}

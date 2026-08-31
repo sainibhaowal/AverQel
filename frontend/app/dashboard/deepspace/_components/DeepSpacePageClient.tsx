@@ -136,7 +136,7 @@ function IconTooltipButton({
     >
       {icon}
       <span
-        className={`pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-full border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
+        className={`workspace-icon-tooltip pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-full border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
           open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
         }`}
       >
@@ -440,14 +440,14 @@ export default function DeepSpacePageClient() {
 
   if (isInitialLoading) {
     return (
-      <div className="theme-panel-muted flex h-full w-full items-center justify-center rounded-2xl">
+      <div className="deepspace-theme-scope theme-panel-muted flex h-full w-full items-center justify-center rounded-2xl">
         <Loader2 className="text-primary h-8 w-8 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="relative flex h-full w-full overflow-hidden rounded-2xl bg-transparent">
+    <div className="deepspace-theme-scope relative flex h-full w-full overflow-hidden rounded-2xl bg-transparent">
       {serviceWarnings.length > 0 && (
         <div className="pointer-events-none absolute top-2 right-2 left-2 z-30 flex justify-center">
           <div
