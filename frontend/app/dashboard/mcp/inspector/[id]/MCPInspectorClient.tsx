@@ -116,7 +116,7 @@ export default function MCPInspectorClient() {
 
   if (error && !data)
     return (
-      <main className="mx-auto max-w-5xl p-6">
+      <main className="mcp-theme-scope mx-auto max-w-5xl p-6">
         <p
           className="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200"
           role="alert"
@@ -127,14 +127,16 @@ export default function MCPInspectorClient() {
     );
   if (!data || !policy)
     return (
-      <main className="mx-auto max-w-5xl p-6 text-sm text-white/60">Loading MCP connection…</main>
+      <main className="mcp-theme-scope mx-auto max-w-5xl p-6 text-sm text-white/60">
+        Loading MCP connection…
+      </main>
     );
   const server = data.server;
   const identity = server.account_identity || {};
   const config = server.config || {};
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">
+    <main className="mcp-theme-scope mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-sm text-slate-400">MCP connection</p>

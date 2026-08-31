@@ -31,6 +31,8 @@ from app.providers.services.url_resolution import resolve_provider_base_url
 class OpenCodeZenProvider:
     provider_name = "opencode-zen"
     DEFAULT_BASE_URL = "https://opencode.ai/zen/v1"
+    _MODEL_DISCOVERY_ATTEMPTS = 3
+    _MODEL_DISCOVERY_RETRY_DELAYS = (0.25, 0.5)
 
     _GPT_MODEL_PREFIXES: Final[tuple[str, ...]] = ("gpt-",)
     _CLAUDE_MODEL_PREFIXES: Final[tuple[str, ...]] = ("claude-",)
@@ -178,6 +180,42 @@ class OpenCodeZenProvider:
         if not resolved:
             raise ProviderCapabilityError("OpenCode Zen provider requires a configured base URL")
         return resolved.rstrip("/")
+
+    @staticmethod
+    def _is_retryable_model_discovery_error(httpx_module: Any, exc: Exception) -> bool:
+        """Identify transient transport failures without hiding provider errors."""
+
+        retryable_types = tuple(
+            error_type
+            for name in (
+                "ConnectError",
+                "TimeoutException",
+                "NetworkError",
+                "RemoteProtocolError",
+            )
+            if isinstance(error_type := getattr(httpx_module, name, None), type)
+        )
+        return bool(retryable_types) and isinstance(exc, retryable_types)
+
+    def _get_model_discovery_response(self, *, base_url: str, httpx_module: Any) -> Any:
+        """Retry transient DNS/connection failures from the model catalog endpoint."""
+
+        for attempt in range(self._MODEL_DISCOVERY_ATTEMPTS):
+            try:
+                return httpx_module.get(
+                    f"{base_url}/models",
+                    headers=self._headers(self.api_key),
+                    timeout=8.0,
+                )
+            except Exception as exc:  # noqa: BLE001 - filtered to transport errors below
+                is_last_attempt = attempt == self._MODEL_DISCOVERY_ATTEMPTS - 1
+                if is_last_attempt or not self._is_retryable_model_discovery_error(
+                    httpx_module, exc
+                ):
+                    raise
+                time.sleep(self._MODEL_DISCOVERY_RETRY_DELAYS[attempt])
+
+        raise RuntimeError("OpenCode Zen model discovery exhausted its retry budget")
 
     @classmethod
     def _extract_model_name(cls, item: dict[str, Any]) -> str | None:
@@ -735,10 +773,9 @@ class OpenCodeZenProvider:
     def list_models(self) -> Sequence[ProviderModelInfo]:
         base_url = self._resolve_base_url()
         httpx_module = self._httpx()
-        response = httpx_module.get(
-            f"{base_url}/models",
-            headers=self._headers(self.api_key),
-            timeout=8.0,
+        response = self._get_model_discovery_response(
+            base_url=base_url,
+            httpx_module=httpx_module,
         )
         if response.status_code >= 400:
             self._raise_provider_error(response)

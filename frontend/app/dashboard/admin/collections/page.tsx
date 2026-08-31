@@ -542,7 +542,7 @@ export default function AdminCollectionsPage() {
   const activeCollection = collections.find((c) => c.id === activeCollectionId);
 
   return (
-    <div className="text-foreground flex h-full min-h-0 w-full flex-col space-y-4">
+    <div className="collections-theme-scope text-foreground flex h-full min-h-0 w-full flex-col space-y-4">
       {/* A. Global Top Header Bar (Outside the right-side chat container) */}
       <div className="border-foreground/10 bg-background/50 relative flex shrink-0 flex-row items-center justify-between gap-3 overflow-visible rounded-[1.6rem] border p-4 shadow-none backdrop-blur-lg dark:border-white/5">
         {/* Left Side: Info context & Navigation */}
@@ -989,8 +989,8 @@ export default function AdminCollectionsPage() {
 
       {/* New Connection Modal Flow */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
-          <div className="relative w-full max-w-md space-y-4 rounded-[1.8rem] border border-white/5 bg-slate-900 p-6 shadow-none">
+        <div className="collections-create-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
+          <div className="collections-create-modal relative w-full max-w-md space-y-4 rounded-[1.8rem] border border-white/5 bg-slate-900 p-6 shadow-none">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-emerald-500" />
             <div className="flex items-center justify-between border-b border-white/5 pb-3">
               <h2 className="text-xs font-black tracking-widest text-slate-300 uppercase">

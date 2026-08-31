@@ -315,11 +315,11 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8 pb-10">
+    <div className="dashboard-theme-scope space-y-8 pb-10">
       <motion.section
         {...CARD_ENTER}
         transition={{ duration: 0.5 }}
-        className={`relative min-h-0 overflow-hidden rounded-[1.5rem] border p-6 shadow-xl transition-all duration-300 sm:rounded-[2rem] sm:p-8 lg:p-10 ${
+        className={`dashboard-hero relative min-h-0 overflow-hidden rounded-[1.5rem] border p-6 shadow-xl transition-all duration-300 sm:rounded-[2rem] sm:p-8 lg:p-10 ${
           theme === "dark"
             ? "border-white/5 bg-[#05070a] shadow-none"
             : "border-teal-500/10 bg-gradient-to-br from-[#ffffff] via-[#f2faf7] to-[#f5f8fa] shadow-lg shadow-teal-950/[0.02]"

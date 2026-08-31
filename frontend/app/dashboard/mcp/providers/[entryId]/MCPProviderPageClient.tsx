@@ -80,7 +80,7 @@ export default function MCPProviderPageClient() {
 
   if (error)
     return (
-      <main className="mx-auto max-w-4xl p-6">
+      <main className="mcp-theme-scope mx-auto max-w-4xl p-6">
         <p
           className="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200"
           role="alert"
@@ -91,7 +91,9 @@ export default function MCPProviderPageClient() {
     );
   if (!entry)
     return (
-      <main className="mx-auto max-w-4xl p-6 text-sm text-white/60">Loading provider details…</main>
+      <main className="mcp-theme-scope mx-auto max-w-4xl p-6 text-sm text-white/60">
+        Loading provider details…
+      </main>
     );
   return (
     <MCPProviderDetails

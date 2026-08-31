@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..800&family=Teko:wght@500;600;700&display=swap");
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 @plugin "@tailwindcss/typography";
@@ -46,74 +45,75 @@ button {
   --font-display: "Chakra Petch", sans-serif;
   --font-landing-display: "Teko", sans-serif;
 
-  /* Core Base - Pure & Clean */
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  /* Light workspace palette: airy blue-green canvas with navy ink and
+   * controlled cyan/violet accents. Dark mode defines its own palette below. */
+  --background: #edf7f8;
+  --foreground: #17324d;
 
   /* Vibrant Semantic Palette - Electric & Modern (Aligned to Teal/Emerald system) */
-  --primary: 170, 75%, 36%;
-  /* Premium Emerald-Teal */
+  --primary: 174, 72%, 36%;
+  /* Premium lagoon teal */
   --primary-foreground: 0, 0%, 100%;
 
-  --secondary: 170, 35%, 96%;
-  --secondary-foreground: 170, 75%, 26%;
+  --secondary: 188, 52%, 92%;
+  --secondary-foreground: 190, 70%, 28%;
 
-  --accent: 170, 85%, 42%;
+  --accent: 252, 78%, 60%;
   --accent-foreground: 0, 0%, 100%;
 
   /* Status Colors - Pure & Bright */
-  --success: 142, 76%, 36%;
+  --success: 158, 64%, 37%;
   --warning: 35, 100%, 48%;
   --danger: 0, 90%, 55%;
-  --info: 195, 100%, 45%;
+  --info: 199, 90%, 45%;
 
   /* Neutral surfaces - High clarity */
   --surface-0: #ffffff;
-  --surface-1: #f1f6f5;
-  --surface-2: #e2e9e8;
+  --surface-1: #f3fbfb;
+  --surface-2: #e3f0f3;
 
   /* Glass and Borders - Enhanced Vibrancy */
-  --glass-bg: rgba(255, 255, 255, 0.98);
-  --glass-border: rgba(13, 148, 136, 0.12);
-  --border-subtle: rgba(13, 148, 136, 0.06);
-  --border-strong: rgba(13, 148, 136, 0.18);
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(28, 113, 132, 0.18);
+  --border-subtle: rgba(28, 113, 132, 0.1);
+  --border-strong: rgba(28, 113, 132, 0.28);
 
   /* Elevation - Richer, deeper shadows */
-  --elevation-1: 0 8px 30px -4px rgba(13, 148, 136, 0.05), 0 4px 12px -2px rgba(13, 148, 136, 0.03);
-  --elevation-2: 0 25px 60px -15px rgba(13, 148, 136, 0.1);
+  --elevation-1: 0 10px 30px -6px rgba(23, 78, 99, 0.12), 0 4px 12px -3px rgba(14, 116, 144, 0.06);
+  --elevation-2: 0 25px 60px -15px rgba(23, 78, 99, 0.18), 0 8px 24px -12px rgba(79, 70, 229, 0.1);
 
   /* Text + Accent System */
-  --text-strong: #0f172a;
-  --text-body: #1e293b;
-  --text-muted: #475569;
+  --text-strong: #14243d;
+  --text-body: #30465f;
+  --text-muted: #58708c;
 
-  --accent-cyan: #0d9488;
-  --accent-blue: #0f766e;
-  --focus-ring: #14b8a6;
+  --accent-cyan: #0891b2;
+  --accent-blue: #4f46e5;
+  --focus-ring: #0d9488;
   --status-danger: #f43f5e;
 
   /* Specialized Tokens */
-  --token-bg: color-mix(in srgb, hsl(var(--primary)) 8%, transparent);
-  --token-border: rgba(13, 148, 136, 0.15);
-  --token-text: #0d9488;
+  --token-bg: color-mix(in srgb, hsl(var(--primary)) 11%, transparent);
+  --token-border: rgba(8, 145, 178, 0.22);
+  --token-text: #0e7490;
 
-  --accent-soft: rgba(13, 148, 136, 0.06);
-  --hero-surface: linear-gradient(135deg, #ffffff 0%, #f0fdfa 100%);
-  --hero-overlay: radial-gradient(circle at 70% 30%, rgba(13, 148, 136, 0.04), transparent 50%);
+  --accent-soft: rgba(8, 145, 178, 0.1);
+  --hero-surface: linear-gradient(135deg, #ffffff 0%, #ecfdf5 52%, #eef2ff 100%);
+  --hero-overlay: radial-gradient(circle at 70% 30%, rgba(79, 70, 229, 0.08), transparent 50%);
 
-  --panel-soft: rgba(255, 255, 255, 0.98);
-  --panel-muted: rgba(240, 253, 250, 0.85);
-  --panel-strong: #ffffff;
-  --panel-inset: rgba(228, 251, 246, 0.8);
+  --panel-soft: rgba(255, 255, 255, 0.84);
+  --panel-muted: rgba(239, 250, 250, 0.86);
+  --panel-strong: rgba(255, 255, 255, 0.94);
+  --panel-inset: rgba(226, 245, 247, 0.86);
 
-  --chip-bg: rgba(255, 255, 255, 0.9);
-  --chip-border: rgba(13, 148, 136, 0.15);
-  --accent-pill-bg: rgba(240, 253, 250, 0.95);
+  --chip-bg: rgba(240, 249, 250, 0.9);
+  --chip-border: rgba(8, 145, 178, 0.2);
+  --accent-pill-bg: rgba(224, 242, 254, 0.9);
 
-  --accent-pill-border: rgba(13, 148, 136, 0.18);
-  --accent-pill-text: #0d9488;
-  --btn-primary-bg: linear-gradient(135deg, #0d9488 0%, #059669 100%);
-  --bg-grid-line: rgba(13, 148, 136, 0.15);
+  --accent-pill-border: rgba(79, 70, 229, 0.2);
+  --accent-pill-text: #4338ca;
+  --btn-primary-bg: linear-gradient(135deg, #0d9488 0%, #0891b2 55%, #4f46e5 100%);
+  --bg-grid-line: rgba(14, 116, 144, 0.16);
 }
 
 .dark {
@@ -2365,4 +2365,600 @@ select:-webkit-autofill:focus {
   100% {
     left: 150%;
   }
+}
+
+/* ─── Dashboard light-theme surfaces ───
+ * These page-scoped corrections keep legacy dark utility classes safe while
+ * preserving the existing dark dashboard visual system. */
+html:not(.dark) .mcp-theme-scope {
+  color: var(--text-body);
+}
+
+html:not(.dark) .mcp-theme-scope [class~="text-white"] {
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class*="text-white/"] {
+  color: var(--text-body) !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class~="text-slate-200"],
+html:not(.dark) .mcp-theme-scope [class~="text-slate-300"] {
+  color: #334155 !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class~="text-slate-400"],
+html:not(.dark) .mcp-theme-scope [class~="text-slate-500"] {
+  color: #64748b !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class~="text-sky-100"],
+html:not(.dark) .mcp-theme-scope [class~="text-sky-200"],
+html:not(.dark) .mcp-theme-scope [class~="text-sky-300"] {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class~="text-cyan-100"],
+html:not(.dark) .mcp-theme-scope [class~="text-cyan-200"],
+html:not(.dark) .mcp-theme-scope [class~="text-cyan-300"] {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class*="text-amber-100"],
+html:not(.dark) .mcp-theme-scope [class*="text-amber-200"],
+html:not(.dark) .mcp-theme-scope [class*="text-amber-300"] {
+  color: #a16207 !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class~="bg-white/[0.03]"],
+html:not(.dark) .mcp-theme-scope [class~="bg-white/[0.04]"],
+html:not(.dark) .mcp-theme-scope [class~="bg-white/5"] {
+  background: rgba(255, 255, 255, 0.76) !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class~="bg-white/[0.06]"],
+html:not(.dark) .mcp-theme-scope [class~="bg-white/[0.08]"],
+html:not(.dark) .mcp-theme-scope [class~="bg-white/10"],
+html:not(.dark) .mcp-theme-scope [class~="bg-white/15"] {
+  background: rgba(13, 148, 136, 0.1) !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class~="bg-black/10"],
+html:not(.dark) .mcp-theme-scope [class~="bg-black/15"],
+html:not(.dark) .mcp-theme-scope [class~="bg-black/20"] {
+  background: rgba(15, 118, 110, 0.08) !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class*="bg-[#111815]"],
+html:not(.dark) .mcp-theme-scope [class*="bg-[#111512]"],
+html:not(.dark) .mcp-theme-scope [class*="bg-[#0b100d]"],
+html:not(.dark) .mcp-theme-scope [class*="bg-[#101713]"] {
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: var(--text-body) !important;
+}
+
+html:not(.dark) .mcp-theme-scope input:not([type="checkbox"]):not([type="radio"]),
+html:not(.dark) .mcp-theme-scope select {
+  background: rgba(255, 255, 255, 0.86) !important;
+  color: var(--text-strong) !important;
+  border-color: rgba(13, 148, 136, 0.24) !important;
+}
+
+html:not(.dark) .mcp-theme-scope input::placeholder {
+  color: #64748b !important;
+}
+
+html:not(.dark) .mcp-marketplace-actions button {
+  border-color: rgba(13, 148, 136, 0.22) !important;
+  color: #334155 !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+}
+
+html:not(.dark) .mcp-marketplace-actions button[class*="bg-white/15"] {
+  background: linear-gradient(
+    135deg,
+    rgba(20, 184, 166, 0.18),
+    rgba(14, 165, 233, 0.12)
+  ) !important;
+  color: #0f766e !important;
+}
+
+html:not(.dark) .mcp-marketplace-card {
+  border-color: rgba(13, 148, 136, 0.24) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.14), transparent 38%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(240, 253, 250, 0.82)) !important;
+  box-shadow:
+    0 18px 42px rgba(15, 118, 110, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html:not(.dark) .mcp-marketplace-card > span:first-child {
+  opacity: 0.94 !important;
+  filter: blur(0.35px);
+  box-shadow: 0 0 14px var(--card-tint);
+}
+
+html:not(.dark) .mcp-marketplace-card > span:nth-child(2) {
+  inset: 2px !important;
+  border-radius: calc(1rem - 2px);
+  background:
+    radial-gradient(circle at 96% 0%, rgba(34, 211, 238, 0.08), transparent 30%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 255, 254, 0.96)) !important;
+}
+
+html:not(.dark) .mcp-logo {
+  border-color: rgba(13, 148, 136, 0.22) !important;
+  background: linear-gradient(145deg, #ecfeff, #dbeafe) !important;
+  box-shadow: 0 8px 18px rgba(14, 116, 144, 0.12);
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-logo [class*="text-white"] {
+  color: #0f766e !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class*="text-emerald-100"],
+html:not(.dark) .mcp-theme-scope [class*="text-emerald-200"],
+html:not(.dark) .mcp-theme-scope [class*="text-emerald-300"] {
+  color: #0f766e !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class~="text-red-200"],
+html:not(.dark) .mcp-theme-scope [class~="text-red-300"] {
+  color: #be123c !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class~="border-white/5"],
+html:not(.dark) .mcp-theme-scope [class~="border-white/10"],
+html:not(.dark) .mcp-theme-scope [class~="border-white/15"],
+html:not(.dark) .mcp-theme-scope [class~="border-white/20"] {
+  border-color: rgba(100, 116, 139, 0.24) !important;
+}
+
+/* Collections dialogs use a translucent veil in light mode so the colorful
+ * workspace remains visible behind the frosted white dialog. */
+html:not(.dark) .collections-theme-scope .collections-create-overlay,
+html:not(.dark) .collections-theme-scope .collections-shield-overlay,
+html:not(.dark) .collections-theme-scope .collections-media-overlay {
+  background: rgba(15, 23, 42, 0.22) !important;
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+}
+
+html:not(.dark) .collections-theme-scope .collections-create-modal,
+html:not(.dark) .collections-theme-scope .collections-shield-modal,
+html:not(.dark) .collections-theme-scope .collections-media-modal {
+  border-color: rgba(13, 148, 136, 0.26) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.14), transparent 42%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(240, 253, 250, 0.88)) !important;
+  color: var(--text-body) !important;
+  box-shadow:
+    0 30px 90px rgba(15, 23, 42, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html:not(.dark) .collections-theme-scope .collections-create-modal [class~="bg-slate-950"],
+html:not(.dark) .collections-theme-scope .collections-create-modal [class*="bg-slate-950/"],
+html:not(.dark) .collections-theme-scope .collections-create-modal [class~="bg-slate-900"] {
+  background: rgba(255, 255, 255, 0.62) !important;
+}
+
+html:not(.dark) .collections-theme-scope .collections-create-modal [class*="text-white"],
+html:not(.dark) .collections-theme-scope .collections-shield-modal [class*="text-white"],
+html:not(.dark) .collections-theme-scope .collections-media-modal [class*="text-white"] {
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .collections-theme-scope .collections-create-modal [class~="text-slate-300"],
+html:not(.dark) .collections-theme-scope .collections-create-modal [class~="text-slate-400"],
+html:not(.dark) .collections-theme-scope .collections-create-modal [class~="text-slate-500"] {
+  color: #475569 !important;
+}
+
+html:not(.dark) .collections-theme-scope .collections-create-modal input {
+  background: rgba(255, 255, 255, 0.84) !important;
+  color: var(--text-strong) !important;
+  border-color: rgba(13, 148, 136, 0.24) !important;
+}
+
+/* Dashboard light mode: establish visible depth and a clear text hierarchy
+ * without changing the dashboard's existing dark presentation. */
+html:not(.dark) .dashboard-theme-scope .dashboard-hero {
+  border-color: rgba(13, 148, 136, 0.22) !important;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(20, 184, 166, 0.18), transparent 30%),
+    radial-gradient(circle at 58% 100%, rgba(14, 165, 233, 0.12), transparent 34%),
+    radial-gradient(circle at 100% 18%, rgba(139, 92, 246, 0.1), transparent 28%),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(236, 253, 245, 0.94) 52%,
+      rgba(239, 246, 255, 0.94)
+    ) !important;
+  box-shadow:
+    0 18px 48px rgba(15, 118, 110, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .theme-panel,
+html:not(.dark) .dashboard-theme-scope .theme-card {
+  border-color: rgba(13, 148, 136, 0.18) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.055), transparent 32%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.97), rgba(248, 252, 252, 0.94)) !important;
+  box-shadow:
+    0 10px 26px rgba(15, 118, 110, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope [class*="text-foreground/"] {
+  color: #475569 !important;
+}
+
+html:not(.dark) .dashboard-theme-scope [class*="text-muted-foreground/"] {
+  color: #64748b !important;
+}
+
+html:not(.dark) .dashboard-theme-scope [class*="text-slate-900/"] {
+  color: #475569 !important;
+}
+
+html:not(.dark) .dashboard-theme-scope [class*="border-foreground/"] {
+  border-color: rgba(100, 116, 139, 0.2) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope [class*="bg-foreground/10"] {
+  background: rgba(100, 116, 139, 0.16) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope [class*="bg-foreground/[0.02]"],
+html:not(.dark) .dashboard-theme-scope [class*="bg-foreground/[0.03]"],
+html:not(.dark) .dashboard-theme-scope [class*="bg-foreground/[0.005]"] {
+  background: rgba(236, 253, 245, 0.58) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope [class~="bg-black/10"] {
+  border-color: rgba(14, 116, 144, 0.2) !important;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(34, 211, 238, 0.1), transparent 34%),
+    linear-gradient(135deg, rgba(240, 253, 250, 0.9), rgba(245, 243, 255, 0.84)) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .theme-chip {
+  background: rgba(240, 253, 250, 0.82) !important;
+  border-color: rgba(13, 148, 136, 0.2) !important;
+  color: #0f766e;
+}
+
+/* Documents light mode: add frosted depth to the empty state, data panel, and
+ * secure preview without changing the document workflow or dark theme. */
+html:not(.dark) .documents-theme-scope .theme-panel,
+html:not(.dark) .documents-theme-scope .glass-card {
+  border-color: rgba(13, 148, 136, 0.2) !important;
+  background:
+    radial-gradient(circle at 88% 0%, rgba(34, 211, 238, 0.09), transparent 30%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(240, 253, 250, 0.9)) !important;
+  box-shadow:
+    0 16px 38px rgba(15, 118, 110, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+}
+
+html:not(.dark) .documents-theme-scope [class*="text-foreground/"] {
+  color: #475569 !important;
+}
+
+html:not(.dark) .documents-theme-scope [class*="text-muted-foreground"] {
+  color: #64748b !important;
+}
+
+html:not(.dark) .documents-theme-scope [class*="bg-foreground/5"] {
+  background: rgba(226, 232, 240, 0.58) !important;
+}
+
+html:not(.dark) .documents-theme-scope [class*="border-foreground/"] {
+  border-color: rgba(100, 116, 139, 0.22) !important;
+}
+
+html:not(.dark) .documents-viewer-overlay {
+  background: rgba(15, 23, 42, 0.2) !important;
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+}
+
+html:not(.dark) .documents-viewer-drawer {
+  border-color: rgba(13, 148, 136, 0.24) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.12), transparent 34%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.96), rgba(240, 253, 250, 0.92)) !important;
+  box-shadow:
+    -20px 0 80px rgba(15, 23, 42, 0.18),
+    inset 1px 0 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html:not(.dark) .documents-viewer-drawer [class~="bg-white/5"] {
+  background: rgba(226, 232, 240, 0.42) !important;
+}
+
+/* Query light mode: keep the workspace legible and turn dark-only controls
+ * into frosted white panels with restrained cyan, teal, and violet accents. */
+html:not(.dark) .query-theme-scope [class*="text-foreground/"] {
+  color: #475569 !important;
+}
+
+html:not(.dark) .query-theme-scope [class*="text-muted-foreground"] {
+  color: #64748b !important;
+}
+
+html:not(.dark) .query-theme-scope [class*="bg-foreground/5"] {
+  background: rgba(226, 232, 240, 0.58) !important;
+}
+
+html:not(.dark) .query-theme-scope [class*="border-foreground/"] {
+  border-color: rgba(100, 116, 139, 0.22) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-overlay,
+html:not(.dark) .query-theme-scope .query-history-overlay {
+  background: rgba(15, 23, 42, 0.2) !important;
+  backdrop-filter: blur(12px) saturate(135%);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer {
+  border-color: rgba(13, 148, 136, 0.28) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.14), transparent 34%),
+    radial-gradient(circle at 0% 100%, rgba(139, 92, 246, 0.08), transparent 38%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.97), rgba(240, 253, 250, 0.92)) !important;
+  color: var(--text-body) !important;
+  box-shadow:
+    0 25px 60px rgba(15, 23, 42, 0.2),
+    inset 1px 0 0 rgba(255, 255, 255, 0.92) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class*="text-foreground/"] {
+  color: #475569 !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class*="text-white"] {
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class*="border-white/"] {
+  border-color: rgba(100, 116, 139, 0.24) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class*="bg-white/"] {
+  background: rgba(255, 255, 255, 0.58) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class*="bg-black/"] {
+  background: rgba(255, 255, 255, 0.74) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class~="text-purple-400"] {
+  color: #7c3aed !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class~="text-amber-400"] {
+  color: #b45309 !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer button:hover {
+  border-color: rgba(13, 148, 136, 0.3) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-composer-scope > div {
+  border-color: rgba(13, 148, 136, 0.24) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.1), transparent 35%),
+    rgba(255, 255, 255, 0.82) !important;
+  box-shadow: 0 14px 32px rgba(15, 118, 110, 0.1) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-composer-scope [class*="text-white/"] {
+  color: #64748b !important;
+}
+
+html:not(.dark) .query-theme-scope .query-streaming-icon [class*="bg-white"] {
+  background: #0d9488 !important;
+}
+
+html:not(.dark) .query-theme-scope .query-streaming-icon [class*="border-white"] {
+  border-color: rgba(13, 148, 136, 0.55) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-history-drawer {
+  border-color: rgba(13, 148, 136, 0.24) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.11), transparent 34%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.96), rgba(240, 253, 250, 0.9)) !important;
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.2) !important;
+}
+
+html:not(.dark) .dashboard-history-scope {
+  border-color: rgba(13, 148, 136, 0.22) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.1), transparent 32%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.96), rgba(240, 253, 250, 0.9)) !important;
+  box-shadow:
+    0 18px 50px rgba(15, 118, 110, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+}
+
+html:not(.dark) .dashboard-history-scope [class*="text-foreground/"] {
+  color: #475569 !important;
+}
+
+html:not(.dark) .dashboard-history-scope [class*="bg-foreground/"] {
+  background: rgba(226, 232, 240, 0.48) !important;
+}
+
+html:not(.dark) .dashboard-history-scope [class*="border-white/"] {
+  border-color: rgba(100, 116, 139, 0.22) !important;
+}
+
+/* Header icon tooltips are dark in the dark theme and use the same frosted
+ * white language as the rest of the light workspace. */
+html:not(.dark) .workspace-icon-tooltip {
+  border-color: rgba(13, 148, 136, 0.24) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.14), transparent 42%),
+    rgba(255, 255, 255, 0.96) !important;
+  color: #0f172a !important;
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94) !important;
+}
+
+/* Global light-mode hierarchy. These rules give every dashboard surface the
+ * same calm, colorful palette while keeping the existing dark cascade intact. */
+html:not(.dark) body {
+  background:
+    radial-gradient(circle at 4% 0%, rgba(45, 212, 191, 0.13), transparent 25%),
+    radial-gradient(circle at 96% 8%, rgba(129, 140, 248, 0.11), transparent 24%),
+    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background) !important;
+  background-size:
+    auto,
+    auto,
+    30px 30px,
+    30px 30px,
+    auto;
+  background-position:
+    center,
+    center,
+    -1px -1px,
+    -1px -1px,
+    center;
+}
+
+html:not(.dark) .app-shell-grid {
+  background:
+    radial-gradient(circle at 4% 0%, rgba(45, 212, 191, 0.13), transparent 25%),
+    radial-gradient(circle at 96% 8%, rgba(129, 140, 248, 0.11), transparent 24%),
+    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background) !important;
+  background-size:
+    auto,
+    auto,
+    30px 30px,
+    30px 30px,
+    auto;
+  background-position:
+    center,
+    center,
+    -1px -1px,
+    -1px -1px,
+    center;
+}
+
+html:not(.dark) [class*="text-foreground/"] {
+  color: var(--text-body) !important;
+}
+
+html:not(.dark) [class*="text-muted-foreground/"] {
+  color: var(--text-muted) !important;
+}
+
+html:not(.dark) [class*="text-white/"] {
+  color: var(--text-body) !important;
+}
+
+html:not(.dark) [class*="border-white/"] {
+  border-color: rgba(28, 113, 132, 0.22) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .theme-panel,
+html:not(.dark) .deepspace-theme-scope .theme-panel-muted,
+html:not(.dark) .deepspace-theme-scope .theme-panel-strong,
+html:not(.dark) .deepspace-theme-scope .glass-card,
+html:not(.dark) .deepspace-theme-scope .card-default,
+html:not(.dark) .deepspace-theme-scope .card-elevated,
+html:not(.dark) .deepspace-theme-scope .matte-panel {
+  border-color: rgba(28, 113, 132, 0.2) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.08), transparent 32%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(232, 247, 248, 0.78)) !important;
+  box-shadow:
+    0 12px 30px rgba(23, 78, 99, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope [class*="bg-surface-1/"] {
+  background-color: rgba(239, 250, 250, 0.76) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope [class*="bg-surface-0/"] {
+  background-color: rgba(255, 255, 255, 0.72) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope [class*="bg-black/"] {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: var(--text-body) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope [class*="text-white"] {
+  color: var(--text-strong) !important;
+}
+
+/* Markdown chat output uses prose-invert for dark mode. Reset its typography
+ * variables in light mode so table headers, list markers, and inline labels do
+ * not inherit near-white dark-theme colors. */
+html:not(.dark) .prose-invert {
+  --tw-prose-body: var(--text-body);
+  --tw-prose-headings: var(--text-strong);
+  --tw-prose-lead: var(--text-body);
+  --tw-prose-links: #0e7490;
+  --tw-prose-bold: var(--text-strong);
+  --tw-prose-counters: #0e7490;
+  --tw-prose-bullets: #0d9488;
+  --tw-prose-hr: rgba(28, 113, 132, 0.22);
+  --tw-prose-quotes: var(--text-body);
+  --tw-prose-quote-borders: rgba(13, 148, 136, 0.38);
+  --tw-prose-captions: var(--text-muted);
+  --tw-prose-code: var(--text-strong);
+  --tw-prose-pre-code: var(--text-body);
+  --tw-prose-pre-bg: rgba(226, 240, 243, 0.82);
+  --tw-prose-th-borders: rgba(28, 113, 132, 0.24);
+  --tw-prose-td-borders: rgba(28, 113, 132, 0.16);
+  color: var(--text-body) !important;
+}
+
+html:not(.dark) .prose-invert :where(p, li, td, th, blockquote, em, del) {
+  color: var(--text-body) !important;
+}
+
+html:not(.dark) .prose-invert :where(h1, h2, h3, h4, h5, h6, strong) {
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .prose-invert :where(table) {
+  margin-block: 0 !important;
+  color: var(--text-body) !important;
+}
+
+html:not(.dark) .prose-invert :where(thead, th) {
+  background: rgba(224, 242, 254, 0.58) !important;
+  color: #155e75 !important;
+  border-color: rgba(14, 116, 144, 0.24) !important;
+}
+
+html:not(.dark) .prose-invert :where(td) {
+  border-color: rgba(28, 113, 132, 0.16) !important;
+}
+
+html:not(.dark) .prose-invert [class~="text-cyan-50"],
+html:not(.dark) .prose-invert [class~="text-cyan-100"] {
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .prose-invert [class~="text-cyan-200"],
+html:not(.dark) .prose-invert [class~="text-cyan-300"] {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .prose-invert [class~="marker:text-cyan-300"]::marker {
+  color: #0d9488 !important;
 }

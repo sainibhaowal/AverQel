@@ -205,8 +205,8 @@ export default function ChatSidebar({
     <aside
       className={
         variant === "floating"
-          ? "theme-panel relative flex h-full w-full flex-col rounded-[1.75rem] border p-4 shadow-[0_22px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl sm:p-5"
-          : "theme-panel hidden w-80 shrink-0 border-l p-4 lg:flex lg:flex-col lg:p-5"
+          ? "dashboard-history-scope theme-panel relative flex h-full w-full flex-col rounded-[1.75rem] border p-4 shadow-[0_22px_80px_rgba(0,0,0,0.34)] backdrop-blur-xl sm:p-5"
+          : "dashboard-history-scope theme-panel hidden w-80 shrink-0 border-l p-4 lg:flex lg:flex-col lg:p-5"
       }
     >
       <div className="border-glass-border mb-5 flex items-center justify-between border-b pb-4">
