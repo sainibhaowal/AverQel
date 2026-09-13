@@ -7,6 +7,7 @@ boundary before sending a request to it.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,10 @@ import httpx
 SUPPORTED_LANGUAGES = {"python", "sql"}
 MAX_CODE_BYTES = 100_000
 MAX_INPUT_BYTES = 2_000_000
+MAX_FILES = 5
+MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_FILE_BUNDLE_BYTES = 20 * 1024 * 1024
+MAX_GENERATED_FILE_BYTES = 5 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +53,7 @@ async def execute_sandbox(
     language: str,
     settings: Any,
     input_data: dict[str, Any] | None = None,
+    files: list[dict[str, Any]] | None = None,
     timeout_seconds: int = 20,
 ) -> dict[str, Any]:
     normalized_language = language.strip().lower()
@@ -60,6 +66,34 @@ async def execute_sandbox(
     payload = input_data if isinstance(input_data, dict) else {}
     if len(str(payload).encode("utf-8")) > MAX_INPUT_BYTES:
         raise SandboxExecutorError("Execution input exceeds the 2 MB safety limit.")
+    safe_files: list[dict[str, Any]] = []
+    bundle_bytes = 0
+    for item in files or []:
+        if not isinstance(item, dict):
+            raise SandboxExecutorError("Sandbox file entries must be objects.")
+        name = str(item.get("name") or "").strip()
+        data = item.get("data_base64")
+        if not name or not isinstance(data, str):
+            raise SandboxExecutorError("Sandbox files require a name and binary payload.")
+        try:
+            decoded_size = len(base64.b64decode(data, validate=True))
+        except (ValueError, TypeError) as exc:
+            raise SandboxExecutorError("Sandbox file payload is invalid.") from exc
+        if decoded_size > MAX_FILE_BYTES:
+            raise SandboxExecutorError("A sandbox file exceeds the 10 MB safety limit.")
+        bundle_bytes += decoded_size
+        if bundle_bytes > MAX_FILE_BUNDLE_BYTES:
+            raise SandboxExecutorError("Sandbox files exceed the 20 MB aggregate safety limit.")
+        safe_files.append(
+            {
+                "name": name[:255],
+                "content_type": str(item.get("content_type") or "application/octet-stream")[:127],
+                "data_base64": data,
+                "extracted_text": str(item.get("extracted_text") or "")[:200_000],
+            }
+        )
+    if len(safe_files) > MAX_FILES:
+        raise SandboxExecutorError(f"At most {MAX_FILES} Library files may be analyzed at once.")
     if not bool(getattr(settings, "deepspace_sandbox_enabled", False)):
         raise SandboxExecutorError("The isolated sandbox is not enabled on this deployment.")
     endpoint = str(getattr(settings, "deepspace_sandbox_url", "") or "").rstrip("/")
@@ -73,6 +107,7 @@ async def execute_sandbox(
         "language": normalized_language,
         "code": code,
         "input": payload,
+        "files": safe_files,
         "timeout_seconds": max(1, min(30, int(timeout_seconds))),
     }
     try:
@@ -88,11 +123,37 @@ async def execute_sandbox(
         raise SandboxExecutorError("The isolated sandbox could not complete the request.") from exc
     if not isinstance(data, dict):
         raise SandboxExecutorError("The isolated sandbox returned an invalid response.")
+    output_files: list[dict[str, Any]] = []
+    output_total = 0
+    raw_output_files = data.get("files")
+    for item in raw_output_files if isinstance(raw_output_files, list) else []:
+        if not hasattr(item, "get"):
+            continue
+        encoded = item.get("data_base64")
+        if not isinstance(encoded, str):
+            continue
+        try:
+            decoded_size = len(base64.b64decode(encoded, validate=True))
+        except (ValueError, TypeError):
+            continue
+        if decoded_size <= 0 or decoded_size > MAX_GENERATED_FILE_BYTES:
+            continue
+        output_total += decoded_size
+        if output_total > 1_500_000:
+            break
+        output_files.append(
+            {
+                "name": str(item.get("name") or "output")[:255],
+                "content_type": str(item.get("content_type") or "text/plain")[:127],
+                "data_base64": encoded,
+                "size_bytes": decoded_size,
+            }
+        )
     return SandboxResult(
         status=str(data.get("status") or "failed"),
         language=normalized_language,
         stdout=str(data.get("stdout") or "")[:200_000],
         stderr=str(data.get("stderr") or "")[:50_000],
         duration_ms=max(0, int(data.get("duration_ms") or 0)),
-        files=[item for item in data.get("files", []) if isinstance(item, dict)][:10],
+        files=output_files[:10],
     ).as_dict()

@@ -2486,7 +2486,20 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
         .map(
           (item): DeepSpaceMediaArtifact => ({
             id: String(item.id ?? ""),
-            kind: item.kind === "video" || item.kind === "audio" ? item.kind : "image",
+            kind: [
+              "image",
+              "video",
+              "audio",
+              "document",
+              "table",
+              "chart",
+              "diagram",
+              "data",
+              "code",
+              "file",
+            ].includes(String(item.kind))
+              ? (item.kind as DeepSpaceMediaArtifact["kind"])
+              : "file",
             status: item.status === "pending" || item.status === "failed" ? item.status : "ready",
             title: String(item.title ?? "Generated media"),
             content_type: String(item.content_type ?? "application/octet-stream"),
@@ -3242,10 +3255,20 @@ function reduceDeepSpaceThread(
         if (!rawArtifact) return state;
         const artifact: DeepSpaceMediaArtifact = {
           id: String(rawArtifact.id ?? ""),
-          kind:
-            rawArtifact.kind === "video" || rawArtifact.kind === "audio"
-              ? rawArtifact.kind
-              : "image",
+          kind: [
+            "image",
+            "video",
+            "audio",
+            "document",
+            "table",
+            "chart",
+            "diagram",
+            "data",
+            "code",
+            "file",
+          ].includes(String(rawArtifact.kind))
+            ? (rawArtifact.kind as DeepSpaceMediaArtifact["kind"])
+            : "file",
           status:
             rawArtifact.status === "pending" || rawArtifact.status === "failed"
               ? rawArtifact.status

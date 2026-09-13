@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import uuid
 from typing import Any
 
@@ -15,6 +16,18 @@ class DeepSpaceMediaArtifactService:
     """Persist provider-produced media before exposing it to the browser."""
 
     _KIND_BY_PREFIX = {"image/": "image", "video/": "video", "audio/": "audio"}
+    _KIND_BY_TYPE = {
+        "text/markdown": "document",
+        "text/plain": "document",
+        "text/html": "document",
+        "text/csv": "table",
+        "application/json": "data",
+        "image/svg+xml": "diagram",
+        "application/pdf": "document",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "table",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": "document",
+    }
 
     def __init__(self, db: Session, settings: Settings) -> None:
         self.db = db
@@ -27,6 +40,23 @@ class DeepSpaceMediaArtifactService:
             (kind for prefix, kind in cls._KIND_BY_PREFIX.items() if normalized.startswith(prefix)),
             None,
         )
+
+    @classmethod
+    def kind_for_artifact(cls, content_type: str, requested_kind: str | None = None) -> str:
+        normalized = content_type.lower().split(";", 1)[0].strip()
+        if requested_kind and requested_kind in {
+            "image",
+            "video",
+            "audio",
+            "document",
+            "table",
+            "chart",
+            "diagram",
+            "data",
+            "code",
+        }:
+            return requested_kind
+        return cls._KIND_BY_TYPE.get(normalized) or cls.kind_for_content_type(normalized) or "file"
 
     def persist_base64(
         self,
@@ -42,12 +72,45 @@ class DeepSpaceMediaArtifactService:
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        kind = self.kind_for_content_type(content_type)
-        if kind is None:
-            raise ValueError("Unsupported generated media type.")
+        return self.persist_content_base64(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            content_type=content_type,
+            data_base64=data_base64,
+            provider_type=provider_type,
+            model_name=model_name,
+            title=title,
+            metadata=metadata,
+        )
+
+    def persist_content_base64(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        message_id: uuid.UUID | None,
+        content_type: str,
+        data_base64: str,
+        provider_type: str | None,
+        model_name: str | None,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        requested_kind: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_type = content_type.lower().split(";", 1)[0].strip()
+        if not (
+            self.kind_for_content_type(normalized_type)
+            or normalized_type in self._KIND_BY_TYPE
+            or normalized_type.startswith("text/")
+        ):
+            raise ValueError("Unsupported generated artifact content type.")
+        kind = self.kind_for_artifact(normalized_type, requested_kind)
         try:
             payload = base64.b64decode(data_base64, validate=True)
-        except ValueError as exc:
+        except (ValueError, binascii.Error) as exc:
             raise ValueError("Generated media payload was invalid.") from exc
         if not payload:
             raise ValueError("Generated media payload was empty.")
@@ -59,7 +122,7 @@ class DeepSpaceMediaArtifactService:
             kind=kind,
             status="ready",
             title=(title or f"Generated {kind}")[:255],
-            content_type=content_type.lower().split(";", 1)[0],
+            content_type=normalized_type,
             storage_bucket="pending",
             storage_key="pending",
             provider_type=provider_type,
@@ -86,4 +149,5 @@ class DeepSpaceMediaArtifactService:
             "content_type": artifact.content_type,
             "size_bytes": artifact.size_bytes,
             "url": f"/api/v1/deepspace/artifacts/{artifact.id}/content",
+            "metadata": artifact.metadata_json,
         }

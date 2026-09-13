@@ -19,6 +19,7 @@ class SandboxExecuteRequest(BaseModel):
     language: str = Field(pattern="^(python|sql)$")
     code: str = Field(min_length=1, max_length=100_000)
     input: dict[str, Any] = Field(default_factory=dict)
+    files: list[dict[str, Any]] = Field(default_factory=list, max_length=5)
     timeout_seconds: int = Field(default=20, ge=1, le=30)
 
 
@@ -38,6 +39,7 @@ async def execute(
             language=payload.language,
             settings=settings,
             input_data=payload.input,
+            files=payload.files,
             timeout_seconds=payload.timeout_seconds,
         )
     except SandboxExecutorError as exc:

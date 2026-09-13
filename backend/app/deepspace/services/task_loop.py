@@ -10,10 +10,13 @@ from typing import Any, cast
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
+from app.deepspace.services.library_storage import safe_archive_entries
+from app.system.services.storage_service import StorageService, StorageServiceError
 
 TASK_STATUSES = {"pending", "in_progress", "completed", "blocked", "failed"}
 MAX_TASKS = 40
@@ -50,6 +53,9 @@ def _workspace_content_type(filename: str) -> str:
         "xls": "application/vnd.ms-excel",
         "ods": "application/vnd.oasis.opendocument.spreadsheet",
         "svg": "image/svg+xml",
+        "uml": "text/plain",
+        "mermaid": "text/plain",
+        "tex": "text/plain",
         "png": "image/png",
         "jpg": "image/jpeg",
         "jpeg": "image/jpeg",
@@ -694,6 +700,65 @@ class DeepSpaceTaskLoopStore:
             "is_binary": file.is_binary,
             "checksum_sha256": file.checksum_sha256,
             "updated_at": file.updated_at.isoformat() if file.updated_at else None,
+        }
+
+    def read_workspace_file_for_sandbox(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        file_id: str,
+        settings: Settings,
+    ) -> dict[str, Any]:
+        """Return an authorized, bounded Library payload for one sandbox run.
+
+        The lookup is conversation/tenant scoped before object storage is read;
+        callers cannot provide paths, URLs, or storage keys. Binary bytes are
+        fetched only for files owned by the current user and are never written
+        to a durable temporary location by this service.
+        """
+        self._assert_conversation(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        try:
+            parsed_id = uuid.UUID(file_id)
+        except ValueError as exc:
+            raise ValueError("Library file_id is invalid.") from exc
+        file = self.db.execute(
+            select(DeepSpaceWorkspaceFile).where(
+                DeepSpaceWorkspaceFile.id == parsed_id,
+                DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+                DeepSpaceWorkspaceFile.user_id == user_id,
+                DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+            )
+        ).scalar_one_or_none()
+        if file is None:
+            raise ValueError("DeepSpace Library file not found.")
+        payload: bytes
+        if file.is_binary:
+            if not file.storage_bucket or not file.storage_key:
+                raise ValueError("Library binary payload is unavailable.")
+            try:
+                payload = StorageService(settings).get_bytes(
+                    bucket=file.storage_bucket, object_key=file.storage_key
+                )
+            except StorageServiceError as exc:
+                raise ValueError("Library binary payload is unavailable.") from exc
+        else:
+            payload = file.content.encode("utf-8")
+        if file.content_type == "application/zip":
+            # Validate archive structure before a user-provided Python script
+            # receives it; the executor still has no network or host mounts.
+            safe_archive_entries(payload)
+        return {
+            "id": str(file.id),
+            "name": file.name,
+            "content_type": file.content_type,
+            "payload": payload,
+            "extracted_text": file.extracted_text or file.content or "",
+            "size_bytes": file.size_bytes,
+            "checksum_sha256": file.checksum_sha256,
         }
 
     def find_workspace_files(

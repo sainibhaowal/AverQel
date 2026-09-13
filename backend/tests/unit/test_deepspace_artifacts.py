@@ -12,6 +12,8 @@ def test_media_artifact_accepts_only_real_media_content_types() -> None:
     assert DeepSpaceMediaArtifactService.kind_for_content_type("video/mp4") == "video"
     assert DeepSpaceMediaArtifactService.kind_for_content_type("audio/mpeg") == "audio"
     assert DeepSpaceMediaArtifactService.kind_for_content_type("text/html") is None
+    assert DeepSpaceMediaArtifactService.kind_for_artifact("text/csv") == "table"
+    assert DeepSpaceMediaArtifactService.kind_for_artifact("image/svg+xml") == "diagram"
 
 
 def test_artifact_range_parser_supports_seek_and_suffix_ranges() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import difflib
 import hashlib
 import json
@@ -24,11 +25,13 @@ from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.sandbox_executor import SandboxExecutorError, execute_sandbox
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore, summarize_tasks
 from app.deepspace.services.url_reader import read_image, read_url
+from app.documents.repositories.chunks import RetrievedChunkRow
 from app.providers.services import ChatGenerateRequest, ProviderRegistry
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.reasoning_capabilities import supports_required_tool_choice
 from app.providers.services.selection_service import ProviderSelectionService
 from app.providers.services.types import WebSearchRequest, WebSearchResponse
+from app.query.services.reranker_service import RerankerService
 from app.system.services.rate_limit_service import RateLimitService
 
 logger = logging.getLogger(__name__)
@@ -78,6 +81,8 @@ Planning and execution
 - Keep dependent operations ordered.
 - Prefer observing or reading before changing anything.
 - After meaningful work, verify the important result before reporting success.
+- For Library analysis, use document_read first when extracted/OCR text is enough. Use sandbox_execute with the authorized file_ids when calculations, tabular analysis, ZIP inspection, or chart generation is needed; never invent a path or URL.
+- When a tool returns artifact metadata, mention the generated file and let the Artifact panel provide preview/download; do not paste binary payloads into the answer.
 - Keep users informed with concise progress updates for tasks that take noticeable time; do not expose private reasoning.
 
 Workspace files and generated media
@@ -222,6 +227,11 @@ SANDBOX_EXECUTE_TOOL = {
                 "code": {"type": "string", "minLength": 1, "maxLength": 100000},
                 "input": {"type": "object"},
                 "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 30},
+                "file_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 80},
+                    "maxItems": 5,
+                },
             },
             "required": ["language", "code"],
         },
@@ -289,7 +299,23 @@ ARTIFACT_CREATE_TOOL = {
             "properties": {
                 "filename": {"type": "string", "minLength": 1, "maxLength": 255},
                 "content": {"type": "string", "minLength": 1, "maxLength": 100000},
-                "format": {"type": "string", "enum": ["markdown", "csv", "json", "html", "text"]},
+                "format": {
+                    "type": "string",
+                    "enum": [
+                        "markdown",
+                        "csv",
+                        "json",
+                        "html",
+                        "text",
+                        "svg",
+                        "mermaid",
+                        "uml",
+                    ],
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["document", "table", "chart", "diagram", "data", "code"],
+                },
                 "mode": {"type": "string", "enum": ["replace", "append"]},
             },
             "required": ["filename", "content"],
@@ -1530,6 +1556,28 @@ class DeepSpaceChatService:
             }
         if tool_name == "sandbox_execute":
             try:
+                sandbox_files: list[dict[str, Any]] = []
+                requested_file_ids = arguments.get("file_ids")
+                if requested_file_ids is not None and not isinstance(requested_file_ids, list):
+                    raise SandboxExecutorError("file_ids must be an array.")
+                for raw_file_id in (requested_file_ids or [])[:5]:
+                    file = self.task_store.read_workspace_file_for_sandbox(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        file_id=str(raw_file_id),
+                        settings=self.settings,
+                    )
+                    sandbox_files.append(
+                        {
+                            "name": file["name"],
+                            "content_type": file["content_type"],
+                            "data_base64": base64.b64encode(file["payload"]).decode("ascii"),
+                            # Existing ingestion/OCR is the authoritative first
+                            # pass; Python receives it without re-running OCR.
+                            "extracted_text": file["extracted_text"],
+                        }
+                    )
                 return await execute_sandbox(
                     code=str(arguments.get("code") or ""),
                     language=str(arguments.get("language") or ""),
@@ -1541,6 +1589,7 @@ class DeepSpaceChatService:
                         arguments.get("timeout_seconds")
                         or self.settings.deepspace_sandbox_timeout_seconds
                     ),
+                    files=sandbox_files,
                 )
             except SandboxExecutorError as exc:
                 return {
@@ -1634,6 +1683,8 @@ class DeepSpaceChatService:
                 ]
             needle = query.casefold()
             passages: list[dict[str, Any]] = []
+            ranked_candidates: list[RetrievedChunkRow] = []
+            source_file_ids: dict[uuid.UUID, str] = {}
             for candidate in candidates:
                 content = str(candidate.get("content") or "")
                 lines = content.splitlines()
@@ -1641,24 +1692,77 @@ class DeepSpaceChatService:
                     if needle in line.casefold():
                         start = max(0, index - 1)
                         end = min(len(lines), index + 2)
-                        passages.append(
-                            {
-                                "file_id": candidate.get("id"),
-                                "filename": candidate.get("name"),
-                                "line_start": start + 1,
-                                "line_end": end,
-                                "text": "\n".join(lines[start:end])[:4000],
-                                "citation": f"file:{candidate.get('id')}#L{index + 1}",
-                            }
+                        passage_text = "\n".join(lines[start:end])[:4000]
+                        chunk_id = uuid.uuid5(
+                            uuid.NAMESPACE_URL,
+                            f"workspace:{candidate.get('id')}:{index}",
                         )
-            return {"query": query, "passages": passages[:limit], "total_matches": len(passages)}
+                        source_file_ids[chunk_id] = str(candidate.get("id") or "")
+                        ranked_candidates.append(
+                            RetrievedChunkRow(
+                                document_id=uuid.uuid5(
+                                    uuid.NAMESPACE_URL, f"workspace:{candidate.get('id')}"
+                                ),
+                                chunk_id=chunk_id,
+                                filename=str(candidate.get("name") or "Library file"),
+                                content=passage_text,
+                                similarity_score=1.0 / (index + 1),
+                                source_type="workspace",
+                                chunk_index=index,
+                                page_number=None,
+                            )
+                        )
+            rerank_metadata: dict[str, Any] = {"applied": False, "reason": "no_matches"}
+            if ranked_candidates:
+                try:
+                    reranked = RerankerService(self.db, self.settings).rerank_chunks(
+                        tenant_id=auth.tenant_id,
+                        workspace_id=None,
+                        actor_user_id=auth.user_id,
+                        query=query,
+                        chunks=ranked_candidates[: min(20, len(ranked_candidates))],
+                        top_n=limit,
+                    )
+                    ranked_candidates = reranked.chunks
+                    rerank_metadata = {
+                        "applied": reranked.metadata.applied,
+                        "provider": reranked.metadata.provider,
+                        "model": reranked.metadata.model,
+                        "failure_reason": reranked.metadata.failure_reason,
+                    }
+                except Exception:  # noqa: BLE001
+                    # Workspace files may not have provider configuration; the
+                    # deterministic lexical order remains a safe fallback.
+                    rerank_metadata = {"applied": False, "reason": "reranker_unavailable"}
+            for row in ranked_candidates[:limit]:
+                line_number = row.chunk_index + 1
+                passages.append(
+                    {
+                        "file_id": source_file_ids.get(row.chunk_id),
+                        "filename": row.filename,
+                        "line_start": line_number,
+                        "line_end": line_number,
+                        "text": row.content,
+                        "citation": f"file:{source_file_ids.get(row.chunk_id)}#L{line_number}",
+                    }
+                )
+            return {
+                "query": query,
+                "passages": passages,
+                "total_matches": len(ranked_candidates),
+                "retrieval": {
+                    "strategy": "workspace_lexical",
+                    "reranker": rerank_metadata,
+                    "embeddings": "indexed document retrieval uses the shared EmbeddingService; workspace files use lexical matching because they have no document chunk rows.",
+                },
+            }
         if tool_name == "artifact_create":
             filename = str(arguments.get("filename") or "").strip()
             content = str(arguments.get("content") or "")
             fmt = str(arguments.get("format") or "").strip().lower()
             if not filename or not content.strip():
                 raise ValueError("artifact_create requires filename and content.")
-            if fmt not in {"", "markdown", "csv", "json", "html", "text"}:
+            if fmt not in {"", "markdown", "csv", "json", "html", "text", "svg", "mermaid", "uml"}:
                 raise ValueError("Unsupported artifact format.")
             suffix = {
                 "markdown": ".md",
@@ -1666,21 +1770,54 @@ class DeepSpaceChatService:
                 "json": ".json",
                 "html": ".html",
                 "text": ".txt",
+                "svg": ".svg",
+                "mermaid": ".mmd",
+                "uml": ".uml",
             }.get(fmt, "")
             if suffix and "." not in filename.rsplit("/", 1)[-1]:
                 filename = f"{filename}{suffix}"
-            return {
-                "artifact": self.task_store.write_workspace_file(
-                    tenant_id=auth.tenant_id,
-                    user_id=auth.user_id,
-                    conversation_id=conversation_id,
-                    filename=filename,
-                    content=content,
-                    mode=str(arguments.get("mode") or "replace"),
-                ),
+            workspace_artifact = self.task_store.write_workspace_file(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                filename=filename,
+                content=content,
+                mode=str(arguments.get("mode") or "replace"),
+            )
+            artifact_result: dict[str, Any] = {
+                "artifact": workspace_artifact,
                 "status": "saved",
                 "download": "Use the authenticated DeepSpace Library download route.",
             }
+            if assistant_message_id is not None:
+                content_types = {
+                    "markdown": "text/markdown",
+                    "csv": "text/csv",
+                    "json": "application/json",
+                    "html": "text/html",
+                    "text": "text/plain",
+                    "svg": "image/svg+xml",
+                    "mermaid": "text/plain",
+                    "uml": "text/plain",
+                }
+                panel_artifact = self.media_artifacts.persist_content_base64(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    message_id=assistant_message_id,
+                    content_type=content_types.get(fmt, "text/plain"),
+                    data_base64=base64.b64encode(content.encode("utf-8")).decode("ascii"),
+                    provider_type="deep_space",
+                    model_name=None,
+                    title=filename,
+                    metadata={
+                        "source": "artifact_create",
+                        "workspace_file_id": workspace_artifact["id"],
+                    },
+                    requested_kind=str(arguments.get("kind") or "") or None,
+                )
+                artifact_result["panel_artifact"] = panel_artifact
+            return artifact_result
         if tool_name == "todo_write":
             tasks = arguments.get("tasks")
             if not isinstance(tasks, list):
@@ -4493,6 +4630,73 @@ class DeepSpaceChatService:
                         if isinstance(raw_image, str) and raw_image:
                             pending_images.append(raw_image)
                         tool_payload = self.tool_policy.after_tool(tool_name, tool_payload)
+                        # Materialize sandbox outputs as private, durable
+                        # artifacts and expose them through the same timeline
+                        # used by provider-generated media. Input files remain
+                        # ephemeral inside the executor and are never copied.
+                        if tool_name == "sandbox_execute":
+                            persisted: list[dict[str, Any]] = []
+                            for generated in tool_payload.get("files", []):
+                                if not isinstance(generated, dict):
+                                    continue
+                                encoded = generated.get("data_base64")
+                                if not isinstance(encoded, str) or not encoded:
+                                    continue
+                                try:
+                                    artifact = self.media_artifacts.persist_content_base64(
+                                        tenant_id=auth.tenant_id,
+                                        user_id=auth.user_id,
+                                        conversation_id=conversation_id,
+                                        message_id=assistant_message.id,
+                                        content_type=str(
+                                            generated.get("content_type")
+                                            or "application/octet-stream"
+                                        ),
+                                        data_base64=encoded,
+                                        provider_type="sandbox",
+                                        model_name=None,
+                                        title=str(generated.get("name") or "Sandbox output"),
+                                        metadata={
+                                            "source": "sandbox_execute",
+                                            "turn_index": round_index,
+                                        },
+                                        requested_kind=(
+                                            "chart"
+                                            if str(generated.get("content_type") or "").startswith(
+                                                ("image/", "image/svg")
+                                            )
+                                            else None
+                                        ),
+                                    )
+                                except (ValueError, TypeError):
+                                    logger.warning("Rejected unsafe sandbox output artifact")
+                                    continue
+                                persisted.append(artifact)
+                                generated_artifacts.append(artifact)
+                                yield sse(
+                                    "artifact", {"artifact": artifact, "turn_index": round_index}
+                                )
+                            if persisted:
+                                tool_payload["artifacts"] = persisted
+                            # Never send binary base64 back through the model
+                            # context or browser timeline; artifact metadata is
+                            # sufficient for the user to preview/download it.
+                            tool_payload["files"] = [
+                                {
+                                    "name": artifact.get("title"),
+                                    "content_type": artifact.get("content_type"),
+                                    "size_bytes": artifact.get("size_bytes"),
+                                    "artifact_id": artifact.get("id"),
+                                }
+                                for artifact in persisted
+                            ]
+                        panel_artifact = tool_payload.get("panel_artifact")
+                        if isinstance(panel_artifact, dict) and panel_artifact.get("id"):
+                            generated_artifacts.append(panel_artifact)
+                            yield sse(
+                                "artifact",
+                                {"artifact": panel_artifact, "turn_index": round_index},
+                            )
                         if tool_name in {"web_search", "url_read"}:
                             for citation in tool_payload.get("citations", []):
                                 if isinstance(citation, dict):

@@ -7,6 +7,9 @@
 2. Keeps arbitrary code outside the API and worker containers.
 3. Returns structured stdout, stderr, status, duration, and generated-file
    metadata.
+4. DeepSpace may stage explicitly selected Library files for one run. The
+   file lookup is tenant/user/conversation scoped and the bytes are removed
+   with the executor's temporary directory.
 
 ```mermaid
 sequenceDiagram
@@ -26,6 +29,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Calculate a total or formula | A reproducible numeric result | CPU, memory, time, and output limits |
 | Analyze CSV/JSON data | Rows, summaries, or chart-ready data | Ephemeral files; no host mounts |
+| Analyze a Library file | Python can open the staged filename; OCR/extracted text is also available as `<filename>.extracted.txt` | At most five files, 10 MB each, 20 MB total |
 | Run a SQL query | Read-only rows from supplied data | `SELECT`/`WITH` only; mutations rejected |
 
 ## 2. Existing foundation

@@ -432,7 +432,17 @@ export interface DeepSpaceMessage {
 
 export interface DeepSpaceMediaArtifact {
   id: string;
-  kind: "image" | "video" | "audio";
+  kind:
+    | "image"
+    | "video"
+    | "audio"
+    | "document"
+    | "table"
+    | "chart"
+    | "diagram"
+    | "data"
+    | "code"
+    | "file";
   status: "ready" | "pending" | "failed";
   title: string;
   content_type: string;

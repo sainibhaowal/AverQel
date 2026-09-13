@@ -1,3 +1,4 @@
+import base64
 from types import SimpleNamespace
 
 import pytest
@@ -25,3 +26,23 @@ async def test_sandbox_rejects_unsupported_language_before_network() -> None:
     )
     with pytest.raises(SandboxExecutorError, match="Only Python"):
         await execute_sandbox(code="select 1", language="javascript", settings=settings)
+
+
+@pytest.mark.asyncio
+async def test_sandbox_rejects_oversized_library_bundle_before_network() -> None:
+    settings = SimpleNamespace(
+        deepspace_sandbox_enabled=True,
+        deepspace_sandbox_url="http://invalid",
+    )
+    with pytest.raises(SandboxExecutorError, match="10 MB"):
+        await execute_sandbox(
+            code="print(1)",
+            language="python",
+            settings=settings,
+            files=[
+                {
+                    "name": "large.csv",
+                    "data_base64": base64.b64encode(b"x" * (11 * 1024 * 1024)).decode(),
+                }
+            ],
+        )

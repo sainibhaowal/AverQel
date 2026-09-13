@@ -8,16 +8,23 @@ capabilities, and strict CPU/memory limits (see docker-compose.prod.yml).
 from __future__ import annotations
 
 import ast
+import base64
 import json
+import mimetypes
 import os
 import subprocess
 import sys
 import tempfile
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
-MAX_BODY = 2_500_000
+MAX_BODY = 25 * 1024 * 1024
 MAX_OUTPUT = 200_000
+MAX_INPUT_FILE_BYTES = 10 * 1024 * 1024
+MAX_INPUT_FILES = 5
+MAX_GENERATED_FILE_BYTES = 1 * 1024 * 1024
+MAX_GENERATED_TOTAL_BYTES = 1_500_000
 DENIED_IMPORTS = {
     "os",
     "sys",
@@ -91,6 +98,11 @@ def _run(payload: dict[str, object]) -> dict[str, object]:
         raise ValueError("unsupported language")
     if not code.strip() or len(code.encode()) > 100_000:
         raise ValueError("code is empty or exceeds the safety limit")
+    raw_files = payload.get("files")
+    if raw_files is not None and not isinstance(raw_files, list):
+        raise ValueError("files must be an array")
+    if len(raw_files or []) > MAX_INPUT_FILES:
+        raise ValueError("too many input files")
     if language == "python":
         _validate_python(code)
         script = code
@@ -99,6 +111,37 @@ def _run(payload: dict[str, object]) -> dict[str, object]:
         script = _sql_script(code, tables if isinstance(tables, dict) else {})
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="averqel-sandbox-") as workdir:
+        initial_files: set[str] = set()
+        for item in raw_files or []:
+            if not isinstance(item, dict):
+                raise ValueError("invalid input file")
+            raw_name = str(item.get("name") or "").strip()
+            name = Path(raw_name).name
+            if (
+                not name
+                or name in {".", ".."}
+                or name != raw_name
+                or "/" in raw_name
+                or "\\" in raw_name
+            ):
+                raise ValueError("input file name must be a plain filename")
+            encoded = item.get("data_base64")
+            if not isinstance(encoded, str):
+                raise ValueError("input file payload is invalid")
+            try:
+                file_bytes = base64.b64decode(encoded, validate=True)
+            except (ValueError, TypeError) as exc:
+                raise ValueError("input file payload is invalid") from exc
+            if len(file_bytes) > MAX_INPUT_FILE_BYTES:
+                raise ValueError("input file exceeds the 10 MB safety limit")
+            Path(workdir, name).write_bytes(file_bytes)
+            initial_files.add(name)
+            extracted = str(item.get("extracted_text") or "")
+            if extracted:
+                Path(workdir, f"{name}.extracted.txt").write_text(
+                    extracted[:200_000], encoding="utf-8"
+                )
+                initial_files.add(f"{name}.extracted.txt")
         env = {"PATH": "/usr/local/bin:/usr/bin", "HOME": workdir, "PYTHONNOUSERSITE": "1"}
         proc = subprocess.run(
             [sys.executable, "-I", "-c", script],
@@ -109,12 +152,34 @@ def _run(payload: dict[str, object]) -> dict[str, object]:
             timeout=timeout,
             check=False,
         )
+        generated: list[dict[str, object]] = []
+        generated_total = 0
+        for candidate in Path(workdir).rglob("*"):
+            if not candidate.is_file() or candidate.name in initial_files:
+                continue
+            relative = candidate.relative_to(workdir).as_posix()
+            if relative.startswith(".") or len(generated) >= 10:
+                continue
+            size = candidate.stat().st_size
+            if size <= 0 or size > MAX_GENERATED_FILE_BYTES:
+                continue
+            if generated_total + size > MAX_GENERATED_TOTAL_BYTES:
+                break
+            generated.append(
+                {
+                    "name": relative[:255],
+                    "content_type": mimetypes.guess_type(relative)[0] or "application/octet-stream",
+                    "data_base64": base64.b64encode(candidate.read_bytes()).decode("ascii"),
+                    "size_bytes": size,
+                }
+            )
+            generated_total += size
         return {
             "status": "completed" if proc.returncode == 0 else "failed",
             "stdout": proc.stdout[:MAX_OUTPUT],
             "stderr": proc.stderr[:50_000],
             "duration_ms": int((time.monotonic() - started) * 1000),
-            "files": [],
+            "files": generated,
         }
 
 

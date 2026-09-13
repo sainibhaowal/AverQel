@@ -24,6 +24,18 @@ from app.system.services.storage_service import StorageService, StorageServiceEr
 
 router = APIRouter(prefix="/deepspace/artifacts", tags=["deepspace-artifacts"])
 _RANGE_PATTERN = re.compile(r"^bytes=(\d*)-(\d*)$")
+_ARTIFACT_CONTENT_TYPES = {
+    "text/markdown",
+    "text/plain",
+    "text/html",
+    "text/csv",
+    "application/json",
+    "image/svg+xml",
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 
 
 class ArtifactJobCreate(BaseModel):
@@ -174,7 +186,10 @@ async def stream_artifact(
     """
 
     artifact = _artifact(db=db, auth=auth, artifact_id=artifact_id)
-    if not artifact.content_type.startswith(("image/", "video/", "audio/")):
+    if (
+        not artifact.content_type.startswith(("image/", "video/", "audio/", "text/"))
+        and artifact.content_type not in _ARTIFACT_CONTENT_TYPES
+    ):
         raise ApiError(
             code="NOT_FOUND",
             message="DeepSpace artifact has an unsupported media type",
@@ -204,6 +219,10 @@ async def stream_artifact(
         "X-Content-Type-Options": "nosniff",
         "Content-Disposition": f'inline; filename="{safe_filename}"',
     }
+    if artifact.content_type in {"text/html", "image/svg+xml"}:
+        headers["Content-Security-Policy"] = (
+            "default-src 'none'; img-src data:; style-src 'unsafe-inline'"
+        )
     if byte_range is None:
         headers["Content-Length"] = str(total)
         return StreamingResponse(
