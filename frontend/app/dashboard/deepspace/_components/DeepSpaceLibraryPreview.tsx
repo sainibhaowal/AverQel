@@ -201,7 +201,7 @@ function SpreadsheetTable({ value, previewUrl }: { value: string; previewUrl?: s
   if (rows.length) return <Table rows={rows} />;
   if (value.trim()) {
     return (
-      <pre className="text-foreground/75 h-full overflow-auto whitespace-pre-wrap text-xs leading-5">
+      <pre className="text-foreground/75 h-full overflow-auto text-xs leading-5 whitespace-pre-wrap">
         {value}
       </pre>
     );
@@ -289,6 +289,17 @@ export function LibraryPreview({
     );
   }
   if (["image", "svg", "video", "audio", "pdf", "docx", "pptx"].includes(kind)) {
+    // Browsers do not natively render Office Open XML. Never iframe the
+    // download response: it produces a blank pane or forces a download.
+    // Office files are rendered from the bounded extracted text above.
+    if ((kind === "docx" || kind === "pptx") && !value.trim()) {
+      return (
+        <EmptyPreview
+          icon={<FileWarning size={18} />}
+          text="No readable text was extracted for an in-app Office preview. Download the original file to open it in your Office application."
+        />
+      );
+    }
     const source =
       previewUrl ||
       (kind === "svg" && value.trim().startsWith("<svg")

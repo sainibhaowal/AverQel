@@ -1,4 +1,6 @@
+from io import BytesIO
 from unittest.mock import MagicMock, patch
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 
@@ -56,6 +58,41 @@ def test_docx_extractor_exceeds_limit(mock_load):
     assert exc.value.code == "DOCUMENT_TEXT_LIMIT_EXCEEDED"
 
 
+@patch("app.ingestion.services.extractors.docx_extractor.DocxExtractor._load_document_constructor")
+def test_docx_extractor_recovers_readable_mislabeled_text(mock_load):
+    mock_load.return_value = MagicMock(side_effect=ValueError("not a docx"))
+    result = DocxExtractor(max_text_chars=1000).extract(
+        ExtractionRequest(
+            filename="notes.docx",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            payload=b"**A readable note**\n\nSecond paragraph",
+        )
+    )
+    assert result.text == "**A readable note**\n\nSecond paragraph"
+    assert result.extraction_method == "docx_plain_text_fallback"
+
+
+@patch("app.ingestion.services.extractors.docx_extractor.DocxExtractor._load_document_constructor")
+def test_docx_extractor_recovers_openxml_text_when_native_has_no_text(mock_load):
+    mock_doc = MagicMock(paragraphs=[], tables=[])
+    mock_load.return_value = MagicMock(return_value=mock_doc)
+    payload = BytesIO()
+    with ZipFile(payload, "w", ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "word/document.xml",
+            '<document xmlns:w="urn"><body><w:p><w:r><w:t>XML title</w:t></w:r></w:p></body></document>',
+        )
+    result = DocxExtractor(max_text_chars=1000).extract(
+        ExtractionRequest(
+            filename="empty.docx",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            payload=payload.getvalue(),
+        )
+    )
+    assert result.text == "XML title"
+    assert result.extraction_method == "docx_xml_fallback"
+
+
 @patch(
     "app.ingestion.services.extractors.pptx_extractor.PptxExtractor._load_presentation_constructor"
 )
@@ -83,6 +120,22 @@ def test_pptx_extractor_success(mock_load):
     result = extractor.extract(req)
     assert result.extraction_method == "pptx_native"
     assert "Hello PPTX" in result.text
+
+
+@patch(
+    "app.ingestion.services.extractors.pptx_extractor.PptxExtractor._load_presentation_constructor"
+)
+def test_pptx_extractor_recovers_readable_mislabeled_text(mock_load):
+    mock_load.return_value = MagicMock(side_effect=ValueError("not a pptx"))
+    result = PptxExtractor(max_text_chars=1000).extract(
+        ExtractionRequest(
+            filename="notes.pptx",
+            content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            payload=b"Slide one\nSlide two",
+        )
+    )
+    assert result.text == "Slide one\nSlide two"
+    assert result.extraction_method == "pptx_plain_text_fallback"
 
 
 @patch("app.ingestion.services.extractors.xlsx_extractor.XlsxExtractor._load_workbook_loader")

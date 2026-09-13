@@ -9,6 +9,7 @@ from app.ingestion.services.extractors.base import (
     ExtractionRequest,
     ExtractionResult,
 )
+from app.ingestion.services.extractors.office_fallback import extract_openxml_text
 from app.ingestion.services.parser_service import sanitize_document_text
 
 
@@ -27,6 +28,19 @@ class PptxExtractor(BaseExtractor):
         try:
             presentation = constructor(BytesIO(request.payload))
         except Exception as exc:  # noqa: BLE001
+            fallback, source = extract_openxml_text(
+                request.payload,
+                prefixes=("ppt/slides/", "ppt/notesSlides/"),
+                max_text_chars=self.max_text_chars,
+            )
+            if fallback is not None and len(fallback) <= self.max_text_chars:
+                return ExtractionResult(
+                    text=fallback,
+                    page_count=None,
+                    extraction_method=f"pptx_{source or 'fallback'}",
+                    coverage_score=0.75,
+                    warnings=[f"pptx_{source or 'fallback'}"],
+                )
             raise ApiError(
                 code="PPTX_PARSE_FAILED",
                 message="Failed to parse PPTX presentation.",
@@ -64,13 +78,31 @@ class PptxExtractor(BaseExtractor):
             )
 
         warnings: list[str] = []
+        extraction_method = self.extraction_method
         if not text:
-            warnings.append("pptx_no_text_extracted")
+            fallback, source = extract_openxml_text(
+                request.payload,
+                prefixes=("ppt/slides/", "ppt/notesSlides/"),
+                max_text_chars=self.max_text_chars,
+            )
+            if fallback is not None:
+                text = fallback
+                warnings.append(f"pptx_{source or 'fallback'}")
+                extraction_method = f"pptx_{source or 'fallback'}"
+            else:
+                warnings.append("pptx_no_text_extracted")
+        if len(text) > self.max_text_chars:
+            raise ApiError(
+                code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
+                message="Parsed document exceeds text processing limit.",
+                status_code=422,
+                details={"max_chars": self.max_text_chars},
+            )
 
         return ExtractionResult(
             text=text,
             page_count=slide_count,
-            extraction_method=self.extraction_method,
+            extraction_method=extraction_method,
             coverage_score=1.0 if text else 0.0,
             warnings=warnings,
         )

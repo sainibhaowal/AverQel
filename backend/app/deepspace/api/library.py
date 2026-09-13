@@ -1244,16 +1244,37 @@ async def get_workspace_file(
 ) -> WorkspaceFileSchema:
     _conversation(db=db, auth=auth, conversation_id=conversation_id)
     file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
-    result = _serialize_file(file, include_content=True)
+    archive_entries: list[dict[str, Any]] | None = None
     if file.is_binary and file.storage_bucket and file.storage_key:
         try:
-            if file.content_type == "application/zip":
-                payload = StorageService(settings).get_bytes(
-                    bucket=file.storage_bucket, object_key=file.storage_key
+            storage = StorageService(settings)
+            payload: bytes | None = None
+            if file.extracted_text is None and file.content_type in _EXTRACTABLE_LIBRARY_TYPES:
+                # Older uploads could be stored successfully when optional
+                # extraction failed. Reprocess once on first open so the
+                # preview and document tools recover without requiring a
+                # re-upload.
+                payload = storage.get_bytes(bucket=file.storage_bucket, object_key=file.storage_key)
+                extraction = LibraryStorageService(settings).extract(
+                    filename=file.name,
+                    content_type=file.content_type,
+                    payload=payload,
+                    tenant_id=auth.tenant_id,
                 )
-                result.archive_entries = safe_archive_entries(payload)
+                if extraction.get("text"):
+                    file.extracted_text = str(extraction["text"])
+                    db.commit()
+            if file.content_type == "application/zip":
+                if payload is None:
+                    payload = storage.get_bytes(
+                        bucket=file.storage_bucket, object_key=file.storage_key
+                    )
+                archive_entries = safe_archive_entries(payload)
         except StorageServiceError as exc:
             raise ApiError(code=exc.code, message=exc.message, status_code=503) from exc
+    result = _serialize_file(file, include_content=True)
+    if archive_entries is not None:
+        result.archive_entries = archive_entries
     return result
 
 
