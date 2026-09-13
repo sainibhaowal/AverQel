@@ -20,6 +20,9 @@ class DeepSpaceToolPolicy:
         "web_search": "read",
         "url_read": "read",
         "image_read": "read",
+        "document_read": "read",
+        "document_query": "read",
+        "document_compare": "read",
         "todo_read": "read",
         "todo_check": "read",
         "observe": "read",
@@ -31,6 +34,8 @@ class DeepSpaceToolPolicy:
         "write": "write",
         "edit": "write",
         "delete": "write",
+        "sandbox_execute": "write",
+        "artifact_create": "write",
         "ask_user": "interactive",
         # Final verification must not race a write-capable tool emitted in the
         # same provider response.

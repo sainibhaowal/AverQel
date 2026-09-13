@@ -17,6 +17,11 @@ def test_deepspace_policy_blocks_ide_and_mcp_tools() -> None:
     policy = DeepSpaceToolPolicy()
 
     assert policy.decide("url_read", {}).allowed
+    assert policy.decide("document_read", {}).allowed
+    assert policy.decide("document_query", {}).allowed
+    assert policy.decide("document_compare", {}).allowed
+    assert policy.decide("sandbox_execute", {}).allowed
+    assert policy.decide("artifact_create", {}).allowed
     assert policy.mode("write") == "write"
     assert policy.mode("workspace_write") is None
     assert policy.mode("memory_search") is None

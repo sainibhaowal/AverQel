@@ -776,9 +776,6 @@ class DeepSpaceTaskLoopStore:
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
         )
         normalized_query = query.strip()
-        if not normalized_query:
-            raise ValueError("Library search requires a query.")
-        pattern = f"%{normalized_query[:200]}%"
         parsed_parent = None
         if parent_folder_id:
             try:
@@ -791,17 +788,25 @@ class DeepSpaceTaskLoopStore:
                 conversation_id=conversation_id,
                 folder_id=parsed_parent,
             )
+        filters = [
+            DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+            DeepSpaceWorkspaceFile.user_id == user_id,
+            DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+            DeepSpaceWorkspaceFile.parent_folder_id == parsed_parent,
+        ]
+        # An omitted query is a safe list operation. Models frequently need
+        # the Library inventory before choosing the exact file to read; this
+        # must not become a user-visible tool error.
+        if normalized_query:
+            pattern = f"%{normalized_query[:200]}%"
+            filters.append(
+                (DeepSpaceWorkspaceFile.name.ilike(pattern))
+                | (DeepSpaceWorkspaceFile.content.ilike(pattern))
+            )
         files = (
             self.db.execute(
                 select(DeepSpaceWorkspaceFile)
-                .where(
-                    DeepSpaceWorkspaceFile.tenant_id == tenant_id,
-                    DeepSpaceWorkspaceFile.user_id == user_id,
-                    DeepSpaceWorkspaceFile.conversation_id == conversation_id,
-                    (DeepSpaceWorkspaceFile.name.ilike(pattern))
-                    | (DeepSpaceWorkspaceFile.content.ilike(pattern)),
-                    DeepSpaceWorkspaceFile.parent_folder_id == parsed_parent,
-                )
+                .where(*filters)
                 .order_by(DeepSpaceWorkspaceFile.updated_at.desc())
                 .limit(max(1, min(limit, 50)))
             )

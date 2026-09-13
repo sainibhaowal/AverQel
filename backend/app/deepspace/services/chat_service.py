@@ -281,7 +281,11 @@ DOCUMENT_QUERY_TOOL = {
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "query": {"type": "string", "minLength": 1, "maxLength": 1000},
+                "query": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "description": "Optional search text. Omit it to list recent files in the selected folder.",
+                },
                 "file_id": {"type": "string", "maxLength": 80},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20},
             },
@@ -521,7 +525,7 @@ UNIVERSAL_FIND_TOOL = {
                 "limit": {"type": "integer", "minimum": 1, "maximum": 50},
                 "folder_id": {"type": "string", "maxLength": 80},
             },
-            "required": ["target", "query"],
+            "required": ["target"],
         },
     },
 }
