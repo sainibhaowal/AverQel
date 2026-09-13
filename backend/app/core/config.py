@@ -224,6 +224,14 @@ class Settings(BaseSettings):
     deepspace_sandbox_token: str | None = None
     deepspace_sandbox_timeout_seconds: int = Field(default=20, ge=1, le=30)
 
+    # Interactive DeepSpace latency controls. These only bound provider
+    # generation; durable schedules and detached jobs keep their existing
+    # long-horizon runtime limits.
+    deepspace_fast_mode_enabled: bool = True
+    deepspace_provider_read_timeout_seconds: int = Field(default=90, ge=15, le=300)
+    deepspace_tool_planning_max_tokens: int = Field(default=1536, ge=256, le=4096)
+    deepspace_final_max_tokens: int = Field(default=4096, ge=512, le=16384)
+
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = DEFAULT_MINIO_ACCESS_KEY
     minio_secret_key: str = DEFAULT_MINIO_SECRET_KEY

@@ -863,7 +863,11 @@ class DeepSpaceChatService:
         return any(marker in normalized for marker in ("-image", "imagegen", "nano-banana"))
 
     async def _cancellable_provider_stream(
-        self, iterable: Any, *, run_id: uuid.UUID | None
+        self,
+        iterable: Any,
+        *,
+        run_id: uuid.UUID | None,
+        deadline: float | None = None,
     ) -> AsyncIterator[Any]:
         """Poll a provider stream without leaving generation alive after Stop.
 
@@ -875,7 +879,17 @@ class DeepSpaceChatService:
         pending = asyncio.create_task(anext(iterator))
         try:
             while True:
-                done, _ = await asyncio.wait({pending}, timeout=0.5)
+                remaining = (deadline - time.monotonic()) if deadline is not None else None
+                if remaining is not None and remaining <= 0:
+                    pending.cancel()
+                    await asyncio.gather(pending, return_exceptions=True)
+                    raise TimeoutError(
+                        "DeepSpace provider stream exceeded its interactive deadline"
+                    )
+                done, _ = await asyncio.wait(
+                    {pending},
+                    timeout=min(0.5, remaining) if remaining is not None else 0.5,
+                )
                 if not done:
                     if run_id is not None and self.runtime.is_cancel_requested(run_id=run_id):
                         pending.cancel()
@@ -911,8 +925,19 @@ class DeepSpaceChatService:
         for attempt in range(MAX_PROVIDER_STREAM_RETRIES + 1):
             emitted = False
             try:
+                stream_deadline = min(
+                    deadline,
+                    time.monotonic()
+                    + float(
+                        getattr(
+                            getattr(self, "settings", None),
+                            "deepspace_provider_read_timeout_seconds",
+                            90,
+                        )
+                    ),
+                )
                 async for item in self._cancellable_provider_stream(
-                    stream_factory(), run_id=run_id
+                    stream_factory(), run_id=run_id, deadline=stream_deadline
                 ):
                     if isinstance(item, dict) and item.get("type") == "runtime_cancelled":
                         yield item
@@ -921,6 +946,15 @@ class DeepSpaceChatService:
                     yield item
                 return
             except (ProviderRequestError, TimeoutError, OSError) as exc:
+                if isinstance(exc, TimeoutError) and bool(
+                    getattr(getattr(self, "settings", None), "deepspace_fast_mode_enabled", True)
+                ):
+                    # Retrying a stalled interactive stream would multiply
+                    # the user-visible wait (90s × 2/3 attempts). Durable
+                    # jobs retain the normal retry policy; fast mode fails the
+                    # single stalled attempt through the existing safe error
+                    # path instead.
+                    raise
                 retryable_provider_error = not isinstance(exc, ProviderRequestError) or (
                     exc.status_code in {408, 429} or exc.status_code >= 500
                 )
@@ -3659,13 +3693,45 @@ class DeepSpaceChatService:
                         stage=task_lifecycle_stage,
                         task_id=active_task_id,
                     )
+                has_tool_result = any(
+                    message.get("role") == "tool" for message in conversation_messages
+                )
+                configured_max_tokens = max(1, int(self.settings.llm_max_tokens_per_request))
+                if tools_for_round and bool(
+                    getattr(self.settings, "deepspace_fast_mode_enabled", True)
+                ):
+                    # Tool-selection responses only need a short structured
+                    # call. Once a tool has returned, allow a larger budget
+                    # for the final grounded answer without paying that cost
+                    # on every planning round.
+                    fast_budget = (
+                        getattr(self.settings, "deepspace_final_max_tokens", 4096)
+                        if has_tool_result
+                        else getattr(self.settings, "deepspace_tool_planning_max_tokens", 1536)
+                    )
+                    request_max_tokens = min(configured_max_tokens, max(1, int(fast_budget)))
+                else:
+                    request_max_tokens = configured_max_tokens
+                provider_read_timeout = max(
+                    15,
+                    min(
+                        300,
+                        int(
+                            getattr(
+                                self.settings,
+                                "deepspace_provider_read_timeout_seconds",
+                                90,
+                            )
+                        ),
+                    ),
+                )
                 request_messages = list(conversation_messages)
                 if lifecycle_instruction:
                     request_messages.append({"role": "system", "content": lifecycle_instruction})
                 request_messages, request_compacted = self._fit_history_to_context(
                     request_messages,
                     context_window=candidate.context_window,
-                    max_output_tokens=self.settings.llm_max_tokens_per_request,
+                    max_output_tokens=request_max_tokens,
                 )
                 context_used_tokens = self._estimate_context_tokens(
                     request_messages,
@@ -3687,11 +3753,11 @@ class DeepSpaceChatService:
                 last_context_compacted = request_compacted
                 reserved_output_tokens = (
                     min(
-                        max(0, int(self.settings.llm_max_tokens_per_request)),
+                        request_max_tokens,
                         max(0, int(candidate.context_window) - context_used_tokens),
                     )
                     if candidate.context_window
-                    else max(0, int(self.settings.llm_max_tokens_per_request))
+                    else request_max_tokens
                 )
                 last_reserved_output_tokens = reserved_output_tokens
                 session_input_tokens += context_used_tokens
@@ -3711,7 +3777,7 @@ class DeepSpaceChatService:
                         "sessionInputTokens": session_input_tokens,
                         "sessionOutputTokens": session_output_tokens,
                         "sessionTotalTokens": session_input_tokens + session_output_tokens,
-                        "maxOutputTokens": int(self.settings.llm_max_tokens_per_request),
+                        "maxOutputTokens": request_max_tokens,
                         **budget_state,
                         **(
                             {"contextLimit": candidate.context_window}
@@ -3729,7 +3795,7 @@ class DeepSpaceChatService:
                     model=candidate.model_name,
                     messages=request_messages,
                     temperature=self.settings.llm_temperature,
-                    max_tokens=self.settings.llm_max_tokens_per_request,
+                    max_tokens=request_max_tokens,
                     base_url=candidate.base_url or "",
                     api_key=candidate.api_key,
                     stream=True,
@@ -3756,6 +3822,7 @@ class DeepSpaceChatService:
                         "timeout_seconds": min(
                             15, int(getattr(self.settings, "llm_timeout_seconds", 15))
                         ),
+                        "read_timeout_seconds": provider_read_timeout,
                         "run_id": str(run_id) if run_id else None,
                         "turn_index": round_index,
                     },
