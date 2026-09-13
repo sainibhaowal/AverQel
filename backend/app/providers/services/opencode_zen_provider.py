@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import time
+import uuid
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import replace
 from typing import Any, Final, Literal
@@ -34,11 +35,16 @@ class OpenCodeZenProvider:
     _MODEL_DISCOVERY_ATTEMPTS = 3
     _MODEL_DISCOVERY_RETRY_DELAYS = (0.25, 0.5)
 
-    _GPT_MODEL_PREFIXES: Final[tuple[str, ...]] = ("gpt-",)
-    _CLAUDE_MODEL_PREFIXES: Final[tuple[str, ...]] = ("claude-",)
+    # Zen routes these model families through the Responses API.  Keeping the
+    # list explicit matters because the gateway returns a mixture of API
+    # families from one catalogue (the old implementation sent Muse/Grok to
+    # /chat/completions, which produced opaque upstream 500s).
+    _GPT_MODEL_PREFIXES: Final[tuple[str, ...]] = ("gpt-", "muse-", "grok-")
+    # OpenCode serves Qwen3 models through the Anthropic-compatible Messages
+    # endpoint, even though their names do not start with ``claude-``.
+    _CLAUDE_MODEL_PREFIXES: Final[tuple[str, ...]] = ("claude-", "qwen")
     _GEMINI_MODEL_PREFIXES: Final[tuple[str, ...]] = ("gemini-",)
     _OPENAI_COMPATIBLE_MODEL_PREFIXES: Final[tuple[str, ...]] = (
-        "qwen",
         "minimax",
         "glm",
         "kimi",
@@ -83,6 +89,10 @@ class OpenCodeZenProvider:
         )
         self.base_url = self.base_url.rstrip("/")
         self.api_key = api_key
+        # OpenCode's free pool requires a client session identifier.  It is
+        # deliberately scoped to this provider instance and never contains
+        # user or credential data.
+        self.session_id = str(uuid.uuid4())
 
     def bind(self, base_url: str, api_key: str | None = None) -> OpenCodeZenProvider:
         resolved = resolve_provider_base_url(base_url, provider_type=self.provider_name)
@@ -102,8 +112,7 @@ class OpenCodeZenProvider:
                 return injected
         return importlib.import_module("httpx")
 
-    @staticmethod
-    def _headers(api_key: str | None) -> dict[str, str]:
+    def _headers(self, api_key: str | None) -> dict[str, str]:
         if not api_key:
             raise ProviderRequestError(
                 provider_name=OpenCodeZenProvider.provider_name,
@@ -113,6 +122,7 @@ class OpenCodeZenProvider:
         return {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "X-Session-ID": self.session_id,
         }
 
     @staticmethod
@@ -434,6 +444,36 @@ class OpenCodeZenProvider:
         return instructions, input_items
 
     @classmethod
+    def _convert_tools_to_responses(cls, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Translate the shared chat-tool shape to the Responses API shape.
+
+        DeepSpace stores tools in the OpenAI Chat Completions format so the
+        same definitions can be sent to most providers. OpenCode's Responses
+        endpoint flattens the function object; forwarding the nested shape
+        makes the gateway reject the request with ``tools[0] missing name``.
+        Invalid cached MCP entries are omitted rather than poisoning the whole
+        turn.
+        """
+
+        converted: list[dict[str, Any]] = []
+        for tool in tools:
+            function = tool.get("function")
+            source = function if isinstance(function, dict) else tool
+            name = source.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            response_tool: dict[str, Any] = {
+                "type": "function",
+                "name": name.strip(),
+            }
+            for key in ("description", "parameters", "strict"):
+                value = source.get(key)
+                if value is not None:
+                    response_tool[key] = value
+            converted.append(response_tool)
+        return converted
+
+    @classmethod
     def _build_responses_payload(
         cls,
         request: ChatGenerateRequest,
@@ -451,7 +491,7 @@ class OpenCodeZenProvider:
         if instructions:
             payload["instructions"] = instructions
         if request.tools:
-            payload["tools"] = request.tools
+            payload["tools"] = cls._convert_tools_to_responses(request.tools)
         if request.tool_choice:
             payload["tool_choice"] = request.tool_choice
         if (
@@ -723,7 +763,14 @@ class OpenCodeZenProvider:
         adapted_request = replace(
             request,
             base_url=base_url,
-            metadata={**dict(request.metadata), "provider_type": self.provider_name},
+            metadata={
+                **dict(request.metadata),
+                "provider_type": self.provider_name,
+                "extra_headers": {
+                    **dict(request.metadata.get("extra_headers") or {}),
+                    "X-Session-ID": self.session_id,
+                },
+            },
         )
         return provider.generate(adapted_request)
 
@@ -748,7 +795,14 @@ class OpenCodeZenProvider:
         adapted_request = replace(
             request,
             base_url=base_url,
-            metadata={**dict(request.metadata), "provider_type": self.provider_name},
+            metadata={
+                **dict(request.metadata),
+                "provider_type": self.provider_name,
+                "extra_headers": {
+                    **dict(request.metadata.get("extra_headers") or {}),
+                    "X-Session-ID": self.session_id,
+                },
+            },
         )
         async for event in provider.stream_generate_events(adapted_request):
             yield event
@@ -759,7 +813,14 @@ class OpenCodeZenProvider:
         adapted_request = replace(
             request,
             base_url=base_url,
-            metadata={**dict(request.metadata), "provider_type": self.provider_name},
+            metadata={
+                **dict(request.metadata),
+                "provider_type": self.provider_name,
+                "extra_headers": {
+                    **dict(request.metadata.get("extra_headers") or {}),
+                    "X-Session-ID": self.session_id,
+                },
+            },
         )
         if family == "responses":
             result = self._gpt_family_response(request, base_url=base_url)

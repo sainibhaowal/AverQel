@@ -1,6 +1,24 @@
 import { normalizeMarkdown } from "@/app/dashboard/deepspace/_lib/markdown";
 
 describe("DeepSpace markdown normalization", () => {
+  it("handles a research answer with a wide table and sources without recursion", () => {
+    const content = `## Latest OpenAI API changes
+
+| Date (2026) | Change | What it means |
+| --- | --- | --- |
+| Sep 10 | Agents API public beta | Durable sessions and tools. |
+| Sep 8 | Prompt-cache diagnostics | Troubleshoot cache misses. |
+| Sep 3 | New long-running work controls | Continue tools asynchronously. |
+
+### Sources
+
+[R1] [Changelog](https://developers.openai.com/api/docs/changelog)
+[R2] [Release Notes](https://openai.com/products/release-notes/) — search snippet only
+[7] [Changelog](https://developers.openai.com/api/docs/changelog)`;
+
+    expect(() => normalizeMarkdown(content)).not.toThrow();
+    expect(normalizeMarkdown(content)).toContain("| Date (2026) | Change | What it means |");
+  });
   it("recovers a compact two-column table with an embedded separator", () => {
     const normalized = normalizeMarkdown(
       "| Detail | Value ||---| | Current Temp | 18.4 °C || Feels Like | ~18 °C || Conditions | Overcast / Light rain | | Wind | West, 18 km/h | | Humidity | 65% |",

@@ -113,7 +113,7 @@ button {
   --accent-pill-border: rgba(79, 70, 229, 0.2);
   --accent-pill-text: #4338ca;
   --btn-primary-bg: linear-gradient(135deg, #0d9488 0%, #0891b2 55%, #4f46e5 100%);
-  --bg-grid-line: rgba(14, 116, 144, 0.16);
+  --bg-grid-dot: rgba(14, 116, 144, 0.28);
 }
 
 .dark {
@@ -184,7 +184,7 @@ button {
   --accent-pill-border: rgba(140, 191, 128, 0.22);
   --accent-pill-text: #dbead5;
   --btn-primary-bg: linear-gradient(180deg, hsl(180, 60%, 40%), hsl(180, 60%, 30%));
-  --bg-grid-line: rgba(154, 170, 144, 0.045);
+  --bg-grid-dot: rgba(154, 170, 144, 0.12);
 }
 
 .landing-cyber {
@@ -669,19 +669,17 @@ body {
   background:
     radial-gradient(circle at top left, rgba(120, 160, 104, 0.08), transparent 26%),
     radial-gradient(circle at top right, rgba(92, 126, 82, 0.07), transparent 22%),
-    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background);
+    radial-gradient(circle at 1px 1px, var(--bg-grid-dot) 1px, transparent 1.35px),
+    var(--background);
   background-size:
     auto,
     auto,
-    32px 32px,
     32px 32px,
     auto;
   background-position:
     center,
     center,
-    -1px -1px,
-    -1px -1px,
+    0 0,
     center;
   color: var(--text-body);
   font-family: var(--font-sans), system-ui, sans-serif;
@@ -692,19 +690,17 @@ body {
   background:
     radial-gradient(circle at top left, rgba(126, 165, 111, 0.08), transparent 24%),
     radial-gradient(circle at top right, rgba(95, 129, 84, 0.07), transparent 20%),
-    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background);
+    radial-gradient(circle at 1px 1px, var(--bg-grid-dot) 1px, transparent 1.35px),
+    var(--background);
   background-size:
     auto,
     auto,
-    30px 30px,
     30px 30px,
     auto;
   background-position:
     center,
     center,
-    -1px -1px,
-    -1px -1px,
+    0 0,
     center;
 }
 
@@ -2324,6 +2320,58 @@ select:-webkit-autofill:focus {
   animation: btn-glow-pulse 3s ease-in-out infinite;
 }
 
+/* The first assistant frame can take a moment to arrive. Keep this small,
+   inline indicator local to the assistant avatar so it never covers the
+   composer or changes stream state. A short staggered wave stays smooth
+   during long provider waits without a JavaScript timer. */
+.deepspace-response-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 1.5rem;
+  padding: 0.15rem 0;
+  color: color-mix(in srgb, var(--accent-cyan) 82%, white);
+}
+
+.deepspace-response-dot {
+  display: block;
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 9999px;
+  background: currentColor;
+  box-shadow: 0 0 0.7rem color-mix(in srgb, currentColor 48%, transparent);
+  animation: deepspace-dot-wave 1.35s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.deepspace-response-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.deepspace-response-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes deepspace-dot-wave {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0) scale(0.82);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-0.22rem) scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deepspace-response-dot {
+    animation: none !important;
+    opacity: 0.72;
+  }
+}
+
 /* Count-up number container */
 .settings-metric-value {
   font-variant-numeric: tabular-nums;
@@ -2818,19 +2866,17 @@ html:not(.dark) body {
   background:
     radial-gradient(circle at 4% 0%, rgba(45, 212, 191, 0.13), transparent 25%),
     radial-gradient(circle at 96% 8%, rgba(129, 140, 248, 0.11), transparent 24%),
-    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background) !important;
+    radial-gradient(circle at 1px 1px, var(--bg-grid-dot) 1px, transparent 1.35px),
+    var(--background) !important;
   background-size:
     auto,
     auto,
-    30px 30px,
     30px 30px,
     auto;
   background-position:
     center,
     center,
-    -1px -1px,
-    -1px -1px,
+    0 0,
     center;
 }
 
@@ -2838,19 +2884,17 @@ html:not(.dark) .app-shell-grid {
   background:
     radial-gradient(circle at 4% 0%, rgba(45, 212, 191, 0.13), transparent 25%),
     radial-gradient(circle at 96% 8%, rgba(129, 140, 248, 0.11), transparent 24%),
-    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background) !important;
+    radial-gradient(circle at 1px 1px, var(--bg-grid-dot) 1px, transparent 1.35px),
+    var(--background) !important;
   background-size:
     auto,
     auto,
-    30px 30px,
     30px 30px,
     auto;
   background-position:
     center,
     center,
-    -1px -1px,
-    -1px -1px,
+    0 0,
     center;
 }
 

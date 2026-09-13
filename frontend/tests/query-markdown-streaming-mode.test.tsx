@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 
 import MarkdownRenderer from "../app/dashboard/query/_components/MarkdownRenderer";
+import { InlineMarkdown } from "../app/dashboard/query/_components/InlineMarkdown";
 
 describe("markdown streaming mode", () => {
   it("rerenders streaming markdown directly from the live message content", () => {
@@ -8,6 +9,20 @@ describe("markdown streaming mode", () => {
 
     expect(screen.getByText("Heading")).toBeInTheDocument();
     expect(screen.getByText("Plain streaming text.")).toBeInTheDocument();
+  });
+
+  it("keeps currency values out of the inline math parser", () => {
+    render(
+      <MarkdownRenderer content={"The service costs $0.05\u202f/\u202fmin."} streaming={false} />,
+    );
+
+    expect(screen.getByText(/costs \$0\.05/)).toBeInTheDocument();
+  });
+
+  it("keeps provider currency text out of the Query inline renderer's math parser", () => {
+    render(<InlineMarkdown content={"Tool result: $0.05\u202f/\u202fmin."} />);
+
+    expect(screen.getByText(/Tool result: \$0\.05/)).toBeInTheDocument();
   });
 
   it("normalizes collapsed headings and preserves table text during streaming", () => {

@@ -1,6 +1,7 @@
 export const TOOL_LABELS: Record<string, string> = {
   search_ecosystem_docs: "Exploring Knowledge Base",
   web_search: "Searching the Web",
+  research_status: "Web Research",
   crawl_url: "Analyzing URL Content",
   sync_connector: "Syncing Data Source",
   list_connectors: "Checking Integrations",

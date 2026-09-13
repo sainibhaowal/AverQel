@@ -3,13 +3,12 @@
 import { memo, useEffect, useId, useMemo, useState } from "react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
-import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
 
 import { normalizeMarkdown, normalizeThinkingDisplay } from "../_lib/markdown";
 import { isMermaidErrorSvg } from "../../query/_lib/mermaid";
 import { sanitizeMermaidSyntax } from "../../query/_components/CodeBlock";
+import AdaptiveMarkdownTable from "../../_components/AdaptiveMarkdownTable";
 
 function MermaidPreview({ source }: { source: string }) {
   const id = useId().replace(/:/g, "");
@@ -166,11 +165,7 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
           </pre>
         );
       },
-      table: ({ children }) => (
-        <div className="my-5 overflow-x-auto rounded-xl border border-white/10">
-          <table className="w-full border-collapse text-left">{children}</table>
-        </div>
-      ),
+      table: ({ children }) => <AdaptiveMarkdownTable>{children}</AdaptiveMarkdownTable>,
       h1: ({ children }) => (
         <h1
           className={`${compact ? "mt-3 mb-2 pb-1 text-lg" : "mt-8 mb-4 pb-3 text-3xl"} border-b border-cyan-300/20 font-bold tracking-tight text-cyan-50`}
@@ -293,8 +288,12 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
       aria-live={streaming ? "polite" : undefined}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        // Model output is untrusted and routinely includes dollar prices,
+        // shell syntax, and copied LaTeX fragments. Do not run a LaTeX parser
+        // in the chat surface: it can turn ordinary text into pathological
+        // parser input. Mathematical notation remains readable as Markdown
+        // text rather than risking a page-wide rendering failure.
+        remarkPlugins={[remarkGfm]}
         components={components}
       >
         {normalizedContent || (streaming ? "\u00a0" : "")}

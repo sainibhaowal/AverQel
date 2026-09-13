@@ -36,7 +36,7 @@ export default function CallToAction() {
       <div className="relative mx-auto w-full max-w-[1800px] overflow-hidden rounded-[2.5rem] border border-emerald-300/15 bg-[radial-gradient(circle_at_18%_25%,rgba(0,255,163,0.14),transparent_26%),radial-gradient(circle_at_80%_70%,rgba(0,184,255,0.16),transparent_28%),linear-gradient(135deg,rgba(6,15,14,0.97),rgba(5,10,19,0.96))] shadow-[0_45px_150px_rgba(0,0,0,0.44)] sm:rounded-[3rem]">
         <div
           aria-hidden="true"
-          className="absolute inset-0 [background-image:linear-gradient(rgba(81,255,200,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(81,255,200,0.07)_1px,transparent_1px)] [background-size:38px_38px] opacity-55"
+          className="absolute inset-0 [background-image:radial-gradient(circle_at_1px_1px,rgba(81,255,200,0.14)_1px,transparent_1.35px)] [background-size:38px_38px] opacity-55"
         />
         <motion.div
           aria-hidden="true"

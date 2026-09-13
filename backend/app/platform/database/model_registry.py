@@ -22,6 +22,7 @@ from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
 from app.deepspace.models.message import Message
 from app.deepspace.models.message_version import MessageVersion
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
+from app.deepspace.models.research import DeepSpaceResearchRun, DeepSpaceResearchSource
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
@@ -102,6 +103,8 @@ __all__ = [
     "Conversation",
     "Message",
     "MessageVersion",
+    "DeepSpaceResearchRun",
+    "DeepSpaceResearchSource",
     "DeepSpaceMediaArtifact",
     "DeepSpaceWorkspaceFile",
     "DeepSpaceWorkspaceFolder",

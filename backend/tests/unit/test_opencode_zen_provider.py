@@ -270,13 +270,56 @@ def test_opencode_zen_provider_routes_model_families(monkeypatch):
 
     assert provider.generate(_request("claude-sonnet-4-6")).content == "anthropic"
     assert provider.generate(_request("gemini-3.1-pro")).content == "google"
-    assert provider.generate(_request("qwen3.6-plus")).content == "openai-compatible"
+    assert provider.generate(_request("qwen3.6-plus")).content == "anthropic"
 
     assert calls == [
         ("anthropic", "claude-sonnet-4-6", "https://opencode.ai/zen/v1"),
         ("google", "gemini-3.1-pro", "https://opencode.ai/zen/v1"),
-        ("openai-compatible", "qwen3.6-plus", "https://opencode.ai/zen/v1"),
+        ("anthropic", "qwen3.6-plus", "https://opencode.ai/zen/v1"),
     ]
+
+
+def test_opencode_zen_free_pool_headers_include_session_id() -> None:
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="zen_test")
+
+    headers = provider._headers(provider.api_key)
+
+    assert headers["Authorization"] == "Bearer zen_test"
+    assert headers["Content-Type"] == "application/json"
+    assert headers["X-Session-ID"] == provider.session_id
+    assert len(provider.session_id) == 36
+
+
+def test_opencode_zen_flattens_chat_tools_for_responses_api() -> None:
+    request = replace(
+        _request("muse-spark-1.2-contributor-free"),
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "search",
+                    "description": "Search the web.",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            }
+        ],
+    )
+
+    payload = OpenCodeZenProvider._build_responses_payload(request, stream=True)
+
+    assert payload["tools"] == [
+        {
+            "type": "function",
+            "name": "search",
+            "description": "Search the web.",
+            "parameters": {"type": "object", "properties": {}},
+        }
+    ]
+
+
+def test_opencode_zen_routes_muse_and_grok_through_responses() -> None:
+    assert OpenCodeZenProvider._model_family("muse-spark-1.2-contributor-free") == "responses"
+    assert OpenCodeZenProvider._model_family("grok-build-0.1") == "responses"
 
 
 @pytest.mark.asyncio

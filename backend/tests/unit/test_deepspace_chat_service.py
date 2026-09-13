@@ -54,6 +54,15 @@ class _FakeRepository:
     def add_message(self, **kwargs):
         return SimpleNamespace(id=self.assistant_id)
 
+    def get_message_by_conversation(self, **kwargs):
+        return SimpleNamespace(
+            id=self.assistant_id,
+            role="assistant",
+            content="",
+            active_version=None,
+            metadata_json={},
+        )
+
     def complete_assistant_message(self, **kwargs):
         _FakeRepository.completed_metadata = kwargs.get("metadata_json")
         _FakeRepository.completed_content = kwargs.get("content")
@@ -309,6 +318,9 @@ class _LifecycleTaskStore:
             "length": len(self.note),
         }
 
+    def list_workspace_entries(self, **kwargs):
+        return {"files": [], "folders": []}
+
     def write_note(self, **kwargs):
         self.note = str(kwargs["markdown"])
         return self.read_note(**kwargs)
@@ -324,8 +336,12 @@ class _LifecycleProvider:
             '{"tasks":[{"id":"task-1","content":"Draft the verified result","priority":1}]}',
         ),
         ("todo_read", "{}"),
+        ("observe", "{}"),
         ("todo_mark", '{"task_id":"task-1","status":"in_progress"}'),
-        ("write", '{"markdown":"# Verified result","mode":"replace"}'),
+        (
+            "write",
+            '{"target":"note","content":"# Verified result","mode":"replace"}',
+        ),
         ("analyze", '{"focus":"Verify the drafted result"}'),
         (
             "todo_mark",
@@ -555,6 +571,7 @@ async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch
     assert tool_starts == [
         "todo_write",
         "todo_read",
+        "observe",
         "todo_mark",
         "write",
         "analyze",
@@ -575,9 +592,11 @@ async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch
     }.issubset(_LifecycleProvider.received_tool_sets[0])
     assert _LifecycleProvider.received_tool_choices[0] == "auto"
     assert _LifecycleProvider.received_tool_sets[1] == {"todo_read"}
-    assert _LifecycleProvider.received_tool_sets[2] == {"todo_mark"}
-    assert _LifecycleProvider.received_tool_sets[6] == {"todo_check"}
-    assert _LifecycleProvider.received_tool_sets[7] == {"final"}
+    assert _LifecycleProvider.received_tool_sets[2] == {"observe"}
+    assert _LifecycleProvider.received_tool_sets[3] == {"todo_mark"}
+    assert _LifecycleProvider.received_tool_sets[5] == {"analyze"}
+    assert _LifecycleProvider.received_tool_sets[7] == {"todo_check"}
+    assert _LifecycleProvider.received_tool_sets[8] == {"final"}
     assert _FakeRepository.completed_content == "The verified result is ready."
 
 
@@ -753,7 +772,7 @@ def test_dsml_fake_tool_markup_is_detected() -> None:
 
 def test_nested_json_array_fake_tool_markup_is_detected() -> None:
     assert DeepSpaceChatService._looks_like_fake_tool_output(
-        '[{"tool_name":"todo_mark","parameters":' '{"task_id":"old-task","status":"completed"}}]'
+        '[{"tool_name":"todo_mark","parameters":{"task_id":"old-task","status":"completed"}}]'
     )
     assert not DeepSpaceChatService._looks_like_fake_tool_output(
         "Here is a normal JSON array: [1, 2, 3]."

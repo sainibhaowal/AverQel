@@ -24,6 +24,16 @@ describe("provider Markdown normalization", () => {
     expect(result).not.toContain("| | :---");
   });
 
+  it.each([
+    ["Query", normalizeQueryMarkdown],
+    ["DeepSpace", normalizeDeepSpaceMarkdown],
+  ])("normalizes a very wide pipe row iteratively for %s", (_surface, normalize) => {
+    const wideRow = `|${Array.from({ length: 6000 }, (_, index) => ` cell-${index} `).join("|")}|`;
+
+    expect(() => normalize(wideRow)).not.toThrow();
+    expect(normalize(wideRow)).toContain("cell-5999");
+  });
+
   it("pads a malformed separator row to the header column count", () => {
     const result = normalizeQueryMarkdown(malformedFourColumnTable);
 
@@ -62,5 +72,71 @@ describe("provider Markdown normalization", () => {
 
     expect(result).toContain("- [1] [First source](https://example.com/1)");
     expect(result).toContain("- [2] [Second source](https://example.com/2)");
+  });
+
+  it.each([
+    ["Query", normalizeQueryMarkdown],
+    ["DeepSpace", normalizeDeepSpaceMarkdown],
+  ])("removes unmatched strong markers from provider text for %s", (_surface, normalize) => {
+    const result = normalize(
+      "**Overall demand is strong\n1. **KI-Manager / Head of AI\nThousands of openings, **= 80+\n`**literal code**`\n**Already valid** text",
+    );
+
+    expect(result).toContain("Overall demand is strong");
+    expect(result).toContain("1. KI-Manager / Head of AI");
+    expect(result).toContain("openings, = 80+");
+    expect(result).toContain("`**literal code**`");
+    expect(result).toContain("**Already valid** text");
+    expect(result).not.toContain("**Overall");
+    expect(result).not.toContain("**KI-Manager");
+  });
+
+  it("repairs markers after compact table rows are split", () => {
+    const result = normalizeDeepSpaceMarkdown(
+      "| Metric | What the data shows || --- | --- || **Machine-Learning Engineer postings | **≈ 4,0+ active listings | | **AI-Engineer postings | **≈ 2,0+ active listings |",
+    );
+
+    expect(result).not.toContain("**Machine-Learning");
+    expect(result).not.toContain("**AI-Engineer");
+    expect(result).not.toContain("**≈");
+  });
+
+  it("splits pipe-delimited sections packed into an ordered list item", () => {
+    const result = normalizeDeepSpaceMarkdown(
+      "1. First role\n2. Second role\n3. Third role\n4. KI-Manager / Head of AI | | Salary movement (2024 → 2025) | • Entry-level ML Engineer: €5k–€68k gross/yr | Experienced Lead: €80k–€110k | | Geographic hotspots | • Jena | • Backnang | | What's driving the market | 1. Digital-transformation budgets",
+    );
+
+    expect(result).not.toContain("| |");
+    expect(result).not.toContain(" | ");
+    expect(result).toContain("4. KI-Manager / Head of AI");
+    expect(result).toContain("Salary movement (2024 → 2025)");
+    expect(result).toContain("- Entry-level ML Engineer");
+    expect(result).toContain("Geographic hotspots");
+    expect(result).toContain("What's driving the market");
+  });
+
+  it("recovers escaped-index compact tables", () => {
+    const result = normalizeDeepSpaceMarkdown(
+      "# | Job title | Skills | Experience | Salary | Link |\n\\|---|---|---|---|---|---| | 1 | ML Engineer | Python | 1-3 yr | €60k | https://example.com | | 2 | AI Engineer | PyTorch | 2-5 yr | €70k | https://example.com/ai |",
+    );
+
+    expect(result).toContain("| # | Job title | Skills | Experience | Salary | Link |");
+    expect(result).toContain("| 1 | ML Engineer | Python | 1-3 yr | €60k | https://example.com |");
+    expect(result).toContain(
+      "| 2 | AI Engineer | PyTorch | 2-5 yr | €70k | https://example.com/ai |",
+    );
+    expect(result).not.toContain("\\|---");
+  });
+
+  it("keeps ordered numbering across provider bullet continuations", () => {
+    const result = normalizeDeepSpaceMarkdown(
+      "1. First role\n• Detail one\n2. Second role\n• Detail two",
+    );
+
+    expect(result).toContain("1. First role");
+    expect(result).toContain("2. Second role");
+    expect(result).toContain("   - Detail one");
+    expect(result).toContain("   - Detail two");
+    expect(result).not.toContain("1. Second role");
   });
 });

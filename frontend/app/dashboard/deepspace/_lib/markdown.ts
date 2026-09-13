@@ -27,11 +27,21 @@ function normalizeMarkdownText(content: string): string {
   const rawLines = content
     .replace(/<br\s*\/?\s*>/gi, "\n")
     .replace(/([^#\n])(#{1,6}\s)/g, "$1\n\n$2")
-    .split("\n");
+    // Recover providers that escape the opening pipe or put the index header
+    // before it (`# | Title | ...`), both of which block GFM table detection.
+    .replace(/(^|\n)\s*\\\|/g, "$1|")
+    .split("\n")
+    // A few providers emit a leading `**` (or `__`) without its closing
+    // marker. CommonMark must display that token literally. Repair only an
+    // odd, unescaped marker count per text line; fenced code is split out by
+    // normalizeMarkdown before this function runs and remains untouched.
+    .map((line) => line.replace(/^(\s*)#\s*\|/, "$1| # |"))
+    .map(repairDanglingStrongMarker);
   // Expand compact pipe boundaries before looking for a header/separator
   // pair. Keep a fully recoverable compact table intact so its existing
   // column-aware recovery remains authoritative.
   const lines = rawLines.flatMap((line) => {
+    if (line.trim() === "|") return [];
     const repairedCitations = repairCompactCitationLine(line);
     if (repairedCitations.length > 1) return repairedCitations;
     const repairedListLine = repairCompactOrderedListLine(line);
@@ -110,7 +120,100 @@ function normalizeMarkdownText(content: string): string {
     index += 1;
   }
 
-  return repairOrderedListNumbers(normalizedLines).join("\n");
+  // Run once more after compact tables/lists have been split into physical
+  // lines. Providers can stream an entire table or list as one paragraph;
+  // repairing only before that split would see an even total and miss the
+  // individual dangling markers shown in the rendered rows.
+  return repairOrderedListNumbers(normalizedLines).map(repairDanglingStrongMarker).join("\n");
+}
+
+function repairDanglingStrongMarker(line: string): string {
+  // Table cells (and provider-generated inline separators) are independent
+  // Markdown text runs. A row can therefore contain two dangling opening
+  // markers while the row-level count is even; repair each pipe-delimited
+  // cell separately.
+  if (line.includes("|")) {
+    return repairPipeDelimitedLine(line);
+  }
+
+  return repairStrongMarkersOutsideCode(line);
+}
+
+function repairStrongMarkersOutsideCode(line: string): string {
+  // Leave inline code spans byte-for-byte intact; asterisks in a code sample
+  // are content, not Markdown emphasis. Complete fenced blocks are already
+  // excluded by normalizeMarkdown.
+  const segments = line.split(/(`+[^`]*`+)/g);
+  return segments
+    .map((segment, index) => (index % 2 === 1 ? segment : repairStrongMarkerText(segment)))
+    .join("");
+}
+
+function repairPipeDelimitedLine(line: string): string {
+  const parts: string[] = [];
+  let segmentStart = 0;
+  let codeTicks = 0;
+
+  for (let index = 0; index < line.length; ) {
+    if (line[index] === "`") {
+      let end = index + 1;
+      while (end < line.length && line[end] === "`") end += 1;
+      const runLength = end - index;
+      if (codeTicks === 0) codeTicks = runLength;
+      else if (runLength === codeTicks) codeTicks = 0;
+      index = end;
+      continue;
+    }
+    if (line[index] === "|" && codeTicks === 0) {
+      // This must not call repairDanglingStrongMarker again: model-generated
+      // wide tables can contain thousands of pipes, and recursive per-cell
+      // repair caused a browser stack overflow.
+      parts.push(repairStrongMarkersOutsideCode(line.slice(segmentStart, index)));
+      segmentStart = index + 1;
+    }
+    index += 1;
+  }
+
+  parts.push(repairStrongMarkersOutsideCode(line.slice(segmentStart)));
+  return parts.join("|");
+}
+
+function repairStrongMarkerText(text: string): string {
+  const markers = [...text.matchAll(/(?<!\\)(?:\*\*|__)/g)];
+  if (markers.length === 0) return text;
+
+  const unmatched: number[] = [];
+  const openMarkers: Array<{ index: number; value: string }> = [];
+  for (const marker of markers) {
+    const index = marker.index ?? -1;
+    if (index < 0) continue;
+    const value = marker[0];
+    const before = text[index - 1] ?? "";
+    const after = text[index + value.length] ?? "";
+    const canOpen =
+      (!before || /\s/.test(before) || "([{\"'“‘—–-|".includes(before)) &&
+      Boolean(after) &&
+      !/\s/.test(after);
+    const canClose =
+      Boolean(before) &&
+      !/\s/.test(before) &&
+      (!after || /\s/.test(after) || ".,!?;:)]}\"'”’—–-|".includes(after));
+
+    if (canClose && openMarkers.length) {
+      const opening = openMarkers.pop()!;
+      if (opening.value !== value) {
+        unmatched.push(opening.index, index);
+      }
+      continue;
+    }
+    if (canOpen) openMarkers.push({ index, value });
+    else unmatched.push(index);
+  }
+  unmatched.push(...openMarkers.map(({ index }) => index));
+
+  return unmatched
+    .sort((left, right) => right - left)
+    .reduce((result, index) => `${result.slice(0, index)}${result.slice(index + 2)}`, text);
 }
 
 function repairCompactCitationLine(line: string): string[] {
@@ -128,7 +231,23 @@ function repairCompactOrderedListLine(line: string): string[] {
   // token; ordinary prose such as `version 2.0` remains untouched.
   if (!/^\s*\d{1,3}\.\s+/.test(line)) return [line];
   const repaired = line.replace(/(?<=\S)(?=\d{1,3}\.\s+(?:\*\*|__|\[|[A-Z]))/g, "\n");
-  return repaired.split("\n");
+  return repaired.split("\n").flatMap(splitOrderedListSections);
+}
+
+function splitOrderedListSections(line: string): string[] {
+  const match = line.match(/^(\s*)(\d{1,3})\.\s+(.*)$/);
+  if (!match || !match[3]?.includes("|")) return [line];
+
+  const sections = match[3]
+    .split(/\s*\|\s*/)
+    .map((section) => section.trim())
+    .filter(Boolean);
+  if (sections.length < 2) return [line];
+
+  return sections.map((section, index) => {
+    const normalizedSection = section.replace(/^•\s*/, "- ");
+    return index === 0 ? `${match[1]}${match[2]}. ${normalizedSection}` : `   ${normalizedSection}`;
+  });
 }
 
 function repairOrderedListNumbers(lines: string[]): string[] {
@@ -147,9 +266,17 @@ function repairOrderedListNumbers(lines: string[]): string[] {
       return `${indent}${next}. ${match[2]}`;
     }
 
-    // Detail bullets and blank lines belong to the preceding ordered list.
-    // A normal paragraph or heading ends it and resets numbering.
-    if (listActive && (line.trim() === "" || /^\s*[-*+]\s+/.test(line))) return line;
+    // Providers often put detail bullets at column zero below a numbered
+    // section. CommonMark treats that as a new sibling list, closes the
+    // ordered list, and visually restarts the next section at 1. Nest those
+    // bullets beneath the active numbered item so one semantic ordered list
+    // remains open and the browser renders 1, 2, 3… correctly.
+    if (listActive && /^\s*[-*+•]\s+/.test(line)) {
+      return `   - ${line.replace(/^\s*[-*+•]\s+/, "")}`;
+    }
+    // Blank and already-indented continuation lines also belong to the
+    // preceding ordered item. A normal paragraph or heading ends the list.
+    if (listActive && (line.trim() === "" || /^\s{2,}\S/.test(line))) return line;
     counters.clear();
     listActive = false;
     return line;

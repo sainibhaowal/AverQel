@@ -15,7 +15,7 @@ RUN --mount=type=cache,id=averqel-pnpm-store,target=/root/.local/share/pnpm/stor
 
 COPY . .
 ARG NEXT_PROXY_TARGET=http://api:1000
-ARG GIT_VERSION=v1.0.0
+ARG GIT_VERSION=development
 ARG GIT_SHA=unknown
 ARG BUILD_TIMESTAMP=unknown
 ARG DESKTOP_DOWNLOAD_BASE_URL=https://github.com/sainibhaowal/AverQel/releases/latest/download

@@ -143,6 +143,7 @@ _TIMELINE_EVENT_NAMES = {
     "tool_start",
     "tool_result",
     "tool_error",
+    "research_status",
     "ask_user_question",
     "permission_request",
     "permission_granted",

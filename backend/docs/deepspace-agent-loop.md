@@ -17,6 +17,8 @@ DeepSpace uses a bounded, provider-facing tool loop for multi-step productivity 
 
 The model never receives shell, terminal, file-system, or arbitrary cURL access through this loop. Thinking deltas are display-only; structured tool calls and tool results control execution. The DeepSpace tool contract is provider-independent: every configured chat provider receives the same productivity, web, URL/image, and explicitly attached MCP tools. The provider adapter translates that contract to the provider's native function-calling format (Google Gemini, Anthropic, OpenAI-compatible APIs, OpenCode Zen, and local OpenAI-compatible runtimes).
 
+For a managed multi-step plan, inspection and review are enforced by the backend rather than left to model preference: `todo_write → todo_read → observe → todo_mark(in_progress) → work → analyze → todo_mark(terminal) → todo_check → final`. A direct conversational answer remains tool-free when no workspace action, research, or plan is needed.
+
 Provider and model support is still bounded by the upstream model's capabilities: a model must accept function/tool calling for autonomous tool execution. DeepSpace does not silently pretend a prose-only model called a tool; it keeps the tool stream visible and reports provider/model rejection as an explicit runtime error.
 
 ## Safety boundaries

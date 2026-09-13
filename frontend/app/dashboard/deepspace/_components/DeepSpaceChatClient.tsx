@@ -1332,6 +1332,20 @@ export default function DeepSpaceChatClient({
     [syncThreadScrollMetrics],
   );
 
+  // The thinking details panel is an independent scroll surface. Capture its
+  // scroll events so the outer auto-follow loop does not pull the conversation
+  // back to the bottom while the reader is inspecting internal activity.
+  const handleScrollCapture = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      typeof target.closest === "function" &&
+      target.closest("[data-thinking-scroll='true']")
+    ) {
+      autoFollowRef.current = false;
+    }
+  }, []);
+
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-transparent">
       <div className="relative min-w-0 flex-1 overflow-hidden bg-transparent">
@@ -1345,6 +1359,7 @@ export default function DeepSpaceChatClient({
           <div
             ref={scrollContainerRef}
             onScroll={handleUserScroll}
+            onScrollCapture={handleScrollCapture}
             style={{ overflowAnchor: "none" }}
             className={`custom-scrollbar scrollbar-hide min-h-0 flex-1 overflow-y-auto pt-16 pr-12 pl-3 ${
               isMobileStacked ? "pb-24 sm:pr-12 sm:pl-4" : "sm:pr-12 sm:pl-4"

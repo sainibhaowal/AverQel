@@ -516,6 +516,30 @@ describe("TimelineStep Model", () => {
     });
   });
 
+  test("preserves the thinking row identity when fragments omit step ids", () => {
+    let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "submit_query",
+      query: "Stream internal work",
+    });
+    const assistantId = state.activeAssistantId;
+    if (!assistantId) throw new Error("No active assistant");
+
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: { event: "thinking", data: { turn_index: 1, text: "First fragment" } },
+    });
+    const firstId = state.messages.find((message) => message.id === assistantId)?.timeline?.[0]?.id;
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: { event: "thinking", data: { turn_index: 1, text: " second fragment" } },
+    });
+
+    const timeline = state.messages.find((message) => message.id === assistantId)?.timeline ?? [];
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0]?.id).toBe(firstId);
+    expect(timeline[0]?.details).toBe("First fragment second fragment");
+  });
+
   test("rehydrates persisted timeline events without merging thought segments", () => {
     const state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "load_history",

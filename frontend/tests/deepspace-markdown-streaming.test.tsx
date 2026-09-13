@@ -100,4 +100,31 @@ describe("DeepSpace markdown streaming", () => {
     expect(screen.getByText("Summary.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Live heading" })).toBeInTheDocument();
   });
+
+  it("keeps internal-thinking sections in one ordered list across detail bullets", () => {
+    const { container } = render(
+      <DeepSpaceMarkdownRenderer
+        compact
+        streaming
+        content={
+          "1. Analyze User Input:\n• First detail\n• Second detail\n1. Identify My Capabilities:\n• Third detail\n1. Formulate Response:\n• Final detail"
+        }
+      />,
+    );
+
+    expect(container.querySelectorAll("ol")).toHaveLength(1);
+    expect(container.querySelector("ol")?.children).toHaveLength(3);
+    expect(container.querySelectorAll("ol > li > ul")).toHaveLength(3);
+  });
+
+  it("treats currency and narrow non-breaking spaces as text, not inline LaTeX", () => {
+    render(
+      <DeepSpaceMarkdownRenderer
+        content={"Voice sessions cost $0.05 / min. Premium input costs $5\u202f/\u202fM tokens."}
+      />,
+    );
+
+    expect(screen.getByText(/Voice sessions cost \$0\.05/)).toBeInTheDocument();
+    expect(screen.getByText(/Premium input costs \$5/)).toBeInTheDocument();
+  });
 });

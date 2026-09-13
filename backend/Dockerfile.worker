@@ -1,5 +1,5 @@
 FROM backend-worker-base:latest
-ARG GIT_VERSION=v1.0.0
+ARG GIT_VERSION=development
 ARG GIT_SHA=unknown
 ARG BUILD_TIMESTAMP=unknown
 ENV AKS_RELEASE_VERSION=${GIT_VERSION}
