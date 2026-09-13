@@ -66,6 +66,8 @@ available, what is gated, and which security boundary protects each feature.
    ownership checks.
 4. Provider-generated media continues to use the immutable object-storage
    record and range-safe artifact delivery route.
+5. Conversation exports now include PDF, DOCX, Markdown, and editable PPTX
+   (`GET /api/v1/deepspace/export/{conversation_id}?format=pptx`).
 
 ## 5. Scheduled and long-running work
 

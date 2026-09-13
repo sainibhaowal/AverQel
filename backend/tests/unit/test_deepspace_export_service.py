@@ -38,6 +38,14 @@ def test_markdown_export_returns_markdown_not_source_html():
     assert "<h1>" not in markdown
 
 
+def test_pptx_export_returns_editable_openxml_package() -> None:
+    presentation = DeepSpaceExportService().generate_pptx(
+        "<h1>Title</h1><p>Body</p><ul><li>One</li></ul>", title="Demo"
+    )
+
+    assert presentation.getvalue().startswith(b"PK")
+
+
 def test_export_header_supports_unicode_note_titles() -> None:
     disposition = _download_content_disposition(
         title="Ravi’s research ✓",

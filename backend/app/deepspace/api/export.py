@@ -46,7 +46,7 @@ def _download_content_disposition(*, title: str, extension: str) -> str:
 )
 async def export_conversation(
     conversation_id: uuid.UUID,
-    format: Literal["pdf", "docx", "md"] = Query("pdf"),
+    format: Literal["pdf", "docx", "md", "pptx"] = Query("pdf"),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -77,10 +77,14 @@ async def export_conversation(
         file_obj = service.generate_docx(content_html, title)
         media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         extension = "docx"
-    else:
+    elif format == "md":
         file_obj = service.generate_md(content_html)
         media_type = "text/markdown"
         extension = "md"
+    else:
+        file_obj = service.generate_pptx(content_html, title)
+        media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        extension = "pptx"
 
     filename_title = f"{title.replace(' ', '_')}_{conversation_id.hex[:8]}"
 
