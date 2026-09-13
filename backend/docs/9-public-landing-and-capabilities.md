@@ -9,12 +9,13 @@ making the first page excessively long.
 
 ## 2. What is shown
 
-1. Library and document intelligence.
-2. Evidence-first web research.
-3. Sandboxed Python and read-only SQL analysis.
-4. Private artifacts and exports.
-5. Schedules and long-running work.
-6. Providers and approved MCP connections.
+1. DeepSpace workspace, notes, memory, and collections.
+2. Library and document intelligence.
+3. Evidence-first web research.
+4. Sandboxed Python and read-only SQL analysis.
+5. Private artifacts and exports.
+6. Schedules and long-running work.
+7. Providers and approved MCP connections.
 
 Each card has a status label. Optional deployment dependencies are stated as setup requirements;
 the page does not imply that a disabled local service is currently running.

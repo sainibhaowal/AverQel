@@ -8,6 +8,7 @@ import {
   CalendarClock,
   FileStack,
   Globe2,
+  Layers3,
   Network,
   ShieldCheck,
   Sparkles,
@@ -33,6 +34,15 @@ type Capability = {
 };
 
 const capabilities: Capability[] = [
+  {
+    icon: Layers3,
+    title: "DeepSpace workspace",
+    description:
+      "Keep streaming chat, notes, memory, collections, and durable conversation history in one private workspace.",
+    href: "/documentation/memory-workspace",
+    status: "Available",
+    accent: "blue",
+  },
   {
     icon: FileStack,
     title: "Library + document intelligence",
@@ -118,7 +128,7 @@ export default function CapabilityDirectory() {
             id="capabilities-title"
             className={`${landingSectionTitleClass} ${landingTitleGradientBySection.platformSurfaces}`}
           >
-            One workspace, six focused ways to work
+            One workspace, clear ways to work
           </h2>
           <p className={landingSectionLeadClass}>
             See what is available now and what needs an optional deployment profile. Open a card for

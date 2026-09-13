@@ -33,8 +33,12 @@ describe("CapabilityDirectory", () => {
     render(<CapabilityDirectory />);
 
     expect(
-      screen.getByRole("heading", { name: /one workspace, six focused ways/i }),
+      screen.getByRole("heading", { name: /one workspace, clear ways to work/i }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /DeepSpace workspace/i })).toHaveAttribute(
+      "href",
+      "/documentation/memory-workspace",
+    );
     expect(screen.getByRole("link", { name: /Library \+ document intelligence/i })).toHaveAttribute(
       "href",
       "/documentation/library",
