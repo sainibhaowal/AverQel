@@ -43,8 +43,12 @@ function normalizeMarkdownText(content: string): string {
       // Providers frequently emit HTML line breaks in otherwise plain Markdown.
       .replace(/<br\s*\/?\s*>/gi, "\n")
       .replace(/([^#\n])(#{1,6}\s)/g, "$1\n\n$2")
+      .replace(/(^|\n)\s*\\\|/g, "$1|")
       .split("\n")
+      .map((line) => line.replace(/^(\s*)#\s*\|/, "$1| # |"))
+      .map(repairDanglingStrongMarker)
       .flatMap((line) => {
+        if (line.trim() === "|") return [];
         const recoveredTable = recoverCompactTable(line);
         if (recoveredTable) return recoveredTable.split("\n");
 
@@ -55,7 +59,91 @@ function normalizeMarkdownText(content: string): string {
         return [line.replace(/\|\|/g, "|\n|").replace(/\|\s+\|(?=\s*:?-{2,})/g, "|\n|")];
       })
       .join("\n")
+      .split("\n")
+      .map(repairDanglingStrongMarker)
+      .join("\n")
   );
+}
+
+function repairDanglingStrongMarker(line: string): string {
+  if (line.includes("|")) {
+    return repairPipeDelimitedLine(line);
+  }
+
+  return repairStrongMarkersOutsideCode(line);
+}
+
+function repairStrongMarkersOutsideCode(line: string): string {
+  const segments = line.split(/(`+[^`]*`+)/g);
+  return segments
+    .map((segment, index) => (index % 2 === 1 ? segment : repairStrongMarkerText(segment)))
+    .join("");
+}
+
+function repairPipeDelimitedLine(line: string): string {
+  const parts: string[] = [];
+  let segmentStart = 0;
+  let codeTicks = 0;
+
+  for (let index = 0; index < line.length; ) {
+    if (line[index] === "`") {
+      let end = index + 1;
+      while (end < line.length && line[end] === "`") end += 1;
+      const runLength = end - index;
+      if (codeTicks === 0) codeTicks = runLength;
+      else if (runLength === codeTicks) codeTicks = 0;
+      index = end;
+      continue;
+    }
+    if (line[index] === "|" && codeTicks === 0) {
+      // Do not recurse once per table cell. Provider output can contain many
+      // thousands of pipes and previously overflowed the browser call stack.
+      parts.push(repairStrongMarkersOutsideCode(line.slice(segmentStart, index)));
+      segmentStart = index + 1;
+    }
+    index += 1;
+  }
+
+  parts.push(repairStrongMarkersOutsideCode(line.slice(segmentStart)));
+  return parts.join("|");
+}
+
+function repairStrongMarkerText(text: string): string {
+  const markers = [...text.matchAll(/(?<!\\)(?:\*\*|__)/g)];
+  if (markers.length === 0) return text;
+
+  const unmatched: number[] = [];
+  const openMarkers: Array<{ index: number; value: string }> = [];
+  for (const marker of markers) {
+    const index = marker.index ?? -1;
+    if (index < 0) continue;
+    const value = marker[0];
+    const before = text[index - 1] ?? "";
+    const after = text[index + value.length] ?? "";
+    const canOpen =
+      (!before || /\s/.test(before) || "([{\"'“‘—–-|".includes(before)) &&
+      Boolean(after) &&
+      !/\s/.test(after);
+    const canClose =
+      Boolean(before) &&
+      !/\s/.test(before) &&
+      (!after || /\s/.test(after) || ".,!?;:)]}\"'”’—–-|".includes(after));
+
+    if (canClose && openMarkers.length) {
+      const opening = openMarkers.pop()!;
+      if (opening.value !== value) {
+        unmatched.push(opening.index, index);
+      }
+      continue;
+    }
+    if (canOpen) openMarkers.push({ index, value });
+    else unmatched.push(index);
+  }
+  unmatched.push(...openMarkers.map(({ index }) => index));
+
+  return unmatched
+    .sort((left, right) => right - left)
+    .reduce((result, index) => `${result.slice(0, index)}${result.slice(index + 2)}`, text);
 }
 
 /**

@@ -28,6 +28,11 @@ export default function ArchitectureDocsPage() {
             title: "External providers",
             body: "OAuth providers, model providers, SearXNG, and approved remote MCP servers are reached by the backend through bounded and policy checked integrations.",
           },
+          {
+            title: "Evidence-first web research",
+            body: "Explicit research requests use a provider-independent pipeline: planned search variants, secure page reads, passage ranking, durable source records, source-quality labels, and claim citation instructions before chat synthesis.",
+            href: "/documentation/web-research",
+          },
         ]}
       />
 

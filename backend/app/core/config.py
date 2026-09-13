@@ -186,8 +186,10 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
 
     app_name: str = "AverQel"
-    app_version: str = Field(default="1.0.0", validation_alias="AKS_APP_VERSION")
-    release_version: str = Field(default="1.0.0", validation_alias="AKS_RELEASE_VERSION")
+    # Release metadata is injected by the deployment pipeline. A missing
+    # value must be visibly non-release rather than falsely reporting v1.0.0.
+    app_version: str = Field(default="development", validation_alias="AKS_APP_VERSION")
+    release_version: str = Field(default="development", validation_alias="AKS_RELEASE_VERSION")
     git_sha: str = Field(default="unknown", validation_alias="AKS_GIT_SHA")
     build_timestamp_utc: str | None = Field(default=None, validation_alias="AKS_BUILD_TIMESTAMP")
     env: str = "development"
@@ -205,6 +207,15 @@ class Settings(BaseSettings):
     database_statement_timeout_seconds: float = 15.0
     database_lock_timeout_seconds: float = 3.0
     redis_url: str = "redis://localhost:1010/0"
+
+    # DeepSpace deterministic web-research controls. Browser rendering is
+    # disabled until an isolated renderer is explicitly deployed.
+    deepspace_research_enabled: bool = True
+    deepspace_research_max_candidates: int = 40
+    deepspace_research_fetch_count: int = 6
+    deepspace_research_browser_enabled: bool = False
+    deepspace_research_browser_url: str | None = None
+    deepspace_research_browser_token: str | None = None
 
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = DEFAULT_MINIO_ACCESS_KEY

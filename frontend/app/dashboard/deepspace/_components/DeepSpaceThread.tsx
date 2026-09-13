@@ -223,6 +223,21 @@ function QuestionCard({
   );
 }
 
+function ResponseLoadingDots() {
+  return (
+    <div
+      className="deepspace-response-dots"
+      role="status"
+      aria-label="AverQel is preparing a response"
+    >
+      <span className="deepspace-response-dot" aria-hidden="true" />
+      <span className="deepspace-response-dot" aria-hidden="true" />
+      <span className="deepspace-response-dot" aria-hidden="true" />
+      <span className="sr-only">Preparing response…</span>
+    </div>
+  );
+}
+
 const MessageBubble = memo(
   function MessageBubble({
     message,
@@ -453,6 +468,17 @@ const MessageBubble = memo(
       );
     }
 
+    // The response dots are only a first-frame placeholder. Thinking text,
+    // timeline entries, tool activity, or the answer itself all mean the
+    // stream has started, so the placeholder must disappear immediately.
+    const hasAssistantProgress = Boolean(
+      message.content.trim() ||
+      message.thinkingContent?.trim() ||
+      message.agentSteps?.length ||
+      message.timeline?.length,
+    );
+    const showResponseDots = message.status === "streaming" && !hasAssistantProgress;
+
     return (
       <article
         className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 mx-auto w-full max-w-[min(100%,74rem)] px-2 py-3 motion-safe:duration-300 motion-safe:ease-out sm:px-3 sm:py-4"
@@ -460,10 +486,15 @@ const MessageBubble = memo(
       >
         <div className="relative flex items-start gap-4 p-0">
           {/* Simple Assistant Avatar */}
-          <div className="relative mt-1 shrink-0">
+          <div className="mt-1 grid h-8 w-14 shrink-0 grid-cols-[2rem_1.5rem] items-start">
             <div className="text-primary/80 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5">
               <Bot size={16} />
             </div>
+            {showResponseDots ? (
+              <div className="flex h-8 items-center justify-start">
+                <ResponseLoadingDots />
+              </div>
+            ) : null}
           </div>
 
           <div className="w-full min-w-0 flex-1">

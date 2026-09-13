@@ -158,6 +158,28 @@ async def test_provider_retry_does_not_duplicate_partial_output(
         ]
 
 
+@pytest.mark.asyncio
+async def test_provider_retry_does_not_retry_non_retryable_provider_errors() -> None:
+    service = object.__new__(DeepSpaceChatService)
+    attempts = 0
+
+    async def stream_factory():
+        nonlocal attempts
+        attempts += 1
+        raise ProviderRequestError("test", 403, "account policy")
+        yield  # pragma: no cover
+
+    with pytest.raises(ProviderRequestError):
+        [
+            item
+            async for item in service._provider_stream_with_retry(
+                stream_factory, run_id=None, deadline=time.monotonic() + 5
+            )
+        ]
+
+    assert attempts == 1
+
+
 def test_context_budget_reports_thresholds_and_safe_remaining() -> None:
     state = DeepSpaceChatService._context_budget_state(
         used_tokens=195,

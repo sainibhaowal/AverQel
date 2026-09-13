@@ -455,17 +455,17 @@ const TimelineEntry = memo(function TimelineEntry({
       {!isLast ? (
         <span className="absolute top-0 bottom-[-0.75rem] left-[0.4rem] w-px bg-white/8" />
       ) : null}
-      <span className="absolute top-2 left-0 flex h-4 w-4 items-center justify-center rounded-full border border-white/10 bg-[#101713]">
-        <TimelineIcon step={step} />
-      </span>
       <div className="border-b border-white/8 pb-3">
         <button
           type="button"
           aria-expanded={open}
           aria-controls={detailsId}
           onClick={() => setOpen((value) => !value)}
-          className="text-foreground/65 hover:text-foreground/85 flex w-full cursor-pointer items-center gap-2 rounded-sm text-left text-[10px] font-semibold tracking-[0.12em] uppercase transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300/40 focus-visible:outline-none"
+          className="text-foreground/65 hover:text-foreground/85 relative flex w-full cursor-pointer items-center gap-2 rounded-sm text-left text-[10px] font-semibold tracking-[0.12em] uppercase transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300/40 focus-visible:outline-none"
         >
+          <span className="pointer-events-none absolute top-1/2 -left-7 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[#101713]">
+            <TimelineIcon step={step} />
+          </span>
           <ChevronDown
             size={12}
             className={`shrink-0 transition-transform duration-300 ease-out motion-reduce:transition-none ${open ? "rotate-0" : "-rotate-90"}`}

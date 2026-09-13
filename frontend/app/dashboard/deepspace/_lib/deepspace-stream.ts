@@ -96,6 +96,7 @@ export interface DeepSpaceStreamEvent {
     | "metrics"
     | "done"
     | "error"
+    | "research_status"
     // Agent events
     | "agent_plan"
     | "tool_start"

@@ -65,10 +65,20 @@ class OpenAICompatibleProvider:
         return importlib.import_module("httpx")
 
     @staticmethod
-    def _build_headers(api_key: str | None) -> dict[str, str]:
+    def _build_headers(
+        api_key: str | None, extra_headers: dict[str, str] | None = None
+    ) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+        if extra_headers:
+            headers.update(
+                {
+                    str(name): str(value)
+                    for name, value in extra_headers.items()
+                    if str(name).strip() and str(value).strip()
+                }
+            )
         return headers
 
     @staticmethod
@@ -155,7 +165,7 @@ class OpenAICompatibleProvider:
         self._apply_reasoning_request_settings(payload, request)
         response = httpx_module.post(
             f"{base_url}/chat/completions",
-            headers=self._build_headers(request.api_key),
+            headers=self._build_headers(request.api_key, request.metadata.get("extra_headers")),
             json=payload,
             timeout=float(request.metadata.get("timeout_seconds", 8.0)),
         )
@@ -231,7 +241,7 @@ class OpenAICompatibleProvider:
             async with client.stream(
                 "POST",
                 f"{base_url}/chat/completions",
-                headers=self._build_headers(request.api_key),
+                headers=self._build_headers(request.api_key, request.metadata.get("extra_headers")),
                 json=payload,
             ) as response:
                 if response.status_code >= 400:
@@ -366,7 +376,7 @@ class OpenAICompatibleProvider:
         with httpx_module.stream(
             "POST",
             f"{base_url}/chat/completions",
-            headers=self._build_headers(request.api_key),
+            headers=self._build_headers(request.api_key, request.metadata.get("extra_headers")),
             json=payload,
             timeout=timeout,
         ) as response:
@@ -532,7 +542,10 @@ class OpenAICompatibleProvider:
         payload = {"model": request.model, "input": request.texts}
         response = httpx_module.post(
             f"{base_url}/embeddings",
-            headers=self._build_headers(str(request.metadata.get("api_key") or "") or None),
+            headers=self._build_headers(
+                str(request.metadata.get("api_key") or "") or None,
+                request.metadata.get("extra_headers"),
+            ),
             json=payload,
             timeout=float(request.timeout_seconds),
         )

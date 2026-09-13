@@ -162,44 +162,44 @@ export default function SettingsPage() {
               Open the Trust & Privacy area for the full explanation.
             </p>
 
-            <div className="flex items-center gap-4">
+            <div className="mt-6 flex flex-wrap items-center gap-3">
               <Link
                 href="/dashboard/settings/privacy"
-                className="settings-btn-glow border-primary/40 bg-primary/15 text-primary hover:bg-primary/20 mt-5 inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-xs font-black tracking-[0.18em] uppercase transition-all hover:scale-[1.03] active:scale-95"
+                className="border-primary/25 bg-primary text-primary-foreground inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-semibold shadow-sm transition-colors hover:bg-primary/90 focus-visible:ring-primary/40 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               >
-                Open Trust Center
-                <ArrowRight size={12} />
+                <ShieldCheck size={16} strokeWidth={2} />
+                Trust &amp; Privacy
+                <ArrowRight size={15} strokeWidth={2} />
               </Link>
               <Link
                 href="/dashboard/feedback"
-                className="mt-5 inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/15 px-5 py-2.5 text-xs font-black tracking-[0.18em] text-amber-700 uppercase transition-all hover:scale-[1.03] hover:bg-amber-500/20 active:scale-95 dark:text-amber-400"
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-background/55 px-4 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-amber-500/35 hover:bg-amber-500/8 focus-visible:ring-amber-500/30 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               >
-                Share Feedback
-                <Sparkles size={12} />
+                <Sparkles size={16} strokeWidth={2} className="text-amber-600 dark:text-amber-400" />
+                Share feedback
               </Link>
             </div>
           </div>
         </div>
       </motion.div>
 
-      {/* Capsule Floating Support Button */}
+      {/* Compact icon-only support control */}
       <motion.div
-        className="fixed right-10 bottom-10 z-50"
+        className="fixed right-6 bottom-6 z-50 sm:right-8 sm:bottom-8"
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.8, type: "spring", damping: 15 }}
       >
         <Link
           href="/dashboard/support"
-          className="group bg-primary relative flex items-center gap-3 rounded-full py-3.5 pr-6 pl-4 text-white shadow-[0_10px_30px_-10px_rgba(var(--primary),0.5)] transition-all hover:scale-105 hover:shadow-[0_15px_40px_-10px_rgba(var(--primary),0.6)] active:scale-95"
+          aria-label="Open support"
+          title="Support"
+          className="group bg-primary relative flex h-12 w-12 items-center justify-center rounded-lg text-primary-foreground shadow-lg shadow-black/10 transition-colors hover:bg-primary/90 focus-visible:ring-primary/40 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/10 transition-transform group-hover:rotate-12">
-            <MessageSquare size={18} />
-          </div>
-          <span className="text-sm font-bold tracking-tight">Support</span>
+          <MessageSquare size={20} strokeWidth={2} className="transition-transform duration-200 group-hover:-rotate-6" />
 
-          {/* Badge for "New" or active notifications if needed */}
-          <div className="border-primary absolute -top-1 -right-1 h-3 w-3 rounded-full border-2 bg-red-500" />
+          <span className="sr-only">Support</span>
+          <div className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-background bg-red-500" />
         </Link>
       </motion.div>
     </div>

@@ -7,6 +7,7 @@ from .library_upload import DeepSpaceLibraryUpload
 from .media_artifact import DeepSpaceMediaArtifact
 from .message import Message
 from .message_version import MessageVersion
+from .research import DeepSpaceResearchRun, DeepSpaceResearchSource
 from .workspace_file import DeepSpaceWorkspaceFile
 from .workspace_file_version import DeepSpaceWorkspaceFileVersion
 from .workspace_folder import DeepSpaceWorkspaceFolder
@@ -22,4 +23,6 @@ __all__ = [
     "DeepSpaceWorkspaceFileVersion",
     "DeepSpaceRunEvent",
     "DeepSpaceLibraryUpload",
+    "DeepSpaceResearchRun",
+    "DeepSpaceResearchSource",
 ]

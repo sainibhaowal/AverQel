@@ -1064,6 +1064,11 @@ function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): T
   nextTimeline[index] = {
     ...existing,
     ...incoming,
+    // Keep the React identity stable while a provider streams fragments.
+    // Thinking events frequently omit step_id, so `incoming.id` may be a
+    // newly generated fallback on every fragment. Replacing the existing id
+    // remounts the timeline row, which resets its spinner and scroll state.
+    id: existing.id,
     startedAt: existing.startedAt || incoming.startedAt,
     status:
       incoming.status === "running" &&
@@ -1110,6 +1115,21 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
   const timestamp = String(data.timestamp || new Date().toISOString());
 
   switch (event.event) {
+    case "research_status":
+      return {
+        id: `research_${stepId}`,
+        stepId,
+        turnIndex,
+        phase: "exploring",
+        type: "tool_call",
+        title: String(data.message ?? "Web Research"),
+        status: data.phase === "fallback" ? "failed" : "completed",
+        startedAt: timestamp,
+        completedAt: timestamp,
+        toolName: "research_status",
+        toolOutput: data.quality ? JSON.stringify(data.quality) : undefined,
+        success: data.phase !== "fallback",
+      };
     case "agent_plan":
       return {
         id: `plan_${stepId}`,

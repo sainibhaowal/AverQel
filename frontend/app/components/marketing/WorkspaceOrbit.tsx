@@ -81,7 +81,7 @@ export default function WorkspaceOrbit() {
             transition={{ type: "spring", stiffness: 80, damping: 18, delay: 0.06 }}
             className="relative overflow-hidden rounded-[2.3rem] border border-white/10 bg-[radial-gradient(circle_at_70%_25%,rgba(0,184,255,0.16),transparent_28%),linear-gradient(145deg,rgba(9,17,25,0.98),rgba(4,8,14,0.96))] p-3 shadow-[0_38px_120px_rgba(0,0,0,0.45)] sm:p-5"
           >
-            <div className="absolute inset-0 [background-image:linear-gradient(rgba(108,255,219,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(108,255,219,0.06)_1px,transparent_1px)] [background-size:30px_30px] opacity-60" />
+            <div className="absolute inset-0 [background-image:radial-gradient(circle_at_1px_1px,rgba(108,255,219,0.14)_1px,transparent_1.35px)] [background-size:30px_30px] opacity-60" />
             <div className="relative overflow-hidden rounded-[1.6rem] border border-white/[0.11] bg-[#071018]/95 shadow-[0_20px_80px_rgba(0,0,0,0.42)]">
               <div className="flex h-11 items-center justify-between border-b border-white/[0.08] px-4">
                 <div className="flex items-center gap-2 text-[10px] font-black tracking-[0.18em] text-slate-400 uppercase">

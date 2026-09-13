@@ -17,6 +17,7 @@ from app.deepspace.memory.memory_service import MemoryService
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
 from app.deepspace.services.mcp_bridge import DeepSpaceMCPBridge, DeepSpaceMCPTool
 from app.deepspace.services.media_artifacts import DeepSpaceMediaArtifactService
+from app.deepspace.services.research_pipeline import DeepSpaceResearchPipeline
 from app.deepspace.services.runtime_policy import DeepSpaceToolPolicy
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore, summarize_tasks
@@ -124,6 +125,10 @@ Response quality
 - Be concise for simple requests and structured for complex work.
 - State assumptions only when they materially affect the result.
 - Use clear headings, short lists, tables, or steps only when they improve understanding.
+- Choose the representation from the information shape: short prose for an explanation; bullets for grouped facts; numbered lists only for sequences or rankings; tables only for compact, genuinely tabular comparisons; fenced code for code; Mermaid for relationships or flows.
+- Never use a table for long descriptions, multi-paragraph records, job/result listings, or cells containing several bullets. Use one `###` heading per record with concise labeled bullets instead.
+- When a compact table is appropriate, use standard GFM: one header row, one matching hyphen separator row, at most 5 columns, and exactly one physical line per data row. Every row must have the same cell count. Never put lists, paragraph breaks, `<br>` tags, or notes inside cells.
+- Keep Markdown delimiters balanced. Do not wrap an entire table row or multiple cells in one bold marker. Do not wrap the complete answer in a Markdown code fence.
 - For completed actions, report: what was done, the result, and any important limitation.
 - For blocked work, report: what is blocked, why, what was not changed, and the smallest safe next action.
 - Do not overpromise. Reliability comes from verification, retries, authorization controls, observability, and correct tool results—not from unsupported guarantees.
@@ -517,6 +522,7 @@ class DeepSpaceChatService:
             retained_steps=int(getattr(settings, "deepspace_agent_retained_steps", 10_000)),
         )
         self.tool_policy = DeepSpaceToolPolicy()
+        self.research = DeepSpaceResearchPipeline(db=db, settings=settings)
 
     @staticmethod
     def _now() -> str:
@@ -794,8 +800,15 @@ class DeepSpaceChatService:
                     emitted = True
                     yield item
                 return
-            except (ProviderRequestError, TimeoutError, OSError):
-                if emitted or attempt >= MAX_PROVIDER_STREAM_RETRIES:
+            except (ProviderRequestError, TimeoutError, OSError) as exc:
+                retryable_provider_error = not isinstance(exc, ProviderRequestError) or (
+                    exc.status_code in {408, 429} or exc.status_code >= 500
+                )
+                if (
+                    emitted
+                    or attempt >= MAX_PROVIDER_STREAM_RETRIES
+                    or not retryable_provider_error
+                ):
                     raise
                 normalized_provider = (provider_type or "").strip().lower()
                 base_delay = 0.25 if normalized_provider in {"lmstudio", "ollama", "vllm"} else 0.75
@@ -1145,7 +1158,17 @@ class DeepSpaceChatService:
         allowed_names: set[str]
         if stage == "read_plan":
             allowed_names = {"todo_read"}
+        elif stage == "observe":
+            # Inspect persisted workspace state before starting a planned task;
+            # providers must not assume historical state is still current.
+            allowed_names = {"observe"}
         elif stage == "start_task":
+            allowed_names = {"todo_mark"}
+        elif stage == "review_task":
+            # A work call returning successfully is not completion evidence.
+            # Require an evidence review before a terminal task update.
+            allowed_names = {"analyze"}
+        elif stage == "complete_task":
             allowed_names = {"todo_mark"}
         elif stage == "verify_task" or stage == "verify_final":
             allowed_names = {"todo_check"}
@@ -1207,10 +1230,25 @@ class DeepSpaceChatService:
     def _task_lifecycle_instruction(*, stage: str, task_id: str | None) -> str:
         if stage == "read_plan":
             return "The plan was saved. Call todo_read now and use the persisted task IDs and statuses."
+        if stage == "observe":
+            return (
+                "Inspect the current tenant-scoped workspace state with observe before starting the "
+                "next task. Do not assume a note, Library, or prior task result is still current."
+            )
         if stage == "start_task":
             return (
                 f"Start the next ready task by calling todo_mark with task_id {task_id!r} and "
                 "status 'in_progress'."
+            )
+        if stage == "review_task":
+            return (
+                "Real work evidence was collected. Call analyze now to evaluate the persisted task state "
+                "and choose the safe completion status before changing the task ledger."
+            )
+        if stage == "complete_task":
+            return (
+                f"The evidence review is complete. Call todo_mark for active task {task_id!r} with a "
+                "truthful terminal status and concise evidence from the completed work."
             )
         if stage == "verify_task":
             return "The current task was marked complete. Call todo_check now to verify it and choose the next ready task."
@@ -1222,8 +1260,8 @@ class DeepSpaceChatService:
                 "truthful completion summary, or clearly explain the recorded blocker if no task is ready."
             )
         return (
-            f"Work only on the active task {task_id!r}. Use the appropriate real work tools. Before marking it "
-            "completed, call observe or analyze after gathering evidence, then call todo_mark with completion evidence."
+            f"Work only on the active task {task_id!r}. Use the appropriate real work tools. "
+            "After evidence is collected, the runtime will require analyze before the task can be completed."
         )
 
     @staticmethod
@@ -2126,7 +2164,9 @@ class DeepSpaceChatService:
             title = str(item.get("title") or "Source").replace("[", "(").replace("]", ")")
             url = str(item.get("url") or "").strip()
             if url.startswith(("http://", "https://")):
-                lines.append(f"[{item.get('id', '?')}] [{title}]({url})")
+                status = str(item.get("retrieval_status") or "")
+                note = " — search snippet only" if status == "search_snippet_only" else ""
+                lines.append(f"[{item.get('id', '?')}] [{title}]({url}){note}")
         return answer.rstrip() + "\n" + "\n".join(lines) if len(lines) > 2 else answer
 
     def _persist_stream_failure(
@@ -2695,25 +2735,68 @@ class DeepSpaceChatService:
         native_media_model = self._is_native_media_model(candidate.model_name)
         web_candidate = None
         web_provider = None
-        if provider_supports_tools:
+        try:
+            # Research is a backend capability, not a chat-model capability.
+            # Resolve it even for free/weak models that cannot issue tools.
+            web_selection = self.providers.resolve_web_search(
+                tenant_id=auth.tenant_id,
+                workspace_id=None,
+                actor_user_id=auth.user_id,
+            )
+            web_candidate = web_selection.candidates[0] if web_selection.candidates else None
+            if web_candidate is not None:
+                web_provider = self.registry.get_web_search_provider_from_selection(web_candidate)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "DeepSpace web search is unavailable; continuing without the tool", exc_info=True
+            )
+            web_candidate = None
+            web_provider = None
+
+        research_result = None
+        if (
+            not native_media_model
+            and bool(getattr(self.settings, "deepspace_research_enabled", True))
+            and self.research.should_research(prompt)
+            and web_candidate is not None
+            and web_provider is not None
+        ):
+            yield sse(
+                "research_status",
+                {"phase": "planning", "message": "Planning independent web research."},
+            )
             try:
-                web_selection = self.providers.resolve_web_search(
-                    tenant_id=auth.tenant_id,
-                    workspace_id=None,
-                    actor_user_id=auth.user_id,
+                yield sse(
+                    "research_status",
+                    {"phase": "searching", "message": "Searching multiple current sources."},
                 )
-                web_candidate = web_selection.candidates[0] if web_selection.candidates else None
-                if web_candidate is not None:
-                    web_provider = self.registry.get_web_search_provider_from_selection(
-                        web_candidate
-                    )
+                research_result = await self.research.run(
+                    prompt=prompt,
+                    auth=auth,
+                    conversation_id=conversation_id,
+                    provider=web_provider,
+                    candidate=web_candidate,
+                    request=request,
+                )
+                yield sse(
+                    "research_status",
+                    {
+                        "phase": "evidence",
+                        "message": "Ranking evidence and verifying sources.",
+                        "quality": research_result.quality,
+                    },
+                )
             except Exception:  # noqa: BLE001
-                logger.warning(
-                    "DeepSpace web search is unavailable; continuing without the tool",
-                    exc_info=True,
+                # A research outage never blocks normal chat. The answer prompt
+                # explicitly receives no research evidence in this case.
+                logger.warning("DeepSpace deterministic research failed safely", exc_info=True)
+                yield sse(
+                    "research_status",
+                    {
+                        "phase": "fallback",
+                        "message": "Web research could not complete; responding without verified web evidence.",
+                    },
                 )
-                web_candidate = None
-                web_provider = None
         # Native image models (for example Gemini Nano Banana) produce media
         # directly and do not accept function declarations.  Do not weaken the
         # normal chat tool path; only omit tools for that selected media model.
@@ -2765,6 +2848,10 @@ class DeepSpaceChatService:
         allow_existing_task_state = resume_saved_task or self._allows_existing_task_state(prompt)
         managed_task_run = provider_supports_tools and not native_media_model and resume_saved_task
         task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(initial_task_check)
+        if managed_task_run:
+            # Resumed work gets the same fresh state inspection as a newly
+            # created plan; history is context, not proof of current state.
+            task_lifecycle_stage = "observe"
         task_has_work_evidence = False
         task_lifecycle_prompt_retries = 0
         connected_tool_recovery_retries = 0
@@ -2777,6 +2864,21 @@ class DeepSpaceChatService:
             },
             *previous,
         ]
+        if research_result is not None:
+            evidence = research_result.evidence_context()
+            if evidence:
+                conversation_messages.insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": (
+                            "External web research was completed by AverQel's backend. Use ONLY the supplied "
+                            "evidence for web-derived factual claims. Put the matching [R#] citation immediately "
+                            "after each such claim. Do not cite a search snippet as verified evidence, do not invent "
+                            "citations, and state uncertainty or conflicts plainly.\n\n" + evidence
+                        ),
+                    },
+                )
         if history_compacted:
             conversation_messages.insert(
                 1,
@@ -2874,6 +2976,8 @@ class DeepSpaceChatService:
         thinking_parts: list[str] = []
         generated_artifacts: list[dict[str, Any]] = []
         citations: list[dict[str, Any]] = []
+        if research_result is not None:
+            citations.extend(research_result.citations())
         used_memories: list[dict[str, Any]] = []
         memory_written_this_turn = False
         forced_answer: str | None = None
@@ -3863,6 +3967,19 @@ class DeepSpaceChatService:
                                     "Use at least one real work, research, workspace, or connected-service tool before "
                                     "marking this task completed."
                                 )
+                        elif task_lifecycle_stage == "complete_task":
+                            if (
+                                tool_name != "todo_mark"
+                                or str(arguments.get("task_id") or "") != str(active_task_id or "")
+                                or str(arguments.get("status") or "")
+                                not in {"completed", "blocked", "failed"}
+                            ):
+                                lifecycle_error = (
+                                    "Complete the reviewed active task with todo_mark using a truthful terminal "
+                                    "status: 'completed', 'blocked', or 'failed'."
+                                )
+                            elif not str(arguments.get("evidence") or "").strip():
+                                lifecycle_error = "A terminal task status requires concise evidence from the completed work."
                         if lifecycle_error:
                             yield sse(
                                 "tool_error",
@@ -4159,6 +4276,19 @@ class DeepSpaceChatService:
                                         user_id=auth.user_id,
                                         conversation_id=conversation_id,
                                     )
+                                task_lifecycle_stage = "observe"
+                                next_task = self._next_actionable_task(task_check)
+                                active_task_id = (
+                                    str(next_task.get("id") or "").strip() or None
+                                    if next_task is not None
+                                    else None
+                                )
+                            elif task_lifecycle_stage == "observe" and tool_name == "observe":
+                                task_check = self.task_store.check_tasks(
+                                    tenant_id=auth.tenant_id,
+                                    user_id=auth.user_id,
+                                    conversation_id=conversation_id,
+                                )
                                 task_lifecycle_stage, active_task_id = self._task_lifecycle_stage(
                                     task_check
                                 )
@@ -4168,8 +4298,15 @@ class DeepSpaceChatService:
                             elif task_lifecycle_stage == "work":
                                 if tool_name == "todo_mark":
                                     task_lifecycle_stage = "verify_task"
-                                elif tool_name != "ask_user":
+                                elif tool_name not in {"ask_user", "observe", "analyze"}:
                                     task_has_work_evidence = True
+                                    task_lifecycle_stage = "review_task"
+                            elif task_lifecycle_stage == "review_task" and tool_name == "analyze":
+                                task_lifecycle_stage = "complete_task"
+                            elif (
+                                task_lifecycle_stage == "complete_task" and tool_name == "todo_mark"
+                            ):
+                                task_lifecycle_stage = "verify_task"
                             elif (
                                 task_lifecycle_stage in {"verify_task", "verify_final"}
                                 and tool_name == "todo_check"
@@ -4468,6 +4605,13 @@ class DeepSpaceChatService:
                 "DeepSpace paused because the task list is not complete. "
                 "The remaining work is persisted and can continue from your next message."
             )
+        if research_result is not None:
+            raw_answer = self.research.validate_citations(raw_answer, research_result)
+            raw_answer, _citation_validation = self.research.validate_answer_claims(
+                raw_answer, research_result
+            )
+            self.research.persist_quality_update(research_result)
+            raw_answer += self.research.quality_markdown(research_result)
         answer = self._append_citations(raw_answer, citations)
         if answer != raw_answer and answer.startswith(raw_answer):
             yield sse("delta", {"text": answer[len(raw_answer) :]})
@@ -4517,6 +4661,12 @@ class DeepSpaceChatService:
             metadata["context_limit_source"] = candidate.context_window_source
         if used_memories:
             metadata["memory"] = {"used": used_memories[:8]}
+        if research_result is not None:
+            metadata["research"] = {
+                "run_id": research_result.run_id,
+                "quality": research_result.quality,
+                "sources": research_result.citations(),
+            }
         if thinking_parts:
             metadata["thinking"] = {"content": "".join(thinking_parts)}
         if generated_artifacts:

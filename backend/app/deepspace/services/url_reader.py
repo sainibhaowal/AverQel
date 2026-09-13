@@ -35,6 +35,12 @@ class URLReadResult:
     content_type: str
     truncated: bool
     links: list[str]
+    author: str | None = None
+    published_at: str | None = None
+    modified_at: str | None = None
+    canonical_url: str | None = None
+    section_headings: list[str] | None = None
+    tables: list[list[list[str]]] | None = None
 
 
 def _clean_text(value: object, limit: int = MAX_TEXT_CHARS) -> str:
@@ -191,6 +197,9 @@ def read_url(
     truncated = len(payload) > effective_max_bytes
     raw = payload[:effective_max_bytes].decode("utf-8", errors="replace")
     title = None
+    author = published_at = modified_at = canonical_url = None
+    section_headings: list[str] = []
+    tables: list[list[list[str]]] = []
     links: list[str] = []
     if content_type in {"text/html", "application/xhtml+xml"}:
         from bs4 import BeautifulSoup
@@ -198,6 +207,46 @@ def read_url(
 
         soup = BeautifulSoup(raw, "html.parser")
         title = _clean_text(soup.title.get_text(" ") if soup.title else "", limit=500) or None
+
+        def meta(*names: str) -> str | None:
+            for name in names:
+                node = soup.find("meta", attrs={"name": name}) or soup.find(
+                    "meta", attrs={"property": name}
+                )
+                if isinstance(node, Tag):
+                    value = node.get("content")
+                    if isinstance(value, str) and value.strip():
+                        return _clean_text(value, limit=500) or None
+            return None
+
+        author = meta("author", "article:author")
+        published_at = meta("article:published_time", "date", "datePublished", "publish-date")
+        modified_at = meta("article:modified_time", "dateModified", "last-modified")
+        canonical = soup.find("link", attrs={"rel": "canonical"})
+        if isinstance(canonical, Tag) and isinstance(canonical.get("href"), str):
+            canonical_url = urljoin(final_url, str(canonical.get("href")))
+        section_headings = [
+            _clean_text(node.get_text(" "), limit=300)
+            for node in soup.find_all(["h1", "h2", "h3"])[:30]
+            if isinstance(node, Tag)
+        ]
+        section_headings = [heading for heading in section_headings if heading]
+        for table in soup.find_all("table")[:10]:
+            if not isinstance(table, Tag):
+                continue
+            rows = []
+            for row in table.find_all("tr")[:50]:
+                if not isinstance(row, Tag):
+                    continue
+                cells = [
+                    _clean_text(cell.get_text(" "), limit=500)
+                    for cell in row.find_all(["th", "td"])[:12]
+                    if isinstance(cell, Tag)
+                ]
+                if cells:
+                    rows.append(cells)
+            if rows:
+                tables.append(rows)
         links = []
         for anchor in soup.find_all("a", href=True)[:20]:
             if not isinstance(anchor, Tag):
@@ -206,7 +255,20 @@ def read_url(
             if isinstance(href, str) and href.strip():
                 links.append(urljoin(final_url, href))
         raw = soup.get_text(" ")
-    return URLReadResult(final_url, title, _clean_text(raw), content_type, truncated, links)
+    return URLReadResult(
+        final_url,
+        title,
+        _clean_text(raw),
+        content_type,
+        truncated,
+        links,
+        author,
+        published_at,
+        modified_at,
+        canonical_url,
+        section_headings,
+        tables,
+    )
 
 
 def read_image(
