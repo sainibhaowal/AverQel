@@ -11,6 +11,7 @@ import {
   History,
   RefreshCw,
   FolderOpen,
+  CalendarClock,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import {
@@ -34,6 +35,7 @@ import type {
 } from "./DeepSpaceEditor";
 import MemoryPanel from "./MemoryPanel";
 import DeepSpaceLibraryDrawer from "./DeepSpaceLibraryDrawer";
+import DeepSpaceSchedulesPanel from "./DeepSpaceSchedulesPanel";
 
 type DeferredEditorProps = DeepSpaceEditorProps & {
   forwardedRef?: ForwardedRef<DeepSpaceEditorHandle>;
@@ -170,7 +172,7 @@ export default function DeepSpacePageClient() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [agentNotePreview, setAgentNotePreview] = useState<DeepSpaceAgentNotePreview | null>(null);
-  const [panelMode, setPanelMode] = useState<"split" | "notes" | "chat" | "memory">("split");
+  const [panelMode, setPanelMode] = useState<"split" | "notes" | "chat" | "memory" | "schedules">("split");
   const editorRef = useRef<DeepSpaceEditorHandle>(null);
   const agentPreviewBaseContentRef = useRef<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -427,6 +429,7 @@ export default function DeepSpacePageClient() {
   const showLibraryPanel = isLibraryOnly || (panelMode === "split" && workspacePanel === "library");
   const showChatPanel = !isLibraryOnly && (panelMode === "split" || panelMode === "chat");
   const showMemoryPanel = panelMode === "memory";
+  const showSchedulesPanel = panelMode === "schedules";
   const panelTransition: Transition = isStackedLayout
     ? { duration: 0.16, ease: "easeOut" }
     : { type: "spring", damping: 24, stiffness: 220 };
@@ -495,6 +498,15 @@ export default function DeepSpacePageClient() {
                   onClick={() => {
                     setIsLibraryOnly(false);
                     setPanelMode("chat");
+                  }}
+                />
+                <IconTooltipButton
+                  label="Schedules"
+                  active={showSchedulesPanel}
+                  icon={<CalendarClock size={16} />}
+                  onClick={() => {
+                    setIsLibraryOnly(false);
+                    setPanelMode("schedules");
                   }}
                 />
                 <IconTooltipButton
@@ -647,6 +659,18 @@ export default function DeepSpacePageClient() {
                 className="h-full min-h-0 min-w-0 flex-1 overflow-hidden"
               >
                 <MemoryPanel />
+              </motion.section>
+            ) : null}
+            {showSchedulesPanel ? (
+              <motion.section
+                key="schedules-panel"
+                initial={{ opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 24 }}
+                transition={panelTransition}
+                className="h-full min-h-0 min-w-0 flex-1 overflow-hidden"
+              >
+                <DeepSpaceSchedulesPanel conversationId={activeNote?.id ?? null} />
               </motion.section>
             ) : null}
             {showChatPanel ? (

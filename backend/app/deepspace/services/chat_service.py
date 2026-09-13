@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import hashlib
 import json
 import logging
@@ -20,6 +21,7 @@ from app.deepspace.services.media_artifacts import DeepSpaceMediaArtifactService
 from app.deepspace.services.research_pipeline import DeepSpaceResearchPipeline
 from app.deepspace.services.runtime_policy import DeepSpaceToolPolicy
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
+from app.deepspace.services.sandbox_executor import SandboxExecutorError, execute_sandbox
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore, summarize_tasks
 from app.deepspace.services.url_reader import read_image, read_url
 from app.providers.services import ChatGenerateRequest, ProviderRegistry
@@ -204,6 +206,76 @@ IMAGE_READ_TOOL = {
                 },
             },
             "required": ["url"],
+        },
+    },
+}
+SANDBOX_EXECUTE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "sandbox_execute",
+        "description": "Run bounded Python or read-only SQL in AverQel's isolated sandbox. Use it for calculations, CSV/JSON analysis, and chart preparation; never claim host or network access.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "language": {"type": "string", "enum": ["python", "sql"]},
+                "code": {"type": "string", "minLength": 1, "maxLength": 100000},
+                "input": {"type": "object"},
+                "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 30},
+            },
+            "required": ["language", "code"],
+        },
+    },
+}
+DOCUMENT_READ_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "document_read",
+        "description": "Read extracted text and metadata from an authorized Library document (PDF, DOCX, XLSX, CSV, or presentation).",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "file_id": {"type": "string", "maxLength": 80},
+                "filename": {"type": "string", "maxLength": 255},
+                "max_characters": {"type": "integer", "minimum": 100, "maximum": 200000},
+            },
+            "required": [],
+        },
+    },
+}
+DOCUMENT_COMPARE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "document_compare",
+        "description": "Compare two authorized Library documents and return bounded added, removed, and unchanged text evidence.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "left_file_id": {"type": "string", "maxLength": 80},
+                "right_file_id": {"type": "string", "maxLength": 80},
+                "max_characters": {"type": "integer", "minimum": 100, "maximum": 100000},
+            },
+            "required": ["left_file_id", "right_file_id"],
+        },
+    },
+}
+ARTIFACT_CREATE_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "artifact_create",
+        "description": "Persist a structured report, table, or data artifact in the authorized DeepSpace Library for download or later editing.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "filename": {"type": "string", "minLength": 1, "maxLength": 255},
+                "content": {"type": "string", "minLength": 1, "maxLength": 100000},
+                "format": {"type": "string", "enum": ["markdown", "csv", "json", "html", "text"]},
+                "mode": {"type": "string", "enum": ["replace", "append"]},
+            },
+            "required": ["filename", "content"],
         },
     },
 }
@@ -491,6 +563,10 @@ PRODUCTIVITY_TOOLS = [
     UNIVERSAL_DELETE_TOOL,
     URL_READ_TOOL,
     IMAGE_READ_TOOL,
+    SANDBOX_EXECUTE_TOOL,
+    DOCUMENT_READ_TOOL,
+    DOCUMENT_COMPARE_TOOL,
+    ARTIFACT_CREATE_TOOL,
     ASK_USER_TOOL,
     FINAL_TOOL,
 ]
@@ -1433,6 +1509,109 @@ class DeepSpaceChatService:
                 "mcp_server": mcp_binding.server_name,
                 "mcp_tool": mcp_binding.raw_name,
                 **result,
+            }
+        if tool_name == "sandbox_execute":
+            try:
+                return await execute_sandbox(
+                    code=str(arguments.get("code") or ""),
+                    language=str(arguments.get("language") or ""),
+                    settings=self.settings,
+                    input_data=(
+                        arguments.get("input") if isinstance(arguments.get("input"), dict) else None
+                    ),
+                    timeout_seconds=int(
+                        arguments.get("timeout_seconds")
+                        or self.settings.deepspace_sandbox_timeout_seconds
+                    ),
+                )
+            except SandboxExecutorError as exc:
+                return {
+                    "status": "unavailable",
+                    "execution": "isolated_sandbox",
+                    "message": str(exc),
+                }
+        if tool_name == "document_read":
+            file_id = str(arguments.get("file_id") or "").strip() or None
+            filename = str(arguments.get("filename") or "").strip() or None
+            if not file_id and not filename:
+                raise ValueError("document_read requires file_id or filename.")
+            result = self.task_store.read_workspace_file(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                file_id=file_id,
+                filename=filename,
+            )
+            limit = min(200_000, max(100, int(arguments.get("max_characters") or 50_000)))
+            text = str(result.get("extracted_text") or result.get("content") or "")
+            return {
+                "file": {
+                    key: result.get(key)
+                    for key in ("id", "name", "content_type", "size_bytes", "version")
+                },
+                "text": text[:limit],
+                "truncated": len(text) > limit,
+                "citation": {"file_id": result.get("id"), "filename": result.get("name")},
+            }
+        if tool_name == "document_compare":
+            left_id = str(arguments.get("left_file_id") or "").strip()
+            right_id = str(arguments.get("right_file_id") or "").strip()
+            if not left_id or not right_id or left_id == right_id:
+                raise ValueError("document_compare requires two different file ids.")
+            left = self.task_store.read_workspace_file(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                file_id=left_id,
+            )
+            right = self.task_store.read_workspace_file(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                file_id=right_id,
+            )
+            limit = min(100_000, max(100, int(arguments.get("max_characters") or 30_000)))
+            left_text = str(left.get("extracted_text") or left.get("content") or "")
+            right_text = str(right.get("extracted_text") or right.get("content") or "")
+            diff = list(
+                difflib.unified_diff(left_text.splitlines(), right_text.splitlines(), lineterm="")
+            )
+            rendered = "\n".join(diff)
+            return {
+                "left": {"id": left.get("id"), "name": left.get("name")},
+                "right": {"id": right.get("id"), "name": right.get("name")},
+                "diff": rendered[:limit],
+                "truncated": len(rendered) > limit,
+                "citation": {"left_file_id": left.get("id"), "right_file_id": right.get("id")},
+            }
+        if tool_name == "artifact_create":
+            filename = str(arguments.get("filename") or "").strip()
+            content = str(arguments.get("content") or "")
+            fmt = str(arguments.get("format") or "").strip().lower()
+            if not filename or not content.strip():
+                raise ValueError("artifact_create requires filename and content.")
+            if fmt not in {"", "markdown", "csv", "json", "html", "text"}:
+                raise ValueError("Unsupported artifact format.")
+            suffix = {
+                "markdown": ".md",
+                "csv": ".csv",
+                "json": ".json",
+                "html": ".html",
+                "text": ".txt",
+            }.get(fmt, "")
+            if suffix and "." not in filename.rsplit("/", 1)[-1]:
+                filename = f"{filename}{suffix}"
+            return {
+                "artifact": self.task_store.write_workspace_file(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    filename=filename,
+                    content=content,
+                    mode=str(arguments.get("mode") or "replace"),
+                ),
+                "status": "saved",
+                "download": "Use the authenticated DeepSpace Library download route.",
             }
         if tool_name == "todo_write":
             tasks = arguments.get("tasks")

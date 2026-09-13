@@ -149,6 +149,9 @@ services:
       AKS_PROVIDER_SECRET_AUDIT_READS: ${AKS_PROVIDER_SECRET_AUDIT_READS:-true}
       AKS_TOTP_SECRET_ACTIVE_KID: ${AKS_TOTP_SECRET_ACTIVE_KID:-}
       AKS_TOTP_SECRET_KEYRING_JSON: ${AKS_TOTP_SECRET_KEYRING_JSON:-}
+      AKS_DEEPSPACE_SANDBOX_ENABLED: ${AKS_DEEPSPACE_SANDBOX_ENABLED:-false}
+      AKS_DEEPSPACE_SANDBOX_URL: ${AKS_DEEPSPACE_SANDBOX_URL:-http://sandbox-executor:3020}
+      AKS_DEEPSPACE_SANDBOX_TOKEN: ${AKS_DEEPSPACE_SANDBOX_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -175,6 +178,7 @@ services:
     networks:
       - default
       - research_renderer
+      - sandbox_internal
 
   frontend:
     container_name: averqel-frontend
@@ -241,6 +245,9 @@ services:
       AKS_PROVIDER_SECRET_AUDIT_READS: ${AKS_PROVIDER_SECRET_AUDIT_READS:-true}
       AKS_TOTP_SECRET_ACTIVE_KID: ${AKS_TOTP_SECRET_ACTIVE_KID:-}
       AKS_TOTP_SECRET_KEYRING_JSON: ${AKS_TOTP_SECRET_KEYRING_JSON:-}
+      AKS_DEEPSPACE_SANDBOX_ENABLED: ${AKS_DEEPSPACE_SANDBOX_ENABLED:-false}
+      AKS_DEEPSPACE_SANDBOX_URL: ${AKS_DEEPSPACE_SANDBOX_URL:-http://sandbox-executor:3020}
+      AKS_DEEPSPACE_SANDBOX_TOKEN: ${AKS_DEEPSPACE_SANDBOX_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -256,6 +263,41 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
+    networks:
+      - default
+      - sandbox_internal
+
+  # Optional, tenant-requested Python/SQL execution.  The service has no
+  # public port, no host mounts, no capabilities, and only an internal
+  # network route from API/worker.  Enable with --profile sandbox-execution
+  # after setting both matching executor tokens.
+  sandbox-executor:
+    container_name: averqel-sandbox-executor
+    profiles: ["sandbox-execution"]
+    build:
+      context: ./sandbox-executor
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 1.0
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    environment:
+      PORT: "3020"
+      SANDBOX_EXECUTOR_TOKEN: ${AKS_DEEPSPACE_SANDBOX_TOKEN:-}
+    expose:
+      - "3020"
+    networks:
+      - sandbox_internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3020/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   maintenance-worker:
     extends:
@@ -418,3 +460,5 @@ networks:
   research_renderer:
     internal: true
   research_egress:
+  sandbox_internal:
+    internal: true

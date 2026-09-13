@@ -216,6 +216,13 @@ class Settings(BaseSettings):
     deepspace_research_browser_enabled: bool = False
     deepspace_research_browser_url: str | None = None
     deepspace_research_browser_token: str | None = None
+    # Sandboxed code/data execution is off unless a separately isolated
+    # executor has been deployed and authenticated.  It is never run in the
+    # API or worker container.
+    deepspace_sandbox_enabled: bool = False
+    deepspace_sandbox_url: str | None = None
+    deepspace_sandbox_token: str | None = None
+    deepspace_sandbox_timeout_seconds: int = Field(default=20, ge=1, le=30)
 
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = DEFAULT_MINIO_ACCESS_KEY
