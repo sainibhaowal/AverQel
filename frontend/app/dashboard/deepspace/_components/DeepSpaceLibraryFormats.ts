@@ -104,17 +104,7 @@ export function libraryFileKind(name: string, contentType: string): LibraryFileK
 }
 
 export function libraryKindSupportsEditor(kind: LibraryFileKind) {
-  return ![
-    "spreadsheet",
-    "pdf",
-    "docx",
-    "pptx",
-    "image",
-    "svg",
-    "video",
-    "audio",
-    "archive",
-  ].includes(kind);
+  return !["pdf", "image", "svg", "video", "audio", "archive"].includes(kind);
 }
 
 export function libraryKindSupportsPreview(kind: LibraryFileKind) {

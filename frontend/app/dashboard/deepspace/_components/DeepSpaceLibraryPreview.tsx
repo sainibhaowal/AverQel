@@ -1,7 +1,7 @@
 "use client";
 
 import ExcelJS from "exceljs";
-import { Archive, FileWarning, Music2, Table2 } from "lucide-react";
+import { Archive, FileWarning, Minus, Music2, Plus, RotateCcw, Table2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
@@ -223,6 +223,54 @@ function EmptyPreview({ icon, text }: { icon: ReactNode; text: string }) {
   );
 }
 
+function ImagePreview({ source }: { source: string }) {
+  const [scale, setScale] = useState(1);
+  return (
+    <div className="flex h-full min-h-40 flex-col overflow-hidden">
+      <div className="border-glass-border bg-surface-1/60 text-foreground/70 flex shrink-0 items-center justify-end gap-1 border-b px-2 py-1 text-[10px]">
+        <button
+          type="button"
+          title="Zoom out"
+          aria-label="Zoom out"
+          onClick={() => setScale((value) => Math.max(0.25, value - 0.25))}
+          className="rounded p-1 hover:bg-white/10"
+        >
+          <Minus size={12} />
+        </button>
+        <span className="min-w-10 text-center">{Math.round(scale * 100)}%</span>
+        <button
+          type="button"
+          title="Zoom in"
+          aria-label="Zoom in"
+          onClick={() => setScale((value) => Math.min(5, value + 0.25))}
+          className="rounded p-1 hover:bg-white/10"
+        >
+          <Plus size={12} />
+        </button>
+        <button
+          type="button"
+          title="Reset zoom"
+          aria-label="Reset zoom"
+          onClick={() => setScale(1)}
+          className="rounded p-1 hover:bg-white/10"
+        >
+          <RotateCcw size={12} />
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6">
+        {/* Private Library object URL; next/image cannot optimize it. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={source}
+          alt="Library file preview"
+          className="max-w-none object-contain transition-transform"
+          style={{ transform: `scale(${scale})` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function LibraryPreview({
   kind,
   contentType,
@@ -315,18 +363,7 @@ export function LibraryPreview({
           text="This file has no browser-previewable payload yet."
         />
       );
-    if (kind === "image" || kind === "svg")
-      return (
-        <div className="flex h-full items-center justify-center overflow-auto p-6">
-          {/* Data URLs are private Library payloads; next/image cannot optimize them. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={source}
-            alt="Library file preview"
-            className="max-h-full max-w-full object-contain"
-          />
-        </div>
-      );
+    if (kind === "image" || kind === "svg") return <ImagePreview source={source} />;
     if (kind === "video")
       return (
         <div className="flex h-full items-center justify-center p-6">

@@ -459,7 +459,13 @@ export default function DeepSpaceLibraryDrawer({
   };
 
   const saveFile = async () => {
-    if (!conversationId || !selected || selected.is_binary) return;
+    if (!conversationId || !selected) return;
+    const editableBinaryTypes = new Set([
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]);
+    if (selected.is_binary && !editableBinaryTypes.has(selected.content_type)) return;
     setSaving(true);
     try {
       const response = (await fetchWithAuth(
@@ -508,6 +514,19 @@ export default function DeepSpaceLibraryDrawer({
       { timeoutMs: 120_000 },
     )) as Response;
     await downloadBlobResponse(response, file.name);
+  };
+
+  const exportFile = async (
+    file: LibraryFile,
+    format: "original" | "txt" | "md" | "pdf" | "docx" | "pptx" | "xlsx",
+  ) => {
+    if (!conversationId) return;
+    const response = (await fetchWithAuth(
+      `/deepspace/library/${conversationId}/files/${file.id}/export?format=${format}`,
+      { timeoutMs: 120_000 },
+    )) as Response;
+    const extension = format === "original" ? file.name.split(".").pop() || "bin" : format;
+    await downloadBlobResponse(response, `${file.name.replace(/\.[^.]+$/, "")}.${extension}`);
   };
 
   const exportSelectedFiles = async () => {
@@ -1427,7 +1446,39 @@ export default function DeepSpaceLibraryDrawer({
               <Download size={12} /> Download
             </button>
           ) : null}
-          {selected && !selected.is_binary ? (
+          {selected ? (
+            <select
+              aria-label="Export file format"
+              defaultValue="original"
+              onChange={(event) => {
+                const format = event.target.value as
+                  | "original"
+                  | "txt"
+                  | "md"
+                  | "pdf"
+                  | "docx"
+                  | "pptx"
+                  | "xlsx";
+                if (format !== "original") void exportFile(selected, format);
+              }}
+              className="border-glass-border bg-surface-2 text-foreground/70 rounded-lg border px-1.5 py-1 text-[10px]"
+            >
+              <option value="original">Export…</option>
+              <option value="pdf">PDF</option>
+              <option value="docx">DOCX</option>
+              <option value="pptx">PPTX</option>
+              <option value="md">Markdown</option>
+              <option value="txt">Text</option>
+              <option value="xlsx">XLSX</option>
+            </select>
+          ) : null}
+          {selected &&
+          (!selected.is_binary ||
+            [
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ].includes(selected.content_type)) ? (
             <button
               type="button"
               disabled={saving}

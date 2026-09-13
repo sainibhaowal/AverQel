@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import io
 import posixpath
 import re
@@ -13,7 +14,7 @@ from typing import Any, Literal, cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
@@ -24,6 +25,7 @@ from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.rbac import require_permissions
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
+from app.deepspace.integrations.export_service import DeepSpaceExportService
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
@@ -36,6 +38,7 @@ from app.deepspace.services.library_storage import (
     safe_archive_entries,
 )
 from app.deepspace.workers.library_uploads import finalize_library_upload
+from app.ingestion.services.office_writer import text_to_docx, text_to_pptx, text_to_xlsx
 from app.platform.database.session import get_db
 from app.system.services.storage_service import StorageService, StorageServiceError
 
@@ -47,6 +50,7 @@ _MAX_LIBRARY_CONTENT_LENGTH = 8_000_000
 _LIBRARY_UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
 _MAX_LIBRARY_EXPORT_FILES = 100
 _MAX_LIBRARY_EXPORT_BYTES = 250 * 1024 * 1024
+_MAX_EDITABLE_OFFICE_CHARS = 8_000_000
 _LIBRARY_CONTENT_TYPES = {
     "text/css",
     "text/csv",
@@ -259,6 +263,23 @@ class WorkspaceFileSchema(BaseModel):
     archive_entries: list[dict[str, object]] | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+
+def _text_as_export_html(text: str, title: str) -> str:
+    """Convert bounded user text to escaped HTML for the shared exporters."""
+    blocks: list[str] = [f"<h1>{html.escape(title)}</h1>"]
+    for line in text.splitlines():
+        if line.startswith("### "):
+            blocks.append(f"<h3>{html.escape(line[4:])}</h3>")
+        elif line.startswith("## "):
+            blocks.append(f"<h2>{html.escape(line[3:])}</h2>")
+        elif line.startswith("# "):
+            blocks.append(f"<h1>{html.escape(line[2:])}</h1>")
+        elif line.strip():
+            blocks.append(f"<p>{html.escape(line)}</p>")
+        else:
+            blocks.append("<p></p>")
+    return "".join(blocks)
 
 
 class WorkspaceFileCreate(BaseModel):
@@ -1278,6 +1299,83 @@ async def get_workspace_file(
     return result
 
 
+@router.get(
+    "/{conversation_id}/files/{file_id}/export",
+    response_model=None,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def export_workspace_file(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    format: Literal["original", "txt", "md", "pdf", "docx", "pptx", "xlsx"] = Query("original"),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Export one authorized Library file to a compatible user-selected format."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    source = file.content if not file.is_binary else file.extracted_text
+    original_payload: bytes | None = None
+    if file.is_binary and file.storage_bucket and file.storage_key:
+        original_payload = _library_file_payload(file=file, settings=settings)
+    if format == "original":
+        if original_payload is None:
+            original_payload = (source or "").encode("utf-8")
+        payload = original_payload
+        media_type = file.content_type
+        extension = file.name.rsplit(".", 1)[-1].lower() if "." in file.name else "txt"
+    else:
+        text = source or ""
+        if len(text) > _MAX_EDITABLE_OFFICE_CHARS:
+            raise ApiError(
+                code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
+                message="The file is too large to convert safely.",
+                status_code=413,
+            )
+        if format in {"txt", "md"}:
+            payload = text.encode("utf-8")
+            media_type = "text/plain" if format == "txt" else "text/markdown"
+            extension = format
+        else:
+            service = DeepSpaceExportService()
+            title = file.name.rsplit(".", 1)[0]
+            html_content = _text_as_export_html(text, title)
+            if format == "pdf":
+                payload = service.generate_pdf(html_content, title).getvalue()
+                media_type, extension = "application/pdf", "pdf"
+            elif format == "docx":
+                payload = text_to_docx(text)
+                media_type, extension = (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "docx",
+                )
+            elif format == "xlsx":
+                payload = text_to_xlsx(text)
+                media_type, extension = (
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "xlsx",
+                )
+            else:
+                payload = text_to_pptx(text)
+                media_type, extension = (
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    "pptx",
+                )
+    stem = file.name.rsplit(".", 1)[0] if "." in file.name else file.name
+    return Response(
+        content=payload,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": _content_disposition(
+                disposition="attachment", filename=f"{stem}.{extension}"
+            ),
+        },
+    )
+
+
 @router.post(
     "/{conversation_id}/files",
     response_model=WorkspaceFileSchema,
@@ -1399,16 +1497,56 @@ async def update_workspace_file(
         if parent_id:
             _owned_folder(db=db, auth=auth, conversation_id=conversation_id, folder_id=parent_id)
         file.parent_folder_id = parent_id
+    old_binary_payload: bytes | None = None
+    generated_binary: bytes | None = None
     if payload.content is not None:
         if file.is_binary:
-            raise ApiError(
-                code="VALIDATION_ERROR",
-                message="Binary files must be replaced through file upload.",
-                status_code=422,
-            )
-        file.content = payload.content
-        file.size_bytes = len(payload.content.encode("utf-8"))
-        file.checksum_sha256 = hashlib.sha256(payload.content.encode("utf-8")).hexdigest()
+            if file.content_type not in {
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            }:
+                raise ApiError(
+                    code="VALIDATION_ERROR",
+                    message="This binary format cannot be edited in the browser.",
+                    status_code=422,
+                )
+            if len(payload.content) > _MAX_EDITABLE_OFFICE_CHARS:
+                raise ApiError(
+                    code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
+                    message="The edited document is too large.",
+                    status_code=413,
+                )
+            old_binary_payload = _library_file_payload(file=file, settings=settings)
+            if file.content_type.endswith("wordprocessingml.document"):
+                generated_binary = text_to_docx(payload.content)
+            elif file.content_type.endswith("presentationml.presentation"):
+                generated_binary = text_to_pptx(payload.content)
+            else:
+                generated_binary = text_to_xlsx(payload.content)
+            if len(generated_binary) > settings.upload_max_bytes:
+                raise ApiError(
+                    code="DOC_TOO_LARGE", message="The edited file is too large.", status_code=413
+                )
+            try:
+                stored = StorageService(settings).put_bytes(
+                    tenant_id=auth.tenant_id,
+                    document_id=file.id,
+                    filename=file.name,
+                    content_type=file.content_type,
+                    payload=generated_binary,
+                )
+                file.storage_bucket = stored.bucket
+                file.storage_key = stored.object_key
+            except StorageServiceError as exc:
+                raise ApiError(code=exc.code, message=exc.message, status_code=503) from exc
+            file.extracted_text = payload.content
+            file.size_bytes = len(generated_binary)
+            file.checksum_sha256 = hashlib.sha256(generated_binary).hexdigest()
+        else:
+            file.content = payload.content
+            file.size_bytes = len(payload.content.encode("utf-8"))
+            file.checksum_sha256 = hashlib.sha256(payload.content.encode("utf-8")).hexdigest()
     if changed:
         file.version += 1
         file.updated_at = datetime.now(UTC)
@@ -1416,6 +1554,17 @@ async def update_workspace_file(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
+        if old_binary_payload is not None:
+            try:
+                StorageService(settings).put_bytes(
+                    tenant_id=auth.tenant_id,
+                    document_id=file.id,
+                    filename=file.name,
+                    content_type=file.content_type,
+                    payload=old_binary_payload,
+                )
+            except StorageServiceError:
+                pass
         raise ApiError(
             code="IDEMPOTENCY_CONFLICT",
             message="A file with that name already exists in this workspace",
