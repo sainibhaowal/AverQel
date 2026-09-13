@@ -261,6 +261,23 @@ DOCUMENT_COMPARE_TOOL = {
         },
     },
 }
+DOCUMENT_QUERY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "document_query",
+        "description": "Search authorized extracted document text and return ranked passages with stable file/line citations.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "query": {"type": "string", "minLength": 1, "maxLength": 1000},
+                "file_id": {"type": "string", "maxLength": 80},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            "required": ["query"],
+        },
+    },
+}
 ARTIFACT_CREATE_TOOL = {
     "type": "function",
     "function": {
@@ -566,6 +583,7 @@ PRODUCTIVITY_TOOLS = [
     SANDBOX_EXECUTE_TOOL,
     DOCUMENT_READ_TOOL,
     DOCUMENT_COMPARE_TOOL,
+    DOCUMENT_QUERY_TOOL,
     ARTIFACT_CREATE_TOOL,
     ASK_USER_TOOL,
     FINAL_TOOL,
@@ -1584,6 +1602,56 @@ class DeepSpaceChatService:
                 "truncated": len(rendered) > limit,
                 "citation": {"left_file_id": left.get("id"), "right_file_id": right.get("id")},
             }
+        if tool_name == "document_query":
+            query = str(arguments.get("query") or "").strip()
+            if not query:
+                raise ValueError("document_query requires query.")
+            limit = min(20, max(1, int(arguments.get("limit") or 8)))
+            file_id = str(arguments.get("file_id") or "").strip() or None
+            if file_id:
+                candidates = [
+                    self.task_store.read_workspace_file(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        file_id=file_id,
+                    )
+                ]
+            else:
+                entries = self.task_store.list_workspace_entries(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                )
+                candidates = [
+                    self.task_store.read_workspace_file(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        file_id=str(item["id"]),
+                    )
+                    for item in entries.get("files", [])[:50]
+                ]
+            needle = query.casefold()
+            passages: list[dict[str, Any]] = []
+            for candidate in candidates:
+                content = str(candidate.get("content") or "")
+                lines = content.splitlines()
+                for index, line in enumerate(lines):
+                    if needle in line.casefold():
+                        start = max(0, index - 1)
+                        end = min(len(lines), index + 2)
+                        passages.append(
+                            {
+                                "file_id": candidate.get("id"),
+                                "filename": candidate.get("name"),
+                                "line_start": start + 1,
+                                "line_end": end,
+                                "text": "\n".join(lines[start:end])[:4000],
+                                "citation": f"file:{candidate.get('id')}#L{index + 1}",
+                            }
+                        )
+            return {"query": query, "passages": passages[:limit], "total_matches": len(passages)}
         if tool_name == "artifact_create":
             filename = str(arguments.get("filename") or "").strip()
             content = str(arguments.get("content") or "")

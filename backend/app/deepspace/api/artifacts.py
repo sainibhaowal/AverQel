@@ -8,6 +8,7 @@ from collections.abc import Iterator
 
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,12 +16,94 @@ from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.rbac import require_permissions
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
+from app.deepspace.models.artifact_job import DeepSpaceArtifactJob
 from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
+from app.deepspace.workers.tasks import create_artifact_task
 from app.platform.database.session import get_db
 from app.system.services.storage_service import StorageService, StorageServiceError
 
 router = APIRouter(prefix="/deepspace/artifacts", tags=["deepspace-artifacts"])
 _RANGE_PATTERN = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+class ArtifactJobCreate(BaseModel):
+    conversation_id: uuid.UUID
+    filename: str = Field(min_length=1, max_length=255)
+    format: str = Field(pattern="^(markdown|csv|json|html|text)$")
+    content: str = Field(min_length=1, max_length=100_000)
+
+
+def _job_payload(job: DeepSpaceArtifactJob) -> dict[str, object]:
+    return {
+        "id": str(job.id),
+        "conversation_id": str(job.conversation_id),
+        "filename": job.filename,
+        "format": job.format,
+        "status": job.status,
+        "file_id": str(job.file_id) if job.file_id else None,
+        "error": job.error,
+        "created_at": job.created_at.isoformat(),
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+    }
+
+
+@router.post("/jobs", dependencies=[Depends(require_permissions("queries:run"))])
+def create_artifact_job(
+    payload: ArtifactJobCreate,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    from app.deepspace.models.conversation import Conversation
+
+    conversation = db.execute(
+        select(Conversation).where(
+            Conversation.id == payload.conversation_id,
+            Conversation.tenant_id == auth.tenant_id,
+            Conversation.user_id == auth.user_id,
+            Conversation.kind == "deepspace",
+        )
+    ).scalar_one_or_none()
+    if conversation is None:
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND",
+            message="DeepSpace conversation not found",
+            status_code=404,
+        )
+    job = DeepSpaceArtifactJob(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=payload.conversation_id,
+        filename=payload.filename.strip(),
+        format=payload.format,
+        content=payload.content,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    create_artifact_task.delay(
+        job_id=str(job.id), tenant_id=str(auth.tenant_id), user_id=str(auth.user_id)
+    )
+    return _job_payload(job)
+
+
+@router.get("/jobs", dependencies=[Depends(require_permissions("queries:run"))])
+def list_artifact_jobs(
+    auth: AuthContext = Depends(get_auth_context), db: Session = Depends(get_db)
+) -> list[dict[str, object]]:
+    jobs = (
+        db.execute(
+            select(DeepSpaceArtifactJob)
+            .where(
+                DeepSpaceArtifactJob.tenant_id == auth.tenant_id,
+                DeepSpaceArtifactJob.user_id == auth.user_id,
+            )
+            .order_by(DeepSpaceArtifactJob.created_at.desc())
+            .limit(100)
+        )
+        .scalars()
+        .all()
+    )
+    return [_job_payload(job) for job in jobs]
 
 
 def _artifact(*, db: Session, auth: AuthContext, artifact_id: uuid.UUID) -> DeepSpaceMediaArtifact:

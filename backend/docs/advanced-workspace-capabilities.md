@@ -37,7 +37,9 @@ available, what is gated, and which security boundary protects each feature.
    file citation identifier after the normal conversation/user/tenant check.
 3. `document_compare` reads two authorized files and returns a bounded unified
    diff with both file identifiers; it cannot cross conversations or tenants.
-4. The existing `read`, `find`, Library preview, chunking, and citation
+4. `document_query` and `POST /api/v1/deepspace/documents/query` return
+   bounded matching passages with stable `file:{id}#L{line}` citations.
+5. The existing `read`, `find`, Library preview, chunking, and citation
    pipelines remain unchanged and continue to support ordinary chat turns.
 
 ## 3. Controlled browser automation
@@ -56,10 +58,13 @@ available, what is gated, and which security boundary protects each feature.
 
 1. Existing authenticated PDF, DOCX, Markdown, Library, spreadsheet, and
    media-artifact routes remain the durable artifact boundary.
-2. Assistant-created reports should be written to the tenant-scoped Library
+2. `POST/GET /api/v1/deepspace/artifacts/jobs` creates and observes durable
+   artifact jobs. A Celery worker materializes the result through the
+   tenant-scoped Library boundary.
+3. Assistant-created reports should be written to the tenant-scoped Library
    through `write(target="library")`; downloads still require authenticated
    ownership checks.
-3. Provider-generated media continues to use the immutable object-storage
+4. Provider-generated media continues to use the immutable object-storage
    record and range-safe artifact delivery route.
 
 ## 5. Scheduled and long-running work
@@ -69,13 +74,17 @@ available, what is gated, and which security boundary protects each feature.
 2. REST routes are `POST/GET /api/v1/deepspace/schedules`,
    `PATCH/DELETE /api/v1/deepspace/schedules/{schedule_id}`. All routes use
    `queries:run` and enforce the authenticated tenant and user.
-3. Celery Beat runs `deepspace.dispatch_schedules` every minute. It claims due
+3. `GET /api/v1/deepspace/schedules/{schedule_id}/runs` exposes durable
+   queued/running/completed/failed/cancelled run history.
+4. Celery Beat runs `deepspace.dispatch_schedules` every minute. It claims due
    rows with `SKIP LOCKED`, advances the next run before enqueueing, and then
    uses the normal `deepspace.run` path so SSE reconnect, cancellation, audit,
    and provider selection are not duplicated.
-4. The migration is `20260913_0001_deepspace_schedules.py`. Apply migrations
+5. The migrations are `20260913_0001_deepspace_schedules.py`,
+   `20260913_0003_schedule_runs.py`, and the artifact job migration
+   `20260913_0002_artifact_jobs.py`. Apply migrations
    before enabling the scheduler worker/beat process.
-5. Pausing or deleting a schedule is idempotent. Notification delivery is
+6. Pausing or deleting a schedule is idempotent. Notification delivery is
    intentionally left to the existing event/SSE and connector policy rather
    than sending unsolicited external messages.
 

@@ -15,6 +15,7 @@ from app.auth.rbac import require_permissions
 from app.core.errors import ApiError
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.schedule import DeepSpaceSchedule
+from app.deepspace.models.schedule_run import DeepSpaceScheduleRun
 from app.platform.database.session import get_db
 
 router = APIRouter(prefix="/deepspace/schedules", tags=["deepspace-schedules"])
@@ -147,3 +148,38 @@ def delete_schedule(
     db.delete(schedule)
     db.commit()
     return {"status": "deleted", "id": str(schedule_id)}
+
+
+@router.get("/{schedule_id}/runs", dependencies=[Depends(require_permissions("queries:run"))])
+def list_schedule_runs(
+    schedule_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    _owned(db, auth, schedule_id)
+    runs = (
+        db.execute(
+            select(DeepSpaceScheduleRun)
+            .where(
+                DeepSpaceScheduleRun.schedule_id == schedule_id,
+                DeepSpaceScheduleRun.tenant_id == auth.tenant_id,
+                DeepSpaceScheduleRun.user_id == auth.user_id,
+            )
+            .order_by(DeepSpaceScheduleRun.created_at.desc())
+            .limit(100)
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": str(run.id),
+            "request_id": run.request_id,
+            "status": run.status,
+            "error": run.error,
+            "created_at": run.created_at.isoformat(),
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        }
+        for run in runs
+    ]

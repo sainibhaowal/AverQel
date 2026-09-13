@@ -48,6 +48,7 @@ celery_app.conf.update(
         "deepspace.run": {"queue": "deepspace"},
         "deepspace.library_upload_finalize": {"queue": "deepspace"},
         "deepspace.dispatch_schedules": {"queue": "deepspace"},
+        "deepspace.artifact_create": {"queue": "deepspace"},
     },
     beat_schedule={
         "maintenance-heartbeat": {

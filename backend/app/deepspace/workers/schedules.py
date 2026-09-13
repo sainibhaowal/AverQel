@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.auth.rbac import resolve_permissions
 from app.deepspace.models.schedule import DeepSpaceSchedule
+from app.deepspace.models.schedule_run import DeepSpaceScheduleRun
 from app.deepspace.workers.tasks import run_deepspace_task
 from app.platform.database.session import get_session_factory
 from app.platform.worker.celery_app import celery_app
@@ -36,6 +37,15 @@ def dispatch_schedules() -> int:
             request_id = f"schedule-{schedule.id}-{uuid.uuid4()}"
             schedule.last_run_at = now
             schedule.last_run_id = request_id
+            db.add(
+                DeepSpaceScheduleRun(
+                    schedule_id=schedule.id,
+                    tenant_id=schedule.tenant_id,
+                    user_id=schedule.user_id,
+                    request_id=request_id,
+                    status="queued",
+                )
+            )
             schedule.next_run_at = now + timedelta(minutes=schedule.interval_minutes)
             run_deepspace_task.delay(
                 tenant_id=str(schedule.tenant_id),

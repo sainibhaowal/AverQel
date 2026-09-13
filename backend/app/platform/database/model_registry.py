@@ -16,6 +16,7 @@ from app.deepspace.models.agent_runtime import (
     DeepSpaceRunEvent,
 )
 from app.deepspace.models.agent_todo import AgentTodo
+from app.deepspace.models.artifact_job import DeepSpaceArtifactJob
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
@@ -24,6 +25,7 @@ from app.deepspace.models.message_version import MessageVersion
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
 from app.deepspace.models.research import DeepSpaceResearchRun, DeepSpaceResearchSource
 from app.deepspace.models.schedule import DeepSpaceSchedule
+from app.deepspace.models.schedule_run import DeepSpaceScheduleRun
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
@@ -107,6 +109,7 @@ __all__ = [
     "DeepSpaceResearchRun",
     "DeepSpaceResearchSource",
     "DeepSpaceSchedule",
+    "DeepSpaceScheduleRun",
     "DeepSpaceMediaArtifact",
     "DeepSpaceWorkspaceFile",
     "DeepSpaceWorkspaceFolder",
@@ -123,6 +126,7 @@ __all__ = [
     "MCPConnectionPolicy",
     "AgentMemory",
     "DeepSpaceAgentRun",
+    "DeepSpaceArtifactJob",
     "DeepSpaceAgentStep",
     "DeepSpaceRunEvent",
     "DeepSpaceLibraryUpload",
