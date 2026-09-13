@@ -59,7 +59,10 @@ flowchart LR
 
 ## 6. Verification and production state
 
-1. The renderer and egress proxy are health-checked in Compose.
-2. The current local deployment reports the renderer healthy.
+1. The renderer and egress proxy are health-checked when the
+   `research-browser` Compose profile is deployed.
+2. The default local Compose deployment does not start that optional profile;
+   the API therefore reports browser rendering as unavailable until the profile
+   is deployed on the same internal network.
 3. Operators must smoke-test the profile in their target environment before
    enabling it; the profile is deliberately separate from normal API traffic.
