@@ -41,7 +41,7 @@ _ARTIFACT_CONTENT_TYPES = {
 class ArtifactJobCreate(BaseModel):
     conversation_id: uuid.UUID
     filename: str = Field(min_length=1, max_length=255)
-    format: str = Field(pattern="^(markdown|csv|json|html|text)$")
+    format: str = Field(pattern="^(markdown|csv|json|html|text|svg|mermaid|uml)$")
     content: str = Field(min_length=1, max_length=100_000)
 
 

@@ -5,6 +5,10 @@
 1. Reads extracted PDF, DOCX, PPTX, XLSX, CSV, OCR, and text content.
 2. Compares two authorized documents with a bounded unified diff.
 3. Searches extracted text and returns stable line-level citations.
+4. Uses the shared embedding and reranking services for indexed document
+   retrieval. Workspace Library files that have not entered the document
+   chunk index use deterministic lexical matching plus the configured
+   reranker, with a safe lexical fallback when no reranker is available.
 
 ```mermaid
 flowchart LR
@@ -39,6 +43,10 @@ flowchart LR
    `backend/app/deepspace/api/documents.py`.
 3. Every operation uses `DeepSpaceTaskLoopStore` and the existing conversation,
    user, and tenant ownership checks.
+4. Retrieval integration is implemented in
+   `backend/app/query/services/retrieval_service.py` and
+   `backend/app/query/services/reranker_service.py`; DeepSpace workspace
+   matching is assembled in `chat_service.py` without bypassing ownership.
 
 ## 4. Execution flow
 
@@ -61,6 +69,9 @@ flowchart LR
 2. Binary files use extracted text and never expose storage credentials.
 3. Response limits prevent oversized document content from destabilizing a
    chat or browser.
+4. OCR confidence and extraction warnings remain attached to the stored
+   ingestion result; DeepSpace reuses that result rather than performing a
+   slower duplicate OCR pass during every answer.
 
 ## 7. Verification and production state
 

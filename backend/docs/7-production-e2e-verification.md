@@ -12,6 +12,8 @@ No provider secret or temporary API key is stored in the repository.
 3. Compose configuration, live API health, and the isolated service profiles.
 4. OpenZen model discovery and a bounded live generation probe using a
    temporary user-supplied credential.
+5. OCR-to-sandbox staging, generated artifact collection, and generic artifact
+   preview/download behavior.
 
 ## 2. Automated evidence
 
@@ -60,6 +62,9 @@ No provider secret or temporary API key is stored in the repository.
 3. Production activation is still a deployment operation, not a code gap.
 4. The only unsuccessful live probe was the requested OpenZen free model,
    rejected by OpenZen before model output was generated.
+5. The optional sandbox profile is intentionally not started by the default
+   localhost Compose stack; enabling it requires the per-environment token in
+   `.env.localprod` or `.env.vps` and a profile rebuild.
 
 ## 6. Reasoning privacy and rendering regression
 

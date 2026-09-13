@@ -2,11 +2,14 @@
 
 ## 1. What it does
 
-1. Creates structured Markdown, CSV, JSON, HTML, and text artifacts.
+1. Creates structured Markdown, CSV, JSON, HTML, text, SVG, Mermaid, and UML
+   artifacts, with explicit document/table/chart/diagram/data/code kinds.
 2. Persists queued artifact jobs and materializes them through the private
    DeepSpace Library.
 3. Exports notes as PDF, DOCX, Markdown, and editable PPTX.
 4. Retains authenticated private media-artifact delivery.
+5. Automatically places sandbox-generated files and `artifact_create` results
+   in the DeepSpace Artifact panel for authenticated preview/download.
 
 ```mermaid
 flowchart LR
@@ -24,6 +27,8 @@ flowchart LR
 | --- | --- | --- |
 | Turn a conversation into a report | PDF, DOCX, Markdown, or PPTX | Durable job ID and status |
 | Save structured data | CSV, JSON, HTML, or text artifact | Private Library ownership |
+| Create a chart or diagram | SVG/PNG/chart output with a dedicated Artifact-panel card | Bounded private artifact delivery |
+| Create UML or Mermaid | `.uml`/`.mmd` source plus safe text preview | No HTML injection; authenticated download |
 | Export a large document | Background completion instead of a frozen page | Authenticated download only |
 
 ## 2. Exact implementation
@@ -38,13 +43,16 @@ flowchart LR
 5. Export service: `backend/app/deepspace/integrations/export_service.py`.
 6. Export API: `GET /api/v1/deepspace/export/{conversation_id}?format=...`.
 7. Frontend export controls: `DeepSpaceEditor.tsx` and Library components.
+8. Artifact panel: `frontend/app/dashboard/deepspace/_components/DeepSpaceMediaArtifacts.tsx`.
 
 ## 3. Execution flow
 
 1. A job is created with an authenticated conversation owner.
 2. The job is queued and visible by its durable id/status.
 3. Celery writes the result through the existing tenant-scoped Library store.
-4. Users download only through authenticated Library/export routes.
+4. Provider and sandbox outputs are persisted in object storage, while only
+   bounded artifact metadata is sent through the model context.
+5. Users download only through authenticated Library/export/artifact routes.
 
 ## 4. What users see
 
