@@ -1,5 +1,9 @@
 # Advanced capability audit index
 
+Every feature document has a stable numeric audit id. Ordered lists use
+explicit Markdown numbering (`1.`, `2.`, `3.`); renderers are expected to
+display them as consecutive numbers.
+
 This is the entry point for the six production capability audits. Each
 feature has its own document so operators, reviewers, and users can inspect
 the logic and the visible behavior independently.

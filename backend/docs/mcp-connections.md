@@ -1,4 +1,4 @@
-# MCP connections audit
+# 06. MCP connections audit
 
 ## 1. What it does
 

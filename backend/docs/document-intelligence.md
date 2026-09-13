@@ -1,4 +1,4 @@
-# Rich document intelligence audit
+# 02. Rich document intelligence audit
 
 ## 1. What it does
 
