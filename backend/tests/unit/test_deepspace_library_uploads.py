@@ -9,6 +9,7 @@ from app.core.errors import ApiError
 from app.deepspace.api.library import (
     LibraryExportRequest,
     LibraryUploadCreate,
+    _content_type_for_name,
     _serialize_upload,
 )
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
@@ -25,6 +26,24 @@ def test_upload_create_normalizes_filename_and_content_type() -> None:
 
     assert payload.name == "research paper.pdf"
     assert payload.content_type == "application/pdf"
+
+
+def test_upload_create_accepts_unicode_names_and_infers_browser_octet_stream_types() -> None:
+    payload = LibraryUploadCreate(
+        name="研究計画 – résumé.pptx",
+        size_bytes=128,
+        content_type="application/octet-stream",
+    )
+
+    assert payload.name == "研究計画 – résumé.pptx"
+    assert _content_type_for_name(payload.name).endswith("presentationml.presentation")
+
+
+def test_library_content_type_mapping_covers_common_data_office_and_media_files() -> None:
+    assert _content_type_for_name("table.tsv") == "text/tab-separated-values"
+    assert _content_type_for_name("slides.ppt") == "application/vnd.ms-powerpoint"
+    assert _content_type_for_name("photo.tiff") == "image/tiff"
+    assert _content_type_for_name("recording.flac") == "audio/flac"
 
 
 def test_upload_schema_reports_durable_byte_progress() -> None:

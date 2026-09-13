@@ -6,6 +6,7 @@ export type LibraryFileKind =
   | "spreadsheet"
   | "pdf"
   | "docx"
+  | "pptx"
   | "image"
   | "svg"
   | "video"
@@ -62,7 +63,20 @@ export function libraryFileKind(name: string, contentType: string): LibraryFileK
     return "spreadsheet";
   }
   if (extension === "pdf" || normalized === "application/pdf") return "pdf";
-  if (extension === "docx" || normalized.includes("wordprocessingml")) return "docx";
+  if (
+    ["doc", "docx", "odt", "rtf"].includes(extension) ||
+    normalized.includes("wordprocessingml") ||
+    normalized === "application/msword" ||
+    normalized === "application/rtf" ||
+    normalized === "text/rtf"
+  )
+    return "docx";
+  if (
+    ["ppt", "pptx", "odp"].includes(extension) ||
+    normalized.includes("presentationml") ||
+    normalized.includes("powerpoint")
+  )
+    return "pptx";
   if (extension === "svg" || normalized === "image/svg+xml") return "svg";
   if (
     normalized.startsWith("image/") ||
@@ -76,15 +90,31 @@ export function libraryFileKind(name: string, contentType: string): LibraryFileK
   if (normalized.startsWith("audio/") || ["mp3", "wav", "ogg", "m4a", "flac"].includes(extension)) {
     return "audio";
   }
-  if (extension === "zip" || normalized === "application/zip") return "archive";
+  if (
+    ["zip", "tar", "gz", "tgz", "7z", "rar"].includes(extension) ||
+    normalized.includes("zip") ||
+    normalized.includes("tar") ||
+    normalized.includes("gzip") ||
+    normalized.includes("7z") ||
+    normalized.includes("rar")
+  )
+    return "archive";
   if (CODE_EXTENSIONS.has(extension) || normalized.startsWith("text/")) return "code";
   return "text";
 }
 
 export function libraryKindSupportsEditor(kind: LibraryFileKind) {
-  return !["spreadsheet", "pdf", "docx", "image", "svg", "video", "audio", "archive"].includes(
-    kind,
-  );
+  return ![
+    "spreadsheet",
+    "pdf",
+    "docx",
+    "pptx",
+    "image",
+    "svg",
+    "video",
+    "audio",
+    "archive",
+  ].includes(kind);
 }
 
 export function libraryKindSupportsPreview(kind: LibraryFileKind) {

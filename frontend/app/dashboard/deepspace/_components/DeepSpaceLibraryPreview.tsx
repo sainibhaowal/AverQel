@@ -198,9 +198,15 @@ function SpreadsheetTable({ value, previewUrl }: { value: string; previewUrl?: s
       cancelled = true;
     };
   }, [previewUrl, value]);
-  return rows.length ? (
-    <Table rows={rows} />
-  ) : (
+  if (rows.length) return <Table rows={rows} />;
+  if (value.trim()) {
+    return (
+      <pre className="text-foreground/75 h-full overflow-auto whitespace-pre-wrap text-xs leading-5">
+        {value}
+      </pre>
+    );
+  }
+  return (
     <EmptyPreview
       icon={<Table2 size={18} />}
       text="This spreadsheet is empty or its binary payload is unavailable."
@@ -282,13 +288,15 @@ export function LibraryPreview({
       />
     );
   }
-  if (["image", "svg", "video", "audio", "pdf", "docx"].includes(kind)) {
+  if (["image", "svg", "video", "audio", "pdf", "docx", "pptx"].includes(kind)) {
     const source =
       previewUrl ||
       (kind === "svg" && value.trim().startsWith("<svg")
         ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(value)}`
         : dataUrl(value, contentType));
-    if (kind === "docx" && value.trim()) return <DeepSpaceMarkdownRenderer content={value} />;
+    if ((kind === "docx" || kind === "pptx") && value.trim()) {
+      return <DeepSpaceMarkdownRenderer content={value} />;
+    }
     if (!source)
       return (
         <EmptyPreview

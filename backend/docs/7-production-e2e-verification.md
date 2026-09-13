@@ -73,3 +73,16 @@ No provider secret or temporary API key is stored in the repository.
    browser.
 4. Backend and frontend regression tests cover this behavior, including the
    original repeated-garbage failure shape.
+
+## 7. Library upload and preview coverage
+
+1. Library upload sessions accept Unicode-safe file names and infer a known
+   type when browsers declare `application/octet-stream`.
+2. Common Office, OpenDocument, data, archive, image, audio, and video MIME
+   types are normalized before storage while existing size, malware, tenant,
+   and path-safety checks remain enforced.
+3. PPTX and Office text extracted by the existing ingestion router are shown
+   in the Library preview; spreadsheet extraction falls back to readable text
+   when a browser cannot parse a legacy workbook.
+4. Multi-file uploads continue to use independent resumable sessions with
+   bounded concurrency, so one rejected file cannot corrupt another upload.

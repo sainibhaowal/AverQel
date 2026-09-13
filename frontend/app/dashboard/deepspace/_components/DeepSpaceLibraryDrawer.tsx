@@ -257,7 +257,10 @@ export default function DeepSpaceLibraryDrawer({
       if (!response.ok) return;
       const detail = (await response.json()) as LibraryFile;
       setSelected(detail);
-      setDraft(detail.content ?? detail.extracted_text ?? "");
+      // Binary files keep `content` empty and store their searchable text in
+      // `extracted_text`; prefer the latter so Office/PDF previews remain
+      // useful even when the browser cannot render the original format.
+      setDraft(detail.content || detail.extracted_text || "");
       setArchiveSelection(null);
       setPreviewUrl(null);
       if (detail.is_binary) {

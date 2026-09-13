@@ -12,6 +12,8 @@ describe("DeepSpace Library format detection", () => {
     expect(libraryFileKind("changes.diff", "text/plain")).toBe("diff");
     expect(libraryFileKind("rows.csv", "text/csv")).toBe("csv");
     expect(libraryFileKind("workbook.xlsx", "application/octet-stream")).toBe("spreadsheet");
+    expect(libraryFileKind("slides.pptx", "application/octet-stream")).toBe("pptx");
+    expect(libraryFileKind("plan.odt", "application/vnd.oasis.opendocument.text")).toBe("docx");
     expect(libraryFileKind("diagram.svg", "image/svg+xml")).toBe("svg");
     expect(libraryFileKind("recording.mp3", "audio/mpeg")).toBe("audio");
     expect(libraryFileKind("bundle.zip", "application/zip")).toBe("archive");
