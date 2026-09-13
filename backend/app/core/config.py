@@ -539,6 +539,9 @@ class Settings(BaseSettings):
     llm_api_base_url: str = ""
     llm_api_key: str | None = None
     llm_temperature: float = 0.1
+    # Legacy fallback for provider paths that require an explicit output
+    # budget. DeepSpace does not send this value when model discovery has no
+    # advertised output limit; it lets OpenAI-compatible providers choose.
     llm_max_tokens_per_request: int = 1024
     llm_max_requests_per_minute: int = 30
     llm_monthly_budget_usd: float = 50.0
