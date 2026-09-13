@@ -965,6 +965,7 @@ body {
   );
   animation: deepspace-composer-border-spin 3.2s linear infinite;
   will-change: transform;
+  backface-visibility: hidden;
 }
 
 .deepspace-composer-runtime[data-runtime-phase="idle"] .deepspace-composer-border-gradient {
@@ -1158,6 +1159,21 @@ body {
 @keyframes deepspace-composer-search-particle {
   to {
     offset-distance: 100%;
+  }
+}
+
+/* Streaming must remain readable and stable for users who prefer reduced
+   motion or whose browser cannot maintain a smooth compositor frame rate. */
+@media (prefers-reduced-motion: reduce) {
+  .deepspace-composer-border-gradient,
+  .deepspace-composer-tool-trace,
+  .deepspace-composer-search-particles span {
+    animation: none !important;
+  }
+
+  .deepspace-composer-border-trace {
+    opacity: 0.42;
+    transition: none;
   }
 }
 

@@ -52,7 +52,6 @@ interface DeepSpaceComposerProps {
   voiceLabel?: string;
   runtimePhase?: DeepSpaceRuntimePhase;
   activeToolName?: string | null;
-  streamActivity?: number;
   hasRuntimeError?: boolean;
 }
 
@@ -101,7 +100,6 @@ export default function DeepSpaceComposer({
   voiceLabel = "",
   runtimePhase = "idle",
   activeToolName = null,
-  streamActivity = 0,
   hasRuntimeError = false,
 }: DeepSpaceComposerProps) {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
@@ -139,14 +137,16 @@ export default function DeepSpaceComposer({
   const runtimeStyle = {
     "--deepspace-context-ratio": contextRatio,
     "--deepspace-context-hue": Math.round(155 - contextRatio * 155),
-    "--deepspace-stream-activity": streamActivity,
-    "--deepspace-receive-duration": `${1.05 + (Math.abs(streamActivity) % 7) * 0.04}s`,
+    // Keep animation timing stable while tokens arrive. Changing duration on
+    // every streamed token restarts the compositor timeline and appears as
+    // border jitter/blinking on slower devices.
+    "--deepspace-receive-duration": "1.2s",
   } as CSSProperties;
 
-  const borderHighlight = "border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.18)]";
+  const borderHighlight = "border-transparent shadow-[0_0_15px_rgba(16,185,129,0.18)]";
 
   const shellPadding = "p-2.5 sm:p-3";
-  const composerShell = `bg-surface-1/35 backdrop-blur-md border transition-all duration-300 ${
+  const composerShell = `bg-surface-1/35 backdrop-blur-md border transition-[box-shadow,background-color,border-color] duration-300 ${
     visualPhase === "idle" || visualPhase === "typing"
       ? borderHighlight
       : visualPhase === "error"

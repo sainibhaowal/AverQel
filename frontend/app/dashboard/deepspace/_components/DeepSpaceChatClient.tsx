@@ -1207,10 +1207,6 @@ export default function DeepSpaceChatClient({
       phase,
       activeToolName: activeTool?.toolName ?? activeTimelineTool?.toolName ?? null,
       hasError,
-      streamActivity:
-        (latestAssistant?.rawContent?.length ?? 0) +
-        (latestAssistant?.thinkingContent?.length ?? 0) +
-        (latestAssistant?.agentSteps?.length ?? 0),
     };
   }, [completionPulse, latestAssistant, state.isStreaming, state.streamError]);
   const renderableMessages = useMemo(
@@ -1418,7 +1414,6 @@ export default function DeepSpaceChatClient({
               voiceLabel={voiceLabel}
               runtimePhase={runtimeActivity.phase}
               activeToolName={runtimeActivity.activeToolName}
-              streamActivity={runtimeActivity.streamActivity}
               hasRuntimeError={runtimeActivity.hasError}
             />
           </div>
