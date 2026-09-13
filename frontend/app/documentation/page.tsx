@@ -8,9 +8,19 @@ export default function DocsIndex() {
     "What Is AverQel":
       "Product definition, privacy model, and how AverQel evolved from document intelligence into an agentic operating layer.",
     Features:
-      "Explore grounded retrieval, DeepSpace chat, note editing, memory, providers, and visual answer rendering.",
+      "Explore grounded retrieval, DeepSpace chat, sandboxed analysis, artifacts, schedules, note editing, memory, providers, and visual answer rendering.",
     "Grounded Queries":
       "Document ingestion, grounded retrieval, source-backed answers, rich rendering, and how the classic query layer fits beside DeepSpace.",
+    "Library & OCR":
+      "Supported files, OCR reuse, embeddings, reranking, previews, ownership checks, and the source-to-answer flow.",
+    "Web Research":
+      "Backend-orchestrated search, page fetching, source ranking, browser isolation, freshness, verification, and claim-level citations.",
+    "Sandbox & Data":
+      "Bounded Python and read-only SQL against authorized Library files with cleanup, limits, and isolated execution.",
+    "Artifacts & Exports":
+      "Private generated files, safe previews, durable jobs, charts, diagrams, tables, and authenticated downloads.",
+    "Schedules & Automation":
+      "Tenant-owned recurring prompts, worker-safe dispatch, durable run history, pause/resume, and cancellation.",
     "Documents Hub":
       "See how the note editor, math blocks, exports, and split panels work together.",
     "Collections & Sharing":
@@ -81,7 +91,8 @@ export default function DocsIndex() {
       <DocsSection title="What AverQel Does Now">
         <p>
           AverQel combines grounded retrieval, DeepSpace chat, provider routing, connector and MCP
-          integrations, persistent memory, and a working document editor.
+          integrations, persistent memory, document intelligence, sandboxed analysis, artifacts, and
+          scheduled work.
         </p>
         <p>
           The command surface is chat. DeepSpace keeps the conversation, provider selection, safe
@@ -108,9 +119,10 @@ export default function DocsIndex() {
           hardening phases, and where future development should stay careful.
         </p>
         <p>
-          If you are a user, start with Getting Started, Grounded Queries, Documents Hub, and Memory
-          & Workspace. If you are developing the system, also read Connectors & MCP, Providers,
-          Privacy & Security, and Architecture.
+          If you are a user, start with Getting Started, Documents Hub, Grounded Queries, Web
+          Research, Sandbox & Data, Artifacts & Exports, and Schedules & Automation. If you are
+          developing the system, also read Connectors & MCP, Providers, Privacy & Security, and
+          Architecture.
         </p>
       </DocsSection>
       <DocsCards
@@ -149,6 +161,10 @@ export default function DocsIndex() {
         <p>The documentation now covers:</p>
         <ul className="list-disc space-y-2 pl-6">
           <li>document ingestion and grounded query behavior</li>
+          <li>evidence-first web research and source status</li>
+          <li>sandboxed Python/SQL analysis and automatic cleanup</li>
+          <li>private artifacts, previews, exports, and generated files</li>
+          <li>schedules, long-running work, run history, and cancellation</li>
           <li>DeepSpace chat, streaming answers, and safe approval prompts</li>
           <li>note editor, research tasks, exports, and working surfaces</li>
           <li>persistent memory and conversation history</li>

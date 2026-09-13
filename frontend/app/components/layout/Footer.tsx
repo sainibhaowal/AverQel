@@ -11,11 +11,12 @@ const links = [
   {
     title: "Product",
     items: [
-      { label: "How It Works", href: "#how-it-works" },
-      { label: "Surfaces", href: "#platform-surfaces" },
-      { label: "Features", href: "#features" },
-      { label: "Use Cases", href: "#use-cases" },
-      { label: "Security", href: "#security" },
+      { label: "Capabilities", href: "#capabilities" },
+      { label: "How It Works", href: "/documentation/getting-started" },
+      { label: "Surfaces", href: "/documentation/features" },
+      { label: "Features", href: "/documentation/features" },
+      { label: "Use Cases", href: "/documentation/features" },
+      { label: "Security", href: "/documentation/privacy-security" },
       { label: "Docs", href: "/documentation" },
     ],
   },

@@ -50,10 +50,11 @@ const subscribeToPlatform = () => () => undefined;
 const getServerDesktopPlatform = (): DesktopPlatform => "other";
 
 const navLinks = [
-  { label: "How It Works", href: "#how-it-works" },
-  { label: "Surfaces", href: "#platform-surfaces" },
-  { label: "Use Cases", href: "#use-cases" },
-  { label: "Control", href: "#control" },
+  { label: "Capabilities", href: "#capabilities" },
+  { label: "How It Works", href: "/documentation/getting-started" },
+  { label: "Surfaces", href: "/documentation/features" },
+  { label: "Use Cases", href: "/documentation/features" },
+  { label: "Control", href: "/documentation/privacy-security" },
   { label: "Docs", href: "/documentation" },
 ];
 
@@ -241,7 +242,7 @@ export default function HeroSection() {
                   Linux (.rpm)
                 </a>
                 <Link
-                  href="#security"
+                  href="/documentation/privacy-security"
                   className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/45 px-7 py-4 text-sm font-semibold text-white backdrop-blur-md transition-all hover:border-[#00ffa3]/28 hover:bg-slate-900/65"
                 >
                   <Shield size={17} className="text-slate-400" />
