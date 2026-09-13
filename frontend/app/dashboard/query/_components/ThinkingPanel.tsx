@@ -4,8 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, BrainCircuit } from "lucide-react";
 import { useState } from "react";
 
-import { InlineMarkdown } from "./InlineMarkdown";
-
 interface ThinkingPanelProps {
   content: string;
   isStreaming: boolean;
@@ -56,7 +54,9 @@ export default function ThinkingPanel({ content, isStreaming }: ThinkingPanelPro
           >
             <div className="border-t border-white/5 px-4 py-3">
               <div className="prose prose-invert text-foreground/60 max-w-none text-[12px] leading-relaxed">
-                <InlineMarkdown content={trimmed} />
+                <p className="m-0 text-xs leading-5 text-white/55">
+                  Reasoning details are kept private. Live tool activity and progress are shown here.
+                </p>
                 {isStreaming && (
                   <motion.span
                     animate={{ opacity: [1, 0, 1] }}

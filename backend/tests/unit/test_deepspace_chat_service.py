@@ -416,7 +416,7 @@ class _GoogleToolCaptureRegistry(_FakeRegistry):
 
 
 @pytest.mark.asyncio
-async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
+async def test_deepspace_keeps_provider_reasoning_private(monkeypatch):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
     monkeypatch.setattr(chat_service_module, "ProviderRegistry", _FakeRegistry)
@@ -442,16 +442,15 @@ async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
     thinking_frames = [frame for frame in frames if frame.startswith("event: thinking")]
     delta_frames = [frame for frame in frames if frame.startswith("event: delta")]
     meta_frame = next(frame for frame in frames if frame.startswith("event: meta"))
-    assert len(thinking_frames) == 2
+    assert thinking_frames == []
     meta = json.loads(meta_frame.split("data: ", 1)[1].strip())
     assert meta["context_window"] == 131072
     assert meta["context_limit_source"] == "live_model"
-    assert json.loads(thinking_frames[-1].split("data: ", 1)[1].strip())["text"] == " Then answer."
     assert json.loads(delta_frames[-1].split("data: ", 1)[1].strip())["text"] == "Final answer."
     assert _FakeRepository.completed_metadata["context_limit"] == 131072
     assert _FakeRepository.completed_metadata["context_window"] == 131072
     assert _FakeRepository.completed_metadata["context_limit_source"] == "live_model"
-    assert _FakeRepository.completed_metadata["thinking"]["content"] == "Plan first. Then answer."
+    assert "thinking" not in _FakeRepository.completed_metadata
     assert _FakeRepository.completed_metadata["client_request_id"] == "request-history-1"
 
 

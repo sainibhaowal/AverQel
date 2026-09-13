@@ -60,3 +60,16 @@ No provider secret or temporary API key is stored in the repository.
 3. Production activation is still a deployment operation, not a code gap.
 4. The only unsuccessful live probe was the requested OpenZen free model,
    rejected by OpenZen before model output was generated.
+
+## 6. Reasoning privacy and rendering regression
+
+1. Provider reasoning events are now treated as private backend state; raw
+   chain-of-thought is not streamed through SSE or persisted in assistant
+   metadata.
+2. The DeepSpace activity panel renders only safe tool, plan, approval,
+   verification, and error activity. Legacy `thinking` history is ignored.
+3. The query thinking panel shows a private-reasoning notice instead of raw
+   provider text, preventing giant prompt-like paragraphs from reaching the
+   browser.
+4. Backend and frontend regression tests cover this behavior, including the
+   original repeated-garbage failure shape.

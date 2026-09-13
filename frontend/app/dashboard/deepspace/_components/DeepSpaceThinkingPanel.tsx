@@ -545,12 +545,11 @@ const TimelineEntry = memo(function TimelineEntry({
 });
 
 export default function DeepSpaceThinkingPanel({
-  content,
   isStreaming,
   agentSteps = [],
   timeline = [],
 }: {
-  content: string;
+  content?: string;
   isStreaming: boolean;
   agentSteps?: AgentStep[];
   timeline?: TimelineStep[];
@@ -587,23 +586,20 @@ export default function DeepSpaceThinkingPanel({
   // Providers may emit argument fragments before the function name. The
   // backend labels that transient fragment `pending_tool`; it is not a
   // second execution and must not appear as a failed duplicate row.
+  // Provider chain-of-thought is private and must never be rendered. Keep
+  // only auditable tool, plan, approval, verification, and error activity.
+  // This also protects older history records that contain a legacy `thinking`
+  // field from being displayed after a reload.
   const activitySteps = agentSteps.filter(
     (step) => step.type !== "thinking" && step.toolName !== "pending_tool",
   );
-  const orderedTimeline = timeline.filter((step) => step.toolName !== "pending_tool");
-  // A completed turn is rehydrated from the persisted assistant metadata and
-  // durable tool steps.  The durable step log intentionally contains tools,
-  // not private model text, so do not hide the persisted thinking content just
-  // because a tool timeline is present.  During live streaming, thinking is
-  // represented as a timeline entry; avoid rendering it twice in that case.
+  const orderedTimeline = timeline.filter(
+    (step) => step.toolName !== "pending_tool" && step.type !== "thinking",
+  );
   const taskProgress = taskProgressFromTimeline(orderedTimeline);
   const elapsedMs = timelineDurationMs(orderedTimeline, clock);
   const durationLabel = elapsedMs === null ? null : formatElapsed(elapsedMs);
-  const hasNarrativeTimeline = orderedTimeline.some(
-    (step) => step.type === "thinking" || step.type === "model_message",
-  );
   if (
-    !content.trim() &&
     activitySteps.length === 0 &&
     orderedTimeline.length === 0 &&
     !isStreaming
@@ -638,21 +634,6 @@ export default function DeepSpaceThinkingPanel({
             data-thinking-activity="true"
           >
             {taskProgress ? <TaskProgressCard progress={taskProgress} /> : null}
-            {/*
-              `content` is a legacy, message-wide thinking fallback. Once a
-              durable timeline exists, rendering it above the timeline makes
-              reloads look like all thought was merged into one block. The
-              ordered timeline is authoritative whenever present; retain the
-              fallback only for older messages that have no timeline at all.
-            */}
-            {content.trim() && !hasNarrativeTimeline ? (
-              <div className="border-b border-white/8 pb-3" data-testid="deepspace-thinking-stream">
-                <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
-                  Model thinking
-                </div>
-                <DeepSpaceMarkdownRenderer content={content} streaming={isStreaming} compact />
-              </div>
-            ) : null}
             {orderedTimeline.length ? (
               <ol className="space-y-3" aria-label="Live agent timeline">
                 {orderedTimeline.map((step, index) => (
@@ -673,7 +654,6 @@ export default function DeepSpaceThinkingPanel({
               </div>
             ) : null}
             {isStreaming &&
-            !content.trim() &&
             activitySteps.length === 0 &&
             orderedTimeline.length === 0 ? (
               <div className="text-foreground/45">Waiting for the model and tools…</div>

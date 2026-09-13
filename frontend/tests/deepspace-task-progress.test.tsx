@@ -1,10 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import DeepSpaceThinkingPanel from "../app/dashboard/deepspace/_components/DeepSpaceThinkingPanel";
 
 describe("DeepSpace verified task progress", () => {
-  it("keeps persisted model thinking visible when tool steps are restored", () => {
+  it("keeps persisted model thinking private when tool steps are restored", () => {
     render(
       <DeepSpaceThinkingPanel
         content="I checked the sources and will summarize the verified findings."
@@ -27,9 +27,8 @@ describe("DeepSpace verified task progress", () => {
       />,
     );
 
-    expect(screen.getByTestId("deepspace-thinking-stream")).toHaveTextContent(
-      "I checked the sources",
-    );
+    expect(screen.queryByTestId("deepspace-thinking-stream")).not.toBeInTheDocument();
+    expect(screen.queryByText("I checked the sources")).not.toBeInTheDocument();
     expect(screen.getByText("Searching the web")).toBeInTheDocument();
   });
 
@@ -101,13 +100,9 @@ describe("DeepSpace verified task progress", () => {
       />,
     );
 
-    const completedBanner = screen.getByRole("button", { name: /Completed thought/i });
+    expect(screen.queryByRole("button", { name: /Completed thought/i })).not.toBeInTheDocument();
     const liveBanner = screen.getByRole("button", { name: /Live tool call/i });
-    expect(completedBanner).toHaveAttribute("aria-expanded", "false");
     expect(liveBanner).toHaveAttribute("aria-expanded", "true");
-
-    fireEvent.click(completedBanner);
-    expect(completedBanner).toHaveAttribute("aria-expanded", "true");
 
     rerender(
       <DeepSpaceThinkingPanel
@@ -142,10 +137,7 @@ describe("DeepSpace verified task progress", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /Completed thought/i })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(screen.queryByRole("button", { name: /Completed thought/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Live tool call/i })).toHaveAttribute(
       "aria-expanded",
       "false",

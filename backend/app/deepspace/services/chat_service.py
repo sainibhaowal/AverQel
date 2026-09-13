@@ -3220,7 +3220,12 @@ class DeepSpaceChatService:
         elif not resume_approval_id:
             conversation_messages.append({"role": "user", "content": prompt})
         answer_parts: list[str] = []
+        # Provider reasoning is private model output. Keep a small bounded
+        # marker for response/fallback bookkeeping, but never stream or
+        # persist the raw chain-of-thought text to a user-facing surface.
         thinking_parts: list[str] = []
+        private_reasoning_chars = 0
+        max_private_reasoning_chars = 8_000
         generated_artifacts: list[dict[str, Any]] = []
         citations: list[dict[str, Any]] = []
         if research_result is not None:
@@ -3781,13 +3786,19 @@ class DeepSpaceChatService:
                                 or provider_event.get("thinking")
                             )
                             if isinstance(provider_reasoning, str) and provider_reasoning:
-                                thinking_parts.append(provider_reasoning)
-                                yield sse("thinking", {"text": provider_reasoning})
+                                remaining = max_private_reasoning_chars - private_reasoning_chars
+                                if remaining > 0:
+                                    bounded_reasoning = provider_reasoning[:remaining]
+                                    thinking_parts.append(bounded_reasoning)
+                                    private_reasoning_chars += len(bounded_reasoning)
                         if not isinstance(text, str) or not text:
                             continue
                         if event_type in {"thinking", "reasoning", "reasoning_delta"}:
-                            thinking_parts.append(text)
-                            yield sse("thinking", {"text": text})
+                            remaining = max_private_reasoning_chars - private_reasoning_chars
+                            if remaining > 0:
+                                bounded_reasoning = text[:remaining]
+                                thinking_parts.append(bounded_reasoning)
+                                private_reasoning_chars += len(bounded_reasoning)
                         elif event_type in {"delta", "text", "content"}:
                             answer_parts.append(text)
                             yield sse("delta", {"text": text})
@@ -4914,8 +4925,9 @@ class DeepSpaceChatService:
                 "quality": research_result.quality,
                 "sources": research_result.citations(),
             }
-        if thinking_parts:
-            metadata["thinking"] = {"content": "".join(thinking_parts)}
+        # Do not persist provider chain-of-thought. Older records may still
+        # contain a ``thinking`` field; the frontend treats that legacy field
+        # as private and never renders it as user content.
         if generated_artifacts:
             metadata["artifacts"] = generated_artifacts
         if awaiting_user is not None:
