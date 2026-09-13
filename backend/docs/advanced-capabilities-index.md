@@ -37,5 +37,7 @@ security boundary.
 5. [Scheduled and long-running work](5-scheduled-jobs.md)
 6. [MCP connections](6-mcp-connections.md)
 
+7. [Production end-to-end verification report](7-production-e2e-verification.md)
+
 The combined overview remains available in
 [advanced-workspace-capabilities.md](advanced-workspace-capabilities.md).
