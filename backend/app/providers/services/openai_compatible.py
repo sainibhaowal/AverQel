@@ -10,6 +10,7 @@ from typing import Any, cast
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.context_window import (
     extract_context_window,
+    extract_max_output_tokens,
     resolve_verified_context_window,
 )
 from app.providers.services.reasoning_capabilities import (
@@ -153,9 +154,10 @@ class OpenAICompatibleProvider:
         payload = {
             "model": request.model,
             "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
             "messages": messages,
         }
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
         if request.tools:
             payload["tools"] = request.tools
         effective_tool_choice = self._effective_tool_choice(request)
@@ -223,10 +225,11 @@ class OpenAICompatibleProvider:
         payload = {
             "model": request.model,
             "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
             "messages": messages,
             "stream": True,
         }
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
         if request.tools:
             payload["tools"] = request.tools
         effective_tool_choice = self._effective_tool_choice(request)
@@ -359,10 +362,11 @@ class OpenAICompatibleProvider:
         payload = {
             "model": request.model,
             "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
             "messages": messages,
             "stream": True,
         }
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
         if request.tools:
             payload["tools"] = request.tools
         effective_tool_choice = self._effective_tool_choice(request)
@@ -450,6 +454,7 @@ class OpenAICompatibleProvider:
             if not self._is_chat_model_name(model_name):
                 continue
             live_context_window = self._extract_context_window(item)
+            max_output_tokens = extract_max_output_tokens(item)
             verified_context_window = resolve_verified_context_window(
                 model_name,
                 provider_type=self.provider_name,
@@ -464,12 +469,18 @@ class OpenAICompatibleProvider:
                     kind="chat",
                     context_window=context_window,
                     context_window_source=context_window_source,
+                    max_output_tokens=max_output_tokens,
                     display_name=None,
                     capabilities={
                         "object": item.get("object", "model"),
                         **(
                             {"context_window_source": context_window_source}
                             if context_window_source
+                            else {}
+                        ),
+                        **(
+                            {"max_output_tokens": max_output_tokens}
+                            if max_output_tokens is not None
                             else {}
                         ),
                         **reasoning_capabilities(

@@ -98,6 +98,14 @@ def test_opencode_zen_omits_reasoning_payload_for_required_tools() -> None:
     assert "reasoning" not in payload
 
 
+def test_opencode_zen_omits_output_override_when_model_does_not_advertise_one() -> None:
+    request = replace(_request("nemotron-3.5-lightning-free"), max_tokens=None)
+
+    payload = OpenCodeZenProvider._build_responses_payload(request, stream=True)
+
+    assert "max_output_tokens" not in payload
+
+
 def test_opencode_zen_provider_lists_models_and_parses_context_windows(monkeypatch):
     called_urls: list[str] = []
 
@@ -107,7 +115,11 @@ def test_opencode_zen_provider_lists_models_and_parses_context_windows(monkeypat
             200,
             {
                 "data": [
-                    {"id": "gpt-5.4", "context_window": 131072},
+                    {
+                        "id": "gpt-5.4",
+                        "context_window": 131072,
+                        "max_output_tokens": 32768,
+                    },
                     {
                         "id": "claude-sonnet-4-6",
                         "loaded_instances": [{"config": {"context_length": 200000}}],
@@ -131,6 +143,7 @@ def test_opencode_zen_provider_lists_models_and_parses_context_windows(monkeypat
         "qwen3.6-plus",
     ]
     assert models[0].context_window == 131072
+    assert models[0].max_output_tokens == 32768
     assert models[1].context_window == 200000
     assert models[2].context_window == 200000
     assert models[3].context_window == 131072

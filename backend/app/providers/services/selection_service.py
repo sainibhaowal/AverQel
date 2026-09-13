@@ -336,6 +336,11 @@ class ProviderSelectionService:
                 model_name=resolved_model_name,
                 allow_live_model_discovery=allow_live_model_discovery,
             )
+            max_output_tokens = self._resolve_model_max_output_tokens(
+                tenant_id=tenant_id,
+                provider_config_id=provider.id,
+                model_name=resolved_model_name,
+            )
             candidates.append(
                 ProviderSelectionCandidate(
                     provider_type=provider.provider_type,
@@ -353,6 +358,7 @@ class ProviderSelectionService:
                     auth_mode=provider.auth_mode,
                     context_window=context_window,
                     context_window_source=context_window_source,
+                    max_output_tokens=max_output_tokens,
                     priority=provider.priority,
                     health_status=(latest_health.status if latest_health is not None else None),
                     metadata={
@@ -826,9 +832,15 @@ class ProviderSelectionService:
                 model_name=model_name,
                 allow_live_model_discovery=allow_live_model_discovery,
             )
+            max_output_tokens = self._resolve_model_max_output_tokens(
+                tenant_id=tenant_id,
+                provider_config_id=config.id,
+                model_name=model_name,
+            )
         else:
             context_window = None
             context_window_source = None
+            max_output_tokens = None
 
         api_key = self._resolve_secret_value(
             tenant_id=tenant_id,
@@ -851,6 +863,7 @@ class ProviderSelectionService:
             auth_mode=config.auth_mode,
             context_window=context_window,
             context_window_source=context_window_source,
+            max_output_tokens=max_output_tokens,
             priority=assignment.priority,
             health_status=latest_health.status if latest_health is not None else None,
             metadata={
@@ -991,6 +1004,56 @@ class ProviderSelectionService:
             return verified_context_window.context_window, context_window_source
 
         return None, None
+
+    def _resolve_model_max_output_tokens(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        provider_config_id: uuid.UUID,
+        model_name: str,
+    ) -> int | None:
+        """Return only an explicitly advertised model output limit.
+
+        The model cache stores the provider's raw capability metadata.  We do
+        not infer an output limit from the context window and we intentionally
+        return ``None`` when the provider did not advertise one; the provider
+        request then uses that provider's own default.
+        """
+        cached_model = self.model_cache.get_model(
+            tenant_id=tenant_id,
+            provider_config_id=provider_config_id,
+            model_name=model_name,
+            model_kind="chat",
+        )
+        if cached_model is None:
+            return None
+        capabilities = cached_model.capabilities_json
+        for key in (
+            "max_output_tokens",
+            "maxOutputTokens",
+            "max_output",
+            "maxOutput",
+            "max_completion_tokens",
+            "maxCompletionTokens",
+            "max_completion_length",
+            "maxCompletionLength",
+            "output_token_limit",
+            "outputTokenLimit",
+            "output_tokens_limit",
+            "outputTokensLimit",
+        ):
+            value = capabilities.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int) and value > 0:
+                return value
+            if isinstance(value, float) and value > 0:
+                return int(value)
+            if isinstance(value, str) and value.strip().replace(",", "").isdigit():
+                parsed = int(value.strip().replace(",", ""))
+                if parsed > 0:
+                    return parsed
+        return None
 
     @staticmethod
     def _normalize_model_name(name: str) -> str:

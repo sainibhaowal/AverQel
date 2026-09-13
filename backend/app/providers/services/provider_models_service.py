@@ -250,6 +250,8 @@ class ProviderModelsService:
                     "supports_reasoning",
                     model_supports_reasoning(provider.provider_type, model.name),
                 )
+                if isinstance(model.max_output_tokens, int) and model.max_output_tokens > 0:
+                    capabilities.setdefault("max_output_tokens", model.max_output_tokens)
                 for key, value in reasoning_capabilities(
                     provider.provider_type,
                     model.name,

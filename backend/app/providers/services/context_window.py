@@ -57,6 +57,52 @@ def extract_context_window(
     return walk(payload)
 
 
+def extract_max_output_tokens(payload: Any) -> int | None:
+    """Read a model's advertised output-token limit when an API exposes one.
+
+    Provider model-list responses are not standardized.  This deliberately
+    recognizes only explicit output-limit field names and never guesses a
+    limit from a context window.  ``None`` means the provider should apply its
+    own model default.
+    """
+    output_keys = {
+        _normalize_context_key(key)
+        for key in (
+            "max_output_tokens",
+            "maxOutputTokens",
+            "max_output",
+            "maxOutput",
+            "max_completion_tokens",
+            "maxCompletionTokens",
+            "max_completion_length",
+            "maxCompletionLength",
+            "output_token_limit",
+            "outputTokenLimit",
+            "output_tokens_limit",
+            "outputTokensLimit",
+        )
+    }
+
+    def walk(value: Any) -> int | None:
+        if isinstance(value, dict):
+            for key, nested_value in value.items():
+                if _normalize_context_key(str(key)) in output_keys:
+                    coerced = coerce_positive_int(nested_value)
+                    if coerced is not None:
+                        return coerced
+                found = walk(nested_value)
+                if found is not None:
+                    return found
+        elif isinstance(value, list):
+            for nested_value in value:
+                found = walk(nested_value)
+                if found is not None:
+                    return found
+        return None
+
+    return walk(payload)
+
+
 def resolve_verified_context_window(
     model_name: str,
     *,

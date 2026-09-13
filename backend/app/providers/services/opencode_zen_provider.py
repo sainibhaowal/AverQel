@@ -12,6 +12,7 @@ from app.providers.services.anthropic_provider import AnthropicProvider
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.context_window import (
     extract_context_window,
+    extract_max_output_tokens,
     resolve_verified_context_window,
 )
 from app.providers.services.google_provider import GoogleProvider
@@ -485,9 +486,10 @@ class OpenCodeZenProvider:
             "model": request.model,
             "input": input_items,
             "temperature": request.temperature,
-            "max_output_tokens": request.max_tokens,
             "stream": stream,
         }
+        if request.max_tokens is not None:
+            payload["max_output_tokens"] = request.max_tokens
         if instructions:
             payload["instructions"] = instructions
         if request.tools:
@@ -849,6 +851,7 @@ class OpenCodeZenProvider:
                 continue
             family = self._model_family(model_name)
             live_context_window = self._extract_context_window(item)
+            max_output_tokens = extract_max_output_tokens(item)
             verified_context_window = resolve_verified_context_window(
                 model_name,
                 provider_type=self.provider_name,
@@ -863,6 +866,7 @@ class OpenCodeZenProvider:
                     kind="chat",
                     context_window=context_window,
                     context_window_source=context_window_source,
+                    max_output_tokens=max_output_tokens,
                     display_name=(
                         item.get("display_name")
                         if isinstance(item.get("display_name"), str)
@@ -878,6 +882,11 @@ class OpenCodeZenProvider:
                         **(
                             {"context_window_source": context_window_source}
                             if context_window_source
+                            else {}
+                        ),
+                        **(
+                            {"max_output_tokens": max_output_tokens}
+                            if max_output_tokens is not None
                             else {}
                         ),
                         "endpoint": (

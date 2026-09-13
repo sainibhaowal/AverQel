@@ -9,6 +9,7 @@ from urllib.parse import quote
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.context_window import (
     extract_context_window,
+    extract_max_output_tokens,
     resolve_verified_context_window,
 )
 from app.providers.services.reasoning_capabilities import (
@@ -348,8 +349,9 @@ class GoogleProvider:
     def _build_generation_config(cls, request: ChatGenerateRequest) -> dict[str, Any]:
         generation_config: dict[str, Any] = {
             "temperature": request.temperature,
-            "maxOutputTokens": request.max_tokens,
         }
+        if request.max_tokens is not None:
+            generation_config["maxOutputTokens"] = request.max_tokens
         if (
             cls.model_supports_reasoning(request.model)
             and request.metadata.get("reasoning_mode") != "auto"
@@ -481,6 +483,7 @@ class GoogleProvider:
                         "context_length",
                     ),
                 )
+                max_output_tokens = extract_max_output_tokens(item)
                 verified_context_window = resolve_verified_context_window(
                     model_name,
                     provider_type="google",
@@ -502,11 +505,17 @@ class GoogleProvider:
                         ),
                         context_window=context_window,
                         context_window_source=context_window_source,
+                        max_output_tokens=max_output_tokens,
                         capabilities={
                             "runtime": "google",
                             **(
                                 {"context_window_source": context_window_source}
                                 if context_window_source
+                                else {}
+                            ),
+                            **(
+                                {"max_output_tokens": max_output_tokens}
+                                if max_output_tokens is not None
                                 else {}
                             ),
                             **reasoning_capabilities("google", model_name, base_url=self.base_url),

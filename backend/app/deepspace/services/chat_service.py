@@ -84,7 +84,7 @@ Planning and execution
 - For Library analysis, use document_read first when extracted/OCR text is enough. Use sandbox_execute with the authorized file_ids when calculations, tabular analysis, ZIP inspection, or chart generation is needed; never invent a path or URL.
 - When a tool returns artifact metadata, mention the generated file and let the Artifact panel provide preview/download; do not paste binary payloads into the answer.
 - Keep users informed with concise progress updates for tasks that take noticeable time; do not expose private reasoning.
-- For interactive tool use, decide quickly and keep hidden reasoning and tool arguments concise. Do not spend multiple model rounds on the same read-only lookup when one result is sufficient.
+- For interactive tool use, decide quickly and keep hidden reasoning and tool arguments concise. Do not spend multiple model rounds on the same read-only lookup when one result is sufficient. Never assume a fixed output-token budget; the selected provider/model controls its own output limit.
 
 Workspace files and generated media
 - The active note remains the primary document. Use write(target='library') only when the user asks for a separate named text or code file, an exportable artifact, or a file would materially improve the work.
@@ -947,14 +947,10 @@ class DeepSpaceChatService:
                     yield item
                 return
             except (ProviderRequestError, TimeoutError, OSError) as exc:
-                if isinstance(exc, TimeoutError) and bool(
-                    getattr(getattr(self, "settings", None), "deepspace_fast_mode_enabled", True)
-                ):
-                    # Retrying a stalled interactive stream would multiply
-                    # the user-visible wait (90s × 2/3 attempts). Durable
-                    # jobs retain the normal retry policy; fast mode fails the
-                    # single stalled attempt through the existing safe error
-                    # path instead.
+                if isinstance(exc, TimeoutError):
+                    # Retrying an idle stream multiplies the user-visible
+                    # wait. The caller's normal error/recovery path remains
+                    # responsible for reporting the timeout.
                     raise
                 retryable_provider_error = not isinstance(exc, ProviderRequestError) or (
                     exc.status_code in {408, 429} or exc.status_code >= 500
@@ -3438,7 +3434,7 @@ class DeepSpaceChatService:
         last_context_remaining_tokens: int | None = None
         last_context_usage: float | None = None
         last_context_compacted = False
-        last_reserved_output_tokens = max(0, int(self.settings.llm_max_tokens_per_request))
+        last_reserved_output_tokens = 0
         if conversation_id is None:
             raise RuntimeError("DeepSpace requires a conversation before building context.")
         session_input_tokens, session_output_tokens = self._conversation_session_usage(
@@ -3694,25 +3690,15 @@ class DeepSpaceChatService:
                         stage=task_lifecycle_stage,
                         task_id=active_task_id,
                     )
-                has_tool_result = any(
-                    message.get("role") == "tool" for message in conversation_messages
+                # Do not impose an AverQel output cap.  Discovery attaches an
+                # explicit model limit when the provider advertises one;
+                # otherwise ``None`` lets the provider apply its own default.
+                # The application setting is used only as a local context
+                # reservation below, never sent as max_tokens to the model.
+                request_max_tokens = getattr(candidate, "max_output_tokens", None)
+                context_output_reservation = max(
+                    512, int(getattr(self.settings, "llm_max_tokens_per_request", 1024))
                 )
-                configured_max_tokens = max(1, int(self.settings.llm_max_tokens_per_request))
-                if tools_for_round and bool(
-                    getattr(self.settings, "deepspace_fast_mode_enabled", True)
-                ):
-                    # Tool-selection responses only need a short structured
-                    # call. Once a tool has returned, allow a larger budget
-                    # for the final grounded answer without paying that cost
-                    # on every planning round.
-                    fast_budget = (
-                        getattr(self.settings, "deepspace_final_max_tokens", 4096)
-                        if has_tool_result
-                        else getattr(self.settings, "deepspace_tool_planning_max_tokens", 1536)
-                    )
-                    request_max_tokens = min(configured_max_tokens, max(1, int(fast_budget)))
-                else:
-                    request_max_tokens = configured_max_tokens
                 provider_read_timeout = max(
                     15,
                     min(
@@ -3732,7 +3718,7 @@ class DeepSpaceChatService:
                 request_messages, request_compacted = self._fit_history_to_context(
                     request_messages,
                     context_window=candidate.context_window,
-                    max_output_tokens=request_max_tokens,
+                    max_output_tokens=(request_max_tokens or context_output_reservation),
                 )
                 context_used_tokens = self._estimate_context_tokens(
                     request_messages,
@@ -3754,11 +3740,11 @@ class DeepSpaceChatService:
                 last_context_compacted = request_compacted
                 reserved_output_tokens = (
                     min(
-                        request_max_tokens,
+                        request_max_tokens or context_output_reservation,
                         max(0, int(candidate.context_window) - context_used_tokens),
                     )
                     if candidate.context_window
-                    else request_max_tokens
+                    else (request_max_tokens or 0)
                 )
                 last_reserved_output_tokens = reserved_output_tokens
                 session_input_tokens += context_used_tokens
@@ -4082,7 +4068,7 @@ class DeepSpaceChatService:
                         "sessionInputTokens": session_input_tokens,
                         "sessionOutputTokens": session_output_tokens,
                         "sessionTotalTokens": session_input_tokens + session_output_tokens,
-                        "maxOutputTokens": int(self.settings.llm_max_tokens_per_request),
+                        "maxOutputTokens": request_max_tokens,
                         **self._context_budget_state(
                             used_tokens=last_context_used_tokens or 0,
                             context_limit=candidate.context_window,
@@ -5287,7 +5273,7 @@ class DeepSpaceChatService:
             "sessionInputTokens": session_input_tokens,
             "sessionOutputTokens": session_output_tokens,
             "sessionTotalTokens": session_input_tokens + session_output_tokens,
-            "maxOutputTokens": int(self.settings.llm_max_tokens_per_request),
+            "maxOutputTokens": getattr(candidate, "max_output_tokens", None),
             **self._context_budget_state(
                 used_tokens=last_context_used_tokens or 0,
                 context_limit=candidate.context_window,

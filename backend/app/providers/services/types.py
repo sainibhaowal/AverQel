@@ -11,7 +11,10 @@ class ChatGenerateRequest:
     model: str
     messages: list[dict[str, Any]]
     temperature: float
-    max_tokens: int
+    # None means "do not override the provider/model default".  A concrete
+    # value is used only when the selected model advertises an output limit or
+    # a caller explicitly requests one (for example, voice generation).
+    max_tokens: int | None
     base_url: str
     api_key: str | None = None
     stream: bool = False
@@ -111,6 +114,7 @@ class ProviderModelInfo:
     kind: Literal["chat", "embedding", "reranker", "vision", "other"]
     context_window: int | None = None
     context_window_source: str | None = None
+    max_output_tokens: int | None = None
     capabilities: dict[str, Any] = field(default_factory=dict)
     display_name: str | None = None
 
@@ -155,6 +159,7 @@ class ProviderSelectionCandidate:
     auth_mode: str | None = None
     context_window: int | None = None
     context_window_source: str | None = None
+    max_output_tokens: int | None = None
     priority: int = 100
     health_status: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)

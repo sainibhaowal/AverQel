@@ -8,6 +8,7 @@ from typing import Any
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.context_window import (
     extract_context_window,
+    extract_max_output_tokens,
     resolve_verified_context_window,
 )
 from app.providers.services.reasoning_capabilities import (
@@ -231,10 +232,13 @@ class AnthropicProvider:
         }
         payload: dict[str, Any] = {
             "model": request.model,
-            "max_tokens": request.max_tokens,
             "temperature": request.temperature,
             "messages": messages,
         }
+        # Anthropic requires max_tokens on its Messages API. This is an
+        # adapter-level protocol default, not AverQel's global chat limit.
+        anthropic_max_tokens = request.max_tokens or 4096
+        payload["max_tokens"] = anthropic_max_tokens
         if system:
             payload["system"] = system
         tools = self._tools_payload(request)
@@ -248,7 +252,7 @@ class AnthropicProvider:
             and request.tool_choice != "required"
             and self.model_supports_reasoning(request.model)
         ):
-            payload["thinking"] = self._build_thinking_payload(request.max_tokens)
+            payload["thinking"] = self._build_thinking_payload(anthropic_max_tokens)
         response = httpx_module.post(
             f"{request.base_url.rstrip('/')}/messages",
             headers=headers,
@@ -290,11 +294,12 @@ class AnthropicProvider:
         }
         payload: dict[str, Any] = {
             "model": request.model,
-            "max_tokens": request.max_tokens,
             "temperature": request.temperature,
             "messages": messages,
             "stream": True,
         }
+        anthropic_max_tokens = request.max_tokens or 4096
+        payload["max_tokens"] = anthropic_max_tokens
         if system:
             payload["system"] = system
         tools = self._tools_payload(request)
@@ -308,7 +313,7 @@ class AnthropicProvider:
             and request.tool_choice != "required"
             and self.model_supports_reasoning(request.model)
         ):
-            payload["thinking"] = self._build_thinking_payload(request.max_tokens)
+            payload["thinking"] = self._build_thinking_payload(anthropic_max_tokens)
         async with httpx_module.AsyncClient(
             timeout=float(request.metadata.get("timeout_seconds", 8.0))
         ) as client:
@@ -457,6 +462,7 @@ class AnthropicProvider:
                     "inputTokenLimit",
                 ),
             )
+            max_output_tokens = extract_max_output_tokens(item)
             verified_context_window = resolve_verified_context_window(
                 model_name,
                 provider_type="anthropic",
@@ -476,11 +482,17 @@ class AnthropicProvider:
                     ),
                     context_window=context_window,
                     context_window_source=context_window_source,
+                    max_output_tokens=max_output_tokens,
                     capabilities={
                         "runtime": "anthropic",
                         **(
                             {"context_window_source": context_window_source}
                             if context_window_source
+                            else {}
+                        ),
+                        **(
+                            {"max_output_tokens": max_output_tokens}
+                            if max_output_tokens is not None
                             else {}
                         ),
                         **reasoning_capabilities("anthropic", model_name),
