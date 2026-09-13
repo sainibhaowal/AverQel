@@ -776,6 +776,8 @@ class DeepSpaceTaskLoopStore:
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
         )
         normalized_query = query.strip()
+        if normalized_query in {"—", "–"}:
+            normalized_query = ""
         parsed_parent = None
         if parent_folder_id:
             try:

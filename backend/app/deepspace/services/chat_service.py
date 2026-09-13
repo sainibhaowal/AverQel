@@ -1635,6 +1635,15 @@ class DeepSpaceChatService:
         if tool_name == "document_read":
             file_id = str(arguments.get("file_id") or "").strip() or None
             filename = str(arguments.get("filename") or "").strip() or None
+            # Models occasionally place an exact filename in ``file_id``
+            # after a Library inventory call.  Treat a non-UUID value as the
+            # filename lookup it clearly represents; authorization still
+            # happens inside read_workspace_file against this conversation.
+            if file_id and not filename:
+                try:
+                    uuid.UUID(file_id)
+                except ValueError:
+                    filename, file_id = file_id, None
             if not file_id and not filename:
                 raise ValueError("document_read requires file_id or filename.")
             result = self.task_store.read_workspace_file(
@@ -2055,6 +2064,8 @@ class DeepSpaceChatService:
         if tool_name == "find":
             target = str(arguments.get("target") or "").strip().lower()
             query = str(arguments.get("query") or "").strip()
+            if query in {"—", "–"}:
+                query = ""
             limit = min(50, max(1, int(arguments.get("limit") or 10)))
             if target == "library":
                 return {

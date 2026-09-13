@@ -1010,3 +1010,35 @@ async def test_save_copies_previous_assistant_without_resending_content() -> Non
 
     assert result["source_message_id"] == str(source_id)
     assert result["file"]["name"] == "answer.md"
+
+
+@pytest.mark.asyncio
+async def test_document_read_accepts_filename_emitted_in_file_id() -> None:
+    class _TaskStore:
+        def read_workspace_file(self, **kwargs: object):
+            assert kwargs["file_id"] is None
+            assert kwargs["filename"] == "Course Book.pdf"
+            return {
+                "id": str(uuid4()),
+                "name": "Course Book.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 12,
+                "version": 1,
+                "extracted_text": "Revenue is reported in chapter 2.",
+            }
+
+    service = object.__new__(DeepSpaceChatService)
+    service.task_store = _TaskStore()
+
+    result = await service._execute_productivity_tool(
+        tool_name="document_read",
+        arguments={"file_id": "Course Book.pdf", "max_characters": 50000},
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert result["file"]["name"] == "Course Book.pdf"
+    assert "Revenue" in result["text"]
