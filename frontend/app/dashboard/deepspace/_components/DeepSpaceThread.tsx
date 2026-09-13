@@ -507,6 +507,7 @@ const MessageBubble = memo(
                   isStreaming={message.status === "streaming"}
                   agentSteps={message.agentSteps}
                   timeline={message.timeline}
+                  startedAt={message.createdAt}
                 />
               ) : null}
 

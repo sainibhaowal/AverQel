@@ -148,16 +148,25 @@ function formatElapsed(ms: number): string {
   return `${minutes}m ${remainder}s`;
 }
 
-function timelineDurationMs(timeline: TimelineStep[], now: number): number | null {
+function timelineDurationMs(
+  timeline: TimelineStep[],
+  now: number,
+  messageStartedAtValue: string | undefined,
+  isStreaming: boolean,
+): number | null {
   const timestamps = timeline
     .flatMap((step) => [Date.parse(step.startedAt), Date.parse(step.completedAt ?? "")])
     .filter((timestamp) => Number.isFinite(timestamp));
+  const messageStartedAt = messageStartedAtValue
+    ? Date.parse(messageStartedAtValue)
+    : Number.NaN;
+  if (Number.isFinite(messageStartedAt)) timestamps.push(messageStartedAt);
   if (!timestamps.length) return null;
-  const startedAt = Math.min(...timestamps);
-  const completedAt = timeline.some((step) => step.status === "running")
+  const startedTimestamp = Math.min(...timestamps);
+  const completedAt = isStreaming || timeline.some((step) => step.status === "running")
     ? now
     : Math.max(...timestamps);
-  return Math.max(0, completedAt - startedAt);
+  return Math.max(0, completedAt - startedTimestamp);
 }
 
 function taskProgressFromTimeline(timeline: TimelineStep[]): TaskProgress | null {
@@ -548,11 +557,13 @@ export default function DeepSpaceThinkingPanel({
   isStreaming,
   agentSteps = [],
   timeline = [],
+  startedAt,
 }: {
   content?: string;
   isStreaming: boolean;
   agentSteps?: AgentStep[];
   timeline?: TimelineStep[];
+  startedAt?: string;
 }) {
   const [panelOpen, setPanelOpen] = useState(isStreaming);
   const activityPanelId = `deepspace-activity-${useId().replace(/:/g, "")}`;
@@ -597,7 +608,7 @@ export default function DeepSpaceThinkingPanel({
     (step) => step.toolName !== "pending_tool" && step.type !== "thinking",
   );
   const taskProgress = taskProgressFromTimeline(orderedTimeline);
-  const elapsedMs = timelineDurationMs(orderedTimeline, clock);
+  const elapsedMs = timelineDurationMs(orderedTimeline, clock, startedAt, isStreaming);
   const durationLabel = elapsedMs === null ? null : formatElapsed(elapsedMs);
   if (
     activitySteps.length === 0 &&
