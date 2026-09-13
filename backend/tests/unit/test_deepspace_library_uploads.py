@@ -9,6 +9,7 @@ from app.core.errors import ApiError
 from app.deepspace.api.library import (
     LibraryExportRequest,
     LibraryUploadCreate,
+    _content_disposition,
     _content_type_for_name,
     _serialize_upload,
 )
@@ -37,6 +38,17 @@ def test_upload_create_accepts_unicode_names_and_infers_browser_octet_stream_typ
 
     assert payload.name == "研究計画 – résumé.pptx"
     assert _content_type_for_name(payload.name).endswith("presentationml.presentation")
+
+
+def test_content_disposition_supports_unicode_filenames_without_raw_header_bytes() -> None:
+    disposition = _content_disposition(
+        disposition="inline",
+        filename="NOESIS-Σ - Training Weight.docx",
+    )
+
+    disposition.encode("latin-1")
+    assert 'filename="NOESIS-_-_Training_Weight.docx"' in disposition
+    assert "filename*=UTF-8''NOESIS-%CE%A3%20-%20Training%20Weight.docx" in disposition
 
 
 def test_library_content_type_mapping_covers_common_data_office_and_media_files() -> None:

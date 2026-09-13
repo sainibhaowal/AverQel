@@ -227,6 +227,20 @@ def _content_type_for_name(name: str) -> str:
     }.get(extension, "text/plain")
 
 
+def _content_disposition(*, disposition: str, filename: str) -> str:
+    """Build a Latin-1-safe Content-Disposition for arbitrary Unicode names."""
+
+    clean_name = "".join(char for char in filename if char.isprintable()).strip() or "file"
+    ascii_name = "".join(
+        char if ord(char) < 128 and char not in {"\\", '"'} and not char.isspace() else "_"
+        for char in clean_name
+    )
+    ascii_name = re.sub(r"_+", "_", ascii_name).strip(" ._") or "file"
+    return (
+        f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(clean_name, safe='')}"
+    )
+
+
 class WorkspaceFileSchema(BaseModel):
     id: str
     name: str
@@ -1676,11 +1690,10 @@ async def stream_workspace_file_content(
     _conversation(db=db, auth=auth, conversation_id=conversation_id)
     file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
     disposition = "attachment" if download else "inline"
-    safe_name = quote(file.name, safe="._-")
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",
-        "Content-Disposition": f"{disposition}; filename=\"{file.name}\"; filename*=UTF-8''{safe_name}",
+        "Content-Disposition": _content_disposition(disposition=disposition, filename=file.name),
     }
     payload = _library_file_payload(file=file, settings=settings)
     if not file.is_binary:

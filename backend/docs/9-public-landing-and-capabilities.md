@@ -78,7 +78,15 @@ flowchart LR
 
 1. `pnpm --dir frontend exec eslint` passes for the changed components and documentation pages.
 2. `pnpm --dir frontend exec tsc --noEmit` passes.
-3. The focused landing/documentation tests cover all six cards, honest optional-service statuses, and
+3. The focused landing/documentation tests cover all seven cards, honest optional-service statuses, and
    existing hero/documentation rendering.
 4. The full frontend suite remains the release gate; warnings from existing asynchronous UI tests do
    not fail the run.
+
+## 8. Notification polling note
+
+The dashboard notification center polls the authenticated endpoint every 15 seconds. It prevents
+overlapping requests and uses a 10-second request budget, so a transient browser or network stall
+cannot keep a request pending for the full global 30-second API timeout. The backend endpoint remains
+tenant-scoped and indexed; a timeout should still be investigated with the browser Network panel and
+API logs rather than treated as a successful response.
