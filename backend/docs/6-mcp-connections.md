@@ -8,6 +8,30 @@
 4. Requires policy and approval controls before side-effecting actions.
 5. Merges connected tools into the provider-independent DeepSpace loop.
 
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as MCP marketplace
+    participant API as Integration API
+    participant Vault as Encrypted credential store
+    participant MCP as Approved MCP server
+    participant Agent as DeepSpace tool loop
+    User->>UI: Choose approved connector
+    UI->>API: Connect or authorize
+    API->>Vault: Store encrypted credential
+    Agent->>API: Discover allowed tools
+    API->>MCP: Call approved tool
+    MCP-->>API: Result
+    API-->>Agent: Result plus audit event
+    Agent-->>User: Answer or approval request
+```
+
+| Public use case | What the user gets | Required protection |
+| --- | --- | --- |
+| Connect a supported service | Discoverable tools in DeepSpace | OAuth or encrypted credentials |
+| Ask DeepSpace to read connected data | Provider-independent tool result | Tenant and user ownership checks |
+| Ask for a side-effecting action | Approval prompt before execution | Policy gate and audit event |
+
 ## 2. Existing exact implementation
 
 1. API and marketplace: `backend/app/integrations/api/mcp.py`.

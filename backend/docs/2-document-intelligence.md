@@ -6,6 +6,24 @@
 2. Compares two authorized documents with a bounded unified diff.
 3. Searches extracted text and returns stable line-level citations.
 
+```mermaid
+flowchart LR
+    Upload[PDF, DOCX, PPTX, XLSX, CSV, OCR] --> Extract[Existing extractors]
+    Extract --> Store[Private Library]
+    Store --> Read[Read or query]
+    Store --> Compare[Compare two files]
+    Read --> Cite[Passage plus file:id#Lline citation]
+    Compare --> Diff[Bounded unified diff]
+    Cite --> Answer[Answer grounded in source text]
+    Diff --> Answer
+```
+
+| Public use case | What the user gets | Evidence shown |
+| --- | --- | --- |
+| Ask a question about an uploaded report | A concise answer from extracted text | File and line citation |
+| Compare two contract or policy versions | Added and removed passages | Both authorized file IDs |
+| Find every mention of a term | Matching passages | Stable `file:{id}#L{line}` references |
+
 ## 2. Existing foundation
 
 1. Extractors: `backend/app/ingestion/services/extractors/`.

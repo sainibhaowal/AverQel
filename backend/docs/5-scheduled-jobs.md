@@ -8,6 +8,26 @@
 4. Reuses normal DeepSpace execution, SSE recovery, cancellation, provider
    selection, and audit behavior.
 
+```mermaid
+stateDiagram-v2
+    [*] --> Active
+    Active --> Queued: interval becomes due
+    Queued --> Running: worker claims run
+    Running --> Completed: response saved
+    Running --> Failed: provider or task error
+    Running --> Cancelled: user cancellation
+    Active --> Paused: user pauses
+    Paused --> Active: user resumes
+    Active --> Deleted: user deletes
+    Paused --> Deleted: user deletes
+```
+
+| Public use case | What the user gets | Control available |
+| --- | --- | --- |
+| Refresh a research question every morning | A new DeepSpace run on schedule | Pause, resume, or delete |
+| Monitor a recurring analysis | Durable run history and next-run time | Inspect each run status |
+| Recover after a worker restart | Queued/running state recorded in the database | Retry or cancel through normal policy |
+
 ## 2. Exact implementation
 
 1. Schedule model: `backend/app/deepspace/models/schedule.py`.

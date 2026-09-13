@@ -7,6 +7,23 @@
 3. Prevents cookies, credentials, downloads, private-network access, and
    side-effecting interactions.
 
+```mermaid
+flowchart LR
+    Query[Research query] --> Plan[Deterministic query planner]
+    Plan --> Validate[URL and SSRF validation]
+    Validate --> Proxy[Internal egress proxy]
+    Proxy --> Browser[Isolated Chromium renderer]
+    Browser --> Extract[Bounded page extraction]
+    Extract --> Rank[Evidence ranking and citation]
+    Validate -. blocked target .-> Fallback[Snippet-only or unavailable]
+```
+
+| Public use case | What the user gets | What is deliberately blocked |
+| --- | --- | --- |
+| Research a JavaScript-heavy public page | Rendered, readable page evidence | Cookies, logins, downloads, private networks |
+| Verify a current claim | Fetched passage with source status | Treating a search snippet as a fetched page |
+| Open an unsafe or unavailable URL | Clear blocked/unavailable status | Silent access or fabricated evidence |
+
 ## 2. Exact implementation
 
 1. Adapter: `backend/app/deepspace/services/browser_reader.py`.

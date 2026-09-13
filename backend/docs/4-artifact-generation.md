@@ -8,6 +8,24 @@
 3. Exports notes as PDF, DOCX, Markdown, and editable PPTX.
 4. Retains authenticated private media-artifact delivery.
 
+```mermaid
+flowchart LR
+    Request[Chat request or export click] --> Validate[Auth, ownership, format limits]
+    Validate --> Job[Durable artifact job]
+    Job --> Worker[Celery worker]
+    Worker --> Render[PDF, DOCX, Markdown, PPTX, CSV, JSON, HTML]
+    Render --> Library[Private Library artifact]
+    Library --> Download[Authenticated download]
+    Job --> Status[Queued, running, completed, failed]
+    Status --> UI[Visible job status]
+```
+
+| Public use case | What the user gets | Delivery guarantee |
+| --- | --- | --- |
+| Turn a conversation into a report | PDF, DOCX, Markdown, or PPTX | Durable job ID and status |
+| Save structured data | CSV, JSON, HTML, or text artifact | Private Library ownership |
+| Export a large document | Background completion instead of a frozen page | Authenticated download only |
+
 ## 2. Exact implementation
 
 1. Assistant tool: `artifact_create` in

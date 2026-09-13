@@ -8,6 +8,26 @@
 3. Returns structured stdout, stderr, status, duration, and generated-file
    metadata.
 
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as DeepSpace UI
+    participant API as AverQel API
+    participant Box as Isolated executor
+    User->>UI: Ask for calculation or data analysis
+    UI->>API: Authenticated execute request
+    API->>API: Validate tenant, language, limits, and policy
+    API->>Box: Send bounded code or read-only SQL
+    Box-->>API: Result, status, and duration
+    API-->>UI: Tool activity with result or safe error
+```
+
+| Public use case | What the user gets | Safety boundary |
+| --- | --- | --- |
+| Calculate a total or formula | A reproducible numeric result | CPU, memory, time, and output limits |
+| Analyze CSV/JSON data | Rows, summaries, or chart-ready data | Ephemeral files; no host mounts |
+| Run a SQL query | Read-only rows from supplied data | `SELECT`/`WITH` only; mutations rejected |
+
 ## 2. Existing foundation
 
 1. CodeMirror already supports Python and SQL editing.
