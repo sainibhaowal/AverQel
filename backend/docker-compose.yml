@@ -130,6 +130,10 @@ services:
       - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - research_renderer
+      - sandbox_internal
 
   inference:
     container_name: averqel-inference
@@ -230,6 +234,10 @@ services:
       - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - research_renderer
+      - sandbox_internal
 
   maintenance-worker:
     extends:
@@ -343,3 +351,12 @@ volumes:
   caddy_data:
   caddy_config:
   searxng_cache:
+
+networks:
+  # Capability networks are internal-only. Optional renderer/executor
+  # services from docker-compose.prod.yml join these same project networks,
+  # so a normal localhost restart does not silently disconnect the API.
+  research_renderer:
+    internal: true
+  sandbox_internal:
+    internal: true
