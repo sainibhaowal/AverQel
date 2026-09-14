@@ -4,9 +4,11 @@
 
 1. Reuse the existing ingestion extractors and OCR before any sandbox work.
 2. Let DeepSpace pass only user-owned Library files to the isolated executor.
-3. Use existing embeddings and reranking for the document/RAG pipeline, while
-   keeping workspace-file fallback search deterministic when no indexed
-   document exists.
+3. Use the existing embedding and reranking services for both canonical
+   indexed documents and conversation-scoped Library files. Workspace files
+   use a bounded request-scoped hybrid index (semantic similarity plus exact
+   lexical boost), with deterministic lexical fallback when an embedding
+   provider is unavailable.
 4. Collect generated charts, tables, diagrams, UML, documents, and data files
    in the private DeepSpace artifact panel.
 
@@ -31,7 +33,9 @@ flowchart LR
 2. OCR is performed by `OcrService` through `ImageOcrExtractor`; extracted
    text is stored with the Library file and reused by document tools.
 3. The indexed document path already uses `EmbeddingService` and
-   `RerankerService` in `RetrievalService`.
+   `RerankerService` in `RetrievalService`. Direct DeepSpace Library queries
+   now use those same services over bounded extracted/OCR passages, so a
+   conversation upload is searchable by paraphrase as well as exact text.
 4. DeepSpace has tenant-scoped Library records and authenticated object
    storage, so a model never supplies a filesystem path or storage key.
 
@@ -93,7 +97,8 @@ flowchart LR
    unsafe imports, and read-only SQL.
 2. Exercise a CSV/JSON calculation and a Python chart that produces PNG/SVG.
 3. Upload an OCR image/PDF and verify `document_read` returns extracted text.
-4. Verify `document_query` returns stable file citations and retrieval metadata.
+4. Verify `document_query` returns stable file citations and retrieval metadata
+   showing `workspace_hybrid`, embedding provider/model, and reranker status.
 5. Verify an `artifact_create` call appears in the panel and downloads only
    with an authenticated session.
 6. Run backend and frontend regression suites before enabling the production

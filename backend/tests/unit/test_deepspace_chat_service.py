@@ -1042,3 +1042,51 @@ async def test_document_read_accepts_filename_emitted_in_file_id() -> None:
 
     assert result["file"]["name"] == "Course Book.pdf"
     assert "Revenue" in result["text"]
+
+
+@pytest.mark.asyncio
+async def test_document_query_uses_workspace_hybrid_embeddings(monkeypatch) -> None:
+    file_id = str(uuid4())
+
+    class _TaskStore:
+        def list_workspace_entries(self, **_: object):
+            return {"files": [{"id": file_id, "name": "report.txt"}]}
+
+        def read_workspace_file(self, **kwargs: object):
+            assert kwargs["file_id"] == file_id
+            return {
+                "id": file_id,
+                "name": "report.txt",
+                "content": "Revenue increased in Q4.\n\nUnrelated notes.",
+            }
+
+    class _Embedding:
+        def __init__(self, *_args: object, **_kwargs: object):
+            pass
+
+        def embed_many_with_metadata(self, texts, **_: object):
+            assert texts[0] == "Q4 revenue"
+            return SimpleNamespace(
+                vectors=[[1.0, 0.0], [1.0, 0.0]],
+                metadata=SimpleNamespace(provider="test", model="test", fallback_used=False),
+            )
+
+    monkeypatch.setattr(chat_service_module, "EmbeddingService", _Embedding)
+    service = object.__new__(DeepSpaceChatService)
+    service.task_store = _TaskStore()
+    service.settings = SimpleNamespace()
+    service.db = None
+
+    result = await service._execute_productivity_tool(
+        tool_name="document_query",
+        arguments={"query": "Q4 revenue", "limit": 1},
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert result["retrieval"]["strategy"] == "workspace_hybrid"
+    assert result["retrieval"]["embeddings"]["applied"] is True
+    assert result["passages"][0]["file_id"] == file_id

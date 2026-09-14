@@ -26,6 +26,7 @@ from app.deepspace.services.sandbox_executor import SandboxExecutorError, execut
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore, summarize_tasks
 from app.deepspace.services.url_reader import read_image, read_url
 from app.documents.repositories.chunks import RetrievedChunkRow
+from app.ingestion.services.embedding_service import EmbeddingService
 from app.providers.services import ChatGenerateRequest, ProviderRegistry
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.reasoning_capabilities import supports_required_tool_choice
@@ -1729,33 +1730,99 @@ class DeepSpaceChatService:
             passages: list[dict[str, Any]] = []
             ranked_candidates: list[RetrievedChunkRow] = []
             source_file_ids: dict[uuid.UUID, str] = {}
+            # Workspace uploads are intentionally separate from canonical
+            # indexed documents (they are conversation-scoped).  Build a
+            # bounded hybrid index over their extracted/OCR text for this
+            # query, then use the same embedding and reranker services as the
+            # canonical RAG path.  This keeps Library authorization unchanged
+            # while avoiding a second durable vector store for ephemeral files.
+            workspace_chunks: list[tuple[RetrievedChunkRow, str, bool]] = []
+            max_chunks = 240
+            max_file_chars = 200_000
             for candidate in candidates:
-                content = str(candidate.get("content") or "")
+                content = str(candidate.get("content") or candidate.get("extracted_text") or "")
+                content = content[:max_file_chars]
                 lines = content.splitlines()
-                for index, line in enumerate(lines):
-                    if needle in line.casefold():
-                        start = max(0, index - 1)
-                        end = min(len(lines), index + 2)
-                        passage_text = "\n".join(lines[start:end])[:4000]
-                        chunk_id = uuid.uuid5(
-                            uuid.NAMESPACE_URL,
-                            f"workspace:{candidate.get('id')}:{index}",
-                        )
-                        source_file_ids[chunk_id] = str(candidate.get("id") or "")
-                        ranked_candidates.append(
-                            RetrievedChunkRow(
-                                document_id=uuid.uuid5(
-                                    uuid.NAMESPACE_URL, f"workspace:{candidate.get('id')}"
-                                ),
-                                chunk_id=chunk_id,
-                                filename=str(candidate.get("name") or "Library file"),
-                                content=passage_text,
-                                similarity_score=1.0 / (index + 1),
-                                source_type="workspace",
-                                chunk_index=index,
-                                page_number=None,
+                for start in range(0, len(lines), 8):
+                    if len(workspace_chunks) >= max_chunks:
+                        break
+                    passage_text = "\n".join(lines[start : start + 8])[:4000].strip()
+                    if not passage_text:
+                        continue
+                    chunk_id = uuid.uuid5(
+                        uuid.NAMESPACE_URL,
+                        f"workspace:{candidate.get('id')}:{start}",
+                    )
+                    row = RetrievedChunkRow(
+                        document_id=uuid.uuid5(
+                            uuid.NAMESPACE_URL, f"workspace:{candidate.get('id')}"
+                        ),
+                        chunk_id=chunk_id,
+                        filename=str(candidate.get("name") or "Library file"),
+                        content=passage_text,
+                        similarity_score=0.0,
+                        source_type="workspace",
+                        chunk_index=start,
+                        page_number=None,
+                    )
+                    source_file_ids[chunk_id] = str(candidate.get("id") or "")
+                    workspace_chunks.append((row, passage_text, needle in passage_text.casefold()))
+
+            embedding_metadata: dict[str, Any] = {"applied": False, "reason": "no_chunks"}
+            if workspace_chunks:
+                try:
+                    embedding_result = EmbeddingService(
+                        self.settings, self.db
+                    ).embed_many_with_metadata(
+                        [query, *(item[1] for item in workspace_chunks)],
+                        tenant_id=auth.tenant_id,
+                        actor_user_id=auth.user_id,
+                    )
+                    query_vector = embedding_result.vectors[0]
+                    query_norm = sum(value * value for value in query_vector) ** 0.5
+                    for index, (row, _text, lexical_match) in enumerate(workspace_chunks, start=1):
+                        vector = embedding_result.vectors[index]
+                        vector_norm = sum(value * value for value in vector) ** 0.5
+                        cosine = (
+                            sum(
+                                left * right
+                                for left, right in zip(query_vector, vector, strict=False)
                             )
+                            / (query_norm * vector_norm)
+                            if query_norm and vector_norm
+                            else 0.0
                         )
+                        # Exact lexical hits remain a useful precision boost,
+                        # while semantic similarity finds paraphrases and OCR
+                        # variants that do not contain the query verbatim.
+                        row.similarity_score = max(0.0, cosine) + (0.25 if lexical_match else 0.0)
+                    embedding_metadata = {
+                        "applied": True,
+                        "provider": embedding_result.metadata.provider,
+                        "model": embedding_result.metadata.model,
+                        "fallback_used": embedding_result.metadata.fallback_used,
+                        "chunks_considered": len(workspace_chunks),
+                    }
+                except Exception:  # noqa: BLE001
+                    # Provider outages must not turn an authorized Library
+                    # read into an error.  Preserve deterministic lexical
+                    # retrieval as the documented fallback.
+                    for row, _text, lexical_match in workspace_chunks:
+                        row.similarity_score = 1.0 if lexical_match else 0.0
+                    embedding_metadata = {
+                        "applied": False,
+                        "reason": "embedding_unavailable",
+                        "chunks_considered": len(workspace_chunks),
+                    }
+            ranked_candidates = [
+                row
+                for row, _text, _lexical in sorted(
+                    workspace_chunks,
+                    key=lambda item: item[0].similarity_score,
+                    reverse=True,
+                )
+                if row.similarity_score > 0
+            ]
             rerank_metadata: dict[str, Any] = {"applied": False, "reason": "no_matches"}
             if ranked_candidates:
                 try:
@@ -1785,7 +1852,7 @@ class DeepSpaceChatService:
                         "file_id": source_file_ids.get(row.chunk_id),
                         "filename": row.filename,
                         "line_start": line_number,
-                        "line_end": line_number,
+                        "line_end": row.chunk_index + 8,
                         "text": row.content,
                         "citation": f"file:{source_file_ids.get(row.chunk_id)}#L{line_number}",
                     }
@@ -1795,9 +1862,9 @@ class DeepSpaceChatService:
                 "passages": passages,
                 "total_matches": len(ranked_candidates),
                 "retrieval": {
-                    "strategy": "workspace_lexical",
+                    "strategy": "workspace_hybrid",
                     "reranker": rerank_metadata,
-                    "embeddings": "indexed document retrieval uses the shared EmbeddingService; workspace files use lexical matching because they have no document chunk rows.",
+                    "embeddings": embedding_metadata,
                 },
             }
         if tool_name == "artifact_create":

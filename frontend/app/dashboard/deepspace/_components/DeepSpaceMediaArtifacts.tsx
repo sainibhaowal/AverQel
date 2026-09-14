@@ -93,6 +93,7 @@ function ArtifactSource({ artifact }: { artifact: DeepSpaceMediaArtifact }) {
     // SVG and other generated images use an authenticated object URL and are
     // rendered as an image, never injected as HTML.
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={objectUrl}
         alt={artifact.title}

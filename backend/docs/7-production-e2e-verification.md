@@ -53,6 +53,26 @@ No provider secret or temporary API key is stored in the repository.
 4. OpenZen Nemotron free-tier generation requires a provider-supported client
    path; model discovery alone does not prove generation entitlement.
 
+## 4.1 Localhost activation evidence (2026-09-14)
+
+1. The local environment contains one authoritative sandbox switch:
+   `AKS_DEEPSPACE_SANDBOX_ENABLED=true`. The obsolete
+   `AKS_DISABLE_SANDBOX` override is absent, so the enabled setting is not
+   silently negated.
+2. `averqel-sandbox-executor` is healthy and returns `{"status":"ok"}` from
+   its internal `/health` endpoint. An authenticated smoke execution returned
+   `20.0` for `print(sum([10, 20, 30]) / 3)`.
+3. `averqel-research-egress-proxy` is running and
+   `averqel-research-renderer` is healthy. An authenticated render of a public
+   page returned HTML with HTTP 200. The renderer remains isolated on its
+   internal network and accepts only the configured bearer token.
+4. The rebuilt API is attached to both internal capability networks while
+   retaining its normal application network. The API liveness endpoint still
+   returns HTTP 200 after activation.
+5. These checks validate service wiring and isolation; authenticated browser
+   user-flow tests still require a test account and are intentionally not
+   represented by fabricated credentials.
+
 ## 5. Production conclusion
 
 1. AverQel's six capability implementations are present, covered by tests,
