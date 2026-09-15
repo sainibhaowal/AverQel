@@ -1090,3 +1090,77 @@ async def test_document_query_uses_workspace_hybrid_embeddings(monkeypatch) -> N
     assert result["retrieval"]["strategy"] == "workspace_hybrid"
     assert result["retrieval"]["embeddings"]["applied"] is True
     assert result["passages"][0]["file_id"] == file_id
+
+
+@pytest.mark.asyncio
+async def test_document_compare_compares_every_requested_file_pair() -> None:
+    file_ids = [str(uuid4()) for _ in range(3)]
+    files = {
+        file_ids[0]: {"id": file_ids[0], "name": "q4.pdf", "content": "Revenue\nNet income"},
+        file_ids[1]: {"id": file_ids[1], "name": "faim.docx", "content": "FAIM\nTheory"},
+        file_ids[2]: {"id": file_ids[2], "name": "resume.pdf", "content": "Experience\nSkills"},
+    }
+
+    class _TaskStore:
+        def read_workspace_file(self, **kwargs: object):
+            return files[str(kwargs["file_id"])]
+
+    service = object.__new__(DeepSpaceChatService)
+    service.task_store = _TaskStore()
+
+    result = await service._execute_productivity_tool(
+        tool_name="document_compare",
+        arguments={"file_ids": file_ids, "max_characters": 30_000},
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert result["comparison_method"] == "exact_line_diff_pairwise"
+    assert result["file_count"] == 3
+    assert len(result["comparisons"]) == 3
+    compared_ids = {
+        frozenset((comparison["left"]["id"], comparison["right"]["id"]))
+        for comparison in result["comparisons"]
+    }
+    assert compared_ids == {
+        frozenset((file_ids[0], file_ids[1])),
+        frozenset((file_ids[0], file_ids[2])),
+        frozenset((file_ids[1], file_ids[2])),
+    }
+
+
+@pytest.mark.asyncio
+async def test_document_compare_reports_exact_unchanged_lines() -> None:
+    left_id, right_id = str(uuid4()), str(uuid4())
+
+    class _TaskStore:
+        def read_workspace_file(self, **kwargs: object):
+            return {
+                "id": str(kwargs["file_id"]),
+                "name": "left.txt" if kwargs["file_id"] == left_id else "right.txt",
+                "content": (
+                    "shared heading\nchanged left"
+                    if kwargs["file_id"] == left_id
+                    else "shared heading\nchanged right"
+                ),
+            }
+
+    service = object.__new__(DeepSpaceChatService)
+    service.task_store = _TaskStore()
+
+    result = await service._execute_productivity_tool(
+        tool_name="document_compare",
+        arguments={"left_file_id": left_id, "right_file_id": right_id},
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert result["comparison_method"] == "exact_line_diff"
+    assert result["unchanged"]["exact_line_count"] == 1
+    assert result["unchanged"]["samples"][0]["text"] == "shared heading"

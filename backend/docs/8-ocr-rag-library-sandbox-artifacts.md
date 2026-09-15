@@ -63,6 +63,7 @@ flowchart LR
 | Execute with Library files | `sandbox_execute(file_ids=[...])` or `POST /api/v1/deepspace/sandbox/execute` | Bounded result and generated artifacts |
 | Read extracted document | `document_read` | OCR/text plus file metadata and citation |
 | Search documents | `document_query` | Ranked passages and `file:{id}#L{line}` citations |
+| Compare 2–5 documents | `document_compare(file_ids=[...])` | Pairwise exact line-diff evidence; no RAG claimed |
 | Create an artifact | `artifact_create` | Library file plus Artifact-panel card |
 | Download/preview artifact | `GET /api/v1/deepspace/artifacts/{id}/content` | Authenticated private bytes |
 
@@ -99,7 +100,9 @@ flowchart LR
 3. Upload an OCR image/PDF and verify `document_read` returns extracted text.
 4. Verify `document_query` returns stable file citations and retrieval metadata
    showing `workspace_hybrid`, embedding provider/model, and reranker status.
-5. Verify an `artifact_create` call appears in the panel and downloads only
+5. Verify `document_compare` lists every requested pair and labels its result
+   `exact_line_diff`; it must not be represented as embedding retrieval.
+6. Verify an `artifact_create` call appears in the panel and downloads only
    with an authenticated session.
-6. Run backend and frontend regression suites before enabling the production
+7. Run backend and frontend regression suites before enabling the production
    sandbox profile.

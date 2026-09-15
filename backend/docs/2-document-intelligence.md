@@ -3,19 +3,20 @@
 ## 1. What it does
 
 1. Reads extracted PDF, DOCX, PPTX, XLSX, CSV, OCR, and text content.
-2. Compares two authorized documents with a bounded unified diff.
+2. Compares 2–5 authorized documents, producing bounded pairwise exact
+   line diffs with additions, removals, and explicit unchanged-line evidence.
 3. Searches extracted text and returns stable line-level citations.
 4. Uses the shared embedding and reranking services for indexed document
-   retrieval. Workspace Library files that have not entered the document
-   chunk index use deterministic lexical matching plus the configured
-   reranker, with a safe lexical fallback when no reranker is available.
+   retrieval and conversation-scoped Library `document_query` searches.
+   Workspace queries use semantic similarity plus lexical boost, with a safe
+   lexical fallback only when embeddings are unavailable.
 
 ```mermaid
 flowchart LR
     Upload[PDF, DOCX, PPTX, XLSX, CSV, OCR] --> Extract[Existing extractors]
     Extract --> Store[Private Library]
     Store --> Read[Read or query]
-    Store --> Compare[Compare two files]
+    Store --> Compare[Compare 2–5 files pairwise]
     Read --> Cite[Passage plus file:id#Lline citation]
     Compare --> Diff[Bounded unified diff]
     Cite --> Answer[Answer grounded in source text]
@@ -25,7 +26,7 @@ flowchart LR
 | Public use case | What the user gets | Evidence shown |
 | --- | --- | --- |
 | Ask a question about an uploaded report | A concise answer from extracted text | File and line citation |
-| Compare two contract or policy versions | Added and removed passages | Both authorized file IDs |
+| Compare document versions or a group of files | Pairwise additions, removals, and exact unchanged evidence | Only requested authorized file IDs |
 | Find every mention of a term | Matching passages | Stable `file:{id}#L{line}` references |
 
 ## 2. Existing foundation
@@ -54,13 +55,18 @@ flowchart LR
 2. AverQel reads only files owned by that authenticated user in that
    conversation.
 3. Text is bounded before returning it to the model or browser.
-4. Matching passages include `file:{id}#L{line}` citations.
+4. `document_query` matching passages include `file:{id}#L{line}` citations
+   and retrieval metadata that identifies embeddings/reranker execution.
+5. `document_compare` is deliberately an exact line-diff tool. It does not
+   invoke embeddings or a reranker, and reports that comparison method in its
+   result rather than implying semantic retrieval.
 
 ## 5. What users see
 
 1. The assistant can quote relevant document passages instead of inventing
    content from filenames or snippets.
-2. Compare results show additions/removals between two selected documents.
+2. Compare results show additions/removals and exact unchanged-line evidence
+   for every requested pair; 3 files produce 3 pairs, 4 files produce 6.
 3. Citations identify the exact Library file and line location.
 
 ## 6. Security and correctness

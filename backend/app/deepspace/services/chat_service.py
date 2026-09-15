@@ -4,6 +4,7 @@ import asyncio
 import base64
 import difflib
 import hashlib
+import itertools
 import json
 import logging
 import re
@@ -83,6 +84,8 @@ Planning and execution
 - Prefer observing or reading before changing anything.
 - After meaningful work, verify the important result before reporting success.
 - For Library analysis, use document_read first when extracted/OCR text is enough. Use sandbox_execute with the authorized file_ids when calculations, tabular analysis, ZIP inspection, or chart generation is needed; never invent a path or URL.
+- `document_query` is the Library RAG tool. Its returned `retrieval` metadata is authoritative: when `embeddings.applied` or `reranker.applied` is true, say that hybrid retrieval ran; when false, state the returned fallback reason. `document_read` is a direct authorized read and `document_compare` is an exact line-diff comparison, so neither should be described as embedding or reranker retrieval.
+- For a comparison of three or more documents, use `document_compare.file_ids` with every authorized file ID. For two documents, `left_file_id` and `right_file_id` remain supported. State exactly which returned file names were compared; never imply that an omitted file was included.
 - When a tool returns artifact metadata, mention the generated file and let the Artifact panel provide preview/download; do not paste binary payloads into the answer.
 - Keep users informed with concise progress updates for tasks that take noticeable time; do not expose private reasoning.
 - For interactive tool use, decide quickly and keep hidden reasoning and tool arguments concise. Do not spend multiple model rounds on the same read-only lookup when one result is sufficient. Never assume a fixed output-token budget; the selected provider/model controls its own output limit.
@@ -260,16 +263,23 @@ DOCUMENT_COMPARE_TOOL = {
     "type": "function",
     "function": {
         "name": "document_compare",
-        "description": "Compare two authorized Library documents and return bounded added, removed, and unchanged text evidence.",
+        "description": "Compare 2–5 authorized Library documents. Use file_ids for a pairwise comparison of 3–5 files, or left_file_id/right_file_id for one pair. This is an exact line-diff tool, not a RAG search.",
         "parameters": {
             "type": "object",
             "additionalProperties": False,
             "properties": {
                 "left_file_id": {"type": "string", "maxLength": 80},
                 "right_file_id": {"type": "string", "maxLength": 80},
+                "file_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "maxLength": 80},
+                    "minItems": 2,
+                    "maxItems": 5,
+                    "description": "Use this for pairwise comparisons across 3–5 selected Library files.",
+                },
                 "max_characters": {"type": "integer", "minimum": 100, "maximum": 100000},
             },
-            "required": ["left_file_id", "right_file_id"],
+            "required": [],
         },
     },
 }
@@ -1666,35 +1676,85 @@ class DeepSpaceChatService:
                 "citation": {"file_id": result.get("id"), "filename": result.get("name")},
             }
         if tool_name == "document_compare":
-            left_id = str(arguments.get("left_file_id") or "").strip()
-            right_id = str(arguments.get("right_file_id") or "").strip()
-            if not left_id or not right_id or left_id == right_id:
-                raise ValueError("document_compare requires two different file ids.")
-            left = self.task_store.read_workspace_file(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                conversation_id=conversation_id,
-                file_id=left_id,
-            )
-            right = self.task_store.read_workspace_file(
-                tenant_id=auth.tenant_id,
-                user_id=auth.user_id,
-                conversation_id=conversation_id,
-                file_id=right_id,
-            )
+            raw_file_ids = arguments.get("file_ids")
+            if isinstance(raw_file_ids, list):
+                file_ids = [str(item or "").strip() for item in raw_file_ids]
+            else:
+                file_ids = [
+                    str(arguments.get("left_file_id") or "").strip(),
+                    str(arguments.get("right_file_id") or "").strip(),
+                ]
+            # Keep caller order while refusing ambiguous duplicate comparisons.
+            file_ids = list(dict.fromkeys(file_id for file_id in file_ids if file_id))
+            if len(file_ids) < 2 or len(file_ids) > 5:
+                raise ValueError("document_compare requires 2 to 5 different file ids.")
+            documents = [
+                self.task_store.read_workspace_file(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    file_id=file_id,
+                )
+                for file_id in file_ids
+            ]
             limit = min(100_000, max(100, int(arguments.get("max_characters") or 30_000)))
-            left_text = str(left.get("extracted_text") or left.get("content") or "")
-            right_text = str(right.get("extracted_text") or right.get("content") or "")
-            diff = list(
-                difflib.unified_diff(left_text.splitlines(), right_text.splitlines(), lineterm="")
-            )
-            rendered = "\n".join(diff)
+            pairs = list(itertools.combinations(documents, 2))
+            comparison_limit = max(100, limit // len(pairs))
+
+            def compare_pair(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+                raw_left = str(left.get("extracted_text") or left.get("content") or "")
+                raw_right = str(right.get("extracted_text") or right.get("content") or "")
+                left_text = raw_left[:limit]
+                right_text = raw_right[:limit]
+                left_lines = left_text.splitlines()
+                right_lines = right_text.splitlines()
+                rendered = "\n".join(difflib.unified_diff(left_lines, right_lines, lineterm=""))
+                matcher = difflib.SequenceMatcher(a=left_lines, b=right_lines, autojunk=False)
+                equal_blocks = [opcode for opcode in matcher.get_opcodes() if opcode[0] == "equal"]
+                unchanged_lines = sum(
+                    end_left - start_left for _, start_left, end_left, _, _ in equal_blocks
+                )
+                samples = []
+                for _, start_left, end_left, start_right, _end_right in equal_blocks[:3]:
+                    samples.append(
+                        {
+                            "left_line_start": start_left + 1,
+                            "right_line_start": start_right + 1,
+                            "line_count": end_left - start_left,
+                            "text": "\n".join(
+                                left_lines[start_left : min(end_left, start_left + 3)]
+                            ),
+                        }
+                    )
+                return {
+                    "left": {"id": left.get("id"), "name": left.get("name")},
+                    "right": {"id": right.get("id"), "name": right.get("name")},
+                    "comparison_method": "exact_line_diff",
+                    "source_truncated": len(raw_left) > limit or len(raw_right) > limit,
+                    "diff": rendered[:comparison_limit],
+                    "truncated": len(rendered) > comparison_limit,
+                    "unchanged": {
+                        "exact_line_count": unchanged_lines,
+                        "matching_blocks": len(equal_blocks),
+                        "samples": samples,
+                    },
+                    "citation": {
+                        "left_file_id": left.get("id"),
+                        "right_file_id": right.get("id"),
+                    },
+                }
+
+            comparisons = [compare_pair(left, right) for left, right in pairs]
+            if len(comparisons) == 1:
+                # Retain the established two-file response shape for existing
+                # clients and model prompts, while adding accurate method and
+                # unchanged-line metadata.
+                return comparisons[0]
             return {
-                "left": {"id": left.get("id"), "name": left.get("name")},
-                "right": {"id": right.get("id"), "name": right.get("name")},
-                "diff": rendered[:limit],
-                "truncated": len(rendered) > limit,
-                "citation": {"left_file_id": left.get("id"), "right_file_id": right.get("id")},
+                "comparison_method": "exact_line_diff_pairwise",
+                "file_count": len(documents),
+                "comparisons": comparisons,
+                "citation": {"file_ids": [document.get("id") for document in documents]},
             }
         if tool_name == "document_query":
             query = str(arguments.get("query") or "").strip()
