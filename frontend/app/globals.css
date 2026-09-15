@@ -714,6 +714,31 @@ body {
   color: #ffffff !important;
 }
 
+/* Library previews use a calm frosted canvas instead of a stark white sheet.
+ * Keep text selection readable in both themes and avoid the default violet
+ * browser highlight that clashes with the workspace palette. */
+html:not(.dark) .library-preview-canvas {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(20, 184, 166, 0.08), transparent 32%),
+    linear-gradient(145deg, #f7fcfc 0%, #eef9f6 100%) !important;
+}
+
+.library-preview-canvas ::selection {
+  background: rgba(13, 148, 136, 0.28) !important;
+  color: #134e4a !important;
+}
+
+.library-preview-canvas ::-moz-selection {
+  background: rgba(13, 148, 136, 0.28) !important;
+  color: #134e4a !important;
+}
+
+.dark .library-preview-canvas ::selection,
+.dark .library-preview-canvas ::-moz-selection {
+  background: rgba(45, 212, 191, 0.3) !important;
+  color: #ecfdf5 !important;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

@@ -209,7 +209,7 @@ export default function DeepSpaceLibraryFileWorkspace({
           </div>
         ) : null}
         {previewVisible ? (
-          <div className="custom-scrollbar bg-surface-0 min-h-0 min-w-0 flex-1 overflow-auto p-4 text-sm">
+          <div className="library-preview-canvas custom-scrollbar bg-surface-0 min-h-0 min-w-0 flex-1 overflow-auto p-4 text-sm">
             <LibraryPreview
               kind={kind}
               contentType={contentType}

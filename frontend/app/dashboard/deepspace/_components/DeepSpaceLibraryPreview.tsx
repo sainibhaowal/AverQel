@@ -1,8 +1,18 @@
 "use client";
 
 import ExcelJS from "exceljs";
-import { Archive, FileWarning, Minus, Music2, Plus, RotateCcw, Table2 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  Archive,
+  FileWarning,
+  Maximize2,
+  Minus,
+  Music2,
+  Plus,
+  RotateCcw,
+  RotateCw,
+  Table2,
+} from "lucide-react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode, type WheelEvent } from "react";
 
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 import type { LibraryFileKind } from "./DeepSpaceLibraryFormats";
@@ -223,16 +233,115 @@ function EmptyPreview({ icon, text }: { icon: ReactNode; text: string }) {
   );
 }
 
-function ImagePreview({ source }: { source: string }) {
+export function InteractiveImagePreview({
+  source,
+  alt = "Image preview",
+}: {
+  source: string;
+  alt?: string;
+}) {
   const [scale, setScale] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [rotation, setRotation] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+
+  const clampPan = (x: number, y: number, targetScale = scale) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return { x, y };
+    // Keep the image reachable while allowing generous movement at high zoom.
+    // The bound is based on the viewport rather than the source dimensions so
+    // tiny images cannot disappear and huge images remain pannable.
+    const maxX = Math.max(0, (viewport.clientWidth * (targetScale - 1)) / 2 + 48);
+    const maxY = Math.max(0, (viewport.clientHeight * (targetScale - 1)) / 2 + 48);
+    return {
+      x: Math.max(-maxX, Math.min(maxX, x)),
+      y: Math.max(-maxY, Math.min(maxY, y)),
+    };
+  };
+
+  const resetView = () => {
+    setScale(1);
+    setPan({ x: 0, y: 0 });
+    setRotation(0);
+    setFlipped(false);
+  };
+
+  const changeScale = (nextScale: number, focalPoint?: { x: number; y: number }) => {
+    const boundedScale = Math.max(0.25, Math.min(5, nextScale));
+    setPan((current) => {
+      if (!focalPoint || scale === boundedScale) return clampPan(current.x, current.y, boundedScale);
+      // Preserve the point under the pointer while zooming. Translation is
+      // measured in viewport pixels and therefore uses the scale delta.
+      return clampPan(
+        current.x + focalPoint.x * (scale - boundedScale),
+        current.y + focalPoint.y * (scale - boundedScale),
+        boundedScale,
+      );
+    });
+    setScale(boundedScale);
+  };
+
+  const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    changeScale(
+      scale * (event.deltaY < 0 ? 1.1 : 1 / 1.1),
+      {
+        x: event.clientX - rect.left - rect.width / 2,
+        y: event.clientY - rect.top - rect.height / 2,
+      },
+    );
+  };
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragging(true);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: pan.x,
+      originY: pan.y,
+    };
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setPan(
+      clampPan(
+        drag.originX + event.clientX - drag.startX,
+        drag.originY + event.clientY - drag.startY,
+      ),
+    );
+  };
+
+  const stopDragging = (event: PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
+    setDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-40 flex-col overflow-hidden">
-      <div className="border-glass-border bg-surface-1/60 text-foreground/70 flex shrink-0 items-center justify-end gap-1 border-b px-2 py-1 text-[10px]">
+      <div className="border-glass-border bg-surface-1/60 text-foreground/70 flex shrink-0 flex-wrap items-center justify-end gap-1 border-b px-2 py-1 text-[10px]">
         <button
           type="button"
           title="Zoom out"
           aria-label="Zoom out"
-          onClick={() => setScale((value) => Math.max(0.25, value - 0.25))}
+          onClick={() => changeScale(scale - 0.25)}
           className="rounded p-1 hover:bg-white/10"
         >
           <Minus size={12} />
@@ -242,7 +351,7 @@ function ImagePreview({ source }: { source: string }) {
           type="button"
           title="Zoom in"
           aria-label="Zoom in"
-          onClick={() => setScale((value) => Math.min(5, value + 0.25))}
+          onClick={() => changeScale(scale + 0.25)}
           className="rounded p-1 hover:bg-white/10"
         >
           <Plus size={12} />
@@ -256,15 +365,79 @@ function ImagePreview({ source }: { source: string }) {
         >
           <RotateCcw size={12} />
         </button>
+        <button
+          type="button"
+          title="Rotate left"
+          aria-label="Rotate left"
+          onClick={() => setRotation((value) => value - 90)}
+          className="rounded p-1 hover:bg-white/10"
+        >
+          <RotateCcw size={12} />
+        </button>
+        <button
+          type="button"
+          title="Rotate right"
+          aria-label="Rotate right"
+          onClick={() => setRotation((value) => value + 90)}
+          className="rounded p-1 hover:bg-white/10"
+        >
+          <RotateCw size={12} />
+        </button>
+        <button
+          type="button"
+          title="Flip horizontally"
+          aria-label="Flip horizontally"
+          aria-pressed={flipped}
+          onClick={() => setFlipped((value) => !value)}
+          className={`rounded px-1.5 py-1 ${flipped ? "bg-primary/15 text-primary" : "hover:bg-white/10"}`}
+        >
+          Flip
+        </button>
+        <button
+          type="button"
+          title="Fit image to preview"
+          aria-label="Fit image to preview"
+          onClick={resetView}
+          className="rounded p-1 hover:bg-white/10"
+        >
+          <Maximize2 size={12} />
+        </button>
       </div>
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6">
+      <div
+        ref={viewportRef}
+        role="application"
+        tabIndex={0}
+        aria-label="Interactive image preview. Use the mouse wheel to zoom and drag to pan."
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={stopDragging}
+        onPointerCancel={stopDragging}
+        onDoubleClick={resetView}
+        onKeyDown={(event) => {
+          if (event.key === "+" || event.key === "=") changeScale(scale + 0.25);
+          else if (event.key === "-" || event.key === "_") changeScale(scale - 0.25);
+          else if (event.key === "0") resetView();
+          else if (event.key === "ArrowLeft") setPan((value) => clampPan(value.x + 32, value.y));
+          else if (event.key === "ArrowRight") setPan((value) => clampPan(value.x - 32, value.y));
+          else if (event.key === "ArrowUp") setPan((value) => clampPan(value.x, value.y + 32));
+          else if (event.key === "ArrowDown") setPan((value) => clampPan(value.x, value.y - 32));
+        }}
+        className={`flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6 ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
+        style={{ touchAction: "none" }}
+      >
         {/* Private Library object URL; next/image cannot optimize it. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={source}
-          alt="Library file preview"
-          className="max-w-none object-contain transition-transform"
-          style={{ transform: `scale(${scale})` }}
+          alt={alt}
+          draggable={false}
+          onDragStart={(event) => event.preventDefault()}
+          className="max-h-full max-w-full select-none object-contain transition-transform duration-100 ease-out"
+          style={{
+            transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale}) rotate(${rotation}deg) scaleX(${flipped ? -1 : 1})`,
+            transformOrigin: "center center",
+          }}
         />
       </div>
     </div>
@@ -363,7 +536,9 @@ export function LibraryPreview({
           text="This file has no browser-previewable payload yet."
         />
       );
-    if (kind === "image" || kind === "svg") return <ImagePreview source={source} />;
+    if (kind === "image" || kind === "svg") {
+      return <InteractiveImagePreview key={source} source={source} alt="Library file preview" />;
+    }
     if (kind === "video")
       return (
         <div className="flex h-full items-center justify-center p-6">

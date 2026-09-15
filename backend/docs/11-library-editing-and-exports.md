@@ -6,8 +6,10 @@
 2. Extracted DOCX, PPTX, and XLSX content can be edited and saved. AverQel
    regenerates a valid Office file, keeps the same Library file identity, and
    records a new version.
-3. Images have in-app zoom-out, zoom-in, and reset controls. The original
-   image bytes are never modified.
+3. Images have in-app zoom-out, zoom-in, fit/reset, rotate, and horizontal
+   flip controls. The mouse wheel zooms around the pointer, left-button drag
+   pans the canvas, and keyboard arrows pan it for accessible navigation. The
+   original image bytes are never modified.
 4. The selected file's Export menu supports the original format, Markdown,
    TXT, PDF, DOCX, PPTX, and XLSX where a compatible text/table representation
    exists.
@@ -40,3 +42,6 @@ sequenceDiagram
 - Failed database commits attempt to restore the previous Office payload.
 - Export HTML escapes user content before PDF generation.
 - Browser object URLs are revoked by the Library lifecycle.
+- Preview selection uses a readable green-tint highlight in both light and
+  dark themes; it is scoped to the Library preview canvas and does not alter
+  editor syntax selection.

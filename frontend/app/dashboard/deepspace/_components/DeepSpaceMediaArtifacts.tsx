@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchWithAuth } from "@/lib/api";
 
 import type { DeepSpaceMediaArtifact, DeepSpaceMediaStatus } from "../_lib/deepspace-stream";
+import { InteractiveImagePreview } from "./DeepSpaceLibraryPreview";
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "Private artifact";
@@ -67,16 +68,7 @@ function ArtifactSource({ artifact }: { artifact: DeepSpaceMediaArtifact }) {
     );
   }
   if (artifact.kind === "image") {
-    return (
-      // Private authenticated blobs cannot use the Next image optimizer without
-      // exposing a public loader URL; render the already-authorized object URL.
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={objectUrl}
-        alt={artifact.title}
-        className="max-h-[36rem] w-full rounded-lg object-contain"
-      />
-    );
+    return <InteractiveImagePreview key={objectUrl} source={objectUrl} alt={artifact.title} />;
   }
   if (artifact.kind === "video") {
     return (
@@ -92,14 +84,7 @@ function ArtifactSource({ artifact }: { artifact: DeepSpaceMediaArtifact }) {
   if (artifact.content_type.startsWith("image/")) {
     // SVG and other generated images use an authenticated object URL and are
     // rendered as an image, never injected as HTML.
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={objectUrl}
-        alt={artifact.title}
-        className="max-h-[36rem] w-full rounded-lg object-contain"
-      />
-    );
+    return <InteractiveImagePreview key={objectUrl} source={objectUrl} alt={artifact.title} />;
   }
   if (artifact.content_type.startsWith("text/") || artifact.content_type === "application/json") {
     return <TextArtifactPreview source={objectUrl} />;
