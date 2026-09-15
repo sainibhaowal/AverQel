@@ -323,6 +323,16 @@ services:
       AKS_WORKER_QUEUES: ingestion_heavy,ingestion_light
       AKS_WORKER_CONCURRENCY: ${AKS_INGESTION_WORKER_CONCURRENCY:-1}
 
+  library-worker:
+    extends:
+      service: worker
+    container_name: averqel-library-worker
+    environment:
+      AKS_WORKER_QUEUES: library_uploads
+      AKS_WORKER_CONCURRENCY: ${AKS_LIBRARY_WORKER_CONCURRENCY:-1}
+    mem_limit: 768m
+    cpus: 1.0
+
   scheduler:
     container_name: averqel-scheduler
     image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}

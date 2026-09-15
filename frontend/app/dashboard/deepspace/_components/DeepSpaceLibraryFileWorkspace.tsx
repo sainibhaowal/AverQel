@@ -107,6 +107,9 @@ export default function DeepSpaceLibraryFileWorkspace({
   onArchiveEntrySelect,
   archiveEntryName,
   onArchiveBack,
+  readOnly = false,
+  contentTruncated = false,
+  sizeBytes,
 }: {
   name: string;
   contentType: string;
@@ -124,10 +127,15 @@ export default function DeepSpaceLibraryFileWorkspace({
   }) => void;
   archiveEntryName?: string;
   onArchiveBack?: () => void;
+  readOnly?: boolean;
+  contentTruncated?: boolean;
+  sizeBytes?: number;
 }) {
   const kind = libraryFileKind(name, contentType);
-  const editorSupported = libraryKindSupportsEditor(kind);
-  const previewSupported = libraryKindSupportsPreview(kind);
+  const editorSupported = libraryKindSupportsEditor(kind) && !readOnly;
+  // A large text/code file is read-only but still needs the safe bounded text
+  // preview rather than an empty workspace.
+  const previewSupported = libraryKindSupportsPreview(kind) || readOnly;
   const defaultMode: PreviewMode =
     editorSupported && previewSupported ? "split" : editorSupported ? "edit" : "preview";
   const [mode, setMode] = useState<PreviewMode>(defaultMode);
@@ -217,6 +225,8 @@ export default function DeepSpaceLibraryFileWorkspace({
               previewUrl={previewUrl}
               archiveEntries={archiveEntries}
               onArchiveEntrySelect={onArchiveEntrySelect}
+              contentTruncated={contentTruncated}
+              sizeBytes={sizeBytes}
             />
           </div>
         ) : null}

@@ -46,6 +46,7 @@ type LibraryFile = {
   version?: number;
   is_binary?: boolean;
   extracted_text?: string | null;
+  content_truncated?: boolean;
   download_url?: string | null;
   archive_entries?:
     | { name: string; directory: boolean; compressedSize: number; size: number }[]
@@ -90,6 +91,7 @@ type DeepSpaceLibraryDrawerProps = {
 // thin 44px strip after the layout has changed. Collapsing remains available
 // through the panel control, but the safe default is always the full panel.
 const LIBRARY_FILES_COLLAPSED_KEY = "deepspace.library.files.collapsed.v2";
+const MAX_BINARY_BROWSER_PREVIEW_BYTES = 5 * 1024 * 1024;
 
 function UploadCancelButton({
   item,
@@ -263,7 +265,11 @@ export default function DeepSpaceLibraryDrawer({
       setDraft(detail.content || detail.extracted_text || "");
       setArchiveSelection(null);
       setPreviewUrl(null);
-      if (detail.is_binary) {
+      // Do not transfer a large original back into the browser solely to make
+      // a preview.  The worker has already produced a bounded searchable
+      // preview; the original remains available through authenticated
+      // download and sandbox analysis.
+      if (detail.is_binary && detail.size_bytes <= MAX_BINARY_BROWSER_PREVIEW_BYTES) {
         const contentResponse = (await fetchWithAuth(
           `/deepspace/library/${conversationId}/files/${file.id}/content`,
           { timeoutMs: 30_000 },
@@ -627,6 +633,7 @@ export default function DeepSpaceLibraryDrawer({
     if (!conversationId || activeUploadIdsRef.current.has(session.id)) return;
     activeUploadIdsRef.current.add(session.id);
     const controller = new AbortController();
+    let lastProgressPaintAt = 0;
     uploadControllersRef.current[session.id] = controller;
     try {
       let current = session;
@@ -650,8 +657,14 @@ export default function DeepSpaceLibraryDrawer({
             method: "PUT",
             signal: controller.signal,
             timeoutMs: 120_000,
-            onProgress: (loaded) =>
-              updateUploadItem(itemId, { loaded: Math.min(file.size, baseLoaded + loaded) }),
+            onProgress: (loaded) => {
+              // Browser upload events can fire many times per second.  Throttle
+              // state updates so large files never monopolize React rendering.
+              const now = performance.now();
+              if (now - lastProgressPaintAt < 80 && loaded < chunk.size) return;
+              lastProgressPaintAt = now;
+              updateUploadItem(itemId, { loaded: Math.min(file.size, baseLoaded + loaded) });
+            },
           },
         );
         if (!response.ok) throw new Error("The upload chunk was rejected by the server.");
@@ -828,8 +841,12 @@ export default function DeepSpaceLibraryDrawer({
       }),
     );
     let next = 0;
+    // Large browser uploads are intentionally serialized.  Small batches keep
+    // their existing parallelism, while a 9–25 MiB data file cannot compete
+    // with other tabs for memory, network buffers, or progress re-renders.
+    const hasLargeFile = filesToUpload.some((file) => file.size > 2 * 1024 * 1024);
     const workers = Array.from(
-      { length: Math.min(3, sessions.filter(Boolean).length) },
+      { length: Math.min(hasLargeFile ? 1 : 3, sessions.filter(Boolean).length) },
       async () => {
         while (next < sessions.length) {
           const index = next;
@@ -1588,6 +1605,9 @@ export default function DeepSpaceLibraryDrawer({
                       }
                     : undefined
                 }
+                readOnly={Boolean(selected.is_binary || selected.content_truncated)}
+                contentTruncated={Boolean(selected.content_truncated)}
+                sizeBytes={selected.size_bytes}
               />
             ) : (
               <div className="border-glass-border bg-surface-1/40 text-foreground/45 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed px-6 text-center text-xs">
@@ -1617,6 +1637,9 @@ export default function DeepSpaceLibraryDrawer({
                   }
                 : undefined
             }
+            readOnly={Boolean(selected.is_binary || selected.content_truncated)}
+            contentTruncated={Boolean(selected.content_truncated)}
+            sizeBytes={selected.size_bytes}
           />
         </section>
       ) : (

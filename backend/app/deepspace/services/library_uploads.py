@@ -14,6 +14,36 @@ from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
 from app.deepspace.services.library_storage import LibraryStorageService
 
+# Database-backed editing is appropriate for notes and small source files, but
+# it is the wrong storage model for analytical data sets.  Store larger text
+# files in private object storage too, then return only a bounded extracted
+# preview to the browser.  This keeps a large CSV from being duplicated in the
+# API response, React state, CodeMirror, and a DOM table.
+_MAX_INLINE_TEXT_BYTES = 512 * 1024
+_MAX_BULK_TEXT_EXTRACTION_BYTES = 512 * 1024
+_BULK_TEXT_CONTENT_TYPES = {
+    "text/csv",
+    "text/x-csv",
+    "text/tab-separated-values",
+    "application/json",
+    "application/x-ipynb+json",
+}
+
+
+def _bounded_extraction_payload(payload: bytes, content_type: str) -> bytes:
+    """Take a UTF-8-friendly preview for large tabular/data files only."""
+    if (
+        content_type not in _BULK_TEXT_CONTENT_TYPES
+        or len(payload) <= _MAX_BULK_TEXT_EXTRACTION_BYTES
+    ):
+        return payload
+    preview = payload[:_MAX_BULK_TEXT_EXTRACTION_BYTES]
+    # Prefer a completed record so CSV/TSV preview and RAG text do not end in a
+    # partially decoded row.  Falling back to the byte cap remains safe for a
+    # single very long line.
+    boundary = max(preview.rfind(b"\n"), preview.rfind(b"\r"))
+    return preview[:boundary] if boundary > 0 else preview
+
 
 def finalize_upload(
     db: Session,
@@ -33,12 +63,14 @@ def finalize_upload(
     is_binary = not content_type.startswith(
         ("text/", "application/json", "application/xml", "application/yaml")
     )
+    if len(payload) > _MAX_INLINE_TEXT_BYTES:
+        is_binary = True
     storage_service = LibraryStorageService(settings)
     extraction = (
         storage_service.extract(
             filename=upload.filename,
             content_type=content_type,
-            payload=payload,
+            payload=_bounded_extraction_payload(payload, content_type),
             tenant_id=upload.tenant_id,
         )
         if content_type

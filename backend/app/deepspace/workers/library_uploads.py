@@ -18,7 +18,11 @@ from app.system.services.storage_service import StorageService
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(bind=True, name="deepspace.library_upload_finalize")  # type: ignore[misc]
+@celery_app.task(
+    bind=True,
+    name="deepspace.library_upload_finalize",
+    queue="library_uploads",
+)  # type: ignore[misc]
 def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> str:
     """Assemble chunks, create the normal Library file, and publish completion in PostgreSQL."""
     del self

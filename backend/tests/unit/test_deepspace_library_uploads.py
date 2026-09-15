@@ -7,10 +7,12 @@ import pytest
 
 from app.core.errors import ApiError
 from app.deepspace.api.library import (
+    _MAX_LIBRARY_INLINE_PREVIEW_CHARS,
     LibraryExportRequest,
     LibraryUploadCreate,
     _content_disposition,
     _content_type_for_name,
+    _serialize_file,
     _serialize_upload,
 )
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
@@ -187,3 +189,66 @@ def test_finalize_upload_stores_binary_object_and_version(
     assert record.content == ""
     assert record.storage_bucket == "library"
     assert record.storage_key == "file.bin"
+
+
+def test_finalize_large_csv_uses_private_object_storage_and_bounded_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stored = SimpleNamespace(bucket="library", object_key="large.csv")
+    extraction_payloads: list[bytes] = []
+
+    class _Storage:
+        def __init__(self, settings: object) -> None:
+            self.storage = SimpleNamespace(delete_object=lambda **kwargs: None)
+
+        def extract(self, **kwargs: object) -> dict[str, object]:
+            extraction_payloads.append(kwargs["payload"])
+            return {"text": "column_a,column_b\n1,2"}
+
+        def store(self, **kwargs: object) -> object:
+            return stored
+
+    monkeypatch.setattr(uploads_module, "LibraryStorageService", _Storage)
+    payload = (b"column_a,column_b\n1,2\n" * 30_000)[:700_000]
+    upload = _upload(content_type="text/csv", expected_size=len(payload))
+    upload.filename = "large.csv"
+    db = _Db()
+
+    record = finalize_upload(
+        db,
+        settings=SimpleNamespace(upload_max_bytes=1_000_000),
+        upload=upload,
+        payload=payload,
+    )
+
+    assert record.is_binary is True
+    assert record.content == ""
+    assert record.storage_bucket == "library"
+    assert len(extraction_payloads) == 1
+    assert len(extraction_payloads[0]) <= 512 * 1024
+
+
+def test_library_detail_serialization_bounds_large_text_responses() -> None:
+    value = "x" * (_MAX_LIBRARY_INLINE_PREVIEW_CHARS + 20)
+    file = SimpleNamespace(
+        id=uuid.uuid4(),
+        name="large.csv",
+        content_type="text/csv",
+        source="user",
+        size_bytes=len(value),
+        created_at=None,
+        updated_at=None,
+        content=value,
+        parent_folder_id=None,
+        version=1,
+        is_binary=False,
+        checksum_sha256=None,
+        extracted_text=value,
+        conversation_id=uuid.uuid4(),
+    )
+
+    result = _serialize_file(file, include_content=True)
+
+    assert result.content_truncated is True
+    assert len(result.content or "") == _MAX_LIBRARY_INLINE_PREVIEW_CHARS
+    assert len(result.extracted_text or "") == _MAX_LIBRARY_INLINE_PREVIEW_CHARS

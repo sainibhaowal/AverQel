@@ -48,6 +48,10 @@ router = APIRouter(prefix="/deepspace/library", tags=["deepspace-library"])
 _SAFE_FILE_NAME = re.compile(r"[^\x00-\x1f\x7f/\\]{1,255}")
 _MAX_LIBRARY_CONTENT_LENGTH = 8_000_000
 _LIBRARY_UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
+# Never return multi-megabyte text blobs to the interactive Library pane.  The
+# original file remains privately downloadable from object storage; this limit
+# only bounds browser-facing preview/edit data.
+_MAX_LIBRARY_INLINE_PREVIEW_CHARS = 512 * 1024
 _MAX_LIBRARY_EXPORT_FILES = 100
 _MAX_LIBRARY_EXPORT_BYTES = 250 * 1024 * 1024
 _MAX_EDITABLE_OFFICE_CHARS = 8_000_000
@@ -259,6 +263,7 @@ class WorkspaceFileSchema(BaseModel):
     is_binary: bool = False
     checksum_sha256: str | None = None
     extracted_text: str | None = None
+    content_truncated: bool = False
     download_url: str | None = None
     archive_entries: list[dict[str, object]] | None = None
 
@@ -450,7 +455,18 @@ def _conversation(*, db: Session, auth: AuthContext, conversation_id: uuid.UUID)
 def _serialize_file(
     file: DeepSpaceWorkspaceFile, *, include_content: bool = False
 ) -> WorkspaceFileSchema:
-    content = file.content if include_content and not file.is_binary else None
+    raw_content = file.content if include_content and not file.is_binary else None
+    raw_extracted_text = file.extracted_text if include_content else None
+    content_truncated = bool(
+        (raw_content and len(raw_content) > _MAX_LIBRARY_INLINE_PREVIEW_CHARS)
+        or (raw_extracted_text and len(raw_extracted_text) > _MAX_LIBRARY_INLINE_PREVIEW_CHARS)
+    )
+    content = raw_content[:_MAX_LIBRARY_INLINE_PREVIEW_CHARS] if raw_content is not None else None
+    extracted_text = (
+        raw_extracted_text[:_MAX_LIBRARY_INLINE_PREVIEW_CHARS]
+        if raw_extracted_text is not None
+        else None
+    )
     return WorkspaceFileSchema(
         id=str(file.id),
         name=file.name,
@@ -464,7 +480,8 @@ def _serialize_file(
         version=file.version,
         is_binary=file.is_binary,
         checksum_sha256=file.checksum_sha256,
-        extracted_text=file.extracted_text if include_content else None,
+        extracted_text=extracted_text,
+        content_truncated=content_truncated,
         download_url=(
             f"/api/v1/deepspace/library/{file.conversation_id}/files/{file.id}/content"
             if file.is_binary

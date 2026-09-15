@@ -12,7 +12,15 @@ import {
   RotateCw,
   Table2,
 } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode, type WheelEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode,
+  type WheelEvent,
+} from "react";
 
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 import type { LibraryFileKind } from "./DeepSpaceLibraryFormats";
@@ -50,12 +58,17 @@ function decodeBase64(value: string) {
   }
 }
 
-function parseCsv(value: string): string[][] {
+export const CSV_PREVIEW_MAX_ROWS = 200;
+export const CSV_PREVIEW_MAX_COLUMNS = 50;
+export const CSV_PREVIEW_MAX_CHARS = 512 * 1024;
+
+export function parseCsvPreview(value: string): { rows: string[][]; truncated: boolean } {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
   let quoted = false;
-  for (let index = 0; index < value.length; index += 1) {
+  const limit = Math.min(value.length, CSV_PREVIEW_MAX_CHARS);
+  for (let index = 0; index < limit; index += 1) {
     const character = value[index];
     const next = value[index + 1];
     if (character === '"' && quoted && next === '"') {
@@ -68,16 +81,19 @@ function parseCsv(value: string): string[][] {
     } else if ((character === "\n" || character === "\r") && !quoted) {
       if (character === "\r" && next === "\n") index += 1;
       row.push(cell);
-      if (row.some((part) => part.length > 0)) rows.push(row);
+      if (row.some((part) => part.length > 0)) rows.push(row.slice(0, CSV_PREVIEW_MAX_COLUMNS));
       row = [];
       cell = "";
+      if (rows.length >= CSV_PREVIEW_MAX_ROWS) {
+        return { rows, truncated: true };
+      }
     } else cell += character;
   }
   if (cell || row.length) {
     row.push(cell);
-    rows.push(row);
+    rows.push(row.slice(0, CSV_PREVIEW_MAX_COLUMNS));
   }
-  return rows;
+  return { rows, truncated: limit < value.length };
 }
 
 function parseDiff(value: string): DiffRow[] {
@@ -128,9 +144,10 @@ function spreadsheetRows(workbook: ExcelJS.Workbook): string[][] {
   if (!worksheet) return [];
   const rows: string[][] = [];
   worksheet.eachRow({ includeEmpty: false }, (row) => {
+    if (rows.length >= CSV_PREVIEW_MAX_ROWS) return;
     const values = Array.isArray(row.values) ? row.values.slice(1) : [];
     rows.push(
-      values.map((value) => {
+      values.slice(0, CSV_PREVIEW_MAX_COLUMNS).map((value) => {
         if (value === null || value === undefined) return "";
         if (value instanceof Date) return value.toISOString();
         if (typeof value === "object") {
@@ -145,10 +162,15 @@ function spreadsheetRows(workbook: ExcelJS.Workbook): string[][] {
   return rows;
 }
 
-function Table({ rows }: { rows: string[][] }) {
+function Table({ rows, notice }: { rows: string[][]; notice?: string | null }) {
   const columns = Math.max(1, ...rows.map((row) => row.length));
   return (
     <div className="custom-scrollbar h-full overflow-auto">
+      {notice ? (
+        <p className="border-primary/25 bg-primary/8 text-foreground/70 sticky top-0 z-10 border-b px-3 py-2 text-[11px]">
+          {notice}
+        </p>
+      ) : null}
       <table className="min-w-full border-collapse text-left text-xs">
         <thead className="bg-surface-1/80 sticky top-0">
           <tr>
@@ -220,6 +242,31 @@ function SpreadsheetTable({ value, previewUrl }: { value: string; previewUrl?: s
     <EmptyPreview
       icon={<Table2 size={18} />}
       text="This spreadsheet is empty or its binary payload is unavailable."
+    />
+  );
+}
+
+function CsvPreviewTable({
+  value,
+  contentTruncated,
+  sizeBytes,
+}: {
+  value: string;
+  contentTruncated: boolean;
+  sizeBytes?: number;
+}) {
+  const preview = useMemo(() => parseCsvPreview(value), [value]);
+  const limited = preview.truncated || contentTruncated;
+  return (
+    <Table
+      rows={preview.rows}
+      notice={
+        limited
+          ? `Showing a safe preview of the first ${CSV_PREVIEW_MAX_ROWS} rows / ${CSV_PREVIEW_MAX_COLUMNS} columns. The original ${
+              sizeBytes ? `${Math.ceil(sizeBytes / 1024 / 1024)} MB ` : ""
+            }file stays private and can be downloaded or analyzed in the sandbox.`
+          : null
+      }
     />
   );
 }
@@ -451,6 +498,8 @@ export function LibraryPreview({
   previewUrl,
   archiveEntries,
   onArchiveEntrySelect,
+  contentTruncated = false,
+  sizeBytes,
 }: {
   kind: LibraryFileKind;
   contentType: string;
@@ -458,9 +507,18 @@ export function LibraryPreview({
   previewUrl?: string | null;
   archiveEntries?: ArchiveEntry[] | null;
   onArchiveEntrySelect?: (entry: ArchiveEntry) => void;
+  contentTruncated?: boolean;
+  sizeBytes?: number;
 }) {
   if (kind === "markdown") return <DeepSpaceMarkdownRenderer content={value} />;
-  if (kind === "csv") return <Table rows={parseCsv(value)} />;
+  if (kind === "csv")
+    return (
+      <CsvPreviewTable
+        value={value}
+        contentTruncated={contentTruncated}
+        sizeBytes={sizeBytes}
+      />
+    );
   if (kind === "spreadsheet") return <SpreadsheetTable value={value} previewUrl={previewUrl} />;
   if (kind === "diff") {
     return (
