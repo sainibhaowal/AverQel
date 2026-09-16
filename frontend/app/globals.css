@@ -739,6 +739,34 @@ html:not(.dark) .library-preview-canvas {
   color: #ecfdf5 !important;
 }
 
+/* CodeMirror paints selections with its own absolutely positioned layers, so
+ * browser ::selection rules do not reach it. Keep the Library editor aligned
+ * with the workspace palette instead of its default violet selection. */
+.library-file-editor .cm-selectionBackground,
+.library-file-editor.cm-focused .cm-selectionBackground {
+  background: rgba(5, 150, 105, 0.22) !important;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(5, 150, 105, 0.16);
+}
+
+.library-file-editor .cm-content ::selection,
+.library-file-editor .cm-content ::-moz-selection {
+  background: rgba(5, 150, 105, 0.26) !important;
+  color: #064e3b !important;
+}
+
+.dark .library-file-editor .cm-selectionBackground,
+.dark .library-file-editor.cm-focused .cm-selectionBackground {
+  background: rgba(52, 211, 153, 0.28) !important;
+  box-shadow: inset 0 0 0 1px rgba(110, 231, 183, 0.18);
+}
+
+.dark .library-file-editor .cm-content ::selection,
+.dark .library-file-editor .cm-content ::-moz-selection {
+  background: rgba(52, 211, 153, 0.32) !important;
+  color: #ecfdf5 !important;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
