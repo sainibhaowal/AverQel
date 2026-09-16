@@ -1664,7 +1664,11 @@ class DeepSpaceChatService:
                 file_id=file_id,
                 filename=filename,
             )
-            limit = min(200_000, max(100, int(arguments.get("max_characters") or 50_000)))
+            # Keep a direct read bounded enough for the smallest production
+            # context windows. Larger documents should use document_query or
+            # sandbox file access; returning 200k characters here can make the
+            # next provider round fail before it can answer.
+            limit = min(32_000, max(100, int(arguments.get("max_characters") or 16_000)))
             text = str(result.get("extracted_text") or result.get("content") or "")
             return {
                 "file": {
@@ -3809,6 +3813,19 @@ class DeepSpaceChatService:
                     terminal_status = "cancelled"
                     self.runtime.finish(run_id=run_id, status="cancelled", error="user_cancelled")
                     break
+                progress_step_id = f"progress_{round_index}"
+                # This is a safe execution summary, not provider chain-of-thought.
+                # It keeps the activity panel useful while the next provider/tool
+                # round is waiting on a remote service.
+                yield sse(
+                    "agent_status",
+                    {
+                        "status": "running",
+                        "step_id": progress_step_id,
+                        "turn_index": round_index,
+                        "text": "Analyzing the request and selecting the next safe action.",
+                    },
+                )
                 tool_calls: dict[int, dict[str, Any]] = {}
                 # Providers can split a function call across many SSE chunks.
                 # Track exactly what has already been sent to the UI so the
@@ -4746,6 +4763,15 @@ class DeepSpaceChatService:
                     yield sse("approval_request", awaiting_approval)
 
                 for item in valid_calls:
+                    yield sse(
+                        "agent_status",
+                        {
+                            "status": "completed",
+                            "step_id": progress_step_id,
+                            "turn_index": round_index,
+                            "text": "The next action is ready; executing it with the authorized workspace tools.",
+                        },
+                    )
                     tool_name = str(item["tool_name"])
                     if run_id is not None:
                         self.runtime.record_step(

@@ -1224,9 +1224,21 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         details: String(data.text ?? ""),
         data: { kind: "provisional_model_message" },
       };
-    // These legacy server events contain fixed descriptive text, not a model
-    // function call or a real tool result. Keep them out of the agent timeline.
     case "agent_status":
+      return {
+        id: `progress_${stepId}`,
+        stepId,
+        turnIndex,
+        phase: "thinking",
+        type: "observation",
+        title: "Working safely",
+        status: data.status === "completed" ? "completed" : "running",
+        startedAt: timestamp,
+        completedAt: data.status === "completed" ? timestamp : undefined,
+        details: String(data.text ?? "Working on the request."),
+      };
+    // Observing without a concrete status is still omitted; actual tool
+    // calls/results have their own auditable timeline events.
     case "observing":
       return null;
     case "permission_request":
@@ -3526,10 +3538,15 @@ function reduceDeepSpaceThread(
           compaction: nextCompaction,
         };
       } else if (event.event === "agent_status") {
-        // Legacy backend status strings are not execution evidence. Real tool
-        // calls/results, provider thinking, approvals, and errors have their
-        // own event types and remain visible in the timeline.
-        return state;
+        const step = mapEventToTimelineStep(event);
+        if (!step) return state;
+        nextMessages[index] = {
+          ...current,
+          timeline: upsertTimelineStep(nextTimeline, step),
+          mission: nextMission,
+          compaction: nextCompaction,
+        };
+        return { ...state, messages: nextMessages };
       } else if (event.event === "agent_plan") {
         const step: AgentStep = {
           id: `step_${Date.now()}`,
