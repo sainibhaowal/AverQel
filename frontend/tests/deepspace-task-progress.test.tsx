@@ -143,4 +143,36 @@ describe("DeepSpace verified task progress", () => {
       "false",
     );
   });
+
+  it("returns focus to the timeline trigger before an active entry is hidden", () => {
+    const runningStep = {
+      id: "focus-safe-step",
+      stepId: "focus-safe-step",
+      turnIndex: 1,
+      phase: "exploring" as const,
+      type: "tool_call" as const,
+      title: "Read document",
+      status: "running" as const,
+      startedAt: "2026-08-09T00:00:00Z",
+      toolName: "document_read",
+      toolOutput: "Reading the selected document.",
+    };
+    const { rerender } = render(
+      <DeepSpaceThinkingPanel content="" isStreaming timeline={[runningStep]} />,
+    );
+
+    const detailsButton = screen.getByRole("button", { name: /live tool output/i });
+    detailsButton.focus();
+    expect(detailsButton).toHaveFocus();
+
+    rerender(
+      <DeepSpaceThinkingPanel
+        content=""
+        isStreaming
+        timeline={[{ ...runningStep, status: "completed", completedAt: "2026-08-09T00:00:01Z" }]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /read document/i })).toHaveFocus();
+  });
 });

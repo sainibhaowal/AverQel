@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { BrainCircuit } from "lucide-react";
 import {
   CheckCircle2,
@@ -430,6 +430,8 @@ const TimelineEntry = memo(function TimelineEntry({
     step.status === "running" || step.status === "awaiting_approval",
   );
   const previousStatus = useRef(step.status);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const detailsRef = useRef<HTMLDivElement>(null);
   const details = formatDetail(step.details);
   const inputStream = formatDetail(step.toolInputStream);
   const input = formatDetail(step.toolInput);
@@ -449,6 +451,12 @@ const TimelineEntry = memo(function TimelineEntry({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setOpen(true);
     } else if (wasActive && step.status === "completed") {
+      // A completed entry hides its contents. A nested disclosure button can
+      // still own focus at this point, so return focus to the visible trigger
+      // before setting aria-hidden on its ancestor.
+      if (detailsRef.current?.contains(document.activeElement)) {
+        triggerRef.current?.focus();
+      }
       setOpen(false);
     }
     previousStatus.current = step.status;
@@ -466,6 +474,7 @@ const TimelineEntry = memo(function TimelineEntry({
       ) : null}
       <div className="border-b border-white/8 pb-3">
         <button
+          ref={triggerRef}
           type="button"
           aria-expanded={open}
           aria-controls={detailsId}
@@ -494,6 +503,7 @@ const TimelineEntry = memo(function TimelineEntry({
         </button>
         <div
           id={detailsId}
+          ref={detailsRef}
           aria-hidden={!open}
           className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
         >
@@ -568,7 +578,18 @@ export default function DeepSpaceThinkingPanel({
   const [panelOpen, setPanelOpen] = useState(isStreaming);
   const activityPanelId = `deepspace-activity-${useId().replace(/:/g, "")}`;
   const wasStreaming = useRef(isStreaming);
+  const panelTriggerRef = useRef<HTMLButtonElement>(null);
+  const panelContentRef = useRef<HTMLDivElement>(null);
   const [clock, setClock] = useState(() => Date.now());
+
+  const closePanel = useCallback(() => {
+    // Never hide an element that contains the active control. Chromium blocks
+    // that aria-hidden change, and keyboard users would lose their focus.
+    if (panelContentRef.current?.contains(document.activeElement)) {
+      panelTriggerRef.current?.focus();
+    }
+    setPanelOpen(false);
+  }, []);
 
   // Opening a newly active run should remain automatic, but completion must
   // not forcibly collapse the panel or override a user's expand/collapse
@@ -580,13 +601,13 @@ export default function DeepSpaceThinkingPanel({
       return () => window.clearTimeout(timer);
     }
     const timer = wasStreaming.current
-      ? window.setTimeout(() => setPanelOpen(false), 0)
+      ? window.setTimeout(closePanel, 0)
       : undefined;
     wasStreaming.current = false;
     return () => {
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [isStreaming]);
+  }, [closePanel, isStreaming]);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -620,6 +641,7 @@ export default function DeepSpaceThinkingPanel({
   return (
     <div className="motion-safe:animate-in motion-safe:fade-in mb-4 motion-safe:duration-300 motion-safe:ease-out">
       <button
+        ref={panelTriggerRef}
         type="button"
         aria-expanded={panelOpen}
         aria-controls={activityPanelId}
@@ -636,6 +658,7 @@ export default function DeepSpaceThinkingPanel({
       </button>
       <div
         id={activityPanelId}
+        ref={panelContentRef}
         aria-hidden={!panelOpen}
         className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${panelOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
       >
