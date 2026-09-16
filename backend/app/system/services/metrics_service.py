@@ -158,9 +158,9 @@ def metrics_payload() -> tuple[bytes, str]:
     return generate_latest(), CONTENT_TYPE_LATEST
 
 
-def read_metrics_summary() -> tuple[int, int, int]:
+def read_metrics_summary() -> tuple[int, int, int, int, int]:
     """Return request, error, and database-query counts from this process."""
-    totals = {"requests": 0, "errors": 0, "queries": 0}
+    totals = {"requests": 0, "errors": 0, "queries": 0, "retries": 0, "dead_letters": 0}
     for family in API_REQUESTS_TOTAL.collect():
         for sample in family.samples:
             if sample.name == "aks_api_requests_total":
@@ -173,7 +173,21 @@ def read_metrics_summary() -> tuple[int, int, int]:
         for sample in family.samples:
             if sample.name == "aks_db_query_duration_seconds_count":
                 totals["queries"] += int(sample.value)
-    return totals["requests"], totals["errors"], totals["queries"]
+    for family in WORKER_RETRIES_TOTAL.collect():
+        for sample in family.samples:
+            if sample.name == "aks_worker_retries_total":
+                totals["retries"] += int(sample.value)
+    for family in WORKER_DEAD_LETTER_TOTAL.collect():
+        for sample in family.samples:
+            if sample.name == "aks_worker_dead_letter_total":
+                totals["dead_letters"] += int(sample.value)
+    return (
+        totals["requests"],
+        totals["errors"],
+        totals["queries"],
+        totals["retries"],
+        totals["dead_letters"],
+    )
 
 
 def increment_query_cache_event(*, event: str) -> None:

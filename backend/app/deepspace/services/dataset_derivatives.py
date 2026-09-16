@@ -268,6 +268,77 @@ class DatasetDerivativeService:
                 except FileNotFoundError:
                     pass
 
+    def join(
+        self,
+        *,
+        left_profile: dict[str, Any],
+        right_profile: dict[str, Any],
+        left_on: str,
+        right_on: str,
+        left_columns: list[str] | None,
+        right_columns: list[str] | None,
+        join_type: str,
+        limit: int,
+    ) -> dict[str, Any]:
+        """Join two private Parquet derivatives with an allowlisted contract."""
+        left_available = [str(item) for item in left_profile.get("columns", [])]
+        right_available = [str(item) for item in right_profile.get("columns", [])]
+        if left_on not in left_available or right_on not in right_available:
+            raise ApiError(
+                code="INVALID_DATASET_JOIN", message="Join columns are invalid.", status_code=422
+            )
+        if join_type not in {"inner", "left"}:
+            raise ApiError(
+                code="INVALID_DATASET_JOIN", message="Join type is invalid.", status_code=422
+            )
+        left_selected = left_columns or left_available
+        right_selected = right_columns or right_available
+        if any(item not in left_available for item in left_selected) or any(
+            item not in right_available for item in right_selected
+        ):
+            raise ApiError(
+                code="INVALID_DATASET_JOIN",
+                message="Selected join columns are invalid.",
+                status_code=422,
+            )
+        left_bucket, left_key = self._storage_location(left_profile)
+        right_bucket, right_key = self._storage_location(right_profile)
+        left_payload = self.read_derivative(bucket=left_bucket, object_key=left_key)
+        right_payload = self.read_derivative(bucket=right_bucket, object_key=right_key)
+        paths: list[str] = []
+        connection: duckdb.DuckDBPyConnection | None = None
+        try:
+            for payload in (left_payload, right_payload):
+                with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as handle:
+                    handle.write(payload)
+                    paths.append(handle.name)
+            connection = duckdb.connect(":memory:", read_only=False)
+            left_expr = ", ".join(
+                f'l."{self._quote(item)}" AS "left_{self._quote(item)}"' for item in left_selected
+            )
+            right_expr = ", ".join(
+                f'r."{self._quote(item)}" AS "right_{self._quote(item)}"' for item in right_selected
+            )
+            rows = connection.execute(
+                f'SELECT {left_expr}, {right_expr} FROM read_parquet(?) l {join_type.upper()} JOIN read_parquet(?) r ON l."{self._quote(left_on)}" = r."{self._quote(right_on)}" LIMIT ?',
+                [paths[0], paths[1], limit],
+            ).fetchall()
+            columns = [f"left_{item}" for item in left_selected] + [
+                f"right_{item}" for item in right_selected
+            ]
+            return {
+                "columns": columns,
+                "rows": [dict(zip(columns, row, strict=True)) for row in rows],
+            }
+        finally:
+            if connection is not None:
+                connection.close()
+            for path in paths:
+                try:
+                    os.unlink(path)
+                except FileNotFoundError:
+                    pass
+
     @staticmethod
     def _quote(value: str) -> str:
         return value.replace('"', '""')

@@ -23,9 +23,13 @@ def get_metrics() -> Response:
 )
 def get_metrics_summary() -> MetricsSummaryResponse:
     """Admin-only JSON summary of key runtime metrics for the UI."""
-    api_requests, api_errors, db_queries = read_metrics_summary()
+    api_requests, api_errors, db_queries, worker_retries, worker_dead_letters = (
+        read_metrics_summary()
+    )
     return MetricsSummaryResponse(
         api_requests_total=api_requests,
         api_errors_total=api_errors,
         db_query_count=db_queries,
+        worker_retries_total=worker_retries,
+        worker_dead_letters_total=worker_dead_letters,
     )

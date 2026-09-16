@@ -328,7 +328,7 @@ services:
       service: worker
     container_name: averqel-library-worker
     environment:
-      AKS_WORKER_QUEUES: library_uploads
+      AKS_WORKER_QUEUES: library_uploads,media_derivatives
       AKS_WORKER_CONCURRENCY: ${AKS_LIBRARY_WORKER_CONCURRENCY:-1}
     mem_limit: 768m
     cpus: 1.0

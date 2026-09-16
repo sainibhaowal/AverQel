@@ -28,3 +28,35 @@ groups:
         annotations:
           summary: DeepSpace continuation failure rate is high
           description: More than 25% of continuation attempts failed during the last 15 minutes.
+
+  - name: deepspace-heavy-file-processing
+    interval: 30s
+    rules:
+      - alert: DeepSpaceHeavyFileDeadLetters
+        expr: increase(aks_worker_dead_letter_total{stage=~"deepspace_library_.*"}[10m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          service: deepspace-library
+        annotations:
+          summary: Heavy Library processing moved to dead letter
+          description: A Library derivative exhausted retries; inspect the file id and worker logs before replaying.
+      - alert: DeepSpaceHeavyFileRetriesHigh
+        expr: increase(aks_worker_retries_total{stage=~"deepspace_library_.*"}[10m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: deepspace-library
+        annotations:
+          summary: Heavy Library processing is retrying
+          description: More than ten derivative retries occurred in ten minutes; review capacity and parser health.
+      - alert: DeepSpaceApiErrorRateHigh
+        expr: |
+          increase(aks_api_errors_total[10m]) / clamp_min(increase(aks_api_requests_total[10m]), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: averqel-api
+        annotations:
+          summary: API error rate exceeds five percent
+          description: Check API, database, queue, and storage saturation before increasing worker concurrency.

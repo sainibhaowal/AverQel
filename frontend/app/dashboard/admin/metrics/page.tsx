@@ -18,6 +18,8 @@ interface MetricsSummary {
   api_requests_total: number;
   api_errors_total: number;
   db_query_count: number;
+  worker_retries_total: number;
+  worker_dead_letters_total: number;
 }
 
 interface Capabilities {
@@ -162,6 +164,23 @@ export default function MetricsPage() {
           </h3>
           <p className="text-foreground font-mono text-4xl font-black">
             {summary ? summary.api_errors_total.toLocaleString() : "--"}
+          </p>
+        </div>
+
+        <div className="glass-card border-l-4 border-l-amber-500 p-6 hover:border-l-amber-400">
+          <h3 className="mb-1 text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            Worker retries
+          </h3>
+          <p className="text-foreground font-mono text-4xl font-black">
+            {summary ? summary.worker_retries_total.toLocaleString() : "--"}
+          </p>
+        </div>
+        <div className="glass-card border-l-4 border-l-rose-500 p-6 hover:border-l-rose-400">
+          <h3 className="mb-1 text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            Dead letters
+          </h3>
+          <p className="text-foreground font-mono text-4xl font-black">
+            {summary ? summary.worker_dead_letters_total.toLocaleString() : "--"}
           </p>
         </div>
 

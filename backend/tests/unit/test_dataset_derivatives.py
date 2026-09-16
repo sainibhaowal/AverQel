@@ -65,6 +65,34 @@ def test_aggregate_is_allowlisted_and_uses_private_derivative() -> None:
     assert result["rows"][0] == {"group": "north", "value": 40.0}
 
 
+def test_join_is_bounded_and_returns_namespaced_columns() -> None:
+    output = io.BytesIO()
+    pl.DataFrame({"id": [1, 2], "name": ["one", "two"]}).write_parquet(output)
+    right = output.getvalue()
+    output = io.BytesIO()
+    pl.DataFrame({"id": [2, 3], "amount": [20, 30]}).write_parquet(output)
+    left = output.getvalue()
+    service = DatasetDerivativeService.__new__(DatasetDerivativeService)
+    payloads = iter((right, left))
+    service.read_derivative = lambda **_: next(payloads)  # type: ignore[method-assign]
+    profile_left = {"columns": ["id", "name"], "derivative_bucket": "p", "derivative_key": "l"}
+    profile_right = {"columns": ["id", "amount"], "derivative_bucket": "p", "derivative_key": "r"}
+
+    result = service.join(
+        left_profile=profile_left,
+        right_profile=profile_right,
+        left_on="id",
+        right_on="id",
+        left_columns=["id", "name"],
+        right_columns=["amount"],
+        join_type="inner",
+        limit=10,
+    )
+
+    assert result["columns"] == ["left_id", "left_name", "right_amount"]
+    assert result["rows"] == [{"left_id": 2, "left_name": "two", "right_amount": 20}]
+
+
 def test_query_rejects_unknown_column_before_sql() -> None:
     service, profile = _service_with_derivative()
 

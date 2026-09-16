@@ -50,6 +50,7 @@ celery_app.conf.update(
         # DeepSpace chat turns.  The dedicated worker has concurrency one.
         "deepspace.library_upload_finalize": {"queue": "library_uploads"},
         "deepspace.library_dataset_profile": {"queue": "dataset_indexing"},
+        "deepspace.library_media_derivative": {"queue": "media_derivatives"},
         "deepspace.dispatch_schedules": {"queue": "deepspace"},
         "deepspace.artifact_create": {"queue": "deepspace"},
     },

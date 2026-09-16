@@ -340,6 +340,25 @@ class DatasetChartSchema(DatasetAggregateSchema):
     filename: str = Field(default="dataset-chart.json", min_length=1, max_length=255)
 
 
+class DatasetJoinSchema(BaseModel):
+    right_file_id: uuid.UUID
+    left_on: str = Field(min_length=1, max_length=255)
+    right_on: str = Field(min_length=1, max_length=255)
+    left_columns: list[str] | None = Field(default=None, max_length=50)
+    right_columns: list[str] | None = Field(default=None, max_length=50)
+    join_type: Literal["inner", "left"] = "inner"
+    limit: int = Field(default=500, ge=1, le=500)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetJoinResponse(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, object]]
+
+    model_config = ConfigDict(extra="forbid")
+
+
 def _text_as_export_html(text: str, title: str) -> str:
     """Convert bounded user text to escaped HTML for the shared exporters."""
     blocks: list[str] = [f"<h1>{html.escape(title)}</h1>"]
@@ -2177,6 +2196,57 @@ async def create_workspace_dataset_chart(
             status_code=500,
         )
     return _serialize_file(artifact, include_content=True)
+
+
+@router.post(
+    "/{conversation_id}/files/{file_id}/dataset-join",
+    response_model=DatasetJoinResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def join_workspace_datasets(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    payload: DatasetJoinSchema,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DatasetJoinResponse:
+    """Join two user-owned, same-conversation derivatives without exposing SQL."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    left = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    right = _owned_file(
+        db=db, auth=auth, conversation_id=conversation_id, file_id=payload.right_file_id
+    )
+    left_profile = (
+        left.metadata_json.get("dataset_profile") if isinstance(left.metadata_json, dict) else None
+    )
+    right_profile = (
+        right.metadata_json.get("dataset_profile")
+        if isinstance(right.metadata_json, dict)
+        else None
+    )
+    if (
+        not isinstance(left_profile, dict)
+        or left_profile.get("status") != "ready"
+        or not isinstance(right_profile, dict)
+        or right_profile.get("status") != "ready"
+    ):
+        raise ApiError(
+            code="DATASET_NOT_READY",
+            message="Both datasets must finish processing first.",
+            status_code=409,
+        )
+    result = DatasetDerivativeService(settings).join(
+        left_profile=left_profile,
+        right_profile=right_profile,
+        left_on=payload.left_on,
+        right_on=payload.right_on,
+        left_columns=payload.left_columns,
+        right_columns=payload.right_columns,
+        join_type=payload.join_type,
+        limit=payload.limit,
+    )
+    return DatasetJoinResponse(**result)
 
 
 @router.get(
