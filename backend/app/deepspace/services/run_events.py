@@ -151,7 +151,6 @@ _TIMELINE_EVENT_NAMES = {
     "agent_testing",
     "agent_verifying",
     "agent_self_correct",
-    "agent_status",
 }
 _THINKING_EVENT_NAMES = {
     "thinking",

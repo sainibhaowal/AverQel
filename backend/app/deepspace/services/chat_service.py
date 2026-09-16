@@ -3813,19 +3813,6 @@ class DeepSpaceChatService:
                     terminal_status = "cancelled"
                     self.runtime.finish(run_id=run_id, status="cancelled", error="user_cancelled")
                     break
-                progress_step_id = f"progress_{round_index}"
-                # This is a safe execution summary, not provider chain-of-thought.
-                # It keeps the activity panel useful while the next provider/tool
-                # round is waiting on a remote service.
-                yield sse(
-                    "agent_status",
-                    {
-                        "status": "running",
-                        "step_id": progress_step_id,
-                        "turn_index": round_index,
-                        "text": "Analyzing the request and selecting the next safe action.",
-                    },
-                )
                 tool_calls: dict[int, dict[str, Any]] = {}
                 # Providers can split a function call across many SSE chunks.
                 # Track exactly what has already been sent to the UI so the
@@ -4763,15 +4750,6 @@ class DeepSpaceChatService:
                     yield sse("approval_request", awaiting_approval)
 
                 for item in valid_calls:
-                    yield sse(
-                        "agent_status",
-                        {
-                            "status": "completed",
-                            "step_id": progress_step_id,
-                            "turn_index": round_index,
-                            "text": "The next action is ready; executing it with the authorized workspace tools.",
-                        },
-                    )
                     tool_name = str(item["tool_name"])
                     if run_id is not None:
                         self.runtime.record_step(
