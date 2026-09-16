@@ -24,5 +24,8 @@ describe("DeepSpace Library format detection", () => {
     expect(libraryKindSupportsPreview(libraryFileKind("main.py", "text/x-python"))).toBe(false);
     expect(libraryKindSupportsEditor(libraryFileKind("report.pdf", "application/pdf"))).toBe(false);
     expect(libraryKindSupportsPreview(libraryFileKind("report.pdf", "application/pdf"))).toBe(true);
+    expect(libraryFileKind("PDF Vob 7-8.txt", "text/plain")).toBe("text");
+    expect(libraryKindSupportsEditor(libraryFileKind("PDF Vob 7-8.txt", "text/plain"))).toBe(true);
+    expect(libraryKindSupportsPreview(libraryFileKind("PDF Vob 7-8.txt", "text/plain"))).toBe(true);
   });
 });

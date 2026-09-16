@@ -99,7 +99,11 @@ export function libraryFileKind(name: string, contentType: string): LibraryFileK
     normalized.includes("rar")
   )
     return "archive";
-  if (CODE_EXTENSIONS.has(extension) || normalized.startsWith("text/")) return "code";
+  // A MIME type of text/plain is not source code.  Keep source extensions in
+  // the editor-only code mode, but give ordinary TXT/log files their split
+  // edit + readable preview workspace.
+  if (CODE_EXTENSIONS.has(extension)) return "code";
+  if (normalized.startsWith("text/")) return "text";
   return "text";
 }
 
@@ -108,5 +112,5 @@ export function libraryKindSupportsEditor(kind: LibraryFileKind) {
 }
 
 export function libraryKindSupportsPreview(kind: LibraryFileKind) {
-  return !["code", "text"].includes(kind);
+  return kind !== "code";
 }
