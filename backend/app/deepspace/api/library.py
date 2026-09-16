@@ -32,6 +32,7 @@ from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
+from app.deepspace.services.dataset_derivatives import DatasetDerivativeService
 from app.deepspace.services.library_storage import (
     LibraryStorageService,
     decode_library_payload,
@@ -279,6 +280,25 @@ class WorkspaceCsvPageSchema(BaseModel):
     rows: list[list[str]]
     offset: int
     limit: int
+    has_more: bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetQuerySchema(BaseModel):
+    columns: list[str] | None = Field(default=None, max_length=50)
+    limit: int = Field(default=200, ge=1, le=500)
+    offset: int = Field(default=0, ge=0, le=10_000_000)
+    order_by: str | None = Field(default=None, max_length=255)
+    descending: bool = False
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetQueryResponse(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, object]]
+    offset: int
     has_more: bool
 
     model_config = ConfigDict(extra="forbid")
@@ -1472,7 +1492,7 @@ async def create_workspace_file(
         is_binary=is_binary,
         metadata_json=(
             {"dataset_profile": {"status": "queued"}}
-            if decoded.content_type in {"text/csv", "text/x-csv", "text/tab-separated-values"}
+            if DatasetDerivativeService.supports(decoded.content_type)
             else {}
         ),
     )
@@ -1504,7 +1524,7 @@ async def create_workspace_file(
     _add_version(db, file)
     db.commit()
     db.refresh(file)
-    if file.content_type in {"text/csv", "text/x-csv", "text/tab-separated-values"}:
+    if DatasetDerivativeService.supports(file.content_type):
         profile_library_dataset.delay(file_id=str(file.id), tenant_id=str(auth.tenant_id))
     return _serialize_file(file, include_content=True)
 
@@ -1941,6 +1961,30 @@ async def read_workspace_csv_page(
         raise ApiError(
             code="INVALID_REQUEST", message="The selected file is not a CSV table.", status_code=422
         )
+    profile = (
+        file.metadata_json.get("dataset_profile") if isinstance(file.metadata_json, dict) else None
+    )
+    if isinstance(profile, dict) and profile.get("status") == "ready":
+        result = DatasetDerivativeService(settings).query(
+            profile=profile,
+            columns=None,
+            limit=limit,
+            offset=offset,
+            order_by=None,
+            descending=False,
+        )
+        columns = [str(column) for column in result["columns"]]
+        parquet_rows = [
+            ["" if value is None else str(value) for value in row.values()]
+            for row in result["rows"]
+        ]
+        return WorkspaceCsvPageSchema(
+            columns=columns,
+            rows=parquet_rows,
+            offset=offset,
+            limit=limit,
+            has_more=bool(result["has_more"]),
+        )
     delimiter = "\t" if file.content_type == "text/tab-separated-values" else ","
     payload = _library_file_payload(file=file, settings=settings)
     # csv.reader handles quoted newlines and escaped delimiters correctly. Only
@@ -1970,6 +2014,40 @@ async def read_workspace_csv_page(
         limit=limit,
         has_more=next(reader, None) is not None,
     )
+
+
+@router.post(
+    "/{conversation_id}/files/{file_id}/dataset-query",
+    response_model=DatasetQueryResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def query_workspace_dataset(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    payload: DatasetQuerySchema,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DatasetQueryResponse:
+    """Serve bounded read-only dataset pages from a private Parquet derivative."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    profile = (
+        file.metadata_json.get("dataset_profile") if isinstance(file.metadata_json, dict) else None
+    )
+    if not isinstance(profile, dict) or profile.get("status") != "ready":
+        raise ApiError(
+            code="DATASET_NOT_READY", message="Dataset is still processing.", status_code=409
+        )
+    result = DatasetDerivativeService(settings).query(
+        profile=profile,
+        columns=payload.columns,
+        limit=payload.limit,
+        offset=payload.offset,
+        order_by=payload.order_by,
+        descending=payload.descending,
+    )
+    return DatasetQueryResponse(**result)
 
 
 @router.get(

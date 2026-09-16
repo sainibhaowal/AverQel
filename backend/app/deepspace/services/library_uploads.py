@@ -12,6 +12,7 @@ from app.core.errors import ApiError
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
+from app.deepspace.services.dataset_derivatives import DatasetDerivativeService
 from app.deepspace.services.library_storage import LibraryStorageService
 
 # Database-backed editing is appropriate for notes and small source files, but
@@ -125,7 +126,7 @@ def finalize_upload(
         is_binary=is_binary,
         metadata_json=(
             {"dataset_profile": {"status": "queued"}}
-            if content_type in {"text/csv", "text/x-csv", "text/tab-separated-values"}
+            if DatasetDerivativeService.supports(content_type)
             else {}
         ),
     )

@@ -26,6 +26,8 @@ python-docx==1.2.0
 lxml==6.1.2
 python-pptx==1.0.2
 openpyxl==3.1.5
+duckdb==1.2.2
+polars==1.27.1
 pillow==12.3.0
 paddlepaddle==3.3.1
 paddleocr==2.10.0
