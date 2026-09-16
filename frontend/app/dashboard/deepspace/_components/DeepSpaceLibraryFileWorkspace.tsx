@@ -16,7 +16,7 @@ import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
 import { ArrowLeft, Code2, Eye, PanelLeft, PencilLine } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LibraryPreview } from "./DeepSpaceLibraryPreview";
 import {
@@ -139,6 +139,15 @@ export default function DeepSpaceLibraryFileWorkspace({
   const defaultMode: PreviewMode =
     editorSupported && previewSupported ? "split" : editorSupported ? "edit" : "preview";
   const [mode, setMode] = useState<PreviewMode>(defaultMode);
+  const previousCapabilities = useRef({ editorSupported, previewSupported });
+  useEffect(() => {
+    const previous = previousCapabilities.current;
+    // A file that becomes preview-capable after an upgrade must not remain
+    // stranded in Edit mode.  Do not override a user's later mode choice.
+    if (!previous.previewSupported && editorSupported && previewSupported) setMode("split");
+    if (previous.editorSupported && !editorSupported && previewSupported) setMode("preview");
+    previousCapabilities.current = { editorSupported, previewSupported };
+  }, [editorSupported, previewSupported]);
   const extensions = useMemo(() => languageForFile(name, contentType), [contentType, name]);
   const editorVisible = editorSupported && mode !== "preview";
   const previewVisible = previewSupported && mode !== "edit";
@@ -180,7 +189,7 @@ export default function DeepSpaceLibraryFileWorkspace({
                 className={`inline-flex items-center gap-1 rounded-md px-2 py-1 transition ${
                   mode === nextMode
                     ? "bg-primary/15 text-primary"
-                    : "text-foreground/50 hover:text-foreground"
+                    : "bg-surface-1/70 text-foreground/75 hover:bg-primary/10 hover:text-primary"
                 }`}
               >
                 <Icon size={11} /> {label}
@@ -212,7 +221,7 @@ export default function DeepSpaceLibraryFileWorkspace({
                 closeBrackets: true,
               }}
               theme="dark"
-              className="[&_.cm-gutters]:border-r-glass-border [&_.cm-gutters]:bg-surface-1 h-full text-xs [&_.cm-editor]:h-full [&_.cm-editor]:outline-none"
+              className="[&_.cm-activeLineGutter]:!bg-[var(--surface-2)] [&_.cm-editor]:!bg-[var(--surface-0)] [&_.cm-editor]:h-full [&_.cm-editor]:outline-none [&_.cm-gutters]:!border-r-[var(--glass-border)] [&_.cm-gutters]:!bg-[var(--surface-1)] [&_.cm-gutters]:!text-[var(--text-muted)] h-full text-xs"
             />
           </div>
         ) : null}

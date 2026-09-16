@@ -92,6 +92,7 @@ type DeepSpaceLibraryDrawerProps = {
 // through the panel control, but the safe default is always the full panel.
 const LIBRARY_FILES_COLLAPSED_KEY = "deepspace.library.files.collapsed.v2";
 const MAX_BINARY_BROWSER_PREVIEW_BYTES = 5 * 1024 * 1024;
+const MAX_LIBRARY_EDITABLE_BYTES = 512 * 1024;
 
 function UploadCancelButton({
   item,
@@ -1605,7 +1606,10 @@ export default function DeepSpaceLibraryDrawer({
                       }
                     : undefined
                 }
-                readOnly={Boolean(selected.is_binary || selected.content_truncated)}
+                readOnly={Boolean(
+                  selected.content_truncated ||
+                    (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
+                )}
                 contentTruncated={Boolean(selected.content_truncated)}
                 sizeBytes={selected.size_bytes}
               />
@@ -1637,7 +1641,10 @@ export default function DeepSpaceLibraryDrawer({
                   }
                 : undefined
             }
-            readOnly={Boolean(selected.is_binary || selected.content_truncated)}
+            readOnly={Boolean(
+              selected.content_truncated ||
+                (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
+            )}
             contentTruncated={Boolean(selected.content_truncated)}
             sizeBytes={selected.size_bytes}
           />

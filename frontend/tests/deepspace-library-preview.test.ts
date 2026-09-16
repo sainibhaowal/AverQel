@@ -27,5 +27,9 @@ describe("DeepSpace Library format detection", () => {
     expect(libraryFileKind("PDF Vob 7-8.txt", "text/plain")).toBe("text");
     expect(libraryKindSupportsEditor(libraryFileKind("PDF Vob 7-8.txt", "text/plain"))).toBe(true);
     expect(libraryKindSupportsPreview(libraryFileKind("PDF Vob 7-8.txt", "text/plain"))).toBe(true);
+    expect(libraryKindSupportsEditor(libraryFileKind("proposal.docx", "application/octet-stream"))).toBe(true);
+    expect(libraryKindSupportsPreview(libraryFileKind("proposal.docx", "application/octet-stream"))).toBe(true);
+    expect(libraryKindSupportsEditor(libraryFileKind("data.csv", "text/csv"))).toBe(true);
+    expect(libraryKindSupportsPreview(libraryFileKind("data.csv", "text/csv"))).toBe(true);
   });
 });
