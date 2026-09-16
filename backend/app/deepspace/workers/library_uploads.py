@@ -18,6 +18,11 @@ from app.deepspace.services.library_storage import LibraryStorageService
 from app.deepspace.services.library_uploads import finalize_upload
 from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
+from app.system.services.metrics_service import (
+    increment_worker_dead_letter,
+    increment_worker_retry,
+    observe_worker_stage,
+)
 from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
@@ -126,49 +131,78 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
     bind=True,
     name="deepspace.library_dataset_profile",
     queue="dataset_indexing",
+    max_retries=3,
 )  # type: ignore[misc]
 def profile_library_dataset(self: Task, *, file_id: str, tenant_id: str) -> str:
     """Profile structured files off the API path and persist bounded metadata."""
-    del self
     settings = get_settings()
     parsed_file_id = uuid.UUID(file_id)
     parsed_tenant_id = uuid.UUID(tenant_id)
     db = get_session_factory()()
     try:
-        db.execute(text("SET ROLE aks_app"))
-        set_db_tenant_context(db, parsed_tenant_id)
-        from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+        with observe_worker_stage("deepspace_library_dataset_profile"):
+            db.execute(text("SET ROLE aks_app"))
+            set_db_tenant_context(db, parsed_tenant_id)
+            from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 
-        file = db.execute(
-            select(DeepSpaceWorkspaceFile).where(
-                DeepSpaceWorkspaceFile.id == parsed_file_id,
-                DeepSpaceWorkspaceFile.tenant_id == parsed_tenant_id,
+            file = db.execute(
+                select(DeepSpaceWorkspaceFile).where(
+                    DeepSpaceWorkspaceFile.id == parsed_file_id,
+                    DeepSpaceWorkspaceFile.tenant_id == parsed_tenant_id,
+                )
+            ).scalar_one_or_none()
+            if file is None or not DatasetDerivativeService.supports(file.content_type):
+                return "skipped"
+            payload = (
+                LibraryStorageService(settings).storage.get_bytes(
+                    bucket=file.storage_bucket, object_key=file.storage_key
+                )
+                if file.storage_bucket and file.storage_key
+                else (file.content or "").encode("utf-8")
             )
-        ).scalar_one_or_none()
-        if file is None or not DatasetDerivativeService.supports(file.content_type):
-            return "skipped"
-        payload = (
-            LibraryStorageService(settings).storage.get_bytes(
-                bucket=file.storage_bucket, object_key=file.storage_key
+            derivative = DatasetDerivativeService(settings).build(
+                tenant_id=parsed_tenant_id,
+                file_id=file.id,
+                filename=file.name,
+                content_type=file.content_type,
+                payload=payload,
             )
-            if file.storage_bucket and file.storage_key
-            else (file.content or "").encode("utf-8")
-        )
-        derivative = DatasetDerivativeService(settings).build(
-            tenant_id=parsed_tenant_id,
-            file_id=file.id,
-            filename=file.name,
-            content_type=file.content_type,
-            payload=payload,
-        )
-        metadata = dict(file.metadata_json or {})
-        metadata["dataset_profile"] = safe_dataset_profile(derivative)
-        file.metadata_json = metadata
-        db.commit()
-        return "profiled"
-    except Exception:
+            metadata = dict(file.metadata_json or {})
+            metadata["dataset_profile"] = safe_dataset_profile(derivative)
+            file.metadata_json = metadata
+            db.commit()
+            return "profiled"
+    except Exception as exc:  # noqa: BLE001
         db.rollback()
-        logger.exception("Library dataset profiling failed", extra={"file_id": file_id})
+        if self.request.retries < self.max_retries:
+            increment_worker_retry(stage="deepspace_library_dataset_profile")
+            logger.warning(
+                "Library dataset profiling retry scheduled",
+                extra={"file_id": file_id, "retry": self.request.retries + 1},
+                exc_info=True,
+            )
+            raise self.retry(exc=exc, countdown=min(60, 2 ** (self.request.retries + 1))) from exc
+        increment_worker_dead_letter(stage="deepspace_library_dataset_profile")
+        logger.exception("Library dataset profiling exhausted retries", extra={"file_id": file_id})
+        try:
+            from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+
+            file = db.execute(
+                select(DeepSpaceWorkspaceFile).where(
+                    DeepSpaceWorkspaceFile.id == parsed_file_id,
+                    DeepSpaceWorkspaceFile.tenant_id == parsed_tenant_id,
+                )
+            ).scalar_one_or_none()
+            if file is not None:
+                metadata = dict(file.metadata_json or {})
+                metadata["dataset_profile"] = {
+                    "status": "failed",
+                    "error_code": "DATASET_PARSE_FAILED",
+                }
+                file.metadata_json = metadata
+                db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
         raise
     finally:
         try:

@@ -11,6 +11,7 @@ from typing import Any
 
 import duckdb
 import polars as pl
+from openpyxl import load_workbook
 
 from app.core.config import Settings
 from app.core.errors import ApiError
@@ -34,6 +35,7 @@ class DatasetDerivative:
     column_count: int
     columns: list[str]
     format: str
+    row_group_size: int
 
 
 class DatasetDerivativeService:
@@ -75,7 +77,21 @@ class DatasetDerivativeService:
             elif (
                 content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             ):
-                frame = pl.read_excel(io.BytesIO(payload))
+                # Read-only mode prevents openpyxl from materialising workbook styles,
+                # formula graphs, and empty cells in the API process. This task only
+                # runs on the dedicated dataset worker.
+                workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
+                worksheet = workbook.active
+                if worksheet is None:
+                    raise ValueError("Workbook has no worksheet")
+                values = worksheet.iter_rows(values_only=True)
+                header = next(values, None)
+                if not header:
+                    raise ValueError("Workbook is empty")
+                names = [str(value or f"column_{index + 1}") for index, value in enumerate(header)]
+                records = [dict(zip(names, row, strict=True)) for row in values]
+                workbook.close()
+                frame = pl.from_dicts(records, schema=names)
                 source_format = "xlsx"
             else:
                 frame = pl.read_json(io.BytesIO(payload))
@@ -88,7 +104,15 @@ class DatasetDerivativeService:
             ) from exc
 
         output = io.BytesIO()
-        frame.write_parquet(output, compression="zstd", statistics=True)
+        # Row groups are durable columnar indexes. DuckDB uses their statistics
+        # for predicate pushdown instead of rescanning a CSV on every request.
+        row_group_size = 100_000
+        frame.write_parquet(
+            output,
+            compression="zstd",
+            statistics=True,
+            row_group_size=row_group_size,
+        )
         stored = self.storage.put_bytes(
             tenant_id=tenant_id,
             document_id=uuid.uuid4(),
@@ -103,6 +127,7 @@ class DatasetDerivativeService:
             column_count=frame.width,
             columns=list(frame.columns)[:200],
             format=source_format,
+            row_group_size=row_group_size,
         )
 
     def read_derivative(self, *, bucket: str, object_key: str) -> bytes:
@@ -120,6 +145,7 @@ class DatasetDerivativeService:
         offset: int,
         order_by: str | None,
         descending: bool,
+        filters: list[dict[str, object]] | None = None,
     ) -> dict[str, Any]:
         """Run a bounded read-only DuckDB query against a private derivative."""
         available = [str(column) for column in profile.get("columns", [])]
@@ -142,6 +168,7 @@ class DatasetDerivativeService:
                 message="Dataset derivative is not ready.",
                 status_code=409,
             )
+        where_sql, where_values = self._filters_sql(filters or [], available)
         payload = self.read_derivative(bucket=bucket, object_key=object_key)
         path = ""
         connection: duckdb.DuckDBPyConnection | None = None
@@ -157,8 +184,8 @@ class DatasetDerivativeService:
                 else ""
             )
             result = connection.execute(
-                f"SELECT {quoted} FROM read_parquet(?) {order} LIMIT ? OFFSET ?",
-                [path, limit + 1, offset],
+                f"SELECT {quoted} FROM read_parquet(?) {where_sql}{order} LIMIT ? OFFSET ?",
+                [path, *where_values, limit + 1, offset],
             )
             values = result.fetchall()
             has_more = len(values) > limit
@@ -173,6 +200,132 @@ class DatasetDerivativeService:
                 except FileNotFoundError:
                     pass
 
+    def aggregate(
+        self,
+        *,
+        profile: dict[str, Any],
+        metric: str,
+        column: str,
+        group_by: str | None,
+        filters: list[dict[str, object]] | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Run a bounded, allowlisted aggregation for tables and charts."""
+        available = [str(item) for item in profile.get("columns", [])]
+        if column not in available or (group_by is not None and group_by not in available):
+            raise ApiError(
+                code="INVALID_DATASET_COLUMNS",
+                message="Requested columns are invalid.",
+                status_code=422,
+            )
+        aggregates = {
+            "count": "COUNT(*)",
+            "sum": f'SUM(TRY_CAST("{self._quote(column)}" AS DOUBLE))',
+            "avg": f'AVG(TRY_CAST("{self._quote(column)}" AS DOUBLE))',
+            "min": f'MIN("{self._quote(column)}")',
+            "max": f'MAX("{self._quote(column)}")',
+        }
+        expression = aggregates.get(metric)
+        if expression is None:
+            raise ApiError(
+                code="INVALID_DATASET_AGGREGATION",
+                message="Aggregation is invalid.",
+                status_code=422,
+            )
+        bucket, object_key = self._storage_location(profile)
+        where_sql, where_values = self._filters_sql(filters or [], available)
+        payload = self.read_derivative(bucket=bucket, object_key=object_key)
+        path = ""
+        connection: duckdb.DuckDBPyConnection | None = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as handle:
+                handle.write(payload)
+                path = handle.name
+            connection = duckdb.connect(":memory:", read_only=False)
+            if group_by:
+                group = f'"{self._quote(group_by)}"'
+                statement = (
+                    f"SELECT {group} AS group, {expression} AS value FROM read_parquet(?)"
+                    f" {where_sql} GROUP BY {group} ORDER BY value DESC NULLS LAST LIMIT ?"
+                )
+                result_columns = ["group", "value"]
+            else:
+                statement = f"SELECT {expression} AS value FROM read_parquet(?) {where_sql}"
+                result_columns = ["value"]
+            rows = connection.execute(
+                statement, [path, *where_values, *([limit] if group_by else [])]
+            ).fetchall()
+            return {
+                "columns": result_columns,
+                "rows": [dict(zip(result_columns, row, strict=True)) for row in rows],
+            }
+        finally:
+            if connection is not None:
+                connection.close()
+            if path:
+                try:
+                    os.unlink(path)
+                except FileNotFoundError:
+                    pass
+
+    @staticmethod
+    def _quote(value: str) -> str:
+        return value.replace('"', '""')
+
+    def _storage_location(self, profile: dict[str, Any]) -> tuple[str, str]:
+        bucket = str(profile.get("derivative_bucket") or "")
+        object_key = str(profile.get("derivative_key") or "")
+        if not bucket or not object_key:
+            raise ApiError(
+                code="DATASET_NOT_READY",
+                message="Dataset derivative is not ready.",
+                status_code=409,
+            )
+        return bucket, object_key
+
+    def _filters_sql(
+        self, filters: list[dict[str, object]], available: list[str]
+    ) -> tuple[str, list[object]]:
+        clauses: list[str] = []
+        values: list[object] = []
+        operators = {
+            "eq": "=",
+            "ne": "!=",
+            "gt": ">",
+            "gte": ">=",
+            "lt": "<",
+            "lte": "<=",
+            "contains": "ILIKE",
+        }
+        if len(filters) > 10:
+            raise ApiError(
+                code="TOO_MANY_DATASET_FILTERS",
+                message="At most 10 filters are allowed.",
+                status_code=422,
+            )
+        for item in filters:
+            column = str(item.get("column") or "")
+            operator = str(item.get("operator") or "")
+            if column not in available or operator not in operators:
+                raise ApiError(
+                    code="INVALID_DATASET_FILTER",
+                    message="Dataset filter is invalid.",
+                    status_code=422,
+                )
+            value = item.get("value")
+            if operator == "contains":
+                clauses.append(f'CAST("{self._quote(column)}" AS VARCHAR) ILIKE ?')
+                values.append(f"%{value}%")
+            elif isinstance(value, int | float) and not isinstance(value, bool):
+                clauses.append(
+                    f'TRY_CAST("{self._quote(column)}" AS DOUBLE) {operators[operator]} ?'
+                )
+                values.append(value)
+            else:
+                clauses.append(f'CAST("{self._quote(column)}" AS VARCHAR) {operators[operator]} ?')
+                values.append(str(value))
+        return (f" WHERE {' AND '.join(clauses)}" if clauses else "", values)
+
 
 def safe_dataset_profile(derivative: DatasetDerivative) -> dict[str, Any]:
     return {
@@ -182,6 +335,7 @@ def safe_dataset_profile(derivative: DatasetDerivative) -> dict[str, Any]:
         "row_count": derivative.row_count,
         "column_count": derivative.column_count,
         "columns": derivative.columns,
+        "row_group_size": derivative.row_group_size,
         "derivative_bucket": derivative.bucket,
         "derivative_key": derivative.object_key,
     }

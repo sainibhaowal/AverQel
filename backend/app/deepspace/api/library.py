@@ -291,6 +291,7 @@ class DatasetQuerySchema(BaseModel):
     offset: int = Field(default=0, ge=0, le=10_000_000)
     order_by: str | None = Field(default=None, max_length=255)
     descending: bool = False
+    filters: list[DatasetFilterSchema] = Field(default_factory=list, max_length=10)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -300,6 +301,33 @@ class DatasetQueryResponse(BaseModel):
     rows: list[dict[str, object]]
     offset: int
     has_more: bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetFilterSchema(BaseModel):
+    """A parameterized filter; arbitrary SQL is deliberately not accepted."""
+
+    column: str = Field(min_length=1, max_length=255)
+    operator: Literal["eq", "ne", "gt", "gte", "lt", "lte", "contains"]
+    value: str | int | float | bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetAggregateSchema(BaseModel):
+    metric: Literal["count", "sum", "avg", "min", "max"]
+    column: str = Field(min_length=1, max_length=255)
+    group_by: str | None = Field(default=None, max_length=255)
+    filters: list[DatasetFilterSchema] = Field(default_factory=list, max_length=10)
+    limit: int = Field(default=100, ge=1, le=500)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetAggregateResponse(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, object]]
 
     model_config = ConfigDict(extra="forbid")
 
@@ -489,6 +517,7 @@ def _conversation(*, db: Session, auth: AuthContext, conversation_id: uuid.UUID)
 def _serialize_file(
     file: DeepSpaceWorkspaceFile, *, include_content: bool = False
 ) -> WorkspaceFileSchema:
+    metadata = getattr(file, "metadata_json", None)
     raw_content = file.content if include_content and not file.is_binary else None
     raw_extracted_text = file.extracted_text if include_content else None
     content_truncated = bool(
@@ -522,9 +551,8 @@ def _serialize_file(
             else None
         ),
         dataset_profile=(
-            cast(dict[str, object], file.metadata_json.get("dataset_profile"))
-            if isinstance(file.metadata_json, dict)
-            and isinstance(file.metadata_json.get("dataset_profile"), dict)
+            cast(dict[str, object], metadata.get("dataset_profile"))
+            if isinstance(metadata, dict) and isinstance(metadata.get("dataset_profile"), dict)
             else None
         ),
     )
@@ -2046,8 +2074,44 @@ async def query_workspace_dataset(
         offset=payload.offset,
         order_by=payload.order_by,
         descending=payload.descending,
+        filters=[item.model_dump() for item in payload.filters],
     )
     return DatasetQueryResponse(**result)
+
+
+@router.post(
+    "/{conversation_id}/files/{file_id}/dataset-aggregate",
+    response_model=DatasetAggregateResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def aggregate_workspace_dataset(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    payload: DatasetAggregateSchema,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DatasetAggregateResponse:
+    """Return a bounded server-side aggregate suitable for a table or chart."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    profile = (
+        file.metadata_json.get("dataset_profile") if isinstance(file.metadata_json, dict) else None
+    )
+    if not isinstance(profile, dict) or profile.get("status") != "ready":
+        raise ApiError(
+            code="DATASET_NOT_READY", message="Dataset is still processing.", status_code=409
+        )
+    return DatasetAggregateResponse(
+        **DatasetDerivativeService(settings).aggregate(
+            profile=profile,
+            metric=payload.metric,
+            column=payload.column,
+            group_by=payload.group_by,
+            filters=[item.model_dump() for item in payload.filters],
+            limit=payload.limit,
+        )
+    )
 
 
 @router.get(
