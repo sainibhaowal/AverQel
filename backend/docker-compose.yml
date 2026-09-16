@@ -268,12 +268,24 @@ services:
       service: worker
     container_name: averqel-library-worker
     environment:
-      AKS_WORKER_QUEUES: library_uploads,dataset_indexing
+      AKS_WORKER_QUEUES: library_uploads
       AKS_WORKER_CONCURRENCY: ${AKS_LIBRARY_WORKER_CONCURRENCY:-1}
     # A single import cannot starve API, chat, or ingestion workers.  This is
     # deliberately above the 25 MiB upload ceiling to leave room for safe
     # extraction, malware scanning, and archive handling.
     mem_limit: 768m
+    cpus: 1.0
+
+  dataset-worker:
+    extends:
+      service: worker
+    container_name: averqel-dataset-worker
+    environment:
+      AKS_WORKER_QUEUES: dataset_indexing
+      AKS_WORKER_CONCURRENCY: ${AKS_DATASET_WORKER_CONCURRENCY:-1}
+    # Dataset profiling/indexing is independently bounded so dense files do
+    # not delay upload finalization or interactive application workers.
+    mem_limit: 1024m
     cpus: 1.0
 
   scheduler:

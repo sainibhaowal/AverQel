@@ -333,6 +333,16 @@ services:
     mem_limit: 768m
     cpus: 1.0
 
+  dataset-worker:
+    extends:
+      service: worker
+    container_name: averqel-dataset-worker
+    environment:
+      AKS_WORKER_QUEUES: dataset_indexing
+      AKS_WORKER_CONCURRENCY: ${AKS_DATASET_WORKER_CONCURRENCY:-1}
+    mem_limit: 1024m
+    cpus: 1.0
+
   scheduler:
     container_name: averqel-scheduler
     image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}
