@@ -3,6 +3,8 @@
 import ExcelJS from "exceljs";
 import {
   Archive,
+  ChevronLeft,
+  ChevronRight,
   FileWarning,
   Maximize2,
   Minus,
@@ -23,6 +25,7 @@ import {
 } from "react";
 
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
+import { fetchWithAuth } from "@/lib/api";
 import type { LibraryFileKind } from "./DeepSpaceLibraryFormats";
 
 type DiffRow = {
@@ -250,24 +253,46 @@ function CsvPreviewTable({
   value,
   contentTruncated,
   sizeBytes,
+  pageUrl,
 }: {
   value: string;
   contentTruncated: boolean;
   sizeBytes?: number;
+  pageUrl?: string | null;
 }) {
   const preview = useMemo(() => parseCsvPreview(value), [value]);
   const limited = preview.truncated || contentTruncated;
+  const [page, setPage] = useState<{ columns: string[]; rows: string[][]; offset: number; limit: number; has_more: boolean } | null>(null);
+  const [loadingPage, setLoadingPage] = useState(false);
+  const loadPage = async (offset: number) => {
+    if (!pageUrl) return;
+    setLoadingPage(true);
+    try {
+      const response = (await fetchWithAuth(`${pageUrl}?offset=${offset}&limit=${CSV_PREVIEW_MAX_ROWS}`, { timeoutMs: 30_000 })) as Response;
+      if (response.ok) setPage((await response.json()) as typeof page);
+    } finally {
+      setLoadingPage(false);
+    }
+  };
+  useEffect(() => {
+    if (pageUrl) queueMicrotask(() => void loadPage(0));
+  }, [pageUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  const displayedRows = page ? [page.columns, ...page.rows] : preview.rows;
   return (
-    <Table
-      rows={preview.rows}
-      notice={
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1"><Table rows={displayedRows} notice={
         limited
-          ? `Showing a safe preview of the first ${CSV_PREVIEW_MAX_ROWS} rows / ${CSV_PREVIEW_MAX_COLUMNS} columns. The original ${
+          ? `Showing ${page ? `rows ${page.offset + 1}–${page.offset + page.rows.length}` : `the first ${CSV_PREVIEW_MAX_ROWS} rows`} / ${CSV_PREVIEW_MAX_COLUMNS} columns. The browser renders one page at a time; the original ${
               sizeBytes ? `${Math.ceil(sizeBytes / 1024 / 1024)} MB ` : ""
             }file stays private and can be downloaded or analyzed in the sandbox.`
           : null
-      }
-    />
+      } /></div>
+      {pageUrl ? <div className="border-glass-border flex shrink-0 items-center justify-between border-t px-3 py-2 text-[11px]">
+        <button type="button" disabled={loadingPage || !page?.offset} onClick={() => void loadPage(Math.max(0, (page?.offset ?? 0) - CSV_PREVIEW_MAX_ROWS))} className="inline-flex items-center gap-1 disabled:opacity-40"><ChevronLeft size={13} /> Previous</button>
+        <span className="text-foreground/55">{loadingPage ? "Loading rows…" : "Paged table view"}</span>
+        <button type="button" disabled={loadingPage || !page?.has_more} onClick={() => void loadPage((page?.offset ?? 0) + CSV_PREVIEW_MAX_ROWS)} className="inline-flex items-center gap-1 disabled:opacity-40">Next <ChevronRight size={13} /></button>
+      </div> : null}
+    </div>
   );
 }
 
@@ -500,6 +525,7 @@ export function LibraryPreview({
   onArchiveEntrySelect,
   contentTruncated = false,
   sizeBytes,
+  csvPageUrl,
 }: {
   kind: LibraryFileKind;
   contentType: string;
@@ -509,6 +535,7 @@ export function LibraryPreview({
   onArchiveEntrySelect?: (entry: ArchiveEntry) => void;
   contentTruncated?: boolean;
   sizeBytes?: number;
+  csvPageUrl?: string | null;
 }) {
   if (kind === "markdown") return <DeepSpaceMarkdownRenderer content={value} />;
   if (kind === "csv")
@@ -517,6 +544,7 @@ export function LibraryPreview({
         value={value}
         contentTruncated={contentTruncated}
         sizeBytes={sizeBytes}
+        pageUrl={csvPageUrl}
       />
     );
   if (kind === "spreadsheet") return <SpreadsheetTable value={value} previewUrl={previewUrl} />;

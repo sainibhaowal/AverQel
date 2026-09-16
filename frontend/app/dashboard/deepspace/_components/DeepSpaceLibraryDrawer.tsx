@@ -1612,6 +1612,7 @@ export default function DeepSpaceLibraryDrawer({
                 )}
                 contentTruncated={Boolean(selected.content_truncated)}
                 sizeBytes={selected.size_bytes}
+                csvPageUrl={selected.content_type === "text/csv" || selected.content_type === "text/x-csv" || selected.content_type === "text/tab-separated-values" ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page` : null}
               />
             ) : (
               <div className="border-glass-border bg-surface-1/40 text-foreground/45 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed px-6 text-center text-xs">
@@ -1647,6 +1648,7 @@ export default function DeepSpaceLibraryDrawer({
             )}
             contentTruncated={Boolean(selected.content_truncated)}
             sizeBytes={selected.size_bytes}
+            csvPageUrl={selected.content_type === "text/csv" || selected.content_type === "text/x-csv" || selected.content_type === "text/tab-separated-values" ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page` : null}
           />
         </section>
       ) : (

@@ -110,6 +110,7 @@ export default function DeepSpaceLibraryFileWorkspace({
   readOnly = false,
   contentTruncated = false,
   sizeBytes,
+  csvPageUrl,
 }: {
   name: string;
   contentType: string;
@@ -130,6 +131,7 @@ export default function DeepSpaceLibraryFileWorkspace({
   readOnly?: boolean;
   contentTruncated?: boolean;
   sizeBytes?: number;
+  csvPageUrl?: string | null;
 }) {
   const kind = libraryFileKind(name, contentType);
   const editorSupported = libraryKindSupportsEditor(kind) && !readOnly;
@@ -236,6 +238,7 @@ export default function DeepSpaceLibraryFileWorkspace({
               onArchiveEntrySelect={onArchiveEntrySelect}
               contentTruncated={contentTruncated}
               sizeBytes={sizeBytes}
+              csvPageUrl={csvPageUrl}
             />
           </div>
         ) : null}

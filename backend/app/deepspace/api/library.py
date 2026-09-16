@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import html
 import io
@@ -266,6 +267,18 @@ class WorkspaceFileSchema(BaseModel):
     content_truncated: bool = False
     download_url: str | None = None
     archive_entries: list[dict[str, object]] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class WorkspaceCsvPageSchema(BaseModel):
+    """A bounded, authorized page of a CSV stored in the Library."""
+
+    columns: list[str]
+    rows: list[list[str]]
+    offset: int
+    limit: int
+    has_more: bool
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1891,6 +1904,58 @@ async def stream_workspace_file_content(
         )
     headers["Content-Length"] = str(len(payload))
     return StreamingResponse(iter([payload]), media_type=file.content_type, headers=headers)
+
+
+@router.get(
+    "/{conversation_id}/files/{file_id}/csv-page",
+    response_model=WorkspaceCsvPageSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def read_workspace_csv_page(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    offset: int = Query(default=0, ge=0, le=10_000_000),
+    limit: int = Query(default=200, ge=1, le=500),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> WorkspaceCsvPageSchema:
+    """Return one bounded CSV page without returning the full data set to the browser."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    if file.content_type not in {"text/csv", "text/x-csv", "text/tab-separated-values"}:
+        raise ApiError(
+            code="INVALID_REQUEST", message="The selected file is not a CSV table.", status_code=422
+        )
+    delimiter = "\t" if file.content_type == "text/tab-separated-values" else ","
+    payload = _library_file_payload(file=file, settings=settings)
+    # csv.reader handles quoted newlines and escaped delimiters correctly. Only
+    # the requested page plus one sentinel row is retained in the response.
+    reader = csv.reader(
+        io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8-sig", errors="replace", newline=""),
+        delimiter=delimiter,
+    )
+    columns = next(reader, [])
+    for _ in range(offset):
+        if next(reader, None) is None:
+            return WorkspaceCsvPageSchema(
+                columns=columns, rows=[], offset=offset, limit=limit, has_more=False
+            )
+    rows: list[list[str]] = []
+    for _ in range(limit):
+        row = next(reader, None)
+        if row is None:
+            return WorkspaceCsvPageSchema(
+                columns=columns, rows=rows, offset=offset, limit=limit, has_more=False
+            )
+        rows.append(row[:50])
+    return WorkspaceCsvPageSchema(
+        columns=columns[:50],
+        rows=rows,
+        offset=offset,
+        limit=limit,
+        has_more=next(reader, None) is not None,
+    )
 
 
 @router.get(
