@@ -206,6 +206,65 @@ function Table({ rows, notice }: { rows: string[][]; notice?: string | null }) {
   );
 }
 
+/**
+ * Fixed-height grid virtualization for server-paged data.  At most the visible
+ * rows plus a small overscan exist in the DOM, even when a future page size is
+ * increased.  It never attempts to load the original file in the browser.
+ */
+function VirtualizedTable({ rows, notice }: { rows: string[][]; notice?: string | null }) {
+  const rowHeight = 34;
+  const overscan = 8;
+  const [scrollTop, setScrollTop] = useState(0);
+  const columns = Math.max(1, ...rows.map((row) => row.length));
+  const body = rows.slice(1);
+  const first = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
+  const visibleCount = 24 + overscan * 2;
+  const visible = body.slice(first, first + visibleCount);
+  return (
+    <div
+      className="custom-scrollbar h-full overflow-auto"
+      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+    >
+      {notice ? (
+        <p className="border-primary/25 bg-primary/8 text-foreground/70 sticky top-0 z-20 border-b px-3 py-2 text-[11px]">
+          {notice}
+        </p>
+      ) : null}
+      <div
+        className="bg-surface-1/80 sticky top-0 z-10 grid min-w-max"
+        style={{ gridTemplateColumns: `repeat(${columns}, minmax(10rem, 1fr))` }}
+      >
+        {Array.from({ length: columns }, (_, index) => (
+          <div key={index} className="border-glass-border border-b px-3 py-2 text-xs font-semibold">
+            {rows[0]?.[index] || `Column ${index + 1}`}
+          </div>
+        ))}
+      </div>
+      <div className="relative min-w-max" style={{ height: body.length * rowHeight }}>
+        <div
+          className="absolute inset-x-0 grid"
+          style={{
+            transform: `translateY(${first * rowHeight}px)`,
+            gridTemplateColumns: `repeat(${columns}, minmax(10rem, 1fr))`,
+          }}
+        >
+          {visible.flatMap((row, rowIndex) =>
+            Array.from({ length: columns }, (_, columnIndex) => (
+              <div
+                key={`${first + rowIndex}-${columnIndex}`}
+                className="border-glass-border text-foreground/75 hover:bg-surface-1/60 overflow-hidden border-b px-3 py-2 text-xs text-ellipsis whitespace-nowrap"
+                style={{ height: rowHeight }}
+              >
+                {row[columnIndex] ?? ""}
+              </div>
+            )),
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SpreadsheetTable({ value, previewUrl }: { value: string; previewUrl?: string | null }) {
   const [rows, setRows] = useState<string[][]>([]);
   useEffect(() => {
@@ -262,13 +321,22 @@ function CsvPreviewTable({
 }) {
   const preview = useMemo(() => parseCsvPreview(value), [value]);
   const limited = preview.truncated || contentTruncated;
-  const [page, setPage] = useState<{ columns: string[]; rows: string[][]; offset: number; limit: number; has_more: boolean } | null>(null);
+  const [page, setPage] = useState<{
+    columns: string[];
+    rows: string[][];
+    offset: number;
+    limit: number;
+    has_more: boolean;
+  } | null>(null);
   const [loadingPage, setLoadingPage] = useState(false);
   const loadPage = async (offset: number) => {
     if (!pageUrl) return;
     setLoadingPage(true);
     try {
-      const response = (await fetchWithAuth(`${pageUrl}?offset=${offset}&limit=${CSV_PREVIEW_MAX_ROWS}`, { timeoutMs: 30_000 })) as Response;
+      const response = (await fetchWithAuth(
+        `${pageUrl}?offset=${offset}&limit=${CSV_PREVIEW_MAX_ROWS}`,
+        { timeoutMs: 30_000 },
+      )) as Response;
       if (response.ok) setPage((await response.json()) as typeof page);
     } finally {
       setLoadingPage(false);
@@ -280,18 +348,41 @@ function CsvPreviewTable({
   const displayedRows = page ? [page.columns, ...page.rows] : preview.rows;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1"><Table rows={displayedRows} notice={
-        limited
-          ? `Showing ${page ? `rows ${page.offset + 1}–${page.offset + page.rows.length}` : `the first ${CSV_PREVIEW_MAX_ROWS} rows`} / ${CSV_PREVIEW_MAX_COLUMNS} columns. The browser renders one page at a time; the original ${
-              sizeBytes ? `${Math.ceil(sizeBytes / 1024 / 1024)} MB ` : ""
-            }file stays private and can be downloaded or analyzed in the sandbox.`
-          : null
-      } /></div>
-      {pageUrl ? <div className="border-glass-border flex shrink-0 items-center justify-between border-t px-3 py-2 text-[11px]">
-        <button type="button" disabled={loadingPage || !page?.offset} onClick={() => void loadPage(Math.max(0, (page?.offset ?? 0) - CSV_PREVIEW_MAX_ROWS))} className="inline-flex items-center gap-1 disabled:opacity-40"><ChevronLeft size={13} /> Previous</button>
-        <span className="text-foreground/55">{loadingPage ? "Loading rows…" : "Paged table view"}</span>
-        <button type="button" disabled={loadingPage || !page?.has_more} onClick={() => void loadPage((page?.offset ?? 0) + CSV_PREVIEW_MAX_ROWS)} className="inline-flex items-center gap-1 disabled:opacity-40">Next <ChevronRight size={13} /></button>
-      </div> : null}
+      <div className="min-h-0 flex-1">
+        <VirtualizedTable
+          rows={displayedRows}
+          notice={
+            limited
+              ? `Showing ${page ? `rows ${page.offset + 1}–${page.offset + page.rows.length}` : `the first ${CSV_PREVIEW_MAX_ROWS} rows`} / ${CSV_PREVIEW_MAX_COLUMNS} columns. The browser renders one page at a time; the original ${
+                  sizeBytes ? `${Math.ceil(sizeBytes / 1024 / 1024)} MB ` : ""
+                }file stays private and can be downloaded or analyzed in the sandbox.`
+              : null
+          }
+        />
+      </div>
+      {pageUrl ? (
+        <div className="border-glass-border flex shrink-0 items-center justify-between border-t px-3 py-2 text-[11px]">
+          <button
+            type="button"
+            disabled={loadingPage || !page?.offset}
+            onClick={() => void loadPage(Math.max(0, (page?.offset ?? 0) - CSV_PREVIEW_MAX_ROWS))}
+            className="inline-flex items-center gap-1 disabled:opacity-40"
+          >
+            <ChevronLeft size={13} /> Previous
+          </button>
+          <span className="text-foreground/55">
+            {loadingPage ? "Loading rows…" : "Paged table view"}
+          </span>
+          <button
+            type="button"
+            disabled={loadingPage || !page?.has_more}
+            onClick={() => void loadPage((page?.offset ?? 0) + CSV_PREVIEW_MAX_ROWS)}
+            className="inline-flex items-center gap-1 disabled:opacity-40"
+          >
+            Next <ChevronRight size={13} />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -350,7 +441,8 @@ export function InteractiveImagePreview({
   const changeScale = (nextScale: number, focalPoint?: { x: number; y: number }) => {
     const boundedScale = Math.max(0.25, Math.min(5, nextScale));
     setPan((current) => {
-      if (!focalPoint || scale === boundedScale) return clampPan(current.x, current.y, boundedScale);
+      if (!focalPoint || scale === boundedScale)
+        return clampPan(current.x, current.y, boundedScale);
       // Preserve the point under the pointer while zooming. Translation is
       // measured in viewport pixels and therefore uses the scale delta.
       return clampPan(
@@ -365,13 +457,10 @@ export function InteractiveImagePreview({
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
-    changeScale(
-      scale * (event.deltaY < 0 ? 1.1 : 1 / 1.1),
-      {
-        x: event.clientX - rect.left - rect.width / 2,
-        y: event.clientY - rect.top - rect.height / 2,
-      },
-    );
+    changeScale(scale * (event.deltaY < 0 ? 1.1 : 1 / 1.1), {
+      x: event.clientX - rect.left - rect.width / 2,
+      y: event.clientY - rect.top - rect.height / 2,
+    });
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -505,7 +594,7 @@ export function InteractiveImagePreview({
           alt={alt}
           draggable={false}
           onDragStart={(event) => event.preventDefault()}
-          className="max-h-full max-w-full select-none object-contain transition-transform duration-100 ease-out"
+          className="max-h-full max-w-full object-contain transition-transform duration-100 ease-out select-none"
           style={{
             transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale}) rotate(${rotation}deg) scaleX(${flipped ? -1 : 1})`,
             transformOrigin: "center center",

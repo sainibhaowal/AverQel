@@ -6,6 +6,7 @@ import csv
 import hashlib
 import html
 import io
+import json
 import posixpath
 import re
 import uuid
@@ -39,6 +40,7 @@ from app.deepspace.services.library_storage import (
     read_archive_entry,
     safe_archive_entries,
 )
+from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore
 from app.deepspace.workers.library_uploads import finalize_library_upload, profile_library_dataset
 from app.ingestion.services.office_writer import text_to_docx, text_to_pptx, text_to_xlsx
 from app.platform.database.session import get_db
@@ -330,6 +332,12 @@ class DatasetAggregateResponse(BaseModel):
     rows: list[dict[str, object]]
 
     model_config = ConfigDict(extra="forbid")
+
+
+class DatasetChartSchema(DatasetAggregateSchema):
+    title: str = Field(default="Dataset chart", min_length=1, max_length=255)
+    chart_type: Literal["bar", "line", "area", "pie", "scatter"] = "bar"
+    filename: str = Field(default="dataset-chart.json", min_length=1, max_length=255)
 
 
 def _text_as_export_html(text: str, title: str) -> str:
@@ -2112,6 +2120,63 @@ async def aggregate_workspace_dataset(
             limit=payload.limit,
         )
     )
+
+
+@router.post(
+    "/{conversation_id}/files/{file_id}/dataset-chart",
+    response_model=WorkspaceFileSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def create_workspace_dataset_chart(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    payload: DatasetChartSchema,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> WorkspaceFileSchema:
+    """Persist a reusable chart-data artifact from a bounded server-side aggregate."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    profile = (
+        file.metadata_json.get("dataset_profile") if isinstance(file.metadata_json, dict) else None
+    )
+    if not isinstance(profile, dict) or profile.get("status") != "ready":
+        raise ApiError(
+            code="DATASET_NOT_READY", message="Dataset is still processing.", status_code=409
+        )
+    aggregate = DatasetDerivativeService(settings).aggregate(
+        profile=profile,
+        metric=payload.metric,
+        column=payload.column,
+        group_by=payload.group_by,
+        filters=[item.model_dump() for item in payload.filters],
+        limit=payload.limit,
+    )
+    series = [
+        {"label": str(row.get("group", index + 1)), "value": row.get("value")}
+        for index, row in enumerate(aggregate["rows"])
+    ]
+    content = json.dumps(
+        {"chart_type": payload.chart_type, "title": payload.title, "series": series},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    result = DeepSpaceTaskLoopStore(db).write_workspace_file(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        filename=payload.filename,
+        content=content,
+    )
+    artifact = db.get(DeepSpaceWorkspaceFile, uuid.UUID(str(result["id"])))
+    if artifact is None:
+        raise ApiError(
+            code="INTERNAL_SERVER_ERROR",
+            message="Chart artifact could not be saved.",
+            status_code=500,
+        )
+    return _serialize_file(artifact, include_content=True)
 
 
 @router.get(
