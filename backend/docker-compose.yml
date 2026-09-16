@@ -268,7 +268,7 @@ services:
       service: worker
     container_name: averqel-library-worker
     environment:
-      AKS_WORKER_QUEUES: library_uploads
+      AKS_WORKER_QUEUES: library_uploads,dataset_indexing
       AKS_WORKER_CONCURRENCY: ${AKS_LIBRARY_WORKER_CONCURRENCY:-1}
     # A single import cannot starve API, chat, or ingestion workers.  This is
     # deliberately above the 25 MiB upload ceiling to leave room for safe

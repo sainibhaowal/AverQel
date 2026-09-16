@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import uuid
 
@@ -10,6 +12,7 @@ from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
+from app.deepspace.services.library_storage import LibraryStorageService
 from app.deepspace.services.library_uploads import finalize_upload
 from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
@@ -81,6 +84,8 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
         upload.received_chunks = list(range(upload.total_chunks))
         upload.status = "completed"
         db.commit()
+        if record.content_type in {"text/csv", "text/x-csv", "text/tab-separated-values"}:
+            profile_library_dataset.delay(file_id=str(record.id), tenant_id=tenant_id)
         return str(record.id)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
@@ -111,5 +116,78 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
             db.execute(text("RESET ROLE"))
             db.commit()
         except Exception:  # noqa: BLE001
+            db.rollback()
+        db.close()
+
+
+@celery_app.task(
+    bind=True,
+    name="deepspace.library_dataset_profile",
+    queue="dataset_indexing",
+)  # type: ignore[misc]
+def profile_library_dataset(self: Task, *, file_id: str, tenant_id: str) -> str:
+    """Profile structured files off the API path and persist bounded metadata."""
+    del self
+    settings = get_settings()
+    parsed_file_id = uuid.UUID(file_id)
+    parsed_tenant_id = uuid.UUID(tenant_id)
+    db = get_session_factory()()
+    try:
+        db.execute(text("SET ROLE aks_app"))
+        set_db_tenant_context(db, parsed_tenant_id)
+        from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+
+        file = db.execute(
+            select(DeepSpaceWorkspaceFile).where(
+                DeepSpaceWorkspaceFile.id == parsed_file_id,
+                DeepSpaceWorkspaceFile.tenant_id == parsed_tenant_id,
+            )
+        ).scalar_one_or_none()
+        if file is None or file.content_type not in {
+            "text/csv",
+            "text/x-csv",
+            "text/tab-separated-values",
+        }:
+            return "skipped"
+        if file.storage_bucket and file.storage_key:
+            stream = LibraryStorageService(settings).storage.get_stream(
+                bucket=file.storage_bucket, object_key=file.storage_key
+            )
+            source: io.TextIOBase = io.TextIOWrapper(
+                stream, encoding="utf-8-sig", errors="replace", newline=""
+            )
+        else:
+            source = io.StringIO(file.content or "")
+        delimiter = "\t" if file.content_type == "text/tab-separated-values" else ","
+        reader = csv.reader(source, delimiter=delimiter)
+        columns = next(reader, [])[:50]
+        row_count = 0
+        sample: list[list[str]] = []
+        for row in reader:
+            row_count += 1
+            if len(sample) < 25:
+                sample.append(row[:50])
+        source.close()
+        metadata = dict(file.metadata_json or {})
+        metadata["dataset_profile"] = {
+            "status": "ready",
+            "format": "tsv" if delimiter == "\t" else "csv",
+            "row_count": row_count,
+            "column_count": len(columns),
+            "columns": columns,
+            "sample_rows": sample,
+        }
+        file.metadata_json = metadata
+        db.commit()
+        return "profiled"
+    except Exception:
+        db.rollback()
+        logger.exception("Library dataset profiling failed", extra={"file_id": file_id})
+        raise
+    finally:
+        try:
+            db.execute(text("RESET ROLE"))
+            db.commit()
+        except Exception:
             db.rollback()
         db.close()

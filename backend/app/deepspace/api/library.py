@@ -38,7 +38,7 @@ from app.deepspace.services.library_storage import (
     read_archive_entry,
     safe_archive_entries,
 )
-from app.deepspace.workers.library_uploads import finalize_library_upload
+from app.deepspace.workers.library_uploads import finalize_library_upload, profile_library_dataset
 from app.ingestion.services.office_writer import text_to_docx, text_to_pptx, text_to_xlsx
 from app.platform.database.session import get_db
 from app.system.services.storage_service import StorageService, StorageServiceError
@@ -267,6 +267,7 @@ class WorkspaceFileSchema(BaseModel):
     content_truncated: bool = False
     download_url: str | None = None
     archive_entries: list[dict[str, object]] | None = None
+    dataset_profile: dict[str, object] | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -498,6 +499,12 @@ def _serialize_file(
         download_url=(
             f"/api/v1/deepspace/library/{file.conversation_id}/files/{file.id}/content"
             if file.is_binary
+            else None
+        ),
+        dataset_profile=(
+            cast(dict[str, object], file.metadata_json.get("dataset_profile"))
+            if isinstance(file.metadata_json, dict)
+            and isinstance(file.metadata_json.get("dataset_profile"), dict)
             else None
         ),
     )
@@ -1463,6 +1470,11 @@ async def create_workspace_file(
         checksum_sha256=LibraryStorageService.checksum(decoded.payload),
         extracted_text=extraction.get("text"),
         is_binary=is_binary,
+        metadata_json=(
+            {"dataset_profile": {"status": "queued"}}
+            if decoded.content_type in {"text/csv", "text/x-csv", "text/tab-separated-values"}
+            else {}
+        ),
     )
     stored = None
     if is_binary:
@@ -1492,6 +1504,8 @@ async def create_workspace_file(
     _add_version(db, file)
     db.commit()
     db.refresh(file)
+    if file.content_type in {"text/csv", "text/x-csv", "text/tab-separated-values"}:
+        profile_library_dataset.delay(file_id=str(file.id), tenant_id=str(auth.tenant_id))
     return _serialize_file(file, include_content=True)
 
 

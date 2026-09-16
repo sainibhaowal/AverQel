@@ -123,6 +123,11 @@ def finalize_upload(
         checksum_sha256=hashlib.sha256(payload).hexdigest(),
         extracted_text=extraction.get("text"),
         is_binary=is_binary,
+        metadata_json=(
+            {"dataset_profile": {"status": "queued"}}
+            if content_type in {"text/csv", "text/x-csv", "text/tab-separated-values"}
+            else {}
+        ),
     )
     stored = None
     if is_binary:
