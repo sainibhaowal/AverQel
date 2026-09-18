@@ -3,9 +3,15 @@
 This report records the reproducible checks for the six advanced capabilities.
 No provider secret or temporary API key is stored in the repository.
 
+The dated results below are historical evidence from the environments and
+commits named in each section. They do not automatically certify the current
+uncommitted worktree. The current release gate is tracked in
+`00-end-to-end-handoff.md` and must be rerun after the pending migrations,
+runtime changes, provider changes, and frontend changes are committed.
+
 ## 1. Verification scope
 
-1. Backend APIs, DeepSpace tool schemas, provider adapters, research pipeline,
+1. Backend APIs, DeepSpace tool schemas, provider adapters, research tools,
    document operations, artifact jobs, schedules, and MCP policy paths.
 2. Frontend DeepSpace panels, generated-file rendering, provider settings,
    Markdown/diagram rendering, reconnect behavior, and MCP controls.
@@ -38,6 +44,16 @@ No provider secret or temporary API key is stored in the repository.
    that restriction.
 4. The temporary key was passed only to the process environment for the
    probe, was never printed, committed, or written to an AverQel file.
+
+### Current provider-policy evidence (2026-09-17)
+
+The running worker reproduced the upstream response for the requested free
+model: HTTP 403 with `OpenCode's free tier can only be used from within
+OpenCode`. DeepSpace classifies this as `OPENCODE_FREE_TIER_CLIENT_ONLY`,
+preserves the user's selected model, and reports the provider policy clearly.
+AverQel cannot bypass a provider's client-entitlement restriction; a Zen
+model/account that permits API access is required for generation inside
+AverQel.
 
 ## 4. Runtime activation conditions
 
@@ -111,3 +127,11 @@ No provider secret or temporary API key is stored in the repository.
    when a browser cannot parse a legacy workbook.
 4. Multi-file uploads continue to use independent resumable sessions with
    bounded concurrency, so one rejected file cannot corrupt another upload.
+
+## 8. Current worktree release status (2026-09-18)
+
+The current worktree contains additional uncommitted queue, runtime, metrics,
+context, provider, frontend, and migration changes. Only a focused DeepSpace
+blank-response regression test and Python compilation have been rerun during
+the current audit. The full backend/frontend/e2e evidence in this document
+must therefore be rerun before this worktree is called production-ready.

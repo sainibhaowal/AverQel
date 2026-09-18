@@ -23,6 +23,8 @@ from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
 from app.deepspace.models.message import Message
 from app.deepspace.models.message_version import MessageVersion
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
+from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
+from app.deepspace.models.request_metric import DeepSpaceRequestMetric
 from app.deepspace.models.research import DeepSpaceResearchRun, DeepSpaceResearchSource
 from app.deepspace.models.schedule import DeepSpaceSchedule
 from app.deepspace.models.schedule_run import DeepSpaceScheduleRun
@@ -127,6 +129,8 @@ __all__ = [
     "AgentMemory",
     "DeepSpaceAgentRun",
     "DeepSpaceArtifactJob",
+    "DeepSpaceQueuedTurn",
+    "DeepSpaceRequestMetric",
     "DeepSpaceAgentStep",
     "DeepSpaceRunEvent",
     "DeepSpaceLibraryUpload",

@@ -46,6 +46,7 @@ celery_app.conf.update(
         "mcp.*": {"queue": "maintenance"},
         "mcp.sync_official_catalog": {"queue": "maintenance"},
         "deepspace.run": {"queue": "deepspace"},
+        "deepspace.dispatch_turn_queue": {"queue": "deepspace"},
         # Large Library imports are intentionally isolated from interactive
         # DeepSpace chat turns.  The dedicated worker has concurrency one.
         "deepspace.library_upload_finalize": {"queue": "library_uploads"},

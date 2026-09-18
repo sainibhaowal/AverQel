@@ -4,10 +4,13 @@ from .agent_memory_preferences import AgentMemoryPreferences
 from .agent_runtime import DeepSpaceRunEvent
 from .artifact_job import DeepSpaceArtifactJob
 from .conversation import Conversation
+from .conversation_context_summary import DeepSpaceConversationContextSummary
 from .library_upload import DeepSpaceLibraryUpload
 from .media_artifact import DeepSpaceMediaArtifact
 from .message import Message
 from .message_version import MessageVersion
+from .queued_turn import DeepSpaceQueuedTurn
+from .request_metric import DeepSpaceRequestMetric
 from .research import DeepSpaceResearchRun, DeepSpaceResearchSource
 from .schedule import DeepSpaceSchedule
 from .schedule_run import DeepSpaceScheduleRun
@@ -19,6 +22,7 @@ __all__ = [
     "AgentMemoryPreferences",
     "DeepSpaceArtifactJob",
     "Conversation",
+    "DeepSpaceConversationContextSummary",
     "Message",
     "MessageVersion",
     "DeepSpaceMediaArtifact",
@@ -29,6 +33,8 @@ __all__ = [
     "DeepSpaceLibraryUpload",
     "DeepSpaceResearchRun",
     "DeepSpaceResearchSource",
+    "DeepSpaceQueuedTurn",
+    "DeepSpaceRequestMetric",
     "DeepSpaceSchedule",
     "DeepSpaceScheduleRun",
 ]

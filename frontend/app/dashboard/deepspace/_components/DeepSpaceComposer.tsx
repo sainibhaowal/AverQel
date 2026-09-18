@@ -11,6 +11,7 @@ import {
   MicOff,
   Play,
   Square,
+  Trash2,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -22,6 +23,11 @@ interface DeepSpaceComposerProps {
   onQueryChange: (value: string) => void;
   onSubmit: () => void;
   onStop: () => void;
+  onSteer?: () => void;
+  queuedTurns?: Array<{ clientRequestId: string; prompt: string; status: string }>;
+  onCancelQueuedTurn?: (clientRequestId: string) => void;
+  onSteerQueuedTurn?: (clientRequestId: string) => void;
+  changedFiles?: Array<{ path: string; additions: number; deletions: number }>;
   modelName?: string | null;
   availableModels?: Array<{
     providerId: string;
@@ -35,7 +41,6 @@ interface DeepSpaceComposerProps {
   voiceState?: "idle" | "listening" | "thinking" | "speaking";
   contextUsedTokens?: number | null;
   contextLimit?: number | null;
-  contextUsageSource?: string | null;
   contextRemainingTokens?: number | null;
   safeRemainingTokens?: number | null;
   sessionInputTokens?: number | null;
@@ -45,6 +50,11 @@ interface DeepSpaceComposerProps {
   maxOutputTokens?: number | null;
   contextStatus?: string | null;
   contextCompacted?: boolean;
+  userVisibleInputTokens?: number | null;
+  userVisibleOutputTokens?: number | null;
+  conversationVisibleTokens?: number | null;
+  promptCacheMode?: string | null;
+  promptCacheEligible?: boolean;
   sttActive?: boolean;
   ttsActive?: boolean;
   onSttToggle?: () => void;
@@ -79,13 +89,17 @@ export default function DeepSpaceComposer({
   onQueryChange,
   onSubmit,
   onStop,
+  onSteer,
+  queuedTurns = [],
+  onCancelQueuedTurn,
+  onSteerQueuedTurn,
+  changedFiles = [],
   modelName,
   availableModels = [],
   onModelSelect,
   voiceState = "idle",
   contextUsedTokens = null,
   contextLimit = null,
-  contextUsageSource = null,
   contextRemainingTokens = null,
   safeRemainingTokens = null,
   sessionTotalTokens = null,
@@ -93,6 +107,11 @@ export default function DeepSpaceComposer({
   maxOutputTokens = null,
   contextStatus = null,
   contextCompacted = false,
+  userVisibleInputTokens = null,
+  userVisibleOutputTokens = null,
+  conversationVisibleTokens = null,
+  promptCacheMode = null,
+  promptCacheEligible = false,
   sttActive = false,
   ttsActive = false,
   onSttToggle,
@@ -105,6 +124,7 @@ export default function DeepSpaceComposer({
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [runtimeLegendOpen, setRuntimeLegendOpen] = useState(false);
   const [contextDialogOpen, setContextDialogOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -209,6 +229,74 @@ export default function DeepSpaceComposer({
         <div
           className={`relative rounded-[1.2rem] shadow-xl ${modelDropdownOpen ? "z-[60]" : "z-10"} ${composerShell} ${shellPadding}`}
         >
+          {queuedTurns.length || changedFiles.length ? (
+            <div className="mb-2 overflow-hidden rounded-t-xl border border-cyan-300/20 bg-cyan-950/40">
+              {changedFiles.length ? (
+                <button
+                  type="button"
+                  onClick={() => setReviewOpen((open) => !open)}
+                  className="flex w-full items-center justify-between px-3 py-2 text-xs text-cyan-100/80 hover:bg-cyan-300/[0.06]"
+                >
+                  <span>
+                    <strong>
+                      {changedFiles.length} file{changedFiles.length === 1 ? "" : "s"} changed
+                    </strong>
+                    <span className="ml-2 text-emerald-300">
+                      +{changedFiles.reduce((total, file) => total + file.additions, 0)}
+                    </span>
+                    <span className="ml-1 text-red-300">
+                      -{changedFiles.reduce((total, file) => total + file.deletions, 0)}
+                    </span>
+                  </span>
+                  <span>{reviewOpen ? "Hide review" : "Review"}</span>
+                </button>
+              ) : null}
+              {reviewOpen ? (
+                <div className="border-t border-cyan-300/15 px-3 py-2 text-[11px] text-cyan-100/70">
+                  {changedFiles.map((file) => (
+                    <div key={file.path} className="flex justify-between gap-3">
+                      <span className="truncate">{file.path}</span>
+                      <span className="shrink-0 text-emerald-300">+{file.additions}</span>
+                      <span className="shrink-0 text-red-300">-{file.deletions}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {queuedTurns.length ? (
+                <div
+                  className="border-t border-cyan-300/15 px-2 py-1.5"
+                  aria-label="Queued messages"
+                >
+                  {queuedTurns.map((turn, index) => (
+                    <div
+                      key={turn.clientRequestId}
+                      className="flex max-w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-cyan-100/80 hover:bg-cyan-300/[0.06]"
+                    >
+                      <span className="text-cyan-200/60">↳</span>
+                      <span className="min-w-0 flex-1 truncate">{turn.prompt}</span>
+                      <button
+                        type="button"
+                        onClick={() => onSteerQueuedTurn?.(turn.clientRequestId)}
+                        className="text-cyan-100/65 hover:text-cyan-100"
+                      >
+                        ↳ Steer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onCancelQueuedTurn?.(turn.clientRequestId)}
+                        className="text-cyan-100/45 hover:text-red-200"
+                        aria-label={`Remove queued message ${index + 1}`}
+                        title="Remove from queue"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <textarea
             value={query}
             onChange={(event) => onQueryChange(event.target.value.slice(0, 4000))}
@@ -220,41 +308,46 @@ export default function DeepSpaceComposer({
             }}
             placeholder="Message DeepSpace..."
             className={`text-foreground placeholder:text-foreground/30 w-full resize-none border-none bg-transparent outline-none ${textareaClass}`}
-            disabled={isStreaming}
           />
 
-          <div className="relative mt-1 flex items-center gap-2 px-2 text-[9px] text-white/40">
-            <button
-              type="button"
-              onClick={() => setContextDialogOpen((open) => !open)}
-              className="flex shrink-0 items-center gap-1 tracking-[0.14em] uppercase transition-colors hover:text-cyan-200"
-              aria-expanded={contextDialogOpen}
-              aria-label="Show context usage details"
+          <div className="relative mt-1 px-2 text-[9px] text-white/40">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setContextDialogOpen((open) => !open)}
+                className="flex shrink-0 items-center gap-1 tracking-[0.14em] uppercase transition-colors hover:text-cyan-200"
+                aria-expanded={contextDialogOpen}
+                aria-label="Show context usage details"
+              >
+                <Gauge size={11} />
+                Context (est.)
+              </button>
+              <span className="shrink-0 tabular-nums">
+                {(contextUsedTokens ?? 0).toLocaleString()} / {hasContextLimit
+                  ? contextLimit?.toLocaleString()
+                  : "—"} · {(userVisibleInputTokens ?? 0).toLocaleString()} in · {(
+                  userVisibleOutputTokens ?? 0
+                ).toLocaleString()} out · {hasContextLimit ? `${Math.round(contextRatio * 100)}%` : "—"}
+              </span>
+            </div>
+            <div
+              className="mt-1 h-1 w-full overflow-hidden rounded-full bg-cyan-950/15 ring-1 ring-cyan-900/15"
+              role="progressbar"
+              aria-label="Estimated provider context usage"
+              aria-valuemin={0}
+              aria-valuemax={contextLimit ?? undefined}
+              aria-valuenow={contextUsedTokens ?? 0}
+              aria-valuetext={
+                hasContextLimit
+                  ? `${(contextUsedTokens ?? 0).toLocaleString()} of ${contextLimit?.toLocaleString()} estimated provider context tokens`
+                  : "Estimated provider context limit unavailable"
+              }
             >
-              <Gauge size={11} />
-              Context{contextUsageSource === "estimated_local" ? " (est.)" : ""}
-            </button>
-            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
               <div
-                className={`h-full rounded-full transition-all ${
-                  hasContextLimit && (contextUsedTokens ?? 0) / (contextLimit ?? 1) > 0.9
-                    ? "bg-red-400"
-                    : hasContextLimit && (contextUsedTokens ?? 0) / (contextLimit ?? 1) > 0.7
-                      ? "bg-amber-300"
-                      : "bg-cyan-300"
-                }`}
-                style={{
-                  width: hasContextLimit
-                    ? `${Math.min(100, Math.max(0, ((contextUsedTokens ?? 0) / (contextLimit ?? 1)) * 100))}%`
-                    : "0%",
-                }}
+                className="h-full rounded-full bg-linear-to-r from-cyan-400 via-teal-400 to-emerald-400 transition-[width] duration-300 ease-out"
+                style={{ width: `${contextRatio * 100}%` }}
               />
             </div>
-            <span className="shrink-0 tabular-nums">
-              {(contextUsedTokens ?? 0).toLocaleString()} /{" "}
-              {hasContextLimit ? contextLimit?.toLocaleString() : "—"} ·{" "}
-              {hasContextLimit ? `${Math.round(contextRatio * 100)}%` : "—"}
-            </span>
             <AnimatePresence>
               {contextDialogOpen && (
                 <motion.div
@@ -266,7 +359,7 @@ export default function DeepSpaceComposer({
                   className="border-glass-border bg-surface-0/95 absolute right-0 bottom-full z-[75] mb-2 w-[min(23rem,calc(100vw-2rem))] rounded-xl border p-3 text-[10px] leading-4 text-white/65 shadow-2xl backdrop-blur-xl"
                 >
                   <div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-white/90">
-                    <span>Context budget</span>
+                    <span>Request diagnostics</span>
                     <button
                       type="button"
                       onClick={() => setContextDialogOpen(false)}
@@ -278,7 +371,7 @@ export default function DeepSpaceComposer({
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-                      <span className="block text-white/40">Active context</span>
+                      <span className="block text-white/40">Internal request context</span>
                       <strong className="text-white/90">
                         {(contextUsedTokens ?? 0).toLocaleString()} /{" "}
                         {hasContextLimit ? contextLimit?.toLocaleString() : "Unavailable"}
@@ -307,9 +400,17 @@ export default function DeepSpaceComposer({
                     </div>
                   </div>
                   <p className="mt-2 border-t border-white/10 pt-2 text-white/45">
-                    Active context is the exact serialized request estimate for the selected model.
-                    Session processed is cumulative across rounds; it does not reset when you switch
-                    models.
+                    Conversation counts include only user and assistant messages. Internal request context
+                    includes policy, selected tools, and retrieved evidence; it is kept separate from the
+                    conversation meter.
+                  </p>
+                  <p className="mt-1 text-white/45">
+                    Conversation: {(conversationVisibleTokens ?? 0).toLocaleString()} tokens · {(
+                      userVisibleInputTokens ?? 0
+                    ).toLocaleString()} in · {(userVisibleOutputTokens ?? 0).toLocaleString()} out
+                  </p>
+                  <p className="mt-1 text-white/45">
+                    Provider cache: {promptCacheEligible ? `${promptCacheMode} eligible` : "not available"}
                   </p>
                   <div className="mt-2 flex items-center justify-between text-white/45">
                     <span>
@@ -481,7 +582,7 @@ export default function DeepSpaceComposer({
                 aria-label="Show DeepSpace status legend"
                 aria-expanded={runtimeLegendOpen}
                 title="DeepSpace status legend"
-                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-all duration-200 ${
+                className={`deepspace-composer-control flex h-8 w-8 items-center justify-center rounded-lg border transition-all duration-200 ${
                   runtimeLegendOpen
                     ? "border-cyan-400/45 bg-cyan-400/15 text-cyan-200"
                     : "border-white/10 bg-black/30 text-white/45 hover:border-cyan-400/30 hover:text-cyan-200"
@@ -541,57 +642,51 @@ export default function DeepSpaceComposer({
             </div>
 
             <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
+              {isStreaming ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={onSteer}
+                    disabled={!query.trim()}
+                    className="deepspace-composer-steer rounded-lg border border-amber-300/35 bg-amber-300/10 px-2.5 py-2 text-[10px] font-semibold tracking-wide text-amber-100 uppercase transition hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:opacity-40"
+                    title="Stop the active response and run this message next"
+                  >
+                    Steer
+                  </button>
+                  <motion.button
+                    type="button"
+                    onClick={onStop}
+                    aria-label="Stop response"
+                    title="Stop response"
+                    className="deepspace-composer-control deepspace-composer-stop flex h-10 w-10 items-center justify-center rounded-xl border border-red-300/45 bg-red-400/10 text-red-100 transition hover:bg-red-400/20 active:scale-95"
+                    whileTap={{ scale: 0.94 }}
+                  >
+                    <StopIcon />
+                  </motion.button>
+                </>
+              ) : null}
               <motion.button
                 type="button"
-                onClick={isStreaming ? onStop : onSubmit}
-                disabled={!isStreaming && !query.trim()}
-                aria-label={isStreaming ? "Stop response" : "Send message"}
-                title={isStreaming ? "Stop response" : "Send message"}
-                className="border-primary/45 from-primary/95 to-primary text-primary-foreground hover:border-primary/70 disabled:border-border-subtle disabled:bg-surface-2 disabled:text-muted-foreground relative flex h-10 w-10 items-center justify-center rounded-xl border bg-gradient-to-br shadow-[0_8px_20px_rgba(var(--primary),0.25)] transition-[border-color,background-color,box-shadow,filter] hover:brightness-110 active:brightness-95 disabled:cursor-not-allowed disabled:shadow-none"
-                whileHover={{ scale: isStreaming ? 1.03 : 1.06 }}
+                onClick={onSubmit}
+                disabled={!query.trim()}
+                aria-label={isStreaming ? "Queue message" : "Send message"}
+                title={isStreaming ? "Queue message" : "Send message"}
+                className="deepspace-composer-control deepspace-composer-send border-primary/45 from-primary/95 to-primary text-primary-foreground hover:border-primary/70 disabled:border-border-subtle disabled:bg-surface-2 disabled:text-muted-foreground relative flex h-10 w-10 items-center justify-center rounded-xl border bg-gradient-to-br shadow-[0_8px_20px_rgba(var(--primary),0.25)] transition-[border-color,background-color,box-shadow,filter] hover:brightness-110 active:brightness-95 disabled:cursor-not-allowed disabled:shadow-none"
+                whileHover={{ scale: 1.06 }}
                 whileTap={{ scale: 0.94 }}
-                animate={
-                  isStreaming
-                    ? {
-                        scale: [1, 1.025, 1],
-                        boxShadow: [
-                          "0 8px 20px rgba(var(--primary),0.25)",
-                          "0 10px 28px rgba(var(--primary),0.48)",
-                          "0 8px 20px rgba(var(--primary),0.25)",
-                        ],
-                      }
-                    : {}
-                }
-                transition={
-                  isStreaming
-                    ? {
-                        duration: 1.8,
-                        repeat: Infinity,
-                        ease: "easeInOut",
-                      }
-                    : {}
-                }
               >
                 <AnimatePresence initial={false} mode="wait">
                   <motion.span
-                    key={isStreaming ? "stop" : "send"}
-                    initial={{ opacity: 0, scale: 0.65, rotate: isStreaming ? -18 : 18 }}
+                    key={isStreaming ? "queue" : "send"}
+                    initial={{ opacity: 0, scale: 0.65, rotate: 18 }}
                     animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                    exit={{ opacity: 0, scale: 0.65, rotate: isStreaming ? 18 : -18 }}
+                    exit={{ opacity: 0, scale: 0.65, rotate: -18 }}
                     transition={{ duration: 0.16, ease: "easeOut" }}
                     className="relative z-10 flex items-center justify-center"
                   >
-                    {isStreaming ? <StopIcon /> : <SendIcon />}
+                    <SendIcon />
                   </motion.span>
                 </AnimatePresence>
-
-                {isStreaming && (
-                  <motion.span
-                    className="border-primary/30 pointer-events-none absolute inset-[-4px] rounded-[14px] border"
-                    animate={{ opacity: [0.2, 0.65, 0.2], scale: [1, 1.06, 1] }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                  />
-                )}
               </motion.button>
             </div>
           </div>

@@ -33,6 +33,7 @@ from app.providers.services.url_resolution import resolve_provider_base_url
 
 OPENAI_COMPATIBLE_PROVIDER_TYPES = {
     "openai",
+    "deepseek",
     "groq",
     "groq-openai-compatible",
     "mistral",

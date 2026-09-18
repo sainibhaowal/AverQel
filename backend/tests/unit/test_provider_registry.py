@@ -57,6 +57,10 @@ def test_provider_registry_resolves_env_backed_chat_and_embedding_providers(
     groq_provider = registry.get_chat_provider("groq")
     assert isinstance(groq_provider, OpenAICompatibleProvider)
     assert groq_provider.provider_name == "groq"
+    deepseek_provider = registry.get_chat_provider("deepseek")
+    assert isinstance(deepseek_provider, OpenAICompatibleProvider)
+    assert deepseek_provider.provider_name == "deepseek"
+    assert isinstance(registry.get_model_discovery_provider("deepseek"), OpenAICompatibleProvider)
     assert isinstance(registry.get_model_discovery_provider("opencode-zen"), OpenCodeZenProvider)
     get_settings.cache_clear()
 

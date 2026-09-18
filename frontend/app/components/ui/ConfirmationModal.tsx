@@ -73,7 +73,7 @@ export default function ConfirmationModal({
             initial={{ scale: 0.95, opacity: 0, y: 10 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 10 }}
-            className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/10 bg-[#0f0f11] p-8 shadow-2xl"
+            className="confirmation-modal relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/10 bg-[#0f0f11] p-8 text-slate-100 shadow-2xl"
           >
             <div className="flex flex-col items-center text-center">
               <div

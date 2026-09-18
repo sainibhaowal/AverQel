@@ -23,4 +23,14 @@ test.describe("DeepSpace durable runtime", () => {
       authenticatedPage.getByText(/Native Durable Runtime|Mission Canvas/i).first(),
     ).toBeVisible();
   });
+
+  test("keeps operations visibility private and does not silently switch models", async ({
+    authenticatedPage,
+  }) => {
+    await authenticatedPage.goto("/dashboard/deepspace");
+    await expect(authenticatedPage.getByText(/Provider health/i)).toBeVisible();
+    // Model selection remains an explicit user control. A provider circuit may
+    // report failure, but it must not silently replace the selected model.
+    await expect(authenticatedPage.getByText(/Provider health/i)).not.toContainText(/fallback/i);
+  });
 });

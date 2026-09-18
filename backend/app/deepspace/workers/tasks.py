@@ -17,11 +17,53 @@ from app.deepspace.models.artifact_job import DeepSpaceArtifactJob
 from app.deepspace.models.schedule_run import DeepSpaceScheduleRun
 from app.deepspace.services.chat_service import DeepSpaceChatService, sse
 from app.deepspace.services.run_events import append_event, cancellation_key
+from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore
+from app.deepspace.services.turn_queue import DeepSpaceTurnQueueStore
 from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+@celery_app.task(name="deepspace.dispatch_turn_queue")  # type: ignore[misc]
+def dispatch_deepspace_turn_queue(*, tenant_id: str, user_id: str, conversation_id: str) -> str:
+    """Claim one durable FIFO turn and hand it to the isolated chat worker."""
+    session = get_session_factory()()
+    try:
+        parsed_tenant_id = uuid.UUID(tenant_id)
+        parsed_user_id = uuid.UUID(user_id)
+        parsed_conversation_id = uuid.UUID(conversation_id)
+        session.execute(text("SET ROLE aks_app"))
+        set_db_tenant_context(session, parsed_tenant_id)
+        claimed = DeepSpaceTurnQueueStore(session).claim_next(
+            tenant_id=parsed_tenant_id,
+            user_id=parsed_user_id,
+            conversation_id=parsed_conversation_id,
+        )
+        if claimed is None:
+            return "idle"
+        run_deepspace_task.apply_async(
+            kwargs={
+                "tenant_id": str(claimed.tenant_id),
+                "user_id": str(claimed.user_id),
+                "roles": claimed.roles,
+                "permissions": claimed.permissions,
+                "conversation_id": str(claimed.conversation_id),
+                "prompt": claimed.prompt,
+                "client_request_id": claimed.client_request_id,
+                "thinking_enabled": claimed.thinking_enabled,
+            }
+        )
+        return "dispatched"
+    finally:
+        try:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+            session.commit()
+        except Exception:  # noqa: BLE001
+            session.rollback()
+        cast(Any, session).close()
 
 
 def _publish_failure(
@@ -71,8 +113,13 @@ def run_deepspace_task(
     session = get_session_factory()()
     lock = redis.Redis.from_url(settings.redis_url, decode_responses=True)
     lock_key = f"deepspace:worker-lock:{request_id}"
+    # A continuation deliberately reuses the original request id.  Use an
+    # owner token so this worker can release only its own lock on completion.
+    lock_token = str(getattr(self.request, "id", "") or uuid.uuid4())
     lock_acquired = False
     resolved_conversation_id = parsed_conversation_id
+    terminal_status = "completed"
+    terminal_error: str | None = None
 
     def update_schedule_run(status: str, error: str | None = None) -> None:
         if not request_id.startswith("schedule-"):
@@ -95,7 +142,7 @@ def run_deepspace_task(
         session.commit()
 
     try:
-        lock_acquired = bool(lock.set(lock_key, "1", nx=True, ex=60 * 60 * 24))
+        lock_acquired = bool(lock.set(lock_key, lock_token, nx=True, ex=60 * 60 * 24))
         if not lock_acquired:
             return "already-running"
         session.execute(text("SET ROLE aks_app"))
@@ -119,6 +166,23 @@ def run_deepspace_task(
                     ),
                 )
             update_schedule_run("cancelled")
+            if resolved_conversation_id is not None:
+                # The API has already marked the durable run ``cancelling``.
+                # This early-return path does not enter ChatService, which
+                # normally finalizes the run.  Finalize it here so a cancelled
+                # request cannot leave the conversation permanently blocked.
+                DeepSpaceRuntimeStore(session).finish_requested_cancellations(
+                    tenant_id=parsed_tenant_id,
+                    user_id=parsed_user_id,
+                    conversation_id=resolved_conversation_id,
+                )
+                DeepSpaceTurnQueueStore(session).finish(
+                    tenant_id=parsed_tenant_id,
+                    user_id=parsed_user_id,
+                    conversation_id=resolved_conversation_id,
+                    client_request_id=request_id,
+                    status="cancelled",
+                )
             return "cancelled"
         auth = AuthContext(
             user_id=parsed_user_id,
@@ -131,7 +195,7 @@ def run_deepspace_task(
         service = DeepSpaceChatService(db=session, settings=settings)
 
         async def execute() -> None:
-            nonlocal resolved_conversation_id
+            nonlocal resolved_conversation_id, terminal_error, terminal_status
             async for frame in service.stream_turn(
                 auth=auth,
                 conversation_id=parsed_conversation_id,
@@ -168,11 +232,43 @@ def run_deepspace_task(
                         client_request_id=request_id,
                         frame=frame,
                     )
+                if "event: done" in frame:
+                    data_line = next(
+                        (
+                            line[5:].strip()
+                            for line in frame.splitlines()
+                            if line.startswith("data:")
+                        ),
+                        "{}",
+                    )
+                    try:
+                        terminal_status = str(json.loads(data_line).get("status") or "completed")
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        terminal_status = "completed"
+                elif "event: error" in frame:
+                    # A worker must not report a failed provider stream as a
+                    # completed queue turn merely because no `done` frame was
+                    # emitted. The queue can then advance with truthful state.
+                    terminal_status = "failed"
+                    terminal_error = "DeepSpace stream returned an error"
 
         asyncio.run(execute())
-        update_schedule_run("completed")
-        return "completed"
+        # A clarification or approval is deliberately non-terminal.  Its
+        # queue record remains active until the same turn is resumed or
+        # cancelled, so a later queued prompt cannot overtake it.
+        if terminal_status not in {
+            "completed",
+            "cancelled",
+            "failed",
+            "awaiting_user",
+            "awaiting_approval",
+        }:
+            terminal_status = "completed"
+        update_schedule_run(terminal_status)
+        return terminal_status
     except Exception:  # noqa: BLE001
+        terminal_status = "failed"
+        terminal_error = "DeepSpace run failed"
         logger.exception("Detached DeepSpace run failed", extra={"request_id": request_id})
         try:
             update_schedule_run("failed", "DeepSpace run failed")
@@ -192,6 +288,25 @@ def run_deepspace_task(
             logger.exception("Failed to persist detached DeepSpace failure")
         raise
     finally:
+        if resolved_conversation_id is not None:
+            try:
+                DeepSpaceTurnQueueStore(session).finish(
+                    tenant_id=parsed_tenant_id,
+                    user_id=parsed_user_id,
+                    conversation_id=resolved_conversation_id,
+                    client_request_id=request_id,
+                    status=terminal_status,
+                    error=terminal_error,
+                )
+                dispatch_deepspace_turn_queue.apply_async(
+                    kwargs={
+                        "tenant_id": str(parsed_tenant_id),
+                        "user_id": str(parsed_user_id),
+                        "conversation_id": str(resolved_conversation_id),
+                    }
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to advance DeepSpace turn queue")
         try:
             session.rollback()
             session.execute(text("RESET ROLE"))
@@ -199,6 +314,14 @@ def run_deepspace_task(
         except Exception:  # noqa: BLE001
             session.rollback()
         cast(Any, session).close()
+        if lock_acquired:
+            try:
+                # Never remove a lock acquired by a replacement worker after
+                # an unexpected expiry.
+                if lock.get(lock_key) == lock_token:
+                    lock.delete(lock_key)
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to release DeepSpace worker lock", exc_info=True)
         cast(Any, lock).close()
 
 

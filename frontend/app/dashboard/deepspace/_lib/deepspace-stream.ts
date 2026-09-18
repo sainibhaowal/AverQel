@@ -22,6 +22,13 @@ export interface MessageMetrics {
   sessionInputTokens?: number;
   sessionOutputTokens?: number;
   sessionTotalTokens?: number;
+  requestInputTokens?: number;
+  requestOutputTokens?: number;
+  userVisibleInputTokens?: number;
+  userVisibleOutputTokens?: number;
+  conversationVisibleTokens?: number;
+  promptCacheMode?: string;
+  promptCacheEligible?: boolean;
   maxOutputTokens?: number;
   contextStatus?:
     | "normal"
@@ -94,6 +101,7 @@ export interface DeepSpaceStreamEvent {
     | "media_status"
     | "followups"
     | "metrics"
+    | "lifecycle"
     | "done"
     | "error"
     | "research_status"
@@ -368,7 +376,8 @@ export interface TimelineStep {
     | "model_message"
     | "permission"
     | "testing"
-    | "error";
+    | "error"
+    | "ask_user_question";
   title: string;
   status: "running" | "completed" | "failed" | "awaiting_approval";
   startedAt: string;

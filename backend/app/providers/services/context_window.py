@@ -126,6 +126,7 @@ def _normalize_context_key(key: str) -> str:
 _VERIFIED_CONTEXT_WINDOW_PROVIDER_TYPES = {
     "anthropic",
     "custom",
+    "deepseek",
     "fireworks",
     "google",
     "groq",

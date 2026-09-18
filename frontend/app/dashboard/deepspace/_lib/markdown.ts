@@ -10,17 +10,77 @@ export function normalizeMarkdown(content: string): string {
     .trim();
 }
 
+const MARKDOWN_BLOCK_PATTERN = /(^|\n)\s*(?:#{1,6}\s|[-*+]\s+|\d+[.)]\s+|>|```)/m;
+const NUMBERED_THINKING_SECTION = /(?:^|\s)(\d{1,2})\.\s*([^:\n]{2,96}):\s*/g;
+
+function paragraphizeThinkingText(value: string): string {
+  const text = value.trim();
+  // Never interfere with Markdown the provider already produced. This helper
+  // only makes a single dense plain-text reasoning block readable.
+  if (!text || MARKDOWN_BLOCK_PATTERN.test(text) || text.length < 280) return text;
+
+  const sentences = text.split(/(?<=[.!?])\s+(?=[A-Z])/);
+  if (sentences.length < 3) return text;
+
+  const paragraphs: string[] = [];
+  for (let index = 0; index < sentences.length; index += 2) {
+    paragraphs.push(sentences.slice(index, index + 2).join(" "));
+  }
+  return paragraphs.join("\n\n");
+}
+
 /**
- * Providers sometimes prefix visible reasoning with a conversational wrapper
- * such as "Here's a thinking process:". A truncated stream can leave only
- * "'s a thinking process:". It is presentation noise, not part of the
- * reasoning, so remove only that exact leading wrapper from the activity view.
+ * The activity stream is a faithful display of provider-emitted reasoning,
+ * but many providers pack a complete plan into one text line, for example:
+ * "Thinking Process: 1. Inspect the request: ... 2. Check evidence: ...".
+ *
+ * Convert only those explicit step markers into Markdown headings. No words,
+ * steps, tool calls, or stored data are removed or invented; this is a
+ * presentation-only transformation before ReactMarkdown renders the text.
  */
 export function normalizeThinkingDisplay(content: string): string {
-  return content.replace(
-    /^\s*(?:(?:here(?:['’]s|\s+is)?|this\s+is|that\s+is)|['’]s)\s+(?:a\s+)?thinking\s+process\s*:\s*/i,
-    "",
-  );
+  let text = content.replace(/\r\n?/g, "\n").trim();
+  if (!text) return "";
+
+  let title: string | null = null;
+  const wrapper = /^\s*(?:(?:here(?:['’]s|\s+is)?|this\s+is|that\s+is)|['’]s)\s+(?:a\s+)?thinking\s+process\s*:\s*/i;
+  if (wrapper.test(text)) {
+    text = text.replace(wrapper, "");
+  } else {
+    const explicitTitle = /^\s*(thinking\s+(?:process|analysis)|analysis|reasoning)\s*:\s*/i;
+    if (explicitTitle.test(text)) {
+      title = "Thinking process";
+      text = text.replace(explicitTitle, "");
+    }
+  }
+
+  const sections = [...text.matchAll(NUMBERED_THINKING_SECTION)];
+  // A provider's real ordered Markdown list is already readable. Transform
+  // only compact inline steps, where several markers share one physical line.
+  const isCompactInlineSteps =
+    sections.length >= 2 && (text.match(/\n/g)?.length ?? 0) < sections.length - 1;
+  if (isCompactInlineSteps) {
+    const rendered: string[] = [];
+    const preface = text.slice(0, sections[0]?.index ?? 0).trim();
+    if (title) rendered.push(`## ${title}`);
+    if (preface) rendered.push(paragraphizeThinkingText(preface));
+
+    for (let index = 0; index < sections.length; index += 1) {
+      const section = sections[index]!;
+      const bodyStart = (section.index ?? 0) + section[0].length;
+      const bodyEnd = index + 1 < sections.length ? sections[index + 1]!.index : text.length;
+      const body = text.slice(bodyStart, bodyEnd).trim();
+      rendered.push(`### ${section[1]}. ${section[2]!.trim()}${body ? `\n\n${paragraphizeThinkingText(body)}` : ""}`);
+    }
+    return rendered.join("\n\n");
+  }
+
+  // Respect provider-authored Markdown. It is already structured and should
+  // render exactly as the provider wrote it.
+  if (MARKDOWN_BLOCK_PATTERN.test(text)) return title ? `## ${title}\n\n${text}` : text;
+
+  const readableText = paragraphizeThinkingText(text);
+  return title ? `## ${title}\n\n${readableText}` : readableText;
 }
 
 function normalizeMarkdownText(content: string): string {

@@ -371,13 +371,19 @@ describe("DeepSpaceThread streaming preview", () => {
     );
 
     const steps = screen.getAllByTestId("deepspace-timeline-step");
-    expect(steps).toHaveLength(1);
-    expect(steps[0]?.textContent).toContain("todo_write");
-    expect(screen.queryByText("I will create the list.")).not.toBeInTheDocument();
-    expect(screen.queryByText("I can now summarize it.")).not.toBeInTheDocument();
+    expect(steps.map((step) => step.textContent)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("I will create the list."),
+        expect.stringContaining("todo_write"),
+        expect.stringContaining("I can now summarize it."),
+      ]),
+    );
+    expect(steps[0]?.textContent).toContain("I will create the list.");
+    expect(steps[1]?.textContent).toContain("todo_write");
+    expect(steps[2]?.textContent).toContain("I can now summarize it.");
   });
 
-  it("does not render private streamed thinking through the Markdown renderer", () => {
+  it("renders streamed thinking with the Markdown renderer instead of plain paragraph text", () => {
     markdownRendererMock.mockClear();
     render(
       <DeepSpaceThread
@@ -410,12 +416,13 @@ describe("DeepSpaceThread streaming preview", () => {
       />,
     );
 
-    expect(markdownRendererMock).not.toHaveBeenCalledWith(
+    expect(markdownRendererMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: expect.stringContaining("Inspect the source"),
+        content: "## Plan\n\n- Inspect the source\n- Summarize the result",
+        streaming: true,
+        compact: true,
       }),
     );
-    expect(screen.queryByText("Inspect the source")).not.toBeInTheDocument();
   });
 
   it("renders model activity messages as Markdown in the timeline", () => {

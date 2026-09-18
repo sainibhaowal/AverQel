@@ -13,9 +13,12 @@ DeepSpace uses a bounded, provider-facing tool loop for multi-step productivity 
 - `read`, `find`, `write`, `edit`, and `delete` are explicit-target workspace operations for note, Library, memory, chat, and tasks where supported.
 - `write` can copy an already-persisted assistant response directly into a named Library file with `source='previous_assistant'`; it does not resend or regenerate the content.
 - `web_search` searches through the configured server-side provider when current sources are required.
+- `url_read` is implemented for bounded public-page extraction, but the
+  current normal research routing must expose it alongside `web_search` before
+  search-to-page reading is considered complete.
 - `final` is accepted only after the required task list is complete or no task list exists.
 
-The model never receives shell, terminal, file-system, or arbitrary cURL access through this loop. Thinking deltas are display-only; structured tool calls and tool results control execution. The DeepSpace tool contract is provider-independent: every configured chat provider receives the same productivity, web, URL/image, and explicitly attached MCP tools. The provider adapter translates that contract to the provider's native function-calling format (Google Gemini, Anthropic, OpenAI-compatible APIs, OpenCode Zen, and local OpenAI-compatible runtimes).
+The model never receives shell, terminal, file-system, or arbitrary cURL access through this loop. Thinking deltas are display-only; structured tool calls and tool results control execution. Tool availability is request-profile dependent: a provider receives only the authorized tools selected for that request. The provider adapter translates that contract to the provider's native function-calling format (Google Gemini, Anthropic, OpenAI-compatible APIs, OpenCode Zen, and local OpenAI-compatible runtimes).
 
 For a managed multi-step plan, inspection and review are enforced by the backend rather than left to model preference: `todo_write → todo_read → observe → todo_mark(in_progress) → work → analyze → todo_mark(terminal) → todo_check → final`. A direct conversational answer remains tool-free when no workspace action, research, or plan is needed.
 

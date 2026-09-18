@@ -583,4 +583,65 @@ describe("TimelineStep Model", () => {
     expect(timeline?.[0]?.details).toBe("first thought");
     expect(timeline?.[2]?.details).toBe("second thought");
   });
+
+  test("does not merge different tools or tools with different toolIds when step_id collides", () => {
+    let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "submit_query",
+      query: "Search news",
+    });
+
+    const events: DeepSpaceStreamEvent[] = [
+      {
+        event: "tool_start",
+        data: {
+          tool_name: "ask_user",
+          tool_id: "call-ask-1",
+          step_id: "tool_stream_1_0",
+          tool_input: { question: "Which topics?" },
+        },
+      },
+      {
+        event: "tool_result",
+        data: {
+          tool_name: "ask_user",
+          tool_id: "call-ask-1",
+          step_id: "tool_stream_1_0",
+          success: true,
+          output: '{"awaiting_user":true}',
+        },
+      },
+      {
+        event: "tool_start",
+        data: {
+          tool_name: "web_search",
+          tool_id: "call-search-2",
+          step_id: "tool_stream_1_0", // Colliding fallback step ID from another round/worker
+          tool_input: { query: "AI news" },
+        },
+      },
+      {
+        event: "tool_result",
+        data: {
+          tool_name: "web_search",
+          tool_id: "call-search-2",
+          step_id: "tool_stream_1_0",
+          success: true,
+          output: "Found 5 results",
+        },
+      },
+    ];
+
+    state = events.reduce(
+      (s, e) => deepSpaceThreadReducer(s, { type: "stream_event", event: e }),
+      state,
+    );
+
+    const message = state.messages.find((m) => m.id === state.activeAssistantId);
+    const toolSteps = message?.timeline?.filter((step) => step.type === "tool_call");
+    expect(toolSteps).toHaveLength(2);
+    expect(toolSteps?.[0]?.toolName).toBe("ask_user");
+    expect(toolSteps?.[0]?.toolId).toBe("call-ask-1");
+    expect(toolSteps?.[1]?.toolName).toBe("web_search");
+    expect(toolSteps?.[1]?.toolId).toBe("call-search-2");
+  });
 });

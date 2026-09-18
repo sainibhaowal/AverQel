@@ -14,6 +14,9 @@ def test_provider_support_catalog_keeps_account_linking_disabled_by_default() ->
         assert catalog["lmstudio"]["supports_account_linking"] is False
         assert catalog["opencode-zen"]["supports_account_linking"] is False
         assert catalog["opencode-zen"]["supports_chat"] is True
+        assert catalog["deepseek"]["supports_chat"] is True
+        assert catalog["deepseek"]["supports_model_listing"] is True
+        assert catalog["deepseek"]["supports_account_linking"] is False
         assert catalog["tavily"]["supports_web_search"] is True
         assert catalog["tavily"]["supports_chat"] is False
     finally:

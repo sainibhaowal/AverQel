@@ -230,6 +230,15 @@ class AnthropicProvider:
             "x-api-key": request.api_key or "",
             "anthropic-version": "2023-06-01",
         }
+        extra_headers = request.metadata.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            headers.update(
+                {
+                    name: value
+                    for name, value in extra_headers.items()
+                    if isinstance(name, str) and isinstance(value, str) and name.strip()
+                }
+            )
         payload: dict[str, Any] = {
             "model": request.model,
             "temperature": request.temperature,
@@ -239,6 +248,11 @@ class AnthropicProvider:
         # adapter-level protocol default, not AverQel's global chat limit.
         anthropic_max_tokens = request.max_tokens or 4096
         payload["max_tokens"] = anthropic_max_tokens
+        if request.prompt_cache_mode == "anthropic_auto":
+            cache_control: dict[str, Any] = {"type": "ephemeral"}
+            if request.prompt_cache_retention == "1h":
+                cache_control["ttl"] = "1h"
+            payload["cache_control"] = cache_control
         if system:
             payload["system"] = system
         tools = self._tools_payload(request)
@@ -268,11 +282,12 @@ class AnthropicProvider:
         tool_calls: list[dict[str, Any]] = []
         if isinstance(content, list):
             text, thinking_text, tool_calls = self._extract_text_blocks(content)
+        usage = payload_obj.get("usage", {})
         return ChatGenerateResponse(
             content=text,
             thinking_content=thinking_text,
-            tool_calls=tool_calls or None,
-            usage=payload_obj.get("usage", {}),
+            tool_calls=tool_calls if tool_calls else None,
+            usage=usage if isinstance(usage, dict) else {},
         )
 
     async def stream_generate(self, request: ChatGenerateRequest) -> AsyncIterator[str]:
@@ -292,6 +307,15 @@ class AnthropicProvider:
             "x-api-key": request.api_key or "",
             "anthropic-version": "2023-06-01",
         }
+        extra_headers = request.metadata.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            headers.update(
+                {
+                    name: value
+                    for name, value in extra_headers.items()
+                    if isinstance(name, str) and isinstance(value, str) and name.strip()
+                }
+            )
         payload: dict[str, Any] = {
             "model": request.model,
             "temperature": request.temperature,
@@ -300,6 +324,11 @@ class AnthropicProvider:
         }
         anthropic_max_tokens = request.max_tokens or 4096
         payload["max_tokens"] = anthropic_max_tokens
+        if request.prompt_cache_mode == "anthropic_auto":
+            cache_control: dict[str, Any] = {"type": "ephemeral"}
+            if request.prompt_cache_retention == "1h":
+                cache_control["ttl"] = "1h"
+            payload["cache_control"] = cache_control
         if system:
             payload["system"] = system
         tools = self._tools_payload(request)

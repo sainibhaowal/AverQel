@@ -245,6 +245,22 @@ export default function DeepSpaceLibraryDrawer({
     return () => window.removeEventListener("deepspace-library-changed", handleLibraryChanged);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!open || !conversationId) return;
+    // Server-side uploads and agent-created artifacts can complete after the
+    // originating browser request. This bounded visible-tab reconciliation is
+    // the lossless fallback when a live event is missed during reconnect.
+    const reconcile = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const interval = window.setInterval(reconcile, 2_000);
+    document.addEventListener("visibilitychange", reconcile);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", reconcile);
+    };
+  }, [open, conversationId, currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const selectFile = async (file: LibraryFile) => {
     setSelected(file);
     if (!conversationId) {

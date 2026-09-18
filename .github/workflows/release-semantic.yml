@@ -2,6 +2,11 @@ name: Release - Manual SemVer and Desktop
 
 on:
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Exact canonical release tag, for example v1.2.20"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -41,31 +46,38 @@ jobs:
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION_INPUT: ${{ inputs.release_version }}
         run: |
           set -euo pipefail
           chmod +x .github/scripts/next-semver.sh
 
-          # Only published canonical SemVer releases define the release line.
-          # Historical feature tags and legacy averqel-* tags are preserved but
-          # must not move the next product version forward.
-          LATEST_RELEASE_TAG="$(gh api --paginate \
-            "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | sort -V \
-            | tail -n 1 || true)"
-
-          CURRENT_TAG="$(git tag --points-at "$GITHUB_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
-          if [[ -n "$CURRENT_TAG" ]]; then
-            VERSION="$CURRENT_TAG"
-            echo "Existing release tag found for this commit: $VERSION"
-          elif [[ -n "$LATEST_RELEASE_TAG" ]]; then
-            VERSION="$(.github/scripts/next-semver.sh "$GITHUB_SHA" "$LATEST_RELEASE_TAG")"
-            echo "Latest published canonical release: $LATEST_RELEASE_TAG"
-            echo "Calculated next release version: $VERSION"
+          REQUESTED_VERSION="$RELEASE_VERSION_INPUT"
+          if [[ -n "$REQUESTED_VERSION" ]]; then
+            VERSION="$REQUESTED_VERSION"
+            echo "Using manually requested release version: $VERSION"
           else
-            VERSION="$(.github/scripts/next-semver.sh "$GITHUB_SHA")"
-            echo "Calculated release version: $VERSION"
+            # Only published canonical SemVer releases define the release line.
+            # Historical feature tags and legacy averqel-* tags are preserved but
+            # must not move the next product version forward.
+            LATEST_RELEASE_TAG="$(gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -n 1 || true)"
+
+            CURRENT_TAG="$(git tag --points-at "$GITHUB_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+            if [[ -n "$CURRENT_TAG" ]]; then
+              VERSION="$CURRENT_TAG"
+              echo "Existing release tag found for this commit: $VERSION"
+            elif [[ -n "$LATEST_RELEASE_TAG" ]]; then
+              VERSION="$(.github/scripts/next-semver.sh "$GITHUB_SHA" "$LATEST_RELEASE_TAG")"
+              echo "Latest published canonical release: $LATEST_RELEASE_TAG"
+              echo "Calculated next release version: $VERSION"
+            else
+              VERSION="$(.github/scripts/next-semver.sh "$GITHUB_SHA")"
+              echo "Calculated release version: $VERSION"
+            fi
           fi
 
           [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {

@@ -31,21 +31,28 @@ flowchart LR
 3. Egress policy: `backend/research-renderer/squid.conf`.
 4. Deployment profile: `research-browser` in
    `backend/docker-compose.prod.yml`.
-5. Research orchestration and snippet-only fallback:
-   `backend/app/deepspace/services/research_pipeline.py`.
+5. Static public-page extraction: `backend/app/deepspace/services/url_reader.py`
+   and the `url_read` dispatcher in `chat_service.py`.
+6. Research orchestration and snippet-only fallback: DeepSpace's native
+   `web_search` path.
 
 ## 3. Execution flow
 
 1. Research intent selects deterministic query planning.
-2. The secure URL validator checks the target before rendering.
-3. Chromium runs behind Squid on an internal network.
-4. Every browser request is checked again; blocked requests are aborted.
-5. Extracted HTML is bounded and returned to evidence ranking.
-6. If rendering fails, the source is labeled snippet-only/unavailable.
+2. `web_search` returns candidate URLs and snippets.
+3. A complete implementation calls `url_read` for a selected public URL.
+4. The secure URL validator checks the target before static fetching or
+   rendering.
+5. When enabled and wired, Chromium runs behind Squid on an internal network.
+6. Every browser request is checked again; blocked requests are aborted.
+7. Extracted HTML is bounded and returned to evidence ranking.
+8. If reading or rendering fails, the source is labeled unavailable or
+   snippet-only; snippets are never presented as fetched page text.
 
 ## 4. What users see
 
-1. Current pages requiring JavaScript can contribute fetched evidence.
+1. Once the renderer is enabled and the URL-read fallback is wired, pages
+   requiring JavaScript can contribute fetched evidence.
 2. Sources that cannot be opened are visibly distinguished from verified
    fetched pages.
 3. Research progress and citations continue through the normal DeepSpace SSE.
@@ -66,3 +73,12 @@ flowchart LR
    is deployed on the same internal network.
 3. Operators must smoke-test the profile in their target environment before
    enabling it; the profile is deliberately separate from normal API traffic.
+
+### Current implementation gap
+
+The URL reader and isolated browser adapter exist, but the normal DeepSpace
+research tool list currently adds `web_search` without consistently adding
+`url_read`, and `browser_reader.py` is not yet the automatic fallback for a
+JavaScript-heavy URL. The capability is therefore **partially implemented**.
+Do not mark search-to-page extraction complete until the routing, fallback, and
+authenticated citation test described in `00-end-to-end-handoff.md` pass.

@@ -150,6 +150,28 @@ interface DeepSpaceChatClientProps {
   onSetHistoryOpen?: (open: boolean) => void;
 }
 
+type QueuedTurn = {
+  clientRequestId: string;
+  prompt: string;
+  priority: number;
+  sequence: number;
+  status: "queued" | "running" | "cancelling" | "awaiting_user" | "awaiting_approval";
+};
+
+type OperationalSummary = {
+  sample_size: number;
+  failure_rate: number;
+  p50_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  providers: Array<{
+    provider: string;
+    sample_size: number;
+    failure_rate: number;
+    p50_latency_ms: number | null;
+    p95_latency_ms: number | null;
+  }>;
+};
+
 const EMPTY_PROMPTS = [
   "Help me think through this idea clearly.",
   "Draft a concise message I can send to my team.",
@@ -171,6 +193,8 @@ export default function DeepSpaceChatClient({
 }: DeepSpaceChatClientProps) {
   const [state, dispatch] = useReducer(deepSpaceThreadReducer, initialDeepSpaceThreadState);
   const [query, setQuery] = useState("");
+  const [queuedTurns, setQueuedTurns] = useState<QueuedTurn[]>([]);
+  const [operationalSummary, setOperationalSummary] = useState<OperationalSummary | null>(null);
   const [creatingNewChat, setCreatingNewChat] = useState(false);
   const [completionPulse, setCompletionPulse] = useState(false);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
@@ -183,6 +207,26 @@ export default function DeepSpaceChatClient({
     scrollTop: number;
     viewportHeight: number;
   } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const loadSummary = async () => {
+      try {
+        const response = await fetchWithAuth("/deepspace/chats/operational-summary");
+        if (!response.ok) return;
+        const summary = (await response.json()) as OperationalSummary;
+        if (active) setOperationalSummary(summary);
+      } catch {
+        // Operational visibility is optional; chat must remain usable if it is unavailable.
+      }
+    };
+    void loadSummary();
+    const timer = window.setInterval(() => void loadSummary(), 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const [availableModels, setAvailableModels] = useState<
     Array<{
@@ -243,8 +287,35 @@ export default function DeepSpaceChatClient({
   const notePreviewCallbackRef = useRef(onAgentNotePreview);
   const noteCommitCallbackRef = useRef(onAgentNoteCommitted);
   const noteArgumentBuffersRef = useRef(new Map<string, string>());
-  const resumedRunRef = useRef<string | null>(null);
+  const resumedRunRef = useRef<{ conversationId: string; requestId: string } | null>(null);
   const activeRequestIdRef = useRef<string | null>(null);
+
+  const loadQueuedTurns = useCallback(async (conversationId: string) => {
+    try {
+      const response = (await fetchWithAuth(
+        `/deepspace/chats/${conversationId}/queue`,
+      )) as Response;
+      if (!response.ok) return;
+      const payload = (await response.json()) as Array<{
+        client_request_id: string;
+        prompt: string;
+        priority: number;
+        sequence: number;
+        status: "queued" | "running" | "cancelling" | "awaiting_user" | "awaiting_approval";
+      }>;
+      setQueuedTurns(
+        payload.map((turn) => ({
+          clientRequestId: turn.client_request_id,
+          prompt: turn.prompt,
+          priority: turn.priority,
+          sequence: turn.sequence,
+          status: turn.status,
+        })),
+      );
+    } catch {
+      // The active response remains usable if a background queue refresh fails.
+    }
+  }, []);
 
   useEffect(() => {
     queryRef.current = query;
@@ -641,6 +712,11 @@ export default function DeepSpaceChatClient({
               string,
               unknown
             >;
+            if (payload.destination === "library" || payload.workspace_file_id || payload.file_id) {
+              window.dispatchEvent(
+                new CustomEvent("deepspace-library-changed", { detail: payload }),
+              );
+            }
             const contentHtml = payload.content_html;
             const conversationId = activeConversationIdRef.current;
             if (conversationId && typeof contentHtml === "string") {
@@ -651,6 +727,12 @@ export default function DeepSpaceChatClient({
           } finally {
             noteArgumentBuffersRef.current.delete(callKey);
           }
+          continue;
+        }
+        if (event.event === "tool_result" && toolName === "artifact_create") {
+          window.dispatchEvent(
+            new CustomEvent("deepspace-library-changed", { detail: event.data }),
+          );
           continue;
         }
         if (event.event === "error") markLiveNoteDraftsFailed();
@@ -672,6 +754,17 @@ export default function DeepSpaceChatClient({
         },
         onTransportError: (error) => {
           markLiveNoteDraftsFailed();
+          // A detached worker can persist a terminal provider error just
+          // before the browser-side SSE reader closes. Treat a no-terminal
+          // transport close as an interrupted live connection first, then
+          // rehydrate the durable record below. Reporting it immediately as
+          // STREAM_INCOMPLETE produced a second, misleading system-fault card
+          // beside the real provider error.
+          if (error.code === "STREAM_INCOMPLETE") {
+            pendingHistorySyncRef.current = true;
+            dispatch({ type: "stream_interrupted" });
+            return;
+          }
           dispatch({ type: "stream_failed", error });
         },
         onUserCancel: () => {
@@ -691,6 +784,129 @@ export default function DeepSpaceChatClient({
   useEffect(() => {
     streamStartRef.current = stream.start;
   }, [stream.start]);
+
+  const requestServerCancellation = useCallback(() => {
+    const conversationId = state.currentConversationId ?? activeConversationId;
+    const requestId = activeRequestIdRef.current;
+    if (conversationId) {
+      return fetchWithAuth(`/deepspace/chats/${conversationId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ client_request_id: requestId }),
+      });
+    }
+    if (requestId) {
+      return fetchWithAuth(`/deepspace/chats/queued/${encodeURIComponent(requestId)}/cancel`, {
+        method: "POST",
+      });
+    }
+    return Promise.resolve(null);
+  }, [activeConversationId, state.currentConversationId]);
+
+  const enqueueTurn = useCallback(
+    async (nextQuery: string, steer = false): Promise<boolean> => {
+      const prompt = nextQuery.trim();
+      const conversationId = state.currentConversationId ?? activeConversationId;
+      if (!prompt || !conversationId) return false;
+      const requestId = crypto.randomUUID();
+      try {
+        const response = (await fetchWithAuth(`/deepspace/chats/${conversationId}/queue`, {
+          method: "POST",
+          body: JSON.stringify({
+            message: prompt,
+            client_request_id: requestId,
+            thinking_enabled: thinkingEnabled,
+            steer,
+          }),
+        })) as Response;
+        if (!response.ok) {
+          throw new Error("DeepSpace could not queue this message.");
+        }
+        const turn = (await response.json()) as {
+          client_request_id: string;
+          prompt: string;
+          priority: number;
+          sequence: number;
+          status: "queued" | "running" | "cancelling" | "awaiting_user" | "awaiting_approval";
+        };
+        setQueuedTurns((current) => [
+          ...current.filter((item) => item.clientRequestId !== turn.client_request_id),
+          {
+            clientRequestId: turn.client_request_id,
+            prompt: turn.prompt,
+            priority: turn.priority,
+            sequence: turn.sequence,
+            status: turn.status,
+          },
+        ]);
+        setQuery("");
+        if (steer) {
+          void requestServerCancellation().catch(() => {
+            toast.error(
+              "The steering request was saved, but cancelling the active response failed.",
+            );
+          });
+          stream.cancel();
+        }
+        return true;
+      } catch {
+        toast.error("Unable to queue this message. Your draft is still available.");
+        return false;
+      }
+    },
+    [
+      activeConversationId,
+      requestServerCancellation,
+      state.currentConversationId,
+      stream,
+      thinkingEnabled,
+    ],
+  );
+
+  const cancelQueuedTurn = useCallback(async (clientRequestId: string) => {
+    try {
+      const response = (await fetchWithAuth(
+        `/deepspace/chats/queued/${encodeURIComponent(clientRequestId)}/cancel`,
+        { method: "POST" },
+      )) as Response;
+      if (!response.ok) throw new Error("Unable to cancel queued message");
+      setQueuedTurns((current) =>
+        current.filter((turn) => turn.clientRequestId !== clientRequestId),
+      );
+    } catch {
+      toast.error("Unable to remove the queued message.");
+    }
+  }, []);
+
+  const steerQueuedTurn = useCallback(
+    async (clientRequestId: string) => {
+      const conversationId = state.currentConversationId ?? activeConversationId;
+      if (!conversationId) return;
+      try {
+        const response = (await fetchWithAuth(
+          `/deepspace/chats/${conversationId}/queue/${encodeURIComponent(clientRequestId)}/steer`,
+          { method: "POST" },
+        )) as Response;
+        if (!response.ok) throw new Error("Unable to steer queued message");
+        const turn = (await response.json()) as QueuedTurn & { client_request_id?: string };
+        setQueuedTurns((current) =>
+          current
+            .map((item) =>
+              item.clientRequestId === clientRequestId
+                ? { ...item, priority: turn.priority, status: turn.status }
+                : item,
+            )
+            .sort(
+              (left, right) => right.priority - left.priority || left.sequence - right.sequence,
+            ),
+        );
+        void requestServerCancellation();
+        stream.cancel();
+      } catch {
+        toast.error("Unable to steer the queued message.");
+      }
+    },
+    [activeConversationId, requestServerCancellation, state.currentConversationId, stream],
+  );
 
   const resolveMCPApproval = useCallback(
     async (approvalId: string, decision: "approved" | "denied") => {
@@ -752,8 +968,16 @@ export default function DeepSpaceChatClient({
               const source = [...messages.slice(0, activeAssistant.index)]
                 .reverse()
                 .find((message) => message.role === "user");
-              if (requestId && source && resumedRunRef.current !== requestId) {
-                resumedRunRef.current = requestId;
+              const alreadyAttached =
+                resumedRunRef.current?.conversationId === conversationId &&
+                resumedRunRef.current?.requestId === requestId;
+              activeRequestIdRef.current = requestId || null;
+              if (requestId && source && !alreadyAttached) {
+                // A user can switch to another chat and return while this
+                // worker is still active. Scope the reconnect cache to both
+                // conversation and request; a request id alone prevented the
+                // second visit from restoring its live stream.
+                resumedRunRef.current = { conversationId, requestId };
                 activeRequestIdRef.current = requestId;
                 void streamStartRef.current({
                   endpoint: "/deepspace/chats/stream",
@@ -788,10 +1012,28 @@ export default function DeepSpaceChatClient({
     saveMCPActiveContext({ conversation_id: activeConversationId });
     if (activeConversationId) {
       void loadConversation(activeConversationId);
+      queueMicrotask(() => void loadQueuedTurns(activeConversationId));
     } else {
       dispatch({ type: "reset_thread" });
+      queueMicrotask(() => setQueuedTurns([]));
     }
-  }, [activeConversationId, loadConversation]);
+  }, [activeConversationId, loadConversation, loadQueuedTurns]);
+
+  useEffect(() => {
+    if (!activeConversationId || queuedTurns.length === 0) return;
+    const timer = window.setInterval(() => void loadQueuedTurns(activeConversationId), 1_000);
+    return () => window.clearInterval(timer);
+  }, [activeConversationId, loadQueuedTurns, queuedTurns.length]);
+
+  useEffect(() => {
+    if (
+      !state.isStreaming &&
+      activeConversationId &&
+      queuedTurns.some((turn) => turn.status === "running")
+    ) {
+      void loadConversation(activeConversationId);
+    }
+  }, [activeConversationId, loadConversation, queuedTurns, state.isStreaming]);
 
   useEffect(
     () => () => {
@@ -828,13 +1070,11 @@ export default function DeepSpaceChatClient({
         ? findPendingUserQuestion(state.messages)
         : null;
       const answeringUserQuestion = Boolean(pendingUserQuestion);
-      if (
-        !effectiveQuery ||
-        creatingNewChat ||
-        (state.isStreaming && !answeringUserQuestion) ||
-        submissionInFlightRef.current
-      )
+      if (state.isStreaming && !answeringUserQuestion) {
+        await enqueueTurn(effectiveQuery);
         return;
+      }
+      if (!effectiveQuery || creatingNewChat || submissionInFlightRef.current) return;
 
       submissionInFlightRef.current = true;
       try {
@@ -860,7 +1100,7 @@ export default function DeepSpaceChatClient({
           endpoint: "/deepspace/chats/stream",
           body: {
             message: effectiveQuery,
-            conversation_id: state.currentConversationId,
+            conversation_id: state.currentConversationId ?? activeConversationId,
             client_request_id: requestId,
             thinking_enabled: thinkingEnabled,
             ...(pendingUserQuestion
@@ -874,10 +1114,12 @@ export default function DeepSpaceChatClient({
     },
     [
       query,
+      activeConversationId,
       state.currentConversationId,
       state.isStreaming,
       state.messages,
       creatingNewChat,
+      enqueueTurn,
       stream,
       thinkingEnabled,
     ],
@@ -898,22 +1140,14 @@ export default function DeepSpaceChatClient({
   }, [stream, onNewNote]);
 
   const stopStreaming = useCallback(() => {
-    if (state.currentConversationId) {
-      // Start the server-side cancellation request before closing the browser
-      // stream. A provider may continue generating after the client socket is
-      // gone, so the durable run flag is the authoritative stop signal.
-      void fetchWithAuth(`/deepspace/chats/${state.currentConversationId}/cancel`, {
-        method: "POST",
-        body: JSON.stringify({ client_request_id: activeRequestIdRef.current }),
-      }).catch((err) => console.error("Failed to cancel active mission:", err));
-    } else if (activeRequestIdRef.current) {
-      void fetchWithAuth(
-        `/deepspace/chats/queued/${encodeURIComponent(activeRequestIdRef.current)}/cancel`,
-        { method: "POST" },
-      ).catch((err) => console.error("Failed to cancel queued mission:", err));
-    }
+    // Cancellation is durable server state. The browser reader closes right
+    // away for responsiveness, while the worker receives the authoritative
+    // cancellation flag and advances the conversation queue only on terminal state.
+    void requestServerCancellation().catch(() => {
+      toast.error("Stop was requested locally, but the server could not confirm it yet.");
+    });
     stream.cancel();
-  }, [stream, state.currentConversationId]);
+  }, [requestServerCancellation, stream]);
 
   const syncVoiceSession = useCallback(
     async (nextStt: boolean, nextTts: boolean) => {
@@ -1165,6 +1399,18 @@ export default function DeepSpaceChatClient({
           message.status === "streaming"),
     );
   const pendingUserQuestion = findPendingUserQuestion(state.messages);
+  const changedFiles = useMemo(() => {
+    const files = new Map<string, { path: string; additions: number; deletions: number }>();
+    for (const step of latestAssistant?.agentSteps ?? []) {
+      const diff = step.diffStats;
+      if (!diff?.path) continue;
+      const current = files.get(diff.path) ?? { path: diff.path, additions: 0, deletions: 0 };
+      current.additions += diff.additions;
+      current.deletions += diff.deletions;
+      files.set(diff.path, current);
+    }
+    return [...files.values()];
+  }, [latestAssistant?.agentSteps]);
   const runtimeActivity = useMemo(() => {
     const hasError = Boolean(state.streamError || latestAssistant?.error);
     const activeSteps = (latestAssistant?.agentSteps ?? []).filter(
@@ -1237,6 +1483,9 @@ export default function DeepSpaceChatClient({
     contextUsedTokens === null
       ? draftTokens || null
       : contextUsedTokens + draftTokens + streamedOutputTokens;
+  const userVisibleInputTokens = latestAssistant?.metrics?.userVisibleInputTokens ?? 0;
+  const userVisibleOutputTokens = latestAssistant?.metrics?.userVisibleOutputTokens ?? 0;
+  const conversationVisibleTokens = latestAssistant?.metrics?.conversationVisibleTokens ?? 0;
   const verifiedClientContextLimit = (modelName: string | null): number | null => {
     const normalized = (modelName ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
     if (normalized.includes("nemotron3ultra") || normalized.includes("nemotron3super")) {
@@ -1257,7 +1506,6 @@ export default function DeepSpaceChatClient({
     latestAssistant?.metrics?.contextLimit ??
     state.lastContextLimit ??
     verifiedClientContextLimit(effectiveModelName);
-  const contextUsageSource = latestAssistant?.metrics?.contextUsageSource ?? null;
   const contextRemainingTokens = latestAssistant?.metrics?.contextRemainingTokens ?? null;
   const safeRemainingTokens = latestAssistant?.metrics?.safeRemainingTokens ?? null;
   const sessionInputTokens = latestAssistant?.metrics?.sessionInputTokens ?? null;
@@ -1361,6 +1609,19 @@ export default function DeepSpaceChatClient({
               isMobileStacked ? "pb-24 sm:pr-12 sm:pl-4" : "sm:pr-12 sm:pl-4"
             }`}
           >
+            {operationalSummary && (
+              <section
+                aria-label="DeepSpace provider health"
+                className="mx-auto mb-3 flex max-w-4xl items-center justify-between gap-3 rounded-xl border border-emerald-400/20 bg-emerald-950/20 px-3 py-2 text-xs text-emerald-100"
+              >
+                <span>
+                  Provider health · {operationalSummary.sample_size} recent turns · {Math.round(operationalSummary.failure_rate * 100)}% failures
+                </span>
+                <span>
+                  p50 {operationalSummary.p50_latency_ms ?? "—"} ms · p95 {operationalSummary.p95_latency_ms ?? "—"} ms
+                </span>
+              </section>
+            )}
             <DeepSpaceThread
               messages={renderableMessages}
               emptyPrompts={EMPTY_PROMPTS}
@@ -1392,12 +1653,20 @@ export default function DeepSpaceChatClient({
               onQueryChange={setQuery}
               onSubmit={() => void submitQuery()}
               onStop={stopStreaming}
+              onSteer={() => void enqueueTurn(query, true)}
+              // A running record belongs to the durable assistant turn above,
+              // not to the user's pending-message list. Showing it as a chip
+              // made a restored run look like its prompt had fallen back into
+              // the composer after navigation.
+              queuedTurns={queuedTurns.filter((turn) => turn.status === "queued")}
+              onCancelQueuedTurn={(requestId) => void cancelQueuedTurn(requestId)}
+              onSteerQueuedTurn={(requestId) => void steerQueuedTurn(requestId)}
+              changedFiles={changedFiles}
               availableModels={availableModels}
               onModelSelect={handleModelSelect}
               voiceState={voiceState}
               contextUsedTokens={liveContextUsedTokens}
               contextLimit={contextLimit}
-              contextUsageSource={contextUsageSource}
               contextRemainingTokens={contextRemainingTokens}
               safeRemainingTokens={liveSafeRemainingTokens}
               sessionInputTokens={sessionInputTokens}
@@ -1407,6 +1676,11 @@ export default function DeepSpaceChatClient({
               maxOutputTokens={maxOutputTokens}
               contextStatus={contextStatus}
               contextCompacted={contextCompacted}
+              userVisibleInputTokens={userVisibleInputTokens + draftTokens}
+              userVisibleOutputTokens={userVisibleOutputTokens + streamedOutputTokens}
+              conversationVisibleTokens={conversationVisibleTokens + draftTokens + streamedOutputTokens}
+              promptCacheMode={latestAssistant?.metrics?.promptCacheMode ?? null}
+              promptCacheEligible={latestAssistant?.metrics?.promptCacheEligible ?? false}
               sttActive={sttActive}
               ttsActive={ttsActive}
               onSttToggle={handleSttToggle}

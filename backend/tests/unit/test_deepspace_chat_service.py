@@ -11,6 +11,7 @@ from app.deepspace.services.chat_service import (
     DEEPSPACE_AGENT_POLICY,
     DeepSpaceChatService,
 )
+from app.deepspace.services.reasoning_privacy import redact_reasoning_text
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.types import WebSearchResponse, WebSearchResultItem
 
@@ -25,6 +26,21 @@ class _FakeProvider:
         yield {"type": "delta", "text": "Final answer."}
 
 
+def test_reasoning_privacy_filter_preserves_safe_text_and_masks_sensitive_spans():
+    raw = (
+        "I will read inventory.csv with file_id: 123e4567-e89b-12d3-a456-426614174000. "
+        "Authorization: Bearer sk-this-is-a-test-key-12345. Then I will compare the rows."
+    )
+
+    visible = redact_reasoning_text(raw)
+
+    assert "I will read inventory.csv" in visible
+    assert "Then I will compare the rows." in visible
+    assert "123e4567-e89b-12d3-a456-426614174000" not in visible
+    assert "sk-this-is-a-test-key-12345" not in visible
+    assert "••••••••" in visible
+
+
 class _EmptyProvider:
     calls = 0
 
@@ -32,6 +48,14 @@ class _EmptyProvider:
         self.calls += 1
         if False:
             yield {"type": "delta", "text": "never"}
+
+
+class _ReasoningOnlyProvider:
+    calls = 0
+
+    async def stream_generate_events(self, request):
+        self.calls += 1
+        yield {"type": "thinking", "text": "I should answer the user."}
 
 
 class _FakeRepository:
@@ -137,6 +161,14 @@ class _FakeRegistry:
 class _EmptyRegistry(_FakeRegistry):
     def __init__(self, settings):
         self.provider = _EmptyProvider()
+
+    def get_chat_provider_from_selection(self, candidate):
+        return self.provider
+
+
+class _ReasoningOnlyRegistry(_FakeRegistry):
+    def __init__(self, settings):
+        self.provider = _ReasoningOnlyProvider()
 
     def get_chat_provider_from_selection(self, candidate):
         return self.provider
@@ -416,7 +448,7 @@ class _GoogleToolCaptureRegistry(_FakeRegistry):
 
 
 @pytest.mark.asyncio
-async def test_deepspace_keeps_provider_reasoning_private(monkeypatch):
+async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
     monkeypatch.setattr(chat_service_module, "ProviderRegistry", _FakeRegistry)
@@ -442,15 +474,16 @@ async def test_deepspace_keeps_provider_reasoning_private(monkeypatch):
     thinking_frames = [frame for frame in frames if frame.startswith("event: thinking")]
     delta_frames = [frame for frame in frames if frame.startswith("event: delta")]
     meta_frame = next(frame for frame in frames if frame.startswith("event: meta"))
-    assert thinking_frames == []
+    assert len(thinking_frames) == 2
     meta = json.loads(meta_frame.split("data: ", 1)[1].strip())
     assert meta["context_window"] == 131072
     assert meta["context_limit_source"] == "live_model"
+    assert json.loads(thinking_frames[-1].split("data: ", 1)[1].strip())["text"] == " Then answer."
     assert json.loads(delta_frames[-1].split("data: ", 1)[1].strip())["text"] == "Final answer."
     assert _FakeRepository.completed_metadata["context_limit"] == 131072
     assert _FakeRepository.completed_metadata["context_window"] == 131072
     assert _FakeRepository.completed_metadata["context_limit_source"] == "live_model"
-    assert "thinking" not in _FakeRepository.completed_metadata
+    assert _FakeRepository.completed_metadata["thinking"]["content"] == "Plan first. Then answer."
     assert _FakeRepository.completed_metadata["client_request_id"] == "request-history-1"
 
 
@@ -495,6 +528,37 @@ async def test_deepspace_rejects_empty_provider_stream_and_persists_failure(
     assert not any(frame.startswith("event: done") for frame in frames)
     assert _FakeRepository.completed_metadata["status"] == "error"
     assert _FakeRepository.completed_metadata["error_code"] == "LLM_EMPTY_RESPONSE"
+    assert _FakeRepository.completed_content
+
+
+@pytest.mark.asyncio
+async def test_deepspace_rejects_reasoning_only_provider_response(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _ReasoningOnlyRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="Help me think through this idea clearly.",
+            thinking_enabled=True,
+        )
+    ]
+
+    error = next(frame for frame in frames if frame.startswith("event: error"))
+    payload = json.loads(error.split("data: ", 1)[1].strip())
+    assert payload["code"] == "LLM_EMPTY_RESPONSE"
+    assert not any(frame.startswith("event: done") for frame in frames)
+    assert _FakeRepository.completed_metadata["status"] == "error"
     assert _FakeRepository.completed_content
 
 
@@ -647,7 +711,7 @@ async def test_deepspace_exposes_tools_to_google_models(monkeypatch):
         async for frame in service.stream_turn(
             auth=auth,
             conversation_id=None,
-            prompt="search the latest news today",
+            prompt="Summarize the available DeepSpace tools.",
             thinking_enabled=False,
         )
     ]
@@ -655,7 +719,10 @@ async def test_deepspace_exposes_tools_to_google_models(monkeypatch):
     assert any(frame.startswith("event: delta") for frame in frames)
     assert _GoogleToolCaptureProvider.request is not None
     names = {item["function"]["name"] for item in (_GoogleToolCaptureProvider.request.tools or [])}
-    assert {"todo_write", "web_search", "read", "write"}.issubset(names)
+    assert {"todo_write", "read", "write"}.issubset(names)
+    # Web search is now attached only to a fresh-information request; merely
+    # describing available tools must not inflate every provider payload.
+    assert "web_search" not in names
     assert _GoogleToolCaptureProvider.request.tool_choice == "auto"
 
 

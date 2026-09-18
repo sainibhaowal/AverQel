@@ -116,6 +116,34 @@ class RegenerateRequest(BaseModel):
     thinking_enabled: bool = False
 
 
+class QueueTurnRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    client_request_id: str | None = Field(default=None, max_length=255)
+    thinking_enabled: bool = False
+    steer: bool = False
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def normalize_message(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+
+class QueuedTurnSchema(BaseModel):
+    id: uuid.UUID
+    client_request_id: str
+    prompt: str
+    priority: int
+    sequence: int
+    status: str
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
 class ApprovalDecisionRequest(BaseModel):
     decision: str = Field(pattern="^(approved|denied)$")
 

@@ -29,6 +29,7 @@ from app.system.services.audit_service import AuditService
 
 DEFAULT_PROVIDER_BASE_URLS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
+    "deepseek": "https://api.deepseek.com",
     "anthropic": "https://api.anthropic.com/v1",
     "cohere": "https://api.cohere.com/v2",
     "google": "https://generativelanguage.googleapis.com/v1beta",

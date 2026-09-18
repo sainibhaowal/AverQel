@@ -97,9 +97,39 @@ The existing `POST /api/v1/deepspace/chats/{conversation_id}/cancel` route now
 sets the durable cancellation flag. The stream checks it between model and
 tool steps, so a separate request can stop a long run safely.
 
-Database migration:
+### Durable composer queue
+
+An active DeepSpace response never disables the composer. A normal additional
+message is persisted in `deepspace_queued_turns` and dispatched in FIFO order
+after the active turn reaches a terminal state. **Steer** persists the new
+message at priority and asks the active run to cancel; it does not depend on a
+browser tab remaining open. Each record stores the submitting tenant, user,
+conversation, request id, and an authorization snapshot. Queue reads, removal,
+and dispatch are all scoped to that same tenant/user/conversation boundary.
+
+The queue API is:
+
+- `GET /api/v1/deepspace/chats/{conversation_id}/queue`
+- `POST /api/v1/deepspace/chats/{conversation_id}/queue`
+- `POST /api/v1/deepspace/chats/queued/{client_request_id}/cancel`
+
+The initial normal stream is also first persisted as a queue turn. A browser
+refresh reconnects to the durable event stream, while the queue continues in
+the worker. Approval and clarification resumes deliberately reuse the original
+request id, preserving their queue slot rather than leaving a paused turn that
+could block later messages.
+
+Database migrations include:
 
 - `alembic/versions/20260726_0002_deepspace_agent_runtime.py`
+- `alembic/versions/20260916_0001_deepspace_queued_turns.py`
+- `alembic/versions/20260916_0002_deepspace_request_metrics.py`
+- `alembic/versions/20260917_0001_cascade_deepspace_runtime_and_snapshots.py`
+- `alembic/versions/20260918_0001_deepspace_context_summaries.py`
+
+The queue, metrics, cascade, and context-summary changes are present in the
+current worktree and require migration, regression, and load validation before
+production rollout.
 
 This runtime does not modify Query, terminal, file-explorer, connector, or
 operating-system storage behavior. It adds only the DeepSpace adapter and the

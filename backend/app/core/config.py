@@ -210,7 +210,11 @@ class Settings(BaseSettings):
 
     # DeepSpace deterministic web-research controls. Browser rendering is
     # disabled until an isolated renderer is explicitly deployed.
+    # This is intentionally configurable because the API container may reach
+    # a self-hosted SearXNG instance at a different address than the browser.
+    searxng_base_url: str = "http://searxng:8080"
     deepspace_research_enabled: bool = True
+    deepspace_research_max_queries: int = Field(default=3, ge=1, le=5)
     deepspace_research_max_candidates: int = 40
     deepspace_research_fetch_count: int = 6
     deepspace_research_browser_enabled: bool = False
@@ -227,6 +231,10 @@ class Settings(BaseSettings):
     # Interactive DeepSpace transport safety. This bounds an idle provider
     # stream, but never limits the model's output token budget.
     deepspace_provider_read_timeout_seconds: int = Field(default=90, ge=15, le=300)
+    # Enables only provider-native, ephemeral prompt caching paths that are
+    # explicitly implemented by an adapter. It never enables remote durable
+    # conversation state or sends provider-specific fields to custom endpoints.
+    deepspace_provider_prompt_caching_enabled: bool = True
 
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = DEFAULT_MINIO_ACCESS_KEY

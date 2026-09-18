@@ -1601,6 +1601,59 @@ html:not(.dark) .text-white {
   color: var(--text-strong) !important;
 }
 
+/* ConfirmationModal intentionally uses a dark danger surface in both themes.
+   Keep the global light-theme text normalization from turning its labels navy
+   on black, which makes the warning and actions unreadable. */
+html:not(.dark) .confirmation-modal [class~="text-white"] {
+  color: #f8fafc !important;
+}
+
+html:not(.dark) .confirmation-modal [class~="text-slate-400"] {
+  color: #cbd5e1 !important;
+}
+
+html:not(.dark) .confirmation-modal [class~="text-slate-500"] {
+  color: #94a3b8 !important;
+}
+
+/* The DeepSpace composer is translucent in the light theme. Its icon buttons
+   must retain a deliberate contrast instead of inheriting the global legacy
+   white-text normalization. */
+html:not(.dark) .deepspace-composer-control {
+  color: #334155 !important;
+}
+
+html:not(.dark) .deepspace-composer-stop {
+  color: #dc2626 !important;
+  background-color: rgba(254, 226, 226, 0.94) !important;
+  border-color: rgba(220, 38, 38, 0.45) !important;
+}
+
+html:not(.dark) .deepspace-composer-send:not(:disabled) {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #0f9f9a, #0b7f88) !important;
+  border-color: #0b7f88 !important;
+}
+
+html:not(.dark) .deepspace-composer-send:disabled {
+  color: #475569 !important;
+  background: #e2edf0 !important;
+  border-color: #9fb8c0 !important;
+}
+
+html:not(.dark) .deepspace-composer-steer:not(:disabled) {
+  color: #92400e !important;
+  background-color: #fef3c7 !important;
+  border-color: #d97706 !important;
+}
+
+html:not(.dark) .deepspace-composer-steer:disabled {
+  color: #64748b !important;
+  background-color: #edf3f4 !important;
+  border-color: #b7cbd1 !important;
+  opacity: 1 !important;
+}
+
 /* Global light-theme harmonization for utility classes used across dashboard pages. */
 html:not(.dark) .text-emerald-200,
 html:not(.dark) .text-emerald-300 {
@@ -3014,6 +3067,18 @@ html:not(.dark) .deepspace-theme-scope [class*="bg-black/"] {
 
 html:not(.dark) .deepspace-theme-scope [class*="text-white"] {
   color: var(--text-strong) !important;
+}
+
+/* Timeline markers previously used a fixed dark surface. In light mode that
+ * produced black dots behind otherwise correctly themed activity icons. */
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-icon {
+  background: #f8ffff !important;
+  border-color: rgba(14, 116, 144, 0.34) !important;
+  box-shadow: 0 1px 3px rgba(23, 78, 99, 0.14);
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-connector {
+  background-color: rgba(14, 116, 144, 0.3) !important;
 }
 
 /* Markdown chat output uses prose-invert for dark mode. Reset its typography

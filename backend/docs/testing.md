@@ -81,3 +81,24 @@ AKS_TEST_XDIST_MAX_WORKERS=4 pytest tests/unit -n auto
 
 Do not use `-n 0` for normal validation; it explicitly disables parallel
 execution.
+
+## DeepSpace release-focused checks
+
+For changes to the durable runtime, queue, clarification resume, provider
+routing, or webpage research path, run the focused checks before the full
+suite:
+
+```bash
+pytest -q tests/unit/test_deepspace_chat_service.py
+pytest -q tests/unit/test_deepspace_runtime.py tests/unit/test_deepspace_run_events.py
+pytest -q tests/unit/test_deepspace_tool_profiles.py tests/unit/test_provider_context_transport.py
+```
+
+The webpage research acceptance path is not complete until a staging test
+proves the full sequence `web_search -> url_read -> bounded source text ->
+citation`. A search-result snippet alone is not an acceptable page-fetch test.
+
+The current workspace also contains new migrations for queued turns, request
+metrics, runtime cascades, and context summaries. A release test must apply
+the full Alembic history to a fresh database and upgrade an existing database
+before worker startup is considered safe.

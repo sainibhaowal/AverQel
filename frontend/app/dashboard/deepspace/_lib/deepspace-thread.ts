@@ -1036,12 +1036,21 @@ function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): T
         last.turnIndex === incoming.turnIndex
         ? lastIndex
         : -1
-      : timeline.findIndex(
-          (step) =>
-            step.type === incoming.type &&
-            (step.stepId === incoming.stepId ||
-              (step.toolId && incoming.toolId && step.toolId === incoming.toolId)),
-        );
+      : timeline.findIndex((step) => {
+          if (step.type !== incoming.type) return false;
+          if (incoming.type === "tool_call") {
+            if (step.toolName && incoming.toolName && step.toolName !== incoming.toolName) {
+              return false;
+            }
+            if (step.toolId && incoming.toolId) {
+              return step.toolId === incoming.toolId;
+            }
+          }
+          return (
+            step.stepId === incoming.stepId ||
+            Boolean(step.toolId && incoming.toolId && step.toolId === incoming.toolId)
+          );
+        });
 
   let nextTimeline = [...timeline];
 
@@ -1312,13 +1321,17 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         toolId: String(data.tool_id ?? ""),
       };
     case "error":
+      const providerUnavailable =
+        data.error_category === "provider" ||
+        data.code === "OPENCODE_FREE_TIER_CLIENT_ONLY" ||
+        data.code === "LLM_REQUEST_FAILED";
       return {
         id: `error_${stepId}`,
         stepId,
         turnIndex,
         phase: "exploring",
         type: "error",
-        title: "Execution fault",
+        title: providerUnavailable ? "Provider unavailable" : "DeepSpace error",
         status: "failed",
         startedAt: timestamp,
         completedAt: timestamp,
@@ -2213,6 +2226,11 @@ export function findPendingUserQuestion(
   for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
     const message = messages[messageIndex];
     if (message?.role !== "assistant") continue;
+    // Answer messages are persisted separately and collapsed back onto the
+    // assistant turn during history hydration. Once attached, this turn is
+    // no longer resumable even if its durable activity step still says
+    // `awaiting_approval`.
+    if (message.userQuestionAnswer?.trim()) continue;
     for (let stepIndex = (message.agentSteps?.length ?? 0) - 1; stepIndex >= 0; stepIndex -= 1) {
       const step = message.agentSteps?.[stepIndex];
       const questionId = step?.data?.question_id;
@@ -2312,6 +2330,17 @@ function rehydrateMetricsFromHistory(
   const sessionInputTokens = readNumber("session_input_tokens");
   const sessionOutputTokens = readNumber("session_output_tokens");
   const sessionTotalTokens = readNumber("session_total_tokens");
+  const requestInputTokens = readNumber("request_input_tokens");
+  const requestOutputTokens = readNumber("request_output_tokens");
+  const userVisibleInputTokens = readNumber("user_visible_input_tokens");
+  const userVisibleOutputTokens = readNumber("user_visible_output_tokens");
+  const conversationVisibleTokens = readNumber("conversation_visible_tokens");
+  const promptCacheMode =
+    typeof metadata.prompt_cache_mode === "string" ? metadata.prompt_cache_mode : undefined;
+  const promptCacheEligible =
+    typeof metadata.prompt_cache_eligible === "boolean"
+      ? metadata.prompt_cache_eligible
+      : undefined;
   const reservedOutputTokens = readNumber("reserved_output_tokens");
   const hasContextMetrics =
     contextUsedTokens !== undefined ||
@@ -2353,6 +2382,13 @@ function rehydrateMetricsFromHistory(
     ...(sessionInputTokens !== undefined ? { sessionInputTokens } : {}),
     ...(sessionOutputTokens !== undefined ? { sessionOutputTokens } : {}),
     ...(sessionTotalTokens !== undefined ? { sessionTotalTokens } : {}),
+    ...(requestInputTokens !== undefined ? { requestInputTokens } : {}),
+    ...(requestOutputTokens !== undefined ? { requestOutputTokens } : {}),
+    ...(userVisibleInputTokens !== undefined ? { userVisibleInputTokens } : {}),
+    ...(userVisibleOutputTokens !== undefined ? { userVisibleOutputTokens } : {}),
+    ...(conversationVisibleTokens !== undefined ? { conversationVisibleTokens } : {}),
+    ...(promptCacheMode !== undefined ? { promptCacheMode } : {}),
+    ...(promptCacheEligible !== undefined ? { promptCacheEligible } : {}),
     ...(reservedOutputTokens !== undefined ? { reservedOutputTokens } : {}),
     ...(typeof metadata.context_usage_source === "string"
       ? { contextUsageSource: metadata.context_usage_source }
@@ -2577,6 +2613,15 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
           }
           if (step.type === "tool_error") {
             return "Execution Error";
+          }
+          if (step.data?.phase === "resolving_provider") {
+            return "Model Selection";
+          }
+          if (step.data?.phase === "provider_ready") {
+            return "Provider Connection";
+          }
+          if (step.data?.phase === "finalizing") {
+            return "Turn Finalization";
           }
           const toolName = step.toolName;
           if (toolName) {
@@ -2886,13 +2931,13 @@ function reduceDeepSpaceThread(
               status:
                 action.type === "stream_interrupted"
                   ? "ready"
-                  : m.rawContent.trim() || m.thinkingContent?.trim()
+                  : m.error || m.rawContent.trim() || m.thinkingContent?.trim()
                     ? "ready"
                     : "error",
               error:
                 action.type === "stream_interrupted"
                   ? null
-                  : m.rawContent.trim() || m.thinkingContent?.trim()
+                  : m.error || m.rawContent.trim() || m.thinkingContent?.trim()
                     ? m.error
                     : {
                         code: "STREAM_INCOMPLETE",
@@ -3525,6 +3570,40 @@ function reduceDeepSpaceThread(
           mission: nextMission,
           compaction: nextCompaction,
         };
+      } else if (event.event === "lifecycle") {
+        const phase = String(event.data.phase ?? "working");
+        const unavailable = phase === "provider_unavailable";
+        const modelName =
+          typeof event.data.modelName === "string" && event.data.modelName
+            ? event.data.modelName
+            : undefined;
+        const toolName =
+          phase === "resolving_provider"
+            ? "DeepSpace Router"
+            : phase === "provider_ready"
+              ? (modelName || "DeepSpace Gateway")
+              : phase === "finalizing"
+                ? "Session Store"
+                : "DeepSpace";
+
+        const step: AgentStep = {
+          id: `lifecycle_${phase}_${Date.now()}`,
+          type: "observing",
+          toolName,
+          toolOutput: String(event.data.message ?? phase),
+          status: unavailable ? "failed" : "completed",
+          startedAt: nowIso(),
+          completedAt: nowIso(),
+          data: { phase, ...(typeof event.data === "object" && event.data ? event.data : {}) },
+        };
+        nextMessages[index] = {
+          ...current,
+          agentSteps: [...(current.agentSteps ?? []), step],
+          timeline: nextTimeline,
+          mission: nextMission,
+          compaction: nextCompaction,
+        };
+        return { ...state, messages: nextMessages };
       } else if (event.event === "agent_status") {
         return state;
       } else if (event.event === "agent_plan") {

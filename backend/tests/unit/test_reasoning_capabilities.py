@@ -29,6 +29,8 @@ def test_reasoning_capabilities_cover_supported_providers() -> None:
     assert model_supports_reasoning("opencode-zen", "claude-sonnet-4-6")
     assert model_supports_reasoning("opencode-zen", "gemini-3.1-pro")
     assert model_supports_reasoning("opencode-zen", "deepseek-v4-flash")
+    assert model_supports_reasoning("deepseek", "deepseek-reasoner")
+    assert model_supports_reasoning("deepseek", "deepseek-r1")
     assert model_supports_reasoning("google", "gemini-3-pro")
     assert model_supports_reasoning("anthropic", "claude-3-7-sonnet-latest")
     assert model_supports_reasoning("google", "gemini-2.5-pro")
@@ -37,6 +39,7 @@ def test_reasoning_capabilities_cover_supported_providers() -> None:
     assert model_supports_reasoning("google", "gemma-4-26b-a4b-it")
     assert not model_supports_reasoning("openai", "gpt-4o-mini")
     assert not model_supports_reasoning("google", "gemini-1.5-flash")
+    assert not model_supports_reasoning("deepseek", "deepseek-chat")
 
 
 def test_deepseek_v4_does_not_support_forced_tool_choice() -> None:

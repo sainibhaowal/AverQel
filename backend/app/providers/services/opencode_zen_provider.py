@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
+import re
+import secrets
+import string
 import time
-import uuid
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import replace
 from typing import Any, Final, Literal
@@ -83,6 +86,10 @@ class OpenCodeZenProvider:
         "max_model_len",
         "maxModelLen",
     )
+    BASE62_CHARS: Final[str] = string.digits + string.ascii_uppercase + string.ascii_lowercase
+    OPENCODE_SESSION_RE: Final[re.Pattern[str]] = re.compile(r"^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$")
+    OPENCODE_REQUEST_RE: Final[re.Pattern[str]] = re.compile(r"^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$")
+    OPENCODE_UA: Final[str] = "opencode/1.18.31"
 
     def __init__(self, *, base_url: str | None = None, api_key: str | None = None) -> None:
         self.base_url = resolve_provider_base_url(base_url or self.DEFAULT_BASE_URL) or (
@@ -90,16 +97,61 @@ class OpenCodeZenProvider:
         )
         self.base_url = self.base_url.rstrip("/")
         self.api_key = api_key
-        # OpenCode's free pool requires a client session identifier.  It is
-        # deliberately scoped to this provider instance and never contains
-        # user or credential data.
-        self.session_id = str(uuid.uuid4())
+        # OpenCode's free pool requires a client session identifier in the
+        # canonical format: ses_ + 12 hex timestamp digits + 14 Base62 characters.
+        self.session_id = self.generate_session_id()
 
     def bind(self, base_url: str, api_key: str | None = None) -> OpenCodeZenProvider:
         resolved = resolve_provider_base_url(base_url, provider_type=self.provider_name)
         self.base_url = (resolved or base_url or self.DEFAULT_BASE_URL).rstrip("/")
         self.api_key = api_key
         return self
+
+    @staticmethod
+    def is_free_model(model_name: str | None) -> bool:
+        if not model_name:
+            return False
+        return "free" in model_name.strip().lower()
+
+    @classmethod
+    def generate_session_id(cls, timestamp: int | None = None) -> str:
+        now_ms = int(time.time() * 1000) if timestamp is None else timestamp
+        current = now_ms * 0x1000 + 1
+        value = ~current
+        time_hex = "".join(f"{((value >> (40 - 8 * i)) & 0xFF):02x}" for i in range(6))
+        random_part = "".join(secrets.choice(cls.BASE62_CHARS) for _ in range(14))
+        return f"ses_{time_hex}{random_part}"
+
+    @classmethod
+    def generate_request_id(cls, timestamp: int | None = None) -> str:
+        now_ms = int(time.time() * 1000) if timestamp is None else timestamp
+        current = now_ms * 0x1000 + 1
+        time_hex = "".join(f"{((current >> (40 - 8 * i)) & 0xFF):02x}" for i in range(6))
+        random_part = "".join(secrets.choice(cls.BASE62_CHARS) for _ in range(14))
+        return f"msg_{time_hex}{random_part}"
+
+    @classmethod
+    def translate_session_id(cls, session_id: str | None) -> str:
+        if session_id and cls.OPENCODE_SESSION_RE.match(session_id.strip()):
+            return session_id.strip()
+        raw = (session_id or "").strip()
+        digest = hashlib.sha256(f"opencode\0averqel\0{raw}".encode()).digest()
+        time_hex = digest[:6].hex()
+        random_part = "".join(cls.BASE62_CHARS[b % 62] for b in digest[6:20])
+        return f"ses_{time_hex}{random_part}"
+
+    @classmethod
+    def _normalize_user_agent(cls, downstream_ua: str | None) -> str:
+        if not downstream_ua:
+            return cls.OPENCODE_UA
+        m = re.search(r"opencode/(\d+)\.(\d+)(?:\.(\d+))?", downstream_ua, re.IGNORECASE)
+        if not m:
+            return cls.OPENCODE_UA
+        major = int(m.group(1))
+        minor = int(m.group(2))
+        if major > 1 or (major == 1 and minor >= 17):
+            return downstream_ua
+        return cls.OPENCODE_UA
 
     @staticmethod
     def model_supports_reasoning(model_name: str) -> bool:
@@ -113,18 +165,51 @@ class OpenCodeZenProvider:
                 return injected
         return importlib.import_module("httpx")
 
-    def _headers(self, api_key: str | None) -> dict[str, str]:
-        if not api_key:
+    def _headers(
+        self,
+        api_key: str | None,
+        *,
+        session_id: str | None = None,
+        model: str | None = None,
+        user_agent: str | None = None,
+    ) -> dict[str, str]:
+        is_free = self.is_free_model(model)
+        token = "public" if is_free and (not api_key or api_key == "public") else api_key
+        if not token and is_free:
+            token = "public"
+        if not token:
             raise ProviderRequestError(
                 provider_name=OpenCodeZenProvider.provider_name,
                 status_code=401,
                 message="OpenCode Zen API key is required.",
             )
+        # Upstream OpenCode enforces Authorization: Bearer public for free-tier models.
+        auth_header = "Bearer public" if is_free else f"Bearer {token}"
+        canonical_session = self.translate_session_id(session_id or self.session_id)
+        request_id = self.generate_request_id()
+        ua = self._normalize_user_agent(user_agent)
+
         return {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": auth_header,
             "Content-Type": "application/json",
-            "X-Session-ID": self.session_id,
+            "User-Agent": ua,
+            "x-opencode-client": "desktop",
+            "x-opencode-session": canonical_session,
+            "x-opencode-request": request_id,
+            "x-opencode-project": "global",
+            "X-Session-ID": canonical_session,
         }
+
+    def _request_headers(self, request: ChatGenerateRequest) -> dict[str, str]:
+        session_id = str(request.metadata.get("conversation_id") or "").strip() or None
+        extra = request.metadata.get("extra_headers") or {}
+        user_agent = extra.get("User-Agent") or extra.get("user-agent")
+        return self._headers(
+            request.api_key,
+            session_id=session_id,
+            model=request.model,
+            user_agent=user_agent,
+        )
 
     @staticmethod
     def _extract_provider_error_message(
@@ -404,8 +489,9 @@ class OpenCodeZenProvider:
                     append_from_item(item)
         return tool_calls
 
-    @staticmethod
+    @classmethod
     def _convert_messages_to_input(
+        cls,
         messages: list[dict[str, Any]],
     ) -> tuple[str | None, list[dict[str, Any]]]:
         instructions_parts: list[str] = []
@@ -414,25 +500,113 @@ class OpenCodeZenProvider:
             role = str(message.get("role") or "user")
             content = message.get("content", "")
             if role == "system":
-                if isinstance(content, str) and content.strip():
-                    instructions_parts.append(content.strip())
+                text = (
+                    content if isinstance(content, str) else cls._extract_text_from_content(content)
+                )
+                if text.strip():
+                    instructions_parts.append(text.strip())
                 continue
             if role == "tool":
-                call_id = message.get("tool_call_id") or message.get("id")
-                if not isinstance(call_id, str) or not call_id.strip():
+                call_id = message.get("tool_call_id") or message.get("id") or message.get("call_id")
+                if not call_id or not str(call_id).strip():
                     continue
                 output = (
-                    content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+                    content
+                    if isinstance(content, str)
+                    else json.dumps(content, ensure_ascii=False) if content is not None else ""
                 )
                 input_items.append(
                     {
                         "type": "function_call_output",
-                        "call_id": call_id.strip(),
+                        "call_id": str(call_id).strip(),
                         "output": output,
                     }
                 )
                 continue
-            text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+
+            if role == "assistant":
+                text = (
+                    content if isinstance(content, str) else cls._extract_text_from_content(content)
+                )
+                if text.strip():
+                    input_items.append(
+                        {
+                            "role": "assistant",
+                            "content": text,
+                        }
+                    )
+                raw_tool_calls = message.get("tool_calls")
+                if isinstance(raw_tool_calls, list):
+                    for call in raw_tool_calls:
+                        if not isinstance(call, dict):
+                            continue
+                        call_id = call.get("id") or call.get("call_id")
+                        function = call.get("function")
+                        source = function if isinstance(function, dict) else call
+                        name = (
+                            source.get("name")
+                            or source.get("function_name")
+                            or source.get("tool_name")
+                        )
+                        if not isinstance(name, str) or not name.strip():
+                            continue
+                        arguments = source.get("arguments")
+                        if arguments is None:
+                            arguments = source.get("input") or source.get("parameters")
+                        call_id_str = (
+                            str(call_id).strip()
+                            if call_id and str(call_id).strip()
+                            else f"call_{len(input_items)}"
+                        )
+                        input_items.append(
+                            {
+                                "type": "function_call",
+                                "call_id": call_id_str,
+                                "name": name.strip(),
+                                "arguments": cls._normalize_arguments(arguments),
+                            }
+                        )
+                raw_fn_call = message.get("function_call")
+                if isinstance(raw_fn_call, dict) and not raw_tool_calls:
+                    name = (
+                        raw_fn_call.get("name")
+                        or raw_fn_call.get("function_name")
+                        or raw_fn_call.get("tool_name")
+                    )
+                    if isinstance(name, str) and name.strip():
+                        call_id = (
+                            message.get("tool_call_id")
+                            or message.get("id")
+                            or message.get("call_id")
+                            or raw_fn_call.get("id")
+                        )
+                        call_id_str = (
+                            str(call_id).strip()
+                            if call_id and str(call_id).strip()
+                            else f"call_{len(input_items)}"
+                        )
+                        arguments = raw_fn_call.get("arguments")
+                        if arguments is None:
+                            arguments = raw_fn_call.get("input") or raw_fn_call.get("parameters")
+                        input_items.append(
+                            {
+                                "type": "function_call",
+                                "call_id": call_id_str,
+                                "name": name.strip(),
+                                "arguments": cls._normalize_arguments(arguments),
+                            }
+                        )
+                continue
+
+            text = (
+                content
+                if isinstance(content, str)
+                else (
+                    cls._extract_text_from_content(content)
+                    if isinstance(content, list)
+                    else json.dumps(content, ensure_ascii=False)
+                )
+            )
             if not text.strip():
                 continue
             input_items.append(
@@ -523,7 +697,7 @@ class OpenCodeZenProvider:
             async with client.stream(
                 "POST",
                 f"{base_url}/responses",
-                headers=self._headers(request.api_key),
+                headers=self._request_headers(request),
                 json=payload,
             ) as response:
                 if response.status_code >= 400:
@@ -719,28 +893,175 @@ class OpenCodeZenProvider:
         self, request: ChatGenerateRequest, *, base_url: str
     ) -> ChatGenerateResponse:
         httpx_module = self._httpx(request)
-        payload = self._build_responses_payload(request, stream=False)
-        response = httpx_module.post(
-            f"{base_url}/responses",
-            headers=self._headers(request.api_key),
-            json=payload,
+        is_free = self.is_free_model(request.model)
+        # Free-tier models upstream reject stream=False with FreeTierError.
+        # Streaming is mandatory for free models on OpenCode's Responses API.
+        use_stream = is_free or bool(request.metadata.get("force_stream"))
+        payload = self._build_responses_payload(request, stream=use_stream)
+        timeout = httpx_module.Timeout(
             timeout=float(request.metadata.get("timeout_seconds", 8.0)),
+            read=float(request.metadata.get("read_timeout_seconds", 300.0)),
         )
-        if response.status_code >= 400:
-            self._raise_provider_error(response)
-        payload_obj: dict[str, Any] = response.json()
-        content = self._extract_response_text(payload_obj)
-        # Response capture is provider-output driven. Request controls may be
-        # model-specific, but emitted reasoning must never be discarded here.
-        thinking_content = self._extract_response_thinking(payload_obj)
-        tool_calls = self._extract_response_tool_calls(payload_obj)
-        usage = payload_obj.get("usage", {})
-        return ChatGenerateResponse(
-            content=content,
-            thinking_content=thinking_content,
-            tool_calls=tool_calls if tool_calls else None,
-            usage=usage if isinstance(usage, dict) else {},
-        )
+
+        if use_stream:
+            content_parts: list[str] = []
+            thinking_parts: list[str] = []
+            tool_call_order: list[str] = []
+            tool_call_index_by_id: dict[str, int] = {}
+            tool_call_name_by_id: dict[str, str] = {}
+            tool_call_args_by_id: dict[str, list[str]] = {}
+            usage: dict[str, Any] = {}
+
+            with httpx_module.Client(timeout=timeout) as client:
+                with client.stream(
+                    "POST",
+                    f"{base_url}/responses",
+                    headers=self._request_headers(request),
+                    json=payload,
+                ) as response:
+                    if response.status_code >= 400:
+                        error_payload: dict[str, Any] | None = None
+                        error_text: str | None = None
+                        try:
+                            error_bytes = response.read()
+                            if isinstance(error_bytes, bytes | bytearray):
+                                error_text = bytes(error_bytes).decode("utf-8", errors="replace")
+                                decoded = json.loads(error_text)
+                                if isinstance(decoded, dict):
+                                    error_payload = decoded
+                        except Exception:
+                            pass
+                        self._raise_provider_error(response, payload=error_payload, text=error_text)
+
+                    current_event = ""
+                    for raw_line in response.iter_lines():
+                        line = raw_line.strip()
+                        if not line:
+                            continue
+                        if line.startswith("event:"):
+                            current_event = line.split(":", 1)[1].strip()
+                            continue
+                        if not line.startswith("data:"):
+                            continue
+                        data = line.split(":", 1)[1].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            payload_obj = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        event_name = current_event or str(payload_obj.get("type") or "")
+                        lowered = event_name.lower()
+
+                        if "output_text.delta" in lowered or (
+                            "output_text" in lowered and "delta" in lowered
+                        ):
+                            delta = payload_obj.get("delta")
+                            if not isinstance(delta, str):
+                                delta = payload_obj.get("text")
+                            if isinstance(delta, str) and delta:
+                                content_parts.append(delta)
+                            current_event = ""
+                            continue
+
+                        if "reasoning" in lowered or "think" in lowered:
+                            delta = payload_obj.get("delta")
+                            if not isinstance(delta, str):
+                                delta = payload_obj.get("text") or payload_obj.get("summary")
+                            if isinstance(delta, str) and delta:
+                                thinking_parts.append(delta)
+                            current_event = ""
+                            continue
+
+                        if "output_item.added" in lowered or "item.added" in lowered:
+                            item = payload_obj.get("item")
+                            if not isinstance(item, dict):
+                                item = payload_obj.get("output_item")
+                            if isinstance(item, dict):
+                                item_type = str(item.get("type") or "").lower()
+                                if "function_call" in item_type or "tool_call" in item_type:
+                                    item_id = (
+                                        item.get("id") or item.get("call_id") or item.get("item_id")
+                                    )
+                                    if isinstance(item_id, str) and item_id.strip():
+                                        if item_id not in tool_call_index_by_id:
+                                            tool_call_index_by_id[item_id] = len(tool_call_order)
+                                            tool_call_order.append(item_id)
+                                            tool_call_args_by_id[item_id] = []
+                                        fn_name = (
+                                            item.get("name")
+                                            or item.get("function_name")
+                                            or item.get("tool_name")
+                                        )
+                                        if isinstance(fn_name, str) and fn_name.strip():
+                                            tool_call_name_by_id[item_id] = fn_name.strip()
+                            current_event = ""
+                            continue
+
+                        if (
+                            "function_call_arguments.delta" in lowered
+                            or "arguments.delta" in lowered
+                        ):
+                            item_id = payload_obj.get("item_id") or payload_obj.get("call_id")
+                            if isinstance(item_id, str) and item_id in tool_call_args_by_id:
+                                delta = payload_obj.get("delta")
+                                if not isinstance(delta, str):
+                                    delta = payload_obj.get("arguments")
+                                if isinstance(delta, dict):
+                                    delta = json.dumps(delta, ensure_ascii=False)
+                                if isinstance(delta, str) and delta:
+                                    tool_call_args_by_id[item_id].append(delta)
+                            current_event = ""
+                            continue
+
+                        if "completed" in lowered or "done" in lowered:
+                            resp_meta = payload_obj.get("response")
+                            if isinstance(resp_meta, dict):
+                                usage_meta = resp_meta.get("usage")
+                                if isinstance(usage_meta, dict):
+                                    usage = usage_meta
+
+            tool_calls = []
+            for item_id in tool_call_order:
+                name = tool_call_name_by_id.get(item_id, "")
+                args_str = "".join(tool_call_args_by_id.get(item_id, []))
+                tool_calls.append(
+                    {
+                        "id": item_id,
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": self._normalize_arguments(args_str or "{}"),
+                        },
+                    }
+                )
+
+            return ChatGenerateResponse(
+                content="".join(content_parts),
+                thinking_content="".join(thinking_parts).strip() or None,
+                tool_calls=tool_calls if tool_calls else None,
+                usage=usage,
+            )
+
+        with httpx_module.Client(timeout=timeout) as client:
+            response = client.post(
+                f"{base_url}/responses",
+                headers=self._request_headers(request),
+                json=payload,
+            )
+            if response.status_code >= 400:
+                self._raise_provider_error(response)
+            payload_obj = response.json()
+            content = self._extract_response_text(payload_obj)
+            thinking_content = self._extract_response_thinking(payload_obj)
+            tool_calls = self._extract_response_tool_calls(payload_obj)
+            usage = payload_obj.get("usage", {})
+            return ChatGenerateResponse(
+                content=content,
+                thinking_content=thinking_content,
+                tool_calls=tool_calls if tool_calls else None,
+                usage=usage if isinstance(usage, dict) else {},
+            )
 
     def _family_provider(self, request: ChatGenerateRequest, *, base_url: str) -> tuple[
         str,
@@ -762,15 +1083,22 @@ class OpenCodeZenProvider:
             return self._gpt_family_response(request, base_url=base_url)
         if provider is None:
             raise ProviderCapabilityError("OpenCode Zen provider routing failed")
+        headers = self._request_headers(request)
+        api_key = (
+            headers["Authorization"].split(" ", 1)[1]
+            if "Authorization" in headers and headers["Authorization"].startswith("Bearer ")
+            else request.api_key
+        )
         adapted_request = replace(
             request,
+            api_key=api_key,
             base_url=base_url,
             metadata={
                 **dict(request.metadata),
                 "provider_type": self.provider_name,
                 "extra_headers": {
                     **dict(request.metadata.get("extra_headers") or {}),
-                    "X-Session-ID": self.session_id,
+                    **headers,
                 },
             },
         )
@@ -794,15 +1122,22 @@ class OpenCodeZenProvider:
             return
         if provider is None:
             raise ProviderCapabilityError("OpenCode Zen provider routing failed")
+        headers = self._request_headers(request)
+        api_key = (
+            headers["Authorization"].split(" ", 1)[1]
+            if "Authorization" in headers and headers["Authorization"].startswith("Bearer ")
+            else request.api_key
+        )
         adapted_request = replace(
             request,
+            api_key=api_key,
             base_url=base_url,
             metadata={
                 **dict(request.metadata),
                 "provider_type": self.provider_name,
                 "extra_headers": {
                     **dict(request.metadata.get("extra_headers") or {}),
-                    "X-Session-ID": self.session_id,
+                    **headers,
                 },
             },
         )
@@ -812,15 +1147,22 @@ class OpenCodeZenProvider:
     def stream_generate_sync(self, request: ChatGenerateRequest) -> Iterator[str]:
         base_url = self._resolve_base_url(request.base_url)
         family, provider = self._family_provider(request, base_url=base_url)
+        headers = self._request_headers(request)
+        api_key = (
+            headers["Authorization"].split(" ", 1)[1]
+            if "Authorization" in headers and headers["Authorization"].startswith("Bearer ")
+            else request.api_key
+        )
         adapted_request = replace(
             request,
+            api_key=api_key,
             base_url=base_url,
             metadata={
                 **dict(request.metadata),
                 "provider_type": self.provider_name,
                 "extra_headers": {
                     **dict(request.metadata.get("extra_headers") or {}),
-                    "X-Session-ID": self.session_id,
+                    **headers,
                 },
             },
         )

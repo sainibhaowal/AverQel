@@ -371,9 +371,19 @@ class GoogleProvider:
         payload = self._build_payload(request)
         api_key = request.api_key or ""
         model = quote(request.model, safe="")
+        post_headers = {"Content-Type": "application/json"}
+        extra_headers = request.metadata.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            post_headers.update(
+                {
+                    name: value
+                    for name, value in extra_headers.items()
+                    if isinstance(name, str) and isinstance(value, str) and name.strip()
+                }
+            )
         response = httpx_module.post(
             f"{request.base_url.rstrip('/')}/models/{model}:generateContent?key={api_key}",
-            headers={"Content-Type": "application/json"},
+            headers=post_headers,
             json=payload,
             timeout=float(request.metadata.get("timeout_seconds", 8.0)),
         )
@@ -406,13 +416,23 @@ class GoogleProvider:
         payload = self._build_payload(request)
         api_key = request.api_key or ""
         model = quote(request.model, safe="")
+        stream_headers = {"Content-Type": "application/json"}
+        extra_headers = request.metadata.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            stream_headers.update(
+                {
+                    name: value
+                    for name, value in extra_headers.items()
+                    if isinstance(name, str) and isinstance(value, str) and name.strip()
+                }
+            )
         async with httpx_module.AsyncClient(
             timeout=float(request.metadata.get("timeout_seconds", 8.0))
         ) as client:
             async with client.stream(
                 "POST",
                 f"{request.base_url.rstrip('/')}/models/{model}:streamGenerateContent?alt=sse&key={api_key}",
-                headers={"Content-Type": "application/json"},
+                headers=stream_headers,
                 json=payload,
             ) as response:
                 if response.status_code >= 400:

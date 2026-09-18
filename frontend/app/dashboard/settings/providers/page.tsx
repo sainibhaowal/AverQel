@@ -676,6 +676,12 @@ export default function ProvidersSettingsPage() {
                   >
                     {selectedProvider || showCreateFlow ? (
                       <ProviderForm
+                        // A catalog family is a different configuration
+                        // boundary. Remount a new-family form so URLs,
+                        // credentials, selected models, and discovery state
+                        // from the previous family can never be submitted
+                        // under a different provider type.
+                        key={selectedProvider?.id ?? `new:${selectedCatalogType ?? "none"}`}
                         catalogEntry={selectedCatalogEntry}
                         provider={selectedProvider}
                         models={providerModels}

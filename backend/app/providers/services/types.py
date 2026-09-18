@@ -24,6 +24,13 @@ class ChatGenerateRequest:
     images: list[str] | None = None  # Base64 encoded images
     tools: list[dict[str, Any]] | None = None
     tool_choice: str | dict[str, Any] | None = None
+    # Provider-native context transport is opt-in and capability-gated by the
+    # caller. Generic OpenAI-compatible endpoints must never receive fields
+    # intended for Anthropic, OpenAI Responses, or Gemini cache APIs.
+    prompt_cache_mode: Literal["anthropic_auto", "google_implicit"] | None = None
+    prompt_cache_key: str | None = None
+    prompt_cache_retention: Literal["in_memory", "5m", "1h", "24h"] | None = None
+    previous_response_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

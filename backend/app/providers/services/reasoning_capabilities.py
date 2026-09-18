@@ -198,6 +198,7 @@ _LOCAL_REASONING_PROVIDER_TYPES: Final[set[str]] = {
 _OPENAI_COMPATIBLE_PROVIDER_TYPES: Final[set[str]] = {
     "lmstudio",
     "openai",
+    "deepseek",
     "opencode-zen",
     "custom",
     "openai-compatible",

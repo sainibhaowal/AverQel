@@ -40,6 +40,13 @@ export default function ProviderModelPicker({
     kinds.length === 0
       ? models
       : models.filter((m) => kinds.includes(m.model_kind as ProviderModelKind));
+  // Discovery endpoints occasionally return aliases as duplicate descriptors.
+  // A provider/model/kind is one selectable target, so never render it twice.
+  const uniqueModels = Array.from(
+    new Map(
+      filtered.map((model) => [`${model.model_kind}\u0000${model.model_name}`, model] as const),
+    ).values(),
+  );
 
   // Determine placeholder based on the primary kind
   const getPlaceholder = () => {
@@ -87,7 +94,7 @@ export default function ProviderModelPicker({
                 },
               ]
             : []),
-          ...filtered.map((m) => ({
+          ...uniqueModels.map((m) => ({
             value: m.model_name,
             label: m.display_name || m.model_name,
             hint: formatHint(m),

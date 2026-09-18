@@ -31,6 +31,7 @@ from app.auth.rbac import require_permissions, resolve_permissions
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
+from app.deepspace.repositories.request_metrics import DeepSpaceRequestMetricsRepository
 from app.deepspace.schemas.chats import (
     ApprovalDecisionRequest,
     BulkDeleteRequest,
@@ -49,9 +50,16 @@ from app.deepspace.schemas.chats import (
     MessageEditRequest,
     MessageSchema,
     MessageVersionSchema,
+    QueuedTurnSchema,
+    QueueTurnRequest,
     RegenerateRequest,
 )
 from app.deepspace.services.chat_service import DeepSpaceChatService, sse
+from app.deepspace.services.context_cache import DeepSpaceContextCache
+from app.deepspace.services.reasoning_privacy import (
+    REASONING_REDACTION_VERSION,
+    redact_reasoning_text,
+)
 from app.deepspace.services.run_events import (
     cancellation_key,
     channel_name,
@@ -63,8 +71,9 @@ from app.deepspace.services.run_events import (
     timeline_events,
 )
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
-from app.deepspace.workers.tasks import run_deepspace_task
-from app.platform.database.session import get_db, managed_db_session
+from app.deepspace.services.turn_queue import DeepSpaceTurnQueueStore
+from app.deepspace.workers.tasks import dispatch_deepspace_turn_queue, run_deepspace_task
+from app.platform.database.session import get_db, managed_db_session, set_db_tenant_context
 from app.system.services.rate_limit_service import RateLimitService
 
 router = APIRouter(prefix="/deepspace/chats", tags=["deepspace-chats"])
@@ -77,17 +86,51 @@ SSE_HEADERS = {
 }
 
 
+@router.get(
+    "/operational-summary",
+    response_model=dict[str, Any],
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def operational_summary(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Tenant/user-scoped, redacted provider latency and failure summary."""
+    return DeepSpaceRequestMetricsRepository(db).summary(
+        tenant_id=auth.tenant_id, user_id=auth.user_id
+    )
+
+
+def _safe_history_metadata(value: Any) -> dict[str, Any]:
+    """Never return legacy raw reasoning from a history/reload response."""
+    metadata = dict(value or {})
+    thinking = metadata.get("thinking")
+    if not isinstance(thinking, dict):
+        return metadata
+    if metadata.get("thinking_redaction_version") != REASONING_REDACTION_VERSION:
+        metadata.pop("thinking", None)
+        return metadata
+    metadata["thinking"] = {
+        **thinking,
+        "content": redact_reasoning_text(str(thinking.get("content") or "")),
+    }
+    return metadata
+
+
 def _serialize_message(message: Any) -> MessageSchema:
-    versions = [MessageVersionSchema.model_validate(item) for item in message.versions]
+    versions = [
+        MessageVersionSchema.model_validate(item).model_copy(
+            update={"metadata_json": _safe_history_metadata(item.metadata_json)}
+        )
+        for item in message.versions
+    ]
     active_version = message.active_version
     return MessageSchema(
         id=message.id,
         role=message.role,
         content=(active_version.content if active_version is not None else message.content),
-        metadata_json=(
-            dict(active_version.metadata_json)
-            if active_version is not None
-            else dict(message.metadata_json or {})
+        metadata_json=_safe_history_metadata(
+            active_version.metadata_json if active_version is not None else message.metadata_json
         ),
         created_at=message.created_at,
         active_version_id=message.active_version_id,
@@ -482,6 +525,37 @@ async def delete_conversation(
     db: Session = Depends(get_db),
 ) -> Response:
     repo = DeepSpaceChatRepository(db)
+    conversation = repo.get_conversation(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        user_id=auth.user_id,
+        kind=CONVERSATION_KIND,
+        for_update=True,
+    )
+    if conversation is None:
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND",
+            message="Conversation not found",
+            status_code=404,
+        )
+
+    DeepSpaceRuntimeStore(db).request_cancel(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        commit=False,
+    )
+    DeepSpaceTurnQueueStore(db).cancel_all_for_conversation(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        commit=False,
+    )
+    DeepSpaceContextCache().invalidate_conversation(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
     if not repo.delete_conversation(
         tenant_id=auth.tenant_id,
         conversation_id=conversation_id,
@@ -529,6 +603,16 @@ async def cancel_deepspace_chat(
         user_id=auth.user_id,
         conversation_id=conversation_id,
     )
+    if request_id:
+        cancelled = (
+            DeepSpaceTurnQueueStore(db).request_cancel(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                client_request_id=request_id,
+            )
+            or cancelled
+        )
     return Response(
         status_code=204,
         headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"},
@@ -543,6 +627,7 @@ async def cancel_queued_deepspace_run(
     client_request_id: str,
     auth: AuthContext = Depends(get_auth_context),
     settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
 ) -> Response:
     """Cancel a queued run before its worker has created a conversation run row."""
     client = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -554,7 +639,116 @@ async def cancel_queued_deepspace_run(
         )
     finally:
         await client.close()
-    return Response(status_code=204, headers={"X-DeepSpace-Cancel-Requested": "1"})
+    cancelled = DeepSpaceTurnQueueStore(db).request_cancel_by_request_id(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        client_request_id=client_request_id,
+    )
+    return Response(
+        status_code=204,
+        headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"},
+    )
+
+
+@router.get(
+    "/{conversation_id}/queue",
+    response_model=list[QueuedTurnSchema],
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def list_deepspace_turn_queue(
+    conversation_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> list[QueuedTurnSchema]:
+    repo = DeepSpaceChatRepository(db)
+    if (
+        repo.get_conversation(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+            kind=CONVERSATION_KIND,
+        )
+        is None
+    ):
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+        )
+    return [
+        QueuedTurnSchema.model_validate(turn)
+        for turn in DeepSpaceTurnQueueStore(db).list_open(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+        )
+    ]
+
+
+@router.post(
+    "/{conversation_id}/queue",
+    response_model=QueuedTurnSchema,
+    status_code=202,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def enqueue_deepspace_turn(
+    conversation_id: uuid.UUID,
+    payload: QueueTurnRequest,
+    request: Request,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> QueuedTurnSchema:
+    RateLimitService(settings).enforce_deepspace_user_limit(
+        request=request, user_id=str(auth.user_id)
+    )
+    request_id = str(payload.client_request_id or "").strip() or str(uuid.uuid4())
+    try:
+        turn = DeepSpaceTurnQueueStore(db).enqueue(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+            client_request_id=request_id,
+            prompt=payload.message,
+            thinking_enabled=payload.thinking_enabled,
+            roles=sorted(auth.roles),
+            permissions=sorted(auth.permissions),
+            steer=payload.steer,
+        )
+    except ValueError as exc:
+        raise ApiError(code="CONVERSATION_NOT_FOUND", message=str(exc), status_code=404) from exc
+    except OverflowError as exc:
+        raise ApiError(code="DEEPSPACE_QUEUE_FULL", message=str(exc), status_code=409) from exc
+    dispatch_deepspace_turn_queue.apply_async(
+        kwargs={
+            "tenant_id": str(auth.tenant_id),
+            "user_id": str(auth.user_id),
+            "conversation_id": str(conversation_id),
+        }
+    )
+    return QueuedTurnSchema.model_validate(turn)
+
+
+@router.post(
+    "/{conversation_id}/queue/{client_request_id}/steer",
+    response_model=QueuedTurnSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def steer_deepspace_queued_turn(
+    conversation_id: uuid.UUID,
+    client_request_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> QueuedTurnSchema:
+    turn = DeepSpaceTurnQueueStore(db).promote(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        client_request_id=client_request_id,
+    )
+    if turn is None:
+        raise ApiError(
+            code="QUEUE_TURN_NOT_FOUND", message="Queued message not found.", status_code=404
+        )
+    return QueuedTurnSchema.model_validate(turn)
 
 
 @router.post(
@@ -604,6 +798,21 @@ async def bulk_delete_conversations(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> Response:
+    runtime_store = DeepSpaceRuntimeStore(db)
+    queue_store = DeepSpaceTurnQueueStore(db)
+    for cid in payload.conversation_ids:
+        runtime_store.request_cancel(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=cid,
+            commit=False,
+        )
+        queue_store.cancel_all_for_conversation(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=cid,
+            commit=False,
+        )
     repo = DeepSpaceChatRepository(db)
     count = repo.bulk_delete_conversations(
         tenant_id=auth.tenant_id,
@@ -774,11 +983,100 @@ async def stream_deepspace_chat(
     except (TypeError, ValueError):
         after_sequence = 0
     thinking_enabled = bool(raw_payload.get("thinking_enabled", False))
+    # Clarification answers are claimed synchronously, before a worker is
+    # scheduled.  This is the ownership boundary: exactly one request may
+    # advance an awaiting question; retries merely attach to that same run.
+    question_claimed = False
     if not reconnect and not resume_approval_id and not resume_user_question_id:
         RateLimitService(settings).enforce_deepspace_user_limit(
             request=request,
             user_id=str(auth.user_id),
         )
+        if conversation_id is not None:
+            try:
+                with managed_db_session() as queue_db:
+                    set_db_tenant_context(queue_db, auth.tenant_id)
+                    DeepSpaceTurnQueueStore(queue_db).enqueue(
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        client_request_id=client_request_id,
+                        prompt=prompt,
+                        thinking_enabled=thinking_enabled,
+                        roles=sorted(auth.roles),
+                        permissions=sorted(auth.permissions),
+                    )
+            except ValueError as exc:
+                raise ApiError(
+                    code="CONVERSATION_NOT_FOUND", message=str(exc), status_code=404
+                ) from exc
+            except OverflowError as exc:
+                raise ApiError(
+                    code="DEEPSPACE_QUEUE_FULL", message=str(exc), status_code=409
+                ) from exc
+    elif conversation_id is not None and resume_user_question_id:
+        with managed_db_session() as resume_db:
+            set_db_tenant_context(resume_db, auth.tenant_id)
+            runtime = DeepSpaceRuntimeStore(resume_db)
+            claim = runtime.claim_user_question(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                question_id=resume_user_question_id,
+                answer=prompt,
+            )
+            if claim is None:
+                # A stale card must never create another worker or show a
+                # provider failure. The browser will refresh durable history.
+                active_request_id = DeepSpaceTurnQueueStore(resume_db).active_request_id(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                )
+                if active_request_id:
+                    client_request_id = active_request_id
+            elif claim.claimed:
+                DeepSpaceChatRepository(resume_db).add_message(
+                    tenant_id=auth.tenant_id,
+                    conversation_id=conversation_id,
+                    role="user",
+                    content=prompt,
+                    metadata_json={
+                        "answer_to_question_id": resume_user_question_id,
+                        "client_request_id": client_request_id,
+                    },
+                )
+                resumed_request_id = DeepSpaceTurnQueueStore(resume_db).resume_paused(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                    commit=False,
+                )
+                if resumed_request_id:
+                    client_request_id = resumed_request_id
+                question_claimed = True
+                resume_db.commit()
+            else:
+                active_request_id = DeepSpaceTurnQueueStore(resume_db).active_request_id(
+                    tenant_id=auth.tenant_id,
+                    user_id=auth.user_id,
+                    conversation_id=conversation_id,
+                )
+                if active_request_id:
+                    client_request_id = active_request_id
+    elif conversation_id is not None and resume_approval_id:
+        # Keep the paused turn's stream key and queue slot when a user answers
+        # a clarification or approves an action.  A new id would leave the
+        # original paused record active forever and block following messages.
+        with managed_db_session() as queue_db:
+            set_db_tenant_context(queue_db, auth.tenant_id)
+            resumed_request_id = DeepSpaceTurnQueueStore(queue_db).resume_paused(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+            )
+        if resumed_request_id:
+            client_request_id = resumed_request_id
 
     async def iterator() -> AsyncIterator[str]:
         redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -788,20 +1086,48 @@ async def stream_deepspace_chat(
             await pubsub.subscribe(channel_name(client_request_id))
             if not reconnect:
                 try:
-                    run_deepspace_task.apply_async(
-                        kwargs={
-                            "tenant_id": str(auth.tenant_id),
-                            "user_id": str(auth.user_id),
-                            "roles": sorted(auth.roles),
-                            "permissions": sorted(auth.permissions),
-                            "conversation_id": (str(conversation_id) if conversation_id else None),
-                            "prompt": prompt,
-                            "client_request_id": client_request_id,
-                            "thinking_enabled": thinking_enabled,
-                            "resume_approval_id": resume_approval_id,
-                            "resume_user_question_id": resume_user_question_id,
-                        }
-                    )
+                    if (
+                        conversation_id is not None
+                        and not resume_approval_id
+                        and not resume_user_question_id
+                    ):
+                        dispatch_deepspace_turn_queue.apply_async(
+                            kwargs={
+                                "tenant_id": str(auth.tenant_id),
+                                "user_id": str(auth.user_id),
+                                "conversation_id": str(conversation_id),
+                            }
+                        )
+                    elif resume_user_question_id and not question_claimed:
+                        # The answer was already accepted by another request.
+                        # Subscribe/replay its durable stream; never execute a
+                        # second continuation merely to report stale state.
+                        yield sse(
+                            "done",
+                            {
+                                "conversation_id": str(conversation_id),
+                                "status": "running",
+                                "reconnected": True,
+                            },
+                        )
+                        return
+                    else:
+                        run_deepspace_task.apply_async(
+                            kwargs={
+                                "tenant_id": str(auth.tenant_id),
+                                "user_id": str(auth.user_id),
+                                "roles": sorted(auth.roles),
+                                "permissions": sorted(auth.permissions),
+                                "conversation_id": (
+                                    str(conversation_id) if conversation_id else None
+                                ),
+                                "prompt": prompt,
+                                "client_request_id": client_request_id,
+                                "thinking_enabled": thinking_enabled,
+                                "resume_approval_id": resume_approval_id,
+                                "resume_user_question_id": resume_user_question_id,
+                            }
+                        )
                 except Exception:  # noqa: BLE001
                     logger.exception("Failed to enqueue detached DeepSpace run")
                     yield sse(

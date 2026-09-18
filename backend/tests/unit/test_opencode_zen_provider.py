@@ -299,8 +299,69 @@ def test_opencode_zen_free_pool_headers_include_session_id() -> None:
 
     assert headers["Authorization"] == "Bearer zen_test"
     assert headers["Content-Type"] == "application/json"
+    assert headers["x-opencode-session"] == provider.session_id
     assert headers["X-Session-ID"] == provider.session_id
-    assert len(provider.session_id) == 36
+    assert headers["User-Agent"] == "opencode/1.18.31"
+    assert headers["x-opencode-client"] == "desktop"
+    assert headers["x-opencode-project"] == "global"
+    assert OpenCodeZenProvider.OPENCODE_SESSION_RE.match(provider.session_id)
+    assert OpenCodeZenProvider.OPENCODE_REQUEST_RE.match(headers["x-opencode-request"])
+    assert len(provider.session_id) == 30
+
+
+def test_opencode_zen_uses_conversation_session_header() -> None:
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="zen_test")
+    request = replace(
+        _request("nemotron-3.5-lightning-free"),
+        metadata={"conversation_id": "conversation-123"},
+    )
+
+    headers = provider._request_headers(request)
+
+    # Free tier models upstream enforce Authorization: Bearer public
+    assert headers["Authorization"] == "Bearer public"
+    assert OpenCodeZenProvider.OPENCODE_SESSION_RE.match(headers["x-opencode-session"])
+    assert headers["x-opencode-session"] == provider.translate_session_id("conversation-123")
+    assert headers["X-Session-ID"] == headers["x-opencode-session"]
+    assert headers["User-Agent"] == "opencode/1.18.31"
+
+
+def test_opencode_zen_deterministic_session_translation() -> None:
+    ses1 = OpenCodeZenProvider.translate_session_id("conv-abc-456")
+    ses2 = OpenCodeZenProvider.translate_session_id("conv-abc-456")
+    ses3 = OpenCodeZenProvider.translate_session_id("conv-xyz-789")
+
+    assert ses1 == ses2
+    assert ses1 != ses3
+    assert OpenCodeZenProvider.OPENCODE_SESSION_RE.match(ses1)
+
+
+def test_opencode_zen_user_agent_normalization() -> None:
+    assert OpenCodeZenProvider._normalize_user_agent(None) == "opencode/1.18.31"
+    assert OpenCodeZenProvider._normalize_user_agent("") == "opencode/1.18.31"
+    assert OpenCodeZenProvider._normalize_user_agent("AverQel-DeepSpace/1.0") == "opencode/1.18.31"
+    assert OpenCodeZenProvider._normalize_user_agent("opencode/1.15.0") == "opencode/1.18.31"
+    assert OpenCodeZenProvider._normalize_user_agent("opencode/1.17.0") == "opencode/1.17.0"
+    assert (
+        OpenCodeZenProvider._normalize_user_agent("opencode/1.18.31 (desktop)")
+        == "opencode/1.18.31 (desktop)"
+    )
+    assert OpenCodeZenProvider._normalize_user_agent("opencode/2.0.0") == "opencode/2.0.0"
+
+
+def test_opencode_zen_free_model_detection_and_public_bearer() -> None:
+    provider = OpenCodeZenProvider(base_url="https://opencode.ai/zen/v1", api_key="sk-real-key")
+
+    # Paid model preserves user key
+    paid_headers = provider._headers("sk-real-key", model="claude-sonnet-4-6")
+    assert paid_headers["Authorization"] == "Bearer sk-real-key"
+
+    # Free models enforce Bearer public
+    free_headers1 = provider._headers("sk-real-key", model="muse-spark-1.3-contributor-free")
+    assert free_headers1["Authorization"] == "Bearer public"
+
+    free_headers2 = provider._headers(None, model="nemotron-3.5-lightning-free")
+    assert free_headers2["Authorization"] == "Bearer public"
 
 
 def test_opencode_zen_flattens_chat_tools_for_responses_api() -> None:
@@ -373,3 +434,95 @@ async def test_opencode_zen_provider_streams_responses_events(monkeypatch):
     assert events[2]["type"] == "tool_calls_delta"
     assert events[2]["tool_calls"][0]["function"]["name"] == "search"
     assert events[2]["tool_calls"][0]["function"]["arguments"] == '{"query":"cats"}'
+
+
+def test_opencode_zen_converts_multi_turn_tool_calls_to_responses_input() -> None:
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Find the project README."},
+        {
+            "role": "assistant",
+            "content": "Searching for the README file...",
+            "tool_calls": [
+                {
+                    "id": "fc_01a0af0f9f15708ca73f8d6b4f89be94",
+                    "type": "function",
+                    "function": {
+                        "name": "find",
+                        "arguments": '{"query": "README.md"}',
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "fc_01a0af0f9f15708ca73f8d6b4f89be94",
+            "content": "README.md found in /app",
+        },
+    ]
+
+    instructions, input_items = OpenCodeZenProvider._convert_messages_to_input(messages)
+
+    assert instructions == "You are a helpful assistant."
+    assert len(input_items) == 4
+
+    assert input_items[0] == {"role": "user", "content": "Find the project README."}
+    assert input_items[1] == {
+        "role": "assistant",
+        "content": "Searching for the README file...",
+    }
+    assert input_items[2] == {
+        "type": "function_call",
+        "call_id": "fc_01a0af0f9f15708ca73f8d6b4f89be94",
+        "name": "find",
+        "arguments": '{"query": "README.md"}',
+    }
+    assert input_items[3] == {
+        "type": "function_call_output",
+        "call_id": "fc_01a0af0f9f15708ca73f8d6b4f89be94",
+        "output": "README.md found in /app",
+    }
+
+
+def test_opencode_zen_converts_tool_calls_with_empty_assistant_content() -> None:
+    # When the assistant emitted only a tool call and no text content
+    messages = [
+        {"role": "user", "content": "List files"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_123",
+                    "type": "function",
+                    "function": {
+                        "name": "list_files",
+                        "arguments": {"path": "/"},
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_123",
+            "content": {"files": ["a", "b"]},
+        },
+    ]
+
+    instructions, input_items = OpenCodeZenProvider._convert_messages_to_input(messages)
+
+    assert instructions is None
+    # Must NOT include empty assistant text, but MUST include function_call before function_call_output
+    assert len(input_items) == 3
+    assert input_items[0] == {"role": "user", "content": "List files"}
+    assert input_items[1] == {
+        "type": "function_call",
+        "call_id": "call_123",
+        "name": "list_files",
+        "arguments": '{"path": "/"}',
+    }
+    assert input_items[2] == {
+        "type": "function_call_output",
+        "call_id": "call_123",
+        "output": '{"files": ["a", "b"]}',
+    }

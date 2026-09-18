@@ -307,6 +307,10 @@ function TaskProgressCard({ progress }: { progress: TaskProgress }) {
 }
 
 function stepTitle(step: AgentStep): string {
+  if (step.data?.phase === "resolving_provider") return "Model Selection";
+  if (step.data?.phase === "provider_ready") return "Provider Connection";
+  if (step.data?.phase === "provider_unavailable") return "Provider Unavailable";
+  if (step.data?.phase === "finalizing") return "Turn Finalization";
   if (step.type === "plan") return "Plan";
   if (step.type === "permission_request" || step.type === "ask_user_question")
     return "Approval or input required";
@@ -325,6 +329,10 @@ function StepIcon({ step }: { step: AgentStep }) {
   if (step.status === "awaiting_approval")
     return <ShieldCheck size={13} className="text-amber-300" />;
   if (step.status === "failed") return <XCircle size={13} className="text-red-300" />;
+  if (step.data?.phase === "resolving_provider")
+    return <BrainCircuit size={13} className="text-violet-300" />;
+  if (step.data?.phase === "provider_ready")
+    return <CheckCircle2 size={13} className="text-emerald-400" />;
   if (step.type === "plan") return <ListChecks size={13} className="text-violet-300" />;
   if (step.type === "observing") return <Eye size={13} className="text-sky-300" />;
   if (step.type === "agent_testing" || step.type === "agent_verifying") {
@@ -346,9 +354,12 @@ const ActivityStep = memo(function ActivityStep({ step }: { step: AgentStep }) {
   );
   const outputPreview = detailPreview(output);
   const toolName = step.toolName?.trim();
+  const isUserQuestion = step.type === "ask_user_question" || toolName === "ask_user";
   const statusLabel =
     step.status === "awaiting_approval"
-      ? "awaiting approval"
+      ? isUserQuestion
+        ? "awaiting your answer"
+        : "awaiting approval"
       : step.status === "running"
         ? "running"
         : step.status;
@@ -412,7 +423,11 @@ function TimelineIcon({ step }: { step: TimelineStep }) {
 }
 
 function timelineStatus(step: TimelineStep): string {
-  if (step.status === "awaiting_approval") return "awaiting approval";
+  if (step.status === "awaiting_approval") {
+    return step.type === "ask_user_question" || step.toolName === "ask_user"
+      ? "awaiting your answer"
+      : "awaiting approval";
+  }
   if (step.status === "running") return "live";
   return step.status;
 }
@@ -470,7 +485,7 @@ const TimelineEntry = memo(function TimelineEntry({
       data-testid="deepspace-timeline-step"
     >
       {!isLast ? (
-        <span className="absolute top-0 bottom-[-0.75rem] left-[0.4rem] w-px bg-white/8" />
+        <span className="deepspace-timeline-connector absolute top-0 bottom-[-0.75rem] left-[0.4rem] w-px bg-white/8" />
       ) : null}
       <div className="border-b border-white/8 pb-3">
         <button
@@ -481,7 +496,7 @@ const TimelineEntry = memo(function TimelineEntry({
           onClick={() => setOpen((value) => !value)}
           className="text-foreground/65 hover:text-foreground/85 relative flex w-full cursor-pointer items-center gap-2 rounded-sm text-left text-[10px] font-semibold tracking-[0.12em] uppercase transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300/40 focus-visible:outline-none"
         >
-          <span className="pointer-events-none absolute top-1/2 -left-7 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[#101713]">
+          <span className="deepspace-timeline-icon pointer-events-none absolute top-1/2 -left-7 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-[#101713]">
             <TimelineIcon step={step} />
           </span>
           <ChevronDown
@@ -564,6 +579,7 @@ const TimelineEntry = memo(function TimelineEntry({
 });
 
 export default function DeepSpaceThinkingPanel({
+  content = "",
   isStreaming,
   agentSteps = [],
   timeline = [],
@@ -618,20 +634,52 @@ export default function DeepSpaceThinkingPanel({
   // Providers may emit argument fragments before the function name. The
   // backend labels that transient fragment `pending_tool`; it is not a
   // second execution and must not appear as a failed duplicate row.
-  // Provider chain-of-thought is private and must never be rendered. Keep
-  // only auditable tool, plan, approval, verification, and error activity.
-  // This also protects older history records that contain a legacy `thinking`
-  // field from being displayed after a reload.
+  const isHiddenProviderLifecycle = (step: { data?: Record<string, unknown> }) =>
+    step.data?.phase === "resolving_provider" || step.data?.phase === "provider_ready";
   const activitySteps = agentSteps.filter(
-    (step) => step.type !== "thinking" && step.toolName !== "pending_tool",
+    (step) =>
+      step.type !== "thinking" &&
+      step.toolName !== "pending_tool" &&
+      !isHiddenProviderLifecycle(step),
   );
+  const questionToolIds = new Set(
+    timeline
+      .filter(
+        (step) =>
+          step.type === "permission" &&
+          step.toolName === "ask_user" &&
+          typeof step.data?.question_id === "string",
+      )
+      .map((step) => step.toolId || step.stepId)
+      .filter(Boolean),
+  );
+  // `ask_user` has one durable tool-result event and one question event. They
+  // are the same interaction, not two requests for input. Keep the question
+  // as the single visible timeline row; the durable tool record remains in
+  // history for diagnostics.
   const orderedTimeline = timeline.filter(
-    (step) => step.toolName !== "pending_tool" && step.type !== "thinking",
+    (step) =>
+      step.toolName !== "pending_tool" &&
+      !isHiddenProviderLifecycle(step) &&
+      !(
+        step.toolName === "ask_user" &&
+        step.type !== "permission" &&
+        questionToolIds.has(step.toolId || step.stepId)
+      ),
   );
+  // A completed turn is rehydrated from the persisted assistant metadata and
+  // durable tool steps.  The durable step log intentionally contains tools,
+  // not private model text, so do not hide the persisted thinking content just
+  // because a tool timeline is present.  During live streaming, thinking is
+  // represented as a timeline entry; avoid rendering it twice in that case.
   const taskProgress = taskProgressFromTimeline(orderedTimeline);
   const elapsedMs = timelineDurationMs(orderedTimeline, clock, startedAt, isStreaming);
   const durationLabel = elapsedMs === null ? null : formatElapsed(elapsedMs);
+  const hasNarrativeTimeline = orderedTimeline.some(
+    (step) => step.type === "thinking" || step.type === "model_message",
+  );
   if (
+    !content.trim() &&
     activitySteps.length === 0 &&
     orderedTimeline.length === 0 &&
     !isStreaming
@@ -668,6 +716,21 @@ export default function DeepSpaceThinkingPanel({
             data-thinking-activity="true"
           >
             {taskProgress ? <TaskProgressCard progress={taskProgress} /> : null}
+            {/*
+              `content` is a legacy, message-wide thinking fallback. Once a
+              durable timeline exists, rendering it above the timeline makes
+              reloads look like all thought was merged into one block. The
+              ordered timeline is authoritative whenever present; retain the
+              fallback only for older messages that have no timeline at all.
+            */}
+            {content.trim() && !hasNarrativeTimeline ? (
+              <div className="border-b border-white/8 pb-3" data-testid="deepspace-thinking-stream">
+                <div className="text-foreground/45 mb-2 text-[10px] font-semibold tracking-[0.12em] uppercase">
+                  Model thinking
+                </div>
+                <DeepSpaceMarkdownRenderer content={content} streaming={isStreaming} compact />
+              </div>
+            ) : null}
             {orderedTimeline.length ? (
               <ol className="space-y-3" aria-label="Live agent timeline">
                 {orderedTimeline.map((step, index) => (
@@ -688,6 +751,7 @@ export default function DeepSpaceThinkingPanel({
               </div>
             ) : null}
             {isStreaming &&
+            !content.trim() &&
             activitySteps.length === 0 &&
             orderedTimeline.length === 0 ? (
               <div className="text-foreground/45">Waiting for the model and tools…</div>

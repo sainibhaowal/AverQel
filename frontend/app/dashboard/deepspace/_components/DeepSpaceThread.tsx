@@ -285,6 +285,7 @@ const MessageBubble = memo(
       .reverse()
       .find(
         (step) =>
+          !message.userQuestionAnswer?.trim() &&
           step.type === "ask_user_question" &&
           step.status === "awaiting_approval" &&
           typeof step.data?.question_id === "string" &&

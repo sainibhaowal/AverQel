@@ -52,6 +52,18 @@ SUPPORTED_PROVIDER_CATALOG: dict[str, dict[str, object]] = {
         "supports_account_linking": False,
         "is_local": False,
     },
+    "deepseek": {
+        "display_name": "DeepSeek",
+        "auth_modes": ["api_key"],
+        "supports_chat": True,
+        "supports_embeddings": False,
+        "supports_reranking": False,
+        "supports_web_search": False,
+        "supports_model_listing": True,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": False,
+    },
     "groq": {
         "display_name": "Groq",
         "auth_modes": ["api_key"],
@@ -284,7 +296,7 @@ class ProviderManagementService:
 
         try:
             acquired = self.db.execute(
-                text("SELECT pg_try_advisory_xact_lock(" "hashtextextended(:lock_key, 0))"),
+                text("SELECT pg_try_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
                 {"lock_key": f"averqel:managed-provider-seed:{tenant_id}"},
             ).scalar_one()
             return bool(acquired)
@@ -370,6 +382,34 @@ class ProviderManagementService:
             is_local=is_local,
             api_key=api_key,
         )
+        normalized_endpoint = (api_base_url or "").strip().rstrip("/").casefold()
+        existing = next(
+            (
+                candidate
+                for candidate in self.configs.list_by_workspace(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    owner_user_id=actor_user_id,
+                )
+                if candidate.visibility_scope != "system"
+                and candidate.provider_type == provider_type
+                and (candidate.api_base_url or "").strip().rstrip("/").casefold()
+                == normalized_endpoint
+            ),
+            None,
+        )
+        if existing is not None:
+            raise ApiError(
+                # Keep this on the established public error vocabulary.  An
+                # unknown code raises while constructing ApiError and turns a
+                # straightforward duplicate into a 500 response.
+                code="DUPLICATE_CONNECTION",
+                message=(
+                    f"{SUPPORTED_PROVIDER_CATALOG[provider_type]['display_name']} is already connected "
+                    "for this account and endpoint. Update the existing connection instead."
+                ),
+                status_code=409,
+            )
         effective_default_embedding_model = default_embedding_model
         if (
             provider_type == "lmstudio"

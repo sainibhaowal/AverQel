@@ -1,17 +1,35 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import get_settings
 from app.core.ids import generate_uuid7_with_fallback
+from app.deepspace.models.agent_memory import AgentMemory
+from app.deepspace.models.agent_runtime import (
+    DeepSpaceAgentRun,
+    DeepSpaceAgentStep,
+    DeepSpaceRunEvent,
+)
 from app.deepspace.models.conversation import Conversation
+from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
 from app.deepspace.models.message import Message
 from app.deepspace.models.message_version import MessageVersion
+from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
+from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
+from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
+from app.deepspace.services.context_cache import DeepSpaceContextCache
+from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.services.storage_service import StorageService
+
+logger = logging.getLogger(__name__)
 
 
 class DeepSpaceChatRepository:
@@ -49,6 +67,7 @@ class DeepSpaceChatRepository:
         conversation_id: uuid.UUID,
         user_id: uuid.UUID | None = None,
         kind: str = "deepspace",
+        for_update: bool = False,
     ) -> Conversation | None:
         stmt = select(Conversation).where(
             Conversation.tenant_id == tenant_id,
@@ -57,6 +76,8 @@ class DeepSpaceChatRepository:
         )
         if user_id is not None:
             stmt = stmt.where(Conversation.user_id == user_id)
+        if for_update:
+            stmt = stmt.with_for_update()
         return self.db.execute(stmt).scalar_one_or_none()
 
     def list_conversations(
@@ -143,6 +164,166 @@ class DeepSpaceChatRepository:
         self.db.flush()
         return conversation
 
+    def _cleanup_conversation_artifacts(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_ids: list[uuid.UUID],
+    ) -> None:
+        if not conversation_ids:
+            return
+
+        # 1. Clean up MinIO / S3 object storage blobs for media and workspace files
+        try:
+            settings = get_settings()
+            storage = StorageService(settings)
+
+            media_blobs = cast(
+                list[tuple[Any, Any]],
+                self.db.execute(
+                    select(
+                        DeepSpaceMediaArtifact.storage_bucket, DeepSpaceMediaArtifact.storage_key
+                    ).where(
+                        DeepSpaceMediaArtifact.tenant_id == tenant_id,
+                        DeepSpaceMediaArtifact.user_id == user_id,
+                        DeepSpaceMediaArtifact.conversation_id.in_(conversation_ids),
+                    )
+                ).all(),
+            )
+
+            file_blobs = cast(
+                list[tuple[Any, Any]],
+                self.db.execute(
+                    select(
+                        DeepSpaceWorkspaceFile.storage_bucket, DeepSpaceWorkspaceFile.storage_key
+                    ).where(
+                        DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+                        DeepSpaceWorkspaceFile.user_id == user_id,
+                        DeepSpaceWorkspaceFile.conversation_id.in_(conversation_ids),
+                        DeepSpaceWorkspaceFile.storage_bucket.isnot(None),
+                        DeepSpaceWorkspaceFile.storage_key.isnot(None),
+                    )
+                ).all(),
+            )
+
+            version_blobs = cast(
+                list[tuple[Any, Any]],
+                self.db.execute(
+                    select(
+                        DeepSpaceWorkspaceFileVersion.storage_bucket,
+                        DeepSpaceWorkspaceFileVersion.storage_key,
+                    ).where(
+                        DeepSpaceWorkspaceFileVersion.tenant_id == tenant_id,
+                        DeepSpaceWorkspaceFileVersion.user_id == user_id,
+                        DeepSpaceWorkspaceFileVersion.conversation_id.in_(conversation_ids),
+                        DeepSpaceWorkspaceFileVersion.storage_bucket.isnot(None),
+                        DeepSpaceWorkspaceFileVersion.storage_key.isnot(None),
+                    )
+                ).all(),
+            )
+
+            for bucket, key in (*media_blobs, *file_blobs, *version_blobs):
+                if bucket and key:
+                    try:
+                        storage.delete_object(bucket=str(bucket), object_key=str(key))
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "Storage delete failed for %s/%s; enqueuing StorageCleanupJob: %s",
+                            bucket,
+                            key,
+                            exc,
+                        )
+                        try:
+                            job = StorageCleanupJob(
+                                tenant_id=tenant_id,
+                                owner_user_id=user_id,
+                                bucket=str(bucket),
+                                object_key=str(key),
+                                status="pending",
+                                last_error=str(exc)[:1000],
+                            )
+                            self.db.add(job)
+                        except Exception:  # noqa: BLE001
+                            logger.error(
+                                "Failed to enqueue StorageCleanupJob for %s/%s",
+                                bucket,
+                                key,
+                                exc_info=True,
+                            )
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "Storage cleanup encountered an error during conversation deletion", exc_info=True
+            )
+
+        # 2. Explicitly remove un-cascaded runtime and snapshot data
+        try:
+            self.db.execute(
+                delete(DeepSpaceAgentStep).where(
+                    DeepSpaceAgentStep.tenant_id == tenant_id,
+                    DeepSpaceAgentStep.user_id == user_id,
+                    DeepSpaceAgentStep.conversation_id.in_(conversation_ids),
+                )
+            )
+            self.db.execute(
+                delete(DeepSpaceRunEvent).where(
+                    DeepSpaceRunEvent.tenant_id == tenant_id,
+                    DeepSpaceRunEvent.user_id == user_id,
+                    DeepSpaceRunEvent.conversation_id.in_(conversation_ids),
+                )
+            )
+            self.db.execute(
+                delete(DeepSpaceAgentRun).where(
+                    DeepSpaceAgentRun.tenant_id == tenant_id,
+                    DeepSpaceAgentRun.user_id == user_id,
+                    DeepSpaceAgentRun.conversation_id.in_(conversation_ids),
+                )
+            )
+            self.db.execute(
+                delete(DeepSpaceMissionSnapshot).where(
+                    DeepSpaceMissionSnapshot.tenant_id == tenant_id,
+                    DeepSpaceMissionSnapshot.user_id == user_id,
+                    DeepSpaceMissionSnapshot.conversation_id.in_(conversation_ids),
+                )
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("Runtime table cleanup encountered an error", exc_info=True)
+
+        # 3. Purge memories linked to these conversations
+        try:
+            conv_id_strs = [str(cid) for cid in conversation_ids]
+            self.db.execute(
+                delete(AgentMemory).where(
+                    AgentMemory.tenant_id == str(tenant_id),
+                    AgentMemory.user_id == str(user_id),
+                    AgentMemory.conversation_id.in_(conv_id_strs),
+                )
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("AgentMemory conversation cleanup encountered an error", exc_info=True)
+
+        # 4. Remove queued turns
+        try:
+            self.db.execute(
+                delete(DeepSpaceQueuedTurn).where(
+                    DeepSpaceQueuedTurn.tenant_id == tenant_id,
+                    DeepSpaceQueuedTurn.user_id == user_id,
+                    DeepSpaceQueuedTurn.conversation_id.in_(conversation_ids),
+                )
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("Queued turns cleanup encountered an error", exc_info=True)
+
+        # 5. Clear Redis context cache
+        try:
+            DeepSpaceContextCache().invalidate_conversations(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                conversation_ids=conversation_ids,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("Context cache invalidation encountered an error", exc_info=True)
+
     def delete_conversation(
         self,
         *,
@@ -151,6 +332,11 @@ class DeepSpaceChatRepository:
         user_id: uuid.UUID,
         kind: str = "deepspace",
     ) -> bool:
+        self._cleanup_conversation_artifacts(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_ids=[conversation_id],
+        )
         result = self.db.execute(
             delete(Conversation).where(
                 Conversation.tenant_id == tenant_id,
@@ -171,6 +357,11 @@ class DeepSpaceChatRepository:
     ) -> int:
         if not conversation_ids:
             return 0
+        self._cleanup_conversation_artifacts(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_ids=conversation_ids,
+        )
         result = self.db.execute(
             delete(Conversation).where(
                 Conversation.tenant_id == tenant_id,
@@ -378,6 +569,14 @@ class DeepSpaceChatRepository:
             return False
         self.db.delete(message)
         self.db.flush()
+        try:
+            DeepSpaceContextCache().invalidate_conversation(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug("Context cache invalidation failed on message delete", exc_info=True)
         return True
 
     def create_message_version(

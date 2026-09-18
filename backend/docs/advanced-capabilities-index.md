@@ -6,7 +6,10 @@ display them as consecutive numbers.
 
 This is the entry point for the six production capability audits. Each
 feature has its own document so operators, reviewers, and users can inspect
-the logic and the visible behavior independently.
+the logic and the visible behavior independently. Read the end-to-end handoff
+first for release status and cross-feature dependencies.
+
+0. [End-to-end implementation and release handoff](00-end-to-end-handoff.md)
 
 ```mermaid
 flowchart LR
