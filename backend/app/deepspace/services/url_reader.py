@@ -41,6 +41,7 @@ class URLReadResult:
     canonical_url: str | None = None
     section_headings: list[str] | None = None
     tables: list[list[list[str]]] | None = None
+    retrieval_method: str = "static"
 
 
 def _clean_text(value: object, limit: int = MAX_TEXT_CHARS) -> str:
@@ -51,16 +52,11 @@ def _clean_text(value: object, limit: int = MAX_TEXT_CHARS) -> str:
 
 def validate_public_url(value: str, *, allowed_domains: object = None) -> str:
     parsed = urlparse(value.strip())
-    if (
-        parsed.scheme not in {"http", "https"}
-        or not parsed.hostname
-        or parsed.username
-        or parsed.password
-    ):
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
         raise ProviderRequestError(
             "url_reader",
             400,
-            "Only public http(s) URLs without credentials are allowed.",
+            "Only public HTTPS URLs without credentials are allowed.",
         )
     host = parsed.hostname.rstrip(".").lower()
     if isinstance(allowed_domains, list) and allowed_domains:

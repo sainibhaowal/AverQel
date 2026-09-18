@@ -61,15 +61,16 @@ not delete migration rows or manually edit `alembic_version`.
 
 `web_search` returns search results and snippets. It does not prove that a
 page was opened. A fetched page must be reported only after the `url_read`
-tool returns bounded content and a source URL. The current code contains the
-URL reader, but the normal research routing still needs to expose it alongside
-`web_search`; track that work in `00-end-to-end-handoff.md`.
+tool returns bounded content and a source URL. The normal research routing
+exposes `url_read` alongside `web_search`, and direct HTTPS URLs can use it
+without search-provider selection.
 
 For JavaScript-heavy public pages, deploy and smoke-test the optional
-`research-browser` profile. Keep cookies, logins, downloads, private-network
-targets, and side effects blocked. If the renderer is unavailable, the UI must
-say that the source was not fetched rather than presenting a search snippet as
-page content.
+`research-browser` profile. Static extraction calls it only when the page looks
+like an empty JavaScript shell. Keep cookies, logins, downloads, private-network
+targets, and side effects blocked. If the renderer is unavailable, static
+evidence is retained when available; otherwise the UI must say that the source
+was not fetched rather than presenting a search snippet as page content.
 
 ## Staging load validation
 

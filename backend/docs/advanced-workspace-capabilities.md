@@ -53,9 +53,10 @@ available, what is gated, and which security boundary protects each feature.
 3. Keep the profile disabled unless the renderer image and egress policy have
    been smoke-tested in the target environment. Failed renders are reported
    as unavailable/snippet-only evidence rather than verified content.
-4. The current DeepSpace research route exposes `web_search` reliably, but the
-   normal search flow still needs to expose `url_read` and wire the browser
-   adapter as a fallback before this capability is advertised as end-to-end.
+4. The DeepSpace research route exposes `web_search` and `url_read` together;
+   the model reads a selected HTTPS result before summarizing. Static reading
+   falls back to the isolated browser adapter only for an empty JavaScript
+   shell when the renderer is enabled.
 
 ## 4. Artifacts and exports
 

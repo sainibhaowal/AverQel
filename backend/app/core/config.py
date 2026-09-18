@@ -220,6 +220,9 @@ class Settings(BaseSettings):
     deepspace_research_browser_enabled: bool = False
     deepspace_research_browser_url: str | None = None
     deepspace_research_browser_token: str | None = None
+    deepspace_url_read_timeout_seconds: int = Field(default=15, ge=5, le=30)
+    deepspace_url_read_max_bytes: int = Field(default=2_000_000, ge=16_384, le=2_000_000)
+    deepspace_url_allowed_domains: list[str] = Field(default_factory=list)
     # Sandboxed code/data execution is off unless a separately isolated
     # executor has been deployed and authenticated.  It is never run in the
     # API or worker container.

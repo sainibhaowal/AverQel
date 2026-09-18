@@ -16,6 +16,7 @@ def test_validate_public_url_enforces_scheme_allowlist_and_dns(monkeypatch) -> N
     )
     for value in (
         "file:///tmp/a",
+        "http://example.com/insecure",
         "https://user:pass@example.com",
         "https://other.test",
     ):

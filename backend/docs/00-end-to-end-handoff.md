@@ -83,29 +83,24 @@ User asks for current research
   -> citations identify fetched sources
 ```
 
-The current code already contains:
+The current code contains:
 
 - `WEB_SEARCH_TOOL` and the configured search-provider path;
 - `URL_READ_TOOL` and `read_url()` with SSRF, redirect, size, and content-type
   checks;
 - `browser_reader.py`, Chromium, and the `research-browser` Compose profile.
+- The normal research route exposes `web_search` and `url_read` together, and
+  direct HTTPS prompts expose `url_read` even when search-provider selection is
+  unavailable.
+- URL reads return bounded text, title, links, final URL, retrieval method, and
+  a citation. Empty JavaScript shells use the isolated browser only when it is
+  explicitly enabled.
+- Tests cover search→read, direct URL routing, HTTPS/SSRF blocking, static
+  extraction, browser fallback, and fetched citations.
 
-The remaining integration work is:
-
-1. Add `URL_READ_TOOL` to the normal research tool set alongside
-   `WEB_SEARCH_TOOL`.
-2. Detect direct URL/open/read-page requests even when the prompt does not use
-   the word “search”.
-3. Let the URL-read dispatcher use the isolated renderer when static HTML is
-   insufficient and the renderer is enabled.
-4. Preserve public-URL validation, domain allowlists, response limits,
-   timeouts, and no-cookie/no-login behavior.
-5. Add a test that performs search, reads a public result, and verifies the
-   citation source is `url_read`.
-
-Until these steps are complete, documentation and UI must describe the feature
-as “search with snippet fallback” rather than “the assistant can open every
-webpage.”
+The security boundary remains unchanged: HTTPS-only public targets, configured
+domain allowlists, per-hop redirect validation, bounded timeouts and response
+size, no cookies or logins, and no private-network access.
 
 ## 5. Configuration and deployment order
 

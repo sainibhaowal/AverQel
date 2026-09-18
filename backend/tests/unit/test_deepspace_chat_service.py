@@ -12,6 +12,7 @@ from app.deepspace.services.chat_service import (
     DeepSpaceChatService,
 )
 from app.deepspace.services.reasoning_privacy import redact_reasoning_text
+from app.deepspace.services.url_reader import URLReadResult
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.types import WebSearchResponse, WebSearchResultItem
 
@@ -247,6 +248,55 @@ class _ToolRegistry(_FakeRegistry):
                 )
 
         return _SearchProvider()
+
+
+class _SearchThenReadProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.received_tool_sets: list[set[str]] = []
+
+    async def stream_generate_events(self, request):
+        self.received_tool_sets.append({item["function"]["name"] for item in request.tools or []})
+        self.calls += 1
+        if self.calls == 1:
+            yield {
+                "type": "tool_calls_delta",
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_search",
+                        "function": {
+                            "name": "web_search",
+                            "arguments": '{"query":"latest official announcement"}',
+                        },
+                    }
+                ],
+            }
+            return
+        if self.calls == 2:
+            yield {
+                "type": "tool_calls_delta",
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_read",
+                        "function": {
+                            "name": "url_read",
+                            "arguments": '{"url":"https://example.com/source"}',
+                        },
+                    }
+                ],
+            }
+            return
+        yield {"type": "delta", "text": "A sourced answer."}
+
+
+class _SearchThenReadRegistry(_ToolRegistry):
+    last_provider: _SearchThenReadProvider | None = None
+
+    def __init__(self, settings):
+        self.tool_provider = _SearchThenReadProvider()
+        type(self).last_provider = self.tool_provider
 
 
 class _MalformedThenValidToolProvider:
@@ -601,6 +651,53 @@ async def test_deepspace_runs_web_search_loop_and_citations(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_deepspace_runs_search_then_url_read_with_fetched_citation(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _ToolProviderSelection)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _SearchThenReadRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+    monkeypatch.setattr(
+        chat_service_module,
+        "read_url_with_browser_fallback",
+        lambda *args, **kwargs: URLReadResult(
+            "https://example.com/source",
+            "Official source",
+            "The official page contains the verified announcement.",
+            "text/html",
+            False,
+            ["https://example.com/related"],
+        ),
+    )
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+            conversation_id=None,
+            prompt="Search for the latest official announcement, open the official page, and summarize it.",
+            thinking_enabled=False,
+        )
+    ]
+
+    tool_starts = [
+        json.loads(frame.split("data: ", 1)[1].strip())["tool_name"]
+        for frame in frames
+        if frame.startswith("event: tool_start")
+    ]
+    assert tool_starts == ["web_search", "url_read"]
+    assert _SearchThenReadRegistry.last_provider is not None
+    assert {"web_search", "url_read"}.issubset(
+        _SearchThenReadRegistry.last_provider.received_tool_sets[0]
+    )
+    assert "https://example.com/source" in _FakeRepository.completed_content
+    assert "Official source" in _FakeRepository.completed_content
+
+
+@pytest.mark.asyncio
 async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
@@ -724,6 +821,33 @@ async def test_deepspace_exposes_tools_to_google_models(monkeypatch):
     # describing available tools must not inflate every provider payload.
     assert "web_search" not in names
     assert _GoogleToolCaptureProvider.request.tool_choice == "auto"
+
+
+@pytest.mark.asyncio
+async def test_deepspace_exposes_url_read_for_direct_https_url(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _GoogleToolCaptureRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+            conversation_id=None,
+            prompt="Open https://example.com/source and summarize the page.",
+            thinking_enabled=False,
+        )
+    ]
+
+    assert any(frame.startswith("event: delta") for frame in frames)
+    names = {item["function"]["name"] for item in (_GoogleToolCaptureProvider.request.tools or [])}
+    assert "url_read" in names
+    assert "web_search" not in names
 
 
 def test_explicit_gmail_request_requires_attached_mcp_tool() -> None:

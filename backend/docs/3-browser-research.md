@@ -40,10 +40,12 @@ flowchart LR
 
 1. Research intent selects deterministic query planning.
 2. `web_search` returns candidate URLs and snippets.
-3. A complete implementation calls `url_read` for a selected public URL.
+3. The model calls `url_read` for a selected public HTTPS URL returned by
+   search, or directly when the user provides a URL.
 4. The secure URL validator checks the target before static fetching or
    rendering.
-5. When enabled and wired, Chromium runs behind Squid on an internal network.
+5. If static extraction returns an empty JavaScript shell and the optional
+   renderer is enabled, Chromium runs behind Squid on an internal network.
 6. Every browser request is checked again; blocked requests are aborted.
 7. Extracted HTML is bounded and returned to evidence ranking.
 8. If reading or rendering fails, the source is labeled unavailable or
@@ -51,8 +53,8 @@ flowchart LR
 
 ## 4. What users see
 
-1. Once the renderer is enabled and the URL-read fallback is wired, pages
-   requiring JavaScript can contribute fetched evidence.
+1. Static pages contribute extracted text immediately; JavaScript-heavy pages
+   contribute rendered text when the optional renderer is enabled.
 2. Sources that cannot be opened are visibly distinguished from verified
    fetched pages.
 3. Research progress and citations continue through the normal DeepSpace SSE.
@@ -74,11 +76,10 @@ flowchart LR
 3. Operators must smoke-test the profile in their target environment before
    enabling it; the profile is deliberately separate from normal API traffic.
 
-### Current implementation gap
+### Current implementation status
 
-The URL reader and isolated browser adapter exist, but the normal DeepSpace
-research tool list currently adds `web_search` without consistently adding
-`url_read`, and `browser_reader.py` is not yet the automatic fallback for a
-JavaScript-heavy URL. The capability is therefore **partially implemented**.
-Do not mark search-to-page extraction complete until the routing, fallback, and
-authenticated citation test described in `00-end-to-end-handoff.md` pass.
+Search-to-page extraction is wired end to end. Research requests expose both
+`web_search` and `url_read`; direct HTTPS URLs expose `url_read` without a
+search provider; fetched results include title, bounded text, links, final URL,
+and citations. The optional browser adapter is used only when static extraction
+looks like an empty JavaScript shell and the isolated renderer is enabled.

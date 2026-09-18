@@ -54,7 +54,7 @@ def test_url_reader_rejects_private_targets(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
     with pytest.raises(ProviderRequestError, match="Private"):
-        validate_public_url("http://example.test/document")
+        validate_public_url("https://example.test/document")
 
 
 @pytest.mark.asyncio

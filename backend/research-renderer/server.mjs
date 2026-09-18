@@ -15,7 +15,7 @@ function privateAddress(address) {
 }
 async function publicHttpUrl(raw) {
   const target = new URL(raw);
-  if (!/^https?:$/.test(target.protocol) || !target.hostname || blockedNames.test(target.hostname)) throw new Error("Blocked URL target.");
+  if (target.protocol !== "https:" || !target.hostname || blockedNames.test(target.hostname)) throw new Error("Blocked URL target.");
   // Host names are resolved by the only outbound path, Squid. Its destination
   // ACL evaluates the resolved address and blocks private/rebinding targets.
   // Explicit literal IP addresses are rejected here before Chromium sees them.

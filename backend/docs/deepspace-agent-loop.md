@@ -13,9 +13,10 @@ DeepSpace uses a bounded, provider-facing tool loop for multi-step productivity 
 - `read`, `find`, `write`, `edit`, and `delete` are explicit-target workspace operations for note, Library, memory, chat, and tasks where supported.
 - `write` can copy an already-persisted assistant response directly into a named Library file with `source='previous_assistant'`; it does not resend or regenerate the content.
 - `web_search` searches through the configured server-side provider when current sources are required.
-- `url_read` is implemented for bounded public-page extraction, but the
-  current normal research routing must expose it alongside `web_search` before
-  search-to-page reading is considered complete.
+- `url_read` is exposed alongside `web_search` for research requests and is
+  also available for direct HTTPS URLs. It returns bounded extracted text,
+  title, links, final URL, and citation metadata; optional isolated Chromium
+  is used only for an empty JavaScript shell.
 - `final` is accepted only after the required task list is complete or no task list exists.
 
 The model never receives shell, terminal, file-system, or arbitrary cURL access through this loop. Thinking deltas are display-only; structured tool calls and tool results control execution. Tool availability is request-profile dependent: a provider receives only the authorized tools selected for that request. The provider adapter translates that contract to the provider's native function-calling format (Google Gemini, Anthropic, OpenAI-compatible APIs, OpenCode Zen, and local OpenAI-compatible runtimes).

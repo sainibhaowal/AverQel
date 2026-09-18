@@ -94,9 +94,11 @@ pytest -q tests/unit/test_deepspace_runtime.py tests/unit/test_deepspace_run_eve
 pytest -q tests/unit/test_deepspace_tool_profiles.py tests/unit/test_provider_context_transport.py
 ```
 
-The webpage research acceptance path is not complete until a staging test
-proves the full sequence `web_search -> url_read -> bounded source text ->
-citation`. A search-result snippet alone is not an acceptable page-fetch test.
+The webpage research acceptance path proves the full sequence
+`web_search -> url_read -> bounded source text -> citation`. A search-result
+snippet alone is not an acceptable page-fetch test. The focused coverage also
+checks direct HTTPS URL routing, private-target rejection, and optional
+JavaScript-shell rendering.
 
 The current workspace also contains new migrations for queued turns, request
 metrics, runtime cascades, and context summaries. A release test must apply
