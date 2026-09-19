@@ -1654,6 +1654,27 @@ html:not(.dark) .deepspace-composer-steer:disabled {
   opacity: 1 !important;
 }
 
+/* DeepSpace streams cyan arguments on a dark canvas. Keep the same semantic
+   labels readable when the activity panel is rendered in the light theme. */
+.deepspace-tool-arguments {
+  border-color: rgba(14, 116, 144, 0.42);
+}
+
+.deepspace-tool-arguments-label,
+.deepspace-tool-arguments-text {
+  color: #a5f3fc;
+}
+
+html:not(.dark) .deepspace-tool-arguments {
+  border-color: rgba(14, 116, 144, 0.38) !important;
+}
+
+html:not(.dark) .deepspace-tool-arguments-label,
+html:not(.dark) .deepspace-tool-arguments-text {
+  color: #0e5f73 !important;
+  opacity: 1 !important;
+}
+
 /* Global light-theme harmonization for utility classes used across dashboard pages. */
 html:not(.dark) .text-emerald-200,
 html:not(.dark) .text-emerald-300 {

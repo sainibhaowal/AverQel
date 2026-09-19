@@ -544,11 +544,11 @@ const TimelineEntry = memo(function TimelineEntry({
               </div>
             ) : null}
             {inputStream ? (
-              <div className="mt-2 border-l border-cyan-300/25 py-1 pl-3">
-                <div className="mb-1 text-[9px] font-semibold tracking-[0.12em] text-cyan-200/60 uppercase">
+              <div className="deepspace-tool-arguments mt-2 border-l py-1 pl-3">
+                <div className="deepspace-tool-arguments-label mb-1 text-[9px] font-semibold tracking-[0.12em] uppercase">
                   Live tool arguments
                 </div>
-                <pre className="max-h-40 overflow-auto overscroll-contain text-[10px] leading-5 break-words whitespace-pre-wrap text-cyan-100/70">
+                <pre className="deepspace-tool-arguments-text max-h-40 overflow-auto overscroll-contain text-[10px] leading-5 break-words whitespace-pre-wrap">
                   {inputStream}
                 </pre>
               </div>
