@@ -2849,17 +2849,45 @@ class DeepSpaceChatService:
                 if isinstance(requested_domains, list) and requested_domains
                 else configured_domains
             )
-            url_result = await asyncio.to_thread(
-                read_url_with_browser_fallback,
-                str(arguments.get("url") or "").strip(),
-                settings=self.settings,
-                timeout_seconds=min(
-                    30,
-                    int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15)),
-                ),
-                max_bytes=int(getattr(self.settings, "deepspace_url_read_max_bytes", 2_000_000)),
-                allowed_domains=allowed_domains,
-            )
+            requested_url = str(arguments.get("url") or "").strip()
+            try:
+                url_result = await asyncio.to_thread(
+                    read_url_with_browser_fallback,
+                    requested_url,
+                    settings=self.settings,
+                    timeout_seconds=min(
+                        30,
+                        int(getattr(self.settings, "deepspace_url_read_timeout_seconds", 15)),
+                    ),
+                    max_bytes=int(
+                        getattr(self.settings, "deepspace_url_read_max_bytes", 2_000_000)
+                    ),
+                    allowed_domains=allowed_domains,
+                )
+            except ProviderRequestError as exc:
+                # A public site may reject server-side or automated access even
+                # after the static reader and isolated browser have tried. Keep
+                # this a structured research result so the model can use the
+                # preceding search snippets or choose another source instead of
+                # repeatedly treating an external 403 as a runtime crash.
+                return {
+                    "url": requested_url,
+                    "title": None,
+                    "content_type": None,
+                    "text": "",
+                    "truncated": False,
+                    "links": [],
+                    "retrieval_status": (
+                        "blocked" if exc.status_code in {400, 401, 403} else "unavailable"
+                    ),
+                    "message": (
+                        "The public page could not be fetched by the safe static reader or "
+                        "isolated browser. Use the preceding web_search snippet or another "
+                        "public source; do not claim this page was opened."
+                    ),
+                    "error_category": "source_unavailable",
+                    "citations": [],
+                }
             return {
                 "url": url_result.url,
                 "title": url_result.title,

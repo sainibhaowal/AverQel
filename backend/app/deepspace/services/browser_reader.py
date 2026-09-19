@@ -21,6 +21,35 @@ from app.deepspace.services.url_reader import (
 from app.providers.services.base import ProviderRequestError
 
 
+def _is_url_security_error(error: ProviderRequestError) -> bool:
+    """Keep validation failures from being retried through another network path."""
+
+    return error.status_code == 400 or (
+        error.status_code == 403
+        and error.message
+        in {
+            "URL domain is outside the configured allowlist.",
+            "Private and link-local URL targets are blocked.",
+        }
+    )
+
+
+def _is_automated_access_challenge(result: URLReadResult) -> bool:
+    """Reject Cloudflare/anti-bot interstitials as page content."""
+
+    content = f"{result.title or ''} {result.text}".casefold()
+    return any(
+        marker in content
+        for marker in (
+            "enable javascript and cookies to continue",
+            "just a moment...",
+            "checking your browser",
+            "verify you are human",
+            "attention required! | cloudflare",
+        )
+    )
+
+
 def read_rendered_url(
     url: str,
     *,
@@ -112,7 +141,9 @@ def _needs_browser_fallback(result: URLReadResult) -> bool:
     if result.content_type not in {"text/html", "application/xhtml+xml"}:
         return False
     text = result.text.strip()
-    return len(text) < 200 and not result.links and not result.section_headings
+    return _is_automated_access_challenge(result) or (
+        len(text) < 200 and not result.links and not result.section_headings
+    )
 
 
 def read_url_with_browser_fallback(
@@ -135,32 +166,48 @@ def read_url_with_browser_fallback(
             allowed_domains=allowed_domains,
         )
     except ProviderRequestError as exc:
-        if exc.status_code in {400, 403} or not browser_enabled:
+        if _is_url_security_error(exc) or not browser_enabled:
             raise
         static_error = exc
     else:
         if not browser_enabled or not _needs_browser_fallback(result):
             return result
         try:
-            return read_rendered_url(
+            rendered = read_rendered_url(
                 result.url,
                 settings=settings,
                 allowed_domains=allowed_domains,
                 timeout_seconds=timeout_seconds,
                 max_bytes=max_bytes,
             )
+            if _is_automated_access_challenge(rendered):
+                raise ProviderRequestError(
+                    "browser_reader",
+                    403,
+                    "The public page blocked automated access with an anti-bot challenge.",
+                )
+            return rendered
         except ProviderRequestError:
-            return result
+            if result.text.strip() and not _is_automated_access_challenge(result):
+                return result
+            raise
 
     try:
-        return read_rendered_url(
+        rendered = read_rendered_url(
             url,
             settings=settings,
             allowed_domains=allowed_domains,
             timeout_seconds=timeout_seconds,
             max_bytes=max_bytes,
         )
+        if _is_automated_access_challenge(rendered):
+            raise ProviderRequestError(
+                "browser_reader",
+                403,
+                "The public page blocked automated access with an anti-bot challenge.",
+            )
+        return rendered
     except ProviderRequestError as browser_error:
         if static_error is not None:
-            raise static_error from browser_error
+            raise browser_error from static_error
         raise

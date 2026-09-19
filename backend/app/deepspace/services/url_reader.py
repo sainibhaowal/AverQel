@@ -133,7 +133,7 @@ def _fetch(
                         raise ProviderRequestError(
                             "url_reader",
                             int(response.status_code),
-                            "URL returned an error.",
+                            f"URL returned HTTP {response.status_code}.",
                         )
                     content_length = response.headers.get("content-length")
                     if content_length:

@@ -37,9 +37,15 @@ const server = http.createServer(async (req, res) => {
     const context = await browser.newContext({ javaScriptEnabled: true, acceptDownloads: false, serviceWorkers: "block" });
     const page = await context.newPage();
     await page.route("**/*", async route => {
-      try { await publicHttpUrl(route.request().url()); await route.continue(); } catch { await route.abort(); }
+      const requestUrl = route.request().url();
+      if (/^(about|blob|data):$/i.test(new URL(requestUrl).protocol)) return route.continue();
+      try { await publicHttpUrl(requestUrl); await route.continue(); } catch { await route.abort(); }
     });
     await page.goto(target, { waitUntil: "domcontentloaded", timeout: 15_000 });
+    // Many public pages hydrate after DOMContentLoaded. Give bounded client
+    // rendering a chance to settle without allowing an unbounded page wait.
+    await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
+    await page.waitForTimeout(1_000);
     const html = (await page.content()).slice(0, 2_000_000);
     await context.close();
     response(res, 200, html, "text/html; charset=utf-8");

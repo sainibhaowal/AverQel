@@ -698,6 +698,41 @@ async def test_deepspace_runs_search_then_url_read_with_fetched_citation(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_url_read_returns_structured_unavailable_result_for_blocked_source(monkeypatch):
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = SimpleNamespace(
+        deepspace_url_read_timeout_seconds=15,
+        deepspace_url_read_max_bytes=2_000_000,
+        deepspace_url_allowed_domains=[],
+    )
+    monkeypatch.setattr(
+        chat_service_module,
+        "read_url_with_browser_fallback",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ProviderRequestError(
+                "browser_reader",
+                403,
+                "The public page blocked automated access with an anti-bot challenge.",
+            )
+        ),
+    )
+
+    payload = await service._execute_productivity_tool(
+        tool_name="url_read",
+        arguments={"url": "https://example.com/protected"},
+        auth=SimpleNamespace(),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert payload["retrieval_status"] == "blocked"
+    assert payload["error_category"] == "source_unavailable"
+    assert payload["citations"] == []
+
+
+@pytest.mark.asyncio
 async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
