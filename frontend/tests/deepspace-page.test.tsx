@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { MockInstance } from "vitest";
 import { afterEach, beforeEach, vi } from "vitest";
 
@@ -64,6 +64,7 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceEditor", () => {
 
 let observedWidth = 1280;
 let boundingRectSpy: MockInstance | null = null;
+let headerControls: HTMLDivElement | null = null;
 
 class ResizeObserverMock {
   private readonly callback: ResizeObserverCallback;
@@ -167,14 +168,19 @@ describe("deepspace page", () => {
       writable: true,
       value: ResizeObserverMock,
     });
+    headerControls = document.createElement("div");
+    headerControls.id = "header-layout-controls";
+    document.body.append(headerControls);
   });
 
   afterEach(() => {
     boundingRectSpy?.mockRestore();
     fetchWithAuthMock.mockReset();
+    headerControls?.remove();
+    headerControls = null;
   });
 
-  it("renders the split deepspace shell", async () => {
+  it("enters and exits the split shell without changing the active workspace", async () => {
     window.innerWidth = 1280;
     Object.defineProperty(window, "visualViewport", {
       configurable: true,
@@ -191,8 +197,17 @@ describe("deepspace page", () => {
 
     expect(await screen.findByLabelText(/writing canvas editor/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/writing canvas editor/i)).toBeInTheDocument();
+    expect(screen.queryByText(/mock deepspace chat/i)).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: /split view/i }));
     expect(screen.getByText(/mock deepspace chat/i)).toBeInTheDocument();
     expect(screen.getByRole("separator", { name: /resize deepspace panels/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /split view/i }));
+    await waitFor(() =>
+      expect(screen.queryByText(/mock deepspace chat/i)).not.toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText(/writing canvas editor/i)).toBeInTheDocument();
   });
 
   it("switches to a stacked layout when the available width gets narrow", async () => {
@@ -265,6 +280,7 @@ describe("deepspace page", () => {
     render(<DeepSpacePageClient />);
 
     await screen.findByLabelText(/writing canvas editor/i);
+    fireEvent.click(await screen.findByRole("button", { name: /split view/i }));
     fireEvent.click(screen.getByRole("button", { name: /insert latest answer/i }));
 
     expect(

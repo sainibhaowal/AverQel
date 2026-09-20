@@ -75,6 +75,9 @@ export interface DeepSpaceNote {
   content_html?: string | null;
 }
 
+type WorkspacePanel = "notes" | "chat" | "memory" | "schedules" | "library";
+type SplitWorkspacePanel = Exclude<WorkspacePanel, "chat">;
+
 const STORAGE_KEY = "averqel_deepspace_draft";
 const ACTIVE_NOTE_KEY = "averqel_deepspace_active_conversation";
 const MIN_LEFT_WIDTH = 32;
@@ -172,12 +175,13 @@ export default function DeepSpacePageClient() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [agentNotePreview, setAgentNotePreview] = useState<DeepSpaceAgentNotePreview | null>(null);
-  const [panelMode, setPanelMode] = useState<"split" | "notes" | "chat" | "memory" | "schedules">("split");
+  const [panelMode, setPanelMode] = useState<WorkspacePanel>("notes");
   const editorRef = useRef<DeepSpaceEditorHandle>(null);
   const agentPreviewBaseContentRef = useRef<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [workspacePanel, setWorkspacePanel] = useState<"notes" | "library">("notes");
-  const [isLibraryOnly, setIsLibraryOnly] = useState(false);
+  const [isSplitView, setIsSplitView] = useState(false);
+  const [splitWorkspacePanel, setSplitWorkspacePanel] =
+    useState<SplitWorkspacePanel>("notes");
   const [serviceWarnings, setServiceWarnings] = useState<string[]>([]);
   const [serviceRetryKey, setServiceRetryKey] = useState(0);
 
@@ -423,23 +427,51 @@ export default function DeepSpacePageClient() {
   };
 
   const isStackedLayout = viewportWidth > 0 && viewportWidth < MOBILE_STACKED_BREAKPOINT;
-  const showNotesPanel =
-    !isLibraryOnly &&
-    (panelMode === "notes" || (panelMode === "split" && workspacePanel === "notes"));
-  const showLibraryPanel = isLibraryOnly || (panelMode === "split" && workspacePanel === "library");
-  const showChatPanel = !isLibraryOnly && (panelMode === "split" || panelMode === "chat");
-  const showMemoryPanel = panelMode === "memory";
-  const showSchedulesPanel = panelMode === "schedules";
-  const panelTransition: Transition = isStackedLayout
-    ? { duration: 0.16, ease: "easeOut" }
-    : { type: "spring", damping: 24, stiffness: 220 };
+  const visibleWorkspacePanel = isSplitView
+    ? splitWorkspacePanel
+    : panelMode === "chat"
+      ? null
+      : panelMode;
+  const showNotesPanel = visibleWorkspacePanel === "notes";
+  const showLibraryPanel = visibleWorkspacePanel === "library";
+  const showChatPanel = isSplitView || panelMode === "chat";
+  const showMemoryPanel = visibleWorkspacePanel === "memory";
+  const showSchedulesPanel = visibleWorkspacePanel === "schedules";
+  const panelTransition: Transition = {
+    duration: isStackedLayout ? 0.14 : 0.18,
+    ease: [0.22, 1, 0.36, 1],
+  };
   const shellTransitionClass = isStackedLayout ? "duration-150" : "duration-300";
 
-  useEffect(() => {
-    if (isStackedLayout && panelMode === "split" && !isLibraryOnly) {
-      queueMicrotask(() => setPanelMode("chat"));
+  const selectWorkspacePanel = (nextPanel: SplitWorkspacePanel) => {
+    if (isSplitView) setSplitWorkspacePanel(nextPanel);
+    else setPanelMode(nextPanel);
+  };
+
+  const toggleSplitView = () => {
+    if (isSplitView) {
+      setIsSplitView(false);
+      setPanelMode(splitWorkspacePanel);
+      return;
     }
-  }, [isLibraryOnly, isStackedLayout, panelMode]);
+    if (panelMode !== "chat") setSplitWorkspacePanel(panelMode);
+    setIsSplitView(true);
+  };
+
+  const legacyPanelMode: "split" | "notes" | "chat" | "memory" = isSplitView
+    ? "split"
+    : panelMode === "chat" || panelMode === "memory"
+      ? panelMode
+      : "notes";
+
+  useEffect(() => {
+    if (isStackedLayout && isSplitView) {
+      queueMicrotask(() => {
+        setIsSplitView(false);
+        setPanelMode(splitWorkspacePanel);
+      });
+    }
+  }, [isSplitView, isStackedLayout, splitWorkspacePanel]);
 
   if (isInitialLoading) {
     return (
@@ -493,61 +525,42 @@ export default function DeepSpacePageClient() {
               <div className="border-glass-border bg-surface-0/90 pointer-events-auto flex items-center gap-0.5 rounded-full border p-0.5 shadow-xl backdrop-blur-md sm:gap-1 sm:p-1">
                 <IconTooltipButton
                   label="Chat"
-                  active={panelMode === "chat"}
+                  active={!isSplitView && panelMode === "chat"}
                   icon={<Bot size={18} />}
                   onClick={() => {
-                    setIsLibraryOnly(false);
+                    setIsSplitView(false);
                     setPanelMode("chat");
                   }}
                 />
                 <IconTooltipButton
                   label="Schedules"
-                  active={showSchedulesPanel}
+                  active={visibleWorkspacePanel === "schedules"}
                   icon={<CalendarClock size={16} />}
-                  onClick={() => {
-                    setIsLibraryOnly(false);
-                    setPanelMode("schedules");
-                  }}
+                  onClick={() => selectWorkspacePanel("schedules")}
                 />
                 <IconTooltipButton
                   label="Memory"
-                  active={panelMode === "memory"}
+                  active={visibleWorkspacePanel === "memory"}
                   icon={<Database size={18} />}
-                  onClick={() => {
-                    setIsLibraryOnly(false);
-                    setPanelMode("memory");
-                  }}
+                  onClick={() => selectWorkspacePanel("memory")}
                 />
                 <IconTooltipButton
                   label="Split view"
-                  active={panelMode === "split" && !isLibraryOnly}
+                  active={isSplitView}
                   icon={<Columns2 size={15} />}
-                  onClick={() => {
-                    setIsLibraryOnly(false);
-                    setPanelMode("split");
-                  }}
+                  onClick={toggleSplitView}
                 />
                 <IconTooltipButton
-                  label="Notes only"
-                  active={panelMode === "notes"}
+                  label="Notes"
+                  active={visibleWorkspacePanel === "notes"}
                   icon={<PanelRightClose size={15} />}
-                  onClick={() => {
-                    setIsLibraryOnly(false);
-                    setWorkspacePanel("notes");
-                    setPanelMode("notes");
-                  }}
+                  onClick={() => selectWorkspacePanel("notes")}
                 />
                 <IconTooltipButton
                   label="Library"
-                  active={isLibraryOnly || (workspacePanel === "library" && panelMode === "split")}
+                  active={visibleWorkspacePanel === "library"}
                   icon={<FolderOpen size={16} />}
-                  onClick={() => {
-                    setWorkspacePanel("library");
-                    // From Split, switch the workspace side directly to the
-                    // Library. From Chat-only, open the Library by itself.
-                    setIsLibraryOnly(panelMode !== "split" || isLibraryOnly);
-                    setPanelMode("split");
-                  }}
+                  onClick={() => selectWorkspacePanel("library")}
                 />
                 <IconTooltipButton
                   label="History"
@@ -567,58 +580,92 @@ export default function DeepSpacePageClient() {
           ref={splitContainerRef}
           className={`relative flex h-full max-h-full min-h-0 flex-1 overflow-hidden ${isStackedLayout ? "flex-col" : "flex-row"}`}
         >
-          <AnimatePresence initial={false} mode="popLayout">
-            {showNotesPanel ? (
-              <motion.section
-                key="notes-panel"
-                initial={{ opacity: 0, x: isStackedLayout ? 0 : -24, y: isStackedLayout ? -24 : 0 }}
-                animate={{ opacity: 1, x: 0, y: 0 }}
-                exit={{ opacity: 0, x: isStackedLayout ? 0 : -24, y: isStackedLayout ? -24 : 0 }}
-                transition={panelTransition}
-                className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden ${isStackedLayout ? "h-full w-full flex-[1_1_auto]" : showChatPanel ? "h-full flex-[0_0_auto]" : "h-full w-full"}`}
-                style={
-                  !isStackedLayout && showChatPanel ? { flexBasis: `${leftWidth}%` } : undefined
-                }
-              >
-                <DeepSpaceEditor
-                  ref={editorRef}
-                  initialContent={activeNote?.content_html || ""}
-                  onChange={handleEditorChange}
-                  conversationId={activeNote?.id}
-                  isSaving={isSaving}
-                  agentPreview={agentNotePreview}
-                  showCollapseControls={false}
-                  panelMode={panelMode}
-                  onSetPanelMode={setPanelMode}
-                />
-              </motion.section>
-            ) : null}
-            {showLibraryPanel ? (
-              <motion.section
-                key="library-panel"
-                initial={{ opacity: 0, x: isStackedLayout ? 0 : -24, y: isStackedLayout ? -24 : 0 }}
-                animate={{ opacity: 1, x: 0, y: 0 }}
-                exit={{ opacity: 0, x: isStackedLayout ? 0 : -24, y: isStackedLayout ? -24 : 0 }}
-                transition={panelTransition}
-                className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden ${isStackedLayout ? "h-full w-full flex-[1_1_auto]" : showChatPanel ? "h-full flex-[0_0_auto]" : "h-full w-full"}`}
-                style={
-                  !isStackedLayout && showChatPanel ? { flexBasis: `${leftWidth}%` } : undefined
-                }
-              >
-                <DeepSpaceLibraryDrawer
-                  open
-                  embedded
-                  conversationId={activeNote?.id ?? null}
-                  onClose={() => {
-                    setIsLibraryOnly(false);
-                    setPanelMode("chat");
-                  }}
-                />
-              </motion.section>
-            ) : null}
-          </AnimatePresence>
+          {visibleWorkspacePanel ? (
+            <motion.section
+              initial={{ opacity: 0, x: isStackedLayout ? 0 : -12, y: isStackedLayout ? -12 : 0 }}
+              animate={{ opacity: 1, x: 0, y: 0 }}
+              transition={panelTransition}
+              className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden ${isStackedLayout ? "h-full w-full flex-[1_1_auto]" : showChatPanel ? "h-full flex-[0_0_auto]" : "h-full w-full"}`}
+              style={!isStackedLayout && showChatPanel ? { flexBasis: `${leftWidth}%` } : undefined}
+            >
+              <AnimatePresence initial={false} mode="sync">
+                {showNotesPanel ? (
+                  <motion.div
+                    key="notes-panel"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={panelTransition}
+                    className="absolute inset-0 will-change-transform"
+                  >
+                    <DeepSpaceEditor
+                      ref={editorRef}
+                      initialContent={activeNote?.content_html || ""}
+                      onChange={handleEditorChange}
+                      conversationId={activeNote?.id}
+                      isSaving={isSaving}
+                      agentPreview={agentNotePreview}
+                      showCollapseControls={false}
+                      panelMode={legacyPanelMode}
+                      onSetPanelMode={(mode) => {
+                        if (mode === "split") toggleSplitView();
+                        else {
+                          setIsSplitView(false);
+                          setPanelMode(mode);
+                        }
+                      }}
+                    />
+                  </motion.div>
+                ) : null}
+                {showLibraryPanel ? (
+                  <motion.div
+                    key="library-panel"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={panelTransition}
+                    className="absolute inset-0 will-change-transform"
+                  >
+                    <DeepSpaceLibraryDrawer
+                      open
+                      embedded
+                      conversationId={activeNote?.id ?? null}
+                      onClose={() => {
+                        if (isSplitView) setSplitWorkspacePanel("notes");
+                        else setPanelMode("chat");
+                      }}
+                    />
+                  </motion.div>
+                ) : null}
+                {showMemoryPanel ? (
+                  <motion.div
+                    key="memory-panel"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={panelTransition}
+                    className="absolute inset-0 overflow-auto will-change-transform"
+                  >
+                    <MemoryPanel />
+                  </motion.div>
+                ) : null}
+                {showSchedulesPanel ? (
+                  <motion.div
+                    key="schedules-panel"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }}
+                    transition={panelTransition}
+                    className="absolute inset-0 overflow-auto will-change-transform"
+                  >
+                    <DeepSpaceSchedulesPanel conversationId={activeNote?.id ?? null} />
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </motion.section>
+          ) : null}
 
-          {(showNotesPanel || showLibraryPanel) && showChatPanel && !isStackedLayout ? (
+          {visibleWorkspacePanel && showChatPanel && !isStackedLayout ? (
             <div
               role="separator"
               aria-label="Resize deepspace panels"
@@ -649,30 +696,6 @@ export default function DeepSpacePageClient() {
           ) : null}
 
           <AnimatePresence initial={false} mode="popLayout">
-            {showMemoryPanel ? (
-              <motion.section
-                key="memory-panel"
-                initial={{ opacity: 0, x: 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 24 }}
-                transition={panelTransition}
-                className="h-full min-h-0 min-w-0 flex-1 overflow-hidden"
-              >
-                <MemoryPanel />
-              </motion.section>
-            ) : null}
-            {showSchedulesPanel ? (
-              <motion.section
-                key="schedules-panel"
-                initial={{ opacity: 0, x: 24 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 24 }}
-                transition={panelTransition}
-                className="h-full min-h-0 min-w-0 flex-1 overflow-hidden"
-              >
-                <DeepSpaceSchedulesPanel conversationId={activeNote?.id ?? null} />
-              </motion.section>
-            ) : null}
             {showChatPanel ? (
               <motion.section
                 key="chat-panel"
@@ -701,8 +724,14 @@ export default function DeepSpacePageClient() {
                   onInsertLatestAnswer={insertAnswer}
                   onAgentNotePreview={handleAgentNotePreview}
                   onAgentNoteCommitted={handleAgentNoteCommitted}
-                  panelMode={panelMode}
-                  onSetPanelMode={setPanelMode}
+                  panelMode={legacyPanelMode}
+                  onSetPanelMode={(mode) => {
+                    if (mode === "split") toggleSplitView();
+                    else {
+                      setIsSplitView(false);
+                      setPanelMode(mode);
+                    }
+                  }}
                   isHistoryOpen={isHistoryOpen}
                   onSetHistoryOpen={setIsHistoryOpen}
                 />
