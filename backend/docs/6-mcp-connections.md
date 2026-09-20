@@ -85,8 +85,9 @@ authorization system. The existing connection-scope APIs remain unchanged:
 
 The implementation is covered by
 `backend/tests/unit/test_mcp_tool_broker.py`, the existing bridge tests, and
-the DeepSpace chat-loop tests. `DEEPSPACE_MCP_DEFERRED_TOOLS_ENABLED=false`
-provides a controlled rollback while a deployment is being verified.
+the DeepSpace chat-loop tests. Broker exposure is mandatory; there is no
+legacy full-catalogue fallback. Per-turn discovery, remote-call, and aggregate
+result budgets are emitted in DeepSpace metrics for operational monitoring.
 
 ## 4. What users see
 

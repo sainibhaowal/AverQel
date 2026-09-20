@@ -25,6 +25,7 @@ from app.deepspace.services.browser_reader import read_url_with_browser_fallback
 from app.deepspace.services.context_cache import DeepSpaceContextCache
 from app.deepspace.services.mcp_bridge import DeepSpaceMCPBridge, DeepSpaceMCPTool
 from app.deepspace.services.mcp_tool_broker import (
+    MCP_BROKER_TOOL_NAMES,
     MCP_CALL_TOOL,
     MCP_GET_TOOL_SCHEMA,
     MCP_SEARCH_TOOLS,
@@ -125,6 +126,7 @@ Workspace files and generated media
 MCP connected services
 - MCP tools operate only on the connected account and current authorized conversation scope provided by the runtime.
 - Use an MCP tool when the user explicitly asks to inspect, search, retrieve, create, update, or act on a connected service.
+- Use `mcp_search_tools` first, then `mcp_get_tool_schema`, then `mcp_call_tool` with the exact returned `tool_ref`. Never invent or infer a direct upstream MCP tool name.
 - Choose the narrowest suitable tool and request only the minimum data needed.
 - Read-only actions may be performed when authorized.
 - For actions that create, modify, label, send, delete, revoke, publish, or affect external people or systems, respect the runtime approval requirement exactly.
@@ -671,6 +673,9 @@ available and research or current facts are needed, execute web_search directly
 rather than asking for permission to search. After search returns a relevant URL,
 call url_read on that URL before summarizing. If the user provides a public HTTPS
 URL directly, call url_read directly. Never claim page access from a search snippet alone.
+For connected MCP services, use the broker sequence `mcp_search_tools`,
+`mcp_get_tool_schema`, then `mcp_call_tool` with the exact returned `tool_ref`;
+never invent a direct upstream MCP tool name.
 """.strip()
 
 
@@ -703,6 +708,16 @@ class DeepSpaceChatService:
             max_search_results=int(getattr(settings, "deepspace_mcp_max_search_results", 5)),
             max_schema_chars=int(getattr(settings, "deepspace_mcp_max_schema_chars", 6_000)),
             max_result_chars=int(getattr(settings, "deepspace_mcp_max_result_chars", 12_000)),
+        )
+        self.mcp_max_calls_per_turn = int(getattr(settings, "deepspace_mcp_max_calls_per_turn", 8))
+        self.mcp_max_discovery_calls_per_turn = int(
+            getattr(settings, "deepspace_mcp_max_discovery_calls_per_turn", 8)
+        )
+        self.mcp_max_result_chars_per_turn = int(
+            getattr(settings, "deepspace_mcp_max_result_chars_per_turn", 60_000)
+        )
+        self.mcp_max_argument_chars_per_call = int(
+            getattr(settings, "deepspace_mcp_max_argument_chars_per_call", 20_000)
         )
         self.runtime = DeepSpaceRuntimeStore(
             db,
@@ -1977,7 +1992,11 @@ class DeepSpaceChatService:
         user_prompt: str | None = None,
     ) -> dict[str, Any]:
         if tool_name == MCP_SEARCH_TOOLS:
-            return self.mcp_broker.search(mcp_bindings or {}, str(arguments.get("query") or ""))
+            return self.mcp_broker.search(
+                mcp_bindings or {},
+                str(arguments.get("query") or ""),
+                cursor=str(arguments.get("cursor") or "") or None,
+            )
         if tool_name == MCP_GET_TOOL_SCHEMA:
             return self.mcp_broker.get_schema(
                 mcp_bindings or {}, str(arguments.get("tool_ref") or "")
@@ -4096,17 +4115,10 @@ class DeepSpaceChatService:
             pending_binding = discovered_mcp_bindings.get(pending_name)
             if pending_binding is not None:
                 mcp_bindings[pending_name] = pending_binding
-        deferred_mcp_tools = bool(
-            getattr(self.settings, "deepspace_mcp_deferred_tools_enabled", True)
-        )
         # The complete connection-scoped catalogue remains available only to
         # the backend broker. The model receives three small meta-tools and
         # loads one compact schema only after it has selected a tool.
-        mcp_tools = (
-            self.mcp_broker.definitions()
-            if mcp_bindings and deferred_mcp_tools
-            else [binding.definition for binding in mcp_bindings.values()]
-        )
+        mcp_tools = self.mcp_broker.definitions() if mcp_bindings else []
         available_tools: list[dict[str, Any]] = [
             *productivity_tools,
             *web_tools,
@@ -4311,6 +4323,9 @@ class DeepSpaceChatService:
         # from successful call de-duplication so one transient error gets a
         # retry, while a repeated identical outage becomes an actionable stop.
         repeated_mcp_failures: dict[str, int] = {}
+        mcp_call_count = 0
+        mcp_discovery_call_count = 0
+        mcp_result_chars = 0
         pending_images: list[str] = []
         awaiting_user: dict[str, Any] | None = None
         awaiting_approval: dict[str, Any] | None = None
@@ -4704,6 +4719,16 @@ class DeepSpaceChatService:
                         "maxOutputTokens": request_max_tokens,
                         "toolProfile": tool_profile,
                         "toolSchemaCount": len(tools_for_round),
+                        "mcpExposureMode": "broker" if mcp_bindings else "none",
+                        "mcpBrokerToolCount": len(mcp_tools),
+                        "mcpCallsUsed": mcp_call_count,
+                        "mcpCallsRemaining": max(0, self.mcp_max_calls_per_turn - mcp_call_count),
+                        "mcpDiscoveryCallsUsed": mcp_discovery_call_count,
+                        "mcpResultCharsUsed": mcp_result_chars,
+                        "mcpResultCharsRemaining": max(
+                            0, self.mcp_max_result_chars_per_turn - mcp_result_chars
+                        ),
+                        "mcpResultCharsLimit": self.mcp_max_result_chars_per_turn,
                         "promptCacheMode": context_transport["mode"],
                         "promptCacheEligible": context_transport["cache_eligible"],
                         **budget_state,
@@ -5400,6 +5425,19 @@ class DeepSpaceChatService:
                         requested_ref = str(arguments.get("tool_ref") or "").strip()
                         requested_arguments = arguments.get("arguments")
                         resolved_binding = self.mcp_broker.resolve(mcp_bindings, requested_ref)
+                        requested_arguments_too_large = False
+                        if isinstance(requested_arguments, dict):
+                            requested_arguments_too_large = (
+                                len(
+                                    json.dumps(
+                                        requested_arguments,
+                                        ensure_ascii=False,
+                                        separators=(",", ":"),
+                                        default=str,
+                                    )
+                                )
+                                > self.mcp_max_argument_chars_per_call
+                            )
                         if resolved_binding is None or not isinstance(requested_arguments, dict):
                             output = (
                                 "The MCP tool reference or arguments were invalid. "
@@ -5414,6 +5452,26 @@ class DeepSpaceChatService:
                                     "step_id": step_id,
                                     "error": output,
                                     "error_category": "tool",
+                                },
+                            )
+                            conversation_messages.append(
+                                {"role": "tool", "tool_call_id": call_id, "content": output}
+                            )
+                            continue
+                        if requested_arguments_too_large:
+                            output = (
+                                "The MCP arguments exceed the safe per-call budget. "
+                                "Send a smaller request or use the connected service's pagination "
+                                "arguments."
+                            )
+                            yield sse(
+                                "tool_error",
+                                {
+                                    "tool_name": MCP_CALL_TOOL,
+                                    "tool_id": call_id,
+                                    "step_id": step_id,
+                                    "error": output,
+                                    "error_category": "budget",
                                 },
                             )
                             conversation_messages.append(
@@ -5542,6 +5600,52 @@ class DeepSpaceChatService:
                         )
                         continue
                     mcp_binding = mcp_bindings.get(tool_name)
+                    mcp_budget_error: str | None = None
+                    if tool_name in {MCP_SEARCH_TOOLS, MCP_GET_TOOL_SCHEMA}:
+                        if mcp_result_chars + 256 >= self.mcp_max_result_chars_per_turn:
+                            mcp_budget_error = (
+                                "The MCP result budget for this turn is exhausted. "
+                                "The collected results are available for the answer."
+                            )
+                        elif mcp_discovery_call_count >= self.mcp_max_discovery_calls_per_turn:
+                            mcp_budget_error = (
+                                "The MCP discovery budget for this turn is exhausted. "
+                                "Use the existing results or start a new request."
+                            )
+                        else:
+                            mcp_discovery_call_count += 1
+                    elif mcp_binding is not None:
+                        if mcp_call_count >= self.mcp_max_calls_per_turn:
+                            mcp_budget_error = (
+                                "The MCP remote-call budget for this turn is exhausted. "
+                                "Use the results already collected or start a new request."
+                            )
+                        elif mcp_result_chars + 256 >= self.mcp_max_result_chars_per_turn:
+                            mcp_budget_error = (
+                                "The MCP result budget for this turn is exhausted. "
+                                "The collected results are available for the answer."
+                            )
+                        else:
+                            mcp_call_count += 1
+                    if mcp_budget_error is not None:
+                        yield sse(
+                            "tool_error",
+                            {
+                                "tool_name": tool_name,
+                                "tool_id": call_id,
+                                "step_id": step_id,
+                                "error": mcp_budget_error,
+                                "error_category": "budget",
+                            },
+                        )
+                        conversation_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": call_id,
+                                "content": mcp_budget_error,
+                            }
+                        )
+                        continue
                     decision: Any
                     if tool_name in {MCP_SEARCH_TOOLS, MCP_GET_TOOL_SCHEMA}:
                         decision = MCPToolPolicyDecision(
@@ -5755,6 +5859,25 @@ class DeepSpaceChatService:
                     raw_tool_payload = result.get("payload")
                     tool_payload = raw_tool_payload if isinstance(raw_tool_payload, dict) else {}
                     if success:
+                        is_mcp_payload = (
+                            tool_name in MCP_BROKER_TOOL_NAMES
+                            or mcp_bindings.get(tool_name) is not None
+                        )
+                        if is_mcp_payload:
+                            payload_chars = len(
+                                json.dumps(tool_payload, ensure_ascii=False, default=str)
+                            )
+                            remaining_result_chars = max(
+                                0, self.mcp_max_result_chars_per_turn - mcp_result_chars
+                            )
+                            if payload_chars > remaining_result_chars:
+                                tool_payload = self.mcp_broker.bound_result(
+                                    tool_payload,
+                                    max_chars=remaining_result_chars,
+                                )
+                            mcp_result_chars += len(
+                                json.dumps(tool_payload, ensure_ascii=False, default=str)
+                            )
                         if mcp_bindings.get(tool_name) is not None:
                             # A successful MCP result satisfies the connected
                             # service requirement for this turn. The model may

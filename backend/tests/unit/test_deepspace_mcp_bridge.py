@@ -84,7 +84,7 @@ def test_bridge_exposes_only_attached_fresh_mcp_tools() -> None:
     binding = next(iter(bindings.values()))
     assert binding.raw_name == "send_mail"
     assert binding.exposed_name.startswith("mcp_")
-    assert binding.definition["function"]["parameters"]["required"] == ["to"]
+    assert binding.catalog["inputSchema"]["required"] == ["to"]
 
 
 def test_bridge_exposes_connected_mcp_tools_without_manual_scope_override() -> None:

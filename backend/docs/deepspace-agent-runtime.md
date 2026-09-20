@@ -84,15 +84,17 @@ cannot refill the conversation context unexpectedly.
 
 The runtime settings are:
 
-- `DEEPSPACE_MCP_DEFERRED_TOOLS_ENABLED=true` (default): use the broker;
 - `DEEPSPACE_MCP_MAX_SEARCH_RESULTS=5`;
 - `DEEPSPACE_MCP_MAX_SCHEMA_CHARS=6000`;
 - `DEEPSPACE_MCP_MAX_RESULT_CHARS=12000`.
+- `DEEPSPACE_MCP_MAX_CALLS_PER_TURN=8`;
+- `DEEPSPACE_MCP_MAX_DISCOVERY_CALLS_PER_TURN=8`;
+- `DEEPSPACE_MCP_MAX_RESULT_CHARS_PER_TURN=60000`.
+- `DEEPSPACE_MCP_MAX_ARGUMENT_CHARS_PER_CALL=20000`.
 
-Setting the first flag to `false` is an emergency rollback to the previous
-direct-schema exposure path. It should only be used temporarily because it
-reintroduces full catalog schemas into model context. No MCP connection or
-approval route changes are required for rollout.
+Deferred loading is mandatory. There is no direct-schema fallback path, so a
+large MCP catalogue cannot silently re-enter model context after deployment.
+No MCP connection or approval route changes are required for rollout.
 
 Read-only MCP actions can run automatically when the configured policy allows
 them. Writes, deletes, sends, and other external side effects pause the

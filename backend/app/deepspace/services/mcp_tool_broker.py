@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import json
 import re
+from base64 import urlsafe_b64decode, urlsafe_b64encode
+from binascii import Error as Base64Error
 from collections.abc import Mapping
+from hashlib import sha256
 from typing import Any
 
 MCP_SEARCH_TOOLS = "mcp_search_tools"
@@ -87,6 +90,24 @@ class MCPToolBroker:
         self.max_result_chars = max(2_000, min(int(max_result_chars), 100_000))
 
     @staticmethod
+    def _cursor(query: str, offset: int) -> str:
+        payload = f"{sha256(query.casefold().encode('utf-8')).hexdigest()[:20]}:{offset}"
+        return urlsafe_b64encode(payload.encode("ascii")).decode("ascii").rstrip("=")
+
+    @staticmethod
+    def _offset_from_cursor(query: str, cursor: str) -> int | None:
+        try:
+            padded = cursor + "=" * (-len(cursor) % 4)
+            payload = urlsafe_b64decode(padded.encode("ascii")).decode("ascii")
+            digest, raw_offset = payload.split(":", 1)
+            offset = int(raw_offset)
+        except (Base64Error, ValueError, UnicodeDecodeError):
+            return None
+        if digest != sha256(query.casefold().encode("utf-8")).hexdigest()[:20]:
+            return None
+        return offset if 0 <= offset <= 100_000 else None
+
+    @staticmethod
     def definitions() -> list[dict[str, Any]]:
         return [
             {
@@ -103,8 +124,14 @@ class MCPToolBroker:
                         "properties": {
                             "query": {
                                 "type": "string",
+                                "maxLength": 500,
                                 "description": "The requested service, resource, and action in a few words.",
-                            }
+                            },
+                            "cursor": {
+                                "type": "string",
+                                "maxLength": 128,
+                                "description": "The next_cursor returned by a previous search page.",
+                            },
                         },
                         "required": ["query"],
                         "additionalProperties": False,
@@ -124,6 +151,7 @@ class MCPToolBroker:
                         "properties": {
                             "tool_ref": {
                                 "type": "string",
+                                "maxLength": 128,
                                 "description": "The exact tool_ref returned by mcp_search_tools.",
                             }
                         },
@@ -146,6 +174,7 @@ class MCPToolBroker:
                         "properties": {
                             "tool_ref": {
                                 "type": "string",
+                                "maxLength": 128,
                                 "description": "The exact tool_ref returned by mcp_search_tools.",
                             },
                             "arguments": {
@@ -173,7 +202,7 @@ class MCPToolBroker:
                 binding.server_name,
                 binding.raw_name,
                 str(catalog.get("title") or ""),
-                str(catalog.get("description") or ""),
+                _short_text(catalog.get("description") or "", 1_000),
                 parameter_names,
             )
         ).casefold()
@@ -182,8 +211,18 @@ class MCPToolBroker:
         self,
         bindings: Mapping[str, Any],
         query: str,
+        cursor: str | None = None,
     ) -> dict[str, Any]:
         query_text = " ".join(str(query or "").split())[:500]
+        offset = 0
+        if cursor:
+            parsed_offset = self._offset_from_cursor(query_text, cursor)
+            offset = parsed_offset if parsed_offset is not None else -1
+            if offset < 0:
+                return {
+                    "status": "error",
+                    "message": "The MCP search cursor is invalid or belongs to another query.",
+                }
         terms = _tokens(query_text)
         scored: list[tuple[int, str, Any]] = []
         for exposed_name, binding in bindings.items():
@@ -195,8 +234,9 @@ class MCPToolBroker:
                 score += 8
             scored.append((score, str(exposed_name), binding))
         scored.sort(key=lambda item: (-item[0], item[1]))
+        page = scored[offset : offset + self.max_search_results]
         matches = []
-        for _score, exposed_name, binding in scored[: self.max_search_results]:
+        for _score, exposed_name, binding in page:
             catalog = binding.catalog if isinstance(binding.catalog, dict) else {}
             schema = (
                 catalog.get("inputSchema") if isinstance(catalog.get("inputSchema"), dict) else {}
@@ -216,7 +256,12 @@ class MCPToolBroker:
             "status": "ok",
             "query": query_text,
             "matches": matches,
-            "has_more": len(scored) > len(matches),
+            "next_cursor": (
+                self._cursor(query_text, offset + len(matches))
+                if offset + len(matches) < len(scored)
+                else None
+            ),
+            "has_more": offset + len(matches) < len(scored),
             "catalogue_hidden": True,
         }
 
@@ -228,13 +273,10 @@ class MCPToolBroker:
         ref = str(tool_ref or "").strip()
         if not ref or len(ref) > 128:
             return None
-        binding = bindings.get(ref)
-        if binding is not None:
-            return binding
-        # A unique raw-name fallback helps older/local models migrate, but it
-        # cannot cross the current conversation's already-scoped bindings.
-        candidates = [item for item in bindings.values() if item.raw_name == ref]
-        return candidates[0] if len(candidates) == 1 else None
+        # References are intentionally exact and conversation-scoped. Never
+        # resolve a guessed raw upstream name or accept a server identifier
+        # supplied by the model.
+        return bindings.get(ref)
 
     def get_schema(
         self,
@@ -293,21 +335,30 @@ class MCPToolBroker:
             }
         return result
 
-    def bound_result(self, result: Mapping[str, Any] | Any) -> Any:
+    def bound_result(self, result: Mapping[str, Any] | Any, *, max_chars: int | None = None) -> Any:
         """Bound model-facing MCP output without changing audit/raw execution data."""
+        result_limit = self.max_result_chars if max_chars is None else max(128, int(max_chars))
         try:
             encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)
         except (TypeError, ValueError):
             encoded = json.dumps({"result": str(result)}, ensure_ascii=False, separators=(",", ":"))
-        if len(encoded) <= self.max_result_chars:
+        if len(encoded) <= result_limit:
             return result
-        preview_size = max(512, self.max_result_chars - 350)
-        preview = encoded[:preview_size].rstrip()
-        return {
+        bounded: dict[str, Any] = {
             "status": "truncated",
             "message": "The MCP result was larger than the model context budget.",
-            "result_preview": preview,
+            "result_preview": "",
             "original_result_chars": len(encoded),
-            "result_limit_chars": self.max_result_chars,
+            "result_limit_chars": result_limit,
             "more_available": True,
         }
+        preview_budget = max(0, result_limit - len(json.dumps(bounded)) - 8)
+        bounded["result_preview"] = encoded[:preview_budget].rstrip()
+        # Keep the envelope itself inside the configured hard boundary even
+        # when unusually large metadata values are supplied.
+        while len(json.dumps(bounded, ensure_ascii=False, separators=(",", ":"))) > result_limit:
+            preview = str(bounded["result_preview"])
+            if not preview:
+                break
+            bounded["result_preview"] = preview[: -max(1, min(256, len(preview) // 8))]
+        return bounded

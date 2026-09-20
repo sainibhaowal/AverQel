@@ -59,6 +59,20 @@ def test_search_returns_references_without_full_input_schema() -> None:
     assert result["matches"][0]["tool_ref"] == "mcp_server_search_records"
 
 
+def test_search_cursor_is_opaque_and_query_bound() -> None:
+    broker = MCPToolBroker(max_search_results=1)
+    bindings = {f"tool_{index}": _binding(f"read_{index}") for index in range(3)}
+
+    first = broker.search(bindings, "read")
+    second = broker.search(bindings, "read", cursor=first["next_cursor"])
+    invalid = broker.search(bindings, "write", cursor=first["next_cursor"])
+
+    assert first["has_more"] is True
+    assert len(second["matches"]) == 1
+    assert second["matches"][0]["tool"] != first["matches"][0]["tool"]
+    assert invalid["status"] == "error"
+
+
 def test_schema_is_compact_and_result_is_bounded() -> None:
     broker = MCPToolBroker(max_schema_chars=1_000, max_result_chars=2_000)
     binding = _binding("large_tool", description="x" * 10_000)
@@ -71,6 +85,7 @@ def test_schema_is_compact_and_result_is_bounded() -> None:
     assert len(json.dumps(schema)) <= 1_000 or schema["input_schema"]["truncated"] is True
     assert oversized["status"] == "truncated"
     assert oversized["more_available"] is True
+    assert len(json.dumps(oversized, separators=(",", ":"))) <= 2_000
 
 
 def test_resolve_rejects_ambiguous_raw_name() -> None:
@@ -83,3 +98,10 @@ def test_resolve_rejects_ambiguous_raw_name() -> None:
     assert broker.resolve(bindings, "first") is first
     assert broker.resolve(bindings, "read") is None
     assert broker.resolve(bindings, "missing") is None
+
+
+def test_resolve_does_not_accept_raw_upstream_name() -> None:
+    broker = MCPToolBroker()
+    binding = _binding("read")
+
+    assert broker.resolve({binding.exposed_name: binding}, "read") is None
