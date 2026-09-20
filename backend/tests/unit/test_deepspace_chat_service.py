@@ -970,6 +970,30 @@ def test_explicit_gmail_request_exposes_only_gmail_mcp_tools() -> None:
     assert set(selected) == {"gmail_tool"}
 
 
+def test_generic_mcp_request_exposes_all_catalogue_only_to_backend_broker() -> None:
+    notion = SimpleNamespace(server=SimpleNamespace(name="Notion"), raw_name="search_pages")
+    linear = SimpleNamespace(server=SimpleNamespace(name="Linear"), raw_name="list_issues")
+
+    selected = DeepSpaceChatService._mcp_bindings_for_prompt(
+        "Search my connected MCP tools for launch issues",
+        {"notion_tool": notion, "linear_tool": linear},
+    )
+
+    assert set(selected) == {"notion_tool", "linear_tool"}
+
+
+def test_unknown_connected_mcp_server_can_be_selected_by_name() -> None:
+    linear = SimpleNamespace(server=SimpleNamespace(name="Linear"), raw_name="list_issues")
+    notion = SimpleNamespace(server=SimpleNamespace(name="Notion"), raw_name="search_pages")
+
+    selected = DeepSpaceChatService._mcp_bindings_for_prompt(
+        "Check Linear for launch issues",
+        {"linear_tool": linear, "notion_tool": notion},
+    )
+
+    assert set(selected) == {"linear_tool"}
+
+
 @pytest.mark.parametrize(
     "prompt",
     (

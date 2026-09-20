@@ -321,6 +321,15 @@ class Settings(BaseSettings):
     mcp_slack_oauth_client_secret: str | None = None
     mcp_oauth_redirect_uri: str | None = None
     mcp_catalog_max_age_seconds: int = Field(default=900, ge=60, le=86_400)
+    # Keep the complete connected MCP catalogue server-side. DeepSpace sends
+    # only the small broker surface plus just-in-time compact metadata to the
+    # selected model. The flag preserves a controlled rollback path.
+    deepspace_mcp_deferred_tools_enabled: bool = Field(
+        default=True, validation_alias="DEEPSPACE_MCP_DEFERRED_TOOLS_ENABLED"
+    )
+    deepspace_mcp_max_search_results: int = Field(default=5, ge=1, le=20)
+    deepspace_mcp_max_schema_chars: int = Field(default=6_000, ge=1_000, le=20_000)
+    deepspace_mcp_max_result_chars: int = Field(default=12_000, ge=2_000, le=100_000)
     averqel_domain: str | None = Field(default=None, validation_alias="AVERQEL_DOMAIN")
     averqel_public_origin: str | None = Field(
         default=None, validation_alias="AVERQEL_PUBLIC_ORIGIN"

@@ -57,6 +57,43 @@ uses the existing MCP catalog and policy evaluator, and forwards execution to
 transport, provider checks, catalog refresh, and tenant ownership remain owned
 by the MCP integration service.
 
+### Deferred MCP tool loading
+
+DeepSpace does not send a connected server's complete tool catalogue or input
+schemas to the model. `app/deepspace/services/mcp_tool_broker.py` keeps the
+conversation-scoped bindings private and exposes only three small broker
+functions:
+
+- `mcp_search_tools` returns a bounded list of matching tool references;
+- `mcp_get_tool_schema` returns one compact schema for one selected reference;
+- `mcp_call_tool` resolves the reference back to the already authorized bridge
+  binding and executes that exact tool.
+
+This is universal for every connected MCP server. It does not depend on a
+Notion-, Gmail-, Slack-, or provider-specific tool list. New servers are
+searchable from their discovered names, descriptions, and parameter names as
+soon as their normal catalog refresh succeeds. The model never receives the
+full catalogue, raw server configuration, credentials, or transport details.
+
+The backend still uses the original exact catalog for execution validation.
+Before every remote call, the existing tenant/user ownership lookup,
+connection status, catalog revision, policy, risk classification, approval
+gate, audit event, and MCP transport path run unchanged. Successful model
+output is bounded by `DEEPSPACE_MCP_MAX_RESULT_CHARS` so a large remote page
+cannot refill the conversation context unexpectedly.
+
+The runtime settings are:
+
+- `DEEPSPACE_MCP_DEFERRED_TOOLS_ENABLED=true` (default): use the broker;
+- `DEEPSPACE_MCP_MAX_SEARCH_RESULTS=5`;
+- `DEEPSPACE_MCP_MAX_SCHEMA_CHARS=6000`;
+- `DEEPSPACE_MCP_MAX_RESULT_CHARS=12000`.
+
+Setting the first flag to `false` is an emergency rollback to the previous
+direct-schema exposure path. It should only be used temporarily because it
+reintroduces full catalog schemas into model context. No MCP connection or
+approval route changes are required for rollout.
+
 Read-only MCP actions can run automatically when the configured policy allows
 them. Writes, deletes, sends, and other external side effects pause the
 DeepSpace run and emit a visible approval request. The UI resolves the request

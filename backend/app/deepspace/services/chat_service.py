@@ -24,6 +24,12 @@ from app.deepspace.repositories.request_metrics import DeepSpaceRequestMetricsRe
 from app.deepspace.services.browser_reader import read_url_with_browser_fallback
 from app.deepspace.services.context_cache import DeepSpaceContextCache
 from app.deepspace.services.mcp_bridge import DeepSpaceMCPBridge, DeepSpaceMCPTool
+from app.deepspace.services.mcp_tool_broker import (
+    MCP_CALL_TOOL,
+    MCP_GET_TOOL_SCHEMA,
+    MCP_SEARCH_TOOLS,
+    MCPToolBroker,
+)
 from app.deepspace.services.media_artifacts import DeepSpaceMediaArtifactService
 from app.deepspace.services.provider_circuit import DeepSpaceProviderCircuit
 from app.deepspace.services.reasoning_privacy import (
@@ -37,6 +43,7 @@ from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore, summarize_t
 from app.deepspace.services.url_reader import read_image
 from app.documents.repositories.chunks import RetrievedChunkRow
 from app.ingestion.services.embedding_service import EmbeddingService
+from app.integrations.services.mcp_runtime import MCPToolPolicyDecision
 from app.providers.services import ChatGenerateRequest, ProviderRegistry
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.reasoning_capabilities import (
@@ -692,6 +699,11 @@ class DeepSpaceChatService:
         self.task_store = DeepSpaceTaskLoopStore(db)
         self.media_artifacts = DeepSpaceMediaArtifactService(db, settings)
         self.mcp_bridge = DeepSpaceMCPBridge(db, settings)
+        self.mcp_broker = MCPToolBroker(
+            max_search_results=int(getattr(settings, "deepspace_mcp_max_search_results", 5)),
+            max_schema_chars=int(getattr(settings, "deepspace_mcp_max_schema_chars", 6_000)),
+            max_result_chars=int(getattr(settings, "deepspace_mcp_max_result_chars", 12_000)),
+        )
         self.runtime = DeepSpaceRuntimeStore(
             db,
             retained_steps=int(getattr(settings, "deepspace_agent_retained_steps", 10_000)),
@@ -1848,8 +1860,33 @@ class DeepSpaceChatService:
             for service, patterns in service_patterns.items()
             if any(re.search(pattern, lowered) for pattern in patterns)
         }
+        generic_mcp_request = bool(
+            re.search(
+                r"\bmcp\b|\bconnected\s+(?:service|services|app|apps|tool|tools)\b",
+                lowered,
+            )
+            and re.search(
+                r"\b(?:tool|tools|action|actions|search|find|check|read|list|use|call|connect)\b",
+                lowered,
+            )
+        )
+        if generic_mcp_request:
+            return dict(mcp_bindings)
+
         if not requested_services:
-            return {}
+            # New MCP apps do not need a hard-coded router entry. If the user
+            # names a connected server directly, match its distinctive name
+            # token while keeping unrelated catalogs private.
+            selected_by_server_name: dict[str, DeepSpaceMCPTool] = {}
+            for exposed_name, binding in mcp_bindings.items():
+                server_tokens = {
+                    token
+                    for token in re.findall(r"[a-z0-9]+", str(binding.server.name or "").casefold())
+                    if len(token) >= 4
+                }
+                if any(re.search(rf"\b{re.escape(token)}\b", lowered) for token in server_tokens):
+                    selected_by_server_name[exposed_name] = binding
+            return selected_by_server_name
 
         def service_for_server(server_name: str) -> str | None:
             normalized = server_name.casefold()
@@ -1933,11 +1970,18 @@ class DeepSpaceChatService:
         web_candidate: Any | None,
         request: Any | None,
         mcp_binding: DeepSpaceMCPTool | None = None,
+        mcp_bindings: dict[str, DeepSpaceMCPTool] | None = None,
         mcp_approval_granted: bool = False,
         assistant_message_id: uuid.UUID | None = None,
         ignore_existing_tasks: bool = False,
         user_prompt: str | None = None,
     ) -> dict[str, Any]:
+        if tool_name == MCP_SEARCH_TOOLS:
+            return self.mcp_broker.search(mcp_bindings or {}, str(arguments.get("query") or ""))
+        if tool_name == MCP_GET_TOOL_SCHEMA:
+            return self.mcp_broker.get_schema(
+                mcp_bindings or {}, str(arguments.get("tool_ref") or "")
+            )
         if mcp_binding is not None:
             result = await self.mcp_bridge.execute(
                 auth=auth,
@@ -1948,13 +1992,18 @@ class DeepSpaceChatService:
             )
             if result.get("is_error") or result.get("status") == "error":
                 raise ValueError(str(result.get("message") or "MCP tool execution failed."))
-            return {
-                # Use the discovery snapshot; the MCP runtime commits audit
-                # data and may expire the ORM server instance.
-                "mcp_server": mcp_binding.server_name,
-                "mcp_tool": mcp_binding.raw_name,
-                **result,
-            }
+            bounded_result = self.mcp_broker.bound_result(
+                {
+                    # Use the discovery snapshot; the MCP runtime commits audit
+                    # data and may expire the ORM server instance.
+                    "mcp_server": mcp_binding.server_name,
+                    "mcp_tool": mcp_binding.raw_name,
+                    **result,
+                }
+            )
+            return (
+                bounded_result if isinstance(bounded_result, dict) else {"result": bounded_result}
+            )
         if tool_name == "sandbox_execute":
             try:
                 sandbox_files: list[dict[str, Any]] = []
@@ -3014,27 +3063,38 @@ class DeepSpaceChatService:
         read_semaphore: asyncio.Semaphore,
         write_lock: asyncio.Lock,
         mcp_binding: DeepSpaceMCPTool | None = None,
+        mcp_bindings: dict[str, DeepSpaceMCPTool] | None = None,
         mcp_approval_granted: bool = False,
         assistant_message_id: uuid.UUID | None = None,
         ignore_existing_tasks: bool = False,
         user_prompt: str | None = None,
     ) -> dict[str, Any]:
-        decision = (
-            self.mcp_bridge.policy_for_tool(
-                auth=auth,
-                conversation_id=conversation_id,
-                binding=mcp_binding,
+        decision: Any
+        if tool_name in {MCP_SEARCH_TOOLS, MCP_GET_TOOL_SCHEMA}:
+            decision = MCPToolPolicyDecision(
+                True,
+                mode="always_allow",
+                risk_level="read",
+                approval_requirement="auto",
+                reason="DeepSpace MCP broker metadata operation.",
             )
-            if mcp_binding is not None
-            else self.tool_policy.before_tool(tool_name, arguments)
-        )
+        else:
+            decision = (
+                self.mcp_bridge.policy_for_tool(
+                    auth=auth,
+                    conversation_id=conversation_id,
+                    binding=mcp_binding,
+                )
+                if mcp_binding is not None
+                else self.tool_policy.before_tool(tool_name, arguments)
+            )
         if not decision.allowed:
             return {
                 "success": False,
                 "error": decision.reason or "Tool blocked by policy.",
             }
 
-        gate = read_semaphore if decision.mode == "read" else write_lock
+        gate = read_semaphore if getattr(decision, "mode", None) == "read" else write_lock
         async with gate:
             for attempt in range(MAX_TOOL_RETRIES + 1):
                 if time.monotonic() >= loop_deadline:
@@ -3058,6 +3118,7 @@ class DeepSpaceChatService:
                             web_candidate=web_candidate,
                             request=request,
                             mcp_binding=mcp_binding,
+                            mcp_bindings=mcp_bindings,
                             mcp_approval_granted=mcp_approval_granted,
                             assistant_message_id=assistant_message_id,
                             ignore_existing_tasks=ignore_existing_tasks,
@@ -4027,7 +4088,25 @@ class DeepSpaceChatService:
         mcp_bindings = self._mcp_bindings_for_prompt(
             effective_routing_prompt, discovered_mcp_bindings
         )
-        mcp_tools = [binding.definition for binding in mcp_bindings.values()]
+        # Approval resumes may carry a short UI prompt rather than the
+        # original service name. Restore only the exact pending, previously
+        # authorized binding from this same tenant/user discovery snapshot.
+        if resumed_pending is not None:
+            pending_name = str(resumed_pending.get("tool_name") or "")
+            pending_binding = discovered_mcp_bindings.get(pending_name)
+            if pending_binding is not None:
+                mcp_bindings[pending_name] = pending_binding
+        deferred_mcp_tools = bool(
+            getattr(self.settings, "deepspace_mcp_deferred_tools_enabled", True)
+        )
+        # The complete connection-scoped catalogue remains available only to
+        # the backend broker. The model receives three small meta-tools and
+        # loads one compact schema only after it has selected a tool.
+        mcp_tools = (
+            self.mcp_broker.definitions()
+            if mcp_bindings and deferred_mcp_tools
+            else [binding.definition for binding in mcp_bindings.values()]
+        )
         available_tools: list[dict[str, Any]] = [
             *productivity_tools,
             *web_tools,
@@ -4368,6 +4447,7 @@ class DeepSpaceChatService:
                         read_semaphore=asyncio.Semaphore(1),
                         write_lock=asyncio.Lock(),
                         mcp_binding=pending_binding,
+                        mcp_bindings=mcp_bindings,
                         mcp_approval_granted=True,
                         assistant_message_id=assistant_message.id,
                         user_prompt=prompt,
@@ -5287,6 +5367,7 @@ class DeepSpaceChatService:
                     call_id = str(call.get("id") or uuid.uuid4())
                     call_id_clean = re.sub(r"[^a-zA-Z0-9_-]", "", call_id)[:16] or str(call_index)
                     tool_name = self._tool_name(call)
+                    model_tool_name = tool_name
                     arguments = self._parse_tool_arguments(call)
                     # Keep every lifecycle event for this provider function call
                     # on one stable timeline entry, even if its provider call id
@@ -5310,6 +5391,37 @@ class DeepSpaceChatService:
                             {"role": "tool", "tool_call_id": call_id, "content": output}
                         )
                         continue
+                    # Resolve the model-facing broker call to one already
+                    # conversation-scoped binding before policy evaluation.
+                    # The model cannot choose a server, raw transport, or
+                    # unscoped tool name; it can only use a reference returned
+                    # from this request's private catalogue search.
+                    if tool_name == MCP_CALL_TOOL:
+                        requested_ref = str(arguments.get("tool_ref") or "").strip()
+                        requested_arguments = arguments.get("arguments")
+                        resolved_binding = self.mcp_broker.resolve(mcp_bindings, requested_ref)
+                        if resolved_binding is None or not isinstance(requested_arguments, dict):
+                            output = (
+                                "The MCP tool reference or arguments were invalid. "
+                                "Search for a connected tool and provide its exact tool_ref "
+                                "with a JSON object of arguments."
+                            )
+                            yield sse(
+                                "tool_error",
+                                {
+                                    "tool_name": MCP_CALL_TOOL,
+                                    "tool_id": call_id,
+                                    "step_id": step_id,
+                                    "error": output,
+                                    "error_category": "tool",
+                                },
+                            )
+                            conversation_messages.append(
+                                {"role": "tool", "tool_call_id": call_id, "content": output}
+                            )
+                            continue
+                        tool_name = resolved_binding.exposed_name
+                        arguments = requested_arguments
                     lifecycle_error: str | None = None
                     if starts_managed_plan and (
                         call_index != first_call_index or tool_name != "todo_write"
@@ -5338,7 +5450,10 @@ class DeepSpaceChatService:
                                 "Managed task execution accepts one real tool call per step so task state and "
                                 "evidence remain ordered."
                             )
-                        elif tool_name not in permitted_tool_names:
+                        elif (
+                            tool_name not in permitted_tool_names
+                            and model_tool_name not in permitted_tool_names
+                        ):
                             lifecycle_error = (
                                 f"The current managed-task stage requires a different tool; {tool_name!r} is not "
                                 "available for this step."
@@ -5427,15 +5542,25 @@ class DeepSpaceChatService:
                         )
                         continue
                     mcp_binding = mcp_bindings.get(tool_name)
-                    decision = (
-                        self.mcp_bridge.policy_for_tool(
-                            auth=auth,
-                            conversation_id=conversation_id,
-                            binding=mcp_binding,
+                    decision: Any
+                    if tool_name in {MCP_SEARCH_TOOLS, MCP_GET_TOOL_SCHEMA}:
+                        decision = MCPToolPolicyDecision(
+                            True,
+                            mode="always_allow",
+                            risk_level="read",
+                            approval_requirement="auto",
+                            reason="DeepSpace MCP broker metadata operation.",
                         )
-                        if mcp_binding is not None
-                        else self.tool_policy.before_tool(tool_name, arguments)
-                    )
+                    else:
+                        decision = (
+                            self.mcp_bridge.policy_for_tool(
+                                auth=auth,
+                                conversation_id=conversation_id,
+                                binding=mcp_binding,
+                            )
+                            if mcp_binding is not None
+                            else self.tool_policy.before_tool(tool_name, arguments)
+                        )
                     if not decision.allowed:
                         output = decision.reason or "Tool blocked by DeepSpace policy."
                         yield sse(
@@ -5612,6 +5737,7 @@ class DeepSpaceChatService:
                             read_semaphore=read_semaphore,
                             write_lock=write_lock,
                             mcp_binding=mcp_bindings.get(str(item["tool_name"])),
+                            mcp_bindings=mcp_bindings,
                             assistant_message_id=assistant_message.id,
                             ignore_existing_tasks=(
                                 not allow_existing_task_state and not managed_task_run

@@ -49,6 +49,45 @@ sequenceDiagram
 4. DeepSpace requests approval before an action requiring it.
 5. The bridge records the result and audit event.
 
+## 4.1 DeepSpace catalogue protection
+
+The MCP connection layer and the DeepSpace model boundary are intentionally
+separate. `DeepSpaceMCPBridge` discovers only tenant/user-owned, enabled,
+connected, policy-enabled servers. The DeepSpace broker then keeps those
+catalogue entries backend-only and gives the selected model a small deferred
+interface:
+
+```text
+DeepSpace model
+    │ mcp_search_tools(query)
+    ▼
+Private broker index ──► compact tool_ref matches
+    │ mcp_get_tool_schema(tool_ref)
+    ▼
+One bounded schema hint
+    │ mcp_call_tool(tool_ref, arguments)
+    ▼
+Existing MCP bridge ──► policy/approval/catalog revision/transport/audit
+```
+
+Only the minimum metadata for the current request crosses the model boundary.
+The broker never forwards all server tools, all JSON schemas, OAuth material,
+or transport configuration. A result larger than the configured MCP result
+budget is returned as a bounded preview with an explicit truncation marker.
+
+This design applies to all connected MCP apps and future catalog entries. It
+does not add a second OAuth client, connection store, remote proxy, or
+authorization system. The existing connection-scope APIs remain unchanged:
+
+- `GET /api/v1/mcp/conversations/{conversation_id}/connections`
+- `PUT /api/v1/mcp/conversations/{conversation_id}/connections/{server_id}`
+- `POST /api/v1/deepspace/chats/{conversation_id}/approvals/{approval_id}`
+
+The implementation is covered by
+`backend/tests/unit/test_mcp_tool_broker.py`, the existing bridge tests, and
+the DeepSpace chat-loop tests. `DEEPSPACE_MCP_DEFERRED_TOOLS_ENABLED=false`
+provides a controlled rollback while a deployment is being verified.
+
 ## 4. What users see
 
 1. Approved connectors appear in the MCP marketplace.
