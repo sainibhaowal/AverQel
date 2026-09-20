@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useId, useMemo, useState } from "react";
+import { Check, ChevronDown, Copy, Download } from "lucide-react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -9,22 +10,40 @@ import { normalizeMarkdown, normalizeThinkingDisplay } from "../_lib/markdown";
 import { isMermaidErrorSvg } from "../../query/_lib/mermaid";
 import { sanitizeMermaidSyntax } from "../../query/_components/CodeBlock";
 import AdaptiveMarkdownTable from "../../_components/AdaptiveMarkdownTable";
+import { exportDiagramPdf, exportDiagramPng, exportDiagramSvg } from "@/lib/client-export";
+import { useTheme } from "../../../context/ThemeContext";
 
 function MermaidPreview({ source }: { source: string }) {
   const id = useId().replace(/:/g, "");
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState<"png" | "pdf" | null>(null);
   const sanitizedSource = useMemo(() => sanitizeMermaidSyntax(source), [source]);
+  const { theme } = useTheme();
 
   useEffect(() => {
     let cancelled = false;
     void import("mermaid")
       .then(async ({ default: mermaid }) => {
+        const isDark = theme === "dark";
         mermaid.initialize({
           startOnLoad: false,
           securityLevel: "strict",
           suppressErrorRendering: true,
-          theme: "dark",
+          theme: isDark ? "dark" : "default",
+          fontFamily: "inherit",
+          themeVariables: {
+            primaryColor: isDark ? "#1e293b" : "#f8fafc",
+            primaryTextColor: isDark ? "#e2e8f0" : "#0f172a",
+            primaryBorderColor: isDark ? "#64748b" : "#475569",
+            secondaryColor: isDark ? "#0f172a" : "#ffffff",
+            tertiaryColor: isDark ? "#111827" : "#f1f5f9",
+            lineColor: isDark ? "#94a3b8" : "#475569",
+            nodeTextColor: isDark ? "#e2e8f0" : "#0f172a",
+            mainBkg: isDark ? "#0f172a" : "#ffffff",
+          },
         });
         const parsed = await mermaid.parse(sanitizedSource, { suppressErrors: true });
         if (!parsed) throw new Error("Invalid Mermaid syntax.");
@@ -38,20 +57,157 @@ function MermaidPreview({ source }: { source: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, sanitizedSource]);
+  }, [id, sanitizedSource, theme]);
 
-  if (svg) {
-    return (
-      <div
-        className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/20 p-4"
-        dangerouslySetInnerHTML={{ __html: svg }}
-      />
+  const copySource = async () => {
+    try {
+      await navigator.clipboard.writeText(sanitizedSource);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const downloadSource = () => {
+    const url = URL.createObjectURL(
+      new Blob([sanitizedSource], { type: "text/plain;charset=utf-8" }),
     );
-  }
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "diagram.mmd";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const exportDiagram = async (format: "svg" | "png" | "pdf") => {
+    if (!svg) return;
+    try {
+      if (format === "svg") {
+        exportDiagramSvg(svg, "diagram.svg");
+      } else {
+        setExporting(format);
+        if (format === "png") await exportDiagramPng(svg, "diagram.png");
+        else await exportDiagramPdf(svg, "diagram.pdf");
+      }
+      setExportOpen(false);
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
-    <pre className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs text-cyan-100">
-      <code>{error ? sanitizedSource : "Rendering diagram…"}</code>
-    </pre>
+    <div className="group relative my-4 overflow-x-auto rounded-xl border border-border bg-surface-1 p-4">
+      <div className="absolute top-3 right-3 z-10 h-8 w-36 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={() => void copySource()}
+          className="theme-chip text-foreground/72 hover:text-foreground absolute top-0 left-0 inline-flex h-8 w-8 items-center justify-center rounded-full"
+          aria-label="Copy Mermaid source"
+          title={copied ? "Copied" : "Copy Mermaid source"}
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </button>
+        <div className="absolute top-0 right-0">
+          <button
+            type="button"
+            onClick={() => setExportOpen((current) => !current)}
+            className="theme-chip text-foreground/72 hover:text-foreground inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs"
+            aria-label="Export Mermaid diagram"
+            aria-expanded={exportOpen}
+          >
+            <Download size={14} /> Export <ChevronDown size={13} />
+          </button>
+          {exportOpen ? (
+            <div className="theme-panel absolute top-10 right-0 grid min-w-36 gap-1 rounded-xl p-1 shadow-xl">
+              <button
+                type="button"
+                onClick={downloadSource}
+                className="rounded-lg px-3 py-2 text-left text-xs hover:bg-white/10"
+              >
+                Mermaid (.mmd)
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportDiagram("svg")}
+                disabled={!svg}
+                className="rounded-lg px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+              >
+                SVG
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportDiagram("png")}
+                disabled={!svg || exporting !== null}
+                className="rounded-lg px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+              >
+                {exporting === "png" ? "PNG…" : "PNG"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportDiagram("pdf")}
+                disabled={!svg || exporting !== null}
+                className="rounded-lg px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+              >
+                {exporting === "pdf" ? "PDF…" : "PDF"}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {svg ? (
+        <div dangerouslySetInnerHTML={{ __html: svg }} />
+      ) : (
+        <pre className="text-xs text-cyan-100">
+          <code>{error ? sanitizedSource : "Rendering diagram…"}</code>
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function isAsciiDiagram(source: string): boolean {
+  const lines = source.split("\n").filter((line) => line.trim());
+  if (lines.length < 3) return false;
+  const structuralLines = lines.filter((line) => /[│┌┐└┘├┤┬┴─|+]/.test(line)).length;
+  const hasFlow = /(?:↓|↑|←|→|-->|<-|\||v|\^)/.test(source);
+  return structuralLines >= 2 && hasFlow;
+}
+
+function AsciiDiagramPreview({ source }: { source: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copySource = async () => {
+    try {
+      await navigator.clipboard.writeText(source);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <section className="group relative my-4 overflow-hidden rounded-xl border border-slate-300 bg-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/10 dark:bg-black/25 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div className="absolute top-3 right-3 z-10 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={() => void copySource()}
+          className="theme-chip text-foreground/72 hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-full"
+          aria-label="Copy ASCII diagram"
+          title={copied ? "Copied" : "Copy ASCII diagram"}
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </button>
+      </div>
+      <div className="overflow-x-auto p-5 sm:p-6">
+        <pre className="m-0 w-max min-w-full font-mono text-[11px] leading-6 whitespace-pre text-slate-800 [font-variant-ligatures:none] dark:text-cyan-100 sm:text-xs">
+          <code>{source}</code>
+        </pre>
+      </div>
+    </section>
   );
 }
 
@@ -146,6 +302,7 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
         // fences. The plain code block is stable until the provider is done.
         if (!streaming && language === "mermaid" && value.trim())
           return <MermaidPreview source={value} />;
+        if (!streaming && isAsciiDiagram(value)) return <AsciiDiagramPreview source={value} />;
         if (language === "diff" || language === "patch") return <DiffPreview source={value} />;
         if (!streaming && language === "chart") {
           try {

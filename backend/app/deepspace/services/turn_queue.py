@@ -28,6 +28,7 @@ class ClaimedTurn:
     client_request_id: str
     prompt: str
     thinking_enabled: bool
+    reasoning_effort: str | None
     roles: list[str]
     permissions: list[str]
 
@@ -47,6 +48,7 @@ class DeepSpaceTurnQueueStore:
         client_request_id: str,
         prompt: str,
         thinking_enabled: bool,
+        reasoning_effort: str | None = None,
         roles: list[str],
         permissions: list[str],
         steer: bool = False,
@@ -110,6 +112,7 @@ class DeepSpaceTurnQueueStore:
             priority=1 if steer else 0,
             sequence=next_sequence,
             thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
             roles_json=sorted({str(role) for role in roles}),
             permissions_json=sorted({str(permission) for permission in permissions}),
             status="queued",
@@ -394,6 +397,7 @@ class DeepSpaceTurnQueueStore:
             client_request_id=turn.client_request_id,
             prompt=turn.prompt,
             thinking_enabled=turn.thinking_enabled,
+            reasoning_effort=turn.reasoning_effort,
             roles=[str(role) for role in turn.roles_json],
             permissions=[str(permission) for permission in turn.permissions_json],
         )

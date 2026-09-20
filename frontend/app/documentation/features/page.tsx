@@ -14,11 +14,11 @@ export default function FeaturesPage() {
           },
           {
             title: "DeepSpace Chat",
-            body: "DeepSpace supports research, drafting, analysis, streaming answers, notes, memory, and durable history in one conversation.",
+            body: "DeepSpace supports research, drafting, analysis, streaming answers, notes, memory, durable history, and model-aware reasoning controls in one conversation.",
           },
           {
             title: "Notes + Deliverables",
-            body: "The workspace supports notes, Markdown, diagrams, math blocks, and exports.",
+            body: "The workspace supports notes, Markdown, diagrams, math blocks, and exports. Mermaid source can be copied or exported as Mermaid, SVG, PNG, or PDF; tables export as CSV or Excel.",
           },
           {
             title: "Sandboxed Analysis",
@@ -34,7 +34,11 @@ export default function FeaturesPage() {
           },
           {
             title: "Provider Flexibility",
-            body: "AverQel can use cloud or local providers for chat, embeddings, reranking, and web search.",
+            body: "AverQel can use cloud or local providers for chat, embeddings, reranking, and web search. Supported models expose appropriate Thinking levels and an estimated context budget.",
+          },
+          {
+            title: "Voice Mode",
+            body: "With permission, voice dictation transcribes speech into the composer and TTS reads the completed assistant response through the protected realtime voice service.",
           },
           {
             title: "Safety + Tenant Isolation",
@@ -52,6 +56,7 @@ export default function FeaturesPage() {
           <li>private artifact previews and authenticated downloads</li>
           <li>scheduled and long-running work with durable run history</li>
           <li>persistent memory and conversation history</li>
+          <li>model-aware reasoning controls, context diagnostics, and optional voice input/output</li>
           <li>connectors, MCP, and provider management</li>
         </ul>
       </DocsSection>

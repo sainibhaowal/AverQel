@@ -485,7 +485,7 @@ def test_openai_compatible_provider_uses_local_reasoning_controls_for_lmstudio()
     assert messages[-1]["content"].startswith("/think\n")
     assert payload["enable_thinking"] is True
     assert payload["reasoning_effort"] == "high"
-    assert payload["reasoning"] == {"effort": "high"}
+    assert payload["reasoning"] == "high"
 
 
 def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_lmstudio() -> None:
@@ -508,7 +508,25 @@ def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_lmstud
     assert messages[-1]["content"].startswith("/no_think\n")
     assert payload["enable_thinking"] is False
     assert "reasoning_effort" not in payload
-    assert "reasoning" not in payload
+
+
+def test_openai_compatible_provider_maps_deepseek_universal_effort() -> None:
+    payload: dict[str, object] = {}
+    request = ChatGenerateRequest(
+        model="deepseek-v4-pro",
+        messages=[{"role": "user", "content": "Hi"}],
+        temperature=0.1,
+        max_tokens=64,
+        base_url="https://api.deepseek.com",
+        api_key="k",
+        reasoning_enabled=True,
+        reasoning_effort="very_high",
+        metadata={"provider_type": "deepseek"},
+    )
+
+    OpenAICompatibleProvider()._apply_reasoning_request_settings(payload, request)
+
+    assert payload == {"thinking": {"type": "enabled"}, "reasoning_effort": "max"}
 
 
 def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_nemotron() -> None:
@@ -531,7 +549,7 @@ def test_openai_compatible_provider_uses_local_reasoning_controls_off_for_nemotr
     assert messages[-1]["content"].startswith("/no_think\n")
     assert payload["enable_thinking"] is False
     assert "reasoning_effort" not in payload
-    assert "reasoning" not in payload
+    assert payload["reasoning"] == "off"
 
 
 def test_openai_compatible_provider_auto_reasoning_preserves_model_defaults() -> None:

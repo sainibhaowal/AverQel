@@ -155,8 +155,11 @@ class AnthropicProvider:
         return {"type": "auto"}
 
     @staticmethod
-    def _build_thinking_payload(max_tokens: int) -> dict[str, Any]:
-        budget_tokens = max(1024, min(max_tokens // 2, 4096))
+    def _build_thinking_payload(max_tokens: int, effort: str | None = None) -> dict[str, Any]:
+        ratios = {"low": 0.20, "medium": 0.50, "high": 0.80}
+        budget_tokens = max(
+            1024, min(int(max_tokens * ratios.get(effort or "medium", 0.50)), 16_384)
+        )
         return {"type": "enabled", "budget_tokens": budget_tokens}
 
     @staticmethod
@@ -266,7 +269,9 @@ class AnthropicProvider:
             and request.tool_choice != "required"
             and self.model_supports_reasoning(request.model)
         ):
-            payload["thinking"] = self._build_thinking_payload(anthropic_max_tokens)
+            payload["thinking"] = self._build_thinking_payload(
+                anthropic_max_tokens, request.reasoning_effort
+            )
         response = httpx_module.post(
             f"{request.base_url.rstrip('/')}/messages",
             headers=headers,

@@ -42,6 +42,7 @@ class DeepSpaceQueuedTurn(Base):
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     thinking_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reasoning_effort: Mapped[str | None] = mapped_column(String(20), nullable=True)
     roles_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     permissions_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", index=True)

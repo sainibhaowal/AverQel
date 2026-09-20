@@ -18,7 +18,7 @@ export default function ArchitectureDocsPage() {
           },
           {
             title: "Workers and inference",
-            body: "Celery workers process documents, DeepSpace jobs, MCP work, maintenance, and schedules. The inference service handles local model work.",
+            body: "Celery workers process documents, DeepSpace jobs, MCP work, maintenance, and schedules. The inference service handles local model work; the voice agent handles realtime STT/TTS rooms.",
           },
           {
             title: "State and storage",
@@ -60,13 +60,15 @@ export default function ArchitectureDocsPage() {
      -> PostgreSQL and Redis
      -> MinIO and ClamAV
      -> inference and SearXNG
+     -> LiveKit and voice agent (when voice mode is enabled)
      -> approved external providers
   -> worker, ingestion, MCP, maintenance, and scheduler queues`}
         </pre>
         <p className="mt-4">
-          The production service layout is defined by the checked-in backend Compose files. Optional
-          packages, including the separate LiveKit server materials, are not considered active until
-          their service, configuration, networking, and health checks are deployed explicitly.
+          The production service layout is defined by the checked-in backend Compose files. Voice
+          mode requires the LiveKit and voice-agent services to be deployed and healthy; HTTPS/WSS,
+          browser microphone permission, and network-appropriate TURN configuration remain
+          deployment requirements.
         </p>
       </DocsSection>
 

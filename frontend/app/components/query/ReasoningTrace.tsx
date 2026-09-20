@@ -2,7 +2,9 @@
 
 import React, { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, ChevronDown, Network } from "lucide-react";
+import { Activity, Check, ChevronDown, Copy, Download, Network } from "lucide-react";
+
+import { downloadBlob, safeExportName } from "@/lib/client-export";
 
 export interface ReasoningTraceData {
   chunks_searched: number;
@@ -23,14 +25,34 @@ interface ReasoningTraceProps {
 
 export default function ReasoningTrace({ trace, confidence = 0 }: ReasoningTraceProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const tracePayload = JSON.stringify(trace, null, 2);
+
+  const copyTrace = async () => {
+    try {
+      await navigator.clipboard.writeText(tracePayload);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const exportTrace = () => {
+    downloadBlob(
+      new Blob([tracePayload], { type: "application/json;charset=utf-8" }),
+      `${safeExportName(trace.trace_id || "reasoning-trace", "reasoning-trace")}.json`,
+    );
+  };
 
   return (
-    <section className="theme-panel overflow-hidden rounded-[1.65rem]">
-      <button
-        onClick={() => setIsOpen((value) => !value)}
-        className="hover-yellow flex w-full items-center justify-between px-5 py-4 text-left transition"
-      >
-        <div>
+    <section className="theme-panel group overflow-hidden rounded-[1.65rem]">
+      <div className="flex items-center justify-between gap-3 px-5 py-4">
+        <button
+          type="button"
+          onClick={() => setIsOpen((value) => !value)}
+          className="hover-yellow min-w-0 flex-1 text-left transition"
+        >
           <div className="text-primary dark:text-primary/80 flex items-center gap-2.5 text-[11px] font-black tracking-[0.25em] uppercase">
             <Network size={14} className="stroke-[2.5]" />
             Analytic Reasoning Trace
@@ -38,16 +60,36 @@ export default function ReasoningTrace({ trace, confidence = 0 }: ReasoningTrace
           <div className="text-foreground/40 mt-1 text-xs font-medium">
             Confidence Score: {(confidence * 100).toFixed(1)}%
           </div>
+        </button>
+        <div className="flex items-center gap-1 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={() => void copyTrace()}
+            className="theme-chip text-foreground/65 hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-full"
+            aria-label="Copy reasoning trace"
+            title={copied ? "Copied" : "Copy trace JSON"}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+          <button
+            type="button"
+            onClick={exportTrace}
+            className="theme-chip text-foreground/65 hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-full"
+            aria-label="Export reasoning trace as JSON"
+            title="Export trace JSON"
+          >
+            <Download size={14} />
+          </button>
+          <ChevronDown
+            size={18}
+            className={
+              isOpen
+                ? "text-primary dark:text-primary rotate-180 transition-transform"
+                : "text-foreground/30 transition-transform"
+            }
+          />
         </div>
-        <ChevronDown
-          size={18}
-          className={
-            isOpen
-              ? "text-primary dark:text-primary rotate-180 transition-transform"
-              : "text-foreground/30 transition-transform"
-          }
-        />
-      </button>
+      </div>
 
       <AnimatePresence>
         {isOpen ? (

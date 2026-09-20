@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -114,12 +114,14 @@ class MessageEditRequest(BaseModel):
 
 class RegenerateRequest(BaseModel):
     thinking_enabled: bool = False
+    reasoning_effort: Literal["low", "medium", "high", "very_high", "extreme_high"] | None = None
 
 
 class QueueTurnRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     client_request_id: str | None = Field(default=None, max_length=255)
     thinking_enabled: bool = False
+    reasoning_effort: Literal["low", "medium", "high", "very_high", "extreme_high"] | None = None
     steer: bool = False
 
     model_config = ConfigDict(extra="forbid")

@@ -232,8 +232,10 @@ class Settings(BaseSettings):
     deepspace_sandbox_timeout_seconds: int = Field(default=20, ge=1, le=30)
 
     # Interactive DeepSpace transport safety. This bounds an idle provider
-    # stream, but never limits the model's output token budget.
-    deepspace_provider_read_timeout_seconds: int = Field(default=90, ge=15, le=300)
+    # stream, but never limits the model's output token budget.  Keep the
+    # default aligned with the maximum supported model-provider window so
+    # deliberate reasoning before the first token is not cut off at 90s.
+    deepspace_provider_read_timeout_seconds: int = Field(default=300, ge=15, le=300)
     # Enables only provider-native, ephemeral prompt caching paths that are
     # explicitly implemented by an adapter. It never enables remote durable
     # conversation state or sends provider-specific fields to custom endpoints.

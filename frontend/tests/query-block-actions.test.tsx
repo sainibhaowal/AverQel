@@ -56,7 +56,7 @@ describe("query block actions", () => {
 
     render(<CodeBlock language="python" value={'print("hello")'} />);
 
-    fireEvent.click(screen.getByText("Save"));
+    fireEvent.click(screen.getByText("Export .py"));
 
     expect(createObjectUrl).toHaveBeenCalledTimes(1);
     expect(appendChild).toHaveBeenCalledWith(anchor);
@@ -92,13 +92,43 @@ describe("query block actions", () => {
     expect(writeText).toHaveBeenCalledWith("Name\tValue\nA\t1");
 
     await act(async () => {
-      fireEvent.click(screen.getByLabelText("Export table as Excel"));
+      fireEvent.click(screen.getByLabelText("Export table"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Excel (.xlsx)"));
     });
     expect(excelMocks.addRows).toHaveBeenCalledWith([
       ["Name", "Value"],
       ["A", "1"],
     ]);
     expect(excelMocks.writeBuffer).toHaveBeenCalledTimes(1);
+  });
+
+  it("exports tables as RFC-compatible CSV data", () => {
+    const createObjectUrl = vi.fn(() => "blob:csv");
+    const click = vi.fn();
+    const originalCreateElement = document.createElement.bind(document);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectUrl });
+    const anchor = document.createElement("a");
+    Object.defineProperty(anchor, "click", { value: click });
+    const createElement = vi.spyOn(document, "createElement").mockImplementation((tagName) => {
+      if (tagName === "a") return anchor;
+      return originalCreateElement(tagName);
+    });
+
+    render(
+      <TableBlock
+        block={{ headers: ["Name", "Note"], rows: [["A", 'Say "hello"']], title: "Metrics" }}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Export table"));
+    fireEvent.click(screen.getByText("CSV"));
+
+    expect(createObjectUrl).toHaveBeenCalledTimes(1);
+    expect(anchor.download).toBe("metrics.csv");
+    expect(click).toHaveBeenCalledTimes(1);
+    createElement.mockRestore();
   });
 
   it("renders highlighted code tokens with distinct styles", () => {

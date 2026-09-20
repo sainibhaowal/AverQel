@@ -53,6 +53,7 @@ def dispatch_deepspace_turn_queue(*, tenant_id: str, user_id: str, conversation_
                 "prompt": claimed.prompt,
                 "client_request_id": claimed.client_request_id,
                 "thinking_enabled": claimed.thinking_enabled,
+                "reasoning_effort": claimed.reasoning_effort,
             }
         )
         return "dispatched"
@@ -101,6 +102,7 @@ def run_deepspace_task(
     prompt: str,
     client_request_id: str,
     thinking_enabled: bool,
+    reasoning_effort: str | None = None,
     resume_approval_id: str | None = None,
     resume_user_question_id: str | None = None,
 ) -> str:
@@ -202,6 +204,7 @@ def run_deepspace_task(
                 prompt=prompt,
                 client_request_id=request_id,
                 thinking_enabled=thinking_enabled,
+                reasoning_effort=reasoning_effort,
                 request=None,
                 resume_approval_id=resume_approval_id,
                 resume_user_question_id=resume_user_question_id,

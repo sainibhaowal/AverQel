@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
+type ReasoningEffort = "low" | "medium" | "high" | "very_high" | "extreme_high";
+
 interface DeepSpaceComposerProps {
   query: string;
   isStreaming: boolean;
@@ -29,6 +31,8 @@ interface DeepSpaceComposerProps {
   onSteerQueuedTurn?: (clientRequestId: string) => void;
   changedFiles?: Array<{ path: string; additions: number; deletions: number }>;
   modelName?: string | null;
+  reasoningEffort?: ReasoningEffort | null;
+  onReasoningEffortChange?: (value: ReasoningEffort | null) => void;
   availableModels?: Array<{
     providerId: string;
     modelName: string;
@@ -36,6 +40,7 @@ interface DeepSpaceComposerProps {
     quantization?: string | null;
     contextWindow?: number | null;
     contextWindowSource?: string | null;
+    supportedReasoningEfforts?: string[];
   }>;
   onModelSelect?: (providerId: string, modelName: string) => void;
   voiceState?: "idle" | "listening" | "thinking" | "speaking";
@@ -95,6 +100,8 @@ export default function DeepSpaceComposer({
   onSteerQueuedTurn,
   changedFiles = [],
   modelName,
+  reasoningEffort = null,
+  onReasoningEffortChange,
   availableModels = [],
   onModelSelect,
   voiceState = "idle",
@@ -122,6 +129,7 @@ export default function DeepSpaceComposer({
   hasRuntimeError = false,
 }: DeepSpaceComposerProps) {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [reasoningDropdownOpen, setReasoningDropdownOpen] = useState(false);
   const [runtimeLegendOpen, setRuntimeLegendOpen] = useState(false);
   const [contextDialogOpen, setContextDialogOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -177,6 +185,24 @@ export default function DeepSpaceComposer({
     "min-h-[52px] rounded-[1rem] bg-transparent px-3 py-2 text-[14px] leading-6";
   const pillClass =
     "theme-pill !rounded-[0.5rem] h-8 border-primary/15 bg-primary/5 px-2.5 text-[10px] font-semibold tracking-wide";
+  const selectedModelMetadata = availableModels.find((model) => model.modelName === modelName);
+  const advertisedEfforts = (selectedModelMetadata?.supportedReasoningEfforts ?? []).filter(
+    (item): item is ReasoningEffort =>
+      ["low", "medium", "high", "very_high", "extreme_high"].includes(item),
+  );
+  const reasoningOptions: Array<ReasoningEffort | null> = advertisedEfforts.length
+    ? [null, ...advertisedEfforts]
+    : [null, "low", "medium", "high"];
+  const effortColor = (effort: ReasoningEffort | null) =>
+    effort === "low"
+      ? "bg-emerald-400"
+      : effort === "medium"
+        ? "bg-cyan-400"
+        : effort === "high"
+          ? "bg-fuchsia-400"
+          : effort
+            ? "bg-amber-400"
+            : "bg-white/30";
   return (
     <div className="border-glass-border/60 sticky bottom-0 z-20 w-full border-t bg-transparent px-3 pt-3 pb-0 sm:px-5">
       <div
@@ -227,7 +253,9 @@ export default function DeepSpaceComposer({
         </div>
 
         <div
-          className={`relative rounded-[1.2rem] shadow-xl ${modelDropdownOpen ? "z-[60]" : "z-10"} ${composerShell} ${shellPadding}`}
+          className={`relative rounded-[1.2rem] shadow-xl ${
+            modelDropdownOpen || contextDialogOpen ? "z-[80]" : "z-10"
+          } ${composerShell} ${shellPadding}`}
         >
           {queuedTurns.length || changedFiles.length ? (
             <div className="mb-2 overflow-hidden rounded-t-xl border border-cyan-300/20 bg-cyan-950/40">
@@ -310,7 +338,7 @@ export default function DeepSpaceComposer({
             className={`text-foreground placeholder:text-foreground/30 w-full resize-none border-none bg-transparent outline-none ${textareaClass}`}
           />
 
-          <div className="relative mt-1 px-2 text-[9px] text-white/40">
+          <div className="relative mt-1 px-2 text-[9px] text-muted-foreground dark:text-white/40">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -323,15 +351,15 @@ export default function DeepSpaceComposer({
                 Context (est.)
               </button>
               <span className="shrink-0 tabular-nums">
-                {(contextUsedTokens ?? 0).toLocaleString()} / {hasContextLimit
-                  ? contextLimit?.toLocaleString()
-                  : "—"} · {(userVisibleInputTokens ?? 0).toLocaleString()} in · {(
-                  userVisibleOutputTokens ?? 0
-                ).toLocaleString()} out · {hasContextLimit ? `${Math.round(contextRatio * 100)}%` : "—"}
+                {(contextUsedTokens ?? 0).toLocaleString()} /{" "}
+                {hasContextLimit ? contextLimit?.toLocaleString() : "—"} ·{" "}
+                {(userVisibleInputTokens ?? 0).toLocaleString()} in ·{" "}
+                {(userVisibleOutputTokens ?? 0).toLocaleString()} out ·{" "}
+                {hasContextLimit ? `${Math.round(contextRatio * 100)}%` : "—"}
               </span>
             </div>
             <div
-              className="mt-1 h-1 w-full overflow-hidden rounded-full bg-cyan-950/15 ring-1 ring-cyan-900/15"
+              className="mt-1 h-1 w-full overflow-hidden rounded-full bg-cyan-950/15 ring-1 ring-cyan-900/15 dark:bg-cyan-950/15"
               role="progressbar"
               aria-label="Estimated provider context usage"
               aria-valuemin={0}
@@ -356,65 +384,68 @@ export default function DeepSpaceComposer({
                   exit={{ opacity: 0, y: 3, scale: 0.98 }}
                   role="dialog"
                   aria-label="Context usage details"
-                  className="border-glass-border bg-surface-0/95 absolute right-0 bottom-full z-[75] mb-2 w-[min(23rem,calc(100vw-2rem))] rounded-xl border p-3 text-[10px] leading-4 text-white/65 shadow-2xl backdrop-blur-xl"
+                  className="border-glass-border bg-surface-1 absolute right-0 bottom-full z-[75] mb-2 w-[min(23rem,calc(100vw-2rem))] rounded-xl border p-3 text-[10px] leading-4 text-muted-foreground shadow-2xl"
                 >
-                  <div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-white/90">
+                  <div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-foreground">
                     <span>Request diagnostics</span>
                     <button
                       type="button"
                       onClick={() => setContextDialogOpen(false)}
-                      className="text-white/40 hover:text-white/80"
+                      className="text-muted-foreground hover:text-foreground"
                       aria-label="Close context details"
                     >
                       ×
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-                      <span className="block text-white/40">Internal request context</span>
-                      <strong className="text-white/90">
+                    <div className="rounded-lg border border-border bg-surface-2/60 p-2">
+                      <span className="block text-muted-foreground">Internal request context</span>
+                      <strong className="text-foreground">
                         {(contextUsedTokens ?? 0).toLocaleString()} /{" "}
                         {hasContextLimit ? contextLimit?.toLocaleString() : "Unavailable"}
                       </strong>
-                      <span className="ml-1 text-cyan-200">
+                      <span className="ml-1 text-cyan-700 dark:text-cyan-200">
                         ({Math.round(contextRatio * 100)}%)
                       </span>
                     </div>
-                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-                      <span className="block text-white/40">Safe remaining</span>
-                      <strong className="text-white/90">
-                        {(safeRemainingTokens ?? contextRemainingTokens ?? 0).toLocaleString()}
+                    <div className="rounded-lg border border-border bg-surface-2/60 p-2">
+                      <span className="block text-muted-foreground">Safe remaining</span>
+                      <strong className="text-foreground">
+                        {hasContextLimit
+                          ? (safeRemainingTokens ?? contextRemainingTokens ?? 0).toLocaleString()
+                          : "Unavailable"}
                       </strong>
                     </div>
-                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-                      <span className="block text-white/40">Session processed</span>
-                      <strong className="text-white/90">
+                    <div className="rounded-lg border border-border bg-surface-2/60 p-2">
+                      <span className="block text-muted-foreground">Session processed</span>
+                      <strong className="text-foreground">
                         {(sessionTotalTokens ?? 0).toLocaleString()}
                       </strong>
                     </div>
-                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-                      <span className="block text-white/40">Output reserve</span>
-                      <strong className="text-white/90">
+                    <div className="rounded-lg border border-border bg-surface-2/60 p-2">
+                      <span className="block text-muted-foreground">Output reserve</span>
+                      <strong className="text-foreground">
                         {(reservedOutputTokens ?? maxOutputTokens ?? 0).toLocaleString()}
                       </strong>
                     </div>
                   </div>
-                  <p className="mt-2 border-t border-white/10 pt-2 text-white/45">
-                    Conversation counts include only user and assistant messages. Internal request context
-                    includes policy, selected tools, and retrieved evidence; it is kept separate from the
-                    conversation meter.
+                  <p className="mt-2 border-t border-border pt-2 text-muted-foreground">
+                    Conversation counts include only user and assistant messages. Internal request
+                    context includes policy, selected tools, and retrieved evidence; it is kept
+                    separate from the conversation meter.
                   </p>
-                  <p className="mt-1 text-white/45">
-                    Conversation: {(conversationVisibleTokens ?? 0).toLocaleString()} tokens · {(
-                      userVisibleInputTokens ?? 0
-                    ).toLocaleString()} in · {(userVisibleOutputTokens ?? 0).toLocaleString()} out
+                  <p className="mt-1 text-muted-foreground">
+                    Conversation: {(conversationVisibleTokens ?? 0).toLocaleString()} tokens ·{" "}
+                    {(userVisibleInputTokens ?? 0).toLocaleString()} in ·{" "}
+                    {(userVisibleOutputTokens ?? 0).toLocaleString()} out
                   </p>
-                  <p className="mt-1 text-white/45">
-                    Provider cache: {promptCacheEligible ? `${promptCacheMode} eligible` : "not available"}
+                  <p className="mt-1 text-muted-foreground">
+                    Prompt cache:{" "}
+                    {promptCacheEligible ? `${promptCacheMode} eligible` : "not enabled for this request"}
                   </p>
-                  <div className="mt-2 flex items-center justify-between text-white/45">
+                  <div className="mt-2 flex items-center justify-between text-muted-foreground">
                     <span>
-                      Status: <span className="text-white/75">{contextStatus ?? "unknown"}</span>
+                      Status: <span className="text-foreground">{contextStatus ?? (hasContextLimit ? "normal" : "unavailable")}</span>
                     </span>
                     {contextCompacted ? <span className="text-emerald-300">Compacted</span> : null}
                   </div>
@@ -504,6 +535,41 @@ export default function DeepSpaceComposer({
                           No models found
                         </div>
                       )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="relative flex-shrink-0">
+                <button
+                  type="button"
+                  disabled={isStreaming}
+                  onClick={() => setReasoningDropdownOpen((open) => !open)}
+                  aria-label="Choose reasoning effort"
+                  aria-expanded={reasoningDropdownOpen}
+                  className={`${pillClass} flex items-center gap-1.5 border-white/10 bg-surface-2 text-foreground/70 transition-all hover:border-cyan-300/40 hover:text-foreground`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${effortColor(reasoningEffort ?? null)}`} />
+                  Think {reasoningEffort ? reasoningEffort[0].toUpperCase() + reasoningEffort.slice(1) : "Off"}
+                  <ChevronDown size={11} className={reasoningDropdownOpen ? "rotate-180" : ""} />
+                </button>
+                <AnimatePresence>
+                  {reasoningDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
+                      className="border-glass-border bg-surface-1 absolute bottom-full left-0 z-[70] mb-2 min-w-[150px] rounded-xl border p-1 shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
+                    >
+                      {reasoningOptions.map((effort) => (
+                        <button
+                          key={effort ?? "off"}
+                          type="button"
+                          onClick={() => { onReasoningEffortChange?.(effort); setReasoningDropdownOpen(false); }}
+                          className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs ${reasoningEffort === effort ? "bg-cyan-400/15 text-cyan-200" : "text-foreground/75 hover:bg-foreground/[0.05]"}`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${effortColor(effort)}`} />
+                          {effort ? effort[0].toUpperCase() + effort.slice(1) : "Off"}
+                        </button>
+                      ))}
                     </motion.div>
                   )}
                 </AnimatePresence>

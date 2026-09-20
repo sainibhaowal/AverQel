@@ -1,6 +1,6 @@
 # Advanced workspace capabilities
 
-This document is the production hand-off for the six optional DeepSpace
+This document is the production hand-off for DeepSpace's optional and advanced
 capabilities. The numbered sections are intentionally explicit about what is
 available, what is gated, and which security boundary protects each feature.
 
@@ -72,8 +72,75 @@ available, what is gated, and which security boundary protects each feature.
    record and range-safe artifact delivery route.
 5. Conversation exports now include PDF, DOCX, Markdown, and editable PPTX
    (`GET /api/v1/deepspace/export/{conversation_id}?format=pptx`).
+6. Rendered chat Mermaid diagrams have client-side actions to copy their Mermaid
+   source and export `.mmd`, SVG, PNG, or PDF. Markdown and structured tables
+   can be copied as TSV or exported as CSV/XLSX; reasoning traces can be copied
+   or exported as JSON. These actions operate only on browser-rendered content:
+   they add no API route, database record, background job, credential access,
+   or cross-tenant data path.
+7. Diagram SVG export removes executable and external-reference markup before
+   download. PNG/PDF exports are derived from that sanitized SVG locally. An
+   invalid or still-rendering Mermaid diagram keeps visual exports disabled,
+   while source copy and `.mmd` export remain available.
 
-## 5. Scheduled and long-running work
+## 5. DeepSpace reasoning effort
+
+1. The DeepSpace composer exposes a dedicated Thinking selector with Off, Low,
+   Medium, High, and—when a model advertises them—Very High and Extreme High.
+   The selected value is sent with direct, queued, regenerate, and
+   edit-and-regenerate requests.
+2. Provider model metadata remains authoritative. DeepSpace resolves
+   capabilities from live provider discovery, persisted model metadata, and a
+   verified family registry, in that order. A narrower native capability is
+   mapped to the nearest supported normalized level; unsupported models do not
+   receive a forced reasoning payload.
+3. Provider adapters continue to translate the normalized effort into their
+   native controls. Existing boolean `thinking_enabled` clients remain
+   compatible.
+4. Queued turns persist the selected effort in the tenant-scoped
+   `deepspace_queued_turns.reasoning_effort` column. Migration:
+   `20260919_0001_deepspace_reasoning_effort.py`.
+5. Native adapter mappings are capability-gated: Groq/OpenAI-compatible
+   models use `reasoning_effort`; DeepSeek uses its `thinking` plus mapped
+   effort values; Gemini uses `thinkingLevel` for Gemini 3 and
+   `thinkingBudget` for Gemini 2.5; Anthropic uses effort-scaled thinking
+   budgets for legacy extended-thinking models; LM Studio uses its native
+   `reasoning` setting while retaining local-model compatibility controls.
+   Unknown/future model metadata is never assumed to support a level.
+
+## 6. Context budget meter
+
+1. The composer displays an estimated request-context budget: serialized input
+   plus streamed or completed output, divided by the selected model's verified
+   context window. The estimate is explicitly labelled because providers do
+   not share a universal tokenizer.
+2. Context-window resolution uses live model discovery first, then persisted
+   provider metadata, then a verified official model-family fallback. Unknown
+   models remain `Unavailable`; the UI never invents a denominator.
+3. Diagnostics show request context, reserved output, safe remaining context,
+   visible conversation counts, compaction state, and optional provider prompt
+   cache eligibility. Prompt caching is provider-specific and is not the same
+   as the context-window cache.
+4. DeepSeek `deepseek-flash` and `deepseek-v4-pro` use their documented
+   1,048,576-token context window. Context limits travel in stream metadata
+   and final metrics so the meter works during and after a response.
+
+## 7. Voice input and output
+
+1. LiveKit provides the authenticated realtime media transport. The browser
+   obtains a short-lived room token from `GET /api/v1/voice/token`; API keys,
+   secrets, STT models, and TTS models never enter the browser.
+2. The `voice-agent` subscribes to enabled microphone audio, performs local
+   Whisper transcription, and sends partial/final dictation updates to the
+   composer. The user must grant browser microphone permission.
+3. When TTS is enabled, the completed visible assistant answer is sent to the
+   room and synthesized locally with Kokoro. Internal thinking, tool payloads,
+   and credentials are not spoken.
+4. The Compose stack runs `livekit` and `voice-agent` with dedicated health
+   checks and model mounts. Production deployments require HTTPS/WSS and a
+   TURN configuration appropriate to the deployment network.
+
+## 8. Scheduled and long-running work
 
 1. `deepspace_schedules` stores user/tenant/conversation ownership, prompt,
    interval, status, next run, last run, and the durable request id.
@@ -94,7 +161,7 @@ available, what is gated, and which security boundary protects each feature.
    intentionally left to the existing event/SSE and connector policy rather
    than sending unsolicited external messages.
 
-## 6. MCP connections
+## 9. MCP connections
 
 1. The existing MCP marketplace, OAuth, encrypted credentials, tenant
    isolation, approval policy, discovery, and audit events remain the only
@@ -104,7 +171,7 @@ available, what is gated, and which security boundary protects each feature.
 3. Connected MCP tools are merged into the same provider-neutral tool loop and
    therefore work independently of the selected model.
 
-## 7. Validation and non-regression requirements
+## 10. Validation and non-regression requirements
 
 1. Run backend formatting/lint/type checks from `backend/.venv` (the project
    pins the tools; a global formatter is not required).

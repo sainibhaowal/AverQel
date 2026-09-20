@@ -1426,43 +1426,11 @@ function readPositiveInteger(value: unknown): number | null {
     : null;
 }
 
-function readContextLimitSource(metadata: Record<string, unknown>): string | null {
-  const directSource = metadata.context_limit_source;
-  if (typeof directSource === "string" && directSource.trim()) {
-    return directSource.trim();
-  }
-
-  const provider = metadata.provider;
-  if (provider && typeof provider === "object" && !Array.isArray(provider)) {
-    const providerSource = (provider as Record<string, unknown>).context_limit_source;
-    if (typeof providerSource === "string" && providerSource.trim()) {
-      return providerSource.trim();
-    }
-  }
-
-  return null;
-}
-
-function isVerifiedContextLimitSource(source: string | null): boolean {
-  if (!source) {
-    return false;
-  }
-  const normalized = source.trim().toLowerCase();
-  return (
-    normalized.includes("live") ||
-    normalized.includes("verified") ||
-    normalized.includes("runtime") ||
-    normalized.includes("discovered") ||
-    normalized.includes("official_docs") ||
-    normalized.includes("officialdocs")
-  );
-}
-
 function readContextLimit(metadata: Record<string, unknown>): number | null {
-  if (!isVerifiedContextLimitSource(readContextLimitSource(metadata))) {
-    return null;
-  }
-
+  // The backend emits only resolved limits (live metadata, cached metadata,
+  // or a verified family fallback). Some provider adapters do not attach the
+  // provenance label on every stream event, so do not hide an otherwise valid
+  // positive limit merely because that optional label is absent.
   const directLimit = readPositiveInteger(metadata.context_limit);
   if (directLimit !== null) {
     return directLimit;
@@ -1477,7 +1445,14 @@ function readContextLimit(metadata: Record<string, unknown>): number | null {
   }
 
   const limitFromModel = readPositiveInteger(metadata.context_window);
-  return limitFromModel;
+  if (limitFromModel !== null) {
+    return limitFromModel;
+  }
+
+  // Never infer a limit from an untrusted source or from the model name here.
+  // The caller will correctly display Unavailable when no resolved limit was
+  // supplied by the backend.
+  return null;
 }
 
 function readProviderType(metadata: Record<string, unknown>): string | null {

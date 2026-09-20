@@ -11,8 +11,16 @@ import {
   ZoomOut,
   LocateFixed,
   Download,
+  ChevronDown,
   GitBranch,
 } from "lucide-react";
+
+import {
+  exportDiagramPdf,
+  exportDiagramPng,
+  exportDiagramSvg,
+  safeExportName,
+} from "@/lib/client-export";
 
 import { isMermaidErrorSvg } from "../_lib/mermaid";
 
@@ -1805,6 +1813,8 @@ export default function CodeBlock({
   const [copied, setCopied] = useState(false);
   // FIX: Separate copy error state so failed clipboard writes show feedback.
   const [copyError, setCopyError] = useState(false);
+  const [exportingDiagram, setExportingDiagram] = useState<"png" | "pdf" | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(() => shouldInitiallyOpenPreview);
@@ -2231,6 +2241,25 @@ export default function CodeBlock({
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   };
 
+  const handleDiagramExport = async (format: "svg" | "png" | "pdf") => {
+    if (!renderedSvg) return;
+    const filename = `${safeExportName(title ?? codeFileDescriptor.baseName, "diagram")}.${format}`;
+    try {
+      if (format === "svg") {
+        exportDiagramSvg(renderedSvg, filename);
+        return;
+      }
+      setExportingDiagram(format);
+      if (format === "png") await exportDiagramPng(renderedSvg, filename);
+      else await exportDiagramPdf(renderedSvg, filename);
+    } catch {
+      setCopyError(true);
+      window.setTimeout(() => setCopyError(false), 2000);
+    } finally {
+      setExportingDiagram(null);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -2406,7 +2435,7 @@ export default function CodeBlock({
   ]);
 
   return (
-    <div className={shellClasses.shell}>
+    <div className={`${shellClasses.shell} group`}>
       {/* Header bar */}
       {/* Header bar */}
       <div className={shellClasses.header}>
@@ -2423,7 +2452,13 @@ export default function CodeBlock({
             </>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div
+          className={`flex items-center gap-2 ${
+            normalizedLanguage === "mermaid"
+              ? "opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100"
+              : ""
+          }`}
+        >
           {supportsRichPreview && isExpanded && !answerStreaming && renderedSvg && !isRendering ? (
             <div className="flex items-center gap-1 rounded-full border border-white/10 bg-slate-900/90 p-0.5">
               <button
@@ -2472,16 +2507,67 @@ export default function CodeBlock({
               </button>
             </div>
           ) : null}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!codeValue.trim()}
-            className={shellClasses.button}
-            title={`Save as .${codeFileDescriptor.extension}`}
-          >
-            <Download size={13} />
-            <span className="hidden sm:inline">Save</span>
-          </button>
+          {normalizedLanguage === "mermaid" ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setExportMenuOpen((current) => !current)}
+                className={shellClasses.button}
+                aria-label="Export Mermaid diagram"
+                aria-expanded={exportMenuOpen}
+              >
+                <Download size={13} />
+                <span className="hidden sm:inline">Export</span>
+                <ChevronDown size={13} />
+              </button>
+              {exportMenuOpen ? (
+                <div className="absolute top-9 right-0 z-20 grid min-w-36 gap-1 rounded-lg border border-white/10 bg-slate-950 p-1 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10"
+                  >
+                    Mermaid (.mmd)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDiagramExport("svg")}
+                    disabled={!renderedSvg || isRendering}
+                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                  >
+                    SVG
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDiagramExport("png")}
+                    disabled={!renderedSvg || isRendering || exportingDiagram !== null}
+                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                  >
+                    {exportingDiagram === "png" ? "PNG…" : "PNG"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDiagramExport("pdf")}
+                    disabled={!renderedSvg || isRendering || exportingDiagram !== null}
+                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                  >
+                    {exportingDiagram === "pdf" ? "PDF…" : "PDF"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!codeValue.trim()}
+              className={shellClasses.button}
+              title={`Export as .${codeFileDescriptor.extension}`}
+            >
+              <Download size={13} />
+              <span className="hidden sm:inline">Export .{codeFileDescriptor.extension}</span>
+            </button>
+          )}
           <button type="button" onClick={handleCopy} className={shellClasses.button}>
             {copied ? (
               <Check size={13} />

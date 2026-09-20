@@ -797,6 +797,32 @@ class OpenAICompatibleProvider:
                 payload["include_reasoning"] = False
                 payload.pop("reasoning_effort", None)
             return
+        if str(request.metadata.get("provider_type") or "").lower() == "deepseek":
+            if reasoning_enabled:
+                deepseek_effort = {
+                    "low": "low",
+                    "medium": "high",
+                    "high": "high",
+                    "very_high": "max",
+                    "extreme_high": "max",
+                }.get(request.reasoning_effort or "medium", "high")
+                payload["thinking"] = {"type": "enabled"}
+                payload["reasoning_effort"] = deepseek_effort
+            else:
+                payload["thinking"] = {"type": "disabled"}
+                payload["reasoning_effort"] = "none"
+            return
+        if str(request.metadata.get("provider_type") or "").lower() == "lmstudio":
+            payload["reasoning"] = (
+                request.reasoning_effort or "medium" if reasoning_enabled else "off"
+            )
+            if self._uses_enable_thinking_controls(request):
+                payload["enable_thinking"] = bool(reasoning_enabled)
+                if reasoning_enabled:
+                    payload["reasoning_effort"] = request.reasoning_effort or "medium"
+                else:
+                    payload.pop("reasoning_effort", None)
+            return
         if not self.model_supports_reasoning(request.model):
             return
         if self._uses_enable_thinking_controls(request):

@@ -2,6 +2,8 @@
 
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 
+import TableActions from "./TableActions";
+
 type ElementWithChildren = ReactElement<{ children?: ReactNode }>;
 
 function elementChildren(node: ReactNode): ReactNode[] {
@@ -79,6 +81,10 @@ export default function AdaptiveMarkdownTable({ children }: { children?: ReactNo
     cells: rowCells(row),
     text: rowCells(row).map((cell) => visibleText(cell.props.children)),
   }));
+  const tableMatrix = [
+    ...(headers.length ? [headers.map((header) => visibleText(header.props.children))] : []),
+    ...parsedRows.map((row) => row.text),
+  ].filter((row) => row.some(Boolean));
   const primaryIndexes = parsedRows.flatMap((row, index) =>
     /^\d{1,3}$/.test(row.text[0] ?? "") ? [index] : [],
   );
@@ -94,7 +100,10 @@ export default function AdaptiveMarkdownTable({ children }: { children?: ReactNo
       return { primary: parsedRows[start]!, continuations: parsedRows.slice(start + 1, end) };
     });
     return (
-      <div className="my-5 grid gap-4" data-adaptive-table="cards">
+      <div className="group relative my-5 grid gap-4" data-adaptive-table="cards">
+        <div className="flex justify-end opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+          <TableActions rows={tableMatrix} title="markdown-table" />
+        </div>
         {records.map(({ primary, continuations }, recordIndex) => {
           const title = primary.text[1] || `Result ${primary.text[0] || recordIndex + 1}`;
           const details = continuations.flatMap((row) =>
@@ -152,9 +161,12 @@ export default function AdaptiveMarkdownTable({ children }: { children?: ReactNo
 
   return (
     <div
-      className="my-5 overflow-x-auto rounded-xl border border-white/10"
+      className="group relative my-5 overflow-x-auto rounded-xl border border-white/10"
       data-adaptive-table="grid"
     >
+      <div className="absolute top-1 right-1 z-10 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+        <TableActions rows={tableMatrix} title="markdown-table" />
+      </div>
       <table className="w-full min-w-[36rem] border-collapse text-left">{children}</table>
     </div>
   );

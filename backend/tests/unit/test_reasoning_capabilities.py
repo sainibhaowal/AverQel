@@ -31,6 +31,7 @@ def test_reasoning_capabilities_cover_supported_providers() -> None:
     assert model_supports_reasoning("opencode-zen", "deepseek-v4-flash")
     assert model_supports_reasoning("deepseek", "deepseek-reasoner")
     assert model_supports_reasoning("deepseek", "deepseek-r1")
+    assert model_supports_reasoning("deepseek", "deepseek-flash")
     assert model_supports_reasoning("google", "gemini-3-pro")
     assert model_supports_reasoning("anthropic", "claude-3-7-sonnet-latest")
     assert model_supports_reasoning("google", "gemini-2.5-pro")
@@ -46,6 +47,19 @@ def test_deepseek_v4_does_not_support_forced_tool_choice() -> None:
     assert not supports_required_tool_choice("opencode-zen", "deepseek-v4-flash")
     assert not supports_required_tool_choice("openrouter", "deepseek-v4-pro")
     assert supports_required_tool_choice("opencode-zen", "qwen3.6-plus")
+
+
+def test_deepseek_flash_exposes_the_universal_reasoning_levels() -> None:
+    profile = resolve_reasoning_profile("deepseek", "deepseek-flash")
+
+    assert profile.supports_thinking_toggle is True
+    assert profile.supported_reasoning_efforts == (
+        "low",
+        "medium",
+        "high",
+        "very_high",
+        "extreme_high",
+    )
 
 
 def test_reasoning_profile_tracks_dynamic_controls_for_local_qwen() -> None:

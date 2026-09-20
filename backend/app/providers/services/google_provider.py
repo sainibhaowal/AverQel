@@ -358,7 +358,18 @@ class GoogleProvider:
             and request.tool_choice != "required"
         ):
             if request.reasoning_enabled:
-                generation_config["thinkingConfig"] = {"includeThoughts": True}
+                effort = request.reasoning_effort or "medium"
+                if "gemini-3" in request.model.lower():
+                    generation_config["thinkingConfig"] = {
+                        "includeThoughts": True,
+                        "thinkingLevel": effort,
+                    }
+                else:
+                    budgets = {"low": 1_024, "medium": 8_192, "high": 24_576}
+                    generation_config["thinkingConfig"] = {
+                        "includeThoughts": True,
+                        "thinkingBudget": budgets.get(effort, 8_192),
+                    }
             else:
                 generation_config["thinkingConfig"] = {
                     "includeThoughts": False,

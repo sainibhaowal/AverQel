@@ -13,6 +13,35 @@ from app.deepspace.services.url_reader import validate_public_url
 from app.providers.services.base import ProviderRequestError
 
 
+@pytest.mark.asyncio
+async def test_provider_stream_default_deadline_allows_full_provider_window() -> None:
+    """DeepSpace must not truncate a model stream at the former 90s default."""
+    service = object.__new__(DeepSpaceChatService)
+    captured: dict[str, float] = {}
+
+    async def stream_factory():
+        yield {"type": "delta", "text": "ok"}
+
+    async def capture_stream(_iterable, *, run_id, deadline):
+        del run_id
+        captured["remaining"] = deadline - time.monotonic()
+        async for item in _iterable:
+            yield item
+
+    service._cancellable_provider_stream = capture_stream
+    frames = [
+        item
+        async for item in service._provider_stream_with_retry(
+            stream_factory,
+            run_id=None,
+            deadline=time.monotonic() + 600,
+        )
+    ]
+
+    assert frames == [{"type": "delta", "text": "ok"}]
+    assert 295 <= captured["remaining"] <= 300
+
+
 def test_deepspace_policy_blocks_ide_and_mcp_tools() -> None:
     policy = DeepSpaceToolPolicy()
 

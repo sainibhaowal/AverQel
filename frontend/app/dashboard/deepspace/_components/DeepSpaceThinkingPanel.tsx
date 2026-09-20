@@ -157,15 +157,14 @@ function timelineDurationMs(
   const timestamps = timeline
     .flatMap((step) => [Date.parse(step.startedAt), Date.parse(step.completedAt ?? "")])
     .filter((timestamp) => Number.isFinite(timestamp));
-  const messageStartedAt = messageStartedAtValue
-    ? Date.parse(messageStartedAtValue)
-    : Number.NaN;
+  const messageStartedAt = messageStartedAtValue ? Date.parse(messageStartedAtValue) : Number.NaN;
   if (Number.isFinite(messageStartedAt)) timestamps.push(messageStartedAt);
   if (!timestamps.length) return null;
   const startedTimestamp = Math.min(...timestamps);
-  const completedAt = isStreaming || timeline.some((step) => step.status === "running")
-    ? now
-    : Math.max(...timestamps);
+  const completedAt =
+    isStreaming || timeline.some((step) => step.status === "running")
+      ? now
+      : Math.max(...timestamps);
   return Math.max(0, completedAt - startedTimestamp);
 }
 
@@ -447,7 +446,14 @@ const TimelineEntry = memo(function TimelineEntry({
   const previousStatus = useRef(step.status);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const detailsRef = useRef<HTMLDivElement>(null);
-  const details = formatDetail(step.details);
+  // Thinking is intentionally contained in a scrollable panel, but it must
+  // remain complete for users who explicitly open an Internal Thought entry.
+  // Keep redaction and structural sanitization; remove only the display-length
+  // cap for this user-visible diagnostic stream.
+  const details = formatDetail(
+    step.details,
+    step.type === "thinking" ? Number.MAX_SAFE_INTEGER : MAX_DETAIL_LENGTH,
+  );
   const inputStream = formatDetail(step.toolInputStream);
   const input = formatDetail(step.toolInput);
   const output = formatDetail(step.toolOutput, MAX_EXPANDED_DETAIL_LENGTH);
@@ -616,9 +622,7 @@ export default function DeepSpaceThinkingPanel({
       wasStreaming.current = true;
       return () => window.clearTimeout(timer);
     }
-    const timer = wasStreaming.current
-      ? window.setTimeout(closePanel, 0)
-      : undefined;
+    const timer = wasStreaming.current ? window.setTimeout(closePanel, 0) : undefined;
     wasStreaming.current = false;
     return () => {
       if (timer !== undefined) window.clearTimeout(timer);

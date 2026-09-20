@@ -145,6 +145,11 @@ _VERIFIED_CONTEXT_WINDOW_PROVIDER_TYPES = {
 
 _VERIFIED_CONTEXT_WINDOW_RULES: tuple[tuple[Callable[[str], bool], int, str], ...] = (
     (
+        lambda model: "gptoss" in model,
+        131_072,
+        "official_docs:groq",
+    ),
+    (
         lambda model: model.startswith("minimaxm2"),
         204_800,
         "official_docs:minimax",
@@ -167,6 +172,13 @@ _VERIFIED_CONTEXT_WINDOW_RULES: tuple[tuple[Callable[[str], bool], int, str], ..
         lambda model: model.startswith("qwen3") or model.startswith("qwen25"),
         128_000,
         "official_docs:qwen",
+    ),
+    (
+        # DeepSeek's current V4 API models use these public aliases. Both
+        # expose a 1M-token context window in the official model catalogue.
+        lambda model: model.startswith("deepseekflash") or model.startswith("deepseekv4"),
+        1_048_576,
+        "official_docs:deepseek",
     ),
     (
         lambda model: model.startswith("deepseekr1") or model.startswith("deepseekv3"),

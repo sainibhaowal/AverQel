@@ -729,7 +729,43 @@ async def test_url_read_returns_structured_unavailable_result_for_blocked_source
 
     assert payload["retrieval_status"] == "blocked"
     assert payload["error_category"] == "source_unavailable"
-    assert payload["citations"] == []
+    assert payload["citations"][0]["retrieval_status"] == "blocked"
+
+
+def test_research_citations_label_read_snippet_and_blocked_sources():
+    answer = DeepSpaceChatService._append_citations(
+        "Research complete.",
+        [
+            {
+                "id": 1,
+                "title": "Read",
+                "url": "https://example.com/read",
+                "retrieval_status": "read_full",
+            },
+            {
+                "id": 2,
+                "title": "Snippet",
+                "url": "https://example.com/snippet",
+                "retrieval_status": "search_snippet_only",
+            },
+            {
+                "id": 3,
+                "title": "Blocked",
+                "url": "https://example.com/blocked",
+                "retrieval_status": "blocked",
+            },
+        ],
+    )
+
+    assert "Read](https://example.com/read) — read in full" in answer
+    assert "Snippet](https://example.com/snippet) — search snippet only" in answer
+    assert "Blocked](https://example.com/blocked) — blocked; not read" in answer
+    assert (
+        DeepSpaceChatService._native_research_summary(
+            {"searches": 1, "pages": 2, "blocked_pages": 3}
+        )
+        == "> *Native web research · 1 search · 2 pages fetched · 3 pages blocked*"
+    )
 
 
 @pytest.mark.asyncio

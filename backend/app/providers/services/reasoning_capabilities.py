@@ -36,6 +36,7 @@ _OPENAI_COMPATIBLE_HINTS: Final[tuple[str, ...]] = (
     "deepseek-r1",
     "deepseek-r",
     "deepseek-reasoner",
+    "deepseek-flash",
     "deepseek-v4",
     "deepseek-v3",
     "deepseek-v2.5",
@@ -97,6 +98,7 @@ _ENABLE_THINKING_HINTS: Final[tuple[str, ...]] = (
     "qwq",
     "deepseek-r1",
     "deepseek-r",
+    "deepseek-flash",
     "deepseek-v4",
     "deepseek-v3",
     "kimi",
@@ -124,6 +126,7 @@ _ENABLE_THINKING_HINTS: Final[tuple[str, ...]] = (
 _THINK_TAG_HINTS: Final[tuple[str, ...]] = (
     "deepseek-r1",
     "deepseek-r",
+    "deepseek-flash",
     "deepseek-v4",
     "deepseek-v3",
     "qwq",
@@ -338,6 +341,17 @@ def resolve_reasoning_profile(
     base_url: str | None = None,
 ) -> ReasoningProfile:
     provider = (provider_type or "").lower()
+    if provider == "deepseek" and _matches_any(model_name, _OPENAI_COMPATIBLE_HINTS):
+        return ReasoningProfile(
+            supports_reasoning=True,
+            reasoning_visibility="provider_exposed",
+            supports_thinking_summary_stream=True,
+            supported_reasoning_efforts=("low", "medium", "high", "very_high", "extreme_high"),
+            supports_thinking_toggle=True,
+            request_controls_on=("thinking_enabled", "reasoning_effort"),
+            request_controls_off=("thinking_disabled",),
+            response_formats=("reasoning_content",),
+        )
     if provider in {"google", "opencode-zen"} and uses_gemma_think_trigger(model_name):
         return ReasoningProfile(
             supports_reasoning=True,

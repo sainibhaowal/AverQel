@@ -39,7 +39,10 @@ from app.documents.repositories.chunks import RetrievedChunkRow
 from app.ingestion.services.embedding_service import EmbeddingService
 from app.providers.services import ChatGenerateRequest, ProviderRegistry
 from app.providers.services.base import ProviderRequestError
-from app.providers.services.reasoning_capabilities import supports_required_tool_choice
+from app.providers.services.reasoning_capabilities import (
+    reasoning_capabilities,
+    supports_required_tool_choice,
+)
 from app.providers.services.selection_service import ProviderSelectionService
 from app.providers.services.types import WebSearchRequest, WebSearchResponse
 from app.query.services.reranker_service import RerankerService
@@ -86,6 +89,7 @@ Capability boundaries
 Planning and execution
 - For a simple question, answer directly without unnecessary planning or tools.
 - When the user asks to look up, search, find, or research information and web_search is available, execute web_search directly. After finding a relevant result, call url_read on its URL before summarizing. Never call ask_user merely to ask for permission to perform the requested search.
+- Cite web evidence accurately: distinguish pages read in full, search snippets, and blocked pages. Never describe a search result or blocked URL as a page you opened, and never invent research counts.
 - When continuing after a user clarification or answer, proceed immediately with the relevant search or answer; do not re-ask the same question or emit placeholder messages.
 - Decide from the user's request and the available tools whether to answer directly, ask a necessary question, inspect workspace state, research, use a connected service, or create a task plan. Do not call a tool merely to appear active.
 - Create a concise todo_write plan only when it materially improves a substantial multi-step, agent-owned outcome. The plan must contain only work that you can perform, not tasks the user must perform.
@@ -1087,7 +1091,7 @@ class DeepSpaceChatService:
                         getattr(
                             getattr(self, "settings", None),
                             "deepspace_provider_read_timeout_seconds",
-                            90,
+                            300,
                         )
                     ),
                 )
@@ -2870,6 +2874,9 @@ class DeepSpaceChatService:
                 # this a structured research result so the model can use the
                 # preceding search snippets or choose another source instead of
                 # repeatedly treating an external 403 as a runtime crash.
+                retrieval_status = (
+                    "blocked" if exc.status_code in {400, 401, 403} else "unavailable"
+                )
                 return {
                     "url": requested_url,
                     "title": None,
@@ -2877,16 +2884,30 @@ class DeepSpaceChatService:
                     "text": "",
                     "truncated": False,
                     "links": [],
-                    "retrieval_status": (
-                        "blocked" if exc.status_code in {400, 401, 403} else "unavailable"
-                    ),
+                    "retrieval_status": retrieval_status,
                     "message": (
                         "The public page could not be fetched by the safe static reader or "
                         "isolated browser. Use the preceding web_search snippet or another "
                         "public source; do not claim this page was opened."
                     ),
                     "error_category": "source_unavailable",
-                    "citations": [],
+                    "citations": [
+                        {
+                            "title": (
+                                "Blocked source"
+                                if retrieval_status == "blocked"
+                                else "Unavailable source"
+                            ),
+                            "url": requested_url,
+                            "snippet": (
+                                "Page was not read; the source blocked automated access."
+                                if retrieval_status == "blocked"
+                                else "Page was not read; the source was unavailable."
+                            ),
+                            "source": "url_read",
+                            "retrieval_status": retrieval_status,
+                        }
+                    ],
                 }
             return {
                 "url": url_result.url,
@@ -2902,6 +2923,7 @@ class DeepSpaceChatService:
                         "snippet": url_result.text[:800],
                         "source": "url_read",
                         "retrieval_method": url_result.retrieval_method,
+                        "retrieval_status": "read_full",
                     }
                 ],
                 "retrieval_method": url_result.retrieval_method,
@@ -3160,7 +3182,12 @@ class DeepSpaceChatService:
             url = str(item.get("url") or "").strip()
             if url.startswith(("http://", "https://")):
                 status = str(item.get("retrieval_status") or "")
-                note = " — search snippet only" if status == "search_snippet_only" else ""
+                note = {
+                    "read_full": " — read in full",
+                    "search_snippet_only": " — search snippet only",
+                    "blocked": " — blocked; not read",
+                    "unavailable": " — unavailable; not read",
+                }.get(status, "")
                 lines.append(f"[R{item.get('id', '?')}] [{title}]({url}){note}")
         return answer.rstrip() + "\n" + "\n".join(lines) if len(lines) > 2 else answer
 
@@ -3172,6 +3199,7 @@ class DeepSpaceChatService:
             ("searches", "search", "searches"),
             ("results", "result considered", "results considered"),
             ("pages", "page fetched", "pages fetched"),
+            ("blocked_pages", "page blocked", "pages blocked"),
             ("images", "image inspected", "images inspected"),
         ):
             count = stats.get(key, 0)
@@ -3338,6 +3366,7 @@ class DeepSpaceChatService:
         existing_assistant_message_id: uuid.UUID | None = None,
         client_request_id: str | None = None,
         thinking_enabled: bool = False,
+        reasoning_effort: str | None = None,
         request: Any | None = None,
         resume_approval_id: str | None = None,
         resume_user_question_id: str | None = None,
@@ -3741,6 +3770,11 @@ class DeepSpaceChatService:
                 tenant_id=auth.tenant_id,
                 workspace_id=None,
                 actor_user_id=auth.user_id,
+                # A context meter must use the selected model's current
+                # provider metadata whenever it is available. Resolution
+                # still falls back to the cached descriptor and then the
+                # verified model registry if discovery is unavailable.
+                allow_live_model_discovery=True,
             )
             # Provider resolution can refresh the model metadata cache.  This
             # method then enters a long-lived streaming response, so leave no
@@ -4179,7 +4213,13 @@ class DeepSpaceChatService:
         thinking_parts: list[str] = []
         generated_artifacts: list[dict[str, Any]] = []
         citations: list[dict[str, Any]] = []
-        native_research_stats = {"searches": 0, "results": 0, "pages": 0, "images": 0}
+        native_research_stats = {
+            "searches": 0,
+            "results": 0,
+            "pages": 0,
+            "blocked_pages": 0,
+            "images": 0,
+        }
         used_memories: list[dict[str, Any]] = []
         memory_written_this_turn = False
         forced_answer: str | None = None
@@ -4511,7 +4551,7 @@ class DeepSpaceChatService:
                             getattr(
                                 self.settings,
                                 "deepspace_provider_read_timeout_seconds",
-                                90,
+                                300,
                             )
                         ),
                     ),
@@ -4599,6 +4639,44 @@ class DeepSpaceChatService:
                         ),
                     },
                 )
+                candidate_metadata = cast(dict[str, Any], getattr(candidate, "metadata", {}) or {})
+                raw_configured_efforts = candidate_metadata.get("supported_reasoning_efforts", [])
+                configured_efforts = (
+                    raw_configured_efforts
+                    if isinstance(raw_configured_efforts, list | tuple)
+                    else ()
+                )
+                supported_efforts = tuple(
+                    str(item)
+                    for item in configured_efforts
+                    if str(item) in {"low", "medium", "high", "very_high", "extreme_high"}
+                )
+                if not supported_efforts:
+                    fallback_efforts = reasoning_capabilities(
+                        candidate.provider_type,
+                        candidate.model_name,
+                        base_url=candidate.base_url,
+                    ).get("supported_reasoning_efforts", [])
+                    supported_efforts = tuple(
+                        str(item)
+                        for item in (
+                            fallback_efforts if isinstance(fallback_efforts, list | tuple) else ()
+                        )
+                    )
+                selected_effort = reasoning_effort
+                if (
+                    selected_effort
+                    and supported_efforts
+                    and selected_effort not in supported_efforts
+                ):
+                    effort_order = ("low", "medium", "high", "very_high", "extreme_high")
+                    requested_index = effort_order.index(selected_effort)
+                    eligible = [
+                        item
+                        for item in supported_efforts
+                        if effort_order.index(item) <= requested_index
+                    ]
+                    selected_effort = eligible[-1] if eligible else supported_efforts[0]
                 request_payload = ChatGenerateRequest(
                     model=candidate.model_name,
                     messages=request_messages,
@@ -4607,7 +4685,19 @@ class DeepSpaceChatService:
                     base_url=candidate.base_url or "",
                     api_key=candidate.api_key,
                     stream=True,
-                    reasoning_enabled=thinking_enabled,
+                    reasoning_enabled=thinking_enabled or bool(selected_effort),
+                    reasoning_effort=(
+                        selected_effort
+                        if selected_effort
+                        in {
+                            "low",
+                            "medium",
+                            "high",
+                            "very_high",
+                            "extreme_high",
+                        }
+                        else None
+                    ),
                     images=request_images or None,
                     tools=tools_for_round or None,
                     tool_choice=(
@@ -4637,7 +4727,11 @@ class DeepSpaceChatService:
                         "surface": "deepspace",
                         "conversation_id": str(conversation_id),
                         "provider_type": candidate.provider_type,
-                        "reasoning_mode": "explicit" if thinking_enabled else "auto",
+                        # `None`/off must be explicit. `auto` intentionally
+                        # preserves a model's native reasoning default, which
+                        # made the UI show Think Off while some providers still
+                        # enabled reasoning internally.
+                        "reasoning_mode": "explicit" if thinking_enabled else "off",
                         "timeout_seconds": min(
                             15, int(getattr(self.settings, "llm_timeout_seconds", 15))
                         ),
@@ -5629,12 +5723,27 @@ class DeepSpaceChatService:
                                     ]
                                 )
                             elif tool_name == "url_read":
-                                native_research_stats["pages"] += 1
+                                if tool_payload.get("retrieval_status") in {
+                                    "blocked",
+                                    "unavailable",
+                                }:
+                                    native_research_stats["blocked_pages"] += 1
+                                else:
+                                    native_research_stats["pages"] += 1
                             else:
                                 native_research_stats["images"] += 1
                             for citation in tool_payload.get("citations", []):
                                 if isinstance(citation, dict):
-                                    citations.append({**citation, "id": len(citations) + 1})
+                                    citation_status = citation.get("retrieval_status")
+                                    if tool_name == "web_search" and not citation_status:
+                                        citation_status = "search_snippet_only"
+                                    citations.append(
+                                        {
+                                            **citation,
+                                            "retrieval_status": citation_status,
+                                            "id": len(citations) + 1,
+                                        }
+                                    )
                             if tool_name == "image_read" and not tool_payload.get("citations"):
                                 image_url = str(item["arguments"].get("url") or "").strip()
                                 if image_url.startswith(("http://", "https://")):

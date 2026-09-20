@@ -165,6 +165,44 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  livekit:
+    container_name: averqel-livekit
+    image: livekit/livekit-server:v1.9.0
+    restart: always
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./ops/livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7880/ >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  voice-agent:
+    container_name: averqel-voice-agent
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: always
+    init: true
+    command: ["python", "-m", "app.deepspace.integrations.voice_agent", "start"]
+    env_file:
+      - .env.localprod
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+    depends_on:
+      livekit:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./models:/app/models:ro
+    networks:
+      - default
+
   frontend:
     container_name: averqel-frontend
     build:

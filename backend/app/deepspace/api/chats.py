@@ -709,6 +709,7 @@ def enqueue_deepspace_turn(
             client_request_id=request_id,
             prompt=payload.message,
             thinking_enabled=payload.thinking_enabled,
+            reasoning_effort=payload.reasoning_effort,
             roles=sorted(auth.roles),
             permissions=sorted(auth.permissions),
             steer=payload.steer,
@@ -983,6 +984,9 @@ async def stream_deepspace_chat(
     except (TypeError, ValueError):
         after_sequence = 0
     thinking_enabled = bool(raw_payload.get("thinking_enabled", False))
+    reasoning_effort = str(raw_payload.get("reasoning_effort") or "").strip().lower() or None
+    if reasoning_effort not in {"low", "medium", "high", "very_high", "extreme_high"}:
+        reasoning_effort = None
     # Clarification answers are claimed synchronously, before a worker is
     # scheduled.  This is the ownership boundary: exactly one request may
     # advance an awaiting question; retries merely attach to that same run.
@@ -1003,6 +1007,7 @@ async def stream_deepspace_chat(
                         client_request_id=client_request_id,
                         prompt=prompt,
                         thinking_enabled=thinking_enabled,
+                        reasoning_effort=reasoning_effort,
                         roles=sorted(auth.roles),
                         permissions=sorted(auth.permissions),
                     )
@@ -1124,6 +1129,7 @@ async def stream_deepspace_chat(
                                 "prompt": prompt,
                                 "client_request_id": client_request_id,
                                 "thinking_enabled": thinking_enabled,
+                                "reasoning_effort": reasoning_effort,
                                 "resume_approval_id": resume_approval_id,
                                 "resume_user_question_id": resume_user_question_id,
                             }
@@ -1275,6 +1281,7 @@ async def regenerate_message_stream(
             prompt=source_prompt,
             existing_assistant_message_id=message_id,
             thinking_enabled=payload.thinking_enabled,
+            reasoning_effort=payload.reasoning_effort,
             request=request,
         ):
             yield chunk

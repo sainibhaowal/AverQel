@@ -45,6 +45,27 @@ export default function ProvidersPage() {
         </p>
       </DocsSection>
 
+      <DocsSection title="Thinking levels and context limits">
+        <p>
+          The Thinking selector is model-aware. DeepSpace obtains supported levels from live model
+          discovery when available, then saved provider metadata, then a verified model-family
+          profile. It shows Low, Medium, and High by default, and adds Very High or Extreme High
+          only when the selected model supports them.
+        </p>
+        <p>
+          Each provider receives its own native reasoning control. For example, a provider may map
+          the normalized levels to low, high, and maximum effort internally. Selecting Off sends an
+          explicit disable request where the provider supports disabling reasoning. A model that
+          does not support a setting is never forced into it.
+        </p>
+        <p>
+          The composer context meter uses the selected model&apos;s current context limit when the
+          provider exposes it, then verified provider metadata as a fallback. It is an estimate of
+          the serialized request and output budget, not a billing counter. Unknown model limits are
+          shown as unavailable rather than guessed.
+        </p>
+      </DocsSection>
+
       <DocsSection title="Self-hosted SearXNG web search">
         <p>
           Add <strong>SearXNG (Self-hosted)</strong> from the Web provider tab and enter the URL

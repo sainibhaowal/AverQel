@@ -200,9 +200,8 @@ export default function DeepSpaceChatClient({
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
   const historyOpen = isHistoryOpen !== undefined ? isHistoryOpen : localHistoryOpen;
   const setHistoryOpen = onSetHistoryOpen !== undefined ? onSetHistoryOpen : setLocalHistoryOpen;
-  // DeepSpace observes provider-emitted reasoning deltas automatically. It
-  // does not force every model to enable a provider-specific thinking mode.
-  const thinkingEnabled = false;
+  const [reasoningEffort, setReasoningEffort] = useState<"low" | "medium" | "high" | "very_high" | "extreme_high" | null>("medium");
+  const thinkingEnabled = reasoningEffort !== null;
   const [threadScrollMetrics, setThreadScrollMetrics] = useState<{
     scrollTop: number;
     viewportHeight: number;
@@ -236,6 +235,7 @@ export default function DeepSpaceChatClient({
       quantization?: string | null;
       contextWindow?: number | null;
       contextWindowSource?: string | null;
+      supportedReasoningEfforts?: string[];
     }>
   >([]);
   const [selectedProviderOverride, setSelectedProviderOverride] = useState<string | null>(null);
@@ -266,6 +266,11 @@ export default function DeepSpaceChatClient({
         typeof model.capabilities_json?.context_window_source === "string"
           ? model.capabilities_json.context_window_source
           : null,
+      supportedReasoningEfforts: Array.isArray(model.capabilities_json?.supported_reasoning_efforts)
+        ? model.capabilities_json.supported_reasoning_efforts.filter(
+            (item): item is string => typeof item === "string",
+          )
+        : [],
     }),
     [],
   );
@@ -281,6 +286,7 @@ export default function DeepSpaceChatClient({
   const baseQueryRef = useRef("");
   const typingQueueRef = useRef<string[]>([]);
   const typingIntervalRef = useRef<any>(null);
+  const lastTtsMessageRef = useRef<string | null>(null);
   const messagesRef = useRef(state.messages);
   const currentContentRef = useRef(currentContent);
   const activeConversationIdRef = useRef(activeConversationId);
@@ -815,6 +821,7 @@ export default function DeepSpaceChatClient({
             message: prompt,
             client_request_id: requestId,
             thinking_enabled: thinkingEnabled,
+            reasoning_effort: reasoningEffort,
             steer,
           }),
         })) as Response;
@@ -929,10 +936,11 @@ export default function DeepSpaceChatClient({
           conversation_id: activeConversationId,
           resume_approval_id: approvalId,
           thinking_enabled: thinkingEnabled,
+          reasoning_effort: reasoningEffort,
         },
       });
     },
-    [activeConversationId, stream, thinkingEnabled],
+    [activeConversationId, stream, thinkingEnabled, reasoningEffort],
   );
 
   const loadConversation = useCallback(
@@ -987,6 +995,7 @@ export default function DeepSpaceChatClient({
                     client_request_id: requestId,
                     reconnect: true,
                     thinking_enabled: thinkingEnabled,
+                    reasoning_effort: reasoningEffort,
                   },
                 });
               }
@@ -1005,7 +1014,7 @@ export default function DeepSpaceChatClient({
         await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
       }
     },
-    [thinkingEnabled],
+    [thinkingEnabled, reasoningEffort],
   );
 
   useEffect(() => {
@@ -1103,6 +1112,7 @@ export default function DeepSpaceChatClient({
             conversation_id: state.currentConversationId ?? activeConversationId,
             client_request_id: requestId,
             thinking_enabled: thinkingEnabled,
+            reasoning_effort: reasoningEffort,
             ...(pendingUserQuestion
               ? { resume_user_question_id: pendingUserQuestion.questionId }
               : {}),
@@ -1122,6 +1132,7 @@ export default function DeepSpaceChatClient({
       enqueueTurn,
       stream,
       thinkingEnabled,
+      reasoningEffort,
     ],
   );
 
@@ -1249,7 +1260,10 @@ export default function DeepSpaceChatClient({
             track.detach().forEach((el: any) => el.remove());
           });
 
-          await room.connect("ws://localhost:7880", token);
+          const livekitUrl =
+            process.env.NEXT_PUBLIC_LIVEKIT_URL ||
+            `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:7880`;
+          await room.connect(livekitUrl, token);
         }
 
         await room.localParticipant.setMicrophoneEnabled(nextStt, {
@@ -1308,10 +1322,11 @@ export default function DeepSpaceChatClient({
         endpoint: `/deepspace/chats/${activeConversationId}/messages/${messageId}/regenerate/stream`,
         body: {
           thinking_enabled: thinkingEnabled,
+          reasoning_effort: reasoningEffort,
         },
       });
     },
-    [activeConversationId, state.isStreaming, stream, thinkingEnabled],
+    [activeConversationId, state.isStreaming, stream, thinkingEnabled, reasoningEffort],
   );
 
   const handleSaveEdit = useCallback(
@@ -1340,10 +1355,11 @@ export default function DeepSpaceChatClient({
         body: {
           content,
           thinking_enabled: thinkingEnabled,
+          reasoning_effort: reasoningEffort,
         },
       });
     },
-    [activeConversationId, state.isStreaming, stream, thinkingEnabled],
+    [activeConversationId, state.isStreaming, stream, thinkingEnabled, reasoningEffort],
   );
 
   const handleActivateVersion = useCallback(
@@ -1398,6 +1414,23 @@ export default function DeepSpaceChatClient({
           message.agentSteps?.length ||
           message.status === "streaming"),
     );
+
+  useEffect(() => {
+    // TTS commentary is driven by the completed chat answer, not by the
+    // internal thinking/tool stream. Publish once per assistant message and
+    // let the voice agent synthesize it through the active LiveKit room.
+    if (!ttsActive || state.isStreaming || !roomRef.current || !latestAssistant?.content?.trim()) {
+      return;
+    }
+    const messageKey = latestAssistant.id || latestAssistant.content;
+    if (lastTtsMessageRef.current === messageKey) return;
+    lastTtsMessageRef.current = messageKey;
+    void roomRef.current.localParticipant.publishData(
+      new TextEncoder().encode(
+        JSON.stringify({ type: "test-tts", text: latestAssistant.content.trim() }),
+      ),
+    );
+  }, [latestAssistant?.content, latestAssistant?.id, state.isStreaming, ttsActive]);
   const pendingUserQuestion = findPendingUserQuestion(state.messages);
   const changedFiles = useMemo(() => {
     const files = new Map<string, { path: string; additions: number; deletions: number }>();
@@ -1478,7 +1511,12 @@ export default function DeepSpaceChatClient({
   // streaming, include the assistant tokens arriving in the current turn. The
   // persisted backend metric remains the exact serialized request estimate.
   const draftTokens = query.trim() ? query.trim().split(/\s+/).length : 0;
-  const streamedOutputTokens = state.isStreaming ? (latestAssistant?.metrics?.totalTokens ?? 0) : 0;
+  // `totalTokens` is a display-oriented word count, not provider tokens.
+  // Use the backend's request output estimate after completion and a matching
+  // serialized-text estimate while a response is streaming.
+  const streamedOutputTokens = state.isStreaming
+    ? Math.max(0, Math.ceil((latestAssistant?.content?.length ?? 0) / 4))
+    : (latestAssistant?.metrics?.requestOutputTokens ?? 0);
   const liveContextUsedTokens =
     contextUsedTokens === null
       ? draftTokens || null
@@ -1496,6 +1534,9 @@ export default function DeepSpaceChatClient({
       return 256_000;
     }
     if (normalized.startsWith("qwen3") || normalized.startsWith("qwen25")) return 128_000;
+    if (normalized.startsWith("deepseekflash") || normalized.startsWith("deepseekv4")) {
+      return 1_048_576;
+    }
     if (normalized.startsWith("deepseekr1") || normalized.startsWith("deepseekv3")) {
       return 64_000;
     }
@@ -1664,6 +1705,8 @@ export default function DeepSpaceChatClient({
               changedFiles={changedFiles}
               availableModels={availableModels}
               onModelSelect={handleModelSelect}
+              reasoningEffort={reasoningEffort}
+              onReasoningEffortChange={setReasoningEffort}
               voiceState={voiceState}
               contextUsedTokens={liveContextUsedTokens}
               contextLimit={contextLimit}

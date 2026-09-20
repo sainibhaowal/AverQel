@@ -1,9 +1,8 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
-import { Check, Copy, FileSpreadsheet } from "lucide-react";
-import ExcelJS from "exceljs";
+import { memo, useMemo } from "react";
 
+import TableActions from "../../_components/TableActions";
 import { InlineMarkdown } from "./InlineMarkdown";
 
 type TableBlockData = {
@@ -21,7 +20,6 @@ interface TableBlockProps {
 }
 
 function TableBlockInner({ block, isStreaming = false }: TableBlockProps) {
-  const [copied, setCopied] = useState(false);
   const { hasRealHeaders, paddedRows, colCount } = useMemo(() => {
     const colCount = block.headers.length;
 
@@ -49,72 +47,14 @@ function TableBlockInner({ block, isStreaming = false }: TableBlockProps) {
     return rows;
   }, [block.headers, colCount, hasRealHeaders, paddedRows]);
 
-  const handleCopyTable = async () => {
-    if (tableMatrix.length === 0) {
-      return;
-    }
-
-    const payload = tableMatrix.map((row) => row.join("\t")).join("\n");
-    try {
-      await navigator.clipboard.writeText(payload);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
-    }
-  };
-
-  const handleExportExcel = async () => {
-    if (tableMatrix.length === 0) {
-      return;
-    }
-
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Table");
-    worksheet.addRows(tableMatrix);
-    const safeTitle = (block.title ?? "table")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${safeTitle || "table"}.xlsx`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     // not-prose: prevents Tailwind's prose plugin from styling <td>, <th>,
     // <a>, <strong> inside the table with its own colors (link blue, etc).
     // Without this, prose-invert on the parent wrapper turns all inline
     // content inside table cells cyan/blue regardless of our own classes.
     <div className="not-prose table-wrapper theme-panel group relative w-full min-w-0 overflow-hidden rounded-[1.8rem] shadow-[0_24px_70px_-48px_rgba(15,23,42,0.12)] dark:shadow-[0_24px_70px_-48px_rgba(15,23,42,0.96)]">
-      <div className="pointer-events-none absolute top-3 right-3 z-10 flex items-center gap-2 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={handleCopyTable}
-          className="theme-chip text-foreground/72 hover:text-foreground hover:border-primary/40 pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full transition"
-          aria-label="Copy table"
-          title={copied ? "Copied" : "Copy table"}
-        >
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-        </button>
-        <button
-          type="button"
-          onClick={handleExportExcel}
-          className="theme-chip text-foreground/72 hover:text-foreground hover:border-primary/40 pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-full transition"
-          aria-label="Export table as Excel"
-          title="Export as Excel"
-        >
-          <FileSpreadsheet size={14} />
-        </button>
+      <div className="absolute top-3 right-3 z-10 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+        <TableActions rows={tableMatrix} title={block.title} />
       </div>
       {block.title ? (
         <div
