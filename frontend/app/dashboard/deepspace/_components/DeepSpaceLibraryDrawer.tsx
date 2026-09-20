@@ -124,6 +124,7 @@ export default function DeepSpaceLibraryDrawer({
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [folderStack, setFolderStack] = useState<string[]>([]);
   const [selected, setSelected] = useState<LibraryFile | null>(null);
+  const selectedFileIdRef = useRef<string | null>(null);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -166,6 +167,10 @@ export default function DeepSpaceLibraryDrawer({
     name: string;
   } | null>(null);
   const filesPanelRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    selectedFileIdRef.current = selected?.id ?? null;
+  }, [selected?.id]);
 
   useEffect(() => {
     if (!embedded) return;
@@ -221,9 +226,17 @@ export default function DeepSpaceLibraryDrawer({
         const visibleIds = new Set(nextFiles.map((file) => file.id));
         return new Set([...current].filter((id) => visibleIds.has(id)));
       });
-      const retained = selected && nextFiles.some((file) => file.id === selected.id);
-      if (selected && !retained) setDraft("");
-      setSelected(retained ? selected : (nextFiles[0] ?? null));
+      const selectedFileId = selectedFileIdRef.current;
+      const retained = selectedFileId && nextFiles.some((file) => file.id === selectedFileId);
+      if (!retained) {
+        setDraft("");
+        setArchiveSelection(null);
+        setPreviewUrl(null);
+        setSelected(nextFiles[0] ?? null);
+      }
+      // List refreshes intentionally omit content and extracted_text. Keep the
+      // fully loaded selected record while it remains in the folder; replacing
+      // it with the list item every reconciliation erased CSV/table previews.
     } finally {
       setLoading(false);
     }
