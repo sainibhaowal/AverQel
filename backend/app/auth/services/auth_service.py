@@ -737,11 +737,16 @@ class AuthService:
             )
 
         session = None
-        if token_row.session_id is not None:
+        # Refresh-token doubles used by older unit/integration fixtures do not
+        # carry the optional linked-session column. Treat those legacy rows as
+        # account-wide sessions while real database rows continue to enforce
+        # session revocation.
+        session_id = getattr(token_row, "session_id", None)
+        if session_id is not None:
             session = (
                 self.db.query(AuthSession)
                 .filter(
-                    AuthSession.id == token_row.session_id,
+                    AuthSession.id == session_id,
                     AuthSession.tenant_id == tenant_id,
                     AuthSession.user_id == token_row.user_id,
                 )
@@ -803,7 +808,7 @@ class AuthService:
             ),
             token_family_id=token_row.token_family_id,
             expires_at=self._refresh_expiry(),
-            session_id=token_row.session_id,
+            session_id=session_id,
         )
         self.refresh_tokens.create(new_token_row)
 
