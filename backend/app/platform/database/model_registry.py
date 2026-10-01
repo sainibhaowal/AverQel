@@ -18,11 +18,15 @@ from app.deepspace.models.agent_runtime import (
 from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.artifact_job import DeepSpaceArtifactJob
 from app.deepspace.models.conversation import Conversation
+from app.deepspace.models.conversation_retrieval_chunk import (  # noqa: F401
+    DeepSpaceConversationRetrievalChunk,
+)
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
 from app.deepspace.models.message import Message
 from app.deepspace.models.message_version import MessageVersion
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
+from app.deepspace.models.queue_control import DeepSpaceQueueControl
 from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
 from app.deepspace.models.request_metric import DeepSpaceRequestMetric
 from app.deepspace.models.research import DeepSpaceResearchRun, DeepSpaceResearchSource
@@ -33,6 +37,8 @@ from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVe
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.collection import (
+    CollectionChatDelivery,
+    CollectionChatMedia,
     CollectionChatMessage,
     CollectionDocument,
     CollectionPermission,
@@ -40,9 +46,35 @@ from app.documents.models.collection import (
     UserPresence,
 )
 from app.documents.models.collection_notification import CollectionNotification
+from app.documents.models.collection_security import (
+    CollectionChatBlock,
+    CollectionChatReport,
+    CollectionDevice,
+    CollectionPushSubscription,
+)
 from app.documents.models.data_deletion import DataDeletion
 from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
+from app.documents.models.organization import (
+    DocumentAIAction,
+    DocumentAutomationSchedule,
+    DocumentAutomationScheduleRule,
+    DocumentAutomationScheduleRun,
+    DocumentClassificationApplication,
+    DocumentClassificationRule,
+    DocumentClassificationRun,
+    DocumentFolder,
+    DocumentFolderAssignment,
+    DocumentSavedView,
+    DocumentShare,
+    DocumentShareLink,
+    DocumentSmartCollection,
+    DocumentSmartCollectionEvaluation,
+    DocumentTag,
+    DocumentTagAssignment,
+    DocumentWebhookDelivery,
+    DocumentWebhookSubscription,
+)
 from app.ingestion.models.ingestion_job import IngestionJob
 from app.integrations.models.connector import Connector, ConnectorStatus
 from app.integrations.models.connector_secret import ConnectorSecret
@@ -70,7 +102,16 @@ from app.system.models.audit_log import AuditLog
 from app.system.models.break_glass_grant import BreakGlassGrant
 from app.system.models.idempotency_key import IdempotencyKey
 from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.models.storage_lifecycle import (
+    StorageArchiveManifest,
+    StorageLifecycleItem,
+    StorageQuotaReservation,
+    StorageReconciliationRun,
+    StorageRetentionDecision,
+    StorageRetentionRun,
+)
 from app.system.models.support_ticket import SupportTicket
+from app.system.models.tenant_storage_allocation import TenantStorageAllocation
 from app.system.models.usage_record import UsageRecord
 
 __all__ = [
@@ -87,8 +128,14 @@ __all__ = [
     "CollectionPermission",
     "CollectionDocument",
     "CollectionChatMessage",
+    "CollectionChatMedia",
+    "CollectionChatDelivery",
     "UserPresence",
     "CollectionNotification",
+    "CollectionDevice",
+    "CollectionChatBlock",
+    "CollectionChatReport",
+    "CollectionPushSubscription",
     "IngestionJob",
     "Query",
     "QueryCitation",
@@ -99,12 +146,37 @@ __all__ = [
     "ProviderHealthCheck",
     "ProviderUsageRecord",
     "DocumentChunk",
+    "DocumentTag",
+    "DocumentTagAssignment",
+    "DocumentFolder",
+    "DocumentFolderAssignment",
+    "DocumentSavedView",
+    "DocumentSmartCollection",
+    "DocumentSmartCollectionEvaluation",
+    "DocumentShare",
+    "DocumentShareLink",
+    "DocumentAIAction",
+    "DocumentClassificationRule",
+    "DocumentClassificationRun",
+    "DocumentClassificationApplication",
+    "DocumentAutomationScheduleRule",
+    "DocumentAutomationScheduleRun",
+    "DocumentAutomationSchedule",
+    "DocumentWebhookSubscription",
+    "DocumentWebhookDelivery",
     "ChunkEmbedding",
     "IdempotencyKey",
     "AuditLog",
     "BreakGlassGrant",
     "DataDeletion",
     "StorageCleanupJob",
+    "StorageLifecycleItem",
+    "StorageQuotaReservation",
+    "StorageArchiveManifest",
+    "StorageReconciliationRun",
+    "StorageRetentionRun",
+    "StorageRetentionDecision",
+    "TenantStorageAllocation",
     "Conversation",
     "Message",
     "MessageVersion",
@@ -130,6 +202,7 @@ __all__ = [
     "DeepSpaceAgentRun",
     "DeepSpaceArtifactJob",
     "DeepSpaceQueuedTurn",
+    "DeepSpaceQueueControl",
     "DeepSpaceRequestMetric",
     "DeepSpaceAgentStep",
     "DeepSpaceRunEvent",

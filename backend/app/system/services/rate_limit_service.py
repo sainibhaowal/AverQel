@@ -207,6 +207,36 @@ class RateLimitService:
                 },
             )
 
+    def enforce_counter(
+        self,
+        *,
+        key: str,
+        limit: int,
+        window_seconds: int,
+        scope: str,
+    ) -> None:
+        """Rate-limit non-HTTP transports such as authenticated WebSockets."""
+        safe_key = _safe_key(key)
+        safe_scope = _safe_key(scope)
+        safe_limit = max(int(limit), 1)
+        safe_window_seconds = max(int(window_seconds), 1)
+        count, ttl = self._increment_counter(
+            key=safe_key,
+            window_seconds=safe_window_seconds,
+        )
+        if count > safe_limit:
+            raise ApiError(
+                code="RATE_LIMIT_EXCEEDED",
+                message="Rate limit exceeded for this operation.",
+                status_code=429,
+                details={
+                    "scope": safe_scope,
+                    "limit": safe_limit,
+                    "window_seconds": safe_window_seconds,
+                    "retry_after_seconds": max(ttl, 1),
+                },
+            )
+
     def enforce_global_ip_limit(self, *, request: Request) -> None:
         client_ip = _get_client_ip(request)
         priority = resolve_request_priority(request.url.path)

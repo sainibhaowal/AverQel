@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -17,6 +18,7 @@ from fastapi import (
     Response,
 )
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import (
@@ -28,6 +30,7 @@ from app.auth.dependencies import (
     get_auth_context,
 )
 from app.auth.rbac import require_permissions, resolve_permissions
+from app.auth.roles import is_admin_role
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
@@ -39,6 +42,8 @@ from app.deepspace.schemas.chats import (
     ConversationAppendContentRequest,
     ConversationCreateRequest,
     ConversationListResponse,
+    ConversationRetentionProtectionRequest,
+    ConversationRetentionSchema,
     ConversationSchema,
     ConversationUpdate,
     MemoryFactSchema,
@@ -51,6 +56,7 @@ from app.deepspace.schemas.chats import (
     MessageSchema,
     MessageVersionSchema,
     QueuedTurnSchema,
+    QueueStateSchema,
     QueueTurnRequest,
     RegenerateRequest,
 )
@@ -67,6 +73,7 @@ from app.deepspace.services.run_events import (
     event_name_from_frame,
     frames_after,
     is_terminal_event,
+    latest_sequence,
     load_events,
     timeline_events,
 )
@@ -74,7 +81,12 @@ from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.turn_queue import DeepSpaceTurnQueueStore
 from app.deepspace.workers.tasks import dispatch_deepspace_turn_queue, run_deepspace_task
 from app.platform.database.session import get_db, managed_db_session, set_db_tenant_context
+from app.realtime.event_bus import publish_event
+from app.system.models.storage_lifecycle import StorageArchiveManifest, StorageLifecycleItem
+from app.system.services.cache_service import get_redis_client
 from app.system.services.rate_limit_service import RateLimitService
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaExceededError
 
 router = APIRouter(prefix="/deepspace/chats", tags=["deepspace-chats"])
 logger = logging.getLogger(__name__)
@@ -84,6 +96,46 @@ SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
+
+
+def _attachment_file_ids(value: Any) -> list[str]:
+    """Normalize a small list of opaque Library references before queueing."""
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value[:10]:
+        try:
+            parsed = str(uuid.UUID(str(item)))
+        except (TypeError, ValueError, AttributeError):
+            raise ApiError(
+                code="INVALID_ATTACHMENT",
+                message="An attachment reference is invalid.",
+                status_code=422,
+            ) from None
+        if parsed not in result:
+            result.append(parsed)
+    return result
+
+
+async def _publish_conversation_event(
+    *,
+    auth: AuthContext,
+    event_type: str,
+    conversation_id: uuid.UUID,
+    data: dict[str, Any] | None = None,
+) -> None:
+    """Best-effort realtime notification; REST remains authoritative."""
+    try:
+        await publish_event(
+            get_settings(),
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            event_type=event_type,
+            resource="conversations",
+            data={"conversation_id": str(conversation_id), **(data or {})},
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to publish conversation realtime event", exc_info=True)
 
 
 @router.get(
@@ -147,6 +199,40 @@ async def _authenticate_websocket_auth_context(
     settings: Settings,
 ) -> AuthContext:
     """Shared authentication helper for client storage and collection sockets."""
+    ticket = str(websocket.query_params.get("ticket") or "").strip()
+    if ticket:
+        raw = None
+        try:
+            redis_client = get_redis_client()
+            key = f"collection_ws_ticket:{ticket}"
+            raw = redis_client.get(key)
+            if raw is not None:
+                redis_client.delete(key)
+        except Exception:  # noqa: BLE001
+            logger.warning("Collection WebSocket ticket lookup failed", exc_info=True)
+        if raw is None:
+            raise ApiError(
+                code="AUTH_REQUIRED",
+                message="The WebSocket ticket is invalid or expired.",
+                status_code=401,
+            )
+        try:
+            payload = json.loads(raw)
+            return AuthContext(
+                user_id=uuid.UUID(str(payload["user_id"])),
+                tenant_id=uuid.UUID(str(payload["tenant_id"])),
+                roles=frozenset(str(role) for role in payload.get("roles", [])),
+                permissions=frozenset(
+                    str(permission) for permission in payload.get("permissions", [])
+                ),
+                token_id=str(payload.get("token_id") or "collection-ws-ticket"),
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ApiError(
+                code="AUTH_REQUIRED",
+                message="The WebSocket ticket is invalid.",
+                status_code=401,
+            ) from exc
     token = str(websocket.query_params.get("token") or "").strip()
     tenant_id = str(websocket.query_params.get("tenant_id") or "").strip() or None
     if not token:
@@ -214,6 +300,7 @@ async def list_conversations(
     db: Session = Depends(get_db),
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    include_archived: bool = False,
 ) -> ConversationListResponse:
     from app.deepspace.integrations.client_proxy import client_proxy_registry
 
@@ -227,6 +314,7 @@ async def list_conversations(
                 "offset": offset,
                 "user_id": str(auth.user_id),
                 "kind": CONVERSATION_KIND,
+                "include_archived": include_archived,
             },
             channel="storage",
         )
@@ -242,11 +330,210 @@ async def list_conversations(
         kind=CONVERSATION_KIND,
         limit=limit,
         offset=offset,
+        include_archived=include_archived,
     )
     return ConversationListResponse(
         items=[ConversationSchema.model_validate(item) for item in items],
         total=len(items),
     )
+
+
+@router.get(
+    "/archived",
+    response_model=ConversationListResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def list_archived_conversations(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ConversationListResponse:
+    """List archived DeepSpace conversations without exposing other sources."""
+    repo = DeepSpaceChatRepository(db)
+    items = repo.list_archived_conversations(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        kind=CONVERSATION_KIND,
+        limit=limit,
+        offset=offset,
+    )
+    return ConversationListResponse(
+        items=[ConversationSchema.model_validate(item) for item in items],
+        total=len(items),
+    )
+
+
+def _conversation_retention_item(
+    db: Session, *, tenant_id: uuid.UUID, conversation_id: uuid.UUID
+) -> StorageLifecycleItem | None:
+    return db.execute(
+        select(StorageLifecycleItem).where(
+            StorageLifecycleItem.tenant_id == tenant_id,
+            StorageLifecycleItem.category == "chat_history",
+            StorageLifecycleItem.source_type == "conversation",
+            StorageLifecycleItem.source_id == str(conversation_id),
+        )
+    ).scalar_one_or_none()
+
+
+def _conversation_retention_response(
+    item: StorageLifecycleItem, *, restored_at: object | None = None
+) -> ConversationRetentionSchema:
+    # The caller may supply the restored timestamp through the item only when
+    # needed; the archive manifest is queried by the route for full fidelity.
+    return ConversationRetentionSchema(
+        conversation_id=uuid.UUID(item.source_id),
+        state=item.state,
+        archived_at=item.archived_at,
+        restored_at=restored_at if hasattr(restored_at, "isoformat") else None,
+        pinned=bool(item.pinned),
+        legal_hold=bool(item.legal_hold),
+        admin_exempt=bool(item.admin_exempt),
+        protection_reason=item.protection_reason,
+    )
+
+
+@router.get(
+    "/retention/{conversation_id}",
+    response_model=ConversationRetentionSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def get_conversation_retention(
+    conversation_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> ConversationRetentionSchema:
+    repo = DeepSpaceChatRepository(db)
+    if (
+        repo.get_conversation(
+            tenant_id=auth.tenant_id,
+            conversation_id=conversation_id,
+            user_id=auth.user_id,
+            kind=CONVERSATION_KIND,
+        )
+        is None
+    ):
+        raise ApiError(
+            code="NOT_FOUND", message="DeepSpace conversation not found.", status_code=404
+        )
+    item = _conversation_retention_item(
+        db, tenant_id=auth.tenant_id, conversation_id=conversation_id
+    )
+    if item is None:
+        raise ApiError(
+            code="NOT_FOUND", message="Retention state is not available.", status_code=404
+        )
+    manifest = db.execute(
+        select(StorageArchiveManifest).where(
+            StorageArchiveManifest.tenant_id == auth.tenant_id,
+            StorageArchiveManifest.lifecycle_item_id == item.id,
+        )
+    ).scalar_one_or_none()
+    return _conversation_retention_response(
+        item, restored_at=manifest.restored_at if manifest else None
+    )
+
+
+@router.post(
+    "/{conversation_id}/restore",
+    response_model=ConversationRetentionSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def restore_conversation(
+    conversation_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> ConversationRetentionSchema:
+    repo = DeepSpaceChatRepository(db)
+    if (
+        repo.get_conversation(
+            tenant_id=auth.tenant_id,
+            conversation_id=conversation_id,
+            user_id=auth.user_id,
+            kind=CONVERSATION_KIND,
+        )
+        is None
+    ):
+        raise ApiError(
+            code="NOT_FOUND", message="DeepSpace conversation not found.", status_code=404
+        )
+    item = _conversation_retention_item(
+        db, tenant_id=auth.tenant_id, conversation_id=conversation_id
+    )
+    if item is None:
+        raise ApiError(
+            code="NOT_FOUND", message="Archived conversation was not found.", status_code=404
+        )
+    try:
+        manifest = StorageLifecycleService(db).restore_item(
+            tenant_id=auth.tenant_id,
+            item_id=item.id,
+            user_id=auth.user_id,
+            is_admin=is_admin_role(auth.roles),
+        )
+        db.commit()
+        return _conversation_retention_response(item, restored_at=manifest.restored_at)
+    except ValueError as exc:
+        db.rollback()
+        raise ApiError(code="INVALID_REQUEST", message=str(exc), status_code=422) from exc
+
+
+@router.patch(
+    "/{conversation_id}/retention/protection",
+    response_model=ConversationRetentionSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def update_conversation_retention_protection(
+    conversation_id: uuid.UUID,
+    payload: ConversationRetentionProtectionRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> ConversationRetentionSchema:
+    repo = DeepSpaceChatRepository(db)
+    if (
+        repo.get_conversation(
+            tenant_id=auth.tenant_id,
+            conversation_id=conversation_id,
+            user_id=auth.user_id,
+            kind=CONVERSATION_KIND,
+        )
+        is None
+    ):
+        raise ApiError(
+            code="NOT_FOUND", message="DeepSpace conversation not found.", status_code=404
+        )
+    if (payload.legal_hold is not None or payload.admin_exempt is not None) and not is_admin_role(
+        auth.roles
+    ):
+        raise ApiError(
+            code="FORBIDDEN",
+            message="Only tenant admins can change legal holds or exemptions.",
+            status_code=403,
+        )
+    item = _conversation_retention_item(
+        db, tenant_id=auth.tenant_id, conversation_id=conversation_id
+    )
+    if item is None:
+        raise ApiError(
+            code="NOT_FOUND", message="Retention state is not available.", status_code=404
+        )
+    try:
+        item = StorageLifecycleService(db).set_source_protection(
+            tenant_id=auth.tenant_id,
+            category="chat_history",
+            source_type="conversation",
+            source_id=str(conversation_id),
+            pinned=payload.pinned,
+            legal_hold=payload.legal_hold,
+            admin_exempt=payload.admin_exempt,
+            reason=payload.reason,
+        )
+        db.commit()
+        return _conversation_retention_response(item)
+    except ValueError as exc:
+        db.rollback()
+        raise ApiError(code="INVALID_REQUEST", message=str(exc), status_code=422) from exc
 
 
 @router.post(
@@ -294,7 +581,11 @@ async def create_conversation(
                 title=str(conversation.get("title") or data.title),
             )
             db.commit()
-        return ConversationSchema.model_validate(conversation)
+        result = ConversationSchema.model_validate(conversation)
+        await _publish_conversation_event(
+            auth=auth, event_type="conversation.created", conversation_id=conversation_id
+        )
+        return result
 
     repo = DeepSpaceChatRepository(db)
     conversation = repo.create_conversation(
@@ -305,7 +596,11 @@ async def create_conversation(
         content_html=data.content_html,
     )
     db.commit()
-    return ConversationSchema.model_validate(conversation)
+    result = ConversationSchema.model_validate(conversation)
+    await _publish_conversation_event(
+        auth=auth, event_type="conversation.created", conversation_id=conversation.id
+    )
+    return result
 
 
 @router.get(
@@ -330,7 +625,26 @@ async def get_chat_history(
                 {"conversation_id": str(conversation_id), "user_id": str(auth.user_id)},
                 channel="storage",
             )
-            proxied_messages = [MessageSchema.model_validate(item) for item in data]
+            proxied_messages = []
+            for item in data:
+                message = MessageSchema.model_validate(item)
+                proxied_messages.append(
+                    message.model_copy(
+                        update={
+                            "metadata_json": _safe_history_metadata(message.metadata_json),
+                            "versions": [
+                                version.model_copy(
+                                    update={
+                                        "metadata_json": _safe_history_metadata(
+                                            version.metadata_json
+                                        )
+                                    }
+                                )
+                                for version in message.versions
+                            ],
+                        }
+                    )
+                )
         except Exception:  # noqa: BLE001
             # A suspended browser-side storage proxy must not hide the
             # server's durable chat history. Fall through to PostgreSQL,
@@ -382,6 +696,70 @@ async def get_chat_history(
     serialized_messages = proxied_messages or []
     if messages is not None:
         serialized_messages = [_serialize_message(item) for item in messages]
+    elif proxied_messages is not None:
+        # The browser storage proxy can be briefly stale while the worker has
+        # already committed its assistant row and event journal. Merge the
+        # server copy into the proxy snapshot before enrichment so a reload
+        # cannot hide a completed thought timeline behind an older local row.
+        try:
+            server_repo = DeepSpaceChatRepository(db)
+            server_conversation = server_repo.get_conversation(
+                tenant_id=auth.tenant_id,
+                conversation_id=conversation_id,
+                user_id=auth.user_id,
+                kind=CONVERSATION_KIND,
+            )
+            if server_conversation is not None:
+                server_messages = [
+                    _serialize_message(item)
+                    for item in server_repo.get_messages(
+                        tenant_id=auth.tenant_id,
+                        conversation_id=conversation_id,
+                        user_id=auth.user_id,
+                        kind=CONVERSATION_KIND,
+                    )
+                ]
+                server_by_id = {str(item.id): item for item in server_messages}
+                merged: list[MessageSchema] = []
+                for proxy_message in proxied_messages:
+                    durable = server_by_id.pop(str(proxy_message.id), None)
+                    if durable is None:
+                        merged.append(proxy_message)
+                        continue
+                    # Keep client-owned text/versions when present, but let
+                    # the server win for durable assistant metadata and any
+                    # content that the proxy has not received yet.
+                    merged.append(
+                        proxy_message.model_copy(
+                            update={
+                                "content": (
+                                    durable.content
+                                    if durable.role == "assistant" and durable.content.strip()
+                                    else proxy_message.content
+                                ),
+                                "metadata_json": {
+                                    **(proxy_message.metadata_json or {}),
+                                    **(durable.metadata_json or {}),
+                                },
+                                "versions": proxy_message.versions or durable.versions,
+                                "active_version_id": proxy_message.active_version_id
+                                or durable.active_version_id,
+                                "active_version_index": proxy_message.active_version_index
+                                or durable.active_version_index,
+                                "version_count": proxy_message.version_count
+                                or durable.version_count,
+                            }
+                        )
+                    )
+                merged.extend(server_by_id.values())
+                serialized_messages = sorted(
+                    merged,
+                    key=lambda item: (str(item.created_at), str(item.id)),
+                )
+        except Exception:  # noqa: BLE001
+            # A proxy-backed conversation may intentionally not exist in the
+            # server database. Its local snapshot remains a valid fallback.
+            logger.debug("DeepSpace durable history merge skipped", exc_info=True)
     for serialized in serialized_messages:
         if serialized.role == "assistant":
             try:
@@ -415,16 +793,27 @@ async def get_chat_history(
                     **serialized.metadata_json,
                     "agent_steps": durable_steps,
                 }
-            request_id = str(serialized.metadata_json.get("client_request_id") or "").strip()
-            if request_id:
-                ordered_events = timeline_events(
-                    load_events(
-                        db,
-                        tenant_id=auth.tenant_id,
-                        user_id=auth.user_id,
-                        conversation_id=conversation_id,
-                        client_request_id=request_id,
+            request_ids = [
+                str(serialized.metadata_json.get("client_request_id") or "").strip(),
+                str(serialized.metadata_json.get("retry_of_request_id") or "").strip(),
+            ]
+            request_ids = list(
+                dict.fromkeys(request_id for request_id in request_ids if request_id)
+            )
+            if request_ids:
+                durable_events = []
+                for request_id in request_ids:
+                    durable_events.extend(
+                        load_events(
+                            db,
+                            tenant_id=auth.tenant_id,
+                            user_id=auth.user_id,
+                            conversation_id=conversation_id,
+                            client_request_id=request_id,
+                        )
                     )
+                ordered_events = timeline_events(
+                    sorted(durable_events, key=lambda event: event.created_at)
                 )
                 if ordered_events:
                     serialized.metadata_json = {
@@ -481,7 +870,11 @@ async def update_conversation(
             message="Conversation not found after update",
             status_code=404,
         )
-    return ConversationSchema.model_validate(conversation)
+    result = ConversationSchema.model_validate(conversation)
+    await _publish_conversation_event(
+        auth=auth, event_type="conversation.updated", conversation_id=conversation_id
+    )
+    return result
 
 
 @router.post(
@@ -512,7 +905,11 @@ async def append_conversation_content(
             status_code=404,
         )
     db.commit()
-    return ConversationSchema.model_validate(conversation)
+    result = ConversationSchema.model_validate(conversation)
+    await _publish_conversation_event(
+        auth=auth, event_type="conversation.updated", conversation_id=conversation_id
+    )
+    return result
 
 
 @router.delete(
@@ -568,6 +965,9 @@ async def delete_conversation(
             status_code=404,
         )
     db.commit()
+    await _publish_conversation_event(
+        auth=auth, event_type="conversation.deleted", conversation_id=conversation_id
+    )
     return Response(status_code=204)
 
 
@@ -613,6 +1013,17 @@ async def cancel_deepspace_chat(
             )
             or cancelled
         )
+    if cancelled:
+        # This is harmless while a worker is still running (the active-run
+        # guard prevents a second claim), but it is required when cancellation
+        # releases a paused approval/question turn whose worker already ended.
+        dispatch_deepspace_turn_queue.apply_async(
+            kwargs={
+                "tenant_id": str(auth.tenant_id),
+                "user_id": str(auth.user_id),
+                "conversation_id": str(conversation_id),
+            }
+        )
     return Response(
         status_code=204,
         headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"},
@@ -639,14 +1050,185 @@ async def cancel_queued_deepspace_run(
         )
     finally:
         await client.close()
-    cancelled = DeepSpaceTurnQueueStore(db).request_cancel_by_request_id(
+    queue_store = DeepSpaceTurnQueueStore(db)
+    conversation_id = queue_store.conversation_id_for_request_id(
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
         client_request_id=client_request_id,
     )
+    cancelled = queue_store.request_cancel_by_request_id(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        client_request_id=client_request_id,
+    )
+    if cancelled and conversation_id is not None:
+        dispatch_deepspace_turn_queue.apply_async(
+            kwargs={
+                "tenant_id": str(auth.tenant_id),
+                "user_id": str(auth.user_id),
+                "conversation_id": str(conversation_id),
+            }
+        )
     return Response(
         status_code=204,
         headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"},
+    )
+
+
+@router.get(
+    "/{conversation_id}/queue/state",
+    response_model=QueueStateSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def get_deepspace_queue_state(
+    conversation_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> QueueStateSchema:
+    repo = DeepSpaceChatRepository(db)
+    if (
+        repo.get_conversation(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+            kind=CONVERSATION_KIND,
+        )
+        is None
+    ):
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+        )
+    state = DeepSpaceTurnQueueStore(db).state(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    return QueueStateSchema(
+        paused=state.paused,
+        reason=state.reason,
+        failed_request_id=state.failed_request_id,
+        paused_at=state.paused_at,
+    )
+
+
+@router.post(
+    "/{conversation_id}/queue/pause",
+    response_model=QueueStateSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def pause_deepspace_queue(
+    conversation_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
+) -> QueueStateSchema:
+    queue_store = DeepSpaceTurnQueueStore(db)
+    queue_store.pause(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    active_request_id = queue_store.active_request_id(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    if active_request_id:
+        client = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            await client.set(
+                cancellation_key(auth.tenant_id, auth.user_id, active_request_id),
+                "1",
+                ex=60 * 60 * 24,
+            )
+        finally:
+            await client.close()
+        DeepSpaceRuntimeStore(db).request_cancel(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+        )
+        queue_store.request_cancel(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+            client_request_id=active_request_id,
+        )
+    state = queue_store.state(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    return QueueStateSchema(
+        paused=state.paused,
+        reason=state.reason,
+        failed_request_id=state.failed_request_id,
+        paused_at=state.paused_at,
+    )
+
+
+@router.post(
+    "/{conversation_id}/queue/resume",
+    response_model=QueueStateSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def resume_deepspace_queue(
+    conversation_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> QueueStateSchema:
+    queue_store = DeepSpaceTurnQueueStore(db)
+    resumed_request_id: str | None = None
+    previous_state = queue_store.state(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    if previous_state.paused and previous_state.failed_request_id:
+        try:
+            retry = queue_store.retry_failed(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+                failed_request_id=previous_state.failed_request_id,
+            )
+            resumed_request_id = retry.client_request_id
+        except StorageQuotaExceededError as exc:
+            raise ApiError(
+                code="STORAGE_QUOTA_EXCEEDED",
+                message="Your workspace storage limit has been reached.",
+                status_code=413,
+                details={
+                    "plan": exc.plan.id,
+                    "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                    "usage_bytes": exc.usage_bytes,
+                    "requested_bytes": exc.requested_bytes,
+                },
+            ) from exc
+        except ValueError as exc:
+            raise ApiError(
+                code="RETRY_CHECKPOINT_NOT_FOUND", message=str(exc), status_code=409
+            ) from exc
+        except OverflowError as exc:
+            raise ApiError(code="DEEPSPACE_QUEUE_FULL", message=str(exc), status_code=409) from exc
+    state = queue_store.resume(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    dispatch_deepspace_turn_queue.apply_async(
+        kwargs={
+            "tenant_id": str(auth.tenant_id),
+            "user_id": str(auth.user_id),
+            "conversation_id": str(conversation_id),
+        }
+    )
+    return QueueStateSchema(
+        paused=state.paused,
+        reason=state.reason,
+        failed_request_id=state.failed_request_id,
+        active_request_id=resumed_request_id,
+        paused_at=state.paused_at,
     )
 
 
@@ -673,14 +1255,120 @@ def list_deepspace_turn_queue(
         raise ApiError(
             code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
         )
+    queue_store = DeepSpaceTurnQueueStore(db)
+    recovered = queue_store.recover_stale_claims(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    if (
+        recovered
+        and not queue_store.state(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+        ).paused
+    ):
+        try:
+            dispatch_deepspace_turn_queue.apply_async(
+                kwargs={
+                    "tenant_id": str(auth.tenant_id),
+                    "user_id": str(auth.user_id),
+                    "conversation_id": str(conversation_id),
+                }
+            )
+        except Exception:  # noqa: BLE001
+            # The next durable queue poll can retry dispatch. Never hide the
+            # recovered queue rows just because the broker is temporarily down.
+            logger.exception("Failed to redispatch a recovered DeepSpace queue")
     return [
         QueuedTurnSchema.model_validate(turn)
-        for turn in DeepSpaceTurnQueueStore(db).list_open(
+        for turn in queue_store.list_open(
             tenant_id=auth.tenant_id,
             user_id=auth.user_id,
             conversation_id=conversation_id,
         )
     ]
+
+
+@router.post(
+    "/{conversation_id}/queue/clear",
+    response_model=QueueStateSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def clear_deepspace_queue(
+    conversation_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
+) -> QueueStateSchema:
+    """Clear pending queue work without deleting conversation messages.
+
+    A currently running turn receives the normal cancellation signal; queued,
+    paused, failed, and retry-checkpoint rows are retained as audit history but
+    become terminal and disappear from the visible queue.
+    """
+    repo = DeepSpaceChatRepository(db)
+    if (
+        repo.get_conversation(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+            kind=CONVERSATION_KIND,
+        )
+        is None
+    ):
+        raise ApiError(
+            code="CONVERSATION_NOT_FOUND", message="Conversation not found", status_code=404
+        )
+
+    queue_store = DeepSpaceTurnQueueStore(db)
+    active_request_id = queue_store.active_request_id(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    if active_request_id:
+        client = aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            await client.set(
+                cancellation_key(auth.tenant_id, auth.user_id, active_request_id),
+                "1",
+                ex=60 * 60 * 24,
+            )
+        finally:
+            await client.close()
+        DeepSpaceRuntimeStore(db).request_cancel(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+            commit=False,
+        )
+
+    queue_store.clear_for_conversation(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    if active_request_id:
+        dispatch_deepspace_turn_queue.apply_async(
+            kwargs={
+                "tenant_id": str(auth.tenant_id),
+                "user_id": str(auth.user_id),
+                "conversation_id": str(conversation_id),
+            }
+        )
+    state = queue_store.state(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
+    return QueueStateSchema(
+        paused=state.paused,
+        reason=state.reason,
+        failed_request_id=state.failed_request_id,
+        paused_at=state.paused_at,
+    )
 
 
 @router.post(
@@ -713,7 +1401,20 @@ def enqueue_deepspace_turn(
             roles=sorted(auth.roles),
             permissions=sorted(auth.permissions),
             steer=payload.steer,
+            attachment_file_ids=[str(file_id) for file_id in payload.attachment_file_ids],
         )
+    except StorageQuotaExceededError as exc:
+        raise ApiError(
+            code="STORAGE_QUOTA_EXCEEDED",
+            message="Your workspace storage limit has been reached.",
+            status_code=413,
+            details={
+                "plan": exc.plan.id,
+                "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                "usage_bytes": exc.usage_bytes,
+                "requested_bytes": exc.requested_bytes,
+            },
+        ) from exc
     except ValueError as exc:
         raise ApiError(code="CONVERSATION_NOT_FOUND", message=str(exc), status_code=404) from exc
     except OverflowError as exc:
@@ -749,6 +1450,79 @@ def steer_deepspace_queued_turn(
         raise ApiError(
             code="QUEUE_TURN_NOT_FOUND", message="Queued message not found.", status_code=404
         )
+    queue_store = DeepSpaceTurnQueueStore(db)
+    if queue_store.state(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    ).paused:
+        queue_store.resume(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+        )
+        dispatch_deepspace_turn_queue.apply_async(
+            kwargs={
+                "tenant_id": str(auth.tenant_id),
+                "user_id": str(auth.user_id),
+                "conversation_id": str(conversation_id),
+            }
+        )
+    return QueuedTurnSchema.model_validate(turn)
+
+
+@router.post(
+    "/{conversation_id}/queue/{client_request_id}/retry",
+    response_model=QueuedTurnSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def retry_deepspace_failed_turn(
+    conversation_id: uuid.UUID,
+    client_request_id: str,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> QueuedTurnSchema:
+    queue_store = DeepSpaceTurnQueueStore(db)
+    try:
+        turn = queue_store.retry_failed(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+            failed_request_id=client_request_id,
+        )
+    except StorageQuotaExceededError as exc:
+        raise ApiError(
+            code="STORAGE_QUOTA_EXCEEDED",
+            message="Your workspace storage limit has been reached.",
+            status_code=413,
+            details={
+                "plan": exc.plan.id,
+                "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                "usage_bytes": exc.usage_bytes,
+                "requested_bytes": exc.requested_bytes,
+            },
+        ) from exc
+    except ValueError as exc:
+        raise ApiError(code="QUEUE_TURN_NOT_FOUND", message=str(exc), status_code=404) from exc
+    except OverflowError as exc:
+        raise ApiError(code="DEEPSPACE_QUEUE_FULL", message=str(exc), status_code=409) from exc
+    if queue_store.state(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    ).paused:
+        queue_store.resume(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+        )
+    dispatch_deepspace_turn_queue.apply_async(
+        kwargs={
+            "tenant_id": str(auth.tenant_id),
+            "user_id": str(auth.user_id),
+            "conversation_id": str(conversation_id),
+        }
+    )
     return QueuedTurnSchema.model_validate(turn)
 
 
@@ -822,6 +1596,10 @@ async def bulk_delete_conversations(
         kind=CONVERSATION_KIND,
     )
     db.commit()
+    for conversation_id in payload.conversation_ids:
+        await _publish_conversation_event(
+            auth=auth, event_type="conversation.deleted", conversation_id=conversation_id
+        )
     return Response(status_code=204, headers={"X-Deleted-Count": str(count)})
 
 
@@ -984,9 +1762,35 @@ async def stream_deepspace_chat(
     except (TypeError, ValueError):
         after_sequence = 0
     thinking_enabled = bool(raw_payload.get("thinking_enabled", False))
+    run_now = bool(raw_payload.get("run_now", False))
     reasoning_effort = str(raw_payload.get("reasoning_effort") or "").strip().lower() or None
     if reasoning_effort not in {"low", "medium", "high", "very_high", "extreme_high"}:
         reasoning_effort = None
+    if run_now and conversation_id is not None:
+        with managed_db_session() as run_now_db:
+            set_db_tenant_context(run_now_db, auth.tenant_id)
+            queue_store = DeepSpaceTurnQueueStore(run_now_db)
+            queue_state = queue_store.state(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+            )
+            if not queue_state.paused:
+                raise ApiError(
+                    code="DEEPSPACE_QUEUE_NOT_PAUSED",
+                    message="Run-now chat is available only while the queue is paused.",
+                    status_code=409,
+                )
+            if queue_store.active_request_id(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                conversation_id=conversation_id,
+            ):
+                raise ApiError(
+                    code="DEEPSPACE_QUEUE_STILL_RUNNING",
+                    message="Wait for the active queued turn to stop before running a separate chat.",
+                    status_code=409,
+                )
     # Clarification answers are claimed synchronously, before a worker is
     # scheduled.  This is the ownership boundary: exactly one request may
     # advance an awaiting question; retries merely attach to that same run.
@@ -1000,7 +1804,8 @@ async def stream_deepspace_chat(
             try:
                 with managed_db_session() as queue_db:
                     set_db_tenant_context(queue_db, auth.tenant_id)
-                    DeepSpaceTurnQueueStore(queue_db).enqueue(
+                    queue_store = DeepSpaceTurnQueueStore(queue_db)
+                    queue_store.enqueue(
                         tenant_id=auth.tenant_id,
                         user_id=auth.user_id,
                         conversation_id=conversation_id,
@@ -1010,7 +1815,22 @@ async def stream_deepspace_chat(
                         reasoning_effort=reasoning_effort,
                         roles=sorted(auth.roles),
                         permissions=sorted(auth.permissions),
+                        attachment_file_ids=_attachment_file_ids(
+                            raw_payload.get("attachment_file_ids")
+                        ),
                     )
+            except StorageQuotaExceededError as exc:
+                raise ApiError(
+                    code="STORAGE_QUOTA_EXCEEDED",
+                    message="Your workspace storage limit has been reached.",
+                    status_code=413,
+                    details={
+                        "plan": exc.plan.id,
+                        "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                        "usage_bytes": exc.usage_bytes,
+                        "requested_bytes": exc.requested_bytes,
+                    },
+                ) from exc
             except ValueError as exc:
                 raise ApiError(
                     code="CONVERSATION_NOT_FOUND", message=str(exc), status_code=404
@@ -1059,6 +1879,20 @@ async def stream_deepspace_chat(
                 )
                 if resumed_request_id:
                     client_request_id = resumed_request_id
+                    # A paused run deliberately keeps its request id. Start
+                    # this new browser subscription after the old terminal
+                    # `awaiting_user` frame; replaying it would immediately
+                    # close the SSE reader before continuation events arrive.
+                    after_sequence = max(
+                        after_sequence,
+                        latest_sequence(
+                            resume_db,
+                            tenant_id=auth.tenant_id,
+                            user_id=auth.user_id,
+                            conversation_id=conversation_id,
+                            client_request_id=client_request_id,
+                        ),
+                    )
                 question_claimed = True
                 resume_db.commit()
             else:
@@ -1080,8 +1914,22 @@ async def stream_deepspace_chat(
                 user_id=auth.user_id,
                 conversation_id=conversation_id,
             )
-        if resumed_request_id:
-            client_request_id = resumed_request_id
+            if resumed_request_id:
+                client_request_id = resumed_request_id
+                # See the clarification-resume cursor above. Approval
+                # continuations use the same durable stream and must not
+                # replay their old terminal pause event into a new live
+                # subscription.
+                after_sequence = max(
+                    after_sequence,
+                    latest_sequence(
+                        queue_db,
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        client_request_id=client_request_id,
+                    ),
+                )
 
     async def iterator() -> AsyncIterator[str]:
         redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -1093,6 +1941,7 @@ async def stream_deepspace_chat(
                 try:
                     if (
                         conversation_id is not None
+                        and not run_now
                         and not resume_approval_id
                         and not resume_user_question_id
                     ):
@@ -1130,6 +1979,9 @@ async def stream_deepspace_chat(
                                 "client_request_id": client_request_id,
                                 "thinking_enabled": thinking_enabled,
                                 "reasoning_effort": reasoning_effort,
+                                "attachment_file_ids": _attachment_file_ids(
+                                    raw_payload.get("attachment_file_ids")
+                                ),
                                 "resume_approval_id": resume_approval_id,
                                 "resume_user_question_id": resume_user_question_id,
                             }
@@ -1280,6 +2132,7 @@ async def regenerate_message_stream(
             conversation_id=conversation_id,
             prompt=source_prompt,
             existing_assistant_message_id=message_id,
+            client_request_id=payload.client_request_id,
             thinking_enabled=payload.thinking_enabled,
             reasoning_effort=payload.reasoning_effort,
             request=request,
@@ -1303,6 +2156,7 @@ async def edit_and_regenerate_stream(
 ) -> StreamingResponse:
     raw_payload = await request.json()
     content = str(raw_payload.get("content", ""))
+    client_request_id = str(raw_payload.get("client_request_id") or "").strip() or None
     repo = DeepSpaceChatRepository(db)
     edited = repo.create_message_version(
         tenant_id=auth.tenant_id,
@@ -1346,6 +2200,7 @@ async def edit_and_regenerate_stream(
             conversation_id=conversation_id,
             prompt=content,
             existing_assistant_message_id=assistant.id,
+            client_request_id=client_request_id,
             thinking_enabled=bool(raw_payload.get("thinking_enabled", True)),
             request=request,
         ):

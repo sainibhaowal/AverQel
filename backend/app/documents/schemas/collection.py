@@ -46,6 +46,7 @@ class DocumentCollectionResponse(DocumentCollectionBase):
         pattern="^(member|pending|owner|shared)$",
     )
     member_count: int = 0
+    security_epoch: int = 0
     created_at: datetime
     updated_at: datetime
 

@@ -13,6 +13,7 @@ class QueryFilters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     document_ids: list[UUID] | None = Field(default=None, max_length=50)
+    collection_id: UUID | None = None
     created_at_from: datetime | None = None
     created_at_to: datetime | None = None
     source_types: list[str] | None = Field(default=None, max_length=10)

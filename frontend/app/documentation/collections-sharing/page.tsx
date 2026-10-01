@@ -4,7 +4,7 @@ export default function CollectionsSharingDocsPage() {
   return (
     <DocsShell
       title="Zero-Knowledge E2EE Collections"
-      intro="Collections are AverQel's mathematically isolated sharing and communication boundaries. All texts, files, and updates are encrypted client-side using PBKDF2 key derivation and AES-GCM 256-bit cryptography before leaving the browser. The server has zero readability."
+      intro="Collections are permission-controlled sharing and communication boundaries. Collection chat text and chat media are encrypted in the browser with AES-GCM before leaving the browser. Documents added to a collection remain server-readable so preview, OCR, indexing, and grounded queries can work."
     >
       <DocsCards
         items={[
@@ -14,11 +14,11 @@ export default function CollectionsSharingDocsPage() {
           },
           {
             title: "Safety Numbers Verification",
-            body: "Unique 40-digit cryptographic fingerprints let peers verify their keys to mathematically guarantee protection from Man-in-the-Middle intercepts.",
+            body: "A deterministic safety fingerprint helps users compare collection identity inputs. It is not a Signal identity-key verification protocol and does not by itself guarantee protection from active interception.",
           },
           {
             title: "Local-First Storage",
-            body: "Plaintext messages are cached locally inside the user's PC using IndexedDB. No decrypted history is sent to the server.",
+            body: "Decrypted chat messages are cached locally inside the user's browser using IndexedDB. The server stores chat ciphertext, while shared library documents remain server-readable for document features.",
           },
           {
             title: "Self-Destruct Timers",
@@ -29,15 +29,15 @@ export default function CollectionsSharingDocsPage() {
 
       <DocsSection title="Cryptographic Proofs & Claims">
         <div className="text-slate-350 space-y-4 text-sm leading-relaxed dark:text-slate-300">
-          <p>
-            AverQel implements a strict **Zero-Knowledge Architecture** for collection chats and
-            shared assets. Below are the core claims and proof mechanisms backing our security
-            assertions:
-          </p>
+            <p>
+              AverQel encrypts collection chat content and chat media client-side. This is not a
+              zero-knowledge document store: shared library documents must remain readable to the
+              server for preview, OCR, indexing, and grounded query citations.
+            </p>
           <ul className="list-disc space-y-2.5 pl-6">
             <li>
-              <strong>Key Isolation Claim:</strong> The host server never holds, sees, or processes
-              E2EE symmetric keys or client connection keys.
+              <strong>Chat key isolation:</strong> The host server does not receive the browser-derived
+              chat key. This applies to chat messages and chat media, not to shared library documents.
               <br />
               <span className="font-mono text-[11px] text-emerald-500">
                 Proof: Key derivation is performed locally in client scripts using
@@ -54,7 +54,7 @@ export default function CollectionsSharingDocsPage() {
               </span>
             </li>
             <li>
-              <strong>Zero-Knowledge Media Storage:</strong> Shared files and recorded audio clips
+              <strong>Encrypted chat media:</strong> Files sent as chat attachments
               are encrypted client-side using random 12-byte IVs before being dispatched as binary
               blobs.
               <br />
@@ -73,9 +73,9 @@ export default function CollectionsSharingDocsPage() {
             1. Safety Number Key Verification
           </h4>
           <p>
-            To prevent active Man-in-the-Middle (MitM) attacks where an intermediary acts as a fake
-            relay, AverQel computes safety numbers. By hashing key derivation inputs with SHA-256,
-            both ends format a matching 8-segment verification fingerprint.
+            AverQel computes a deterministic safety fingerprint by hashing the collection identity
+            inputs with SHA-256. Users may compare it out of band, but this is not a full Signal-style
+            identity-key, device-session, or forward-secrecy protocol.
           </p>
 
           <h4 className="text-foreground text-xs font-bold tracking-wider uppercase">

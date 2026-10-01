@@ -17,12 +17,13 @@ from app.deepspace.api import export as deepspace_export
 from app.deepspace.api import library as deepspace_library
 from app.deepspace.api import sandbox as deepspace_sandbox
 from app.deepspace.api import schedules as deepspace_schedules
-from app.documents.api import collections, documents
+from app.documents.api import collection_security, collections, documents, organization
 from app.integrations.api import integrations, mcp
 from app.integrations.api import voice as voice_routes
 from app.platform.database.session import get_engine
 from app.providers.api import providers
 from app.query.api import chats, intelligence, queries
+from app.realtime.api import router as realtime_router
 from app.system.api import (
     admin,
     app_feedback,
@@ -30,6 +31,8 @@ from app.system.api import (
     feedback,
     health,
     metrics,
+    plans,
+    storage,
     support,
 )
 from app.system.services.otel import (
@@ -109,6 +112,8 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix=settings.api_prefix)
     app.include_router(documents.router, prefix=settings.api_prefix)
     app.include_router(collections.router, prefix=settings.api_prefix)
+    app.include_router(collection_security.router, prefix=settings.api_prefix)
+    app.include_router(organization.router, prefix=settings.api_prefix)
     app.include_router(client_storage.router, prefix=settings.api_prefix)
     app.include_router(queries.router, prefix=settings.api_prefix)
     app.include_router(intelligence.router, prefix=settings.api_prefix)
@@ -133,8 +138,11 @@ def create_app() -> FastAPI:
     app.include_router(support.router, prefix=settings.api_prefix)
     app.include_router(app_feedback.router, prefix=settings.api_prefix)
     app.include_router(metrics.router, prefix=settings.api_prefix)
+    app.include_router(plans.router, prefix=settings.api_prefix)
+    app.include_router(storage.router, prefix=settings.api_prefix)
     app.include_router(mcp.router, prefix=settings.api_prefix)
     app.include_router(voice_routes.router, prefix=settings.api_prefix)
+    app.include_router(realtime_router, prefix=settings.api_prefix)
 
     return app
 

@@ -7,23 +7,60 @@ from datetime import datetime, timedelta, timezone
 from typing import cast
 
 from celery import Task  # type: ignore[import-untyped]
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.engine import CursorResult
 
 from app.auth.models.tenant import Tenant
 from app.core.config import get_settings
+from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
+from app.deepspace.services.turn_queue import DeepSpaceTurnQueueStore
+from app.deepspace.workers.tasks import dispatch_deepspace_turn_queue
+from app.documents.models.collection import CollectionChatMedia
 from app.documents.services.deletion_service import DeletionService
 from app.platform.database.session import get_session_factory
 from app.platform.worker.celery_app import celery_app  # type: ignore[attr-defined]
 from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.services.audit_service import AuditService
+from app.system.services.cache_service import get_redis_client
 from app.system.services.metrics_service import MAINTENANCE_JOB_EVENTS_TOTAL
 from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 DEEPSPACE_RUN_STALE_MINUTES = 30
+DEEPSPACE_QUEUE_CLAIM_STALE_MINUTES = 10
 STORAGE_CLEANUP_MAX_ATTEMPTS = 12
+COLLECTION_CHAT_MEDIA_ORPHAN_HOURS = 24
+
+
+@celery_app.task(name="maintenance.deepspace_context_cleanup")  # type: ignore[misc]
+def deepspace_context_cleanup() -> dict[str, int]:
+    """Refresh TTLs for temporary references without deleting unknown epochs."""
+    deleted_refs = 0
+    session = get_session_factory()()
+    try:
+        redis_client = get_redis_client()
+        keys = list(redis_client.scan_iter(match="deepspace:mcp-result:v1:*", count=500))
+        # Redis TTL is authoritative; delete only keys that have expired and
+        # are still visible to a backend with a custom eviction policy.
+        for key in keys:
+            if int(redis_client.ttl(key)) == -1:
+                redis_client.expire(key, 900)
+        # Context epochs are durable runtime history but currently have no
+        # lifecycle identity. Preserve them until a source adapter can prove
+        # they belong to safely archived content. Redis remains TTL-governed.
+        return {"mcp_result_keys_checked": len(keys), "context_epochs_deleted": 0}
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        logger.exception("DeepSpace context cleanup failed")
+        return {"mcp_result_keys_checked": deleted_refs, "context_epochs_deleted": 0}
+    finally:
+        try:
+            session.execute(text("RESET ROLE"))
+            session.commit()
+        except Exception:  # noqa: BLE001
+            session.rollback()
+        session.close()
 
 
 @celery_app.task(name="maintenance.heartbeat")  # type: ignore[misc]
@@ -56,6 +93,95 @@ def maintenance_heartbeat() -> str:
                 {"tenant_id": str(tenant_id), "cutoff": cutoff},
             )
             stale_total += int(result.rowcount or 0)
+            queue_cutoff = datetime.now(tz=UTC) - timedelta(
+                minutes=DEEPSPACE_QUEUE_CLAIM_STALE_MINUTES
+            )
+            stale_queue_pairs = session.execute(
+                select(
+                    DeepSpaceQueuedTurn.user_id,
+                    DeepSpaceQueuedTurn.conversation_id,
+                )
+                .where(
+                    DeepSpaceQueuedTurn.tenant_id == tenant_id,
+                    DeepSpaceQueuedTurn.status == "running",
+                    DeepSpaceQueuedTurn.started_at.is_not(None),
+                    DeepSpaceQueuedTurn.started_at < queue_cutoff,
+                )
+                .distinct()
+            ).all()
+            for queue_user_id, queue_conversation_id in stale_queue_pairs:
+                queue_store = DeepSpaceTurnQueueStore(session)
+                recovered = queue_store.recover_stale_claims(
+                    tenant_id=tenant_id,
+                    user_id=queue_user_id,
+                    conversation_id=queue_conversation_id,
+                )
+                if (
+                    recovered
+                    and not queue_store.state(
+                        tenant_id=tenant_id,
+                        user_id=queue_user_id,
+                        conversation_id=queue_conversation_id,
+                    ).paused
+                ):
+                    try:
+                        dispatch_deepspace_turn_queue.apply_async(
+                            kwargs={
+                                "tenant_id": str(tenant_id),
+                                "user_id": str(queue_user_id),
+                                "conversation_id": str(queue_conversation_id),
+                            }
+                        )
+                    except Exception:  # noqa: BLE001
+                        logger.exception(
+                            "Failed to redispatch a recovered DeepSpace queue claim",
+                            extra={
+                                "tenant_id": str(tenant_id),
+                                "conversation_id": str(queue_conversation_id),
+                            },
+                        )
+            queued_pairs = session.execute(
+                select(
+                    DeepSpaceQueuedTurn.user_id,
+                    DeepSpaceQueuedTurn.conversation_id,
+                )
+                .where(
+                    DeepSpaceQueuedTurn.tenant_id == tenant_id,
+                    DeepSpaceQueuedTurn.status == "queued",
+                )
+                .distinct()
+            ).all()
+            for queue_user_id, queue_conversation_id in queued_pairs:
+                queue_store = DeepSpaceTurnQueueStore(session)
+                if queue_store.state(
+                    tenant_id=tenant_id,
+                    user_id=queue_user_id,
+                    conversation_id=queue_conversation_id,
+                ).paused or queue_store.active_request_id(
+                    tenant_id=tenant_id,
+                    user_id=queue_user_id,
+                    conversation_id=queue_conversation_id,
+                ):
+                    continue
+                try:
+                    # This is also the retry path if a previous worker
+                    # finished a turn but broker submission of the next one
+                    # failed after the queue row was already completed.
+                    dispatch_deepspace_turn_queue.apply_async(
+                        kwargs={
+                            "tenant_id": str(tenant_id),
+                            "user_id": str(queue_user_id),
+                            "conversation_id": str(queue_conversation_id),
+                        }
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "Failed to dispatch a queued DeepSpace turn",
+                        extra={
+                            "tenant_id": str(tenant_id),
+                            "conversation_id": str(queue_conversation_id),
+                        },
+                    )
         session.commit()
         if stale_total:
             logger.warning("Finalized %d expired DeepSpace worker leases.", stale_total)
@@ -126,14 +252,11 @@ def retention_cleanup() -> dict[str, int]:
                     """),
                 {"tenant_id": str(tenant_id), "cutoff": transient_cutoff},
             )
-            run_events_result = session.execute(
-                text("""
-                    DELETE FROM deepspace_run_events
-                    WHERE tenant_id = :tenant_id
-                      AND created_at < :cutoff
-                    """),
-                {"tenant_id": str(tenant_id), "cutoff": transient_cutoff},
-            )
+            # Legacy run events have no durable run identity. They may belong
+            # to an active, paused, waiting, or retryable run, so preserving
+            # them is the only safe decision until an authoritative linkage is
+            # available. New lifecycle scans handle only registered items.
+            run_events_deleted = 0
 
             idempotency_deleted = (
                 int(idempotency_result.rowcount or 0)
@@ -143,11 +266,6 @@ def retention_cleanup() -> dict[str, int]:
             deletions_deleted = (
                 int(deletion_result.rowcount or 0)
                 if isinstance(deletion_result, CursorResult)
-                else 0
-            )
-            run_events_deleted = (
-                int(run_events_result.rowcount or 0)
-                if isinstance(run_events_result, CursorResult)
                 else 0
             )
             cleaned_transient_total += idempotency_deleted + deletions_deleted + run_events_deleted
@@ -245,6 +363,59 @@ def storage_cleanup() -> dict[str, int]:
         session.rollback()
         MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="storage_cleanup", status="error").inc()
         logger.exception("Storage cleanup retry task failed.")
+        raise
+    finally:
+        try:
+            session.execute(text("RESET ROLE"))
+            session.commit()
+        except Exception:  # noqa: BLE001
+            session.rollback()
+        session.close()
+
+
+@celery_app.task(name="maintenance.collection_chat_media_orphan_sweep")  # type: ignore[misc]
+def collection_chat_media_orphan_sweep() -> dict[str, int]:
+    """Move abandoned collection uploads into the durable cleanup queue."""
+    session = get_session_factory()()
+    queued = 0
+    try:
+        session.execute(text("SET ROLE aks_app"))
+        session.execute(text("SELECT set_config('app.tenant_id', 'bypass', true)"))
+        cutoff = datetime.now(tz=UTC) - timedelta(hours=COLLECTION_CHAT_MEDIA_ORPHAN_HOURS)
+        media_rows = list(
+            session.query(CollectionChatMedia)
+            .filter(
+                CollectionChatMedia.status == "uploaded",
+                CollectionChatMedia.attached_message_id.is_(None),
+                CollectionChatMedia.created_at < cutoff,
+            )
+            .order_by(CollectionChatMedia.created_at.asc())
+            .limit(200)
+            .with_for_update(skip_locked=True)
+            .all()
+        )
+        for media in media_rows:
+            session.add(
+                StorageCleanupJob(
+                    tenant_id=media.tenant_id,
+                    owner_user_id=media.uploaded_by_user_id,
+                    bucket=media.bucket,
+                    object_key=media.object_key,
+                )
+            )
+            media.status = "cleanup_queued"
+            queued += 1
+        session.commit()
+        MAINTENANCE_JOB_EVENTS_TOTAL.labels(
+            job="collection_chat_media_orphan_sweep", status="ok"
+        ).inc()
+        return {"queued": queued}
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        MAINTENANCE_JOB_EVENTS_TOTAL.labels(
+            job="collection_chat_media_orphan_sweep", status="error"
+        ).inc()
+        logger.exception("Collection chat media orphan sweep failed")
         raise
     finally:
         try:
