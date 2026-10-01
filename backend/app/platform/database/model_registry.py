@@ -1,6 +1,7 @@
 """Import all feature-owned ORM models for SQLAlchemy/Alembic discovery."""
 
 from app.auth.models.api_key import ApiKey
+from app.auth.models.auth_session import AuthSession
 from app.auth.models.oauth_identity import OAuthIdentity
 from app.auth.models.refresh_token import RefreshToken
 from app.auth.models.revoked_access_token import RevokedAccessToken
@@ -50,6 +51,7 @@ from app.documents.models.collection_security import (
     CollectionChatBlock,
     CollectionChatReport,
     CollectionDevice,
+    CollectionPushDelivery,
     CollectionPushSubscription,
 )
 from app.documents.models.data_deletion import DataDeletion
@@ -120,6 +122,7 @@ __all__ = [
     "Role",
     "UserRole",
     "OAuthIdentity",
+    "AuthSession",
     "RefreshToken",
     "RevokedAccessToken",
     "ApiKey",
@@ -136,6 +139,7 @@ __all__ = [
     "CollectionChatBlock",
     "CollectionChatReport",
     "CollectionPushSubscription",
+    "CollectionPushDelivery",
     "IngestionJob",
     "Query",
     "QueryCitation",

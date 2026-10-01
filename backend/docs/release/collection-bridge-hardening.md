@@ -42,8 +42,23 @@ dependency; the latter must not be described as WhatsApp/Signal-equivalent.
   server rejects new chat messages for blocked participants; the existing
   WebSocket rate limit remains the spam backstop.
 - Web Push subscription metadata can be registered with the browser auth
-  secret encrypted at rest. Actual VAPID delivery remains disabled until the
-  deployment supplies a reviewed Web Push worker/provider.
+  secret encrypted at rest. Notifications are also written to a durable push
+  outbox and drained by the Celery `collections.dispatch_push_outbox` worker
+  using `pywebpush` with bounded retries. Delivery remains disabled until the
+  deployment supplies VAPID credentials.
+
+## Added account-session and moderation controls
+
+New access tokens carry a revocable linked-session identifier. Refresh-token
+families and access tokens can now be revoked per account session without
+revoking every other device. The routes are:
+
+- `GET /api/v1/auth/sessions`
+- `DELETE /api/v1/auth/sessions/{session_id}`
+- `GET /api/v1/collections/security/push-config`
+- `GET /api/v1/collections/admin/security/reports`
+- `POST /api/v1/collections/admin/security/reports/{report_id}`
+- `GET /api/v1/collections/{collection_id}/security/spam-score/{user_id}`
 
 ## Verification
 
@@ -53,7 +68,8 @@ Run from `backend/`:
 .venv/bin/pytest -q \
   tests/unit/test_collection_chat_hardening.py \
   tests/unit/test_collection_security_controls.py \
-  tests/integration/test_collection_chat_hardening.py
+  tests/integration/test_collection_chat_hardening.py \
+  tests/integration/test_auth_flow.py
 .venv/bin/ruff check app/documents app/query \
   alembic/versions/20261012_0001_collection_chat_hardening.py \
   alembic/versions/20261012_0002_collection_chat_media_registry.py \
@@ -67,7 +83,7 @@ check must also be run from `frontend/` before deployment.
 ## Required deployment step
 
 The migrations `20261012_0001_collection_chat_hardening` through
-`20261012_0004_collection_security_epoch` must be applied to the
+`20261012_0006_collection_push_outbox` must be applied to the
 target database before an API or worker using these models is deployed:
 
 ```bash
@@ -88,12 +104,13 @@ projects, not silently implied by this pass:
 - an audited per-device Signal/libsignal protocol, membership key rotation,
   and forward secrecy. The device registry and security epoch do not replace
   this protocol;
-- true linked-device cryptographic session management and recovery;
-- VAPID/Web Push delivery and provider/worker retry telemetry. Subscription
-  registration is implemented, but it intentionally does not pretend to send
-  push notifications without deployment credentials and a reviewed worker;
-- server-side spam scoring, report moderation workflow, and admin case UI.
-  Block/report enforcement and audit records are implemented.
+- true linked-device cryptographic session management and recovery. Account
+  sessions are now revocable, but that is not cryptographic forward secrecy;
+- browser subscription activation and deployment configuration. The durable
+  worker and admin moderation queue are implemented, but production must
+  configure `AKS_WEB_PUSH_VAPID_PRIVATE_KEY`,
+  `AKS_WEB_PUSH_VAPID_PUBLIC_KEY`, and `AKS_WEB_PUSH_SUBJECT`, then register
+  subscriptions from the frontend;
 
 The media registry and orphan sweep are implemented, but storage cleanup still
 depends on the maintenance worker running.

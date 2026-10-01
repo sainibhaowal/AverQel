@@ -45,3 +45,23 @@ class CollectionPushSubscriptionRequest(BaseModel):
     p256dh: str = Field(min_length=16, max_length=512)
     auth: str = Field(min_length=8, max_length=256)
     model_config = ConfigDict(extra="forbid")
+
+
+class CollectionReportStatusUpdate(BaseModel):
+    status: str = Field(pattern=r"^(open|reviewing|resolved|dismissed)$")
+    moderator_note: str | None = Field(default=None, max_length=4000)
+    model_config = ConfigDict(extra="forbid")
+
+
+class CollectionModerationReportResponse(BaseModel):
+    id: uuid.UUID
+    collection_id: uuid.UUID
+    reporter_user_id: uuid.UUID
+    reported_user_id: uuid.UUID | None
+    message_id: uuid.UUID | None
+    reason: str
+    details: str | None
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None
+    model_config = ConfigDict(from_attributes=True, extra="forbid")

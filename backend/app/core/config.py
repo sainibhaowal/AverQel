@@ -274,6 +274,11 @@ class Settings(BaseSettings):
     refresh_cookie_samesite: Literal["strict", "lax", "none"] = "strict"
     refresh_cookie_domain: str | None = None
     refresh_cookie_path: str = "/api/v1/auth"
+    # Web Push is disabled until all three values are configured in the
+    # deployment secret store. The private key is never exposed to clients.
+    web_push_vapid_private_key: str | None = None
+    web_push_vapid_public_key: str | None = None
+    web_push_subject: str | None = None
     bootstrap_super_admin_emails: list[str] = Field(default_factory=list)
 
     auth_max_failed_attempts: int = 5

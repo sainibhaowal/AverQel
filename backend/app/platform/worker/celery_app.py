@@ -15,6 +15,7 @@ celery_app = Celery(
     include=[
         "app.ingestion.workers.tasks",
         "app.documents.workers.tasks_webhooks",
+        "app.documents.workers.tasks_collection_security",
         "app.documents.workers.tasks_classification",
         "app.system.workers.tasks_maintenance",
         "app.system.workers.tasks_retention",
@@ -97,6 +98,10 @@ celery_app.conf.update(
         },
         "documents-webhook-outbox": {
             "task": "documents.dispatch_pending_webhook_deliveries",
+            "schedule": crontab(minute="*"),
+        },
+        "documents-collection-push-outbox": {
+            "task": "collections.dispatch_push_outbox",
             "schedule": crontab(minute="*"),
         },
         "connector-sync-all": {

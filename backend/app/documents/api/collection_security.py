@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
@@ -26,8 +27,10 @@ from app.documents.schemas.collection_security import (
     CollectionBlockRequest,
     CollectionDeviceResponse,
     CollectionDeviceUpsert,
+    CollectionModerationReportResponse,
     CollectionPushSubscriptionRequest,
     CollectionReportRequest,
+    CollectionReportStatusUpdate,
 )
 from app.integrations.services.connector_secret_crypto import (
     ConnectorSecretCrypto,
@@ -36,6 +39,95 @@ from app.integrations.services.connector_secret_crypto import (
 from app.platform.database.session import get_db, set_db_tenant_context
 
 router = APIRouter(prefix="/collections", tags=["collection-security"])
+
+
+@router.get("/security/push-config", dependencies=[Depends(require_permissions("collections:read"))])
+def get_push_config() -> dict[str, str | bool | None]:
+    """Expose only the public VAPID key; private delivery credentials stay server-side."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    return {
+        "enabled": bool(
+            settings.web_push_vapid_private_key
+            and settings.web_push_vapid_public_key
+            and settings.web_push_subject
+        ),
+        "public_key": settings.web_push_vapid_public_key,
+    }
+
+
+@router.get(
+    "/admin/security/reports",
+    response_model=list[CollectionModerationReportResponse],
+    dependencies=[Depends(require_permissions("admin:collections:read"))],
+)
+def list_moderation_reports(
+    status: str | None = Query(default="open", pattern=r"^(open|reviewing|resolved|dismissed|all)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> list[CollectionModerationReportResponse]:
+    query = db.query(CollectionChatReport).filter(CollectionChatReport.tenant_id == auth.tenant_id)
+    if status != "all":
+        query = query.filter(CollectionChatReport.status == status)
+    rows = query.order_by(CollectionChatReport.created_at.desc(), CollectionChatReport.id.desc()).limit(limit).all()
+    return [CollectionModerationReportResponse.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/admin/security/reports/{report_id}",
+    response_model=CollectionModerationReportResponse,
+    dependencies=[Depends(require_permissions("admin:collections:write"))],
+)
+def update_moderation_report(
+    report_id: uuid.UUID,
+    payload: CollectionReportStatusUpdate,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> CollectionModerationReportResponse:
+    row = (
+        db.query(CollectionChatReport)
+        .filter(CollectionChatReport.id == report_id, CollectionChatReport.tenant_id == auth.tenant_id)
+        .first()
+    )
+    if row is None:
+        raise ApiError(code="REPORT_NOT_FOUND", message="Moderation report not found.", status_code=404)
+    row.status = payload.status
+    row.resolved_at = datetime.now(UTC) if payload.status in {"resolved", "dismissed"} else None
+    if payload.moderator_note:
+        row.details = f"{row.details or ''}\nModerator: {payload.moderator_note}".strip()[:4000]
+    db.commit()
+    db.refresh(row)
+    return CollectionModerationReportResponse.model_validate(row)
+
+
+@router.get(
+    "/{collection_id}/security/spam-score/{user_id}",
+    dependencies=[Depends(require_permissions("admin:collections:read"))],
+)
+def collection_member_spam_score(
+    collection_id: uuid.UUID,
+    user_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, int | str]:
+    collection = _collection(db, collection_id, auth)
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
+    reports = db.query(func.count(CollectionChatReport.id)).filter(
+        CollectionChatReport.tenant_id == auth.tenant_id,
+        CollectionChatReport.collection_id == collection.id,
+        CollectionChatReport.reported_user_id == user_id,
+        CollectionChatReport.created_at >= cutoff,
+        CollectionChatReport.status.in_(("open", "reviewing")),
+    ).scalar() or 0
+    messages = db.query(func.count(CollectionChatMessage.id)).filter(
+        CollectionChatMessage.collection_id == collection.id,
+        CollectionChatMessage.user_id == user_id,
+        CollectionChatMessage.created_at >= cutoff,
+    ).scalar() or 0
+    score = min(100, int(reports) * 25 + max(0, int(messages) - 100) // 5)
+    return {"user_id": str(user_id), "score": score, "reports_24h": int(reports), "messages_24h": int(messages)}
 
 
 def _collection(db: Session, collection_id: uuid.UUID, auth: AuthContext) -> DocumentCollection:

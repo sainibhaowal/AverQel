@@ -94,6 +94,12 @@ const BASE_NAV_ITEMS: NavItem[] = [
         icon: <Sparkles size={18} />,
         admin: true,
       },
+      {
+        name: "Collection Moderation",
+        href: "/dashboard/admin/collections/moderation",
+        icon: <ShieldAlert size={18} />,
+        admin: true,
+      },
 
       { name: "Data Deletion", href: "/dashboard/admin/deletion", icon: <Trash2 size={18} /> },
 
@@ -106,6 +112,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
     isHeader: true,
     items: [
       { name: "Global Settings", href: "/dashboard/settings", icon: <SettingsIcon size={18} /> },
+      { name: "Linked Sessions", href: "/dashboard/settings/sessions", icon: <ShieldAlert size={18} /> },
       { name: "Support | Help", href: "/dashboard/support", icon: <LifeBuoy size={18} /> },
       { name: "Share Feedback", href: "/dashboard/feedback", icon: <Sparkles size={18} /> },
     ],

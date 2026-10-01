@@ -54,6 +54,7 @@ import {
 } from "@/lib/localDb";
 import { AnimatePresence, motion } from "framer-motion";
 import { averqelConfirm, averqelPrompt } from "@/app/components/ui/AverQelDialogHost";
+import { enableCollectionPush } from "@/lib/collection-push";
 
 interface Collection {
   id: string;
@@ -195,6 +196,7 @@ export default function AdminCollectionDetailPage({
   const [showSearchBar, setShowSearchBar] = useState(false);
   const [wsStatus, setWsStatus] = useState<"connecting" | "online" | "offline">("connecting");
   const [safetyNumber, setSafetyNumber] = useState<string>("");
+  const [pushStatus, setPushStatus] = useState<"idle" | "enabled" | "unavailable">("idle");
   const [isExportingBackup, setIsExportingBackup] = useState(false);
   const [isImportingBackup, setIsImportingBackup] = useState(false);
   const [activePreviewFile, setActivePreviewFile] = useState<{
@@ -206,6 +208,18 @@ export default function AdminCollectionDetailPage({
   const [loadingText, setLoadingText] = useState(false);
   const [activeMessageMenuId, setActiveMessageMenuId] = useState<string | null>(null);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+
+  const handleEnablePush = async () => {
+    try {
+      const result = await enableCollectionPush(getCollectionDeviceId());
+      setPushStatus(result);
+      if (result === "enabled") toast.success("Collection notifications enabled.");
+      else toast.error("Push notifications are not configured or permission was denied.");
+    } catch {
+      setPushStatus("unavailable");
+      toast.error("Push notifications could not be enabled.");
+    }
+  };
 
   // WebSockets Persistent connection Ref
   const socketRef = useRef<WebSocket | null>(null);
@@ -2360,6 +2374,21 @@ export default function AdminCollectionDetailPage({
                       </p>
                     </div>
                   )}
+                </div>
+
+                <div className="w-full rounded-2xl border border-foreground/5 bg-foreground/[0.02] p-4 text-left dark:border-white/5">
+                  <p className="text-foreground text-[11px] font-bold">Browser notifications</p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                    Receive collection activity when this browser is offline. Delivery uses your
+                    deployment&apos;s configured VAPID push service.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleEnablePush()}
+                    className="mt-3 w-full rounded-xl border border-emerald-500/20 bg-emerald-600 py-2.5 text-[11px] font-bold text-white transition hover:bg-emerald-500"
+                  >
+                    {pushStatus === "enabled" ? "Notifications enabled" : "Enable notifications"}
+                  </button>
                 </div>
 
                 <button

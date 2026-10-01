@@ -34,6 +34,9 @@ class RefreshToken(Base):
         nullable=False,
         index=True,
     )
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("auth_sessions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     token_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     token_family_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

@@ -15,6 +15,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, create_access_token
+from app.auth.models.auth_session import AuthSession
 from app.auth.models.refresh_token import RefreshToken
 from app.auth.models.revoked_access_token import RevokedAccessToken
 from app.auth.models.tenant import Tenant
@@ -90,6 +91,13 @@ class RefreshResult:
     expires_in: int
 
 
+def _normalized_device_id(value: str | None) -> str:
+    normalized = (value or "").strip()
+    if len(normalized) >= 8 and len(normalized) <= 128:
+        return normalized
+    return f"browser-{generate_uuid7_with_fallback()}"
+
+
 class ExportAccountData(TypedDict):
     user_id: str
     tenant_id: str
@@ -117,12 +125,39 @@ class AuthService:
         self.refresh_tokens = RefreshTokensRepository(db)
         self.revoked_access_tokens = RevokedAccessTokensRepository(db)
 
+    def _create_auth_session(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        device_id: str | None = None,
+        device_label: str = "Browser",
+        user_agent: str | None = None,
+        ip_hash: str | None = None,
+    ) -> AuthSession:
+        session = AuthSession(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            token_family_id=generate_uuid7_with_fallback(),
+            device_id=_normalized_device_id(device_id),
+            label=device_label.strip()[:128] or "Browser",
+            user_agent=user_agent[:512] if user_agent else None,
+            ip_hash=ip_hash,
+        )
+        self.db.add(session)
+        self.db.flush()
+        return session
+
     def login(
         self,
         *,
         tenant_id: uuid.UUID | None = None,
         email: str,
         password: str,
+        device_id: str | None = None,
+        device_label: str = "Browser",
+        user_agent: str | None = None,
+        ip_hash: str | None = None,
     ) -> LoginResult:
         normalized_email = email.strip().lower()
         if not normalized_email or not password:
@@ -194,11 +229,20 @@ class AuthService:
                 pending_token=pending_token,
             )
 
+        session = self._create_auth_session(
+            tenant_id=resolved_tenant_id,
+            user_id=user.id,
+            device_id=device_id,
+            device_label=device_label,
+            user_agent=user_agent,
+            ip_hash=ip_hash,
+        )
         access_token = create_access_token(
             user_id=user.id,
             tenant_id=resolved_tenant_id,
             roles=role_names,
             access_token_version=user.access_token_version,
+            session_id=session.id,
             settings=self.settings,
         )
 
@@ -212,8 +256,9 @@ class AuthService:
             tenant_id=resolved_tenant_id,
             user_id=user.id,
             token_hash=hashed_refresh_token,
-            token_family_id=generate_uuid7_with_fallback(),
+            token_family_id=session.token_family_id,
             expires_at=self._refresh_expiry(),
+            session_id=session.id,
         )
         self.refresh_tokens.create(refresh_token_row)
         self.db.commit()
@@ -302,7 +347,15 @@ class AuthService:
         role_name = "admin" if self._is_bootstrap_super_admin_email(user.email) else "user"
         self._replace_user_roles(tenant_id=user.tenant_id, user_id=user.id, role_name=role_name)
 
-    def complete_external_login(self, *, user: User) -> LoginResult:
+    def complete_external_login(
+        self,
+        *,
+        user: User,
+        device_id: str | None = None,
+        device_label: str = "Browser",
+        user_agent: str | None = None,
+        ip_hash: str | None = None,
+    ) -> LoginResult:
         """Issue the same session/2FA result as password login for a verified identity."""
         self._ensure_bootstrap_admin_role(user=user)
         self._ensure_user_can_authenticate(user=user)
@@ -324,11 +377,20 @@ class AuthService:
                 pending_token=pending_token,
             )
 
+        session = self._create_auth_session(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            device_id=device_id,
+            device_label=device_label,
+            user_agent=user_agent,
+            ip_hash=ip_hash,
+        )
         access_token = create_access_token(
             user_id=user.id,
             tenant_id=user.tenant_id,
             roles=role_names,
             access_token_version=user.access_token_version,
+            session_id=session.id,
             settings=self.settings,
         )
         raw_refresh_token = self._mint_refresh_token(tenant_id=user.tenant_id)
@@ -340,8 +402,9 @@ class AuthService:
                 token_hash=hash_refresh_token(
                     raw_refresh_token, self.settings.refresh_token_hash_secret
                 ),
-                token_family_id=generate_uuid7_with_fallback(),
+                token_family_id=session.token_family_id,
                 expires_at=self._refresh_expiry(),
+                session_id=session.id,
             )
         )
         self.db.commit()
@@ -673,6 +736,25 @@ class AuthService:
                 status_code=401,
             )
 
+        session = None
+        if token_row.session_id is not None:
+            session = (
+                self.db.query(AuthSession)
+                .filter(
+                    AuthSession.id == token_row.session_id,
+                    AuthSession.tenant_id == tenant_id,
+                    AuthSession.user_id == token_row.user_id,
+                )
+                .first()
+            )
+            if session is None or session.revoked_at is not None:
+                raise ApiError(
+                    code="SESSION_REVOKED",
+                    message="This account session has been revoked. Please sign in again.",
+                    status_code=401,
+                )
+            session.last_seen_at = now
+
         if token_row.expires_at <= now:
             self.refresh_tokens.revoke_token(
                 tenant_id=tenant_id,
@@ -721,6 +803,7 @@ class AuthService:
             ),
             token_family_id=token_row.token_family_id,
             expires_at=self._refresh_expiry(),
+            session_id=token_row.session_id,
         )
         self.refresh_tokens.create(new_token_row)
 
@@ -729,6 +812,7 @@ class AuthService:
             tenant_id=tenant_id,
             roles=role_names,
             access_token_version=user.access_token_version,
+            session_id=token_row.session_id,
             settings=self.settings,
         )
         self.db.commit()
@@ -773,6 +857,11 @@ class AuthService:
             token=token_row,
             reason="logout",
         )
+        if token_row.session_id is not None:
+            session = self.db.get(AuthSession, token_row.session_id)
+            if session is not None and session.user_id == auth.user_id:
+                session.revoked_at = datetime.now(tz=UTC)
+                session.revocation_reason = "logout"
         self.db.commit()
 
     def logout_all(self, *, auth: AuthContext) -> None:
@@ -793,6 +882,17 @@ class AuthService:
             tenant_id=auth.tenant_id,
             user_id=auth.user_id,
             reason="logout_all",
+        )
+        self.db.query(AuthSession).filter(
+            AuthSession.tenant_id == auth.tenant_id,
+            AuthSession.user_id == auth.user_id,
+            AuthSession.revoked_at.is_(None),
+        ).update(
+            {
+                AuthSession.revoked_at: invalidated_at,
+                AuthSession.revocation_reason: "logout_all",
+            },
+            synchronize_session=False,
         )
         self.db.commit()
 
@@ -1011,7 +1111,16 @@ class AuthService:
     # 2FA: verify TOTP during login
     # ------------------------------------------------------------------
 
-    def verify_totp_login(self, *, pending_token: str, code: str) -> LoginResult:
+    def verify_totp_login(
+        self,
+        *,
+        pending_token: str,
+        code: str,
+        device_id: str | None = None,
+        device_label: str = "Browser",
+        user_agent: str | None = None,
+        ip_hash: str | None = None,
+    ) -> LoginResult:
         """Complete login after 2FA challenge."""
         claims = self._decode_pending_2fa_token(pending_token)
         user_id = uuid.UUID(claims["sub"])
@@ -1050,11 +1159,20 @@ class AuthService:
                 status_code=403,
             )
 
+        session = self._create_auth_session(
+            tenant_id=tenant_id,
+            user_id=user.id,
+            device_id=device_id,
+            device_label=device_label,
+            user_agent=user_agent,
+            ip_hash=ip_hash,
+        )
         access_token = create_access_token(
             user_id=user.id,
             tenant_id=tenant_id,
             roles=role_names,
             access_token_version=user.access_token_version,
+            session_id=session.id,
             settings=self.settings,
         )
 
@@ -1068,8 +1186,9 @@ class AuthService:
             tenant_id=tenant_id,
             user_id=user.id,
             token_hash=hashed_refresh_token,
-            token_family_id=generate_uuid7_with_fallback(),
+            token_family_id=session.token_family_id,
             expires_at=self._refresh_expiry(),
+            session_id=session.id,
         )
         self.refresh_tokens.create(refresh_token_row)
         self.db.commit()

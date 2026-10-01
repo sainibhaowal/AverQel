@@ -66,6 +66,7 @@ class AuthContext:
     token_id: str
     permissions: frozenset[str] = frozenset()
     auth_type: str = "jwt"
+    session_id: uuid.UUID | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -180,12 +181,13 @@ def _build_access_claims(
     tenant_id: uuid.UUID,
     roles: AbstractSet[str],
     access_token_version: int = 0,
+    session_id: uuid.UUID | None = None,
     settings: Settings,
 ) -> dict[str, Any]:
     now = _utcnow()
     expires_at = now + timedelta(minutes=settings.jwt_access_ttl_minutes)
 
-    return {
+    claims = {
         "sub": str(user_id),
         "tenant_id": str(tenant_id),
         "roles": sorted(canonicalize_role_name(role) for role in roles if role.strip()),
@@ -198,6 +200,9 @@ def _build_access_claims(
         "iss": settings.jwt_issuer,
         "aud": settings.jwt_audience,
     }
+    if session_id is not None:
+        claims["sid"] = str(session_id)
+    return claims
 
 
 def create_access_token(
@@ -206,6 +211,7 @@ def create_access_token(
     tenant_id: uuid.UUID,
     roles: AbstractSet[str],
     access_token_version: int = 0,
+    session_id: uuid.UUID | None = None,
     settings: Settings,
 ) -> str:
     claims = _build_access_claims(
@@ -213,6 +219,7 @@ def create_access_token(
         tenant_id=tenant_id,
         roles=roles,
         access_token_version=access_token_version,
+        session_id=session_id,
         settings=settings,
     )
     return jwt.encode(claims, settings.jwt_secret, algorithm=settings.jwt_algorithm)
@@ -392,6 +399,7 @@ def build_auth_context_from_jwt(
         tenant_id = _parse_uuid(claims["tenant_id"], field_name="tenant_id")
         token_id = str(claims["jti"]).strip()
         token_version = int(claims.get("ver", 0))
+        session_id = _parse_uuid(claims["sid"], field_name="sid") if claims.get("sid") else None
         if not token_id:
             raise ValueError("Missing jti")
     except (KeyError, TypeError, ValueError) as exc:
@@ -420,6 +428,26 @@ def build_auth_context_from_jwt(
             message="Access token has been invalidated. Please log in again.",
             status_code=401,
         )
+
+    if session_id is not None:
+        from app.auth.models.auth_session import AuthSession  # noqa: PLC0415
+
+        session = (
+            db.query(AuthSession)
+            .filter(
+                AuthSession.id == session_id,
+                AuthSession.tenant_id == tenant_id,
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None),
+            )
+            .first()
+        )
+        if session is None:
+            raise ApiError(
+                code="SESSION_REVOKED",
+                message="This account session has been revoked. Please sign in again.",
+                status_code=401,
+            )
 
     token_roles = _normalize_roles(claims.get("roles"))
     db_roles = _load_live_role_names(db=db, tenant_id=tenant_id, user_id=user_id)
@@ -450,6 +478,7 @@ def build_auth_context_from_jwt(
         permissions=frozenset(),
         token_id=token_id,
         auth_type="jwt",
+        session_id=session_id,
     )
 
 

@@ -56,6 +56,7 @@ torch==2.13.0
 python-magic==0.4.27
 langdetect==1.0.9
 aiohttp==3.14.3
+pywebpush==2.5.0
 protobuf==6.33.5
 fpdf2==2.8.8
 nltk==3.10.3

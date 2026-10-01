@@ -175,3 +175,31 @@ class CollectionPushSubscription(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         onupdate=func.now(),
     )
+
+
+class CollectionPushDelivery(Base):
+    """Durable notification outbox row; delivery is retried by Celery."""
+
+    __tablename__ = "collection_push_deliveries"
+    __table_args__ = (
+        UniqueConstraint("notification_id", name="uq_collection_push_delivery_notification"),
+        Index("ix_collection_push_deliveries_status_next", "status", "next_attempt_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback
+    )
+    notification_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("collection_notifications.id", ondelete="CASCADE"), nullable=False
+    )
+    recipient_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'queued'"), index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
