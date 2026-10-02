@@ -56,6 +56,7 @@ operated.
 - [Ingestion recovery, security, and observability](library/08-ingestion-recovery-security-observability.md)
 - [Documents Hub user guide](library/09-documents-hub-user-guide.md)
 - [Sealed collection chat](library/10-collection-chat-encryption.md)
+- [Collection chat contract](library/11-collection-chat.md)
 
 ### 04. Platform foundations
 

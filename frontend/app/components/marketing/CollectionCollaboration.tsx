@@ -30,7 +30,8 @@ const collaborationSteps = [
   {
     icon: MessageCircleMore,
     label: "Talk in real time",
-    detail: "Encrypted collection messages keep the project conversation together.",
+    detail:
+      "Encrypted collection messages keep the project conversation together — matching safety numbers confirm member devices.",
     color: "text-cyan-300 border-cyan-400/25 bg-cyan-500/[0.08]",
   },
   {

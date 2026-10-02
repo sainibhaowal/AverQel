@@ -29,6 +29,8 @@ vi.mock("framer-motion", async () => {
 });
 
 import CapabilityDirectory from "../app/components/marketing/CapabilityDirectory";
+import CollectionCollaboration from "../app/components/marketing/CollectionCollaboration";
+import FeaturesGrid from "../app/components/marketing/FeaturesGrid";
 
 describe("CapabilityDirectory", () => {
   it("exposes each current capability with an honest status and documentation route", () => {
@@ -57,17 +59,37 @@ describe("CapabilityDirectory", () => {
       "href",
       "/documentation/automation",
     );
+    expect(screen.getByText(/Enable sandbox profile/i)).toBeInTheDocument();
+    expect(screen.getByText(/Worker \+ Beat required/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Voice \+ realtime/i })).toHaveAttribute(
       "href",
       "/documentation/voice",
     );
-    expect(screen.getByText(/Enable sandbox profile/i)).toBeInTheDocument();
-    expect(screen.getByText(/Worker \+ Beat required/i)).toBeInTheDocument();
     expect(screen.getByText(/Deployment gated/i)).toBeInTheDocument();
   });
 });
 
 import VoiceDocsPage from "../app/documentation/voice/page";
+
+describe("DocumentsHubMarketing", () => {
+  it("names the advanced Documents Hub surface truthfully", () => {
+    render(<FeaturesGrid />);
+
+    expect(screen.getByText(/Versions with diff and restore, duplicates/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Quarantine review, quality signals, and bulk retry/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Expiring share links, comments, webhooks/i),
+    ).toBeInTheDocument();
+  });
+
+  it("states safety-number verification for collection chat", () => {
+    render(<CollectionCollaboration />);
+
+    expect(screen.getByText(/matching safety numbers confirm member devices/i)).toBeInTheDocument();
+  });
+});
 
 describe("VoiceDocsPage", () => {
   it("states the deployment gates without promising availability", () => {
