@@ -40,10 +40,10 @@ if grep -Eq '(^|[[:space:]])BREAKING CHANGE:|^[[:alnum:]_-]+(\([^)]*\))?!:' <<< 
   MAJOR=$((MAJOR + 1))
   MINOR=0
   PATCH=0
-elif grep -Eq '^feat(\([^)]*\))?!?:' <<< "$COMMITS"; then
-  MINOR=$((MINOR + 1))
-  PATCH=0
 else
+  # Experimental phase: every change ships as a patch (v1.2.x) until the
+  # project declares otherwise. `feat:` intentionally does NOT bump minor
+  # here; use an explicit BREAKING CHANGE marker for a major release.
   PATCH=$((PATCH + 1))
 fi
 
