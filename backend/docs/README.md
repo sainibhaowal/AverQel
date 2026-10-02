@@ -42,6 +42,7 @@ operated.
 - [Retention policy](deepspace/07-deepspace-retention-policy.md)
 - [Selective context retrieval](deepspace/08-selective-context-retrieval.md)
 - [Composer Library attachments](deepspace/09-composer-library-attachments.md)
+- [Memory moderation lifecycle](deepspace/10-deepspace-memory-moderation.md)
 
 ### 03. Library and document processing
 
@@ -54,6 +55,7 @@ operated.
 - [Documents Hub workflows](library/07-documents-hub-workflows.md)
 - [Ingestion recovery, security, and observability](library/08-ingestion-recovery-security-observability.md)
 - [Documents Hub user guide](library/09-documents-hub-user-guide.md)
+- [Sealed collection chat](library/10-collection-chat-encryption.md)
 
 ### 04. Platform foundations
 
@@ -61,6 +63,7 @@ operated.
 - [OAuth login](platform/02-auth-oauth-login.md)
 - [Backend testing](platform/03-testing.md)
 - [Current end-to-end verification](platform/04-end-to-end-verification.md)
+- [Realtime websocket events](platform/04-realtime-events.md)
 
 ### 05. Storage and recovery
 

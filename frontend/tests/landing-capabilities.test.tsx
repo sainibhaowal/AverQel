@@ -16,6 +16,8 @@ vi.mock("framer-motion", async () => {
 
   return {
     motion: new Proxy({}, { get: (_, tag: string) => createMotionComponent(tag) }),
+    AnimatePresence: ({ children }: { children?: ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
     useInView: () => true,
     useReducedMotion: () => true,
     useMotionValue: () => ({ get: () => 0, set: () => undefined }),
@@ -55,7 +57,25 @@ describe("CapabilityDirectory", () => {
       "href",
       "/documentation/automation",
     );
+    expect(screen.getByRole("link", { name: /Voice \+ realtime/i })).toHaveAttribute(
+      "href",
+      "/documentation/voice",
+    );
     expect(screen.getByText(/Enable sandbox profile/i)).toBeInTheDocument();
     expect(screen.getByText(/Worker \+ Beat required/i)).toBeInTheDocument();
+    expect(screen.getByText(/Deployment gated/i)).toBeInTheDocument();
+  });
+});
+
+import VoiceDocsPage from "../app/documentation/voice/page";
+
+describe("VoiceDocsPage", () => {
+  it("states the deployment gates without promising availability", () => {
+    render(<VoiceDocsPage />);
+
+    const headings = screen.getAllByRole("heading", { name: /Voice & Realtime/i });
+    expect(headings.length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/deployment-gated/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/microphone permission/i).length).toBeGreaterThan(0);
   });
 });
