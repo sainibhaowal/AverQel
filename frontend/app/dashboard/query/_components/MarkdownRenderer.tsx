@@ -3,15 +3,14 @@
 import { useMemo } from "react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
-import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
 
 import InlineCitation from "@/app/components/query/InlineCitation";
 
 import { parseVisualChart } from "../_lib/chart-parser";
 import type { StreamChartBlock, StreamChartPoint } from "../_lib/stream-protocol";
 import { normalizeMarkdown } from "../_lib/markdown";
+import AdaptiveMarkdownTable from "../../_components/AdaptiveMarkdownTable";
 
 import ChartBlock from "./ChartBlock";
 import CodeBlock from "./CodeBlock";
@@ -26,7 +25,7 @@ interface MarkdownRendererProps {
 /**
  * The single answer-content renderer.
  *
- * Markdown owns text, tables, lists, math, images, and fenced code. The only
+ * Markdown owns text, tables, lists, images, and fenced code. The only
  * custom fence is `chart`, which is promoted to the existing chart component.
  * Mermaid remains a normal fenced code block and is previewed by CodeBlock.
  */
@@ -73,11 +72,7 @@ export default function MarkdownRenderer({
           />
         );
       },
-      table: ({ children }) => (
-        <div className="border-glass-border/30 bg-glass-bg/20 my-6 overflow-x-auto rounded-xl border shadow-sm">
-          <table className="w-full border-collapse text-left">{children}</table>
-        </div>
-      ),
+      table: ({ children }) => <AdaptiveMarkdownTable>{children}</AdaptiveMarkdownTable>,
       thead: ({ children }) => (
         <thead className="border-glass-border/30 bg-primary/5 text-primary border-b text-[11px] font-bold tracking-widest uppercase">
           {children}
@@ -165,8 +160,10 @@ export default function MarkdownRenderer({
       className={`chat-message-container ${streaming ? "is-streaming" : ""} prose dark:prose-invert max-w-none text-[15px] leading-8`}
     >
       <ReactMarkdown
-        remarkPlugins={[[remarkGfm, { autoLinkLiterals: false }], remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        // Do not run KaTeX against untrusted model output. Prices and copied
+        // LaTeX frequently share the same delimiters and must never be able
+        // to crash the complete chat surface.
+        remarkPlugins={[[remarkGfm, { autoLinkLiterals: false }]]}
         components={components}
       >
         {normalizedContent}

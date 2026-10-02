@@ -72,7 +72,7 @@ export default function AdminTenantsPage() {
   }, [load]);
 
   return (
-    <div className="space-y-6">
+    <div className="dashboard-theme-scope space-y-6">
       <DashboardSectionHeader
         title="Workspace Control"
         subtitle="Cross-Tenant Workspace Visibility"
@@ -174,7 +174,7 @@ export default function AdminTenantsPage() {
                     </p>
                   </div>
                   <div className="space-y-2 xl:text-right">
-                    <div className="theme-chip justify-center rounded-full px-3 py-1 text-[10px] font-bold tracking-[0.18em] uppercase xl:ml-auto xl:w-fit">
+                    <div className="theme-chip min-w-[10.5rem] rounded-[1rem] px-4 py-2.5 text-center text-[10px] leading-4 font-bold tracking-[0.16em] whitespace-normal uppercase xl:ml-auto xl:w-fit">
                       {tenant.status ?? "active"} · Updated {formatDate(tenant.updated_at)}
                     </div>
                   </div>

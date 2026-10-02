@@ -251,7 +251,7 @@ class MCPProviderOAuthProfile:
         }
 
 
-GOOGLE_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol endpoint profile
+GOOGLE_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # OAuth endpoint profile; nosec B106
     key="google",
     label="Google",
     provider_slugs=GOOGLE_PROVIDER_SLUGS,
@@ -295,7 +295,7 @@ GOOGLE_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol end
 )
 
 
-GITHUB_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol endpoint profile
+GITHUB_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # OAuth endpoint profile; nosec B106
     key="github",
     label="GitHub",
     provider_slugs=frozenset({"github"}),
@@ -312,7 +312,7 @@ GITHUB_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol end
 )
 
 
-SLACK_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # nosec B106 - protocol endpoint profile
+SLACK_MCP_OAUTH_PROFILE = MCPProviderOAuthProfile(  # OAuth endpoint profile; nosec B106
     key="slack",
     label="Slack",
     provider_slugs=frozenset({"slack"}),

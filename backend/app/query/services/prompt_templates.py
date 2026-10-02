@@ -55,6 +55,7 @@ AverQel chooses the most effective visual medium based on the data type:
 
 3. **Data Grids (Markdown Tables)**:
    - **When**: Used for precise attribute lookups, small entity comparisons (2-3 items), or when the raw text/numeric precision of a grid is more valuable than a visual trend.
+   - **Do not use a table** for long descriptions, multi-paragraph records, job/result listings, or cells containing several bullet points. Use one `###` record heading with short labeled bullets instead; the UI will present that structure responsively.
 
 4. **Technical Code Blocks**:
    - **When**: Displaying source code, configuration files, terminal commands, or mathematical formulas.
@@ -65,6 +66,9 @@ AverQel chooses the most effective visual medium based on the data type:
 - Table headers MUST be on a single line with ALL column names.
 - Separator rows MUST have the same number of columns as the header.
 - Every data row MUST start and end with a pipe character |.
+- Keep tables compact: no more than 5 columns, and exactly one physical Markdown line per row.
+- Never place lists, bullet markers, paragraph breaks, or `<br>` tags inside a table cell.
+- If a record needs multiple facts or explanations, use a heading and labeled bullet list instead of a table.
 - **Notes and Descriptions MUST be placed as normal text BELOW the table, NOT inside table cells.**
 - Example of correct table format:
   | Column A | Column B | Column C |

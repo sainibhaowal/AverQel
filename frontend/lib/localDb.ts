@@ -3,7 +3,7 @@
  */
 
 const DB_NAME = "averqel_local_secure_db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface LocalMessage {
   id: string;
@@ -15,6 +15,16 @@ export interface LocalMessage {
   is_media: boolean;
   media_mime_type: string | null;
   created_at: string;
+}
+
+export interface PendingChatMessage {
+  client_message_id: string;
+  collection_id: string;
+  payload: Record<string, unknown>;
+  local_message: LocalMessage;
+  attempts: number;
+  next_attempt_at: number;
+  last_error?: string;
 }
 
 export function initDb(): Promise<IDBDatabase> {
@@ -37,7 +47,56 @@ export function initDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("unread_counts")) {
         db.createObjectStore("unread_counts", { keyPath: "collection_id" });
       }
+      if (!db.objectStoreNames.contains("pending_chat_messages")) {
+        const pending = db.createObjectStore("pending_chat_messages", {
+          keyPath: "client_message_id",
+        });
+        pending.createIndex("collection_id", "collection_id", { unique: false });
+        pending.createIndex("next_attempt_at", "next_attempt_at", { unique: false });
+      }
     };
+  });
+}
+
+export async function enqueuePendingChatMessage(item: PendingChatMessage): Promise<void> {
+  const db = await initDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("pending_chat_messages", "readwrite");
+    const request = tx.objectStore("pending_chat_messages").put(item);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function listPendingChatMessages(collectionId: string): Promise<PendingChatMessage[]> {
+  const db = await initDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("pending_chat_messages", "readonly");
+    const request = tx.objectStore("pending_chat_messages").index("collection_id").getAll(collectionId);
+    request.onsuccess = () => resolve((request.result || []) as PendingChatMessage[]);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function removePendingChatMessage(clientMessageId: string): Promise<void> {
+  const db = await initDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("pending_chat_messages", "readwrite");
+    const request = tx.objectStore("pending_chat_messages").delete(clientMessageId);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function markPendingChatMessageRetry(
+  item: PendingChatMessage,
+  error: string,
+): Promise<void> {
+  await enqueuePendingChatMessage({
+    ...item,
+    attempts: item.attempts + 1,
+    next_attempt_at: Date.now() + Math.min(60_000, 2 ** Math.min(item.attempts, 6) * 1_000),
+    last_error: error.slice(0, 500),
   });
 }
 

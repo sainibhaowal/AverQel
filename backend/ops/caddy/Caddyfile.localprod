@@ -19,6 +19,16 @@ https://{$AVERQEL_DOMAIN}, https://127.0.0.1 {
     Alt-Svc "clear"
   }
 
+  # Keep browser voice traffic on the same HTTPS origin. Caddy upgrades the
+  # WebSocket and forwards the stripped path to the internal LiveKit service.
+  handle_path /livekit/* {
+    reverse_proxy livekit:7880 {
+      transport http {
+        versions 1.1
+      }
+    }
+  }
+
   @streaming path /api/v1/queries/stream /api/v1/chats/*/stream /api/v1/deepspace/chats/stream /api/v1/deepspace/chats/*/stream /api/v1/documents/events/stream
 
   handle @streaming {

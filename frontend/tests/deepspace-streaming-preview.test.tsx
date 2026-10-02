@@ -13,6 +13,28 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceMarkdownRenderer", () =
 import DeepSpaceThread from "../app/dashboard/deepspace/_components/DeepSpaceThread";
 
 describe("DeepSpaceThread streaming preview", () => {
+  it("shows the dots only while the assistant has no streamed progress", () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_waiting_1",
+            role: "assistant",
+            content: "",
+            rawContent: "",
+            createdAt: new Date().toISOString(),
+            status: "streaming",
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: /preparing a response/i })).toBeInTheDocument();
+  });
+
   it("shows a rich preview while streaming by mounting the markdown renderer", () => {
     render(
       <DeepSpaceThread
@@ -95,6 +117,31 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(screen.getByText("Thinking & activity…")).toBeInTheDocument();
     expect(screen.getByText("mcp_gmail_search_threads")).toBeInTheDocument();
     expect(screen.getByText("Found 13 threads")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /preparing a response/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the first-frame dots out of the way once thinking content arrives", () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_thinking_progress_1",
+            role: "assistant",
+            content: "",
+            rawContent: "",
+            thinkingContent: "Planning the response.",
+            createdAt: new Date().toISOString(),
+            status: "streaming",
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Thinking & activity…")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /preparing a response/i })).not.toBeInTheDocument();
   });
 
   it("does not render legacy aggregate thinking above a rehydrated timeline", () => {

@@ -12,6 +12,7 @@ from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from app.core.context import get_trace_id
 from app.system.schemas.errors import is_known_error_code
 from app.system.services.metrics_service import API_ERRORS_TOTAL
+from app.system.services.storage_quota import StorageQuotaExceededError
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
@@ -107,7 +108,11 @@ def build_error_response(
         "trace_id": get_trace_id(),
         "timestamp": utc_timestamp(),
     }
-    return JSONResponse(status_code=status_code, content=payload)
+    headers: dict[str, str] = {}
+    retry_after = (details or {}).get("retry_after_seconds")
+    if status_code in {429, 502, 503, 504} and isinstance(retry_after, int | float):
+        headers["Retry-After"] = str(max(1, int(retry_after)))
+    return JSONResponse(status_code=status_code, content=payload, headers=headers)
 
 
 def _map_http_exception_code(status_code: int) -> str:
@@ -147,6 +152,20 @@ def register_exception_handlers(app: FastAPI) -> None:
             message=exc.message,
             status_code=exc.status_code,
             details=exc.details,
+        )
+
+    @app.exception_handler(StorageQuotaExceededError)
+    async def storage_quota_handler(_: Request, exc: StorageQuotaExceededError) -> JSONResponse:
+        return build_error_response(
+            code="STORAGE_QUOTA_EXCEEDED",
+            message="Your workspace storage limit has been reached.",
+            status_code=413,
+            details={
+                "plan": exc.plan.id,
+                "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                "usage_bytes": exc.usage_bytes,
+                "requested_bytes": exc.requested_bytes,
+            },
         )
 
     @app.exception_handler(RequestValidationError)

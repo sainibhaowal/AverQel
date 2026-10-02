@@ -512,35 +512,14 @@ export default function QueryPageClient() {
       });
       return;
     }
-
-    const loadCollectionDocuments = async () => {
-      setCollectionScopeLoading(true);
-      try {
-        const response = (await fetchWithAuth(
-          `/collections/${selectedCollectionId}/documents`,
-        )) as Response;
-        if (!response.ok) {
-          throw new Error("Failed to load collection documents.");
-        }
-        const payload = (await response.json()) as CollectionDocumentItem[];
-        if (!active) {
-          return;
-        }
-        setSelectedCollectionDocumentIds(payload.map((item) => item.document_id));
-      } catch (error) {
-        console.error(error);
-        if (active) {
-          setSelectedCollectionDocumentIds([]);
-          toast.error("Failed to load shared collection documents for query scope.");
-        }
-      } finally {
-        if (active) {
-          setCollectionScopeLoading(false);
-        }
+    // Collection scope is resolved server-side. This avoids loading every
+    // document ID into the browser and removes the old 50-ID query ceiling.
+    queueMicrotask(() => {
+      if (active) {
+        setSelectedCollectionDocumentIds(null);
+        setCollectionScopeLoading(false);
       }
-    };
-
-    void loadCollectionDocuments();
+    });
     return () => {
       active = false;
     };
@@ -584,7 +563,9 @@ export default function QueryPageClient() {
 
     const embeddingRuntime = runtimes.find((r) => r.feature_scope === "embeddings");
     const chatRuntime = runtimes.find((r) => r.feature_scope === "chat");
-    const latencyMs = Number(embeddingRuntime?.latency_ms || chatRuntime?.latency_ms || 32);
+    const measuredLatencyValue = embeddingRuntime?.latency_ms ?? chatRuntime?.latency_ms;
+    const measuredLatency =
+      typeof measuredLatencyValue === "number" ? measuredLatencyValue : null;
 
     return {
       totalDocuments: stats.total_documents || 0,
@@ -592,7 +573,7 @@ export default function QueryPageClient() {
       activeJobs: stats.active_jobs || 0,
       storageBytes: stats.storage_used_bytes || 0,
       indexHealth,
-      latencyMs,
+      latencyMs: measuredLatency,
     };
   }, [dashboardOverview]);
 
@@ -605,6 +586,13 @@ export default function QueryPageClient() {
     }
     return selectedCollectionDocumentIds;
   }, [docId, selectedCollectionDocumentIds]);
+
+  const collectionQueryFilters = useMemo(() => {
+    const filters: { document_ids?: string[]; collection_id?: string } = {};
+    if (scopedDocumentIds) filters.document_ids = scopedDocumentIds;
+    if (selectedCollectionId) filters.collection_id = selectedCollectionId;
+    return filters;
+  }, [scopedDocumentIds, selectedCollectionId]);
 
   const emptyPrompts = useMemo(() => {
     if (selectedCollectionName) {
@@ -658,7 +646,7 @@ export default function QueryPageClient() {
           conversation_kind: conversationKind,
           search_mode: searchMode,
           thinking_enabled: supportsThinking && thinkingEnabled,
-          filters: scopedDocumentIds ? { document_ids: scopedDocumentIds } : {},
+          filters: collectionQueryFilters,
         },
       });
     },
@@ -666,6 +654,7 @@ export default function QueryPageClient() {
       query,
       searchMode,
       scopedDocumentIds,
+      collectionQueryFilters,
       state.currentConversationId,
       state.isStreaming,
       stream,
@@ -701,7 +690,7 @@ export default function QueryPageClient() {
           top_k: DEFAULT_QUERY_TOP_K,
           search_mode: searchMode,
           document_id: scopedDocumentIds?.length === 1 ? scopedDocumentIds[0] : docId,
-          filters: scopedDocumentIds ? { document_ids: scopedDocumentIds } : {},
+          filters: collectionQueryFilters,
           thinking_enabled: supportsThinking && thinkingEnabled,
         },
       });
@@ -711,6 +700,7 @@ export default function QueryPageClient() {
       docId,
       searchMode,
       scopedDocumentIds,
+      collectionQueryFilters,
       state.currentConversationId,
       state.isStreaming,
       stream,
@@ -756,7 +746,7 @@ export default function QueryPageClient() {
           top_k: DEFAULT_QUERY_TOP_K,
           search_mode: searchMode,
           document_id: scopedDocumentIds?.length === 1 ? scopedDocumentIds[0] : docId,
-          filters: scopedDocumentIds ? { document_ids: scopedDocumentIds } : {},
+          filters: collectionQueryFilters,
           thinking_enabled: supportsThinking && thinkingEnabled,
         },
       });
@@ -766,6 +756,7 @@ export default function QueryPageClient() {
       docId,
       searchMode,
       scopedDocumentIds,
+      collectionQueryFilters,
       state.currentConversationId,
       state.isStreaming,
       state.messages,

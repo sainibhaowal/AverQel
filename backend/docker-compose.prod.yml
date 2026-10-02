@@ -67,6 +67,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+      args:
+        GIT_VERSION: ${AVERQEL_RELEASE_VERSION:-development}
+        GIT_SHA: ${AVERQEL_GIT_SHA:-unknown}
+        BUILD_TIMESTAMP: ${AVERQEL_BUILD_TIMESTAMP:-unknown}
     restart: always
     init: true
     stop_grace_period: 30s
@@ -105,6 +109,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        GIT_VERSION: ${AVERQEL_RELEASE_VERSION:-development}
+        GIT_SHA: ${AVERQEL_GIT_SHA:-unknown}
+        BUILD_TIMESTAMP: ${AVERQEL_BUILD_TIMESTAMP:-unknown}
     restart: always
     init: true
     stop_grace_period: 30s
@@ -141,6 +149,9 @@ services:
       AKS_PROVIDER_SECRET_AUDIT_READS: ${AKS_PROVIDER_SECRET_AUDIT_READS:-true}
       AKS_TOTP_SECRET_ACTIVE_KID: ${AKS_TOTP_SECRET_ACTIVE_KID:-}
       AKS_TOTP_SECRET_KEYRING_JSON: ${AKS_TOTP_SECRET_KEYRING_JSON:-}
+      AKS_DEEPSPACE_SANDBOX_ENABLED: ${AKS_DEEPSPACE_SANDBOX_ENABLED:-false}
+      AKS_DEEPSPACE_SANDBOX_URL: ${AKS_DEEPSPACE_SANDBOX_URL:-http://sandbox-executor:3020}
+      AKS_DEEPSPACE_SANDBOX_TOKEN: ${AKS_DEEPSPACE_SANDBOX_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,6 +175,10 @@ services:
       start_period: 30s
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - research_renderer
+      - sandbox_internal
 
   frontend:
     container_name: averqel-frontend
@@ -173,7 +188,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PROXY_TARGET: http://api:1000
-        GIT_VERSION: ${AVERQEL_RELEASE_VERSION:-v1.0.0}
+        GIT_VERSION: ${AVERQEL_RELEASE_VERSION:-development}
         GIT_SHA: ${AVERQEL_GIT_SHA:-unknown}
         BUILD_TIMESTAMP: ${AVERQEL_BUILD_TIMESTAMP:-unknown}
     restart: always
@@ -193,6 +208,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+      args:
+        GIT_VERSION: ${AVERQEL_RELEASE_VERSION:-development}
+        GIT_SHA: ${AVERQEL_GIT_SHA:-unknown}
+        BUILD_TIMESTAMP: ${AVERQEL_BUILD_TIMESTAMP:-unknown}
     restart: always
     init: true
     stop_grace_period: 30s
@@ -226,6 +245,9 @@ services:
       AKS_PROVIDER_SECRET_AUDIT_READS: ${AKS_PROVIDER_SECRET_AUDIT_READS:-true}
       AKS_TOTP_SECRET_ACTIVE_KID: ${AKS_TOTP_SECRET_ACTIVE_KID:-}
       AKS_TOTP_SECRET_KEYRING_JSON: ${AKS_TOTP_SECRET_KEYRING_JSON:-}
+      AKS_DEEPSPACE_SANDBOX_ENABLED: ${AKS_DEEPSPACE_SANDBOX_ENABLED:-false}
+      AKS_DEEPSPACE_SANDBOX_URL: ${AKS_DEEPSPACE_SANDBOX_URL:-http://sandbox-executor:3020}
+      AKS_DEEPSPACE_SANDBOX_TOKEN: ${AKS_DEEPSPACE_SANDBOX_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -241,6 +263,41 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ${AVERQEL_BACKEND_RUNTIME_DIR:-../runtime/backend}:/runtime/backend
+    networks:
+      - default
+      - sandbox_internal
+
+  # Optional, tenant-requested Python/SQL execution.  The service has no
+  # public port, no host mounts, no capabilities, and only an internal
+  # network route from API/worker.  Enable with --profile sandbox-execution
+  # after setting both matching executor tokens.
+  sandbox-executor:
+    container_name: averqel-sandbox-executor
+    profiles: ["sandbox-execution"]
+    build:
+      context: ./sandbox-executor
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 1.0
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    environment:
+      PORT: "3020"
+      SANDBOX_EXECUTOR_TOKEN: ${AKS_DEEPSPACE_SANDBOX_TOKEN:-}
+    expose:
+      - "3020"
+    networks:
+      - sandbox_internal
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3020/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   maintenance-worker:
     extends:
@@ -249,6 +306,14 @@ services:
     environment:
       AKS_WORKER_QUEUES: maintenance
       AKS_WORKER_CONCURRENCY: ${AKS_MAINTENANCE_WORKER_CONCURRENCY:-1}
+
+  collection-push-worker:
+    extends:
+      service: worker
+    container_name: averqel-collection-push-worker
+    environment:
+      AKS_WORKER_QUEUES: collection_push
+      AKS_WORKER_CONCURRENCY: 1
 
   mcp-worker:
     extends:
@@ -266,12 +331,36 @@ services:
       AKS_WORKER_QUEUES: ingestion_heavy,ingestion_light
       AKS_WORKER_CONCURRENCY: ${AKS_INGESTION_WORKER_CONCURRENCY:-1}
 
+  library-worker:
+    extends:
+      service: worker
+    container_name: averqel-library-worker
+    environment:
+      AKS_WORKER_QUEUES: library_uploads,media_derivatives
+      AKS_WORKER_CONCURRENCY: ${AKS_LIBRARY_WORKER_CONCURRENCY:-1}
+    mem_limit: 768m
+    cpus: 1.0
+
+  dataset-worker:
+    extends:
+      service: worker
+    container_name: averqel-dataset-worker
+    environment:
+      AKS_WORKER_QUEUES: dataset_indexing
+      AKS_WORKER_CONCURRENCY: ${AKS_DATASET_WORKER_CONCURRENCY:-1}
+    mem_limit: 1024m
+    cpus: 1.0
+
   scheduler:
     container_name: averqel-scheduler
     image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile.worker
+      args:
+        GIT_VERSION: ${AVERQEL_RELEASE_VERSION:-development}
+        GIT_SHA: ${AVERQEL_GIT_SHA:-unknown}
+        BUILD_TIMESTAMP: ${AVERQEL_BUILD_TIMESTAMP:-unknown}
     restart: always
     init: true
     stop_grace_period: 30s
@@ -287,6 +376,11 @@ services:
       AKS_MINIO_SECRET_KEY: ${AKS_MINIO_SECRET_KEY:?set AKS_MINIO_SECRET_KEY}
       AKS_MINIO_SECURE: ${AKS_MINIO_SECURE:-false}
       AKS_MINIO_VERIFY_SSL: ${AKS_MINIO_VERIFY_SSL:-false}
+      AKS_MALWARE_SCAN_ENABLED: ${AKS_MALWARE_SCAN_ENABLED:-true}
+      AKS_MALWARE_SCAN_REQUIRED: ${AKS_MALWARE_SCAN_REQUIRED:-true}
+      AKS_MALWARE_SCAN_HOST: ${AKS_MALWARE_SCAN_HOST:-clamav}
+      AKS_MALWARE_SCAN_PORT: ${AKS_MALWARE_SCAN_PORT:-3310}
+      AKS_MALWARE_SCAN_TIMEOUT_SECONDS: ${AKS_MALWARE_SCAN_TIMEOUT_SECONDS:-15}
       AKS_JWT_SECRET: ${AKS_JWT_SECRET:?set AKS_JWT_SECRET}
       AKS_REFRESH_TOKEN_HASH_SECRET: ${AKS_REFRESH_TOKEN_HASH_SECRET:?set AKS_REFRESH_TOKEN_HASH_SECRET}
       AKS_CELERY_BEAT_SCHEDULE_FILE: /runtime/backend/cache/celerybeat-schedule
@@ -306,6 +400,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      clamav:
         condition: service_healthy
       inference:
         condition: service_healthy
@@ -329,8 +425,68 @@ services:
     expose:
       - "8080"
 
+  # Optional JavaScript-page rendering. This profile is deliberately separate
+  # from the application network: Chromium has no direct route to application
+  # services or the public Internet. Its only browser egress is Squid, which
+  # rejects internal, link-local, and private destinations.
+  research-renderer:
+    container_name: averqel-research-renderer
+    profiles: ["research-browser"]
+    build:
+      context: ./research-renderer
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    environment:
+      PORT: "3010"
+      RESEARCH_RENDERER_TOKEN: ${AKS_DEEPSPACE_RESEARCH_BROWSER_TOKEN:-}
+      RESEARCH_EGRESS_PROXY: http://research-egress-proxy:3128
+    expose:
+      - "3010"
+    networks:
+      - research_renderer
+    depends_on:
+      research-egress-proxy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://0.0.0.0:3010/').then(r=>process.exit(r.status===404?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  research-egress-proxy:
+    container_name: averqel-research-egress-proxy
+    profiles: ["research-browser"]
+    image: ubuntu/squid:latest
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID"]
+    tmpfs:
+      - /var/spool/squid:size=64m,mode=1777
+      - /var/log/squid:size=32m,mode=1777
+      - /run:size=8m,mode=1777
+    volumes:
+      - ./research-renderer/squid.conf:/etc/squid/squid.conf:ro
+    expose:
+      - "3128"
+    networks:
+      - research_renderer
+      - research_egress
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   searxng_cache:
+
+networks:
+  research_renderer:
+    internal: true
+  research_egress:
+  sandbox_internal:
+    internal: true

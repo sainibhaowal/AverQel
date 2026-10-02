@@ -49,6 +49,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.documents.repositories.documents import DocumentsRepository
 from app.documents.services.deletion_service import DeletionService
+from app.ingestion.models.ingestion_job import IngestionJob
 from app.platform.database.session import get_db
 from app.system.models.break_glass_grant import BreakGlassGrant
 from app.system.models.storage_cleanup import StorageCleanupJob
@@ -275,7 +276,13 @@ def list_admin_document_summary(
     service = AdminUserService(db, settings)
     document_repo = DocumentsRepository(db)
     if _has_admin_access(auth) and target_tenant_id is None:
-        tenant_ids = [tenant.tenant_id for tenant in service.list_tenants_global()]
+        # Keep the requesting administrator's tenant first while retaining the
+        # complete global view. This makes the response stable when other
+        # tenants are being created concurrently by parallel workers.
+        all_tenant_ids = [tenant.tenant_id for tenant in service.list_tenants_global()]
+        tenant_ids = [auth.tenant_id] + [
+            tenant_id for tenant_id in all_tenant_ids if tenant_id != auth.tenant_id
+        ]
     elif _has_admin_access(auth) and target_tenant_id is not None:
         tenant_ids = [target_tenant_id]
     else:
@@ -306,6 +313,45 @@ def list_admin_document_summary(
     )
     db.commit()
     return AdminDocumentSummaryListResponse(items=items)
+
+
+@router.get(
+    "/documents/recovery-history",
+    dependencies=[Depends(require_permissions("admin:users:read"))],
+)
+def list_document_recovery_history(
+    limit: int = Query(default=100, ge=1, le=500),
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    jobs = (
+        db.query(IngestionJob)
+        .filter(
+            IngestionJob.tenant_id == tenant_context.tenant_id,
+            (IngestionJob.resume_count > 0) | (IngestionJob.checkpoint_updated_at.is_not(None)),
+        )
+        .order_by(IngestionJob.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "job_id": job.id,
+                "document_id": job.document_id,
+                "status": job.status,
+                "checkpoint_stage": job.checkpoint_stage,
+                "checkpoint_cursor": job.checkpoint_cursor,
+                "checkpoint_updated_at": job.checkpoint_updated_at,
+                "pause_reason": job.pause_reason,
+                "resume_count": job.resume_count,
+                "last_error_code": job.last_error_code,
+                "last_error_message": job.last_error_message,
+                "updated_at": job.updated_at,
+            }
+            for job in jobs
+        ]
+    }
 
 
 @router.post(

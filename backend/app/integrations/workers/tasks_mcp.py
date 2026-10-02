@@ -19,8 +19,27 @@ from app.integrations.services.mcp_runtime import (
 )
 from app.platform.database.session import SessionLocal, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
+from app.realtime.event_bus import publish_event_sync
+from app.system.services.cache_service import get_redis_client
 
 logger = logging.getLogger(__name__)
+
+
+def _publish_mcp_event(server: MCPServer, event_type: str) -> None:
+    """Publish a committed worker transition without exposing credentials."""
+    if server.user_id is None:
+        return
+    try:
+        publish_event_sync(
+            get_redis_client(),
+            tenant_id=server.tenant_id,
+            user_id=server.user_id,
+            event_type=event_type,
+            resource="mcp",
+            data={"server_id": str(server.id)},
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("MCP worker realtime notification failed", exc_info=True)
 
 
 async def _load_catalog(runtime: object) -> dict[str, object]:
@@ -76,6 +95,7 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
             server.status = "failed"
             server.last_error = "MCP provider is disabled"
             db.commit()
+            _publish_mcp_event(server, "mcp.server.status_changed")
             return {"status": "provider_disabled", "server_id": server_id}
 
         async def _notification(method: str, params: object) -> None:
@@ -102,6 +122,7 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
             server.status = "failed"
             server.last_error = "MCP runtime unavailable"
             db.commit()
+            _publish_mcp_event(server, "mcp.server.status_changed")
             return {"status": "failed", "error": server.last_error}
 
         try:
@@ -138,6 +159,7 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                 user_id=server.user_id,
             )
             db.commit()
+            _publish_mcp_event(server, "mcp.catalog.refreshed")
             return {
                 "status": "connected",
                 "counts": {key: len(value) for key, value in catalog.items()},
@@ -156,6 +178,7 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                 user_id=server.user_id,
             )
             db.commit()
+            _publish_mcp_event(server, "mcp.server.status_changed")
             raise
 
 
@@ -194,6 +217,7 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
             server.status = "failed"
             server.last_error = "MCP provider is disabled"
             db.commit()
+            _publish_mcp_event(server, "mcp.server.status_changed")
             return {"status": "provider_disabled"}
 
         async def _notification(method: str, params: object) -> None:
@@ -220,6 +244,7 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
             if runtime is None:
                 server.status = "needs_auth"
                 db.commit()
+                _publish_mcp_event(server, "mcp.server.status_changed")
                 return {"status": "needs_auth"}
 
             # Runtime construction reads encrypted OAuth metadata.  End that
@@ -237,6 +262,7 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
             server.last_error = None
             server.reconnect_attempts = 0
             db.commit()
+            _publish_mcp_event(server, "mcp.server.status_changed")
             return {"status": "connected"}
         except Exception as exc:  # noqa: BLE001
             db.rollback()
@@ -251,6 +277,7 @@ def monitor_server_lifecycle(self: object, server_id: str, tenant_id: str) -> di
                 user_id=server.user_id,
             )
             db.commit()
+            _publish_mcp_event(server, "mcp.server.status_changed")
             logger.exception("MCP lifecycle failed for %s", server.id)
             # Celery retries provide durable reconnect/backoff across worker
             # crashes. The attempt is persisted above before rescheduling.

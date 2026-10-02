@@ -8,6 +8,7 @@ from typing import Any
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.context_window import (
     extract_context_window,
+    extract_max_output_tokens,
     resolve_verified_context_window,
 )
 from app.providers.services.reasoning_capabilities import (
@@ -154,8 +155,11 @@ class AnthropicProvider:
         return {"type": "auto"}
 
     @staticmethod
-    def _build_thinking_payload(max_tokens: int) -> dict[str, Any]:
-        budget_tokens = max(1024, min(max_tokens // 2, 4096))
+    def _build_thinking_payload(max_tokens: int, effort: str | None = None) -> dict[str, Any]:
+        ratios = {"low": 0.20, "medium": 0.50, "high": 0.80}
+        budget_tokens = max(
+            1024, min(int(max_tokens * ratios.get(effort or "medium", 0.50)), 16_384)
+        )
         return {"type": "enabled", "budget_tokens": budget_tokens}
 
     @staticmethod
@@ -229,12 +233,29 @@ class AnthropicProvider:
             "x-api-key": request.api_key or "",
             "anthropic-version": "2023-06-01",
         }
+        extra_headers = request.metadata.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            headers.update(
+                {
+                    name: value
+                    for name, value in extra_headers.items()
+                    if isinstance(name, str) and isinstance(value, str) and name.strip()
+                }
+            )
         payload: dict[str, Any] = {
             "model": request.model,
-            "max_tokens": request.max_tokens,
             "temperature": request.temperature,
             "messages": messages,
         }
+        # Anthropic requires max_tokens on its Messages API. This is an
+        # adapter-level protocol default, not AverQel's global chat limit.
+        anthropic_max_tokens = request.max_tokens or 4096
+        payload["max_tokens"] = anthropic_max_tokens
+        if request.prompt_cache_mode == "anthropic_auto":
+            cache_control: dict[str, Any] = {"type": "ephemeral"}
+            if request.prompt_cache_retention == "1h":
+                cache_control["ttl"] = "1h"
+            payload["cache_control"] = cache_control
         if system:
             payload["system"] = system
         tools = self._tools_payload(request)
@@ -248,7 +269,9 @@ class AnthropicProvider:
             and request.tool_choice != "required"
             and self.model_supports_reasoning(request.model)
         ):
-            payload["thinking"] = self._build_thinking_payload(request.max_tokens)
+            payload["thinking"] = self._build_thinking_payload(
+                anthropic_max_tokens, request.reasoning_effort
+            )
         response = httpx_module.post(
             f"{request.base_url.rstrip('/')}/messages",
             headers=headers,
@@ -264,11 +287,12 @@ class AnthropicProvider:
         tool_calls: list[dict[str, Any]] = []
         if isinstance(content, list):
             text, thinking_text, tool_calls = self._extract_text_blocks(content)
+        usage = payload_obj.get("usage", {})
         return ChatGenerateResponse(
             content=text,
             thinking_content=thinking_text,
-            tool_calls=tool_calls or None,
-            usage=payload_obj.get("usage", {}),
+            tool_calls=tool_calls if tool_calls else None,
+            usage=usage if isinstance(usage, dict) else {},
         )
 
     async def stream_generate(self, request: ChatGenerateRequest) -> AsyncIterator[str]:
@@ -288,13 +312,28 @@ class AnthropicProvider:
             "x-api-key": request.api_key or "",
             "anthropic-version": "2023-06-01",
         }
+        extra_headers = request.metadata.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            headers.update(
+                {
+                    name: value
+                    for name, value in extra_headers.items()
+                    if isinstance(name, str) and isinstance(value, str) and name.strip()
+                }
+            )
         payload: dict[str, Any] = {
             "model": request.model,
-            "max_tokens": request.max_tokens,
             "temperature": request.temperature,
             "messages": messages,
             "stream": True,
         }
+        anthropic_max_tokens = request.max_tokens or 4096
+        payload["max_tokens"] = anthropic_max_tokens
+        if request.prompt_cache_mode == "anthropic_auto":
+            cache_control: dict[str, Any] = {"type": "ephemeral"}
+            if request.prompt_cache_retention == "1h":
+                cache_control["ttl"] = "1h"
+            payload["cache_control"] = cache_control
         if system:
             payload["system"] = system
         tools = self._tools_payload(request)
@@ -308,7 +347,7 @@ class AnthropicProvider:
             and request.tool_choice != "required"
             and self.model_supports_reasoning(request.model)
         ):
-            payload["thinking"] = self._build_thinking_payload(request.max_tokens)
+            payload["thinking"] = self._build_thinking_payload(anthropic_max_tokens)
         async with httpx_module.AsyncClient(
             timeout=float(request.metadata.get("timeout_seconds", 8.0))
         ) as client:
@@ -340,6 +379,9 @@ class AnthropicProvider:
                         payload_obj = json.loads(data)
                     except json.JSONDecodeError:
                         continue
+                    usage = payload_obj.get("usage")
+                    if isinstance(usage, dict):
+                        yield {"type": "usage", "usage": usage}
                     if event_name == "content_block_delta":
                         delta = payload_obj.get("delta", {})
                         if not isinstance(delta, dict):
@@ -457,6 +499,7 @@ class AnthropicProvider:
                     "inputTokenLimit",
                 ),
             )
+            max_output_tokens = extract_max_output_tokens(item)
             verified_context_window = resolve_verified_context_window(
                 model_name,
                 provider_type="anthropic",
@@ -476,11 +519,17 @@ class AnthropicProvider:
                     ),
                     context_window=context_window,
                     context_window_source=context_window_source,
+                    max_output_tokens=max_output_tokens,
                     capabilities={
                         "runtime": "anthropic",
                         **(
                             {"context_window_source": context_window_source}
                             if context_window_source
+                            else {}
+                        ),
+                        **(
+                            {"max_output_tokens": max_output_tokens}
+                            if max_output_tokens is not None
                             else {}
                         ),
                         **reasoning_capabilities("anthropic", model_name),

@@ -1036,12 +1036,21 @@ function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): T
         last.turnIndex === incoming.turnIndex
         ? lastIndex
         : -1
-      : timeline.findIndex(
-          (step) =>
-            step.type === incoming.type &&
-            (step.stepId === incoming.stepId ||
-              (step.toolId && incoming.toolId && step.toolId === incoming.toolId)),
-        );
+      : timeline.findIndex((step) => {
+          if (step.type !== incoming.type) return false;
+          if (incoming.type === "tool_call") {
+            if (step.toolName && incoming.toolName && step.toolName !== incoming.toolName) {
+              return false;
+            }
+            if (step.toolId && incoming.toolId) {
+              return step.toolId === incoming.toolId;
+            }
+          }
+          return (
+            step.stepId === incoming.stepId ||
+            Boolean(step.toolId && incoming.toolId && step.toolId === incoming.toolId)
+          );
+        });
 
   let nextTimeline = [...timeline];
 
@@ -1064,6 +1073,11 @@ function upsertTimelineStep(timeline: TimelineStep[], incoming: TimelineStep): T
   nextTimeline[index] = {
     ...existing,
     ...incoming,
+    // Keep the React identity stable while a provider streams fragments.
+    // Thinking events frequently omit step_id, so `incoming.id` may be a
+    // newly generated fallback on every fragment. Replacing the existing id
+    // remounts the timeline row, which resets its spinner and scroll state.
+    id: existing.id,
     startedAt: existing.startedAt || incoming.startedAt,
     status:
       incoming.status === "running" &&
@@ -1110,6 +1124,21 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
   const timestamp = String(data.timestamp || new Date().toISOString());
 
   switch (event.event) {
+    case "research_status":
+      return {
+        id: `research_${stepId}`,
+        stepId,
+        turnIndex,
+        phase: "exploring",
+        type: "tool_call",
+        title: String(data.message ?? "Web Research"),
+        status: data.phase === "fallback" ? "failed" : "completed",
+        startedAt: timestamp,
+        completedAt: timestamp,
+        toolName: "research_status",
+        toolOutput: data.quality ? JSON.stringify(data.quality) : undefined,
+        success: data.phase !== "fallback",
+      };
     case "agent_plan":
       return {
         id: `plan_${stepId}`,
@@ -1204,8 +1233,8 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         details: String(data.text ?? ""),
         data: { kind: "provisional_model_message" },
       };
-    // These legacy server events contain fixed descriptive text, not a model
-    // function call or a real tool result. Keep them out of the agent timeline.
+    // Observing without a concrete status is omitted; actual tool calls/results
+    // have their own auditable timeline events.
     case "agent_status":
     case "observing":
       return null;
@@ -1292,13 +1321,17 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         toolId: String(data.tool_id ?? ""),
       };
     case "error":
+      const providerUnavailable =
+        data.error_category === "provider" ||
+        data.code === "OPENCODE_FREE_TIER_CLIENT_ONLY" ||
+        data.code === "LLM_REQUEST_FAILED";
       return {
         id: `error_${stepId}`,
         stepId,
         turnIndex,
         phase: "exploring",
         type: "error",
-        title: "Execution fault",
+        title: providerUnavailable ? "Provider unavailable" : "DeepSpace error",
         status: "failed",
         startedAt: timestamp,
         completedAt: timestamp,
@@ -1393,43 +1426,11 @@ function readPositiveInteger(value: unknown): number | null {
     : null;
 }
 
-function readContextLimitSource(metadata: Record<string, unknown>): string | null {
-  const directSource = metadata.context_limit_source;
-  if (typeof directSource === "string" && directSource.trim()) {
-    return directSource.trim();
-  }
-
-  const provider = metadata.provider;
-  if (provider && typeof provider === "object" && !Array.isArray(provider)) {
-    const providerSource = (provider as Record<string, unknown>).context_limit_source;
-    if (typeof providerSource === "string" && providerSource.trim()) {
-      return providerSource.trim();
-    }
-  }
-
-  return null;
-}
-
-function isVerifiedContextLimitSource(source: string | null): boolean {
-  if (!source) {
-    return false;
-  }
-  const normalized = source.trim().toLowerCase();
-  return (
-    normalized.includes("live") ||
-    normalized.includes("verified") ||
-    normalized.includes("runtime") ||
-    normalized.includes("discovered") ||
-    normalized.includes("official_docs") ||
-    normalized.includes("officialdocs")
-  );
-}
-
 function readContextLimit(metadata: Record<string, unknown>): number | null {
-  if (!isVerifiedContextLimitSource(readContextLimitSource(metadata))) {
-    return null;
-  }
-
+  // The backend emits only resolved limits (live metadata, cached metadata,
+  // or a verified family fallback). Some provider adapters do not attach the
+  // provenance label on every stream event, so do not hide an otherwise valid
+  // positive limit merely because that optional label is absent.
   const directLimit = readPositiveInteger(metadata.context_limit);
   if (directLimit !== null) {
     return directLimit;
@@ -1444,7 +1445,14 @@ function readContextLimit(metadata: Record<string, unknown>): number | null {
   }
 
   const limitFromModel = readPositiveInteger(metadata.context_window);
-  return limitFromModel;
+  if (limitFromModel !== null) {
+    return limitFromModel;
+  }
+
+  // Never infer a limit from an untrusted source or from the model name here.
+  // The caller will correctly display Unavailable when no resolved limit was
+  // supplied by the backend.
+  return null;
 }
 
 function readProviderType(metadata: Record<string, unknown>): string | null {
@@ -2193,6 +2201,11 @@ export function findPendingUserQuestion(
   for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
     const message = messages[messageIndex];
     if (message?.role !== "assistant") continue;
+    // Answer messages are persisted separately and collapsed back onto the
+    // assistant turn during history hydration. Once attached, this turn is
+    // no longer resumable even if its durable activity step still says
+    // `awaiting_approval`.
+    if (message.userQuestionAnswer?.trim()) continue;
     for (let stepIndex = (message.agentSteps?.length ?? 0) - 1; stepIndex >= 0; stepIndex -= 1) {
       const step = message.agentSteps?.[stepIndex];
       const questionId = step?.data?.question_id;
@@ -2207,44 +2220,6 @@ export function findPendingUserQuestion(
     }
   }
   return null;
-}
-
-/** Prevent a pending clarification from capturing an unrelated new request. */
-export function shouldResumePendingUserQuestion(
-  messages: DeepSpaceMessage[],
-  prompt: string,
-): boolean {
-  const pending = findPendingUserQuestion(messages);
-  if (!pending) return false;
-  const normalizedPrompt = prompt.trim().toLowerCase();
-  if (/^(?:hi|hello|hey)(?:\s+there)?[!.]?$/.test(normalizedPrompt)) return false;
-
-  const serviceFromText = (value: string): string | null => {
-    const normalized = value.toLowerCase();
-    if (/\bgit\s*hub\b|\bgithub\b/.test(normalized)) return "github";
-    if (/\bgmail\b|\bgoogle\s+mail\b|\binbox\b|\bdrafts?\b|\bsent\s+box\b/.test(normalized)) {
-      return "gmail";
-    }
-    if (/\bgoogle\s+drive\b|\bmy\s+drive\b/.test(normalized)) return "drive";
-    if (/\bgoogle\s+calendar\b|\bmy\s+calendar\b/.test(normalized)) return "calendar";
-    if (/\bslack\b/.test(normalized)) return "slack";
-    return null;
-  };
-
-  const pendingMessage = messages.find((message) => message.id === pending.messageId);
-  const pendingQuestion = pendingMessage?.agentSteps
-    ?.slice()
-    .reverse()
-    .find(
-      (step) =>
-        step.type === "ask_user_question" &&
-        String(step.data?.question_id ?? "").trim() === pending.questionId,
-    );
-  const pendingService = serviceFromText(
-    String(pendingQuestion?.data?.message ?? pendingQuestion?.data?.question ?? ""),
-  );
-  const requestedService = serviceFromText(normalizedPrompt);
-  return !(pendingService && requestedService && pendingService !== requestedService);
 }
 
 function rehydrateMetricsFromHistory(
@@ -2292,6 +2267,26 @@ function rehydrateMetricsFromHistory(
   const sessionInputTokens = readNumber("session_input_tokens");
   const sessionOutputTokens = readNumber("session_output_tokens");
   const sessionTotalTokens = readNumber("session_total_tokens");
+  const requestInputTokens = readNumber("request_input_tokens");
+  const requestOutputTokens = readNumber("request_output_tokens");
+  const userVisibleInputTokens = readNumber("user_visible_input_tokens");
+  const userVisibleOutputTokens = readNumber("user_visible_output_tokens");
+  const conversationVisibleTokens = readNumber("conversation_visible_tokens");
+  const promptCacheMode =
+    typeof metadata.prompt_cache_mode === "string" ? metadata.prompt_cache_mode : undefined;
+  const promptCacheEligible =
+    typeof metadata.prompt_cache_eligible === "boolean"
+      ? metadata.prompt_cache_eligible
+      : undefined;
+  const promptCacheStatus =
+    typeof metadata.prompt_cache_status === "string" ? metadata.prompt_cache_status : undefined;
+  const readNullableNumber = (key: string): number | null | undefined =>
+    metadata[key] === null ? null : readNumber(key);
+  const systemContextTokens = readNumber("system_context_tokens");
+  const toolSchemaTokens = readNumber("tool_schema_tokens");
+  const toolResultTokens = readNumber("tool_result_tokens");
+  const cachedInputTokens = readNullableNumber("cached_input_tokens");
+  const uncachedInputTokens = readNullableNumber("uncached_input_tokens");
   const reservedOutputTokens = readNumber("reserved_output_tokens");
   const hasContextMetrics =
     contextUsedTokens !== undefined ||
@@ -2333,12 +2328,37 @@ function rehydrateMetricsFromHistory(
     ...(sessionInputTokens !== undefined ? { sessionInputTokens } : {}),
     ...(sessionOutputTokens !== undefined ? { sessionOutputTokens } : {}),
     ...(sessionTotalTokens !== undefined ? { sessionTotalTokens } : {}),
+    ...(requestInputTokens !== undefined ? { requestInputTokens } : {}),
+    ...(requestOutputTokens !== undefined ? { requestOutputTokens } : {}),
+    ...(userVisibleInputTokens !== undefined ? { userVisibleInputTokens } : {}),
+    ...(userVisibleOutputTokens !== undefined ? { userVisibleOutputTokens } : {}),
+    ...(conversationVisibleTokens !== undefined ? { conversationVisibleTokens } : {}),
+    ...(promptCacheMode !== undefined ? { promptCacheMode } : {}),
+    ...(promptCacheEligible !== undefined ? { promptCacheEligible } : {}),
+    ...(promptCacheStatus !== undefined ? { promptCacheStatus } : {}),
+    ...(systemContextTokens !== undefined ? { systemContextTokens } : {}),
+    ...(toolSchemaTokens !== undefined ? { toolSchemaTokens } : {}),
+    ...(toolResultTokens !== undefined ? { toolResultTokens } : {}),
+    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+    ...(uncachedInputTokens !== undefined ? { uncachedInputTokens } : {}),
+    ...(typeof metadata.token_category_source === "string"
+      ? { tokenCategorySource: metadata.token_category_source }
+      : {}),
     ...(reservedOutputTokens !== undefined ? { reservedOutputTokens } : {}),
     ...(typeof metadata.context_usage_source === "string"
       ? { contextUsageSource: metadata.context_usage_source }
       : {}),
     ...(typeof metadata.context_compacted === "boolean"
       ? { contextCompacted: metadata.context_compacted }
+      : {}),
+    ...(typeof metadata.context_epoch === "number"
+      ? { contextEpoch: metadata.context_epoch }
+      : {}),
+    ...(typeof metadata.context_epoch_reason === "string"
+      ? { contextEpochReason: metadata.context_epoch_reason }
+      : {}),
+    ...(Array.isArray(metadata.context_source_updates)
+      ? { contextSourceUpdates: metadata.context_source_updates.filter((item): item is string => typeof item === "string") }
       : {}),
     startedAt: createdAt,
   };
@@ -2466,7 +2486,20 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
         .map(
           (item): DeepSpaceMediaArtifact => ({
             id: String(item.id ?? ""),
-            kind: item.kind === "video" || item.kind === "audio" ? item.kind : "image",
+            kind: [
+              "image",
+              "video",
+              "audio",
+              "document",
+              "table",
+              "chart",
+              "diagram",
+              "data",
+              "code",
+              "file",
+            ].includes(String(item.kind))
+              ? (item.kind as DeepSpaceMediaArtifact["kind"])
+              : "file",
             status: item.status === "pending" || item.status === "failed" ? item.status : "ready",
             title: String(item.title ?? "Generated media"),
             content_type: String(item.content_type ?? "application/octet-stream"),
@@ -2475,6 +2508,17 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
           }),
         )
         .filter((item) => item.id && item.url)
+    : undefined;
+  const attachments = Array.isArray(metadata.attachments)
+    ? metadata.attachments
+        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+        .map((item) => ({
+          id: String(item.id ?? ""),
+          name: String(item.name ?? "Library file"),
+          content_type: String(item.content_type ?? "application/octet-stream"),
+          size_bytes: typeof item.size_bytes === "number" ? item.size_bytes : 0,
+        }))
+        .filter((item) => item.id)
     : undefined;
   // Rehydrate timeline from agentSteps if timeline is not explicitly persisted
   let timeline: TimelineStep[] = [];
@@ -2544,6 +2588,15 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
           }
           if (step.type === "tool_error") {
             return "Execution Error";
+          }
+          if (step.data?.phase === "resolving_provider") {
+            return "Model Selection";
+          }
+          if (step.data?.phase === "provider_ready") {
+            return "Provider Connection";
+          }
+          if (step.data?.phase === "finalizing") {
+            return "Turn Finalization";
           }
           const toolName = step.toolName;
           if (toolName) {
@@ -2628,6 +2681,7 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     compaction,
     memoryUsed,
     artifacts,
+    attachments,
     error: persistedError,
   };
 }
@@ -2853,13 +2907,13 @@ function reduceDeepSpaceThread(
               status:
                 action.type === "stream_interrupted"
                   ? "ready"
-                  : m.rawContent.trim() || m.thinkingContent?.trim()
+                  : m.error || m.rawContent.trim() || m.thinkingContent?.trim()
                     ? "ready"
                     : "error",
               error:
                 action.type === "stream_interrupted"
                   ? null
-                  : m.rawContent.trim() || m.thinkingContent?.trim()
+                  : m.error || m.rawContent.trim() || m.thinkingContent?.trim()
                     ? m.error
                     : {
                         code: "STREAM_INCOMPLETE",
@@ -3222,10 +3276,20 @@ function reduceDeepSpaceThread(
         if (!rawArtifact) return state;
         const artifact: DeepSpaceMediaArtifact = {
           id: String(rawArtifact.id ?? ""),
-          kind:
-            rawArtifact.kind === "video" || rawArtifact.kind === "audio"
-              ? rawArtifact.kind
-              : "image",
+          kind: [
+            "image",
+            "video",
+            "audio",
+            "document",
+            "table",
+            "chart",
+            "diagram",
+            "data",
+            "code",
+            "file",
+          ].includes(String(rawArtifact.kind))
+            ? (rawArtifact.kind as DeepSpaceMediaArtifact["kind"])
+            : "file",
           status:
             rawArtifact.status === "pending" || rawArtifact.status === "failed"
               ? rawArtifact.status
@@ -3482,10 +3546,41 @@ function reduceDeepSpaceThread(
           mission: nextMission,
           compaction: nextCompaction,
         };
+      } else if (event.event === "lifecycle") {
+        const phase = String(event.data.phase ?? "working");
+        const unavailable = phase === "provider_unavailable";
+        const modelName =
+          typeof event.data.modelName === "string" && event.data.modelName
+            ? event.data.modelName
+            : undefined;
+        const toolName =
+          phase === "resolving_provider"
+            ? "DeepSpace Router"
+            : phase === "provider_ready"
+              ? (modelName || "DeepSpace Gateway")
+              : phase === "finalizing"
+                ? "Session Store"
+                : "DeepSpace";
+
+        const step: AgentStep = {
+          id: `lifecycle_${phase}_${Date.now()}`,
+          type: "observing",
+          toolName,
+          toolOutput: String(event.data.message ?? phase),
+          status: unavailable ? "failed" : "completed",
+          startedAt: nowIso(),
+          completedAt: nowIso(),
+          data: { phase, ...(typeof event.data === "object" && event.data ? event.data : {}) },
+        };
+        nextMessages[index] = {
+          ...current,
+          agentSteps: [...(current.agentSteps ?? []), step],
+          timeline: nextTimeline,
+          mission: nextMission,
+          compaction: nextCompaction,
+        };
+        return { ...state, messages: nextMessages };
       } else if (event.event === "agent_status") {
-        // Legacy backend status strings are not execution evidence. Real tool
-        // calls/results, provider thinking, approvals, and errors have their
-        // own event types and remain visible in the timeline.
         return state;
       } else if (event.event === "agent_plan") {
         const step: AgentStep = {

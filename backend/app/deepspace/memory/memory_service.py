@@ -16,6 +16,8 @@ from app.deepspace.models.agent_memory import AgentMemory
 from app.deepspace.models.agent_memory_preferences import AgentMemoryPreferences
 from app.deepspace.models.agent_todo import AgentTodo
 from app.ingestion.services.embedding_service import EmbeddingService
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaService
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +289,50 @@ class MemoryService:
         except (TypeError, ValueError):
             return None
 
+    def _touch_lifecycle_source(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        source_type: str,
+        source_id: str,
+        activity_kind: str,
+        dependency_group_id: str | None = None,
+    ) -> None:
+        """Write only retention identity metadata for a successful memory/task mutation."""
+        tenant_uuid = self._uuid_or_none(tenant_id)
+        if tenant_uuid is None:
+            # Legacy non-UUID test/storage identities remain conservatively
+            # outside automatic lifecycle archive rather than being guessed.
+            return
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=tenant_uuid,
+            category="queues" if source_type == "agent_todo" else "memory",
+            source_type=source_type,
+            source_id=source_id,
+            owner_user_id=self._uuid_or_none(user_id),
+            dependency_group_id=dependency_group_id,
+            activity_kind=activity_kind,
+        )
+
+    def _ensure_storage_capacity(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        additional_bytes: int,
+        replacing_bytes: int = 0,
+    ) -> None:
+        tenant_uuid = self._uuid_or_none(tenant_id)
+        if tenant_uuid is None:
+            return
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_uuid,
+            user_id=self._uuid_or_none(user_id),
+            additional_bytes=additional_bytes,
+            replacing_bytes=replacing_bytes,
+        )
+
     async def get_preferences(self, *, tenant_id: str, user_id: str) -> dict[str, bool]:
         tenant_id = self._normalize_owner_id(tenant_id)
         user_id = self._normalize_owner_id(user_id)
@@ -297,8 +343,21 @@ class MemoryService:
             )
         ).scalar_one_or_none()
         if preferences is None:
+            self._ensure_storage_capacity(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                additional_bytes=3,
+            )
             preferences = AgentMemoryPreferences(tenant_id=tenant_id, user_id=user_id)
             self.db.add(preferences)
+            self.db.flush()
+            self._touch_lifecycle_source(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                source_type="memory_preferences",
+                source_id=str(preferences.id),
+                activity_kind="memory_preferences_created",
+            )
             self.db.commit()
         return self._preferences_to_dict(preferences)
 
@@ -320,6 +379,11 @@ class MemoryService:
             )
         ).scalar_one_or_none()
         if preferences is None:
+            self._ensure_storage_capacity(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                additional_bytes=3,
+            )
             preferences = AgentMemoryPreferences(tenant_id=tenant_id, user_id=user_id)
             self.db.add(preferences)
         if automatic_capture_enabled is not None:
@@ -329,6 +393,14 @@ class MemoryService:
         if memory_retrieval_enabled is not None:
             preferences.memory_retrieval_enabled = bool(memory_retrieval_enabled)
         preferences.updated_at = datetime.now(UTC)
+        self.db.flush()
+        self._touch_lifecycle_source(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source_type="memory_preferences",
+            source_id=str(preferences.id),
+            activity_kind="memory_preferences_updated",
+        )
         self.db.commit()
         return self._preferences_to_dict(preferences)
 
@@ -468,6 +540,84 @@ class MemoryService:
         if workflow_match:
             workflow_value = (
                 f"For {workflow_match.group(1).strip()}, {workflow_match.group(2).strip()}"
+            )
+
+        decision_match = re.search(
+            r"\b(?:we|i)\s+(?:have\s+)?decided\s+(?:that\s+)?(.+)$",
+            explicit_text or normalized,
+            flags=re.IGNORECASE,
+        )
+        if decision_match:
+            decision_text = decision_match.group(1).strip()
+            candidates.append(
+                cls._structured_candidate(
+                    key=f"decision_{cls._slug(decision_text)}",
+                    value=f"Decision: {decision_text}",
+                    memory_type="decision",
+                    predicate="decided",
+                    confidence=0.97 if explicit_match else 0.86,
+                    tags=["decision", "project_state"],
+                    explicit=bool(explicit_match),
+                )
+            )
+
+        commitment_match = re.search(
+            r"\b(?:i|we)\s+(?:will|must|need\s+to)\s+(.+)$",
+            explicit_text or normalized,
+            flags=re.IGNORECASE,
+        )
+        if commitment_match:
+            commitment_text = commitment_match.group(1).strip()
+            candidates.append(
+                cls._structured_candidate(
+                    key=f"commitment_{cls._slug(commitment_text)}",
+                    value=f"Commitment: {commitment_text}",
+                    memory_type="commitment",
+                    predicate="committed_action",
+                    confidence=0.94 if explicit_match else 0.8,
+                    tags=["commitment", "project_state"],
+                    explicit=bool(explicit_match),
+                )
+            )
+
+        goal_match = re.search(
+            r"\b(?:the\s+)?(?:project\s+goal|goal|objective)\s*(?:is|:|-)?\s*(.+)$",
+            explicit_text or normalized,
+            flags=re.IGNORECASE,
+        )
+        if goal_match:
+            goal_text = goal_match.group(1).strip()
+            candidates.append(
+                cls._structured_candidate(
+                    key=f"goal_{cls._slug(goal_text)}",
+                    value=f"Project goal: {goal_text}",
+                    memory_type="project_goal",
+                    predicate="has_goal",
+                    confidence=0.96 if explicit_match else 0.84,
+                    tags=["project_goal", "project_state"],
+                    explicit=bool(explicit_match),
+                )
+            )
+
+        artifact_match = re.search(
+            r"\b(?:the\s+)?(?:important\s+)?(?:file|document|artifact|library\s+item)\s+([\w./-]{2,200})\s+(?:is|contains|tracks|refers\s+to)\s+(.+)$",
+            explicit_text or normalized,
+            flags=re.IGNORECASE,
+        )
+        if artifact_match:
+            artifact_name = artifact_match.group(1).strip()
+            artifact_value = artifact_match.group(2).strip()
+            candidates.append(
+                cls._structured_candidate(
+                    key=f"artifact_{cls._slug(artifact_name)}",
+                    value=f"Artifact {artifact_name}: {artifact_value}",
+                    memory_type="artifact_reference",
+                    predicate="references_artifact",
+                    confidence=0.93 if explicit_match else 0.78,
+                    tags=["artifact_reference", "project_state"],
+                    explicit=bool(explicit_match),
+                    subject="workspace",
+                )
             )
             candidates.append(
                 cls._structured_candidate(
@@ -675,6 +825,16 @@ class MemoryService:
         existing = self.db.execute(duplicate_stmt).scalars().first()
 
         if existing:
+            self._ensure_storage_capacity(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    normalized_key, normalized_value, metadata_json, tags
+                ),
+                replacing_bytes=StorageQuotaService.estimate_bytes(
+                    existing.key, existing.value, existing.metadata_json, existing.tags
+                ),
+            )
             importance = self._importance_from_inputs(
                 key=normalized_key,
                 value=normalized_value,
@@ -823,8 +983,23 @@ class MemoryService:
                 scope=normalized_scope,
                 tags=sorted(set(tags or [])),
             )
+            self._ensure_storage_capacity(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    memory.key, memory.value, memory.metadata_json, memory.tags
+                ),
+            )
             self.db.add(memory)
 
+        self._touch_lifecycle_source(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source_type="agent_memory",
+            source_id=str(mem_id),
+            dependency_group_id=str(conversation_id) if conversation_id else None,
+            activity_kind="memory_fact_written",
+        )
         self.db.commit()
         return mem_id
 
@@ -1120,6 +1295,16 @@ class MemoryService:
         embedding, embedding_metadata = self._embed_text(
             f"{memory.key}\n{normalized_value}", tenant_id=tenant_id, user_id=user_id
         )
+        self._ensure_storage_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                memory.key, normalized_value, metadata_json, normalized_tags
+            ),
+            replacing_bytes=StorageQuotaService.estimate_bytes(
+                memory.key, memory.value, memory.metadata_json, memory.tags
+            ),
+        )
         memory.value = normalized_value
         memory.scope = normalized_scope
         memory.tags = normalized_tags
@@ -1150,6 +1335,14 @@ class MemoryService:
         memory.embedding_version = MEMORY_EMBEDDING_VERSION
         memory.content_hash = content_hash
         memory.updated_at = datetime.now(UTC)
+        self._touch_lifecycle_source(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source_type="agent_memory",
+            source_id=str(memory.id),
+            dependency_group_id=str(memory.conversation_id) if memory.conversation_id else None,
+            activity_kind="memory_fact_updated",
+        )
         self.db.commit()
         return self._memory_to_dict(memory)
 
@@ -1171,6 +1364,14 @@ class MemoryService:
         memory.status = MEMORY_STATUS_ACTIVE
         memory.source = "user_approved_consolidation"
         memory.updated_at = datetime.now(UTC)
+        self._touch_lifecycle_source(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source_type="agent_memory",
+            source_id=str(memory.id),
+            dependency_group_id=str(memory.conversation_id) if memory.conversation_id else None,
+            activity_kind="memory_fact_approved",
+        )
         self.db.commit()
         return self._memory_to_dict(memory)
 
@@ -1538,6 +1739,47 @@ class TodoService:
     def _normalize_owner_id(value: Any) -> str:
         return str(value)
 
+    def _touch_lifecycle_source(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        source_id: str,
+        activity_kind: str,
+        dependency_group_id: str | None = None,
+    ) -> None:
+        """Record a task mutation as queue/task lifecycle activity only."""
+        tenant_uuid = MemoryService._uuid_or_none(tenant_id)
+        if tenant_uuid is None:
+            return
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=tenant_uuid,
+            category="queues",
+            source_type="agent_todo",
+            source_id=source_id,
+            owner_user_id=MemoryService._uuid_or_none(user_id),
+            dependency_group_id=dependency_group_id,
+            activity_kind=activity_kind,
+        )
+
+    def _ensure_storage_capacity(
+        self,
+        *,
+        tenant_id: str,
+        user_id: str,
+        additional_bytes: int,
+        replacing_bytes: int = 0,
+    ) -> None:
+        tenant_uuid = MemoryService._uuid_or_none(tenant_id)
+        if tenant_uuid is None:
+            return
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_uuid,
+            user_id=MemoryService._uuid_or_none(user_id),
+            additional_bytes=additional_bytes,
+            replacing_bytes=replacing_bytes,
+        )
+
     def upsert_task(
         self,
         *,
@@ -1580,6 +1822,19 @@ class TodoService:
         existing = self.db.execute(stmt).scalars().first()
 
         if existing:
+            self._ensure_storage_capacity(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    content, normalized_active_form, payload, automation_payload
+                ),
+                replacing_bytes=StorageQuotaService.estimate_bytes(
+                    existing.content,
+                    existing.active_form,
+                    existing.metadata_json,
+                    existing.automation_json,
+                ),
+            )
             existing.active_form = normalized_active_form
             existing.status = normalized_status
             existing.priority = normalized_priority
@@ -1597,6 +1852,13 @@ class TodoService:
             todo_id = str(existing.id)
         else:
             todo_id = str(generate_uuid7_with_fallback())
+            self._ensure_storage_capacity(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    content, normalized_active_form, payload, automation_payload
+                ),
+            )
             todo = AgentTodo(
                 id=todo_id,
                 tenant_id=tenant_id,
@@ -1615,6 +1877,13 @@ class TodoService:
             )
             self.db.add(todo)
 
+        self._touch_lifecycle_source(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source_id=todo_id,
+            dependency_group_id=thread_id,
+            activity_kind="task_upserted",
+        )
         self.db.commit()
         return todo_id
 
@@ -1644,6 +1913,13 @@ class TodoService:
 
         tenant_id = self._normalize_owner_id(tenant_id)
         user_id = self._normalize_owner_id(user_id)
+        self._ensure_storage_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                content, active_form, metadata_json, automation_json
+            ),
+        )
         todo = AgentTodo(
             id=str(generate_uuid7_with_fallback()),
             tenant_id=tenant_id,
@@ -1661,6 +1937,13 @@ class TodoService:
             last_run_at=last_run_at,
         )
         self.db.add(todo)
+        self._touch_lifecycle_source(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source_id=str(todo.id),
+            dependency_group_id=thread_id,
+            activity_kind="task_created",
+        )
         self.db.commit()
         self.db.refresh(todo)
         return self._task_to_dict(todo)
@@ -1789,6 +2072,13 @@ class TodoService:
         if "last_run_at" in updates:
             task.last_run_at = self._parse_datetime(updates["last_run_at"])
 
+        self._touch_lifecycle_source(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            source_id=str(task.id),
+            dependency_group_id=task.thread_id,
+            activity_kind="task_updated",
+        )
         self.db.commit()
         self.db.refresh(task)
         return self._task_to_dict(task)
@@ -1848,4 +2138,11 @@ class TodoService:
         task.next_run_at = next_run_at
         if status is not None:
             task.status = status
+        self._touch_lifecycle_source(
+            tenant_id=str(task.tenant_id),
+            user_id=str(task.user_id),
+            source_id=str(task.id),
+            dependency_group_id=str(task.thread_id) if task.thread_id else None,
+            activity_kind="task_run_recorded",
+        )
         self.db.commit()

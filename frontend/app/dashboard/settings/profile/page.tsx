@@ -292,7 +292,7 @@ export default function ProfilePage() {
   if (!profile) return null;
 
   return (
-    <div className="w-full space-y-8">
+    <div className="dashboard-theme-scope w-full space-y-8">
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -807,7 +807,7 @@ export default function ProfilePage() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 30 }}
               transition={{ type: "spring" as const, stiffness: 340, damping: 30 }}
-              className="settings-section relative w-full max-w-md space-y-8 p-10 shadow-2xl"
+              className="settings-section relative w-full max-w-md space-y-8 rounded-[1.25rem] p-8 shadow-2xl sm:p-10"
             >
               <div className="space-y-2">
                 <h3 className="text-foreground text-2xl font-bold tracking-tight">
@@ -829,9 +829,10 @@ export default function ProfilePage() {
                     type={showPasswords ? "text" : "password"}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="bg-muted border-glass-border text-foreground w-full rounded-xl border px-4 py-3 text-sm transition-colors outline-none focus:border-blue-500/50"
+                    className="bg-muted border-glass-border text-foreground w-full rounded-[0.8rem] border px-4 py-3 text-sm transition-colors outline-none focus:border-blue-500/50"
                   />
                   <button
+                    type="button"
                     onClick={() => setShowPasswords(!showPasswords)}
                     className="text-muted-foreground hover:text-foreground absolute top-9 right-4 transition-colors"
                   >
@@ -848,7 +849,7 @@ export default function ProfilePage() {
                       type={showPasswords ? "text" : "password"}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="bg-muted border-glass-border text-foreground w-full rounded-xl border px-4 py-3 text-sm transition-colors outline-none focus:border-blue-500/50"
+                      className="bg-muted border-glass-border text-foreground w-full rounded-[0.8rem] border px-4 py-3 text-sm transition-colors outline-none focus:border-blue-500/50"
                     />
                   </div>
                   <div className="relative">
@@ -859,7 +860,7 @@ export default function ProfilePage() {
                       type={showPasswords ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="bg-muted border-glass-border text-foreground w-full rounded-xl border px-4 py-3 text-sm transition-colors outline-none focus:border-blue-500/50"
+                      className="bg-muted border-glass-border text-foreground w-full rounded-[0.8rem] border px-4 py-3 text-sm transition-colors outline-none focus:border-blue-500/50"
                     />
                   </div>
                 </div>
@@ -886,7 +887,7 @@ export default function ProfilePage() {
                   whileTap={{ scale: 0.99 }}
                   onClick={() => setShowPasswordModal(false)}
                   disabled={changing}
-                  className="bg-muted text-muted-foreground hover:bg-muted/80 border-glass-border flex-1 rounded-xl border px-6 py-3 text-sm font-bold tracking-widest uppercase transition-all"
+                  className="bg-muted text-muted-foreground hover:bg-muted/80 border-glass-border flex-1 rounded-[0.8rem] border px-6 py-3 text-sm font-bold tracking-widest uppercase transition-all"
                 >
                   Cancel
                 </motion.button>
@@ -895,7 +896,7 @@ export default function ProfilePage() {
                   whileTap={{ scale: 0.99 }}
                   onClick={handleChangePassword}
                   disabled={changing || !currentPassword || !newPassword || !confirmPassword}
-                  className="disabled:bg-muted disabled:text-muted-foreground flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-3 text-sm font-bold tracking-widest text-white uppercase shadow-lg shadow-blue-900/20 transition-all hover:from-blue-500 hover:to-blue-400"
+                  className="disabled:bg-muted disabled:text-muted-foreground flex flex-1 items-center justify-center gap-2 rounded-[0.8rem] bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-3 text-sm font-bold tracking-widest text-white uppercase shadow-lg shadow-blue-900/20 transition-all hover:from-blue-500 hover:to-blue-400"
                 >
                   {changing ? (
                     <Loader2 size={16} className="animate-spin" />

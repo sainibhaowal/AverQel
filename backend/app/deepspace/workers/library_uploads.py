@@ -2,23 +2,41 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
+import json
 import logging
 import uuid
+from typing import Any
 
 from celery import Task
 from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
+from app.deepspace.services.dataset_derivatives import (
+    DatasetDerivativeService,
+    safe_dataset_profile,
+)
+from app.deepspace.services.library_storage import LibraryStorageService, safe_archive_entries
 from app.deepspace.services.library_uploads import finalize_upload
 from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
+from app.system.services.metrics_service import (
+    increment_worker_dead_letter,
+    increment_worker_retry,
+    observe_worker_stage,
+)
 from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(bind=True, name="deepspace.library_upload_finalize")  # type: ignore[misc]
+@celery_app.task(
+    bind=True,
+    name="deepspace.library_upload_finalize",
+    queue="library_uploads",
+)  # type: ignore[misc]
 def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> str:
     """Assemble chunks, create the normal Library file, and publish completion in PostgreSQL."""
     del self
@@ -77,6 +95,10 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
         upload.received_chunks = list(range(upload.total_chunks))
         upload.status = "completed"
         db.commit()
+        if DatasetDerivativeService.supports(record.content_type):
+            profile_library_dataset.delay(file_id=str(record.id), tenant_id=tenant_id)
+        else:
+            profile_library_media.delay(file_id=str(record.id), tenant_id=tenant_id)
         return str(record.id)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
@@ -107,5 +129,198 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
             db.execute(text("RESET ROLE"))
             db.commit()
         except Exception:  # noqa: BLE001
+            db.rollback()
+        db.close()
+
+
+@celery_app.task(
+    bind=True,
+    name="deepspace.library_dataset_profile",
+    queue="dataset_indexing",
+    max_retries=3,
+)  # type: ignore[misc]
+def profile_library_dataset(self: Task, *, file_id: str, tenant_id: str) -> str:
+    """Profile structured files off the API path and persist bounded metadata."""
+    settings = get_settings()
+    parsed_file_id = uuid.UUID(file_id)
+    parsed_tenant_id = uuid.UUID(tenant_id)
+    db = get_session_factory()()
+    try:
+        with observe_worker_stage("deepspace_library_dataset_profile"):
+            db.execute(text("SET ROLE aks_app"))
+            set_db_tenant_context(db, parsed_tenant_id)
+            from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+
+            file = db.execute(
+                select(DeepSpaceWorkspaceFile).where(
+                    DeepSpaceWorkspaceFile.id == parsed_file_id,
+                    DeepSpaceWorkspaceFile.tenant_id == parsed_tenant_id,
+                )
+            ).scalar_one_or_none()
+            if file is None or not DatasetDerivativeService.supports(file.content_type):
+                return "skipped"
+            payload = (
+                LibraryStorageService(settings).storage.get_bytes(
+                    bucket=file.storage_bucket, object_key=file.storage_key
+                )
+                if file.storage_bucket and file.storage_key
+                else (file.content or "").encode("utf-8")
+            )
+            derivative = DatasetDerivativeService(settings).build(
+                tenant_id=parsed_tenant_id,
+                file_id=file.id,
+                filename=file.name,
+                content_type=file.content_type,
+                payload=payload,
+            )
+            metadata = dict(file.metadata_json or {})
+            metadata["dataset_profile"] = safe_dataset_profile(derivative)
+            file.metadata_json = metadata
+            db.commit()
+            return "profiled"
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        if self.request.retries < self.max_retries:
+            increment_worker_retry(stage="deepspace_library_dataset_profile")
+            logger.warning(
+                "Library dataset profiling retry scheduled",
+                extra={"file_id": file_id, "retry": self.request.retries + 1},
+                exc_info=True,
+            )
+            raise self.retry(exc=exc, countdown=min(60, 2 ** (self.request.retries + 1))) from exc
+        increment_worker_dead_letter(stage="deepspace_library_dataset_profile")
+        logger.exception("Library dataset profiling exhausted retries", extra={"file_id": file_id})
+        try:
+            from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+
+            file = db.execute(
+                select(DeepSpaceWorkspaceFile).where(
+                    DeepSpaceWorkspaceFile.id == parsed_file_id,
+                    DeepSpaceWorkspaceFile.tenant_id == parsed_tenant_id,
+                )
+            ).scalar_one_or_none()
+            if file is not None:
+                metadata = dict(file.metadata_json or {})
+                metadata["dataset_profile"] = {
+                    "status": "failed",
+                    "error_code": "DATASET_PARSE_FAILED",
+                }
+                file.metadata_json = metadata
+                db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+        raise
+    finally:
+        try:
+            db.execute(text("RESET ROLE"))
+            db.commit()
+        except Exception:
+            db.rollback()
+        db.close()
+
+
+@celery_app.task(
+    bind=True,
+    name="deepspace.library_media_derivative",
+    queue="media_derivatives",
+    max_retries=3,
+)  # type: ignore[misc]
+def profile_library_media(self: Task, *, file_id: str, tenant_id: str) -> str:
+    """Create a bounded private manifest for non-tabular files off the API path.
+
+    Existing OCR/document extraction remains the source of extracted text. This
+    derivative adds durable format metadata, safe archive inventory, and media
+    dimensions without copying decoded payloads into PostgreSQL or prompts.
+    """
+    settings = get_settings()
+    parsed_file_id = uuid.UUID(file_id)
+    parsed_tenant_id = uuid.UUID(tenant_id)
+    db = get_session_factory()()
+    try:
+        with observe_worker_stage("deepspace_library_media_derivative"):
+            db.execute(text("SET ROLE aks_app"))
+            set_db_tenant_context(db, parsed_tenant_id)
+            from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+
+            file = db.execute(
+                select(DeepSpaceWorkspaceFile).where(
+                    DeepSpaceWorkspaceFile.id == parsed_file_id,
+                    DeepSpaceWorkspaceFile.tenant_id == parsed_tenant_id,
+                )
+            ).scalar_one_or_none()
+            if file is None:
+                return "not-found"
+            payload = (
+                LibraryStorageService(settings).storage.get_bytes(
+                    bucket=file.storage_bucket, object_key=file.storage_key
+                )
+                if file.storage_bucket and file.storage_key
+                else (file.content or "").encode("utf-8")
+            )
+            manifest: dict[str, Any] = {
+                "status": "ready",
+                "source_content_type": file.content_type,
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "extracted_text_available": bool(file.extracted_text),
+            }
+            if file.content_type == "application/zip":
+                manifest["archive_entries"] = safe_archive_entries(payload)
+            elif file.content_type == "application/pdf":
+                try:
+                    from pypdf import PdfReader
+
+                    manifest["page_count"] = len(PdfReader(io.BytesIO(payload), strict=False).pages)
+                except Exception:
+                    manifest["page_count"] = None
+            elif file.content_type.startswith("image/"):
+                try:
+                    from PIL import Image
+
+                    with Image.open(io.BytesIO(payload)) as image:
+                        manifest["width"], manifest["height"], manifest["image_format"] = (
+                            image.size[0],
+                            image.size[1],
+                            image.format,
+                        )
+                except Exception:
+                    manifest["image_format"] = None
+            elif file.content_type.startswith(("audio/", "video/")):
+                manifest["media_metadata"] = (
+                    "decoder-specific metadata remains available through the media preview path"
+                )
+            derivative = StorageService(settings).put_bytes(
+                tenant_id=parsed_tenant_id,
+                document_id=uuid.uuid4(),
+                filename=f"{file.name}.manifest.json",
+                content_type="application/json",
+                payload=json.dumps(manifest, separators=(",", ":"), ensure_ascii=False).encode(
+                    "utf-8"
+                ),
+            )
+            metadata = dict(file.metadata_json or {})
+            metadata["universal_derivative"] = {
+                "status": "ready",
+                "format": file.content_type,
+                "bucket": derivative.bucket,
+                "key": derivative.object_key,
+                "manifest": manifest,
+            }
+            file.metadata_json = metadata
+            db.commit()
+            return "profiled"
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        if self.request.retries < self.max_retries:
+            increment_worker_retry(stage="deepspace_library_media_derivative")
+            raise self.retry(exc=exc, countdown=min(60, 2 ** (self.request.retries + 1))) from exc
+        increment_worker_dead_letter(stage="deepspace_library_media_derivative")
+        logger.exception("Library media derivative exhausted retries", extra={"file_id": file_id})
+        raise
+    finally:
+        try:
+            db.execute(text("RESET ROLE"))
+            db.commit()
+        except Exception:
             db.rollback()
         db.close()

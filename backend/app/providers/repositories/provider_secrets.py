@@ -8,6 +8,7 @@ from sqlalchemy import select, update
 
 from app.providers.models.provider_secret import ProviderSecret
 from app.system.repositories.base import BaseRepository
+from app.system.services.storage_quota import StorageQuotaService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
@@ -15,6 +16,15 @@ UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 class ProviderSecretsRepository(BaseRepository):
     def create_secret(self, secret: ProviderSecret) -> ProviderSecret:
         self.apply_tenant_scope(secret.tenant_id)
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=secret.tenant_id,
+            user_id=None,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                secret.secret_ciphertext,
+                secret.secret_nonce,
+                secret.secret_kid,
+            ),
+        )
         self.db.add(secret)
         self.db.flush()
         return secret
@@ -73,6 +83,23 @@ class ProviderSecretsRepository(BaseRepository):
         metadata_json: dict[str, object],
     ) -> bool:
         self.apply_tenant_scope(tenant_id)
+        current = self.get_by_provider_and_type(
+            tenant_id=tenant_id,
+            provider_config_id=provider_config_id,
+            secret_type=secret_type,
+        )
+        if current is None:
+            return False
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=None,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                secret_ciphertext, secret_nonce, secret_kid
+            ),
+            replacing_bytes=StorageQuotaService.estimate_bytes(
+                current.secret_ciphertext, current.secret_nonce, current.secret_kid
+            ),
+        )
         stmt = (
             update(ProviderSecret)
             .where(

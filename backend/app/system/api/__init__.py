@@ -7,6 +7,8 @@ from app.system.api import (
     feedback,
     health,
     metrics,
+    plans,
+    storage,
     support,
 )
 
@@ -17,5 +19,7 @@ __all__ = [
     "feedback",
     "health",
     "metrics",
+    "plans",
+    "storage",
     "support",
 ]

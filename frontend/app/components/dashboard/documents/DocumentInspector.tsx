@@ -21,6 +21,10 @@ import {
   Cpu,
   Layers3,
   RefreshCcw,
+  FileText,
+  Fingerprint,
+  RotateCcw,
+  CheckCircle2,
 } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { readApiErrorMessage } from "@/app/lib/api/documents";
@@ -35,6 +39,14 @@ interface DocumentInspectorProps {
 
 interface InspectionData {
   document_id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  sha256_hash: string;
+  language: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
   status: string;
   processing_progress: number;
   active_stage: string;
@@ -53,7 +65,31 @@ interface InspectionData {
   extraction_warnings: string[];
   embedding_provider: string | null;
   embedding_model: string | null;
+  total_chunk_count: number;
   embedded_chunk_count: number;
+  average_chunk_quality: number | null;
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "Not recorded";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)) - 1, units.length - 1);
+  return `${(bytes / 1024 ** (unitIndex + 1)).toFixed(bytes < 10 * 1024 ** (unitIndex + 1) ? 1 : 0)} ${units[unitIndex]}`;
+}
+
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function labelFor(value: string | null | undefined): string {
+  return value?.trim() ? value : "Not recorded";
 }
 
 export default function DocumentInspector({
@@ -170,10 +206,14 @@ export default function DocumentInspector({
 
   const yieldValue = data?.information_yield;
   const hasDataLoss = yieldValue !== null && yieldValue !== undefined && yieldValue < 100;
-  const coverageScore = data?.extraction_coverage_score ?? 0;
+  const coverageScore = data?.extraction_coverage_score;
   const progressValue = data?.processing_progress ?? 0;
-  const embeddingProvider = data?.embedding_provider ?? "Pending";
-  const embeddingModel = data?.embedding_model ?? "Pending";
+  const embeddingProvider = labelFor(data?.embedding_provider);
+  const embeddingModel = labelFor(data?.embedding_model);
+  const embeddingCoverage =
+    data && data.total_chunk_count > 0
+      ? Math.round((data.embedded_chunk_count / data.total_chunk_count) * 100)
+      : null;
 
   if (!mounted) return null;
 
@@ -239,9 +279,19 @@ export default function DocumentInspector({
                         <Layers3 size={14} className="text-accent" /> Information Yield
                       </span>
                       <span
-                        className={`text-xl font-black tabular-nums ${Number(yieldValue ?? 0) > 80 ? "text-emerald-500" : Number(yieldValue ?? 0) > 50 ? "text-accent" : "text-danger"}`}
+                        className={`text-xl font-black tabular-nums ${
+                          yieldValue === null || yieldValue === undefined
+                            ? "text-foreground/50 text-sm"
+                            : yieldValue > 80
+                              ? "text-emerald-500"
+                              : yieldValue > 50
+                                ? "text-accent"
+                                : "text-danger"
+                        }`}
                       >
-                        {Math.round(Number(yieldValue ?? 0))}%
+                        {yieldValue === null || yieldValue === undefined
+                          ? "Not measured"
+                          : `${Math.round(yieldValue)}%`}
                       </span>
                     </div>
                     <div className="bg-foreground/5 relative h-2 w-full overflow-hidden rounded-full">
@@ -258,14 +308,18 @@ export default function DocumentInspector({
                         }`}
                       />
                     </div>
+                    {(yieldValue === null || yieldValue === undefined) && (
+                      <p className="text-foreground/50 mt-3 text-[11px] font-medium">
+                        Measured after extraction and embedding complete.
+                      </p>
+                    )}
                     {hasDataLoss && (
                       <div className="bg-warning/5 border-warning/10 mt-4 flex items-start gap-3 rounded-xl border p-4">
                         <AlertTriangle size={16} className="text-warning mt-0.5 shrink-0" />
                         <p className="text-warning text-[11px] leading-relaxed font-medium">
                           <strong className="text-warning uppercase">Partial Capture.</strong>{" "}
-                          Approximately {Math.round(100 - Number(yieldValue ?? 0))}% of content was
-                          discarded. This usually happens with non-selectable text or complex
-                          diagrams.
+                          The measured extraction-and-embedding yield is {Math.round(yieldValue ?? 0)}%.
+                          Review the recorded extraction warnings below before relying on omitted content.
                         </p>
                       </div>
                     )}
@@ -278,7 +332,9 @@ export default function DocumentInspector({
                         <Zap size={12} className="text-accent" /> Coverage
                       </p>
                       <p className="text-foreground text-2xl font-black tracking-tighter tabular-nums">
-                        {Math.round(Number(coverageScore) * 100)}%
+                        {coverageScore === null || coverageScore === undefined
+                          ? "Not measured"
+                          : `${Math.round(coverageScore * 100)}%`}
                       </p>
                     </div>
                     <div className="border-glass-border hover-yellow dark:bg-surface-1/80 rounded-[1.35rem] border bg-white p-5 shadow-[0_12px_28px_-26px_rgba(15,23,42,0.14)] transition-all">
@@ -286,7 +342,7 @@ export default function DocumentInspector({
                         <Cpu size={12} className="text-primary" /> Pipeline
                       </p>
                       <p className="text-foreground truncate text-sm font-black tracking-tight">
-                        {data.extraction_method || "standard_v1"}
+                        {labelFor(data.extraction_method)}
                       </p>
                     </div>
                     <div className="border-glass-border hover-yellow dark:bg-surface-1/80 rounded-[1.35rem] border bg-white p-5 shadow-[0_12px_28px_-26px_rgba(15,23,42,0.14)] transition-all">
@@ -334,13 +390,17 @@ export default function DocumentInspector({
                     </div>
                     <div className="border-glass-border dark:bg-surface-1/80 rounded-[1.35rem] border bg-white p-4 shadow-[0_12px_28px_-26px_rgba(15,23,42,0.14)]">
                       <p className="text-foreground/50 mb-2 flex items-center gap-1.5 text-[9px] font-black tracking-[0.2em] uppercase">
-                        <Database size={12} className="text-primary/60" /> Vectors
+                        <Database size={12} className="text-primary/60" /> Indexed vectors
                       </p>
                       <div className="flex items-center justify-between">
                         <p className="text-foreground text-[13px] font-black tabular-nums">
-                          {data?.embedded_chunk_count || 0} Chunks
+                          {data.embedded_chunk_count} / {data.total_chunk_count} chunks
                         </p>
-                        <Zap size={14} className="text-accent animate-pulse" />
+                        {embeddingCoverage === 100 ? (
+                          <CheckCircle2 size={14} className="text-emerald-500" />
+                        ) : (
+                          <Zap size={14} className="text-accent" />
+                        )}
                       </div>
                     </div>
                     <div className="border-glass-border dark:bg-surface-1/80 rounded-[1.35rem] border bg-white p-4 shadow-[0_12px_28px_-26px_rgba(15,23,42,0.14)]">
@@ -358,12 +418,65 @@ export default function DocumentInspector({
                     </div>
                   </div>
 
+                  <div className="border-glass-border dark:bg-surface-1/80 rounded-[1.45rem] border bg-white p-5 shadow-[0_12px_28px_-26px_rgba(15,23,42,0.14)]">
+                    <div className="mb-4 flex items-center justify-between gap-4">
+                      <p className="text-foreground/80 flex items-center gap-2 text-[10px] font-black tracking-[0.25em] uppercase">
+                        <FileText size={14} className="text-primary" /> Document record
+                      </p>
+                      <span className="text-foreground/45 text-[10px] font-bold tabular-nums">
+                        Updated {formatTimestamp(data.updated_at)}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {[
+                        ["Format", data.content_type || "Not recorded"],
+                        ["Source size", formatBytes(data.size_bytes)],
+                        ["Language", labelFor(data.language)],
+                        ["Revision", `v${data.version}`],
+                      ].map(([label, value]) => (
+                        <div key={label} className="bg-foreground/[0.025] min-w-0 rounded-xl border border-black/[0.05] p-3 dark:border-white/[0.07]">
+                          <p className="text-foreground/45 text-[8px] font-black tracking-[0.18em] uppercase">{label}</p>
+                          <p className="text-foreground mt-1 truncate text-[11px] font-bold" title={value}>{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-glass-border mt-3 flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2">
+                      <Fingerprint size={13} className="text-primary shrink-0" />
+                      <span className="text-foreground/45 shrink-0 text-[9px] font-black tracking-[0.16em] uppercase">SHA-256</span>
+                      <code className="text-foreground/75 min-w-0 truncate text-[10px] font-semibold" title={data.sha256_hash}>{data.sha256_hash}</code>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="border-glass-border dark:bg-surface-1/80 rounded-[1.35rem] border bg-white p-4 shadow-[0_12px_28px_-26px_rgba(15,23,42,0.14)]">
+                      <p className="text-foreground/50 mb-2 flex items-center gap-1.5 text-[9px] font-black tracking-[0.2em] uppercase">
+                        <Layers3 size={12} className="text-primary/60" /> Chunk coverage
+                      </p>
+                      <p className="text-foreground text-[13px] font-black tabular-nums">
+                        {data.total_chunk_count === 0 ? "No extracted chunks" : `${data.embedded_chunk_count} of ${data.total_chunk_count} embedded`}
+                      </p>
+                      <p className="text-foreground/50 mt-1 text-[10px] font-medium">
+                        {embeddingCoverage === null ? "Available after chunking." : `${embeddingCoverage}% of extracted chunks have stored vectors.`}
+                      </p>
+                    </div>
+                    <div className="border-glass-border dark:bg-surface-1/80 rounded-[1.35rem] border bg-white p-4 shadow-[0_12px_28px_-26px_rgba(15,23,42,0.14)]">
+                      <p className="text-foreground/50 mb-2 flex items-center gap-1.5 text-[9px] font-black tracking-[0.2em] uppercase">
+                        <RotateCcw size={12} className="text-primary/60" /> Processing attempts
+                      </p>
+                      <p className="text-foreground text-[13px] font-black tabular-nums">
+                        {data.attempt_count === null || data.max_attempts === null ? "No job record" : `${data.attempt_count} of ${data.max_attempts}`}
+                      </p>
+                      <p className="text-foreground/50 mt-1 text-[10px] font-medium">
+                        {data.average_chunk_quality === null ? "Chunk quality not recorded." : `Average chunk quality: ${Math.round(data.average_chunk_quality * 100)}%.`}
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Processing Status */}
                   <div className="group border-glass-border border-l-primary dark:bg-surface-1/80 rounded-[1.45rem] border border-l-4 bg-white p-6 shadow-[0_14px_36px_-28px_rgba(15,23,42,0.18)]">
                     <div className="mb-4 flex items-center justify-between">
                       <span className="text-foreground/60 flex items-center gap-2 text-[10px] font-black tracking-[0.3em] uppercase">
-                        <RefreshCcw size={14} className="animate-spin-slow text-primary" /> Vector
-                        Engine Status
+                        <RefreshCcw size={14} className="animate-spin-slow text-primary" /> Ingestion status
                       </span>
                       <span
                         className={`theme-pill !text-[10px] ${
@@ -387,7 +500,7 @@ export default function DocumentInspector({
                       <span className="text-foreground/90 max-w-[200px] truncate font-black">
                         {data.active_stage ||
                           data.ingestion_status ||
-                          "Awaiting Node Assignment..."}
+                          "No active job record"}
                       </span>
                       <span className="text-primary text-sm font-black tabular-nums">
                         {progressValue}%
@@ -414,10 +527,10 @@ export default function DocumentInspector({
                         {data.extraction_warnings.map((w, i) => (
                           <li
                             key={i}
-                            className="text-warning/90 flex items-start gap-3 font-mono text-[11px] font-bold"
+                            className="text-warning/90 flex min-w-0 items-start gap-3 font-mono text-[11px] font-bold"
                           >
                             <div className="bg-warning/40 mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" />
-                            {w}
+                            <span className="min-w-0 flex-1 break-all whitespace-normal">{w}</span>
                           </li>
                         ))}
                       </ul>

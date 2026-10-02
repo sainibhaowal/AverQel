@@ -15,7 +15,7 @@ import {
   Zap,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { fetchWithAuth } from "@/lib/api";
@@ -66,6 +66,7 @@ export default function NotificationCenter() {
   const [busy, setBusy] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [now, setNow] = useState<number | null>(null);
+  const notificationsRequestInFlight = useRef(false);
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.read_at === null).length,
@@ -73,9 +74,13 @@ export default function NotificationCenter() {
   );
 
   const loadNotifications = async (options?: { silent?: boolean }) => {
+    if (notificationsRequestInFlight.current) return;
+    notificationsRequestInFlight.current = true;
     if (!options?.silent) setLoading(true);
     try {
-      const res = (await fetchWithAuth("/collections/notifications")) as Response;
+      const res = (await fetchWithAuth("/collections/notifications", {
+        timeoutMs: 10_000,
+      })) as Response;
       if (!res.ok) throw new Error(`Failed to load notifications (${res.status})`);
       setNotifications((await res.json()) as NotificationItem[]);
     } catch (error) {
@@ -83,6 +88,7 @@ export default function NotificationCenter() {
       if (!options?.silent) toast.error("Failed to load notifications.");
     } finally {
       if (!options?.silent) setLoading(false);
+      notificationsRequestInFlight.current = false;
     }
   };
 

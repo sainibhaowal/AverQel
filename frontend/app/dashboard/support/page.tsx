@@ -101,7 +101,7 @@ export default function SupportPage() {
   };
 
   return (
-    <div className="w-full space-y-8 pb-12">
+    <div className="dashboard-theme-scope w-full space-y-8 pb-12">
       {userDisabled && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}

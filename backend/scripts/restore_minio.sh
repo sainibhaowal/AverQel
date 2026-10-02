@@ -67,22 +67,28 @@ SHA_FILE="$BACKUP_FILE.sha256"
 
 cd "$BACKEND_DIR"
 
+MINIO_CONTAINER_ID="$(docker compose ps -q "$MINIO_SERVICE")"
+if [[ -z "$MINIO_CONTAINER_ID" ]]; then
+  echo "MinIO service is not running: $MINIO_SERVICE" >&2
+  exit 1
+fi
+
 if [[ "$DRY_RUN" == "false" && -f "$SHA_FILE" ]]; then
   sha256sum -c "$SHA_FILE"
 fi
 
 if [[ "$DRY_RUN" == "true" ]]; then
   if [[ "$DROP_EXISTING" == "true" ]]; then
-    echo "DRY RUN: docker compose exec -T $MINIO_SERVICE sh -c 'rm -rf /data/*'"
+    echo "DRY RUN: docker exec $MINIO_CONTAINER_ID sh -c 'rm -rf /data/*'"
   fi
-  echo "DRY RUN: cat '$BACKUP_FILE' | docker compose exec -T $MINIO_SERVICE sh -c 'tar -C /data -xzf -'"
+  echo "DRY RUN: gzip -dc '$BACKUP_FILE' | docker cp - '$MINIO_CONTAINER_ID:/data'"
   exit 0
 fi
 
 if [[ "$DROP_EXISTING" == "true" ]]; then
-  docker compose exec -T "$MINIO_SERVICE" sh -c 'rm -rf /data/*'
+  docker exec "$MINIO_CONTAINER_ID" sh -c 'rm -rf /data/*'
 fi
 
-cat "$BACKUP_FILE" | docker compose exec -T "$MINIO_SERVICE" sh -c 'tar -C /data -xzf -'
+gzip -dc "$BACKUP_FILE" | docker cp - "$MINIO_CONTAINER_ID:/data"
 
 echo "Restore completed for MinIO data from '$BACKUP_FILE'"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -9,11 +10,23 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceAgentStep
+from app.deepspace.models.message import Message
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaService, ensure_capacity_if_supported
 
 DEFAULT_RETAINED_STEPS = 10_000
 ACTIVE_RUN_STATUSES = {"running", "awaiting_user", "awaiting_approval", "cancelling"}
 WORKER_RUN_STATUSES = {"running", "cancelling"}
 DEFAULT_RUN_STALE_AFTER = timedelta(minutes=30)
+
+
+@dataclass(frozen=True)
+class UserQuestionClaim:
+    """Result of claiming a durable clarification exactly once."""
+
+    run: DeepSpaceAgentRun
+    pending: dict[str, object]
+    claimed: bool
 
 
 class DeepSpaceRuntimeStore:
@@ -41,8 +54,23 @@ class DeepSpaceRuntimeStore:
             checkpoint=dict(checkpoint or {}),
             heartbeat_at=datetime.now(UTC),
         )
+        ensure_capacity_if_supported(
+            self.db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(run.checkpoint),
+        )
         self.db.add(run)
         self.db.flush()
+        StorageLifecycleService(self.db).record_activity(
+            tenant_id=tenant_id,
+            owner_user_id=user_id,
+            category="activity_and_runs",
+            source_type="conversation",
+            source_id=str(conversation_id),
+            activity_kind="run_started",
+            size_bytes=StorageQuotaService.estimate_bytes(run.checkpoint),
+        )
         self.db.commit()
         return run
 
@@ -55,6 +83,22 @@ class DeepSpaceRuntimeStore:
         last_error: str | None = None,
     ) -> None:
         now = datetime.now(UTC)
+        run = self.db.execute(
+            select(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id)
+        ).scalar_one()
+        if checkpoint is not None or last_error is not None:
+            old_payload = StorageQuotaService.estimate_bytes(run.checkpoint, run.last_error)
+            new_payload = StorageQuotaService.estimate_bytes(
+                checkpoint if checkpoint is not None else run.checkpoint,
+                last_error if last_error is not None else run.last_error,
+            )
+            ensure_capacity_if_supported(
+                self.db,
+                tenant_id=run.tenant_id,
+                user_id=run.user_id,
+                additional_bytes=new_payload,
+                replacing_bytes=old_payload,
+            )
         values: dict[str, Any] = {"updated_at": now}
         if status is not None:
             values["status"] = status
@@ -66,6 +110,15 @@ class DeepSpaceRuntimeStore:
             values["heartbeat_at"] = now
         self.db.execute(
             update(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id).values(**values)
+        )
+        StorageLifecycleService(self.db).record_activity(
+            tenant_id=run.tenant_id,
+            owner_user_id=run.user_id,
+            category="activity_and_runs",
+            source_type="conversation",
+            source_id=str(run.conversation_id),
+            activity_kind="run_checkpoint",
+            size_bytes=StorageQuotaService.estimate_bytes(run.checkpoint, run.last_error),
         )
         self.db.commit()
 
@@ -140,6 +193,19 @@ class DeepSpaceRuntimeStore:
             input_json=self._bounded_json(input_json),
             result_json=self._bounded_json(result_json),
         )
+        ensure_capacity_if_supported(
+            self.db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                step.step_type,
+                step.tool_name,
+                step.tool_call_id,
+                step.status,
+                step.input_json,
+                step.result_json,
+            ),
+        )
         self.db.add(step)
         run.last_sequence = sequence
         run.step_count = int(run.step_count or 0) + 1
@@ -161,6 +227,22 @@ class DeepSpaceRuntimeStore:
             self.db.execute(
                 delete(DeepSpaceAgentStep).where(DeepSpaceAgentStep.id.in_(old_step_ids))
             )
+        StorageLifecycleService(self.db).record_activity(
+            tenant_id=tenant_id,
+            owner_user_id=user_id,
+            category="activity_and_runs",
+            source_type="conversation",
+            source_id=str(conversation_id),
+            activity_kind="run_step",
+            size_bytes=StorageQuotaService.estimate_bytes(
+                step.step_type,
+                step.tool_name,
+                step.tool_call_id,
+                step.status,
+                step.input_json,
+                step.result_json,
+            ),
+        )
         self.db.commit()
         return sequence
 
@@ -229,6 +311,7 @@ class DeepSpaceRuntimeStore:
                 "tool_start",
                 "tool_result",
                 "approval_requested",
+                "research_step",
             }:
                 continue
             payload = dict(step.result_json or {})
@@ -252,6 +335,37 @@ class DeepSpaceRuntimeStore:
                 }
             )
         return result
+
+    def replayable_tool_results(self, *, run_id: uuid.UUID) -> list[dict[str, object]]:
+        """Return successful tool results needed to continue a failed run safely."""
+        steps = (
+            self.db.execute(
+                select(DeepSpaceAgentStep)
+                .where(
+                    DeepSpaceAgentStep.run_id == run_id,
+                    DeepSpaceAgentStep.step_type == "tool_result",
+                    DeepSpaceAgentStep.status == "completed",
+                )
+                .order_by(DeepSpaceAgentStep.sequence.asc())
+            )
+            .scalars()
+            .all()
+        )
+        replay: list[dict[str, object]] = []
+        for step in steps:
+            payload = dict(step.result_json or {})
+            output = payload.get("output")
+            if not step.tool_name or not step.tool_call_id or not isinstance(output, str):
+                continue
+            replay.append(
+                {
+                    "tool_name": step.tool_name,
+                    "tool_call_id": step.tool_call_id,
+                    "arguments": dict(step.input_json or {}),
+                    "output": output,
+                }
+            )
+        return replay
 
     def get_run_for_approval(
         self,
@@ -283,6 +397,30 @@ class DeepSpaceRuntimeStore:
             if isinstance(pending, dict) and str(pending.get("approval_id") or "") == approval_id:
                 return run
         return None
+
+    def get_failed_run_for_request_id(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        request_id: str,
+    ) -> DeepSpaceAgentRun | None:
+        """Return a failed run that belongs to the requested durable turn."""
+        return self.db.execute(
+            select(DeepSpaceAgentRun)
+            .join(Message, Message.id == DeepSpaceAgentRun.assistant_message_id)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.status.in_({"failed", "blocked"}),
+                Message.conversation_id == conversation_id,
+                Message.metadata_json["client_request_id"].astext == request_id,
+            )
+            .order_by(DeepSpaceAgentRun.updated_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
 
     def get_run_for_user_question(
         self,
@@ -316,6 +454,100 @@ class DeepSpaceRuntimeStore:
             checkpoint = run.checkpoint if isinstance(run.checkpoint, dict) else {}
             pending = checkpoint.get("pending_user_question")
             if isinstance(pending, dict) and str(pending.get("question_id") or "") == question_id:
+                return run
+        return None
+
+    def claim_user_question(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        question_id: str,
+        answer: str,
+    ) -> UserQuestionClaim | None:
+        """Atomically claim one question, or report that its accepted answer is in progress.
+
+        The row lock is intentionally acquired before checking the JSON checkpoint.  A
+        browser retry, a second tab, or an SSE reconnect can therefore never start a
+        second provider continuation for the same question.
+        """
+        runs = (
+            self.db.execute(
+                select(DeepSpaceAgentRun)
+                .where(
+                    DeepSpaceAgentRun.tenant_id == tenant_id,
+                    DeepSpaceAgentRun.user_id == user_id,
+                    DeepSpaceAgentRun.conversation_id == conversation_id,
+                    DeepSpaceAgentRun.status.in_({"awaiting_user", "running"}),
+                )
+                .order_by(DeepSpaceAgentRun.updated_at.desc())
+                .with_for_update()
+            )
+            .scalars()
+            .all()
+        )
+        for run in runs:
+            checkpoint = dict(run.checkpoint) if isinstance(run.checkpoint, dict) else {}
+            raw_pending = checkpoint.get("pending_user_question")
+            if (
+                not isinstance(raw_pending, dict)
+                or str(raw_pending.get("question_id") or "") != question_id
+            ):
+                continue
+            pending = dict(raw_pending)
+            if run.status == "running" and checkpoint.get("phase") in {
+                "question_claimed",
+                "question_resumed",
+            }:
+                return UserQuestionClaim(run=run, pending=pending, claimed=False)
+            if run.status != "awaiting_user":
+                continue
+            pending["answer"] = answer
+            pending["answer_submitted_at"] = datetime.now(UTC).isoformat()
+            checkpoint.update(
+                {
+                    "status": "running",
+                    "phase": "question_claimed",
+                    "pending_user_question": pending,
+                }
+            )
+            run.status = "running"
+            run.checkpoint = checkpoint
+            run.updated_at = datetime.now(UTC)
+            run.heartbeat_at = datetime.now(UTC)
+            self.db.add(run)
+            self.db.flush()
+            return UserQuestionClaim(run=run, pending=pending, claimed=True)
+        return None
+
+    def get_claimed_user_question(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        question_id: str,
+    ) -> DeepSpaceAgentRun | None:
+        """Return the single continuation that was already claimed by the API."""
+        runs = self.db.execute(
+            select(DeepSpaceAgentRun)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.status == "running",
+            )
+            .order_by(DeepSpaceAgentRun.updated_at.desc())
+        ).scalars()
+        for run in runs:
+            checkpoint = run.checkpoint if isinstance(run.checkpoint, dict) else {}
+            pending = checkpoint.get("pending_user_question")
+            if (
+                checkpoint.get("phase") in {"question_claimed", "question_resumed"}
+                and isinstance(pending, dict)
+                and str(pending.get("question_id") or "") == question_id
+            ):
                 return run
         return None
 
@@ -374,6 +606,7 @@ class DeepSpaceRuntimeStore:
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
         conversation_id: uuid.UUID,
+        commit: bool = True,
     ) -> bool:
         result = self.db.execute(
             update(DeepSpaceAgentRun)
@@ -385,10 +618,50 @@ class DeepSpaceRuntimeStore:
             )
             .values(cancel_requested=True, status="cancelling", updated_at=datetime.now(UTC))
         )
-        self.db.commit()
+        if commit:
+            self.db.commit()
         return bool(getattr(result, "rowcount", 0))
 
+    def finish_requested_cancellations(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+    ) -> int:
+        """Finalize cancellation requests that a worker has acknowledged.
+
+        Cancellation is intentionally cooperative: the API marks a live run
+        ``cancelling`` and the worker stops it at a safe boundary.  The worker
+        must also close the durable run record.  Otherwise a completed queue
+        cancellation leaves an active-looking run that blocks every later turn
+        in the conversation.
+        """
+        result = self.db.execute(
+            update(DeepSpaceAgentRun)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.status == "cancelling",
+                DeepSpaceAgentRun.cancel_requested.is_(True),
+            )
+            .values(
+                status="cancelled",
+                heartbeat_at=None,
+                updated_at=datetime.now(UTC),
+                last_error="user_cancelled",
+            )
+        )
+        self.db.commit()
+        return int(getattr(result, "rowcount", 0) or 0)
+
     def finish(self, *, run_id: uuid.UUID, status: str, error: str | None = None) -> None:
+        run = self.db.execute(
+            select(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id)
+        ).scalar_one_or_none()
+        if run is None:
+            return
         values: dict[str, Any] = {
             "status": status,
             "updated_at": datetime.now(UTC),
@@ -399,6 +672,15 @@ class DeepSpaceRuntimeStore:
         try:
             self.db.execute(
                 update(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id).values(**values)
+            )
+            StorageLifecycleService(self.db).record_activity(
+                tenant_id=run.tenant_id,
+                owner_user_id=run.user_id,
+                category="activity_and_runs",
+                source_type="conversation",
+                source_id=str(run.conversation_id),
+                activity_kind="run_finished",
+                size_bytes=StorageQuotaService.estimate_bytes(error),
             )
             self.db.commit()
         except SQLAlchemyError:

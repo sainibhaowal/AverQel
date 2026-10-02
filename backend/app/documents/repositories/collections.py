@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import TypedDict
 
 from sqlalchemy import delete, func, select
@@ -15,6 +16,8 @@ from app.documents.models.document import Document
 from app.platform.database.session import set_db_tenant_context
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaService
 
 
 class CollectionPermissionPayload(TypedDict):
@@ -92,6 +95,14 @@ class CollectionsRepository(BaseRepository):
         with observe_db_query("collections.create"):
             self.db.add(collection)
             self.db.flush()
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=collection.tenant_id,
+            category="collections",
+            source_type="collection",
+            source_id=str(collection.id),
+            dependency_group_id=str(collection.id),
+            activity_kind="collection_created",
+        )
         return collection
 
     def get_by_id(
@@ -197,6 +208,14 @@ class CollectionsRepository(BaseRepository):
                     document_id=doc_id,
                 )
                 self.db.add(cd)
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=tenant_id,
+            category="collections",
+            source_type="collection",
+            source_id=str(collection_id),
+            dependency_group_id=str(collection_id),
+            activity_kind="collection_documents_changed",
+        )
 
     def add_documents_for_user_global(
         self,
@@ -207,6 +226,12 @@ class CollectionsRepository(BaseRepository):
     ) -> None:
         self._apply_bypass_scope()
         if not document_ids:
+            return
+
+        tenant_id = self.db.execute(
+            select(DocumentCollection.tenant_id).where(DocumentCollection.id == collection_id)
+        ).scalar_one_or_none()
+        if tenant_id is None:
             return
 
         valid_document_ids = set(
@@ -241,6 +266,14 @@ class CollectionsRepository(BaseRepository):
                         document_id=doc_id,
                     )
                 )
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=tenant_id,
+            category="collections",
+            source_type="collection",
+            source_id=str(collection_id),
+            dependency_group_id=str(collection_id),
+            activity_kind="collection_documents_changed",
+        )
 
     def remove_documents(
         self,
@@ -318,6 +351,8 @@ class CollectionsRepository(BaseRepository):
         *,
         collection_id: uuid.UUID,
         user_id: uuid.UUID,
+        limit: int = 200,
+        before: datetime | None = None,
     ) -> list[Document]:
         self._apply_bypass_scope()
         query = (
@@ -333,9 +368,41 @@ class CollectionsRepository(BaseRepository):
                 CollectionPermission.role.in_(["member", "owner", "shared"]),
                 Document.is_deleted.is_(False),
             )
-            .order_by(Document.created_at.desc())
         )
+        if before is not None:
+            query = query.where(Document.created_at < before)
+        query = query.order_by(Document.created_at.desc()).limit(max(1, min(limit, 200)))
         with observe_db_query("collections.list_documents_for_user"):
+            return list(self.db.execute(query).scalars().all())
+
+    def list_document_ids_for_user(
+        self,
+        *,
+        collection_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> list[uuid.UUID]:
+        """Return the complete authorized ID scope for collection queries.
+
+        This deliberately has no UI page-size cap: query authorization must not
+        silently truncate a collection with more than one page of documents.
+        """
+        self._apply_bypass_scope()
+        query = (
+            select(Document.id)
+            .join(CollectionDocument, CollectionDocument.document_id == Document.id)
+            .join(
+                CollectionPermission,
+                CollectionPermission.collection_id == CollectionDocument.collection_id,
+            )
+            .where(
+                CollectionDocument.collection_id == collection_id,
+                CollectionPermission.user_id == user_id,
+                CollectionPermission.role.in_(["member", "owner", "shared"]),
+                Document.is_deleted.is_(False),
+            )
+            .order_by(Document.id)
+        )
+        with observe_db_query("collections.list_document_ids_for_user"):
             return list(self.db.execute(query).scalars().all())
 
     def list_manageable_documents_for_user(
@@ -607,6 +674,8 @@ class CollectionsRepository(BaseRepository):
         self,
         *,
         collection_id: uuid.UUID,
+        limit: int = 100,
+        before: datetime | None = None,
     ) -> list[tuple[CollectionChatMessage, str, str | None]]:
         self._apply_bypass_scope()
         from app.auth.models.user import User
@@ -615,10 +684,16 @@ class CollectionsRepository(BaseRepository):
             select(CollectionChatMessage, User.email, User.avatar)
             .join(User, User.id == CollectionChatMessage.user_id)
             .where(CollectionChatMessage.collection_id == collection_id)
-            .order_by(CollectionChatMessage.created_at.asc())
         )
+        if before is not None:
+            query = query.where(CollectionChatMessage.created_at < before)
+        query = query.order_by(
+            CollectionChatMessage.created_at.desc(), CollectionChatMessage.id.desc()
+        ).limit(max(1, min(limit, 200)))
         with observe_db_query("collections.list_chat_messages"):
-            return list(self.db.execute(query).all())
+            rows = list(self.db.execute(query).all())
+        rows.reverse()
+        return rows
 
     def create_chat_message(
         self,
@@ -626,7 +701,29 @@ class CollectionsRepository(BaseRepository):
         chat_message: CollectionChatMessage,
     ) -> CollectionChatMessage:
         self._apply_bypass_scope()
+        tenant_id = self.db.execute(
+            select(DocumentCollection.tenant_id).where(
+                DocumentCollection.id == chat_message.collection_id
+            )
+        ).scalar_one()
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=chat_message.user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                chat_message.message,
+                chat_message.reactions,
+            ),
+        )
         with observe_db_query("collections.create_chat_message"):
             self.db.add(chat_message)
             self.db.flush()
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=tenant_id,
+            category="collections",
+            source_type="collection_chat",
+            source_id=str(chat_message.id),
+            owner_user_id=chat_message.user_id,
+            dependency_group_id=str(chat_message.collection_id),
+            activity_kind="collection_chat_created",
+        )
         return chat_message

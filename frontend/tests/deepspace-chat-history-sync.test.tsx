@@ -1,13 +1,26 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AuthProvider } from "../app/context/AuthContext";
 import DeepSpaceChatClient from "../app/dashboard/deepspace/_components/DeepSpaceChatClient";
 
 const fetchWithAuthMock = vi.fn();
 const startMock = vi.fn();
 
+function renderChat(props: Partial<ComponentProps<typeof DeepSpaceChatClient>> = {}) {
+  const { activeConversationId = null, ...rest } = props;
+  return render(
+    <AuthProvider>
+      <DeepSpaceChatClient activeConversationId={activeConversationId} {...rest} />
+    </AuthProvider>,
+  );
+}
+
 vi.mock("@/lib/api", () => ({
   fetchWithAuth: (...args: unknown[]) => fetchWithAuthMock(...args),
+  isDesktopEnvironment: () => false,
+  getAccessTokenExpiry: () => null,
 }));
 
 vi.mock("@/lib/providers-api", () => ({
@@ -53,14 +66,19 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceThread", () => ({
   default: ({
     messages,
     onRegenerate,
+    onSubmitUserQuestion,
   }: {
     messages: Array<{ role: string; content: string; id: string }>;
     onRegenerate?: (messageId: string) => void;
+    onSubmitUserQuestion?: (answer: string) => Promise<void>;
   }) => (
     <div data-testid="deepspace-thread">
       {messages.map((message) => `${message.role}:${message.content}`).join("|")}
       <button type="button" onClick={() => onRegenerate?.(messages[0]?.id ?? "assistant-1")}>
         Regenerate
+      </button>
+      <button type="button" onClick={() => void onSubmitUserQuestion?.("Markdown")}>
+        Answer Clarification
       </button>
     </div>
   ),
@@ -119,7 +137,7 @@ describe("DeepSpaceChatClient history sync", () => {
   });
 
   it("reloads the saved assistant reply after a blank stream finishes", async () => {
-    render(<DeepSpaceChatClient activeConversationId="conv-1" />);
+    renderChat({ activeConversationId: "conv-1" });
 
     await waitFor(() => {
       expect(
@@ -170,7 +188,7 @@ describe("DeepSpaceChatClient history sync", () => {
       return { ok: true, json: async () => ({}) };
     });
 
-    render(<DeepSpaceChatClient activeConversationId="conv-1" />);
+    renderChat({ activeConversationId: "conv-1" });
 
     await waitFor(() => {
       expect(startMock).toHaveBeenCalledWith(
@@ -180,6 +198,114 @@ describe("DeepSpaceChatClient history sync", () => {
             conversation_id: "conv-1",
             client_request_id: "request-running-1",
             reconnect: true,
+          }),
+        }),
+      );
+    });
+  });
+
+  it("never treats a normal composer message as an answer to an older clarification", async () => {
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        return {
+          ok: true,
+          json: async () => ({
+            messages: [
+              {
+                id: "assistant-question-1",
+                role: "assistant",
+                content: "Which format should I use?",
+                created_at: new Date().toISOString(),
+                metadata_json: {
+                  status: "awaiting_user",
+                  pending_user_question: {
+                    question_id: "question-1",
+                    message: "Which format should I use?",
+                  },
+                  agent_steps: [
+                    {
+                      id: "question-step-1",
+                      type: "ask_user_question",
+                      status: "awaiting_approval",
+                      data: {
+                        question_id: "question-1",
+                        message: "Which format should I use?",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    renderChat({ activeConversationId: "conv-1" });
+
+    await waitFor(() => expect(screen.getByTestId("deepspace-thread")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Set Query" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit Query" }));
+
+    await waitFor(() => {
+      expect(startMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          body: expect.objectContaining({ message: "hi", conversation_id: "conv-1" }),
+        }),
+      );
+    });
+    const body = startMock.mock.calls.at(-1)?.[1]?.body as Record<string, unknown>;
+    expect(body.resume_user_question_id).toBeUndefined();
+  });
+
+  it("resumes a clarification only from its explicit answer control", async () => {
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        return {
+          ok: true,
+          json: async () => ({
+            messages: [
+              {
+                id: "assistant-question-1",
+                role: "assistant",
+                content: "Which format should I use?",
+                created_at: new Date().toISOString(),
+                metadata_json: {
+                  status: "awaiting_user",
+                  pending_user_question: {
+                    question_id: "question-1",
+                    message: "Which format should I use?",
+                  },
+                  agent_steps: [
+                    {
+                      id: "question-step-1",
+                      type: "ask_user_question",
+                      status: "awaiting_approval",
+                      data: { question_id: "question-1", message: "Which format should I use?" },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    renderChat({ activeConversationId: "conv-1" });
+    await waitFor(() => expect(screen.getByTestId("deepspace-thread")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Answer Clarification" }));
+
+    await waitFor(() => {
+      expect(startMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          body: expect.objectContaining({
+            message: "Markdown",
+            resume_user_question_id: "question-1",
           }),
         }),
       );
@@ -227,13 +353,11 @@ describe("DeepSpaceChatClient history sync", () => {
       },
     );
 
-    render(
-      <DeepSpaceChatClient
-        activeConversationId="conv-1"
-        onAgentNotePreview={onAgentNotePreview}
-        onAgentNoteCommitted={onAgentNoteCommitted}
-      />,
-    );
+    renderChat({
+      activeConversationId: "conv-1",
+      onAgentNotePreview,
+      onAgentNoteCommitted,
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Set Query" }));
     fireEvent.click(screen.getByRole("button", { name: "Submit Query" }));

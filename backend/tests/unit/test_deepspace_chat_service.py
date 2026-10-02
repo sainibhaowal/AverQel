@@ -11,6 +11,8 @@ from app.deepspace.services.chat_service import (
     DEEPSPACE_AGENT_POLICY,
     DeepSpaceChatService,
 )
+from app.deepspace.services.reasoning_privacy import redact_reasoning_text
+from app.deepspace.services.url_reader import URLReadResult
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.types import WebSearchResponse, WebSearchResultItem
 
@@ -25,6 +27,62 @@ class _FakeProvider:
         yield {"type": "delta", "text": "Final answer."}
 
 
+def test_reasoning_privacy_filter_preserves_safe_text_and_masks_sensitive_spans():
+    raw = (
+        "I will read inventory.csv with file_id: 123e4567-e89b-12d3-a456-426614174000. "
+        "Authorization: Bearer sk-this-is-a-test-key-12345. Then I will compare the rows."
+    )
+
+    visible = redact_reasoning_text(raw)
+
+    assert "I will read inventory.csv" in visible
+    assert "Then I will compare the rows." in visible
+    assert "123e4567-e89b-12d3-a456-426614174000" not in visible
+    assert "sk-this-is-a-test-key-12345" not in visible
+    assert "••••••••" in visible
+
+
+def test_reasoning_history_restores_deepseek_field_only_for_deepseek():
+    messages = [
+        {
+            "role": "assistant",
+            "content": "The answer.",
+            "__deepspace_reasoning_content": "Plan first.",
+        },
+        {"role": "user", "content": "Continue."},
+    ]
+
+    deepseek = DeepSpaceChatService._prepare_reasoning_history(messages, "deepseek")
+    other_provider = DeepSpaceChatService._prepare_reasoning_history(messages, "openai")
+
+    assert deepseek[0] == {
+        "role": "assistant",
+        "content": "The answer.",
+        "reasoning_content": "Plan first.",
+    }
+    assert other_provider[0] == {"role": "assistant", "content": "The answer."}
+    assert "__deepspace_reasoning_content" not in deepseek[0]
+    assert "__deepspace_reasoning_content" not in other_provider[0]
+
+
+def test_dynamic_system_instruction_replaces_previous_retry_without_accumulating():
+    messages = [{"role": "system", "content": "Stable policy"}]
+
+    DeepSpaceChatService._set_dynamic_system_instruction(
+        messages, key="recovery", content="First recovery"
+    )
+    DeepSpaceChatService._set_dynamic_system_instruction(
+        messages, key="recovery", content="Latest recovery"
+    )
+
+    assert [item["content"] for item in messages] == ["Stable policy", "Latest recovery"]
+    prepared = DeepSpaceChatService._prepare_reasoning_history(messages, "deepseek")
+    assert prepared == [
+        {"role": "system", "content": "Stable policy"},
+        {"role": "system", "content": "Latest recovery"},
+    ]
+
+
 class _EmptyProvider:
     calls = 0
 
@@ -32,6 +90,14 @@ class _EmptyProvider:
         self.calls += 1
         if False:
             yield {"type": "delta", "text": "never"}
+
+
+class _ReasoningOnlyProvider:
+    calls = 0
+
+    async def stream_generate_events(self, request):
+        self.calls += 1
+        yield {"type": "thinking", "text": "I should answer the user."}
 
 
 class _FakeRepository:
@@ -53,6 +119,15 @@ class _FakeRepository:
 
     def add_message(self, **kwargs):
         return SimpleNamespace(id=self.assistant_id)
+
+    def get_message_by_conversation(self, **kwargs):
+        return SimpleNamespace(
+            id=self.assistant_id,
+            role="assistant",
+            content="",
+            active_version=None,
+            metadata_json={},
+        )
 
     def complete_assistant_message(self, **kwargs):
         _FakeRepository.completed_metadata = kwargs.get("metadata_json")
@@ -133,6 +208,14 @@ class _EmptyRegistry(_FakeRegistry):
         return self.provider
 
 
+class _ReasoningOnlyRegistry(_FakeRegistry):
+    def __init__(self, settings):
+        self.provider = _ReasoningOnlyProvider()
+
+    def get_chat_provider_from_selection(self, candidate):
+        return self.provider
+
+
 class _ToolProvider:
     calls = 0
 
@@ -206,6 +289,55 @@ class _ToolRegistry(_FakeRegistry):
                 )
 
         return _SearchProvider()
+
+
+class _SearchThenReadProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.received_tool_sets: list[set[str]] = []
+
+    async def stream_generate_events(self, request):
+        self.received_tool_sets.append({item["function"]["name"] for item in request.tools or []})
+        self.calls += 1
+        if self.calls == 1:
+            yield {
+                "type": "tool_calls_delta",
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_search",
+                        "function": {
+                            "name": "web_search",
+                            "arguments": '{"query":"latest official announcement"}',
+                        },
+                    }
+                ],
+            }
+            return
+        if self.calls == 2:
+            yield {
+                "type": "tool_calls_delta",
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_read",
+                        "function": {
+                            "name": "url_read",
+                            "arguments": '{"url":"https://example.com/source"}',
+                        },
+                    }
+                ],
+            }
+            return
+        yield {"type": "delta", "text": "A sourced answer."}
+
+
+class _SearchThenReadRegistry(_ToolRegistry):
+    last_provider: _SearchThenReadProvider | None = None
+
+    def __init__(self, settings):
+        self.tool_provider = _SearchThenReadProvider()
+        type(self).last_provider = self.tool_provider
 
 
 class _MalformedThenValidToolProvider:
@@ -309,6 +441,9 @@ class _LifecycleTaskStore:
             "length": len(self.note),
         }
 
+    def list_workspace_entries(self, **kwargs):
+        return {"files": [], "folders": []}
+
     def write_note(self, **kwargs):
         self.note = str(kwargs["markdown"])
         return self.read_note(**kwargs)
@@ -324,8 +459,12 @@ class _LifecycleProvider:
             '{"tasks":[{"id":"task-1","content":"Draft the verified result","priority":1}]}',
         ),
         ("todo_read", "{}"),
+        ("observe", "{}"),
         ("todo_mark", '{"task_id":"task-1","status":"in_progress"}'),
-        ("write", '{"markdown":"# Verified result","mode":"replace"}'),
+        (
+            "write",
+            '{"target":"note","content":"# Verified result","mode":"replace"}',
+        ),
         ("analyze", '{"focus":"Verify the drafted result"}'),
         (
             "todo_mark",
@@ -484,6 +623,37 @@ async def test_deepspace_rejects_empty_provider_stream_and_persists_failure(
 
 
 @pytest.mark.asyncio
+async def test_deepspace_rejects_reasoning_only_provider_response(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _ReasoningOnlyRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="Help me think through this idea clearly.",
+            thinking_enabled=True,
+        )
+    ]
+
+    error = next(frame for frame in frames if frame.startswith("event: error"))
+    payload = json.loads(error.split("data: ", 1)[1].strip())
+    assert payload["code"] == "LLM_EMPTY_RESPONSE"
+    assert not any(frame.startswith("event: done") for frame in frames)
+    assert _FakeRepository.completed_metadata["status"] == "error"
+    assert _FakeRepository.completed_content
+
+
+@pytest.mark.asyncio
 async def test_deepspace_runs_web_search_loop_and_citations(monkeypatch):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _ToolProviderSelection)
@@ -522,6 +692,124 @@ async def test_deepspace_runs_web_search_loop_and_citations(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_deepspace_runs_search_then_url_read_with_fetched_citation(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _ToolProviderSelection)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _SearchThenReadRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+    monkeypatch.setattr(
+        chat_service_module,
+        "read_url_with_browser_fallback",
+        lambda *args, **kwargs: URLReadResult(
+            "https://example.com/source",
+            "Official source",
+            "The official page contains the verified announcement.",
+            "text/html",
+            False,
+            ["https://example.com/related"],
+        ),
+    )
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+            conversation_id=None,
+            prompt="Search for the latest official announcement, open the official page, and summarize it.",
+            thinking_enabled=False,
+        )
+    ]
+
+    tool_starts = [
+        json.loads(frame.split("data: ", 1)[1].strip())["tool_name"]
+        for frame in frames
+        if frame.startswith("event: tool_start")
+    ]
+    assert tool_starts == ["web_search", "url_read"]
+    assert _SearchThenReadRegistry.last_provider is not None
+    assert {"web_search", "url_read"}.issubset(
+        _SearchThenReadRegistry.last_provider.received_tool_sets[0]
+    )
+    assert "https://example.com/source" in _FakeRepository.completed_content
+    assert "Official source" in _FakeRepository.completed_content
+
+
+@pytest.mark.asyncio
+async def test_url_read_returns_structured_unavailable_result_for_blocked_source(monkeypatch):
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = SimpleNamespace(
+        deepspace_url_read_timeout_seconds=15,
+        deepspace_url_read_max_bytes=2_000_000,
+        deepspace_url_allowed_domains=[],
+    )
+    monkeypatch.setattr(
+        chat_service_module,
+        "read_url_with_browser_fallback",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ProviderRequestError(
+                "browser_reader",
+                403,
+                "The public page blocked automated access with an anti-bot challenge.",
+            )
+        ),
+    )
+
+    payload = await service._execute_productivity_tool(
+        tool_name="url_read",
+        arguments={"url": "https://example.com/protected"},
+        auth=SimpleNamespace(),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert payload["retrieval_status"] == "blocked"
+    assert payload["error_category"] == "source_unavailable"
+    assert payload["citations"][0]["retrieval_status"] == "blocked"
+
+
+def test_research_citations_label_read_snippet_and_blocked_sources():
+    answer = DeepSpaceChatService._append_citations(
+        "Research complete.",
+        [
+            {
+                "id": 1,
+                "title": "Read",
+                "url": "https://example.com/read",
+                "retrieval_status": "read_full",
+            },
+            {
+                "id": 2,
+                "title": "Snippet",
+                "url": "https://example.com/snippet",
+                "retrieval_status": "search_snippet_only",
+            },
+            {
+                "id": 3,
+                "title": "Blocked",
+                "url": "https://example.com/blocked",
+                "retrieval_status": "blocked",
+            },
+        ],
+    )
+
+    assert "Read](https://example.com/read) — read in full" in answer
+    assert "Snippet](https://example.com/snippet) — search snippet only" in answer
+    assert "Blocked](https://example.com/blocked) — blocked; not read" in answer
+    assert (
+        DeepSpaceChatService._native_research_summary(
+            {"searches": 1, "pages": 2, "blocked_pages": 3}
+        )
+        == "> *Native web research · 1 search · 2 pages fetched · 3 pages blocked*"
+    )
+
+
+@pytest.mark.asyncio
 async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch):
     monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
     monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
@@ -555,6 +843,7 @@ async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch
     assert tool_starts == [
         "todo_write",
         "todo_read",
+        "observe",
         "todo_mark",
         "write",
         "analyze",
@@ -575,9 +864,11 @@ async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch
     }.issubset(_LifecycleProvider.received_tool_sets[0])
     assert _LifecycleProvider.received_tool_choices[0] == "auto"
     assert _LifecycleProvider.received_tool_sets[1] == {"todo_read"}
-    assert _LifecycleProvider.received_tool_sets[2] == {"todo_mark"}
-    assert _LifecycleProvider.received_tool_sets[6] == {"todo_check"}
-    assert _LifecycleProvider.received_tool_sets[7] == {"final"}
+    assert _LifecycleProvider.received_tool_sets[2] == {"observe"}
+    assert _LifecycleProvider.received_tool_sets[3] == {"todo_mark"}
+    assert _LifecycleProvider.received_tool_sets[5] == {"analyze"}
+    assert _LifecycleProvider.received_tool_sets[7] == {"todo_check"}
+    assert _LifecycleProvider.received_tool_sets[8] == {"final"}
     assert _FakeRepository.completed_content == "The verified result is ready."
 
 
@@ -629,7 +920,7 @@ async def test_deepspace_exposes_tools_to_google_models(monkeypatch):
         async for frame in service.stream_turn(
             auth=auth,
             conversation_id=None,
-            prompt="search the latest news today",
+            prompt="Summarize the available DeepSpace tools.",
             thinking_enabled=False,
         )
     ]
@@ -637,8 +928,38 @@ async def test_deepspace_exposes_tools_to_google_models(monkeypatch):
     assert any(frame.startswith("event: delta") for frame in frames)
     assert _GoogleToolCaptureProvider.request is not None
     names = {item["function"]["name"] for item in (_GoogleToolCaptureProvider.request.tools or [])}
-    assert {"todo_write", "web_search", "read", "write"}.issubset(names)
+    assert {"todo_write", "read", "write"}.issubset(names)
+    # Web search is now attached only to a fresh-information request; merely
+    # describing available tools must not inflate every provider payload.
+    assert "web_search" not in names
     assert _GoogleToolCaptureProvider.request.tool_choice == "auto"
+
+
+@pytest.mark.asyncio
+async def test_deepspace_exposes_url_read_for_direct_https_url(monkeypatch):
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _GoogleToolCaptureRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+            conversation_id=None,
+            prompt="Open https://example.com/source and summarize the page.",
+            thinking_enabled=False,
+        )
+    ]
+
+    assert any(frame.startswith("event: delta") for frame in frames)
+    names = {item["function"]["name"] for item in (_GoogleToolCaptureProvider.request.tools or [])}
+    assert "url_read" in names
+    assert "web_search" not in names
 
 
 def test_explicit_gmail_request_requires_attached_mcp_tool() -> None:
@@ -688,6 +1009,30 @@ def test_explicit_gmail_request_exposes_only_gmail_mcp_tools() -> None:
     )
 
     assert set(selected) == {"gmail_tool"}
+
+
+def test_generic_mcp_request_exposes_all_catalogue_only_to_backend_broker() -> None:
+    notion = SimpleNamespace(server=SimpleNamespace(name="Notion"), raw_name="search_pages")
+    linear = SimpleNamespace(server=SimpleNamespace(name="Linear"), raw_name="list_issues")
+
+    selected = DeepSpaceChatService._mcp_bindings_for_prompt(
+        "Search my connected MCP tools for launch issues",
+        {"notion_tool": notion, "linear_tool": linear},
+    )
+
+    assert set(selected) == {"notion_tool", "linear_tool"}
+
+
+def test_unknown_connected_mcp_server_can_be_selected_by_name() -> None:
+    linear = SimpleNamespace(server=SimpleNamespace(name="Linear"), raw_name="list_issues")
+    notion = SimpleNamespace(server=SimpleNamespace(name="Notion"), raw_name="search_pages")
+
+    selected = DeepSpaceChatService._mcp_bindings_for_prompt(
+        "Check Linear for launch issues",
+        {"linear_tool": linear, "notion_tool": notion},
+    )
+
+    assert set(selected) == {"linear_tool"}
 
 
 @pytest.mark.parametrize(
@@ -753,7 +1098,7 @@ def test_dsml_fake_tool_markup_is_detected() -> None:
 
 def test_nested_json_array_fake_tool_markup_is_detected() -> None:
     assert DeepSpaceChatService._looks_like_fake_tool_output(
-        '[{"tool_name":"todo_mark","parameters":' '{"task_id":"old-task","status":"completed"}}]'
+        '[{"tool_name":"todo_mark","parameters":{"task_id":"old-task","status":"completed"}}]'
     )
     assert not DeepSpaceChatService._looks_like_fake_tool_output(
         "Here is a normal JSON array: [1, 2, 3]."
@@ -992,3 +1337,157 @@ async def test_save_copies_previous_assistant_without_resending_content() -> Non
 
     assert result["source_message_id"] == str(source_id)
     assert result["file"]["name"] == "answer.md"
+
+
+@pytest.mark.asyncio
+async def test_document_read_accepts_filename_emitted_in_file_id() -> None:
+    class _TaskStore:
+        def read_workspace_file(self, **kwargs: object):
+            assert kwargs["file_id"] is None
+            assert kwargs["filename"] == "Course Book.pdf"
+            return {
+                "id": str(uuid4()),
+                "name": "Course Book.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 12,
+                "version": 1,
+                "extracted_text": "Revenue is reported in chapter 2.",
+            }
+
+    service = object.__new__(DeepSpaceChatService)
+    service.task_store = _TaskStore()
+
+    result = await service._execute_productivity_tool(
+        tool_name="document_read",
+        arguments={"file_id": "Course Book.pdf", "max_characters": 50000},
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert result["file"]["name"] == "Course Book.pdf"
+    assert "Revenue" in result["text"]
+
+
+@pytest.mark.asyncio
+async def test_document_query_uses_workspace_hybrid_embeddings(monkeypatch) -> None:
+    file_id = str(uuid4())
+
+    class _TaskStore:
+        def list_workspace_entries(self, **_: object):
+            return {"files": [{"id": file_id, "name": "report.txt"}]}
+
+        def read_workspace_file(self, **kwargs: object):
+            assert kwargs["file_id"] == file_id
+            return {
+                "id": file_id,
+                "name": "report.txt",
+                "content": "Revenue increased in Q4.\n\nUnrelated notes.",
+            }
+
+    class _Embedding:
+        def __init__(self, *_args: object, **_kwargs: object):
+            pass
+
+        def embed_many_with_metadata(self, texts, **_: object):
+            assert texts[0] == "Q4 revenue"
+            return SimpleNamespace(
+                vectors=[[1.0, 0.0], [1.0, 0.0]],
+                metadata=SimpleNamespace(provider="test", model="test", fallback_used=False),
+            )
+
+    monkeypatch.setattr(chat_service_module, "EmbeddingService", _Embedding)
+    service = object.__new__(DeepSpaceChatService)
+    service.task_store = _TaskStore()
+    service.settings = SimpleNamespace()
+    service.db = None
+
+    result = await service._execute_productivity_tool(
+        tool_name="document_query",
+        arguments={"query": "Q4 revenue", "limit": 1},
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert result["retrieval"]["strategy"] == "workspace_hybrid"
+    assert result["retrieval"]["embeddings"]["applied"] is True
+    assert result["passages"][0]["file_id"] == file_id
+
+
+@pytest.mark.asyncio
+async def test_document_compare_compares_every_requested_file_pair() -> None:
+    file_ids = [str(uuid4()) for _ in range(3)]
+    files = {
+        file_ids[0]: {"id": file_ids[0], "name": "q4.pdf", "content": "Revenue\nNet income"},
+        file_ids[1]: {"id": file_ids[1], "name": "faim.docx", "content": "FAIM\nTheory"},
+        file_ids[2]: {"id": file_ids[2], "name": "resume.pdf", "content": "Experience\nSkills"},
+    }
+
+    class _TaskStore:
+        def read_workspace_file(self, **kwargs: object):
+            return files[str(kwargs["file_id"])]
+
+    service = object.__new__(DeepSpaceChatService)
+    service.task_store = _TaskStore()
+
+    result = await service._execute_productivity_tool(
+        tool_name="document_compare",
+        arguments={"file_ids": file_ids, "max_characters": 30_000},
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert result["comparison_method"] == "exact_line_diff_pairwise"
+    assert result["file_count"] == 3
+    assert len(result["comparisons"]) == 3
+    compared_ids = {
+        frozenset((comparison["left"]["id"], comparison["right"]["id"]))
+        for comparison in result["comparisons"]
+    }
+    assert compared_ids == {
+        frozenset((file_ids[0], file_ids[1])),
+        frozenset((file_ids[0], file_ids[2])),
+        frozenset((file_ids[1], file_ids[2])),
+    }
+
+
+@pytest.mark.asyncio
+async def test_document_compare_reports_exact_unchanged_lines() -> None:
+    left_id, right_id = str(uuid4()), str(uuid4())
+
+    class _TaskStore:
+        def read_workspace_file(self, **kwargs: object):
+            return {
+                "id": str(kwargs["file_id"]),
+                "name": "left.txt" if kwargs["file_id"] == left_id else "right.txt",
+                "content": (
+                    "shared heading\nchanged left"
+                    if kwargs["file_id"] == left_id
+                    else "shared heading\nchanged right"
+                ),
+            }
+
+    service = object.__new__(DeepSpaceChatService)
+    service.task_store = _TaskStore()
+
+    result = await service._execute_productivity_tool(
+        tool_name="document_compare",
+        arguments={"left_file_id": left_id, "right_file_id": right_id},
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=uuid4(),
+        web_provider=None,
+        web_candidate=None,
+        request=None,
+    )
+
+    assert result["comparison_method"] == "exact_line_diff"
+    assert result["unchanged"]["exact_line_count"] == 1
+    assert result["unchanged"]["samples"][0]["text"] == "shared heading"

@@ -46,3 +46,20 @@ def test_ingestion_benchmark_script_smoke() -> None:
     )
     assert payload["benchmark"] == "week5_ingestion"
     assert payload["dry_run"] is True
+
+
+def test_library_concurrency_benchmark_smoke() -> None:
+    payload = _run_script(
+        "scripts/benchmark_library_concurrency.py",
+        "--token",
+        "benchmark-token",
+        "--tenant-id",
+        "00000000-0000-0000-0000-000000000001",
+        "--conversation-id",
+        "00000000-0000-0000-0000-000000000002",
+        "--file-id",
+        "00000000-0000-0000-0000-000000000003",
+        "--dry-run",
+    )
+    assert payload["benchmark"] == "library_concurrency"
+    assert payload["dry_run"] is True

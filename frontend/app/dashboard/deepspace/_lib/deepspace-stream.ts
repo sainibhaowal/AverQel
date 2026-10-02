@@ -4,6 +4,13 @@ export function estimateTokens(text: string): number {
 }
 
 export interface MessageMetrics {
+  providerUsage?: {
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    cached_input_tokens?: number | null;
+    cache_write_input_tokens?: number | null;
+    usage_source?: string;
+  } | null;
   tokensPerSec?: number;
   totalTokens?: number;
   ttftMs?: number;
@@ -22,6 +29,30 @@ export interface MessageMetrics {
   sessionInputTokens?: number;
   sessionOutputTokens?: number;
   sessionTotalTokens?: number;
+  requestInputTokens?: number;
+  requestOutputTokens?: number;
+  userVisibleInputTokens?: number;
+  userVisibleOutputTokens?: number;
+  conversationVisibleTokens?: number;
+  promptCacheMode?: string;
+  promptCacheEligible?: boolean;
+  promptCacheStatus?: string;
+  promptCachePrefixDigest?: string;
+  systemContextTokens?: number;
+  toolSchemaTokens?: number;
+  toolResultTokens?: number;
+  adaptiveHistoryBudgetTokens?: number | null;
+  adaptiveToolResultBudgetTokens?: number | null;
+  adaptiveMcpPreviewChars?: number;
+  nativeToolResultCharsUsed?: number;
+  nativeToolResultCharsLimit?: number | null;
+  toolProfileCanary?: {
+    tool_count: number;
+    native_schema_digests: string[];
+  };
+  cachedInputTokens?: number | null;
+  uncachedInputTokens?: number | null;
+  tokenCategorySource?: string;
   maxOutputTokens?: number;
   contextStatus?:
     | "normal"
@@ -32,6 +63,9 @@ export interface MessageMetrics {
     | "compacted"
     | "unknown";
   contextCompacted?: boolean;
+  contextEpoch?: number;
+  contextEpochReason?: string;
+  contextSourceUpdates?: string[];
   phase?: string;
   activeTools?: string[];
   latencyTimeline?: Array<{ label: string; atMs: number; detail?: string }>;
@@ -94,8 +128,10 @@ export interface DeepSpaceStreamEvent {
     | "media_status"
     | "followups"
     | "metrics"
+    | "lifecycle"
     | "done"
     | "error"
+    | "research_status"
     // Agent events
     | "agent_plan"
     | "tool_start"
@@ -367,7 +403,8 @@ export interface TimelineStep {
     | "model_message"
     | "permission"
     | "testing"
-    | "error";
+    | "error"
+    | "ask_user_question";
   title: string;
   status: "running" | "completed" | "failed" | "awaiting_approval";
   startedAt: string;
@@ -427,11 +464,22 @@ export interface DeepSpaceMessage {
   memoryUsed?: Array<{ id: string; key: string; source?: string }>;
   artifacts?: DeepSpaceMediaArtifact[];
   mediaStatus?: DeepSpaceMediaStatus;
+  attachments?: Array<{ id: string; name: string; content_type: string; size_bytes: number }>;
 }
 
 export interface DeepSpaceMediaArtifact {
   id: string;
-  kind: "image" | "video" | "audio";
+  kind:
+    | "image"
+    | "video"
+    | "audio"
+    | "document"
+    | "table"
+    | "chart"
+    | "diagram"
+    | "data"
+    | "code"
+    | "file";
   status: "ready" | "pending" | "failed";
   title: string;
   content_type: string;

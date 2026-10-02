@@ -88,6 +88,27 @@ class IngestionJobsRepository(BaseRepository):
         job.attempt_count += 1
         job.updated_at = datetime.now(tz=UTC)
 
+    def set_checkpoint(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        job: IngestionJob,
+        stage: str,
+        cursor: int,
+        pause_reason: str | None = None,
+    ) -> None:
+        self.apply_tenant_scope(tenant_id)
+        job.checkpoint_stage = stage
+        job.checkpoint_cursor = max(cursor, 0)
+        job.checkpoint_updated_at = datetime.now(tz=UTC)
+        job.pause_reason = pause_reason
+        job.updated_at = datetime.now(tz=UTC)
+
+    def increment_resume_count(self, *, tenant_id: uuid.UUID, job: IngestionJob) -> None:
+        self.apply_tenant_scope(tenant_id)
+        job.resume_count += 1
+        job.updated_at = datetime.now(tz=UTC)
+
     def count_active_by_tenant(self, *, tenant_id: uuid.UUID) -> int:
         self.apply_tenant_scope(tenant_id)
         query = (

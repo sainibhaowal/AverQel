@@ -52,6 +52,9 @@ from app.integrations.services.mcp_provider_auth import get_mcp_provider_profile
 from app.integrations.workers.tasks_mcp import refresh_server_catalog
 from app.platform.database.session import get_db, set_db_tenant_context
 from app.query.models.conversation import Conversation
+from app.realtime.event_bus import publish_event_sync
+from app.system.services.cache_service import get_redis_client
+from app.system.services.storage_quota import StorageQuotaService
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 logger = logging.getLogger(__name__)
@@ -66,6 +69,22 @@ _SENSITIVE_MARKETPLACE_METADATA_MARKERS = {
     "token",
     "verifier",
 }
+
+
+def _publish_mcp_event(
+    auth: AuthContext, event_type: str, server_id: uuid.UUID | None = None
+) -> None:
+    try:
+        publish_event_sync(
+            get_redis_client(),
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            event_type=event_type,
+            resource="mcp",
+            data={"server_id": str(server_id)} if server_id else {},
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("MCP realtime notification failed", exc_info=True)
 
 
 def _marketplace_capabilities(entry: MCPRegistryEntry) -> list[str]:
@@ -935,6 +954,16 @@ def connect_marketplace_entry(
         enabled=True,
         status="needs_auth" if auth_type == "oauth" else "disconnected",
     )
+    StorageQuotaService(session).ensure_capacity(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        additional_bytes=StorageQuotaService.estimate_bytes(
+            server.name,
+            server.transport,
+            server.config,
+            server.account_identity,
+        ),
+    )
     session.add(server)
     session.flush()
     _get_policy(session, server, create=True)
@@ -986,6 +1015,7 @@ def refresh_server(
     if server is None:
         raise HTTPException(status_code=404, detail="MCP server not found")
     refresh_server_catalog.delay(str(server.id), str(auth.tenant_id))
+    _publish_mcp_event(auth, "mcp.catalog.refresh.requested", server.id)
     return MCPActionResponse(status="scheduled", server_id=server.id)
 
 
@@ -1008,6 +1038,7 @@ def uninstall_server(
         raise HTTPException(status_code=404, detail="MCP server not found")
     session.delete(server)
     session.commit()
+    _publish_mcp_event(auth, "mcp.server.deleted", server_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

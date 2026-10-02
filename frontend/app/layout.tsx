@@ -6,6 +6,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import ToastProvider from "@/app/components/layout/ToastProvider";
 import CursorSweepProvider from "@/app/components/layout/CursorSweepProvider";
 import { BRAND_NAME } from "@/lib/brand";
+import AverQelDialogHost from "@/app/components/ui/AverQelDialogHost";
 
 export const metadata: Metadata = {
   title: BRAND_NAME,
@@ -53,6 +54,7 @@ export default function RootLayout({
         <ThemeProvider>
           <CursorSweepProvider />
           <ToastProvider>
+            <AverQelDialogHost />
             <AuthProvider>
               <div className="flex min-h-[100svh] flex-col">
                 <main className="flex-1">{children}</main>

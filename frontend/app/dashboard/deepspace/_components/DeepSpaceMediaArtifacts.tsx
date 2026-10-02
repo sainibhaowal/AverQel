@@ -1,11 +1,22 @@
 "use client";
 
-import { Download, Image as ImageIcon, Loader2, Music2, PlaySquare, RefreshCw } from "lucide-react";
+import {
+  BarChart3,
+  Download,
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  Music2,
+  PlaySquare,
+  RefreshCw,
+  Table2,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
 
 import type { DeepSpaceMediaArtifact, DeepSpaceMediaStatus } from "../_lib/deepspace-stream";
+import { InteractiveImagePreview } from "./DeepSpaceLibraryPreview";
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "Private artifact";
@@ -57,16 +68,7 @@ function ArtifactSource({ artifact }: { artifact: DeepSpaceMediaArtifact }) {
     );
   }
   if (artifact.kind === "image") {
-    return (
-      // Private authenticated blobs cannot use the Next image optimizer without
-      // exposing a public loader URL; render the already-authorized object URL.
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={objectUrl}
-        alt={artifact.title}
-        className="max-h-[36rem] w-full rounded-lg object-contain"
-      />
-    );
+    return <InteractiveImagePreview key={objectUrl} source={objectUrl} alt={artifact.title} />;
   }
   if (artifact.kind === "video") {
     return (
@@ -78,7 +80,43 @@ function ArtifactSource({ artifact }: { artifact: DeepSpaceMediaArtifact }) {
       />
     );
   }
-  return <AudioPreview source={objectUrl} />;
+  if (artifact.kind === "audio") return <AudioPreview source={objectUrl} />;
+  if (artifact.content_type.startsWith("image/")) {
+    // SVG and other generated images use an authenticated object URL and are
+    // rendered as an image, never injected as HTML.
+    return <InteractiveImagePreview key={objectUrl} source={objectUrl} alt={artifact.title} />;
+  }
+  if (artifact.content_type.startsWith("text/") || artifact.content_type === "application/json") {
+    return <TextArtifactPreview source={objectUrl} />;
+  }
+  return (
+    <div className="text-foreground/55 flex h-24 items-center justify-center text-xs">
+      Preview is not available for this binary format. Use Download.
+    </div>
+  );
+}
+
+function TextArtifactPreview({ source }: { source: string }) {
+  const [text, setText] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    void fetch(source)
+      .then((response) => response.text())
+      .then((value) => {
+        if (active) setText(value.slice(0, 20_000));
+      })
+      .catch(() => {
+        if (active) setText("Preview unavailable");
+      });
+    return () => {
+      active = false;
+    };
+  }, [source]);
+  return (
+    <pre className="text-foreground/75 max-h-80 overflow-auto rounded-lg bg-black/20 p-3 text-[11px] leading-5 whitespace-pre-wrap">
+      {text ?? "Preparing preview…"}
+    </pre>
+  );
 }
 
 function AudioPreview({ source }: { source: string }) {
@@ -183,7 +221,17 @@ export default function DeepSpaceMediaArtifacts({
       ) : null}
       {(artifacts ?? []).map((artifact) => {
         const Icon =
-          artifact.kind === "image" ? ImageIcon : artifact.kind === "video" ? PlaySquare : Music2;
+          artifact.kind === "image"
+            ? ImageIcon
+            : artifact.kind === "video"
+              ? PlaySquare
+              : artifact.kind === "audio"
+                ? Music2
+                : artifact.kind === "table"
+                  ? Table2
+                  : artifact.kind === "chart"
+                    ? BarChart3
+                    : FileText;
         return (
           <section
             key={artifact.id}

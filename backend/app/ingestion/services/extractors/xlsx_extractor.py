@@ -55,15 +55,9 @@ class XlsxExtractor(BaseExtractor):
                     lines.append(f"R{row_idx}: " + " | ".join(values))
 
         text = "\n".join(lines).strip()
-        if len(text) > self.max_text_chars:
-            raise ApiError(
-                code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
-                message="Parsed document exceeds text processing limit.",
-                status_code=422,
-                details={"max_chars": self.max_text_chars},
-            )
-
         warnings: list[str] = []
+        if len(text) > self.max_text_chars:
+            warnings.append("large_text_processed_in_batches")
         if not text:
             warnings.append("xlsx_no_text_extracted")
 

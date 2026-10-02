@@ -56,7 +56,12 @@ class MCPServer(Base):
     )
     connection_policy_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("mcp_connection_policies.id", ondelete="SET NULL"),
+        ForeignKey(
+            "mcp_connection_policies.id",
+            ondelete="SET NULL",
+            name="fk_mcp_servers_connection_policy_id",
+            use_alter=True,
+        ),
         nullable=True,
         index=True,
     )

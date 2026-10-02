@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
 import {
   disconnectMCPServerOAuth,
@@ -16,6 +17,8 @@ import {
   type MCPMarketplaceEntry,
   type MCPTool,
 } from "@/lib/mcp-api";
+import { useRealtimeEvents } from "@/lib/realtime";
+import { averqelConfirm } from "@/app/components/ui/AverQelDialogHost";
 
 import MCPConnectionPolicyPanel from "../../_components/MCPConnectionPolicyPanel";
 import MCPHealthStatus from "../../_components/MCPHealthStatus";
@@ -23,6 +26,7 @@ import MCPToolPermissionTable from "../../_components/MCPToolPermissionTable";
 
 export default function MCPInspectorClient() {
   const routeParams = useParams();
+  const router = useRouter();
   const id =
     typeof routeParams?.id === "string"
       ? routeParams.id
@@ -60,12 +64,16 @@ export default function MCPInspectorClient() {
     }
   }, [id]);
 
+  useRealtimeEvents(
+    (event) => {
+      if (!id || event.data?.server_id === id) void load();
+    },
+    ["mcp"],
+  );
+
   useEffect(() => {
     if (!id || typeof window === "undefined") return;
     queueMicrotask(() => void load());
-    if (process.env.NODE_ENV === "test") return;
-    const timer = window.setInterval(() => void load(), 10000);
-    return () => window.clearInterval(timer);
   }, [id, load]);
   useEffect(() => {
     if (mcpStatusParam === "connected") {
@@ -102,7 +110,7 @@ export default function MCPInspectorClient() {
     }
   };
   const disconnect = async () => {
-    if (!window.confirm("Disconnect this account from AverQel?")) return;
+    if (!(await averqelConfirm("Disconnect this account from AverQel?"))) return;
     setBusy("disconnect");
     try {
       await disconnectMCPServerOAuth(id);
@@ -139,6 +147,17 @@ export default function MCPInspectorClient() {
     <main className="mcp-theme-scope mx-auto max-w-6xl space-y-6 px-6 py-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.history.length > 1) router.back();
+              else router.push("/dashboard/mcp");
+            }}
+            className="mb-3 inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-white/70 transition hover:border-cyan-300/30 hover:bg-white/10 hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back
+          </button>
           <p className="text-sm text-slate-400">MCP connection</p>
           <h1 className="text-2xl font-semibold text-white">{server.name}</h1>
           <p className="mt-1 text-sm text-white/55">
@@ -203,7 +222,7 @@ export default function MCPInspectorClient() {
             type="button"
             onClick={() => void reconnect()}
             disabled={busy !== null}
-            className="rounded-lg border border-sky-400/30 bg-sky-400/10 px-4 py-2 text-sm text-sky-100 hover:bg-sky-400/15 disabled:opacity-40"
+            className="rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm text-cyan-100 hover:bg-cyan-400/15 disabled:opacity-40"
           >
             {busy === "reconnect" ? "Opening…" : "Reconnect"}
           </button>
@@ -281,9 +300,9 @@ export default function MCPInspectorClient() {
           this page. Only verified scope names, safe account labels, and catalog status are shown.
         </p>
       </section>
-      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+      <section className="mcp-safe-events-panel rounded-2xl border border-white/10 bg-white/[0.03] p-5">
         <h2 className="mb-3 text-lg font-semibold text-white">Recent safe events</h2>
-        <div className="space-y-2">
+        <div className="mcp-safe-events-list max-h-80 space-y-2 overflow-y-auto overscroll-contain pr-2 [scrollbar-width:thin]">
           {data.events.length === 0 ? (
             <p className="text-sm text-white/50">No lifecycle events recorded.</p>
           ) : (

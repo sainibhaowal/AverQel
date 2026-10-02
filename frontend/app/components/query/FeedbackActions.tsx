@@ -49,13 +49,13 @@ export default function FeedbackActions({ messageId, content }: FeedbackActionsP
 
   return (
     <div
-      className="border-glass-border/40 flex flex-wrap items-center gap-2.5 border-t pt-4 text-xs"
+      className="border-glass-border/40 flex flex-nowrap items-center gap-2.5 overflow-x-auto border-t pt-4 pb-1 text-xs"
       ref={menuRef}
     >
       <button
         onClick={() => submitFeedback(true)}
         disabled={isSubmitting || feedbackState !== null}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 transition ${
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 transition ${
           feedbackState === "helpful"
             ? "border-emerald-500/28 bg-emerald-500/8 text-emerald-700 dark:text-emerald-300"
             : "theme-chip text-foreground/58 hover:text-foreground hover:border-white/20 dark:hover:text-white"
@@ -68,7 +68,7 @@ export default function FeedbackActions({ messageId, content }: FeedbackActionsP
       <button
         onClick={() => submitFeedback(false)}
         disabled={isSubmitting || feedbackState !== null}
-        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 transition ${
+        className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 transition ${
           feedbackState === "unhelpful"
             ? "border-red-500/28 bg-red-500/8 text-red-700 dark:text-red-300"
             : "theme-chip text-foreground/58 hover:text-foreground hover:border-white/20 dark:hover:text-white"
@@ -81,7 +81,7 @@ export default function FeedbackActions({ messageId, content }: FeedbackActionsP
       <div className="relative">
         <button
           onClick={() => setShowExportMenu((value) => !value)}
-          className="theme-chip text-foreground/58 hover:text-foreground inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition hover:border-white/20 dark:hover:text-white"
+          className="theme-chip text-foreground/58 hover:text-foreground inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 transition hover:border-white/20 dark:hover:text-white"
         >
           <Download size={13} />
           Export
@@ -123,7 +123,7 @@ export default function FeedbackActions({ messageId, content }: FeedbackActionsP
       <button
         onClick={() => submitFeedback(false)}
         disabled={isSubmitting || feedbackState !== null}
-        className="theme-chip text-foreground/58 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 transition hover:border-red-400/22 hover:text-red-700 dark:hover:text-red-300"
+        className="theme-chip text-foreground/58 inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 transition hover:border-red-400/22 hover:text-red-700 dark:hover:text-red-300"
       >
         <Flag size={13} />
         Report

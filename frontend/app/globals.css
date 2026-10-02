@@ -45,51 +45,51 @@ button {
   --font-display: "Chakra Petch", sans-serif;
   --font-landing-display: "Teko", sans-serif;
 
-  /* Light workspace palette: airy blue-green canvas with navy ink and
-   * controlled cyan/violet accents. Dark mode defines its own palette below. */
-  --background: #edf7f8;
-  --foreground: #17324d;
+  /* Light workspace palette: green-tinted canvas with deep green ink and
+   * high-contrast cyan accents. Dark mode defines its own palette below. */
+  --background: #f1faf5;
+  --foreground: #173b35;
 
   /* Vibrant Semantic Palette - Electric & Modern (Aligned to Teal/Emerald system) */
-  --primary: 174, 72%, 36%;
-  /* Premium lagoon teal */
+  --primary: 158, 64%, 34%;
+  /* Premium emerald-teal */
   --primary-foreground: 0, 0%, 100%;
 
-  --secondary: 188, 52%, 92%;
-  --secondary-foreground: 190, 70%, 28%;
+  --secondary: 154, 42%, 91%;
+  --secondary-foreground: 160, 72%, 25%;
 
-  --accent: 252, 78%, 60%;
+  --accent: 188, 82%, 39%;
   --accent-foreground: 0, 0%, 100%;
 
   /* Status Colors - Pure & Bright */
   --success: 158, 64%, 37%;
   --warning: 35, 100%, 48%;
   --danger: 0, 90%, 55%;
-  --info: 199, 90%, 45%;
+  --info: 188, 84%, 38%;
 
   /* Neutral surfaces - High clarity */
   --surface-0: #ffffff;
-  --surface-1: #f3fbfb;
-  --surface-2: #e3f0f3;
+  --surface-1: #f4fbf7;
+  --surface-2: #e1f1ea;
 
   /* Glass and Borders - Enhanced Vibrancy */
   --glass-bg: rgba(255, 255, 255, 0.82);
-  --glass-border: rgba(28, 113, 132, 0.18);
-  --border-subtle: rgba(28, 113, 132, 0.1);
-  --border-strong: rgba(28, 113, 132, 0.28);
+  --glass-border: rgba(15, 118, 110, 0.2);
+  --border-subtle: rgba(15, 118, 110, 0.1);
+  --border-strong: rgba(15, 118, 110, 0.3);
 
   /* Elevation - Richer, deeper shadows */
-  --elevation-1: 0 10px 30px -6px rgba(23, 78, 99, 0.12), 0 4px 12px -3px rgba(14, 116, 144, 0.06);
-  --elevation-2: 0 25px 60px -15px rgba(23, 78, 99, 0.18), 0 8px 24px -12px rgba(79, 70, 229, 0.1);
+  --elevation-1: 0 10px 30px -6px rgba(15, 118, 110, 0.14), 0 4px 12px -3px rgba(8, 145, 178, 0.07);
+  --elevation-2: 0 25px 60px -15px rgba(15, 118, 110, 0.2), 0 8px 24px -12px rgba(8, 145, 178, 0.1);
 
   /* Text + Accent System */
-  --text-strong: #14243d;
-  --text-body: #30465f;
-  --text-muted: #58708c;
+  --text-strong: #123a32;
+  --text-body: #285247;
+  --text-muted: #567a6e;
 
   --accent-cyan: #0891b2;
-  --accent-blue: #4f46e5;
-  --focus-ring: #0d9488;
+  --accent-blue: #0f766e;
+  --focus-ring: #059669;
   --status-danger: #f43f5e;
 
   /* Specialized Tokens */
@@ -97,23 +97,23 @@ button {
   --token-border: rgba(8, 145, 178, 0.22);
   --token-text: #0e7490;
 
-  --accent-soft: rgba(8, 145, 178, 0.1);
-  --hero-surface: linear-gradient(135deg, #ffffff 0%, #ecfdf5 52%, #eef2ff 100%);
-  --hero-overlay: radial-gradient(circle at 70% 30%, rgba(79, 70, 229, 0.08), transparent 50%);
+  --accent-soft: rgba(8, 145, 178, 0.07);
+  --hero-surface: linear-gradient(135deg, #ffffff 0%, #ecfdf5 52%, #dcfce7 100%);
+  --hero-overlay: radial-gradient(circle at 70% 30%, rgba(8, 145, 178, 0.1), transparent 50%);
 
   --panel-soft: rgba(255, 255, 255, 0.84);
-  --panel-muted: rgba(239, 250, 250, 0.86);
+  --panel-muted: rgba(239, 250, 245, 0.88);
   --panel-strong: rgba(255, 255, 255, 0.94);
-  --panel-inset: rgba(226, 245, 247, 0.86);
+  --panel-inset: rgba(226, 246, 238, 0.88);
 
-  --chip-bg: rgba(240, 249, 250, 0.9);
+  --chip-bg: rgba(239, 252, 248, 0.92);
   --chip-border: rgba(8, 145, 178, 0.2);
-  --accent-pill-bg: rgba(224, 242, 254, 0.9);
+  --accent-pill-bg: rgba(220, 252, 231, 0.9);
 
-  --accent-pill-border: rgba(79, 70, 229, 0.2);
-  --accent-pill-text: #4338ca;
-  --btn-primary-bg: linear-gradient(135deg, #0d9488 0%, #0891b2 55%, #4f46e5 100%);
-  --bg-grid-line: rgba(14, 116, 144, 0.16);
+  --accent-pill-border: rgba(13, 148, 136, 0.28);
+  --accent-pill-text: #0f766e;
+  --btn-primary-bg: linear-gradient(135deg, #0d9488 0%, #0891b2 55%, #059669 100%);
+  --bg-grid-dot: rgba(5, 150, 105, 0.28);
 }
 
 .dark {
@@ -184,7 +184,7 @@ button {
   --accent-pill-border: rgba(140, 191, 128, 0.22);
   --accent-pill-text: #dbead5;
   --btn-primary-bg: linear-gradient(180deg, hsl(180, 60%, 40%), hsl(180, 60%, 30%));
-  --bg-grid-line: rgba(154, 170, 144, 0.045);
+  --bg-grid-dot: rgba(154, 170, 144, 0.12);
 }
 
 .landing-cyber {
@@ -453,6 +453,16 @@ body {
   overflow-x: auto;
 }
 
+/* Tag action is rendered through the global overlay portal. Hide the legacy
+   in-panel copy so it cannot participate in layout or increase panel height. */
+.documents-theme-scope [role="listbox"][aria-label="Tag action"] {
+  display: none !important;
+}
+
+.documents-theme-scope [role="dialog"][aria-label^="PDF page"] {
+  display: none !important;
+}
+
 .theme-panel::before {
   content: "";
   position: absolute;
@@ -669,19 +679,17 @@ body {
   background:
     radial-gradient(circle at top left, rgba(120, 160, 104, 0.08), transparent 26%),
     radial-gradient(circle at top right, rgba(92, 126, 82, 0.07), transparent 22%),
-    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background);
+    radial-gradient(circle at 1px 1px, var(--bg-grid-dot) 1px, transparent 1.35px),
+    var(--background);
   background-size:
     auto,
     auto,
-    32px 32px,
     32px 32px,
     auto;
   background-position:
     center,
     center,
-    -1px -1px,
-    -1px -1px,
+    0 0,
     center;
   color: var(--text-body);
   font-family: var(--font-sans), system-ui, sans-serif;
@@ -692,19 +700,17 @@ body {
   background:
     radial-gradient(circle at top left, rgba(126, 165, 111, 0.08), transparent 24%),
     radial-gradient(circle at top right, rgba(95, 129, 84, 0.07), transparent 20%),
-    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background);
+    radial-gradient(circle at 1px 1px, var(--bg-grid-dot) 1px, transparent 1.35px),
+    var(--background);
   background-size:
     auto,
     auto,
-    30px 30px,
     30px 30px,
     auto;
   background-position:
     center,
     center,
-    -1px -1px,
-    -1px -1px,
+    0 0,
     center;
 }
 
@@ -716,6 +722,59 @@ body {
 ::-moz-selection {
   background: #10b981 !important;
   color: #ffffff !important;
+}
+
+/* Library previews use a calm frosted canvas instead of a stark white sheet.
+ * Keep text selection readable in both themes and avoid the default violet
+ * browser highlight that clashes with the workspace palette. */
+html:not(.dark) .library-preview-canvas {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(20, 184, 166, 0.08), transparent 32%),
+    linear-gradient(145deg, #f7fcfc 0%, #eef9f6 100%) !important;
+}
+
+.library-preview-canvas ::selection {
+  background: rgba(13, 148, 136, 0.28) !important;
+  color: #134e4a !important;
+}
+
+.library-preview-canvas ::-moz-selection {
+  background: rgba(13, 148, 136, 0.28) !important;
+  color: #134e4a !important;
+}
+
+.dark .library-preview-canvas ::selection,
+.dark .library-preview-canvas ::-moz-selection {
+  background: rgba(45, 212, 191, 0.3) !important;
+  color: #ecfdf5 !important;
+}
+
+/* CodeMirror paints selections with its own absolutely positioned layers, so
+ * browser ::selection rules do not reach it. Keep the Library editor aligned
+ * with the workspace palette instead of its default violet selection. */
+.library-file-editor .cm-selectionBackground,
+.library-file-editor.cm-focused .cm-selectionBackground {
+  background: rgba(5, 150, 105, 0.22) !important;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(5, 150, 105, 0.16);
+}
+
+.library-file-editor .cm-content ::selection,
+.library-file-editor .cm-content ::-moz-selection {
+  background: rgba(5, 150, 105, 0.26) !important;
+  color: #064e3b !important;
+}
+
+.dark .library-file-editor .cm-selectionBackground,
+.dark .library-file-editor.cm-focused .cm-selectionBackground {
+  background: rgba(52, 211, 153, 0.28) !important;
+  box-shadow: inset 0 0 0 1px rgba(110, 231, 183, 0.18);
+}
+
+.dark .library-file-editor .cm-content ::selection,
+.dark .library-file-editor .cm-content ::-moz-selection {
+  background: rgba(52, 211, 153, 0.32) !important;
+  color: #ecfdf5 !important;
 }
 
 /* Scrollbar */
@@ -969,6 +1028,7 @@ body {
   );
   animation: deepspace-composer-border-spin 3.2s linear infinite;
   will-change: transform;
+  backface-visibility: hidden;
 }
 
 .deepspace-composer-runtime[data-runtime-phase="idle"] .deepspace-composer-border-gradient {
@@ -1145,8 +1205,8 @@ body {
   width: 4px;
   height: 4px;
   border-radius: 999px;
-  background: #7dd3fc;
-  box-shadow: 0 0 8px #38bdf8;
+  background: #34d399;
+  box-shadow: 0 0 8px #22d3ee;
   offset-path: inset(0 round 1.2rem);
   animation: deepspace-composer-search-particle 2.2s linear infinite;
 }
@@ -1165,8 +1225,23 @@ body {
   }
 }
 
+/* Streaming must remain readable and stable for users who prefer reduced
+   motion or whose browser cannot maintain a smooth compositor frame rate. */
+@media (prefers-reduced-motion: reduce) {
+  .deepspace-composer-border-gradient,
+  .deepspace-composer-tool-trace,
+  .deepspace-composer-search-particles span {
+    animation: none !important;
+  }
+
+  .deepspace-composer-border-trace {
+    opacity: 0.42;
+    transition: none;
+  }
+}
+
 .mesh-bg {
-  background: linear-gradient(-45deg, #f8fafc, #f1f5f9, #e2e8f0, #f0f9ff, #f8fafc);
+  background: linear-gradient(-45deg, #f7fcf9, #eef9f3, #e1f1ea, #ecfdf5, #f7fcf9);
   background-size: 360% 360%;
 }
 
@@ -1536,7 +1611,208 @@ html:not(.dark) .text-white {
   color: var(--text-strong) !important;
 }
 
+/* ConfirmationModal intentionally uses a dark danger surface in both themes.
+   Keep the global light-theme text normalization from turning its labels navy
+   on black, which makes the warning and actions unreadable. */
+html:not(.dark) .confirmation-modal [class~="text-white"] {
+  color: #f8fafc !important;
+}
+
+html:not(.dark) .confirmation-modal [class~="text-slate-400"] {
+  color: #cbd5e1 !important;
+}
+
+html:not(.dark) .confirmation-modal [class~="text-slate-500"] {
+  color: #94a3b8 !important;
+}
+
+/* The DeepSpace composer is translucent in the light theme. Its icon buttons
+   must retain a deliberate contrast instead of inheriting the global legacy
+   white-text normalization. */
+html:not(.dark) .deepspace-composer-control {
+  color: #334155 !important;
+}
+
+/* Composer attachments are a compact, consistently aligned rounded-square
+   control group. Keep the light surface emerald-forward and the dark surface
+   deep green—never the legacy sky-blue chip treatment. */
+.deepspace-attachment-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, #059669 22%, var(--border-strong));
+  border-radius: 12px;
+  background: color-mix(in srgb, #ecfdf5 78%, var(--surface-0));
+}
+
+.deepspace-attachment-action {
+  position: relative;
+  display: grid;
+  height: 2.125rem;
+  width: 2.125rem;
+  min-width: 2.125rem;
+  place-items: center;
+  padding: 0;
+  line-height: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #087f5b;
+  background: transparent;
+  will-change: transform;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms cubic-bezier(.2,.8,.2,1);
+}
+
+.deepspace-attachment-action > svg { display: block; flex: none; }
+
+.deepspace-attachment-action:hover:not(:disabled),
+.deepspace-attachment-action:focus-visible {
+  color: #065f46;
+  border-color: rgba(5, 150, 105, 0.32);
+  background: #ffffff;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+  transform: translateY(-1px) scale(1.035);
+}
+
+.deepspace-attachment-action:active:not(:disabled) {
+  transform: translateY(0) scale(0.93);
+  transition-duration: 70ms;
+}
+.deepspace-attachment-action:disabled { cursor: not-allowed; opacity: 0.42; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .deepspace-attachment-actions { transition: border-color 180ms ease, box-shadow 180ms ease; }
+  .deepspace-attachment-actions:focus-within {
+    border-color: rgba(5, 150, 105, 0.42);
+    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.10);
+  }
+  .deepspace-attachment-action:hover:not(:disabled) > svg { animation: deepspace-attachment-icon-settle 220ms cubic-bezier(.2,.8,.2,1); }
+}
+
+@keyframes deepspace-attachment-icon-settle {
+  0% { transform: scale(0.90); }
+  65% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.dark .deepspace-attachment-actions {
+  border-color: rgba(52, 211, 153, 0.25);
+  background: rgba(6, 43, 32, 0.78);
+}
+
+.dark .deepspace-attachment-action { color: #6ee7b7; }
+.dark .deepspace-attachment-action:hover:not(:disabled),
+.dark .deepspace-attachment-action:focus-visible {
+  color: #d1fae5;
+  border-color: rgba(110, 231, 183, 0.42);
+  background: rgba(16, 89, 64, 0.72);
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deepspace-attachment-action,
+  .deepspace-attachment-actions { transition: none; }
+}
+
+html:not(.dark) .deepspace-composer-stop {
+  color: #dc2626 !important;
+  background-color: rgba(254, 226, 226, 0.94) !important;
+  border-color: rgba(220, 38, 38, 0.45) !important;
+}
+
+html:not(.dark) .deepspace-composer-send:not(:disabled) {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #0f9f9a, #0b7f88) !important;
+  border-color: #0b7f88 !important;
+}
+
+html:not(.dark) .deepspace-composer-send:disabled {
+  color: #475569 !important;
+  background: #e2edf0 !important;
+  border-color: #9fb8c0 !important;
+}
+
+html:not(.dark) .deepspace-composer-steer:not(:disabled) {
+  color: #92400e !important;
+  background-color: #fef3c7 !important;
+  border-color: #d97706 !important;
+}
+
+html:not(.dark) .deepspace-composer-steer:disabled {
+  color: #64748b !important;
+  background-color: #edf3f4 !important;
+  border-color: #b7cbd1 !important;
+  opacity: 1 !important;
+}
+
+/* DeepSpace streams cyan arguments on a dark canvas. Keep the same semantic
+   labels readable when the activity panel is rendered in the light theme. */
+.deepspace-tool-arguments {
+  border-color: rgba(14, 116, 144, 0.42);
+}
+
+.deepspace-tool-arguments-label,
+.deepspace-tool-arguments-text {
+  color: #a5f3fc;
+}
+
+html:not(.dark) .deepspace-tool-arguments {
+  border-color: rgba(14, 116, 144, 0.38) !important;
+}
+
+html:not(.dark) .deepspace-tool-arguments-label,
+html:not(.dark) .deepspace-tool-arguments-text {
+  color: #0e5f73 !important;
+  opacity: 1 !important;
+}
+
 /* Global light-theme harmonization for utility classes used across dashboard pages. */
+html:not(.dark) [class*="text-blue-"],
+html:not(.dark) [class*="text-indigo-"],
+html:not(.dark) [class*="text-violet-"],
+html:not(.dark) [class*="text-purple-"] {
+  color: #0f766e !important;
+}
+
+html:not(.dark) [class*="bg-blue-"],
+html:not(.dark) [class*="bg-indigo-"],
+html:not(.dark) [class*="bg-violet-"],
+html:not(.dark) [class*="bg-purple-"] {
+  background-color: rgba(8, 145, 178, 0.12) !important;
+}
+
+html:not(.dark) [class*="border-blue-"],
+html:not(.dark) [class*="border-indigo-"],
+html:not(.dark) [class*="border-violet-"],
+html:not(.dark) [class*="border-purple-"] {
+  border-color: rgba(8, 145, 178, 0.28) !important;
+}
+
+html:not(.dark) [class*="from-blue-"],
+html:not(.dark) [class*="from-indigo-"],
+html:not(.dark) [class*="from-violet-"],
+html:not(.dark) [class*="from-purple-"] {
+  --tw-gradient-from: #0d9488 !important;
+}
+
+html:not(.dark) [class*="via-blue-"],
+html:not(.dark) [class*="via-indigo-"],
+html:not(.dark) [class*="via-violet-"],
+html:not(.dark) [class*="via-purple-"] {
+  --tw-gradient-via: #22d3ee !important;
+}
+
+html:not(.dark) [class*="to-blue-"],
+html:not(.dark) [class*="to-indigo-"],
+html:not(.dark) [class*="to-violet-"],
+html:not(.dark) [class*="to-purple-"] {
+  --tw-gradient-to: #0891b2 !important;
+}
+
 html:not(.dark) .text-emerald-200,
 html:not(.dark) .text-emerald-300 {
   color: #0f766e !important;
@@ -1812,10 +2088,114 @@ select {
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--surface-0) 86%, transparent);
   color: var(--text-strong);
+  appearance: none;
+  background-image: none;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
     background-color 160ms ease;
+}
+
+/* Only native select controls receive a dropdown indicator. Text inputs,
+   search fields, and schedule names must never inherit a repeated chevron. */
+select {
+  padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 20 20' fill='none' stroke='%2364758b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 0.9rem;
+}
+
+/* Organization controls use an explicit theme chevron so native select
+   indicators cannot collapse, double-paint, or clip inside compact toolbars. */
+.documents-theme-scope select.bg-none {
+  background-image: none;
+}
+
+.documents-theme-scope input[type="checkbox"] {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--primary) 42%, var(--border-subtle));
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--surface-0) 88%, transparent);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+}
+
+.documents-theme-scope input[type="checkbox"]::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  transform: scale(0);
+  border-radius: 0.15rem;
+  background: hsl(var(--primary));
+  transition: transform 140ms ease;
+}
+
+.documents-theme-scope input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
+/* Textareas are free-form writing surfaces, not dropdowns. Keep the shared
+   input treatment from painting a repeated chevron across message composers. */
+textarea {
+  padding-right: 0;
+  background-image: none !important;
+  background-repeat: no-repeat;
+}
+
+/* Query trace surfaces use deliberate semantic accents in both themes. */
+.query-status-panel,
+.query-thinking-panel {
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--border-subtle));
+  background: color-mix(in srgb, var(--surface-1) 92%, var(--primary) 8%);
+}
+
+.query-status-panel .query-status-chip,
+.query-status-panel .query-status-toggle,
+.query-status-panel .query-status-row,
+.query-thinking-panel .query-thinking-toggle,
+.query-thinking-panel .query-thinking-body {
+  border-color: color-mix(in srgb, var(--primary) 20%, var(--border-subtle));
+}
+
+.query-status-panel .query-status-chip,
+.query-status-panel .query-status-toggle {
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface-1));
+}
+
+.query-status-panel .query-status-toggle {
+  border-radius: 0.5rem !important;
+}
+
+.query-status-panel > div:last-child {
+  scrollbar-color: color-mix(in srgb, var(--primary) 58%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.query-status-panel > div:last-child::-webkit-scrollbar {
+  width: 7px;
+}
+
+.query-status-panel > div:last-child::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 58%, transparent);
+}
+
+html.dark .query-status-panel,
+html.dark .query-thinking-panel {
+  border-color: color-mix(in srgb, #22d3ee 22%, #26352f);
+  background: color-mix(in srgb, #0b1511 92%, #0e7490 8%);
+}
+
+html.dark .query-status-panel .query-status-chip,
+html.dark .query-status-panel .query-status-toggle,
+html.dark .query-status-panel .query-status-row,
+html.dark .query-thinking-panel .query-thinking-body {
+  border-color: rgba(34, 211, 238, 0.2);
 }
 
 .dark .ui-input,
@@ -1823,6 +2203,18 @@ select {
 .dark textarea,
 .dark select {
   background: color-mix(in srgb, var(--surface-1) 90%, transparent);
+}
+
+.dark select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 20 20' fill='none' stroke='%2394a3b8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E");
+}
+
+/* Keep one dropdown indicator per native select. Some browser/theme
+   combinations otherwise repeat the background chevron across the control. */
+select {
+  background-repeat: no-repeat !important;
+  background-position: right 0.65rem center !important;
+  background-size: 0.9rem !important;
 }
 
 .ui-input::placeholder,
@@ -2251,11 +2643,78 @@ select:-webkit-autofill:focus {
   animation: settings-shimmer 3s ease infinite;
 }
 
+/* Storage details: animate only the circular quota progress layer. */
+@keyframes storage-ring-reveal {
+  0% {
+    transform: rotate(-90deg) scale(0.9);
+  }
+
+  70% {
+    transform: rotate(12deg) scale(1.02);
+  }
+
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+.storage-visual-ring {
+  animation: storage-ring-reveal 850ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .storage-visual-ring {
+    animation: none;
+  }
+}
+
 /* Settings info row with left accent */
 .settings-info-row {
   position: relative;
   padding-left: 1rem;
   transition: background-color 200ms ease;
+}
+
+/* Metrics cards can appear inside a narrow admin workspace column even when
+   the viewport itself is desktop-sized. Use available width rather than
+   viewport breakpoints so labels never collapse into one letter per line. */
+.runtime-monitoring-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.runtime-monitoring-card {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.runtime-monitoring-label {
+  min-height: 2.25rem;
+  font-size: clamp(0.52rem, 1.8cqi, 0.58rem);
+  line-height: 1.35;
+  overflow-wrap: normal;
+  text-wrap: balance;
+}
+
+.runtime-monitoring-value {
+  min-width: 0;
+  font-size: clamp(0.82rem, 8cqi, 1.5rem);
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+@media (max-width: 28rem) {
+  .runtime-monitoring-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
+  }
+
+  .runtime-monitoring-card {
+    padding: 0.65rem;
+  }
 }
 
 .settings-info-row::before {
@@ -2322,6 +2781,58 @@ select:-webkit-autofill:focus {
 
 .settings-btn-glow {
   animation: btn-glow-pulse 3s ease-in-out infinite;
+}
+
+/* The first assistant frame can take a moment to arrive. Keep this small,
+   inline indicator local to the assistant avatar so it never covers the
+   composer or changes stream state. A short staggered wave stays smooth
+   during long provider waits without a JavaScript timer. */
+.deepspace-response-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 1.5rem;
+  padding: 0.15rem 0;
+  color: color-mix(in srgb, var(--accent-cyan) 82%, white);
+}
+
+.deepspace-response-dot {
+  display: block;
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 9999px;
+  background: currentColor;
+  box-shadow: 0 0 0.7rem color-mix(in srgb, currentColor 48%, transparent);
+  animation: deepspace-dot-wave 1.35s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.deepspace-response-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.deepspace-response-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes deepspace-dot-wave {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0) scale(0.82);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-0.22rem) scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deepspace-response-dot {
+    animation: none !important;
+    opacity: 0.72;
+  }
 }
 
 /* Count-up number container */
@@ -2392,9 +2903,9 @@ html:not(.dark) .mcp-theme-scope [class~="text-slate-500"] {
   color: #64748b !important;
 }
 
-html:not(.dark) .mcp-theme-scope [class~="text-sky-100"],
-html:not(.dark) .mcp-theme-scope [class~="text-sky-200"],
-html:not(.dark) .mcp-theme-scope [class~="text-sky-300"] {
+html:not(.dark) .mcp-theme-scope [class~="text-cyan-100"],
+html:not(.dark) .mcp-theme-scope [class~="text-cyan-200"],
+html:not(.dark) .mcp-theme-scope [class~="text-cyan-300"] {
   color: #0e7490 !important;
 }
 
@@ -2402,6 +2913,16 @@ html:not(.dark) .mcp-theme-scope [class~="text-cyan-100"],
 html:not(.dark) .mcp-theme-scope [class~="text-cyan-200"],
 html:not(.dark) .mcp-theme-scope [class~="text-cyan-300"] {
   color: #0e7490 !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class*="text-cyan-200/"],
+html:not(.dark) .mcp-theme-scope [class*="text-cyan-100/"] {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .mcp-theme-scope [class*="text-emerald-200/"],
+html:not(.dark) .mcp-theme-scope [class*="text-emerald-100/"] {
+  color: #047857 !important;
 }
 
 html:not(.dark) .mcp-theme-scope [class*="text-amber-100"],
@@ -2437,9 +2958,19 @@ html:not(.dark) .mcp-theme-scope [class*="bg-[#101713]"] {
   color: var(--text-body) !important;
 }
 
-html:not(.dark) .mcp-theme-scope input:not([type="checkbox"]):not([type="radio"]),
 html:not(.dark) .mcp-theme-scope select {
   background: rgba(255, 255, 255, 0.86) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 20 20' fill='none' stroke='%23475569' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 0.65rem center !important;
+  background-size: 0.9rem !important;
+  color: var(--text-strong) !important;
+  border-color: rgba(13, 148, 136, 0.24) !important;
+}
+
+html:not(.dark) .mcp-theme-scope input:not([type="checkbox"]):not([type="radio"]) {
+  background: rgba(255, 255, 255, 0.86) !important;
+  background-image: none !important;
   color: var(--text-strong) !important;
   border-color: rgba(13, 148, 136, 0.24) !important;
 }
@@ -2458,7 +2989,7 @@ html:not(.dark) .mcp-marketplace-actions button[class*="bg-white/15"] {
   background: linear-gradient(
     135deg,
     rgba(20, 184, 166, 0.18),
-    rgba(14, 165, 233, 0.12)
+    rgba(8, 145, 178, 0.12)
   ) !important;
   color: #0f766e !important;
 }
@@ -2489,8 +3020,8 @@ html:not(.dark) .mcp-marketplace-card > span:nth-child(2) {
 
 html:not(.dark) .mcp-logo {
   border-color: rgba(13, 148, 136, 0.22) !important;
-  background: linear-gradient(145deg, #ecfeff, #dbeafe) !important;
-  box-shadow: 0 8px 18px rgba(14, 116, 144, 0.12);
+  background: linear-gradient(145deg, #ecfdf5, #dcfce7) !important;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.14);
 }
 
 html:not(.dark) .mcp-theme-scope .mcp-logo [class*="text-white"] {
@@ -2513,6 +3044,75 @@ html:not(.dark) .mcp-theme-scope [class~="border-white/10"],
 html:not(.dark) .mcp-theme-scope [class~="border-white/15"],
 html:not(.dark) .mcp-theme-scope [class~="border-white/20"] {
   border-color: rgba(100, 116, 139, 0.24) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-tool-toggle {
+  color: #475569 !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-tool-toggle:hover {
+  color: #0e7490 !important;
+  background: rgba(14, 116, 144, 0.1) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-tool-docs {
+  border-color: rgba(14, 116, 144, 0.18) !important;
+  background: rgba(226, 242, 243, 0.72) !important;
+  box-shadow: inset 0 1px 3px rgba(14, 116, 144, 0.06) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-tool-docs-label {
+  color: #0e7490 !important;
+}
+
+.mcp-safe-events-list {
+  scrollbar-gutter: stable;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-safe-events-list {
+  scrollbar-color: rgba(14, 116, 144, 0.38) transparent;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-safe-events-list > div {
+  border-color: rgba(100, 116, 139, 0.2) !important;
+}
+
+.mcp-tool-permissions-list {
+  scrollbar-gutter: stable;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-tool-permissions-list {
+  scrollbar-color: rgba(14, 116, 144, 0.38) transparent;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-tool-permissions-list tbody {
+  border-color: rgba(100, 116, 139, 0.2) !important;
+}
+
+.mcp-tool-details {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms ease;
+}
+
+.mcp-tool-details-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.mcp-tool-details-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mcp-tool-details {
+    transition: none;
+  }
 }
 
 /* Collections dialogs use a translucent veil in light mode so the colorful
@@ -2562,19 +3162,39 @@ html:not(.dark) .collections-theme-scope .collections-create-modal input {
   border-color: rgba(13, 148, 136, 0.24) !important;
 }
 
+html:not(.dark) .collections-theme-scope .collections-create-modal button {
+  border-radius: 0.8rem;
+}
+
+html:not(.dark) .collections-theme-scope .collections-create-modal [class*="border-slate-800"] {
+  border-color: rgba(14, 116, 144, 0.2) !important;
+}
+
+html:not(.dark) .collections-theme-scope .collections-create-modal [class*="bg-amber-500"] {
+  background: linear-gradient(135deg, #f59e0b, #f97316) !important;
+  color: #172033 !important;
+  box-shadow: 0 5px 14px rgba(245, 158, 11, 0.2);
+}
+
+html:not(.dark) .collections-theme-scope .collections-create-modal [class*="bg-emerald-600"] {
+  background: linear-gradient(135deg, #0d9488, #059669) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.2);
+}
+
 /* Dashboard light mode: establish visible depth and a clear text hierarchy
  * without changing the dashboard's existing dark presentation. */
 html:not(.dark) .dashboard-theme-scope .dashboard-hero {
   border-color: rgba(13, 148, 136, 0.22) !important;
   background:
     radial-gradient(circle at 8% 0%, rgba(20, 184, 166, 0.18), transparent 30%),
-    radial-gradient(circle at 58% 100%, rgba(14, 165, 233, 0.12), transparent 34%),
-    radial-gradient(circle at 100% 18%, rgba(139, 92, 246, 0.1), transparent 28%),
+    radial-gradient(circle at 58% 100%, rgba(20, 184, 166, 0.1), transparent 34%),
+    radial-gradient(circle at 100% 18%, rgba(8, 145, 178, 0.08), transparent 28%),
     linear-gradient(
       135deg,
       rgba(255, 255, 255, 0.98),
       rgba(236, 253, 245, 0.94) 52%,
-      rgba(239, 246, 255, 0.94)
+      rgba(236, 253, 245, 0.94)
     ) !important;
   box-shadow:
     0 18px 48px rgba(15, 118, 110, 0.1),
@@ -2590,6 +3210,47 @@ html:not(.dark) .dashboard-theme-scope .theme-card {
   box-shadow:
     0 10px 26px rgba(15, 118, 110, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .theme-panel {
+  border-color: rgba(13, 148, 136, 0.22) !important;
+  background:
+    radial-gradient(circle at 96% 0%, rgba(20, 184, 166, 0.06), transparent 32%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(240, 253, 250, 0.94)) !important;
+  box-shadow:
+    0 12px 28px rgba(15, 118, 110, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .theme-panel-muted {
+  border-color: rgba(14, 116, 144, 0.2) !important;
+  background: linear-gradient(
+    145deg,
+    rgba(240, 253, 250, 0.92),
+    rgba(236, 253, 245, 0.86)
+  ) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .theme-accent-pill {
+  border: 1px solid rgba(13, 148, 136, 0.28) !important;
+  background: linear-gradient(
+    145deg,
+    rgba(220, 252, 231, 0.92),
+    rgba(207, 250, 254, 0.68)
+  ) !important;
+  color: #0f766e !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .settings-section {
+  border-color: rgba(14, 116, 144, 0.22) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.08), transparent 30%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(239, 250, 250, 0.93)) !important;
+  box-shadow: 0 12px 28px rgba(14, 116, 144, 0.08) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .settings-info-row:hover {
+  background: rgba(14, 116, 144, 0.06) !important;
 }
 
 html:not(.dark) .dashboard-theme-scope [class*="text-foreground/"] {
@@ -2622,7 +3283,7 @@ html:not(.dark) .dashboard-theme-scope [class~="bg-black/10"] {
   border-color: rgba(14, 116, 144, 0.2) !important;
   background:
     radial-gradient(circle at 12% 20%, rgba(34, 211, 238, 0.1), transparent 34%),
-    linear-gradient(135deg, rgba(240, 253, 250, 0.9), rgba(245, 243, 255, 0.84)) !important;
+    linear-gradient(135deg, rgba(240, 253, 250, 0.9), rgba(236, 253, 245, 0.84)) !important;
 }
 
 html:not(.dark) .dashboard-theme-scope .theme-chip {
@@ -2637,7 +3298,7 @@ html:not(.dark) .documents-theme-scope .theme-panel,
 html:not(.dark) .documents-theme-scope .glass-card {
   border-color: rgba(13, 148, 136, 0.2) !important;
   background:
-    radial-gradient(circle at 88% 0%, rgba(34, 211, 238, 0.09), transparent 30%),
+    radial-gradient(circle at 88% 0%, rgba(52, 211, 153, 0.10), transparent 30%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(240, 253, 250, 0.9)) !important;
   box-shadow:
     0 16px 38px rgba(15, 118, 110, 0.08),
@@ -2669,7 +3330,7 @@ html:not(.dark) .documents-viewer-overlay {
 html:not(.dark) .documents-viewer-drawer {
   border-color: rgba(13, 148, 136, 0.24) !important;
   background:
-    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.12), transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(52, 211, 153, 0.12), transparent 34%),
     linear-gradient(150deg, rgba(255, 255, 255, 0.96), rgba(240, 253, 250, 0.92)) !important;
   box-shadow:
     -20px 0 80px rgba(15, 23, 42, 0.18),
@@ -2679,6 +3340,21 @@ html:not(.dark) .documents-viewer-drawer {
 html:not(.dark) .documents-viewer-drawer [class~="bg-white/5"] {
   background: rgba(226, 232, 240, 0.42) !important;
 }
+
+/* Primary document actions must not inherit the global light-mode white-text
+ * normalization. These surfaces are intentionally saturated for clear labels. */
+html:not(.dark) .documents-ingest-action {
+  color: #ffffff !important;
+  background-color: #059669 !important;
+  border-color: #047857 !important;
+}
+html:not(.dark) .documents-ingest-action:hover:not(:disabled) { background-color: #047857 !important; }
+html:not(.dark) .documents-ingest-action:disabled { color: #64748b !important; background-color: #dbe7e2 !important; border-color: #b5ccc2 !important; }
+html:not(.dark) .documents-cancel-action { color: #065f46 !important; background-color: #f0fdf4 !important; }
+html:not(.dark) .documents-view-mode-active { color: #ffffff !important; background-color: #0f9f9a !important; }
+.dark .documents-ingest-action { color: #ecfdf5 !important; background-color: #047857 !important; border-color: #34d399 !important; }
+.dark .documents-cancel-action { color: #a7f3d0 !important; }
+.dark .documents-view-mode-active { color: #ecfdf5 !important; background-color: #0f766e !important; }
 
 /* Query light mode: keep the workspace legible and turn dark-only controls
  * into frosted white panels with restrained cyan, teal, and violet accents. */
@@ -2709,7 +3385,7 @@ html:not(.dark) .query-theme-scope .query-config-drawer {
   border-color: rgba(13, 148, 136, 0.28) !important;
   background:
     radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.14), transparent 34%),
-    radial-gradient(circle at 0% 100%, rgba(139, 92, 246, 0.08), transparent 38%),
+    radial-gradient(circle at 0% 100%, rgba(20, 184, 166, 0.08), transparent 38%),
     linear-gradient(150deg, rgba(255, 255, 255, 0.97), rgba(240, 253, 250, 0.92)) !important;
   color: var(--text-body) !important;
   box-shadow:
@@ -2738,11 +3414,36 @@ html:not(.dark) .query-theme-scope .query-config-drawer [class*="bg-black/"] {
 }
 
 html:not(.dark) .query-theme-scope .query-config-drawer [class~="text-purple-400"] {
-  color: #7c3aed !important;
+  color: #0f766e !important;
 }
 
 html:not(.dark) .query-theme-scope .query-config-drawer [class~="text-amber-400"] {
   color: #b45309 !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer button {
+  border-radius: 0.9rem;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer button:hover {
+  border-color: rgba(14, 116, 144, 0.3) !important;
+  background-color: rgba(14, 116, 144, 0.08) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class*="border-primary"] {
+  border-color: rgba(13, 148, 136, 0.42) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class*="from-primary"] {
+  background-image: linear-gradient(
+    135deg,
+    rgba(20, 184, 166, 0.16),
+    rgba(34, 211, 238, 0.06)
+  ) !important;
+}
+
+html:not(.dark) .query-theme-scope .query-config-drawer [class*="text-primary"] {
+  color: #0f766e !important;
 }
 
 html:not(.dark) .query-theme-scope .query-config-drawer button:hover {
@@ -2817,40 +3518,36 @@ html:not(.dark) .workspace-icon-tooltip {
 html:not(.dark) body {
   background:
     radial-gradient(circle at 4% 0%, rgba(45, 212, 191, 0.13), transparent 25%),
-    radial-gradient(circle at 96% 8%, rgba(129, 140, 248, 0.11), transparent 24%),
-    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background) !important;
+    radial-gradient(circle at 96% 8%, rgba(8, 145, 178, 0.08), transparent 24%),
+    radial-gradient(circle at 1px 1px, var(--bg-grid-dot) 1px, transparent 1.35px),
+    var(--background) !important;
   background-size:
     auto,
     auto,
-    30px 30px,
     30px 30px,
     auto;
   background-position:
     center,
     center,
-    -1px -1px,
-    -1px -1px,
+    0 0,
     center;
 }
 
 html:not(.dark) .app-shell-grid {
   background:
     radial-gradient(circle at 4% 0%, rgba(45, 212, 191, 0.13), transparent 25%),
-    radial-gradient(circle at 96% 8%, rgba(129, 140, 248, 0.11), transparent 24%),
-    linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px), var(--background) !important;
+    radial-gradient(circle at 96% 8%, rgba(8, 145, 178, 0.08), transparent 24%),
+    radial-gradient(circle at 1px 1px, var(--bg-grid-dot) 1px, transparent 1.35px),
+    var(--background) !important;
   background-size:
     auto,
     auto,
-    30px 30px,
     30px 30px,
     auto;
   background-position:
     center,
     center,
-    -1px -1px,
-    -1px -1px,
+    0 0,
     center;
 }
 
@@ -2903,6 +3600,192 @@ html:not(.dark) .deepspace-theme-scope [class*="text-white"] {
   color: var(--text-strong) !important;
 }
 
+/* Timeline markers previously used a fixed dark surface. In light mode that
+ * produced black dots behind otherwise correctly themed activity icons. */
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-icon {
+  background: #f8ffff !important;
+  border-color: rgba(14, 116, 144, 0.34) !important;
+  box-shadow: 0 1px 3px rgba(23, 78, 99, 0.14);
+}
+
+/* Timeline icons use pastel dark-theme tokens. Give each semantic state a
+ * light-theme foreground with enough contrast against the pale marker. */
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-icon [class~="text-cyan-300"] {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-icon [class~="text-violet-300"] {
+  color: #0f766e !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-icon [class~="text-cyan-300"] {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-icon [class~="text-blue-300"] {
+  color: #0f766e !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-icon [class~="text-amber-300"] {
+  color: #b45309 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-icon [class~="text-red-300"] {
+  color: #b91c1c !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-timeline-connector {
+  background-color: rgba(14, 116, 144, 0.38) !important;
+}
+
+/* Message navigation rail: the dark-theme pastel markers were nearly
+ * invisible on the light workspace. Keep the same hierarchy but use opaque,
+ * theme-appropriate contrast for the rail, markers, tooltip, and insert
+ * control. */
+html:not(.dark) .deepspace-theme-scope .deepspace-message-rail {
+  border-color: rgba(8, 145, 178, 0.52) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-scroll-tracker,
+html:not(.dark) .deepspace-theme-scope .deepspace-scroll-tracker * {
+  filter: none !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-scroll-tracker {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-message-marker {
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-message-marker-user {
+  background: #22d3ee !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-message-marker-user-active {
+  background: #0d9488 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-message-marker-assistant {
+  background: #34d399 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-message-marker-assistant-active {
+  background: #059669 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-message-tooltip {
+  border-color: rgba(14, 116, 144, 0.24) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-message-insert {
+  border-color: rgba(14, 116, 144, 0.34) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-empty-accent {
+  border-color: rgba(8, 145, 178, 0.3) !important;
+  background: linear-gradient(
+    145deg,
+    rgba(236, 253, 245, 0.95),
+    rgba(220, 252, 231, 0.72)
+  ) !important;
+  color: #0e7490 !important;
+  box-shadow: 0 12px 26px rgba(8, 145, 178, 0.14) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-empty-prompt {
+  border-color: rgba(14, 116, 144, 0.25) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.1), transparent 36%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(239, 250, 250, 0.92)) !important;
+  box-shadow: 0 10px 24px rgba(14, 116, 144, 0.08) !important;
+  color: #334155 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-empty-prompt:hover {
+  border-color: rgba(13, 148, 136, 0.46) !important;
+  background: linear-gradient(
+    145deg,
+    rgba(240, 253, 250, 0.98),
+    rgba(220, 252, 231, 0.92)
+  ) !important;
+  box-shadow: 0 14px 28px rgba(13, 148, 136, 0.14) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-prompt-tone-1 {
+  background: linear-gradient(
+    145deg,
+    rgba(236, 253, 245, 0.98),
+    rgba(220, 252, 231, 0.8)
+  ) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-prompt-tone-2 {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 247, 237, 0.98),
+    rgba(254, 243, 199, 0.62)
+  ) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-prompt-tone-3 {
+  background: linear-gradient(
+    145deg,
+    rgba(240, 253, 250, 0.98),
+    rgba(220, 252, 231, 0.78)
+  ) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-context-label {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-context-label:hover {
+  color: #155e75 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-context-values {
+  color: #475569 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-context-progress {
+  background: rgba(14, 116, 144, 0.12) !important;
+  box-shadow: 0 0 0 1px rgba(14, 116, 144, 0.08) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-context-progress-fill {
+  background: linear-gradient(90deg, #0891b2, #0d9488, #059669) !important;
+}
+
+/* Execution errors keep readable red semantics in light mode instead of
+ * inheriting low-contrast dark-theme pastel tokens. */
+html:not(.dark) .deepspace-theme-scope .deepspace-execution-error {
+  border-color: rgba(185, 28, 28, 0.2) !important;
+  background: rgba(254, 242, 242, 0.82) !important;
+  box-shadow: 0 10px 24px rgba(185, 28, 28, 0.08) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-execution-error-title {
+  color: #dc2626 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-execution-error-message {
+  color: #991b1b !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-execution-error-code {
+  color: #b91c1c !important;
+}
+
 /* Markdown chat output uses prose-invert for dark mode. Reset its typography
  * variables in light mode so table headers, list markers, and inline labels do
  * not inherit near-white dark-theme colors. */
@@ -2940,9 +3823,9 @@ html:not(.dark) .prose-invert :where(table) {
 }
 
 html:not(.dark) .prose-invert :where(thead, th) {
-  background: rgba(224, 242, 254, 0.58) !important;
-  color: #155e75 !important;
-  border-color: rgba(14, 116, 144, 0.24) !important;
+  background: rgba(220, 252, 231, 0.64) !important;
+  color: #166534 !important;
+  border-color: rgba(5, 150, 105, 0.24) !important;
 }
 
 html:not(.dark) .prose-invert :where(td) {
@@ -2961,4 +3844,494 @@ html:not(.dark) .prose-invert [class~="text-cyan-300"] {
 
 html:not(.dark) .prose-invert [class~="marker:text-cyan-300"]::marker {
   color: #0d9488 !important;
+}
+
+/* The question card has a dark presentation by default, but it is also used
+ * inside the light DeepSpace workspace. Give that state an explicit palette;
+ * otherwise the global light-theme text normalization puts dark ink on the
+ * card's dark gradient. */
+html:not(.dark) .deepspace-question-card {
+  border-color: rgba(14, 116, 144, 0.24) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.12), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(224, 245, 245, 0.96)) !important;
+  box-shadow:
+    0 18px 42px -28px rgba(14, 116, 144, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94) !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-title,
+html:not(.dark) .deepspace-question-card .deepspace-question-recommended {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-status {
+  border-color: rgba(14, 116, 144, 0.2) !important;
+  background: rgba(14, 116, 144, 0.1) !important;
+  color: #155e75 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-prompt {
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-hint,
+html:not(.dark) .deepspace-question-card .deepspace-question-sending {
+  color: #476779 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-option {
+  border-color: rgba(14, 116, 144, 0.2) !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  color: var(--text-body) !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-option:hover {
+  border-color: rgba(14, 116, 144, 0.42) !important;
+  background: rgba(236, 254, 255, 0.92) !important;
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-option-text {
+  color: inherit !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-option-arrow {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-other {
+  color: #475569 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-other:hover {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-input {
+  border-color: rgba(14, 116, 144, 0.22) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-input::placeholder {
+  color: #7890a0 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-input:focus {
+  border-color: rgba(14, 116, 144, 0.48) !important;
+  background: #ffffff !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-submit {
+  border-color: rgba(14, 116, 144, 0.3) !important;
+  background: rgba(14, 116, 144, 0.14) !important;
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-submit:hover {
+  background: rgba(14, 116, 144, 0.24) !important;
+}
+
+/* Request diagnostics uses dense information by design. Keep every value,
+ * but give the card a stronger visual hierarchy so labels, numbers, notes,
+ * and status metadata do not collapse into one pale block. */
+.deepspace-diagnostics-card {
+  backdrop-filter: blur(18px);
+}
+
+.deepspace-diagnostics-header {
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+
+.deepspace-diagnostics-icon {
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 34%, transparent);
+  background: color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+  color: var(--accent-cyan);
+}
+
+.deepspace-diagnostics-close {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.deepspace-diagnostics-close:hover {
+  background: color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+}
+
+.deepspace-diagnostics-metric {
+  min-height: 3.9rem;
+  --diagnostics-accent: #8b5cf6;
+  border-color: color-mix(in srgb, var(--diagnostics-accent) 34%, transparent);
+  background: color-mix(in srgb, var(--diagnostics-accent) 9%, var(--surface-2));
+}
+
+.deepspace-diagnostics-metric--context {
+  --diagnostics-accent: #8b5cf6;
+}
+
+.deepspace-diagnostics-metric--input {
+  --diagnostics-accent: #14b8a6;
+}
+
+.deepspace-diagnostics-metric--output {
+  --diagnostics-accent: #f97316;
+}
+
+.deepspace-diagnostics-metric--remaining {
+  --diagnostics-accent: #84cc16;
+}
+
+.deepspace-diagnostics-metric--session {
+  --diagnostics-accent: #ec4899;
+}
+
+.deepspace-diagnostics-metric--reserve {
+  --diagnostics-accent: #f59e0b;
+}
+
+.deepspace-diagnostics-metric-label {
+  font-size: 0.62rem;
+  line-height: 1.25;
+}
+
+.deepspace-diagnostics-metric-value {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.76rem;
+  line-height: 1.2;
+}
+
+.deepspace-diagnostics-metric-percent {
+  color: var(--diagnostics-accent);
+}
+
+.deepspace-diagnostics-description {
+  line-height: 1.5;
+}
+
+html:not(.dark) .deepspace-diagnostics-card {
+  border-color: rgba(109, 40, 217, 0.22) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(18px) saturate(125%);
+  color: #475569 !important;
+  box-shadow:
+    0 18px 42px rgba(30, 41, 59, 0.14),
+    0 3px 10px rgba(30, 41, 59, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96) !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-header {
+  border-bottom-color: rgba(13, 148, 136, 0.2) !important;
+  color: #17453c !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-icon {
+  border-color: rgba(13, 148, 136, 0.3) !important;
+  background: rgba(220, 252, 231, 0.9) !important;
+  color: #0f766e !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-close {
+  background: rgba(8, 145, 178, 0.08) !important;
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-close:hover {
+  background: rgba(109, 40, 217, 0.16) !important;
+  color: #6d28d9 !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-metric {
+  border-color: color-mix(in srgb, var(--diagnostics-accent) 34%, white) !important;
+  background: color-mix(in srgb, var(--diagnostics-accent) 8%, white) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86) !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-metric-label {
+  color: #64748b !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-metric-value {
+  color: #2e2541 !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-metric-percent {
+  color: var(--diagnostics-accent) !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-description {
+  border-top-color: rgba(109, 40, 217, 0.18) !important;
+  color: #64748b !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-footer {
+  border-top-color: rgba(109, 40, 217, 0.18) !important;
+  color: #64748b !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .deepspace-diagnostics-footer .text-foreground {
+  color: #2e2541 !important;
+}
+
+html:not(.dark) .deepspace-diagnostics-card .text-muted-foreground {
+  color: #64748b !important;
+}
+
+/* The model menu uses a dark high-contrast surface in dark mode and a clear
+ * frosted surface in light mode. The search field is a text field, not a
+ * select, so it must never receive the global dropdown-chevron treatment. */
+.deepspace-model-menu {
+  border-color: rgba(129, 140, 248, 0.34);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.2), transparent 34%),
+    linear-gradient(145deg, #151b2e, #0a111f 72%);
+  color: #f8fafc;
+  box-shadow:
+    0 22px 54px rgba(2, 6, 23, 0.52),
+    0 0 0 1px rgba(15, 23, 42, 0.78);
+}
+
+.deepspace-model-menu-search-shell {
+  border-bottom: 1px solid rgba(165, 180, 252, 0.2);
+  background: rgba(10, 17, 31, 0.88);
+}
+
+.deepspace-model-menu-search {
+  border-color: rgba(165, 180, 252, 0.34);
+  background: rgba(30, 41, 59, 0.92);
+  color: #f8fafc;
+  caret-color: #c4b5fd;
+  appearance: none;
+  background-image: none !important;
+  background-repeat: no-repeat !important;
+  padding-right: 0.625rem;
+}
+
+.deepspace-model-menu-search::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.deepspace-model-menu-search::placeholder {
+  color: #a5b4cf;
+}
+
+.deepspace-model-menu-search:focus {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2);
+}
+
+.deepspace-model-menu-list {
+  scrollbar-color: rgba(129, 140, 248, 0.72) transparent;
+}
+
+.deepspace-model-menu-option {
+  color: #e5e7eb;
+}
+
+.deepspace-model-menu-option:hover,
+.deepspace-model-menu-option:focus-visible {
+  background: rgba(129, 140, 248, 0.18);
+  color: #ffffff;
+  outline: none;
+}
+
+.deepspace-model-menu-option--selected {
+  background: linear-gradient(90deg, rgba(20, 184, 166, 0.25), rgba(14, 116, 144, 0.2));
+  color: #ecfdf5;
+  box-shadow: inset 2px 0 0 #2dd4bf;
+}
+
+.deepspace-model-menu-name {
+  color: inherit;
+}
+
+.deepspace-model-menu-quantization {
+  color: #c4b5fd;
+}
+
+.deepspace-model-menu-check {
+  color: #5eead4;
+}
+
+.deepspace-model-menu-empty {
+  color: #a5b4cf;
+}
+
+html:not(.dark) .deepspace-model-menu {
+  border-color: rgba(14, 116, 144, 0.28) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(18px) saturate(125%);
+  color: #0f172a !important;
+  box-shadow:
+    0 20px 48px rgba(15, 23, 42, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.76) !important;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-search-shell {
+  border-bottom-color: rgba(14, 116, 144, 0.16) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-search {
+  border-color: rgba(14, 116, 144, 0.3) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  color: #0f172a !important;
+  caret-color: #0f766e;
+  -webkit-text-fill-color: #0f172a !important;
+  appearance: none;
+  background-image: none !important;
+  background-repeat: no-repeat !important;
+  padding-right: 0.625rem;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-search:focus {
+  border-color: #0f766e !important;
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.14) !important;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-search::placeholder {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-option {
+  color: #334155 !important;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-option:hover,
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-option:focus-visible {
+  background: rgba(13, 148, 136, 0.1) !important;
+  color: #0f172a !important;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-option--selected {
+  background: rgba(13, 148, 136, 0.14) !important;
+  color: #115e59 !important;
+  box-shadow: inset 2px 0 0 #0d9488;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-quantization {
+  color: #c4b5fd !important;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-check {
+  color: #5eead4 !important;
+}
+
+html:not(.dark) .deepspace-model-menu .deepspace-model-menu-empty {
+  color: #a5b4cf !important;
+}
+
+/* Give the account initial a deliberate identity treatment instead of the
+ * default flat translucent circle. */
+.dashboard-user-avatar {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--accent-cyan) 42%, transparent);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.34), transparent 34%),
+    linear-gradient(135deg, #14b8a6, #0891b2 52%, #4f46e5);
+  color: #ffffff;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--surface-0) 92%, transparent),
+    0 7px 18px rgba(14, 116, 144, 0.24);
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.3);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    filter 160ms ease;
+}
+
+.dashboard-user-avatar:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.12);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--surface-0) 92%, transparent),
+    0 10px 22px rgba(14, 116, 144, 0.32);
+}
+
+.dashboard-user-avatar-status {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  z-index: 10;
+  height: 0.42rem;
+  width: 0.42rem;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.32);
+}
+
+.sidebar-collapse-control {
+  transition:
+    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    padding 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    gap 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+/* The desktop shell changes width while the main content reflows beside it.
+ * Keep it isolated from paint-heavy effects during the short width transition. */
+.dashboard-sidebar-shell {
+  backface-visibility: hidden;
+  contain: paint;
+  transform: translateZ(0);
+  will-change: width;
+}
+
+html:not(.dark) .dashboard-user-avatar {
+  border-color: rgba(14, 116, 144, 0.42) !important;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.44), transparent 34%),
+    linear-gradient(135deg, #0d9488, #0891b2 52%, #059669) !important;
+  color: #ffffff !important;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.9),
+    0 7px 18px rgba(14, 116, 144, 0.22) !important;
+}
+
+/* High-contrast light-theme surfaces for answer confirmations and quoted
+ * research status. These are intentionally more saturated than the general
+ * workspace panels so the state is easy to scan. */
+html:not(.dark) .deepspace-answer-strip {
+  border-color: rgba(14, 116, 144, 0.34) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(207, 250, 254, 0.98),
+    rgba(204, 251, 241, 0.94)
+  ) !important;
+  color: #244c63 !important;
+  box-shadow:
+    0 8px 20px rgba(14, 116, 144, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86) !important;
+}
+
+html:not(.dark) .deepspace-answer-strip .deepspace-answer-icon {
+  color: #0e7490 !important;
+}
+
+html:not(.dark) .deepspace-answer-strip .deepspace-answer-label {
+  color: #0f766e !important;
+}
+
+html:not(.dark) .deepspace-answer-strip .deepspace-answer-text {
+  color: #244c63 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-markdown-blockquote {
+  border-left-color: #0891b2 !important;
+  background: linear-gradient(
+    135deg,
+    rgba(236, 253, 245, 0.92),
+    rgba(220, 252, 231, 0.82)
+  ) !important;
+  color: #244c63 !important;
+  box-shadow: inset 3px 0 0 rgba(8, 145, 178, 0.14) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-markdown-blockquote p {
+  color: #244c63 !important;
 }

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import html
 import io
+import json
 import posixpath
 import re
 import uuid
@@ -13,7 +16,7 @@ from typing import Any, Literal, cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
@@ -24,27 +27,44 @@ from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.rbac import require_permissions
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
+from app.deepspace.integrations.export_service import DeepSpaceExportService
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
+from app.deepspace.services.dataset_derivatives import DatasetDerivativeService
 from app.deepspace.services.library_storage import (
     LibraryStorageService,
     decode_library_payload,
     read_archive_entry,
     safe_archive_entries,
 )
-from app.deepspace.workers.library_uploads import finalize_library_upload
+from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore
+from app.deepspace.workers.library_uploads import finalize_library_upload, profile_library_dataset
+from app.ingestion.services.office_writer import text_to_docx, text_to_pptx, text_to_xlsx
 from app.platform.database.session import get_db
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import (
+    StorageQuotaExceededError,
+    StorageQuotaService,
+    StorageReservationError,
+)
 from app.system.services.storage_service import StorageService, StorageServiceError
 
 router = APIRouter(prefix="/deepspace/library", tags=["deepspace-library"])
-_SAFE_FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,254}$")
+# Keep names safe for object-storage keys while allowing normal Unicode names.
+# Path separators and control characters remain rejected to prevent traversal.
+_SAFE_FILE_NAME = re.compile(r"[^\x00-\x1f\x7f/\\]{1,255}")
 _MAX_LIBRARY_CONTENT_LENGTH = 8_000_000
 _LIBRARY_UPLOAD_CHUNK_SIZE = 2 * 1024 * 1024
+# Never return multi-megabyte text blobs to the interactive Library pane.  The
+# original file remains privately downloadable from object storage; this limit
+# only bounds browser-facing preview/edit data.
+_MAX_LIBRARY_INLINE_PREVIEW_CHARS = 512 * 1024
 _MAX_LIBRARY_EXPORT_FILES = 100
 _MAX_LIBRARY_EXPORT_BYTES = 250 * 1024 * 1024
+_MAX_EDITABLE_OFFICE_CHARS = 8_000_000
 _LIBRARY_CONTENT_TYPES = {
     "text/css",
     "text/csv",
@@ -58,6 +78,8 @@ _LIBRARY_CONTENT_TYPES = {
     "text/x-java",
     "text/x-python",
     "text/x-yaml",
+    "text/x-markdown",
+    "text/tab-separated-values",
     "text/xml",
     "application/javascript",
     "application/json",
@@ -65,8 +87,24 @@ _LIBRARY_CONTENT_TYPES = {
     "application/xml",
     "application/yaml",
     "application/x-yaml",
+    "application/x-ipynb+json",
+    "application/x-sh",
+    "application/typescript",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/msword",
+    "application/vnd.ms-word",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.oasis.opendocument.text",
+    "application/vnd.oasis.opendocument.presentation",
+    "application/rtf",
+    "text/rtf",
     "application/pdf",
     "application/zip",
+    "application/gzip",
+    "application/x-gzip",
+    "application/x-tar",
+    "application/x-7z-compressed",
+    "application/x-rar-compressed",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.ms-excel",
@@ -76,25 +114,84 @@ _LIBRARY_CONTENT_TYPES = {
     "image/jpeg",
     "image/webp",
     "image/gif",
+    "image/tiff",
+    "image/bmp",
+    "image/avif",
     "video/mp4",
     "video/webm",
     "video/quicktime",
+    "video/x-m4v",
+    "video/x-msvideo",
+    "video/x-matroska",
     "audio/mpeg",
     "audio/wav",
     "audio/ogg",
     "audio/mp4",
+    "audio/x-wav",
+    "audio/flac",
+    "audio/x-m4a",
+    "application/octet-stream",
 }
+
+
+def _ensure_storage_capacity(
+    *,
+    db: Session,
+    auth: AuthContext,
+    additional_bytes: int,
+    replacing_bytes: int = 0,
+) -> None:
+    try:
+        StorageQuotaService(db).ensure_capacity(
+            tenant_id=auth.tenant_id,
+            roles=auth.roles,
+            additional_bytes=additional_bytes,
+            replacing_bytes=replacing_bytes,
+        )
+    except StorageQuotaExceededError as exc:
+        raise ApiError(
+            code="STORAGE_QUOTA_EXCEEDED",
+            message="Your workspace storage limit has been reached. Choose a larger plan or remove old files.",
+            status_code=413,
+            details={
+                "plan": exc.plan.id,
+                "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                "usage_bytes": exc.usage_bytes,
+                "requested_bytes": exc.requested_bytes,
+            },
+        ) from exc
+
+
 _EXTRACTABLE_LIBRARY_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.oasis.opendocument.text",
+    "application/vnd.oasis.opendocument.presentation",
     "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint",
+    "application/msword",
+    "application/vnd.ms-word",
     "text/csv",
+    "text/tab-separated-values",
     "text/plain",
     "text/markdown",
+    "text/x-markdown",
     "application/json",
+    "application/x-ipynb+json",
     "application/xml",
     "application/yaml",
+    "application/x-yaml",
+    "application/rtf",
+    "text/rtf",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/tiff",
+    "image/webp",
+    "image/bmp",
+    "image/gif",
 }
 
 
@@ -105,34 +202,91 @@ def _content_type_for_name(name: str) -> str:
         "mdx": "text/markdown",
         "json": "application/json",
         "csv": "text/csv",
+        "tsv": "text/tab-separated-values",
         "yaml": "application/yaml",
         "yml": "application/yaml",
+        "toml": "text/plain",
+        "ini": "text/plain",
+        "cfg": "text/plain",
+        "log": "text/plain",
         "xml": "application/xml",
         "html": "text/html",
         "htm": "text/html",
+        "xhtml": "text/html",
         "css": "text/css",
         "sql": "text/sql",
         "py": "text/x-python",
+        "ipynb": "application/x-ipynb+json",
         "js": "text/javascript",
         "ts": "text/javascript",
         "tsx": "text/javascript",
+        "jsx": "text/javascript",
+        "mjs": "text/javascript",
+        "cjs": "text/javascript",
+        "sh": "application/x-sh",
+        "bash": "application/x-sh",
+        "java": "text/x-java",
+        "go": "text/plain",
+        "rs": "text/plain",
+        "c": "text/plain",
+        "h": "text/plain",
+        "cpp": "text/plain",
+        "cc": "text/plain",
+        "cxx": "text/plain",
         "diff": "text/x-diff",
         "patch": "text/x-diff",
         "pdf": "application/pdf",
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "doc": "application/msword",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "ppt": "application/vnd.ms-powerpoint",
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "xls": "application/vnd.ms-excel",
+        "ods": "application/vnd.oasis.opendocument.spreadsheet",
+        "odt": "application/vnd.oasis.opendocument.text",
+        "odp": "application/vnd.oasis.opendocument.presentation",
+        "rtf": "application/rtf",
         "zip": "application/zip",
+        "tar": "application/x-tar",
+        "gz": "application/gzip",
+        "tgz": "application/gzip",
+        "7z": "application/x-7z-compressed",
+        "rar": "application/x-rar-compressed",
         "svg": "image/svg+xml",
         "png": "image/png",
         "jpg": "image/jpeg",
         "jpeg": "image/jpeg",
         "webp": "image/webp",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
+        "bmp": "image/bmp",
+        "avif": "image/avif",
         "mp4": "video/mp4",
         "webm": "video/webm",
+        "mov": "video/quicktime",
+        "m4v": "video/x-m4v",
+        "avi": "video/x-msvideo",
+        "mkv": "video/x-matroska",
         "mp3": "audio/mpeg",
         "wav": "audio/wav",
         "ogg": "audio/ogg",
+        "m4a": "audio/x-m4a",
+        "flac": "audio/flac",
     }.get(extension, "text/plain")
+
+
+def _content_disposition(*, disposition: str, filename: str) -> str:
+    """Build a Latin-1-safe Content-Disposition for arbitrary Unicode names."""
+
+    clean_name = "".join(char for char in filename if char.isprintable()).strip() or "file"
+    ascii_name = "".join(
+        char if ord(char) < 128 and char not in {"\\", '"'} and not char.isspace() else "_"
+        for char in clean_name
+    )
+    ascii_name = re.sub(r"_+", "_", ascii_name).strip(" ._") or "file"
+    return (
+        f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(clean_name, safe='')}"
+    )
 
 
 class WorkspaceFileSchema(BaseModel):
@@ -149,10 +303,113 @@ class WorkspaceFileSchema(BaseModel):
     is_binary: bool = False
     checksum_sha256: str | None = None
     extracted_text: str | None = None
+    content_truncated: bool = False
     download_url: str | None = None
     archive_entries: list[dict[str, object]] | None = None
+    dataset_profile: dict[str, object] | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+
+class WorkspaceCsvPageSchema(BaseModel):
+    """A bounded, authorized page of a CSV stored in the Library."""
+
+    columns: list[str]
+    rows: list[list[str]]
+    offset: int
+    limit: int
+    has_more: bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetQuerySchema(BaseModel):
+    columns: list[str] | None = Field(default=None, max_length=50)
+    limit: int = Field(default=200, ge=1, le=500)
+    offset: int = Field(default=0, ge=0, le=10_000_000)
+    order_by: str | None = Field(default=None, max_length=255)
+    descending: bool = False
+    filters: list[DatasetFilterSchema] = Field(default_factory=list, max_length=10)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetQueryResponse(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, object]]
+    offset: int
+    has_more: bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetFilterSchema(BaseModel):
+    """A parameterized filter; arbitrary SQL is deliberately not accepted."""
+
+    column: str = Field(min_length=1, max_length=255)
+    operator: Literal["eq", "ne", "gt", "gte", "lt", "lte", "contains"]
+    value: str | int | float | bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetAggregateSchema(BaseModel):
+    metric: Literal["count", "sum", "avg", "min", "max"]
+    column: str = Field(min_length=1, max_length=255)
+    group_by: str | None = Field(default=None, max_length=255)
+    filters: list[DatasetFilterSchema] = Field(default_factory=list, max_length=10)
+    limit: int = Field(default=100, ge=1, le=500)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetAggregateResponse(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, object]]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetChartSchema(DatasetAggregateSchema):
+    title: str = Field(default="Dataset chart", min_length=1, max_length=255)
+    chart_type: Literal["bar", "line", "area", "pie", "scatter"] = "bar"
+    filename: str = Field(default="dataset-chart.json", min_length=1, max_length=255)
+
+
+class DatasetJoinSchema(BaseModel):
+    right_file_id: uuid.UUID
+    left_on: str = Field(min_length=1, max_length=255)
+    right_on: str = Field(min_length=1, max_length=255)
+    left_columns: list[str] | None = Field(default=None, max_length=50)
+    right_columns: list[str] | None = Field(default=None, max_length=50)
+    join_type: Literal["inner", "left"] = "inner"
+    limit: int = Field(default=500, ge=1, le=500)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetJoinResponse(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, object]]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def _text_as_export_html(text: str, title: str) -> str:
+    """Convert bounded user text to escaped HTML for the shared exporters."""
+    blocks: list[str] = [f"<h1>{html.escape(title)}</h1>"]
+    for line in text.splitlines():
+        if line.startswith("### "):
+            blocks.append(f"<h3>{html.escape(line[4:])}</h3>")
+        elif line.startswith("## "):
+            blocks.append(f"<h2>{html.escape(line[3:])}</h2>")
+        elif line.startswith("# "):
+            blocks.append(f"<h1>{html.escape(line[2:])}</h1>")
+        elif line.strip():
+            blocks.append(f"<p>{html.escape(line)}</p>")
+        else:
+            blocks.append("<p></p>")
+    return "".join(blocks)
 
 
 class WorkspaceFileCreate(BaseModel):
@@ -323,7 +580,19 @@ def _conversation(*, db: Session, auth: AuthContext, conversation_id: uuid.UUID)
 def _serialize_file(
     file: DeepSpaceWorkspaceFile, *, include_content: bool = False
 ) -> WorkspaceFileSchema:
-    content = file.content if include_content and not file.is_binary else None
+    metadata = getattr(file, "metadata_json", None)
+    raw_content = file.content if include_content and not file.is_binary else None
+    raw_extracted_text = file.extracted_text if include_content else None
+    content_truncated = bool(
+        (raw_content and len(raw_content) > _MAX_LIBRARY_INLINE_PREVIEW_CHARS)
+        or (raw_extracted_text and len(raw_extracted_text) > _MAX_LIBRARY_INLINE_PREVIEW_CHARS)
+    )
+    content = raw_content[:_MAX_LIBRARY_INLINE_PREVIEW_CHARS] if raw_content is not None else None
+    extracted_text = (
+        raw_extracted_text[:_MAX_LIBRARY_INLINE_PREVIEW_CHARS]
+        if raw_extracted_text is not None
+        else None
+    )
     return WorkspaceFileSchema(
         id=str(file.id),
         name=file.name,
@@ -337,10 +606,16 @@ def _serialize_file(
         version=file.version,
         is_binary=file.is_binary,
         checksum_sha256=file.checksum_sha256,
-        extracted_text=file.extracted_text if include_content else None,
+        extracted_text=extracted_text,
+        content_truncated=content_truncated,
         download_url=(
             f"/api/v1/deepspace/library/{file.conversation_id}/files/{file.id}/content"
             if file.is_binary
+            else None
+        ),
+        dataset_profile=(
+            cast(dict[str, object], metadata.get("dataset_profile"))
+            if isinstance(metadata, dict) and isinstance(metadata.get("dataset_profile"), dict)
             else None
         ),
     )
@@ -456,6 +731,15 @@ def _add_version(db: Session, file: DeepSpaceWorkspaceFile) -> None:
             metadata_json={"is_binary": file.is_binary},
         )
     )
+    StorageLifecycleService(db).touch_source(
+        tenant_id=file.tenant_id,
+        category="library",
+        source_type="workspace_file",
+        source_id=str(file.id),
+        owner_user_id=file.user_id,
+        dependency_group_id=str(file.conversation_id),
+        activity_kind="library_file_written",
+    )
 
 
 def _serialize_upload(upload: DeepSpaceLibraryUpload) -> LibraryUploadSchema:
@@ -537,18 +821,49 @@ async def create_library_upload(
             status_code=409,
         )
     content_type = payload.content_type
-    if content_type not in _LIBRARY_CONTENT_TYPES:
-        content_type = _content_type_for_name(payload.name)
+    # Browsers commonly report unknown/legacy files as octet-stream. Prefer a
+    # deterministic extension mapping so valid Office, data, and media files
+    # retain their real type and can be extracted/previewed correctly.
+    inferred_content_type = _content_type_for_name(payload.name)
+    if content_type == "application/octet-stream" or content_type not in _LIBRARY_CONTENT_TYPES:
+        if inferred_content_type != "text/plain" or content_type not in _LIBRARY_CONTENT_TYPES:
+            content_type = inferred_content_type
     if content_type not in _LIBRARY_CONTENT_TYPES:
         raise ApiError(
             code="INVALID_UPLOAD_TYPE",
             message="This file type is not supported in the DeepSpace Library.",
             status_code=422,
         )
+    upload_id = uuid.uuid4()
+    try:
+        StorageQuotaService(db).reserve_capacity(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            roles=auth.roles,
+            reservation_key=f"library-upload:{upload_id}",
+            reserved_bytes=payload.size_bytes,
+        )
+    except (StorageQuotaExceededError, StorageReservationError) as exc:
+        if isinstance(exc, StorageQuotaExceededError):
+            raise ApiError(
+                code="STORAGE_QUOTA_EXCEEDED",
+                message="Your workspace storage limit has been reached. Choose a larger plan or remove old files.",
+                status_code=413,
+                details={
+                    "plan": exc.plan.id,
+                    "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                    "usage_bytes": exc.usage_bytes,
+                    "requested_bytes": exc.requested_bytes,
+                },
+            ) from exc
+        raise ApiError(
+            code="STORAGE_RESERVATION_FAILED", message=str(exc), status_code=409
+        ) from exc
     total_chunks = (
         payload.size_bytes + _LIBRARY_UPLOAD_CHUNK_SIZE - 1
     ) // _LIBRARY_UPLOAD_CHUNK_SIZE
     upload = DeepSpaceLibraryUpload(
+        id=upload_id,
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
         conversation_id=conversation_id,
@@ -563,6 +878,11 @@ async def create_library_upload(
         status="pending",
     )
     db.add(upload)
+    StorageQuotaService(db).release_capacity(
+        tenant_id=auth.tenant_id,
+        reservation_key=f"library-upload:{upload_id}",
+        status="committed",
+    )
     db.commit()
     db.refresh(upload)
     return _serialize_upload(upload)
@@ -1133,17 +1453,115 @@ async def get_workspace_file(
 ) -> WorkspaceFileSchema:
     _conversation(db=db, auth=auth, conversation_id=conversation_id)
     file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
-    result = _serialize_file(file, include_content=True)
+    archive_entries: list[dict[str, Any]] | None = None
     if file.is_binary and file.storage_bucket and file.storage_key:
         try:
-            if file.content_type == "application/zip":
-                payload = StorageService(settings).get_bytes(
-                    bucket=file.storage_bucket, object_key=file.storage_key
+            storage = StorageService(settings)
+            payload: bytes | None = None
+            if file.extracted_text is None and file.content_type in _EXTRACTABLE_LIBRARY_TYPES:
+                # Older uploads could be stored successfully when optional
+                # extraction failed. Reprocess once on first open so the
+                # preview and document tools recover without requiring a
+                # re-upload.
+                payload = storage.get_bytes(bucket=file.storage_bucket, object_key=file.storage_key)
+                extraction = LibraryStorageService(settings).extract(
+                    filename=file.name,
+                    content_type=file.content_type,
+                    payload=payload,
+                    tenant_id=auth.tenant_id,
                 )
-                result.archive_entries = safe_archive_entries(payload)
+                if extraction.get("text"):
+                    file.extracted_text = str(extraction["text"])
+                    db.commit()
+            if file.content_type == "application/zip":
+                if payload is None:
+                    payload = storage.get_bytes(
+                        bucket=file.storage_bucket, object_key=file.storage_key
+                    )
+                archive_entries = safe_archive_entries(payload)
         except StorageServiceError as exc:
             raise ApiError(code=exc.code, message=exc.message, status_code=503) from exc
+    result = _serialize_file(file, include_content=True)
+    if archive_entries is not None:
+        result.archive_entries = archive_entries
     return result
+
+
+@router.get(
+    "/{conversation_id}/files/{file_id}/export",
+    response_model=None,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def export_workspace_file(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    format: Literal["original", "txt", "md", "pdf", "docx", "pptx", "xlsx"] = Query("original"),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Export one authorized Library file to a compatible user-selected format."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    source = file.content if not file.is_binary else file.extracted_text
+    original_payload: bytes | None = None
+    if file.is_binary and file.storage_bucket and file.storage_key:
+        original_payload = _library_file_payload(file=file, settings=settings)
+    if format == "original":
+        if original_payload is None:
+            original_payload = (source or "").encode("utf-8")
+        payload = original_payload
+        media_type = file.content_type
+        extension = file.name.rsplit(".", 1)[-1].lower() if "." in file.name else "txt"
+    else:
+        text = source or ""
+        if len(text) > _MAX_EDITABLE_OFFICE_CHARS:
+            raise ApiError(
+                code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
+                message="The file is too large to convert safely.",
+                status_code=413,
+            )
+        if format in {"txt", "md"}:
+            payload = text.encode("utf-8")
+            media_type = "text/plain" if format == "txt" else "text/markdown"
+            extension = format
+        else:
+            service = DeepSpaceExportService()
+            title = file.name.rsplit(".", 1)[0]
+            html_content = _text_as_export_html(text, title)
+            if format == "pdf":
+                payload = service.generate_pdf(html_content, title).getvalue()
+                media_type, extension = "application/pdf", "pdf"
+            elif format == "docx":
+                payload = text_to_docx(text)
+                media_type, extension = (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "docx",
+                )
+            elif format == "xlsx":
+                payload = text_to_xlsx(text)
+                media_type, extension = (
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "xlsx",
+                )
+            else:
+                payload = text_to_pptx(text)
+                media_type, extension = (
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    "pptx",
+                )
+    stem = file.name.rsplit(".", 1)[0] if "." in file.name else file.name
+    return Response(
+        content=payload,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": _content_disposition(
+                disposition="attachment", filename=f"{stem}.{extension}"
+            ),
+        },
+    )
 
 
 @router.post(
@@ -1175,6 +1593,11 @@ async def create_workspace_file(
             message="The file exceeds the configured upload limit.",
             status_code=413,
         )
+    _ensure_storage_capacity(
+        db=db,
+        auth=auth,
+        additional_bytes=len(decoded.payload),
+    )
     file_id = uuid.uuid4()
     is_binary = decoded.is_binary or not decoded.content_type.startswith(
         ("text/", "application/json", "application/xml", "application/yaml")
@@ -1203,6 +1626,11 @@ async def create_workspace_file(
         checksum_sha256=LibraryStorageService.checksum(decoded.payload),
         extracted_text=extraction.get("text"),
         is_binary=is_binary,
+        metadata_json=(
+            {"dataset_profile": {"status": "queued"}}
+            if DatasetDerivativeService.supports(decoded.content_type)
+            else {}
+        ),
     )
     stored = None
     if is_binary:
@@ -1232,6 +1660,8 @@ async def create_workspace_file(
     _add_version(db, file)
     db.commit()
     db.refresh(file)
+    if DatasetDerivativeService.supports(file.content_type):
+        profile_library_dataset.delay(file_id=str(file.id), tenant_id=str(auth.tenant_id))
     return _serialize_file(file, include_content=True)
 
 
@@ -1267,16 +1697,69 @@ async def update_workspace_file(
         if parent_id:
             _owned_folder(db=db, auth=auth, conversation_id=conversation_id, folder_id=parent_id)
         file.parent_folder_id = parent_id
+    old_binary_payload: bytes | None = None
+    generated_binary: bytes | None = None
     if payload.content is not None:
         if file.is_binary:
-            raise ApiError(
-                code="VALIDATION_ERROR",
-                message="Binary files must be replaced through file upload.",
-                status_code=422,
+            if file.content_type not in {
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            }:
+                raise ApiError(
+                    code="VALIDATION_ERROR",
+                    message="This binary format cannot be edited in the browser.",
+                    status_code=422,
+                )
+            if len(payload.content) > _MAX_EDITABLE_OFFICE_CHARS:
+                raise ApiError(
+                    code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
+                    message="The edited document is too large.",
+                    status_code=413,
+                )
+            old_binary_payload = _library_file_payload(file=file, settings=settings)
+            if file.content_type.endswith("wordprocessingml.document"):
+                generated_binary = text_to_docx(payload.content)
+            elif file.content_type.endswith("presentationml.presentation"):
+                generated_binary = text_to_pptx(payload.content)
+            else:
+                generated_binary = text_to_xlsx(payload.content)
+            if len(generated_binary) > settings.upload_max_bytes:
+                raise ApiError(
+                    code="DOC_TOO_LARGE", message="The edited file is too large.", status_code=413
+                )
+            _ensure_storage_capacity(
+                db=db,
+                auth=auth,
+                additional_bytes=len(generated_binary),
+                replacing_bytes=file.size_bytes,
             )
-        file.content = payload.content
-        file.size_bytes = len(payload.content.encode("utf-8"))
-        file.checksum_sha256 = hashlib.sha256(payload.content.encode("utf-8")).hexdigest()
+            try:
+                stored = StorageService(settings).put_bytes(
+                    tenant_id=auth.tenant_id,
+                    document_id=file.id,
+                    filename=file.name,
+                    content_type=file.content_type,
+                    payload=generated_binary,
+                )
+                file.storage_bucket = stored.bucket
+                file.storage_key = stored.object_key
+            except StorageServiceError as exc:
+                raise ApiError(code=exc.code, message=exc.message, status_code=503) from exc
+            file.extracted_text = payload.content
+            file.size_bytes = len(generated_binary)
+            file.checksum_sha256 = hashlib.sha256(generated_binary).hexdigest()
+        else:
+            encoded_content = payload.content.encode("utf-8")
+            _ensure_storage_capacity(
+                db=db,
+                auth=auth,
+                additional_bytes=len(encoded_content),
+                replacing_bytes=file.size_bytes,
+            )
+            file.content = payload.content
+            file.size_bytes = len(encoded_content)
+            file.checksum_sha256 = hashlib.sha256(encoded_content).hexdigest()
     if changed:
         file.version += 1
         file.updated_at = datetime.now(UTC)
@@ -1284,6 +1767,17 @@ async def update_workspace_file(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
+        if old_binary_payload is not None:
+            try:
+                StorageService(settings).put_bytes(
+                    tenant_id=auth.tenant_id,
+                    document_id=file.id,
+                    filename=file.name,
+                    content_type=file.content_type,
+                    payload=old_binary_payload,
+                )
+            except StorageServiceError:
+                pass
         raise ApiError(
             code="IDEMPOTENCY_CONFLICT",
             message="A file with that name already exists in this workspace",
@@ -1324,6 +1818,11 @@ async def upload_workspace_file(
             message="The file exceeds the configured upload limit.",
             status_code=413,
         )
+    _ensure_storage_capacity(
+        db=db,
+        auth=auth,
+        additional_bytes=len(payload),
+    )
     content_type = (file.content_type or _content_type_for_name(name)).lower().split(";", 1)[0]
     if content_type not in _LIBRARY_CONTENT_TYPES:
         content_type = _content_type_for_name(name)
@@ -1444,6 +1943,11 @@ async def copy_workspace_file(
         extracted_text=source.extracted_text,
         is_binary=source.is_binary,
     )
+    _ensure_storage_capacity(
+        db=db,
+        auth=auth,
+        additional_bytes=source.size_bytes,
+    )
     stored = None
     if source.is_binary and source.storage_bucket and source.storage_key:
         db.add(clone)
@@ -1545,6 +2049,12 @@ async def restore_workspace_file_version(
     ).scalar_one_or_none()
     if snapshot is None:
         raise ApiError(code="NOT_FOUND", message="Library file version not found", status_code=404)
+    _ensure_storage_capacity(
+        db=db,
+        auth=auth,
+        additional_bytes=snapshot.size_bytes,
+        replacing_bytes=file.size_bytes,
+    )
     # SQLAlchemy's class-level Column typing is not precise for ORM instances.
     restored_file = cast(Any, file)
     restored_file.name = snapshot.name
@@ -1579,11 +2089,10 @@ async def stream_workspace_file_content(
     _conversation(db=db, auth=auth, conversation_id=conversation_id)
     file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
     disposition = "attachment" if download else "inline"
-    safe_name = quote(file.name, safe="._-")
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, no-store",
-        "Content-Disposition": f"{disposition}; filename=\"{file.name}\"; filename*=UTF-8''{safe_name}",
+        "Content-Disposition": _content_disposition(disposition=disposition, filename=file.name),
     }
     payload = _library_file_payload(file=file, settings=settings)
     if not file.is_binary:
@@ -1594,6 +2103,260 @@ async def stream_workspace_file_content(
         )
     headers["Content-Length"] = str(len(payload))
     return StreamingResponse(iter([payload]), media_type=file.content_type, headers=headers)
+
+
+@router.get(
+    "/{conversation_id}/files/{file_id}/csv-page",
+    response_model=WorkspaceCsvPageSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def read_workspace_csv_page(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    offset: int = Query(default=0, ge=0, le=10_000_000),
+    limit: int = Query(default=200, ge=1, le=500),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> WorkspaceCsvPageSchema:
+    """Return one bounded CSV page without returning the full data set to the browser."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    if file.content_type not in {"text/csv", "text/x-csv", "text/tab-separated-values"}:
+        raise ApiError(
+            code="INVALID_REQUEST", message="The selected file is not a CSV table.", status_code=422
+        )
+    profile = (
+        file.metadata_json.get("dataset_profile") if isinstance(file.metadata_json, dict) else None
+    )
+    if isinstance(profile, dict) and profile.get("status") == "ready":
+        result = DatasetDerivativeService(settings).query(
+            profile=profile,
+            columns=None,
+            limit=limit,
+            offset=offset,
+            order_by=None,
+            descending=False,
+        )
+        columns = [str(column) for column in result["columns"]]
+        parquet_rows = [
+            ["" if value is None else str(value) for value in row.values()]
+            for row in result["rows"]
+        ]
+        return WorkspaceCsvPageSchema(
+            columns=columns,
+            rows=parquet_rows,
+            offset=offset,
+            limit=limit,
+            has_more=bool(result["has_more"]),
+        )
+    delimiter = "\t" if file.content_type == "text/tab-separated-values" else ","
+    payload = _library_file_payload(file=file, settings=settings)
+    # csv.reader handles quoted newlines and escaped delimiters correctly. Only
+    # the requested page plus one sentinel row is retained in the response.
+    reader = csv.reader(
+        io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8-sig", errors="replace", newline=""),
+        delimiter=delimiter,
+    )
+    columns = next(reader, [])
+    for _ in range(offset):
+        if next(reader, None) is None:
+            return WorkspaceCsvPageSchema(
+                columns=columns, rows=[], offset=offset, limit=limit, has_more=False
+            )
+    rows: list[list[str]] = []
+    for _ in range(limit):
+        row = next(reader, None)
+        if row is None:
+            return WorkspaceCsvPageSchema(
+                columns=columns, rows=rows, offset=offset, limit=limit, has_more=False
+            )
+        rows.append(row[:50])
+    return WorkspaceCsvPageSchema(
+        columns=columns[:50],
+        rows=rows,
+        offset=offset,
+        limit=limit,
+        has_more=next(reader, None) is not None,
+    )
+
+
+@router.post(
+    "/{conversation_id}/files/{file_id}/dataset-query",
+    response_model=DatasetQueryResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def query_workspace_dataset(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    payload: DatasetQuerySchema,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DatasetQueryResponse:
+    """Serve bounded read-only dataset pages from a private Parquet derivative."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    profile = (
+        file.metadata_json.get("dataset_profile") if isinstance(file.metadata_json, dict) else None
+    )
+    if not isinstance(profile, dict) or profile.get("status") != "ready":
+        raise ApiError(
+            code="DATASET_NOT_READY", message="Dataset is still processing.", status_code=409
+        )
+    result = DatasetDerivativeService(settings).query(
+        profile=profile,
+        columns=payload.columns,
+        limit=payload.limit,
+        offset=payload.offset,
+        order_by=payload.order_by,
+        descending=payload.descending,
+        filters=[item.model_dump() for item in payload.filters],
+    )
+    return DatasetQueryResponse(**result)
+
+
+@router.post(
+    "/{conversation_id}/files/{file_id}/dataset-aggregate",
+    response_model=DatasetAggregateResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def aggregate_workspace_dataset(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    payload: DatasetAggregateSchema,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DatasetAggregateResponse:
+    """Return a bounded server-side aggregate suitable for a table or chart."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    profile = (
+        file.metadata_json.get("dataset_profile") if isinstance(file.metadata_json, dict) else None
+    )
+    if not isinstance(profile, dict) or profile.get("status") != "ready":
+        raise ApiError(
+            code="DATASET_NOT_READY", message="Dataset is still processing.", status_code=409
+        )
+    return DatasetAggregateResponse(
+        **DatasetDerivativeService(settings).aggregate(
+            profile=profile,
+            metric=payload.metric,
+            column=payload.column,
+            group_by=payload.group_by,
+            filters=[item.model_dump() for item in payload.filters],
+            limit=payload.limit,
+        )
+    )
+
+
+@router.post(
+    "/{conversation_id}/files/{file_id}/dataset-chart",
+    response_model=WorkspaceFileSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def create_workspace_dataset_chart(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    payload: DatasetChartSchema,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> WorkspaceFileSchema:
+    """Persist a reusable chart-data artifact from a bounded server-side aggregate."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    profile = (
+        file.metadata_json.get("dataset_profile") if isinstance(file.metadata_json, dict) else None
+    )
+    if not isinstance(profile, dict) or profile.get("status") != "ready":
+        raise ApiError(
+            code="DATASET_NOT_READY", message="Dataset is still processing.", status_code=409
+        )
+    aggregate = DatasetDerivativeService(settings).aggregate(
+        profile=profile,
+        metric=payload.metric,
+        column=payload.column,
+        group_by=payload.group_by,
+        filters=[item.model_dump() for item in payload.filters],
+        limit=payload.limit,
+    )
+    series = [
+        {"label": str(row.get("group", index + 1)), "value": row.get("value")}
+        for index, row in enumerate(aggregate["rows"])
+    ]
+    content = json.dumps(
+        {"chart_type": payload.chart_type, "title": payload.title, "series": series},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    result = DeepSpaceTaskLoopStore(db).write_workspace_file(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        filename=payload.filename,
+        content=content,
+    )
+    artifact = db.get(DeepSpaceWorkspaceFile, uuid.UUID(str(result["id"])))
+    if artifact is None:
+        raise ApiError(
+            code="INTERNAL_SERVER_ERROR",
+            message="Chart artifact could not be saved.",
+            status_code=500,
+        )
+    return _serialize_file(artifact, include_content=True)
+
+
+@router.post(
+    "/{conversation_id}/files/{file_id}/dataset-join",
+    response_model=DatasetJoinResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def join_workspace_datasets(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    payload: DatasetJoinSchema,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DatasetJoinResponse:
+    """Join two user-owned, same-conversation derivatives without exposing SQL."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    left = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    right = _owned_file(
+        db=db, auth=auth, conversation_id=conversation_id, file_id=payload.right_file_id
+    )
+    left_profile = (
+        left.metadata_json.get("dataset_profile") if isinstance(left.metadata_json, dict) else None
+    )
+    right_profile = (
+        right.metadata_json.get("dataset_profile")
+        if isinstance(right.metadata_json, dict)
+        else None
+    )
+    if (
+        not isinstance(left_profile, dict)
+        or left_profile.get("status") != "ready"
+        or not isinstance(right_profile, dict)
+        or right_profile.get("status") != "ready"
+    ):
+        raise ApiError(
+            code="DATASET_NOT_READY",
+            message="Both datasets must finish processing first.",
+            status_code=409,
+        )
+    result = DatasetDerivativeService(settings).join(
+        left_profile=left_profile,
+        right_profile=right_profile,
+        left_on=payload.left_on,
+        right_on=payload.right_on,
+        left_columns=payload.left_columns,
+        right_columns=payload.right_columns,
+        join_type=payload.join_type,
+        limit=payload.limit,
+    )
+    return DatasetJoinResponse(**result)
 
 
 @router.get(

@@ -99,35 +99,67 @@ export default function DeepSpaceScrollTracker({
 
   useEffect(() => {
     const container = scrollContainerRef.current;
-    if (!container || typeof IntersectionObserver === "undefined") return;
+    if (!container) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        let largestRatio = 0;
-        let bestId: string | null = null;
+    let frame: number | null = null;
+    const updateActiveMessage = () => {
+      frame = null;
+      const containerRect = container.getBoundingClientRect();
+      const viewportHeight = container.clientHeight || containerRect.height;
+      if (!viewportHeight) return;
 
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting || entry.intersectionRatio <= largestRatio) return;
-          const id = entry.target.getAttribute("data-message-id");
-          if (id) {
-            largestRatio = entry.intersectionRatio;
-            bestId = id;
-          }
-        });
-
-        if (bestId) {
-          setActiveMessageId((current) => (current === bestId ? current : bestId));
+      // Virtualized threads replace the message nodes while the user scrolls.
+      // Pick the message nearest a stable reading line instead of relying only
+      // on the IntersectionObserver batch that created the old node.
+      const readingLine = containerRect.top + viewportHeight * 0.3;
+      let bestId: string | null = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      container.querySelectorAll<HTMLElement>("[data-message-id]").forEach((element) => {
+        const rect = element.getBoundingClientRect();
+        const visible = rect.bottom > containerRect.top && rect.top < containerRect.bottom;
+        if (!visible) return;
+        const distance = Math.abs(rect.top + rect.height / 2 - readingLine);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestId = element.getAttribute("data-message-id");
         }
-      },
-      {
-        root: container,
-        rootMargin: "-15% 0px -40% 0px",
-        threshold: [0.5],
-      },
-    );
+      });
 
-    container.querySelectorAll("[data-message-id]").forEach((element) => observer.observe(element));
-    return () => observer.disconnect();
+      if (bestId) {
+        setActiveMessageId((current) => (current === bestId ? current : bestId));
+      }
+    };
+    const scheduleActiveMessageUpdate = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(updateActiveMessage);
+    };
+
+    const observer =
+      typeof IntersectionObserver === "undefined"
+        ? null
+        : new IntersectionObserver(() => scheduleActiveMessageUpdate(), {
+            root: container,
+            rootMargin: "-10% 0px -45% 0px",
+            threshold: [0, 0.25, 0.5, 0.75, 1],
+          });
+
+    container
+      .querySelectorAll("[data-message-id]")
+      .forEach((element) => observer?.observe(element));
+    container.addEventListener("scroll", scheduleActiveMessageUpdate, { passive: true });
+    window.addEventListener("resize", scheduleActiveMessageUpdate);
+
+    const mutationObserver = new MutationObserver(scheduleActiveMessageUpdate);
+    mutationObserver.observe(container, { childList: true, subtree: true });
+    scheduleActiveMessageUpdate();
+
+    return () => {
+      observer?.disconnect();
+      mutationObserver.disconnect();
+      container.removeEventListener("scroll", scheduleActiveMessageUpdate);
+      window.removeEventListener("resize", scheduleActiveMessageUpdate);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
   }, [messageObservationKey, scrollContainerRef]);
 
   const effectiveActiveId =
@@ -158,7 +190,7 @@ export default function DeepSpaceScrollTracker({
   };
 
   return (
-    <div className="pointer-events-auto absolute top-20 right-0 bottom-48 z-20 flex min-h-0 flex-col items-center gap-3 p-0">
+    <div className="deepspace-scroll-tracker pointer-events-auto absolute top-20 right-0 bottom-48 z-20 flex min-h-0 flex-col items-center gap-3 p-0">
       <div
         aria-label="DeepSpace message navigation"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pl-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -166,7 +198,7 @@ export default function DeepSpaceScrollTracker({
         <div className="relative flex min-h-full flex-col items-center gap-1.5 py-1">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute top-3 bottom-3 left-1/2 w-px -translate-x-1/2 border-l border-dashed border-cyan-300/30"
+            className="deepspace-message-rail pointer-events-none absolute top-3 bottom-3 left-1/2 w-px -translate-x-1/2 border-l border-dashed border-cyan-300/30"
           />
           {messages.map((message, index) => {
             const isActive = message.id === effectiveActiveId;
@@ -187,21 +219,21 @@ export default function DeepSpaceScrollTracker({
                 >
                   <span
                     className={[
-                      "block rounded-full transition-colors duration-150",
+                      "deepspace-message-marker block rounded-full transition-colors duration-150",
                       isUser
                         ? isActive
-                          ? "h-3 w-2.5 bg-[#c8b6ff]"
-                          : "h-2.5 w-2.5 bg-[#cbd5e1]/32"
+                          ? "deepspace-message-marker-user-active h-3 w-2.5 bg-[#c8b6ff]"
+                          : "deepspace-message-marker-user h-2.5 w-2.5 bg-[#cbd5e1]/32"
                         : isActive
-                          ? "h-7 w-3 bg-[#a37ce6] shadow-[0_0_18px_rgba(163,124,230,0.45)]"
-                          : "h-5 w-2.5 bg-[#c8b6ff]/28",
+                          ? "deepspace-message-marker-assistant-active h-7 w-3 bg-[#a37ce6] shadow-[0_0_18px_rgba(163,124,230,0.45)]"
+                          : "deepspace-message-marker-assistant h-5 w-2.5 bg-[#c8b6ff]/28",
                       "group-hover:scale-110",
                     ].join(" ")}
                   />
                 </button>
                 <div
                   className={[
-                    "pointer-events-none absolute right-full mr-3 max-w-[12rem] truncate rounded-2xl border px-3 py-1.5 text-[11px] leading-4 font-medium text-white shadow-[0_14px_30px_rgba(0,0,0,0.32)] backdrop-blur-md transition-all duration-200",
+                    "deepspace-message-tooltip pointer-events-none absolute right-full mr-3 max-w-[12rem] truncate rounded-2xl border px-3 py-1.5 text-[11px] leading-4 font-medium text-white shadow-[0_14px_30px_rgba(0,0,0,0.32)] backdrop-blur-md transition-all duration-200",
                     tooltipMessageId === message.id
                       ? "border-cyan-300/20 bg-slate-950/90 opacity-100"
                       : "border-white/8 bg-slate-950/82 opacity-0",
@@ -225,7 +257,7 @@ export default function DeepSpaceScrollTracker({
           }
         }}
         disabled={!focusedAssistantMessage}
-        className="disabled:text-foreground/35 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-300/14 bg-cyan-300/8 text-cyan-100 shadow-[0_8px_18px_rgba(34,211,238,0.12)] transition-colors hover:bg-cyan-300/14 hover:text-white disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/5 disabled:shadow-none"
+        className="deepspace-message-insert disabled:text-foreground/35 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-300/14 bg-cyan-300/8 text-cyan-100 shadow-[0_8px_18px_rgba(34,211,238,0.12)] transition-colors hover:bg-cyan-300/14 hover:text-white disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/5 disabled:shadow-none"
       >
         <ArrowUp size={16} strokeWidth={2.5} />
       </button>

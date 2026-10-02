@@ -10,6 +10,12 @@ vi.mock("../lib/api", () => ({
   fetchWithAuth: (...args: unknown[]) => fetchWithAuthMock(...args),
 }));
 
+vi.mock("@/app/components/ui/AverQelDialogHost", () => ({
+  averqelConfirm: vi.fn().mockResolvedValue(true),
+  averqelPrompt: (...args: unknown[]) => promptMock(...args),
+  averqelAlert: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.stubGlobal("prompt", promptMock);
 
 describe("chat sidebar actions", () => {
@@ -105,5 +111,93 @@ describe("chat sidebar actions", () => {
         body: JSON.stringify({ conversation_ids: ["conv-1"] }),
       });
     });
+  });
+
+  it("lets a conversation owner pin retention protection without sending admin-only fields", async () => {
+    fetchWithAuthMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: "conv-1",
+            title: "Retention-safe conversation",
+            updated_at: "2026-04-19T00:29:00Z",
+          },
+        ],
+      }),
+    });
+    fetchWithAuthMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        pinned: false,
+        legal_hold: false,
+        admin_exempt: false,
+        protection_reason: null,
+      }),
+    });
+    fetchWithAuthMock.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+    render(
+      <ChatSidebar
+        endpointBase="/deepspace/chats"
+        currentConversationId="conv-1"
+        onSelectConversation={() => {}}
+        onNewChat={() => {}}
+        enableRetentionControls
+      />,
+    );
+
+    expect(await screen.findByText("Retention-safe conversation")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /retention protection for retention-safe/i }),
+    );
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText(/pin this conversation/i));
+    fireEvent.click(screen.getByRole("button", { name: /save protection/i }));
+
+    await waitFor(() => {
+      expect(fetchWithAuthMock).toHaveBeenCalledWith(
+        "/deepspace/chats/conv-1/retention/protection",
+        { method: "PATCH", body: JSON.stringify({ pinned: true }) },
+      );
+    });
+    expect(screen.queryByLabelText(/legal hold/i)).not.toBeInTheDocument();
+  });
+
+  it("shows legal-hold and administrator-exemption controls only to tenant admins", async () => {
+    fetchWithAuthMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        items: [{ id: "conv-1", title: "Admin retention", updated_at: "2026-04-19T00:29:00Z" }],
+      }),
+    });
+    fetchWithAuthMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        pinned: false,
+        legal_hold: false,
+        admin_exempt: false,
+        protection_reason: null,
+      }),
+    });
+
+    render(
+      <ChatSidebar
+        endpointBase="/deepspace/chats"
+        currentConversationId="conv-1"
+        onSelectConversation={() => {}}
+        onNewChat={() => {}}
+        enableRetentionControls
+        isTenantAdmin
+      />,
+    );
+
+    expect(await screen.findByText("Admin retention")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /retention protection for admin retention/i }),
+    );
+    expect(await screen.findByLabelText(/legal hold/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/administrator exemption/i)).toBeInTheDocument();
   });
 });

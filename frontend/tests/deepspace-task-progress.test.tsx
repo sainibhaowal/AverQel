@@ -151,4 +151,65 @@ describe("DeepSpace verified task progress", () => {
       "false",
     );
   });
+
+  it("keeps the complete internal thought available in its scrollable detail panel", () => {
+    const fullThought = `${"reasoning ".repeat(3000)}END-OF-INTERNAL-THOUGHT`;
+    render(
+      <DeepSpaceThinkingPanel
+        content=""
+        isStreaming={false}
+        timeline={[
+          {
+            id: "complete-thought",
+            stepId: "complete-thought",
+            turnIndex: 1,
+            phase: "thinking",
+            type: "thinking",
+            title: "Internal Thought",
+            details: fullThought,
+            status: "completed",
+            startedAt: "2026-08-09T00:00:00Z",
+            completedAt: "2026-08-09T00:00:01Z",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /thinking & activity/i }));
+    fireEvent.click(screen.getByRole("button", { name: /internal thought/i }));
+    expect(screen.getByText(/END-OF-INTERNAL-THOUGHT/)).toBeInTheDocument();
+    expect(screen.queryByText(/more characters/)).not.toBeInTheDocument();
+  });
+
+  it("returns focus to the timeline trigger before an active entry is hidden", () => {
+    const runningStep = {
+      id: "focus-safe-step",
+      stepId: "focus-safe-step",
+      turnIndex: 1,
+      phase: "exploring" as const,
+      type: "tool_call" as const,
+      title: "Read document",
+      status: "running" as const,
+      startedAt: "2026-08-09T00:00:00Z",
+      toolName: "document_read",
+      toolOutput: "Reading the selected document.",
+    };
+    const { rerender } = render(
+      <DeepSpaceThinkingPanel content="" isStreaming timeline={[runningStep]} />,
+    );
+
+    const detailsButton = screen.getByRole("button", { name: /live tool output/i });
+    detailsButton.focus();
+    expect(detailsButton).toHaveFocus();
+
+    rerender(
+      <DeepSpaceThinkingPanel
+        content=""
+        isStreaming
+        timeline={[{ ...runningStep, status: "completed", completedAt: "2026-08-09T00:00:01Z" }]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /read document/i })).toHaveFocus();
+  });
 });

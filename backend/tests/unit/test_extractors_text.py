@@ -1,6 +1,3 @@
-import pytest
-
-from app.core.errors import ApiError
 from app.ingestion.services.extractors.base import ExtractionRequest
 from app.ingestion.services.extractors.text_extractors import (
     MarkdownExtractor,
@@ -25,7 +22,7 @@ def test_markdown_extractor_success():
     assert not result.warnings
 
 
-def test_markdown_extractor_exceeds_limit():
+def test_markdown_extractor_processes_large_text_in_batches():
     extractor = MarkdownExtractor(max_text_chars=10)
     payload = b"This is a very long markdown file."
 
@@ -34,10 +31,9 @@ def test_markdown_extractor_exceeds_limit():
         content_type="text/markdown",
         payload=payload,
     )
-    with pytest.raises(ApiError) as exc:
-        extractor.extract(req)
-
-    assert exc.value.code == "DOCUMENT_TEXT_LIMIT_EXCEEDED"
+    result = extractor.extract(req)
+    assert result.text == payload.decode()
+    assert "large_text_processed_in_batches" in result.warnings
 
 
 def test_plaintext_extractor_success():

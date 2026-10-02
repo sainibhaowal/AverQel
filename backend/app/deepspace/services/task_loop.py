@@ -10,10 +10,15 @@ from typing import Any, cast
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
+from app.deepspace.services.library_storage import safe_archive_entries
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaService, ensure_capacity_if_supported
+from app.system.services.storage_service import StorageService, StorageServiceError
 
 TASK_STATUSES = {"pending", "in_progress", "completed", "blocked", "failed"}
 MAX_TASKS = 40
@@ -50,6 +55,9 @@ def _workspace_content_type(filename: str) -> str:
         "xls": "application/vnd.ms-excel",
         "ods": "application/vnd.oasis.opendocument.spreadsheet",
         "svg": "image/svg+xml",
+        "uml": "text/plain",
+        "mermaid": "text/plain",
+        "tex": "text/plain",
         "png": "image/png",
         "jpg": "image/jpeg",
         "jpeg": "image/jpeg",
@@ -241,6 +249,27 @@ class DeepSpaceTaskLoopStore:
                     task_id if task_id in existing else str(uuid.uuid4()),
                 )
             normalized_tasks.append((raw, task_id))
+
+        current_storage_bytes = sum(
+            StorageQuotaService.estimate_bytes(task.content, task.active_form)
+            for task in existing.values()
+        )
+        planned_storage_bytes = sum(
+            StorageQuotaService.estimate_bytes(
+                str(raw.get("content") or "").strip()[:MAX_TASK_TEXT],
+                str(
+                    raw.get("active_form") or raw.get("activeForm") or raw.get("content") or ""
+                ).strip()[:MAX_TASK_TEXT],
+            )
+            for raw, _requested_id in normalized_tasks
+        )
+        ensure_capacity_if_supported(
+            self.db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=planned_storage_bytes,
+            replacing_bytes=current_storage_bytes,
+        )
 
         for index, (raw, requested_id) in enumerate(normalized_tasks):
             content = str(raw.get("content") or "").strip()[:MAX_TASK_TEXT]
@@ -483,6 +512,23 @@ class DeepSpaceTaskLoopStore:
                 DeepSpaceWorkspaceFile.parent_folder_id == parent_id,
             )
         ).scalar_one_or_none()
+        old_size = file.size_bytes if file is not None else 0
+        next_content = (
+            f"{file.content}\n{content}"
+            if file is not None and mode == "append" and file.content
+            else content
+        )
+        next_size = len(next_content.encode("utf-8"))
+        try:
+            StorageQuotaService(self.db).ensure_capacity(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                additional_bytes=next_size,
+                replacing_bytes=old_size,
+            )
+        except Exception:
+            self.db.rollback()
+            raise
         if file is None:
             file = DeepSpaceWorkspaceFile(
                 tenant_id=tenant_id,
@@ -491,18 +537,25 @@ class DeepSpaceTaskLoopStore:
                 parent_folder_id=parent_id,
                 name=normalized_name,
                 content_type=_workspace_content_type(normalized_name),
-                content=content,
+                content=next_content,
                 source="agent",
-                size_bytes=len(content.encode("utf-8")),
+                size_bytes=next_size,
             )
             self.db.add(file)
         else:
-            file.content = (
-                f"{file.content}\n{content}" if mode == "append" and file.content else content
-            )
-            file.size_bytes = len(file.content.encode("utf-8"))
+            file.content = next_content
+            file.size_bytes = next_size
             file.source = "agent"
             file.updated_at = _now()
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=tenant_id,
+            category="library",
+            source_type="workspace_file",
+            source_id=str(file.id),
+            owner_user_id=user_id,
+            dependency_group_id=str(conversation_id),
+            activity_kind="agent_library_file_written",
+        )
         self.db.commit()
         return {
             "id": str(file.id),
@@ -696,6 +749,65 @@ class DeepSpaceTaskLoopStore:
             "updated_at": file.updated_at.isoformat() if file.updated_at else None,
         }
 
+    def read_workspace_file_for_sandbox(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        file_id: str,
+        settings: Settings,
+    ) -> dict[str, Any]:
+        """Return an authorized, bounded Library payload for one sandbox run.
+
+        The lookup is conversation/tenant scoped before object storage is read;
+        callers cannot provide paths, URLs, or storage keys. Binary bytes are
+        fetched only for files owned by the current user and are never written
+        to a durable temporary location by this service.
+        """
+        self._assert_conversation(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        try:
+            parsed_id = uuid.UUID(file_id)
+        except ValueError as exc:
+            raise ValueError("Library file_id is invalid.") from exc
+        file = self.db.execute(
+            select(DeepSpaceWorkspaceFile).where(
+                DeepSpaceWorkspaceFile.id == parsed_id,
+                DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+                DeepSpaceWorkspaceFile.user_id == user_id,
+                DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+            )
+        ).scalar_one_or_none()
+        if file is None:
+            raise ValueError("DeepSpace Library file not found.")
+        payload: bytes
+        if file.is_binary:
+            if not file.storage_bucket or not file.storage_key:
+                raise ValueError("Library binary payload is unavailable.")
+            try:
+                payload = StorageService(settings).get_bytes(
+                    bucket=file.storage_bucket, object_key=file.storage_key
+                )
+            except StorageServiceError as exc:
+                raise ValueError("Library binary payload is unavailable.") from exc
+        else:
+            payload = file.content.encode("utf-8")
+        if file.content_type == "application/zip":
+            # Validate archive structure before a user-provided Python script
+            # receives it; the executor still has no network or host mounts.
+            safe_archive_entries(payload)
+        return {
+            "id": str(file.id),
+            "name": file.name,
+            "content_type": file.content_type,
+            "payload": payload,
+            "extracted_text": file.extracted_text or file.content or "",
+            "size_bytes": file.size_bytes,
+            "checksum_sha256": file.checksum_sha256,
+        }
+
     def find_workspace_files(
         self,
         *,
@@ -711,9 +823,8 @@ class DeepSpaceTaskLoopStore:
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
         )
         normalized_query = query.strip()
-        if not normalized_query:
-            raise ValueError("Library search requires a query.")
-        pattern = f"%{normalized_query[:200]}%"
+        if normalized_query in {"—", "–"}:
+            normalized_query = ""
         parsed_parent = None
         if parent_folder_id:
             try:
@@ -726,17 +837,25 @@ class DeepSpaceTaskLoopStore:
                 conversation_id=conversation_id,
                 folder_id=parsed_parent,
             )
+        filters = [
+            DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+            DeepSpaceWorkspaceFile.user_id == user_id,
+            DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+            DeepSpaceWorkspaceFile.parent_folder_id == parsed_parent,
+        ]
+        # An omitted query is a safe list operation. Models frequently need
+        # the Library inventory before choosing the exact file to read; this
+        # must not become a user-visible tool error.
+        if normalized_query:
+            pattern = f"%{normalized_query[:200]}%"
+            filters.append(
+                (DeepSpaceWorkspaceFile.name.ilike(pattern))
+                | (DeepSpaceWorkspaceFile.content.ilike(pattern))
+            )
         files = (
             self.db.execute(
                 select(DeepSpaceWorkspaceFile)
-                .where(
-                    DeepSpaceWorkspaceFile.tenant_id == tenant_id,
-                    DeepSpaceWorkspaceFile.user_id == user_id,
-                    DeepSpaceWorkspaceFile.conversation_id == conversation_id,
-                    (DeepSpaceWorkspaceFile.name.ilike(pattern))
-                    | (DeepSpaceWorkspaceFile.content.ilike(pattern)),
-                    DeepSpaceWorkspaceFile.parent_folder_id == parsed_parent,
-                )
+                .where(*filters)
                 .order_by(DeepSpaceWorkspaceFile.updated_at.desc())
                 .limit(max(1, min(limit, 50)))
             )

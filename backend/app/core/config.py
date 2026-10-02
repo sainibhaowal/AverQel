@@ -128,15 +128,15 @@ def _is_private_service_host(value: str) -> bool:
     if host in {
         "localhost",
         "127.0.0.1",
-        "0.0.0.0",
         "::1",
         "host.docker.internal",
-    }:  # nosec B104 - classifier, not a bind operation
+    }:
         return True
     if "." not in host:
         return True
     try:
-        return ipaddress.ip_address(host).is_private
+        address = ipaddress.ip_address(host)
+        return address.is_private or address.is_unspecified
     except ValueError:
         return False
 
@@ -186,8 +186,10 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
 
     app_name: str = "AverQel"
-    app_version: str = Field(default="1.0.0", validation_alias="AKS_APP_VERSION")
-    release_version: str = Field(default="1.0.0", validation_alias="AKS_RELEASE_VERSION")
+    # Release metadata is injected by the deployment pipeline. A missing
+    # value must be visibly non-release rather than falsely reporting v1.0.0.
+    app_version: str = Field(default="development", validation_alias="AKS_APP_VERSION")
+    release_version: str = Field(default="development", validation_alias="AKS_RELEASE_VERSION")
     git_sha: str = Field(default="unknown", validation_alias="AKS_GIT_SHA")
     build_timestamp_utc: str | None = Field(default=None, validation_alias="AKS_BUILD_TIMESTAMP")
     env: str = "development"
@@ -205,6 +207,43 @@ class Settings(BaseSettings):
     database_statement_timeout_seconds: float = 15.0
     database_lock_timeout_seconds: float = 3.0
     redis_url: str = "redis://localhost:1010/0"
+
+    # DeepSpace deterministic web-research controls. Browser rendering is
+    # disabled until an isolated renderer is explicitly deployed.
+    # This is intentionally configurable because the API container may reach
+    # a self-hosted SearXNG instance at a different address than the browser.
+    searxng_base_url: str = "http://searxng:8080"
+    deepspace_research_enabled: bool = True
+    deepspace_research_max_queries: int = Field(default=3, ge=1, le=5)
+    deepspace_research_max_candidates: int = 40
+    deepspace_research_fetch_count: int = 6
+    deepspace_research_browser_enabled: bool = False
+    deepspace_research_browser_url: str | None = None
+    deepspace_research_browser_token: str | None = None
+    deepspace_url_read_timeout_seconds: int = Field(default=15, ge=5, le=30)
+    deepspace_url_read_max_bytes: int = Field(default=2_000_000, ge=16_384, le=2_000_000)
+    # Model-facing web content must have a character ceiling in addition to
+    # the transport byte ceiling, otherwise a large page can consume the
+    # remaining context window in one tool result.
+    deepspace_url_read_max_chars: int = Field(default=48_000, ge=4_000, le=200_000)
+    deepspace_url_allowed_domains: list[str] = Field(default_factory=list)
+    # Sandboxed code/data execution is off unless a separately isolated
+    # executor has been deployed and authenticated.  It is never run in the
+    # API or worker container.
+    deepspace_sandbox_enabled: bool = False
+    deepspace_sandbox_url: str | None = None
+    deepspace_sandbox_token: str | None = None
+    deepspace_sandbox_timeout_seconds: int = Field(default=20, ge=1, le=30)
+
+    # Interactive DeepSpace transport safety. This bounds an idle provider
+    # stream, but never limits the model's output token budget.  Keep the
+    # default aligned with the maximum supported model-provider window so
+    # deliberate reasoning before the first token is not cut off at 90s.
+    deepspace_provider_read_timeout_seconds: int = Field(default=300, ge=15, le=300)
+    # Enables only provider-native, ephemeral prompt caching paths that are
+    # explicitly implemented by an adapter. It never enables remote durable
+    # conversation state or sends provider-specific fields to custom endpoints.
+    deepspace_provider_prompt_caching_enabled: bool = True
 
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = DEFAULT_MINIO_ACCESS_KEY
@@ -239,6 +278,11 @@ class Settings(BaseSettings):
     refresh_cookie_samesite: Literal["strict", "lax", "none"] = "strict"
     refresh_cookie_domain: str | None = None
     refresh_cookie_path: str = "/api/v1/auth"
+    # Web Push is disabled until all three values are configured in the
+    # deployment secret store. The private key is never exposed to clients.
+    web_push_vapid_private_key: str | None = None
+    web_push_vapid_public_key: str | None = None
+    web_push_subject: str | None = None
     bootstrap_super_admin_emails: list[str] = Field(default_factory=list)
 
     auth_max_failed_attempts: int = 5
@@ -253,6 +297,10 @@ class Settings(BaseSettings):
     provider_secret_audit_reads: bool = True
     totp_secret_active_kid: str | None = None
     totp_secret_keyring_json: str | None = None
+    # Sealed collection-chat keyring (signal-pattern-v1 epoch keys). Optional;
+    # enabling chat encryption without this pair fails closed with 503.
+    collection_chat_active_kid: str | None = None
+    collection_chat_keyring_json: str | None = None
     auth_oauth_redirect_uri: str | None = None
     auth_oauth_frontend_redirect_uri: str | None = None
     auth_google_oauth_client_id: str | None = None
@@ -286,6 +334,15 @@ class Settings(BaseSettings):
     mcp_slack_oauth_client_secret: str | None = None
     mcp_oauth_redirect_uri: str | None = None
     mcp_catalog_max_age_seconds: int = Field(default=900, ge=60, le=86_400)
+    # The complete connected MCP catalogue is always server-side. DeepSpace
+    # exposes only the broker surface and just-in-time compact metadata.
+    deepspace_mcp_max_search_results: int = Field(default=5, ge=1, le=20)
+    deepspace_mcp_max_schema_chars: int = Field(default=6_000, ge=1_000, le=20_000)
+    deepspace_mcp_max_result_chars: int = Field(default=12_000, ge=2_000, le=100_000)
+    deepspace_mcp_max_calls_per_turn: int = Field(default=8, ge=1, le=32)
+    deepspace_mcp_max_discovery_calls_per_turn: int = Field(default=8, ge=1, le=32)
+    deepspace_mcp_max_result_chars_per_turn: int = Field(default=60_000, ge=4_000, le=500_000)
+    deepspace_mcp_max_argument_chars_per_call: int = Field(default=20_000, ge=1_000, le=100_000)
     averqel_domain: str | None = Field(default=None, validation_alias="AVERQEL_DOMAIN")
     averqel_public_origin: str | None = Field(
         default=None, validation_alias="AVERQEL_PUBLIC_ORIGIN"
@@ -367,10 +424,54 @@ class Settings(BaseSettings):
             ".gif",
             ".doc",
             ".docx",
+            ".docm",
+            ".dot",
+            ".dotx",
+            ".dotm",
+            ".odt",
+            ".ott",
+            ".odm",
+            ".oth",
+            ".rtf",
             ".ppt",
             ".pptx",
+            ".pptm",
+            ".pot",
+            ".potx",
+            ".potm",
+            ".pps",
+            ".ppsx",
+            ".ppsm",
+            ".odp",
+            ".otp",
             ".xls",
             ".xlsx",
+            ".xlsm",
+            ".xlt",
+            ".xltx",
+            ".xltm",
+            ".xlm",
+            ".xla",
+            ".xlw",
+            ".xlsb",
+            ".ods",
+            ".ots",
+            ".odg",
+            ".otg",
+            ".odc",
+            ".otc",
+            ".odf",
+            ".otf",
+            ".odi",
+            ".oti",
+            # Apple iWork and WPS originals are retained for download.  Their
+            # ingestion path provides bounded text when the package exposes it.
+            ".pages",
+            ".numbers",
+            ".key",
+            ".wps",
+            ".dps",
+            ".et",
             ".py",
             ".js",
             ".ts",
@@ -517,6 +618,9 @@ class Settings(BaseSettings):
     llm_api_base_url: str = ""
     llm_api_key: str | None = None
     llm_temperature: float = 0.1
+    # Legacy fallback for provider paths that require an explicit output
+    # budget. DeepSpace does not send this value when model discovery has no
+    # advertised output limit; it lets OpenAI-compatible providers choose.
     llm_max_tokens_per_request: int = 1024
     llm_max_requests_per_minute: int = 30
     llm_monthly_budget_usd: float = 50.0
@@ -550,6 +654,9 @@ class Settings(BaseSettings):
     rate_limit_auth_login_per_tenant_email_per_5_minutes: int = 30
     rate_limit_auth_refresh_per_ip_per_5_minutes: int = 60
     rate_limit_auth_logout_per_user_per_5_minutes: int = 60
+    collection_ws_messages_per_user_per_minute: int = 120
+    collection_ws_connections_per_user: int = 8
+    collection_chat_page_size: int = 100
 
     provider_timeout_seconds: int = 8
     provider_retry_attempts: int = 3
@@ -558,6 +665,9 @@ class Settings(BaseSettings):
 
     audit_log_retention_days: int = 90
     transient_record_retention_days: int = 30
+    # Archive is metadata-only and remains disabled unless an explicitly
+    # non-production environment opts in. Permanent purge has no setting.
+    storage_retention_automatic_archive_enabled: bool = False
 
     celery_task_always_eager: bool = False
 
@@ -736,6 +846,9 @@ class Settings(BaseSettings):
         "rate_limit_auth_login_per_tenant_email_per_5_minutes",
         "rate_limit_auth_refresh_per_ip_per_5_minutes",
         "rate_limit_auth_logout_per_user_per_5_minutes",
+        "collection_ws_messages_per_user_per_minute",
+        "collection_ws_connections_per_user",
+        "collection_chat_page_size",
         "provider_timeout_seconds",
         "provider_retry_attempts",
         "provider_circuit_breaker_threshold",
@@ -839,6 +952,8 @@ class Settings(BaseSettings):
         "provider_secret_keyring_json",
         "totp_secret_active_kid",
         "totp_secret_keyring_json",
+        "collection_chat_active_kid",
+        "collection_chat_keyring_json",
         "provider_openai_oauth_client_id",
         "provider_openai_oauth_redirect_uri",
         "mcp_google_oauth_client_id",
@@ -1125,7 +1240,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_provider_secret_keyring(self) -> Settings:
-        if self.provider_secret_backend == "aws_kms":  # nosec B105 - backend selector, not a secret
+        if self.provider_secret_backend == "aws_kms":  # Backend selector; nosec B105
             if self.provider_secret_active_kid or self.provider_secret_keyring_json:
                 raise ValueError(
                     "provider_secret_active_kid/provider_secret_keyring_json are not used when provider_secret_backend=aws_kms"
@@ -1152,6 +1267,32 @@ class Settings(BaseSettings):
             raise ValueError(
                 "provider_secret_active_kid must exist in provider_secret_keyring_json"
             )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_collection_chat_keyring(self) -> Settings:
+        has_active_kid = bool(self.collection_chat_active_kid)
+        has_keyring = bool(self.collection_chat_keyring_json)
+
+        if has_active_kid != has_keyring:
+            raise ValueError(
+                "collection_chat_active_kid and collection_chat_keyring_json must be set together"
+            )
+
+        if not has_keyring:
+            return self
+
+        keyring = _parse_provider_secret_keyring(self.collection_chat_keyring_json)
+        if self.collection_chat_active_kid not in keyring:
+            raise ValueError(
+                "collection_chat_active_kid must exist in collection_chat_keyring_json"
+            )
+        for kid, key_bytes in keyring.items():
+            if len(key_bytes) != 32:
+                raise ValueError(
+                    f"collection chat key for kid={kid!r} must decode to 32 bytes for AES-256-GCM"
+                )
 
         return self
 

@@ -68,32 +68,6 @@ class DeepSpaceMCPTool:
     catalog_revision: int
     server_name: str
 
-    @property
-    def definition(self) -> dict[str, Any]:
-        schema = self.catalog.get("inputSchema")
-        if not isinstance(schema, dict):
-            schema = {"type": "object", "properties": {}, "additionalProperties": False}
-        else:
-            schema = dict(schema)
-            schema.pop("$schema", None)
-            schema["type"] = "object"
-            if not isinstance(schema.get("properties"), dict):
-                schema["properties"] = {}
-            schema.setdefault("additionalProperties", False)
-
-        description = str(self.catalog.get("description") or "MCP tool").strip()
-        return {
-            "type": "function",
-            "function": {
-                "name": self.exposed_name,
-                "description": (
-                    f"MCP server {self.server.name!r}, tool {self.raw_name!r}. {description} "
-                    "Use only for the user's explicitly requested connected service action."
-                )[:4000],
-                "parameters": schema,
-            },
-        }
-
 
 class DeepSpaceMCPBridge:
     """Discover and execute tools from the user's connected MCP accounts."""

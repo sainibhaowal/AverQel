@@ -265,6 +265,12 @@ os.environ.setdefault(
     "AKS_TOTP_SECRET_KEYRING_JSON",
     json.dumps({"test-kid": _TEST_PROVIDER_SECRET_KEY}),
 )
+_TEST_CHAT_SECRET_KEY = base64.urlsafe_b64encode(b"2" * 32).decode("utf-8")
+os.environ.setdefault("AKS_COLLECTION_CHAT_ACTIVE_KID", "test-chat-kid")
+os.environ.setdefault(
+    "AKS_COLLECTION_CHAT_KEYRING_JSON",
+    json.dumps({"test-chat-kid": _TEST_CHAT_SECRET_KEY}),
+)
 
 # ---------------------------------------------------------------------------
 # pytest-xdist: per-worker database & Redis isolation
@@ -506,6 +512,12 @@ def clean_database(
         and request.node.get_closest_marker("e2e") is None
     )
     if not use_transaction:
+        # Commit-style and end-to-end tests intentionally bypass the outer
+        # rollback fixture. Start from a clean worker-local database as well
+        # as cleaning after the test, so a previous teardown failure cannot
+        # silently contaminate the next test assigned to this xdist worker.
+        _truncate_test_tables()
+        get_settings.cache_clear()
         try:
             yield
         finally:
@@ -649,9 +661,18 @@ def _truncate_test_tables() -> None:
         "tenants",
     ]
     last_exc: OperationalError | ProgrammingError | None = None
-    for _ in range(3):
+    for attempt in range(3):
         try:
             with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                current_database = connection.execute(
+                    text("SELECT current_database()")
+                ).scalar_one()
+                if current_database != TEST_DATABASE_NAME:
+                    raise TestDatabaseBootstrapUnavailableError(
+                        "refusing test cleanup because the connected database does not match "
+                        f"the worker database: expected {TEST_DATABASE_NAME!r}, "
+                        f"connected to {current_database!r}"
+                    )
                 connection.execute(text("RESET ROLE"))
                 existing_tables = [
                     table_name
@@ -664,7 +685,7 @@ def _truncate_test_tables() -> None:
                 ]
                 if existing_tables:
                     truncate_sql = text(
-                        "SET statement_timeout = '5s';"
+                        "SET statement_timeout = '30s';"
                         "TRUNCATE TABLE " + ", ".join(existing_tables) + " RESTART IDENTITY CASCADE"
                     )
                     connection.execute(truncate_sql)
@@ -673,10 +694,12 @@ def _truncate_test_tables() -> None:
         except (OperationalError, ProgrammingError) as exc:
             last_exc = exc
             engine.dispose()
-            time.sleep(0.25)
+            time.sleep(0.25 * (2**attempt))
     if last_exc is not None:
-        # If it timed out, just log and continue rather than hanging the worker
-        logger.warning(f"Database truncation timed out or failed: {last_exc}")
+        raise RuntimeError(
+            f"test database cleanup failed for {TEST_DATABASE_NAME!r}; "
+            "refusing to continue with potentially contaminated test data"
+        ) from last_exc
 
     engine.dispose()
 
@@ -852,7 +875,7 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
                 )
             )
         connection.execute(
-            text(f"DROP DATABASE IF EXISTS " f"{_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}")
+            text(f"DROP DATABASE IF EXISTS {_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}")
         )
         connection.execute(
             text(f"CREATE DATABASE {_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}")

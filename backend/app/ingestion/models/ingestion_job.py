@@ -49,6 +49,15 @@ class IngestionJob(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    checkpoint_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    checkpoint_cursor: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    checkpoint_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    pause_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    resume_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -1,6 +1,8 @@
 import { ReactNode } from "react";
 import {
   BookOpen,
+  BarChart3,
+  CalendarClock,
   Layers3,
   Network,
   Shield,
@@ -39,11 +41,33 @@ export const docsNavGroups: NavGroup[] = [
   {
     group: "Platform Features",
     items: [
+      { title: "Features Overview", href: "/documentation/features", icon: <Layers3 size={14} /> },
+      { title: "Library & OCR", href: "/documentation/library", icon: <BookOpen size={14} /> },
       { title: "Documents Hub", href: "/documentation/editor-files", icon: <BookOpen size={14} /> },
       {
         title: "Grounded Queries",
         href: "/documentation/grounded-query",
         icon: <BookOpen size={14} />,
+      },
+      {
+        title: "Web Research",
+        href: "/documentation/web-research",
+        icon: <Network size={14} />,
+      },
+      {
+        title: "Sandbox & Data",
+        href: "/documentation/sandbox",
+        icon: <BarChart3 size={14} />,
+      },
+      {
+        title: "Artifacts & Exports",
+        href: "/documentation/artifacts",
+        icon: <BookOpen size={14} />,
+      },
+      {
+        title: "Schedules & Automation",
+        href: "/documentation/automation",
+        icon: <CalendarClock size={14} />,
       },
       {
         title: "Collections & Sharing",

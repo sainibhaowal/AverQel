@@ -223,6 +223,66 @@ def test_lmstudio_provider_falls_back_to_buffered_events_when_async_streaming_fa
     )
 
 
+def test_lmstudio_normalizes_stream_event_request_base_url(monkeypatch) -> None:
+    provider = LMStudioProvider().bind("http://localhost:1234/v1")
+    request = ChatGenerateRequest(
+        model="lfm2.5-8b-a1b",
+        messages=[
+            {"role": "system", "content": "Keep the answer concise."},
+            {"role": "user", "content": "Say hello."},
+        ],
+        temperature=0.0,
+        max_tokens=64,
+        base_url="http://localhost:1234",
+        stream=True,
+    )
+    attempted_base_urls: list[str] = []
+
+    async def fake_stream_generate_events(self, candidate):
+        attempted_base_urls.append(candidate.base_url)
+        yield {"type": "delta", "text": "Hello."}
+
+    monkeypatch.setattr(
+        OpenAICompatibleProvider,
+        "stream_generate_events",
+        fake_stream_generate_events,
+    )
+
+    async def collect() -> list[dict[str, str]]:
+        events: list[dict[str, str]] = []
+        async for event in provider.stream_generate_events(request):
+            events.append(event)
+        return events
+
+    events = asyncio.run(collect())
+
+    assert events == [{"type": "delta", "text": "Hello."}]
+    assert attempted_base_urls == ["http://localhost:1234/v1"]
+
+
+def test_lmstudio_normalizes_buffered_request_base_url(monkeypatch) -> None:
+    provider = LMStudioProvider().bind("http://localhost:1234/v1")
+    request = ChatGenerateRequest(
+        model="lfm2.5-8b-a1b",
+        messages=[{"role": "user", "content": "Say hello."}],
+        temperature=0.0,
+        max_tokens=64,
+        base_url="http://localhost:1234",
+    )
+    attempted_base_urls: list[str] = []
+
+    def fake_generate(self, candidate):
+        attempted_base_urls.append(candidate.base_url)
+        return ChatGenerateResponse(content="Hello.")
+
+    monkeypatch.setattr(OpenAICompatibleProvider, "generate", fake_generate)
+
+    response = provider.generate(request)
+
+    assert response.content == "Hello."
+    assert attempted_base_urls == ["http://localhost:1234/v1"]
+
+
 def test_lmstudio_provider_falls_back_to_buffered_chunks_when_sync_streaming_fails(
     monkeypatch,
 ) -> None:

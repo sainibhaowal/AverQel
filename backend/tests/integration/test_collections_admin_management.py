@@ -219,7 +219,7 @@ def test_shared_user_can_only_disconnect_self(
         json={"name": "Shared Research", "description": "Shared docs"},
     )
     assert create.status_code == 201
-    assert create.json()["requester_access_role"] == "member"
+    assert create.json()["requester_access_role"] == "owner"
     collection_id = create.json()["id"]
 
     add_permissions = client.post(

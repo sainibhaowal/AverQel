@@ -9,6 +9,7 @@ from urllib.parse import quote
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.context_window import (
     extract_context_window,
+    extract_max_output_tokens,
     resolve_verified_context_window,
 )
 from app.providers.services.reasoning_capabilities import (
@@ -348,15 +349,27 @@ class GoogleProvider:
     def _build_generation_config(cls, request: ChatGenerateRequest) -> dict[str, Any]:
         generation_config: dict[str, Any] = {
             "temperature": request.temperature,
-            "maxOutputTokens": request.max_tokens,
         }
+        if request.max_tokens is not None:
+            generation_config["maxOutputTokens"] = request.max_tokens
         if (
             cls.model_supports_reasoning(request.model)
             and request.metadata.get("reasoning_mode") != "auto"
             and request.tool_choice != "required"
         ):
             if request.reasoning_enabled:
-                generation_config["thinkingConfig"] = {"includeThoughts": True}
+                effort = request.reasoning_effort or "medium"
+                if "gemini-3" in request.model.lower():
+                    generation_config["thinkingConfig"] = {
+                        "includeThoughts": True,
+                        "thinkingLevel": effort,
+                    }
+                else:
+                    budgets = {"low": 1_024, "medium": 8_192, "high": 24_576}
+                    generation_config["thinkingConfig"] = {
+                        "includeThoughts": True,
+                        "thinkingBudget": budgets.get(effort, 8_192),
+                    }
             else:
                 generation_config["thinkingConfig"] = {
                     "includeThoughts": False,
@@ -369,9 +382,19 @@ class GoogleProvider:
         payload = self._build_payload(request)
         api_key = request.api_key or ""
         model = quote(request.model, safe="")
+        post_headers = {"Content-Type": "application/json"}
+        extra_headers = request.metadata.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            post_headers.update(
+                {
+                    name: value
+                    for name, value in extra_headers.items()
+                    if isinstance(name, str) and isinstance(value, str) and name.strip()
+                }
+            )
         response = httpx_module.post(
             f"{request.base_url.rstrip('/')}/models/{model}:generateContent?key={api_key}",
-            headers={"Content-Type": "application/json"},
+            headers=post_headers,
             json=payload,
             timeout=float(request.metadata.get("timeout_seconds", 8.0)),
         )
@@ -404,13 +427,23 @@ class GoogleProvider:
         payload = self._build_payload(request)
         api_key = request.api_key or ""
         model = quote(request.model, safe="")
+        stream_headers = {"Content-Type": "application/json"}
+        extra_headers = request.metadata.get("extra_headers")
+        if isinstance(extra_headers, dict):
+            stream_headers.update(
+                {
+                    name: value
+                    for name, value in extra_headers.items()
+                    if isinstance(name, str) and isinstance(value, str) and name.strip()
+                }
+            )
         async with httpx_module.AsyncClient(
             timeout=float(request.metadata.get("timeout_seconds", 8.0))
         ) as client:
             async with client.stream(
                 "POST",
                 f"{request.base_url.rstrip('/')}/models/{model}:streamGenerateContent?alt=sse&key={api_key}",
-                headers={"Content-Type": "application/json"},
+                headers=stream_headers,
                 json=payload,
             ) as response:
                 if response.status_code >= 400:
@@ -425,6 +458,9 @@ class GoogleProvider:
                         payload_obj = json.loads(data)
                     except json.JSONDecodeError:
                         continue
+                    usage = payload_obj.get("usageMetadata")
+                    if isinstance(usage, dict):
+                        yield {"type": "usage", "usage": usage}
                     candidates = payload_obj.get("candidates", [])
                     if not isinstance(candidates, list) or not candidates:
                         continue
@@ -481,6 +517,7 @@ class GoogleProvider:
                         "context_length",
                     ),
                 )
+                max_output_tokens = extract_max_output_tokens(item)
                 verified_context_window = resolve_verified_context_window(
                     model_name,
                     provider_type="google",
@@ -502,11 +539,17 @@ class GoogleProvider:
                         ),
                         context_window=context_window,
                         context_window_source=context_window_source,
+                        max_output_tokens=max_output_tokens,
                         capabilities={
                             "runtime": "google",
                             **(
                                 {"context_window_source": context_window_source}
                                 if context_window_source
+                                else {}
+                            ),
+                            **(
+                                {"max_output_tokens": max_output_tokens}
+                                if max_output_tokens is not None
                                 else {}
                             ),
                             **reasoning_capabilities("google", model_name, base_url=self.base_url),

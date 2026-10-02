@@ -43,6 +43,7 @@ SSE_HEADERS = {
 
 _ALLOWED_FILTER_FIELDS = {
     "document_ids",
+    "collection_id",
     "created_at_from",
     "created_at_to",
     "source_types",
@@ -225,6 +226,7 @@ async def run_query(
         top_k=payload.top_k,
         filters=payload.filters.model_dump(exclude_none=True),
         document_ids=payload.filters.document_ids,
+        collection_id=payload.filters.collection_id,
         created_at_from=payload.filters.created_at_from,
         created_at_to=payload.filters.created_at_to,
         source_types=payload.filters.source_types,
@@ -282,6 +284,7 @@ async def stream_query(
             top_k=payload.top_k,
             filters=payload.filters.model_dump(exclude_none=True),
             document_ids=payload.filters.document_ids,
+            collection_id=payload.filters.collection_id,
             created_at_from=payload.filters.created_at_from,
             created_at_to=payload.filters.created_at_to,
             source_types=payload.filters.source_types,

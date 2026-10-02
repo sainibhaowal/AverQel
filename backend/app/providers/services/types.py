@@ -11,7 +11,10 @@ class ChatGenerateRequest:
     model: str
     messages: list[dict[str, Any]]
     temperature: float
-    max_tokens: int
+    # None means "do not override the provider/model default".  A concrete
+    # value is used only when the selected model advertises an output limit or
+    # a caller explicitly requests one (for example, voice generation).
+    max_tokens: int | None
     base_url: str
     api_key: str | None = None
     stream: bool = False
@@ -21,6 +24,13 @@ class ChatGenerateRequest:
     images: list[str] | None = None  # Base64 encoded images
     tools: list[dict[str, Any]] | None = None
     tool_choice: str | dict[str, Any] | None = None
+    # Provider-native context transport is opt-in and capability-gated by the
+    # caller. Generic OpenAI-compatible endpoints must never receive fields
+    # intended for Anthropic, OpenAI Responses, or Gemini cache APIs.
+    prompt_cache_mode: Literal["anthropic_auto", "google_implicit"] | None = None
+    prompt_cache_key: str | None = None
+    prompt_cache_retention: Literal["in_memory", "5m", "1h", "24h"] | None = None
+    previous_response_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -111,6 +121,7 @@ class ProviderModelInfo:
     kind: Literal["chat", "embedding", "reranker", "vision", "other"]
     context_window: int | None = None
     context_window_source: str | None = None
+    max_output_tokens: int | None = None
     capabilities: dict[str, Any] = field(default_factory=dict)
     display_name: str | None = None
 
@@ -155,6 +166,7 @@ class ProviderSelectionCandidate:
     auth_mode: str | None = None
     context_window: int | None = None
     context_window_source: str | None = None
+    max_output_tokens: int | None = None
     priority: int = 100
     health_status: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)

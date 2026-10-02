@@ -20,4 +20,27 @@ describe("MCPToolPermissionTable", () => {
       expect(updateMCPToolPolicy).toHaveBeenCalledWith("server-1", "search_mail", "blocked"),
     );
   });
+
+  it("keeps long provider documentation collapsed until requested", async () => {
+    const longDescription =
+      "Search the connected workspace. " + "Additional provider schema details. ".repeat(80);
+    render(
+      <MCPToolPermissionTable
+        serverId="server-1"
+        tools={[{ ...tools[0], description: longDescription }]}
+      />,
+    );
+
+    expect(screen.getByText("Search the connected workspace.")).toBeInTheDocument();
+    expect(screen.queryByText(/Additional provider schema details/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show full details for search_mail" }));
+    await waitFor(() =>
+      expect(screen.getByText(/Additional provider schema details/)).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "Hide full details for search_mail" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
 });

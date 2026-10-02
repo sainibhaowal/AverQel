@@ -10,10 +10,12 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
+from app.auth.models.auth_session import AuthSession
 from app.auth.rbac import require_permissions
 from app.auth.schemas.auth import (
     AccountActivityItem,
     AccountActivityResponse,
+    AuthSessionResponse,
     AuthUserResponse,
     ChangePasswordRequest,
     CookiePreferencesRequest,
@@ -58,7 +60,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 def _token_response(result: LoginResult) -> TokenResponse:
     return TokenResponse(
         access_token=result.access_token,
-        token_type="bearer",  # nosec B106
+        token_type="bearer",
         expires_in=result.expires_in,
         user=AuthUserResponse(
             user_id=str(result.user.id),
@@ -166,6 +168,10 @@ def login(
         tenant_id=tenant_id,
         email=payload.email,
         password=payload.password,
+        device_id=payload.device_id,
+        device_label=payload.device_label,
+        user_agent=request.headers.get("user-agent"),
+        ip_hash=None,
     )
 
     _audit_and_commit(
@@ -179,7 +185,7 @@ def login(
     if result.requires_2fa:
         return TokenResponse(
             access_token="",
-            token_type="bearer",  # nosec B106
+            token_type="bearer",
             expires_in=0,
             user=AuthUserResponse(
                 user_id=str(result.user.id),
@@ -194,7 +200,7 @@ def login(
 
     return TokenResponse(
         access_token=result.access_token,
-        token_type="bearer",  # nosec B106 - OAuth token type constant, not a secret
+        token_type="bearer",
         expires_in=result.expires_in,
         user=AuthUserResponse(
             user_id=str(result.user.id),
@@ -387,6 +393,69 @@ def refresh(
         access_token=result.access_token,
         expires_in=result.expires_in,
     )
+
+
+@router.get("/sessions", response_model=list[AuthSessionResponse])
+def list_sessions(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> list[AuthSessionResponse]:
+    rows = (
+        db.query(AuthSession)
+        .filter(AuthSession.tenant_id == auth.tenant_id, AuthSession.user_id == auth.user_id)
+        .order_by(AuthSession.last_seen_at.desc())
+        .all()
+    )
+    return [
+        AuthSessionResponse(
+            id=str(row.id),
+            device_id=row.device_id,
+            label=row.label,
+            user_agent=row.user_agent,
+            created_at=row.created_at,
+            last_seen_at=row.last_seen_at,
+            revoked_at=row.revoked_at,
+            current=row.id == auth.session_id,
+        )
+        for row in rows
+    ]
+
+
+@router.delete("/sessions/{session_id}", response_model=LogoutResponse)
+def revoke_session(
+    session_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> LogoutResponse:
+    row = (
+        db.query(AuthSession)
+        .filter(
+            AuthSession.id == session_id,
+            AuthSession.tenant_id == auth.tenant_id,
+            AuthSession.user_id == auth.user_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise ApiError(code="SESSION_NOT_FOUND", message="Session not found.", status_code=404)
+    if row.revoked_at is None:
+        now = datetime.now(UTC)
+        row.revoked_at = now
+        row.revocation_reason = "revoked_by_user"
+        AuthService(db, settings).refresh_tokens.revoke_family(
+            tenant_id=auth.tenant_id,
+            token_family_id=row.token_family_id,
+            reason="session_revoked",
+        )
+        _audit_and_commit(
+            db=db,
+            tenant_id=auth.tenant_id,
+            action="auth.session_revoked",
+            actor_user_id=auth.user_id,
+            details={"session_id": str(session_id)},
+        )
+    return LogoutResponse(success=True)
 
 
 @router.post(
@@ -660,6 +729,10 @@ def verify_2fa(
     result = service.verify_totp_login(
         pending_token=payload.pending_token,
         code=payload.code,
+        device_id=payload.device_id,
+        device_label=payload.device_label,
+        user_agent=request.headers.get("user-agent"),
+        ip_hash=None,
     )
 
     _audit_and_commit(
@@ -673,7 +746,7 @@ def verify_2fa(
 
     return TokenResponse(
         access_token=result.access_token,
-        token_type="bearer",  # nosec B106
+        token_type="bearer",
         expires_in=result.expires_in,
         user=AuthUserResponse(
             user_id=str(result.user.id),

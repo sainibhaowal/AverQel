@@ -6,6 +6,7 @@ import { safeExternalUrl, type MCPConnection, type MCPMarketplaceEntry } from "@
 import MCPCommunityWarning from "./MCPCommunityWarning";
 import { MCPLogo } from "./MCPMarketplaceCard";
 import MCPHealthStatus from "./MCPHealthStatus";
+import MCPToolDescription from "./MCPToolDescription";
 
 function transportLabel(value?: string | null): string {
   switch (value) {
@@ -34,7 +35,7 @@ function ExternalResource({ label, value }: { label: string; value?: string | nu
       href={url}
       target="_blank"
       rel="noreferrer noopener"
-      className="inline-flex items-center gap-1 text-sm text-sky-300 underline decoration-sky-300/30 underline-offset-4 hover:text-sky-200"
+      className="inline-flex items-center gap-1 text-sm text-cyan-300 underline decoration-cyan-300/30 underline-offset-4 hover:text-cyan-200"
     >
       {label}
       <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
@@ -79,7 +80,7 @@ export default function MCPProviderDetails({
                 </span>
               )}
               {entry.verified && (
-                <span className="rounded-full border border-sky-400/25 bg-sky-400/10 px-2.5 py-1 text-xs text-sky-200">
+                <span className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-2.5 py-1 text-xs text-cyan-200">
                   Verified
                 </span>
               )}
@@ -158,14 +159,9 @@ export default function MCPProviderDetails({
                 {tools.map((tool) => (
                   <div
                     key={tool.name}
-                    className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between"
+                    className="flex flex-col gap-3 py-3 sm:flex-row sm:items-start sm:justify-between"
                   >
-                    <div>
-                      <p className="font-mono text-sm text-emerald-200">{tool.name}</p>
-                      <p className="mt-1 text-sm text-white/60">
-                        {tool.description || "No description provided."}
-                      </p>
-                    </div>
+                    <MCPToolDescription tool={tool} />
                     <div className="flex shrink-0 flex-wrap gap-1.5">
                       {(tool.risk_labels.length ? tool.risk_labels : ["read"]).map((risk) => (
                         <span

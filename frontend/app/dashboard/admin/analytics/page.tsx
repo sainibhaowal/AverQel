@@ -57,12 +57,12 @@ export default function AnalyticsDashboard() {
   }, []);
 
   if (loading) {
-    return <div className="text-muted-foreground px-6 py-6">Loading analytics...</div>;
+    return <div className="dashboard-theme-scope text-muted-foreground px-6 py-6">Loading analytics...</div>;
   }
 
   if (!data) {
     return (
-      <div className="text-muted-foreground px-6 py-6">{error ?? "Failed to load analytics."}</div>
+      <div className="dashboard-theme-scope text-muted-foreground px-6 py-6">{error ?? "Failed to load analytics."}</div>
     );
   }
 
@@ -89,7 +89,7 @@ export default function AnalyticsDashboard() {
   const maxVolume = Math.max(...volume_over_time.map((point) => point.count), 1);
 
   return (
-    <div className="w-full space-y-8">
+    <div className="dashboard-theme-scope w-full space-y-8">
       <DashboardSectionHeader
         title="Analytics & Telemetry"
         subtitle="System Activity And Usage Trends"

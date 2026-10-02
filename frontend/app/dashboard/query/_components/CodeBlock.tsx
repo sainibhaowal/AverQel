@@ -11,8 +11,16 @@ import {
   ZoomOut,
   LocateFixed,
   Download,
+  ChevronDown,
   GitBranch,
 } from "lucide-react";
+
+import {
+  exportDiagramPdf,
+  exportDiagramPng,
+  exportDiagramSvg,
+  safeExportName,
+} from "@/lib/client-export";
 
 import { isMermaidErrorSvg } from "../_lib/mermaid";
 
@@ -543,37 +551,37 @@ function getShellClasses(variant: CodeBlockVariant) {
     case "mermaid":
       return {
         shell:
-          "my-6 overflow-hidden rounded-[1.35rem] border border-primary/20 bg-[linear-gradient(180deg,rgba(var(--primary),0.12),rgba(15,23,42,0.96))] shadow-[0_20px_60px_-34px_rgba(var(--primary),0.32)]",
+          "my-6 overflow-hidden rounded-[1.35rem] border border-primary/20 bg-card shadow-[0_20px_60px_-34px_rgba(var(--primary),0.32)]",
         header:
-          "flex flex-wrap items-center justify-between gap-3 border-b border-primary/15 bg-slate-950/55 px-4 py-3",
+          "flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-muted/45 px-4 py-3",
         label: "text-primary text-[10px] font-semibold tracking-[0.24em] uppercase",
         button:
-          "border-primary/20 bg-primary/10 text-primary-foreground/90 hover:bg-primary/20 hover:border-primary/30 inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-40",
+          "inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-[11px] font-medium text-primary transition hover:border-primary/50 hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40",
         codeSurface:
-          "overflow-auto bg-[linear-gradient(180deg,rgba(2,6,23,0.12),rgba(2,6,23,0.28))] px-4 py-4 text-sm leading-7",
+          "overflow-auto bg-muted/20 px-4 py-4 text-sm leading-7",
       };
     case "preview":
       return {
         shell:
-          "my-6 overflow-hidden rounded-[1.2rem] border border-slate-700/40 bg-slate-950/94 shadow-[0_18px_44px_-32px_rgba(15,23,42,0.72)]",
+          "my-6 overflow-hidden rounded-[1.2rem] border border-border bg-card shadow-[0_18px_44px_-32px_rgba(15,23,42,0.18)]",
         header:
-          "flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/84 px-4 py-3",
-        label: "text-[10px] font-semibold tracking-[0.22em] text-slate-300 uppercase",
+          "flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/45 px-4 py-3",
+        label: "text-muted-foreground text-[10px] font-semibold tracking-[0.22em] uppercase",
         button:
-          "inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40",
-        codeSurface: "overflow-auto bg-slate-950 px-4 py-4 text-sm leading-7",
+          "inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[11px] font-medium text-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
+        codeSurface: "overflow-auto bg-card px-4 py-4 text-sm leading-7",
       };
     case "plain":
     default:
       return {
         shell:
-          "my-6 overflow-hidden rounded-[0.95rem] border border-slate-800/80 bg-slate-950 shadow-[0_12px_30px_-26px_rgba(15,23,42,0.82)]",
+          "my-6 overflow-hidden rounded-[0.95rem] border border-border bg-card shadow-[0_12px_30px_-26px_rgba(15,23,42,0.18)]",
         header:
-          "flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-[#0b1220] px-4 py-3",
-        label: "text-[10px] font-medium tracking-[0.18em] text-slate-400 uppercase",
+          "flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/45 px-4 py-3",
+        label: "text-muted-foreground text-[10px] font-medium tracking-[0.18em] uppercase",
         button:
-          "inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-[11px] font-medium text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40",
-        codeSurface: "overflow-auto bg-slate-950 px-4 py-4 text-sm leading-7",
+          "inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-[11px] font-medium text-foreground transition hover:border-primary/40 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
+        codeSurface: "overflow-auto bg-card px-4 py-4 text-sm leading-7",
       };
   }
 }
@@ -1805,6 +1813,8 @@ export default function CodeBlock({
   const [copied, setCopied] = useState(false);
   // FIX: Separate copy error state so failed clipboard writes show feedback.
   const [copyError, setCopyError] = useState(false);
+  const [exportingDiagram, setExportingDiagram] = useState<"png" | "pdf" | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(() => shouldInitiallyOpenPreview);
@@ -2231,6 +2241,25 @@ export default function CodeBlock({
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   };
 
+  const handleDiagramExport = async (format: "svg" | "png" | "pdf") => {
+    if (!renderedSvg) return;
+    const filename = `${safeExportName(title ?? codeFileDescriptor.baseName, "diagram")}.${format}`;
+    try {
+      if (format === "svg") {
+        exportDiagramSvg(renderedSvg, filename);
+        return;
+      }
+      setExportingDiagram(format);
+      if (format === "png") await exportDiagramPng(renderedSvg, filename);
+      else await exportDiagramPdf(renderedSvg, filename);
+    } catch {
+      setCopyError(true);
+      window.setTimeout(() => setCopyError(false), 2000);
+    } finally {
+      setExportingDiagram(null);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -2266,9 +2295,9 @@ export default function CodeBlock({
           const isDark = mermaidTheme === "dark";
           const isClassDiagram = mermaidFamily === "classdiagram";
           const mermaidThemeVariables: Record<string, unknown> = {
-            primaryColor: isDark ? "#e0f2fe" : "#dbeafe",
+            primaryColor: isDark ? "#e0f2fe" : "#d1fae5",
             primaryTextColor: "#0f172a",
-            primaryBorderColor: isDark ? "#60a5fa" : "#2563eb",
+            primaryBorderColor: isDark ? "#60a5fa" : "#0f766e",
             secondaryColor: isDark ? "#dcfce7" : "#dcfce7",
             secondaryTextColor: "#0f172a",
             tertiaryColor: isDark ? "#fef3c7" : "#fef3c7",
@@ -2277,8 +2306,8 @@ export default function CodeBlock({
             lineColor: isDark ? "#94a3b8" : "#475569",
             textColor: isDark ? "#e2e8f0" : "#0f172a",
             mainBkg: isDark ? "#020817" : "#ffffff",
-            clusterBkg: isDark ? "#0f172a" : "#eff6ff",
-            clusterBorder: isDark ? "#334155" : "#93c5fd",
+            clusterBkg: isDark ? "#0f172a" : "#ecfdf5",
+            clusterBorder: isDark ? "#334155" : "#6ee7b7",
             edgeLabelBackground: "transparent",
             actorTextColor: "#f8fafc",
             actorBorder: isDark ? "#cbd5e1" : "#334155",
@@ -2406,7 +2435,7 @@ export default function CodeBlock({
   ]);
 
   return (
-    <div className={shellClasses.shell}>
+    <div className={`${shellClasses.shell} group`}>
       {/* Header bar */}
       {/* Header bar */}
       <div className={shellClasses.header}>
@@ -2423,7 +2452,13 @@ export default function CodeBlock({
             </>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div
+          className={`flex items-center gap-2 ${
+            normalizedLanguage === "mermaid"
+              ? "opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100"
+              : ""
+          }`}
+        >
           {supportsRichPreview && isExpanded && !answerStreaming && renderedSvg && !isRendering ? (
             <div className="flex items-center gap-1 rounded-full border border-white/10 bg-slate-900/90 p-0.5">
               <button
@@ -2472,16 +2507,67 @@ export default function CodeBlock({
               </button>
             </div>
           ) : null}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!codeValue.trim()}
-            className={shellClasses.button}
-            title={`Save as .${codeFileDescriptor.extension}`}
-          >
-            <Download size={13} />
-            <span className="hidden sm:inline">Save</span>
-          </button>
+          {normalizedLanguage === "mermaid" ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setExportMenuOpen((current) => !current)}
+                className={shellClasses.button}
+                aria-label="Export Mermaid diagram"
+                aria-expanded={exportMenuOpen}
+              >
+                <Download size={13} />
+                <span className="hidden sm:inline">Export</span>
+                <ChevronDown size={13} />
+              </button>
+              {exportMenuOpen ? (
+                <div className="theme-panel-strong absolute top-9 right-0 z-50 grid min-w-36 gap-1 rounded-lg border border-border bg-card p-1 text-foreground shadow-xl">
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10"
+                  >
+                    Mermaid (.mmd)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDiagramExport("svg")}
+                    disabled={!renderedSvg || isRendering}
+                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                  >
+                    SVG
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDiagramExport("png")}
+                    disabled={!renderedSvg || isRendering || exportingDiagram !== null}
+                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                  >
+                    {exportingDiagram === "png" ? "PNG…" : "PNG"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDiagramExport("pdf")}
+                    disabled={!renderedSvg || isRendering || exportingDiagram !== null}
+                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                  >
+                    {exportingDiagram === "pdf" ? "PDF…" : "PDF"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!codeValue.trim()}
+              className={shellClasses.button}
+              title={`Export as .${codeFileDescriptor.extension}`}
+            >
+              <Download size={13} />
+              <span className="hidden sm:inline">Export .{codeFileDescriptor.extension}</span>
+            </button>
+          )}
           <button type="button" onClick={handleCopy} className={shellClasses.button}>
             {copied ? (
               <Check size={13} />

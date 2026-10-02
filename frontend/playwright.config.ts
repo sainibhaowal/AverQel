@@ -13,6 +13,11 @@ export default defineConfig({
   timeout: 30_000,
   use: {
     baseURL: externalBaseUrl || localBaseUrl,
+    // Apply a supplied authenticated browser session to every E2E spec.
+    // The token fixture remains available for local/staging runs that use a
+    // short-lived bearer token instead of a Playwright storage-state file.
+    storageState: process.env.DEEPSPACE_E2E_STORAGE_STATE || undefined,
+    ignoreHTTPSErrors: Boolean(externalBaseUrl?.startsWith("https://localhost")),
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -22,8 +27,13 @@ export default defineConfig({
   webServer: externalBaseUrl
     ? undefined
     : {
-        command: 'bash ./scripts/run-with-runtime-env.sh "npx next dev --webpack -p 3103"',
-        url: localBaseUrl,
+      command: 'bash ./scripts/run-with-runtime-env.sh "npx next dev --webpack -p 3103"',
+      // The local Next dev server does not proxy /api/v1. Point browser E2E
+      // runs at the same API service used by the local production stack.
+      env: {
+        PLAYWRIGHT_E2E: "1",
+      },
+      url: localBaseUrl,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
       },

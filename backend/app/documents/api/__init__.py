@@ -1,5 +1,5 @@
 """Documents and collections API routes."""
 
-from app.documents.api import collections, documents
+from app.documents.api import collection_security, collections, documents, organization
 
-__all__ = ["collections", "documents"]
+__all__ = ["collection_security", "collections", "documents", "organization"]

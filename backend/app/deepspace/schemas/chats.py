@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -104,6 +104,28 @@ class ConversationListResponse(BaseModel):
     total: int
 
 
+class ConversationRetentionSchema(BaseModel):
+    conversation_id: uuid.UUID
+    state: Literal["active", "eligible", "archived"]
+    archived_at: datetime | None = None
+    restored_at: datetime | None = None
+    pinned: bool = False
+    legal_hold: bool = False
+    admin_exempt: bool = False
+    protection_reason: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ConversationRetentionProtectionRequest(BaseModel):
+    pinned: bool | None = None
+    legal_hold: bool | None = None
+    admin_exempt: bool | None = None
+    reason: str | None = Field(default=None, max_length=2000)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class BulkDeleteRequest(BaseModel):
     conversation_ids: list[uuid.UUID]
 
@@ -113,7 +135,54 @@ class MessageEditRequest(BaseModel):
 
 
 class RegenerateRequest(BaseModel):
+    client_request_id: str | None = Field(default=None, max_length=255)
     thinking_enabled: bool = False
+    reasoning_effort: Literal["low", "medium", "high", "very_high", "extreme_high"] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class QueueTurnRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    client_request_id: str | None = Field(default=None, max_length=255)
+    thinking_enabled: bool = False
+    reasoning_effort: Literal["low", "medium", "high", "very_high", "extreme_high"] | None = None
+    steer: bool = False
+    attachment_file_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def normalize_message(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+
+class QueuedTurnSchema(BaseModel):
+    id: uuid.UUID
+    client_request_id: str
+    prompt: str
+    priority: int
+    sequence: int
+    status: str
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error: str | None = None
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class QueueStateSchema(BaseModel):
+    paused: bool = False
+    reason: str | None = None
+    failed_request_id: str | None = None
+    # Returned by resume when it creates a retry attempt. The browser uses it
+    # to reconnect to that durable SSE stream without requiring a page reload.
+    active_request_id: str | None = None
+    paused_at: datetime | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ApprovalDecisionRequest(BaseModel):

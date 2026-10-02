@@ -17,8 +17,8 @@ class CollectionNotification(Base):
         Index(
             "ix_collection_notifications_recipient_created_id",
             "recipient_user_id",
-            "created_at",
-            "id",
+            text("created_at DESC"),
+            text("id DESC"),
         ),
     )
 

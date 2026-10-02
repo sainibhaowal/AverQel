@@ -13,10 +13,44 @@ from app.deepspace.services.url_reader import validate_public_url
 from app.providers.services.base import ProviderRequestError
 
 
+@pytest.mark.asyncio
+async def test_provider_stream_default_deadline_allows_full_provider_window() -> None:
+    """DeepSpace must not truncate a model stream at the former 90s default."""
+    service = object.__new__(DeepSpaceChatService)
+    captured: dict[str, float] = {}
+
+    async def stream_factory():
+        yield {"type": "delta", "text": "ok"}
+
+    async def capture_stream(_iterable, *, run_id, deadline):
+        del run_id
+        captured["remaining"] = deadline - time.monotonic()
+        async for item in _iterable:
+            yield item
+
+    service._cancellable_provider_stream = capture_stream
+    frames = [
+        item
+        async for item in service._provider_stream_with_retry(
+            stream_factory,
+            run_id=None,
+            deadline=time.monotonic() + 600,
+        )
+    ]
+
+    assert frames == [{"type": "delta", "text": "ok"}]
+    assert 295 <= captured["remaining"] <= 300
+
+
 def test_deepspace_policy_blocks_ide_and_mcp_tools() -> None:
     policy = DeepSpaceToolPolicy()
 
     assert policy.decide("url_read", {}).allowed
+    assert policy.decide("document_read", {}).allowed
+    assert policy.decide("document_query", {}).allowed
+    assert policy.decide("document_compare", {}).allowed
+    assert policy.decide("sandbox_execute", {}).allowed
+    assert policy.decide("artifact_create", {}).allowed
     assert policy.mode("write") == "write"
     assert policy.mode("workspace_write") is None
     assert policy.mode("memory_search") is None
@@ -49,7 +83,7 @@ def test_url_reader_rejects_private_targets(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
     with pytest.raises(ProviderRequestError, match="Private"):
-        validate_public_url("http://example.test/document")
+        validate_public_url("https://example.test/document")
 
 
 @pytest.mark.asyncio
@@ -156,6 +190,28 @@ async def test_provider_retry_does_not_duplicate_partial_output(
                 stream_factory, run_id=None, deadline=time.monotonic() + 5
             )
         ]
+
+
+@pytest.mark.asyncio
+async def test_provider_retry_does_not_retry_non_retryable_provider_errors() -> None:
+    service = object.__new__(DeepSpaceChatService)
+    attempts = 0
+
+    async def stream_factory():
+        nonlocal attempts
+        attempts += 1
+        raise ProviderRequestError("test", 403, "account policy")
+        yield  # pragma: no cover
+
+    with pytest.raises(ProviderRequestError):
+        [
+            item
+            async for item in service._provider_stream_with_retry(
+                stream_factory, run_id=None, deadline=time.monotonic() + 5
+            )
+        ]
+
+    assert attempts == 1
 
 
 def test_context_budget_reports_thresholds_and_safe_remaining() -> None:

@@ -1,0 +1,11 @@
+{
+  "fixture_version": 1,
+  "case": "long_research_reference",
+  "sensitive_data": false,
+  "events": [
+    {"type": "model_round", "workload": "research", "context_window": 32768, "tool_count": 2},
+    {"type": "tool_result_reference", "kind": "native", "status": "created"},
+    {"type": "tool_result_retrieval", "status": "scoped"},
+    {"type": "final", "status": "ready"}
+  ]
+}

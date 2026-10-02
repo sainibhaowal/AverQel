@@ -236,7 +236,7 @@ function AssignmentRow({
           (!selectedProviderId && !allowsServerDefault) ||
           (compatibleProviders.length === 0 && !allowsServerDefault)
         }
-        className="inline-flex items-center justify-center rounded-full bg-[linear-gradient(135deg,#14b8a6,#0ea5e9)] px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50"
+        className="inline-flex items-center justify-center rounded-full bg-[linear-gradient(135deg,#14b8a6,#0891b2)] px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50"
       >
         {saving ? "Saving..." : allowsServerDefault && !selectedProviderId ? "Use default" : "Save"}
       </button>

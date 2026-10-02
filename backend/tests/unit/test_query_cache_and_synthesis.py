@@ -3,6 +3,7 @@ from uuid import uuid4
 import pytest
 
 from app.query.services.chunk_cache import ChunkMetadataCache
+from app.query.services.query_service import QueryService
 from app.query.services.retrieval_service import RetrievedChunk
 from app.query.services.synthesis_service import (
     MatrixCell,
@@ -33,6 +34,40 @@ def test_synthesis_helpers_and_matrix_statuses() -> None:
     assert len(result.cells) == 2
     assert all(isinstance(cell, MatrixCell) for cell in result.cells)
     assert next(cell for cell in result.cells if cell.document == "b.md").status == "supported"
+
+
+def test_query_cache_identity_is_user_scope_and_provider_bound() -> None:
+    owner_id = uuid4()
+    common = {
+        "tenant_id": uuid4(),
+        "normalized_query": "private policy",
+        "normalized_filters": {},
+        "top_k": 5,
+        "embedding_provider": "local",
+        "embedding_model": "bge-small",
+        "chat_provider": "openai-compatible",
+        "chat_model": "model-a",
+        "search_mode": "hybrid",
+    }
+    owner_key = QueryService.build_cache_key(
+        user_id=owner_id,
+        access_scope_version="owner-scope",
+        **common,
+    )
+    viewer_key = QueryService.build_cache_key(
+        user_id=uuid4(),
+        access_scope_version="viewer-scope",
+        **common,
+    )
+    changed_model_key = QueryService.build_cache_key(
+        user_id=owner_id,
+        access_scope_version="owner-scope",
+        chat_model="model-b",
+        **{key: value for key, value in common.items() if key != "chat_model"},
+    )
+
+    assert owner_key != viewer_key
+    assert owner_key != changed_model_key
 
 
 class _FakeRedis:

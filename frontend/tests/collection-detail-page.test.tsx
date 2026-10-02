@@ -9,7 +9,12 @@ const confirmMock = vi.fn(() => true);
 let currentSection = "documents";
 
 vi.mock("../lib/api", () => ({
-  fetchWithAuth: (...args: unknown[]) => fetchWithAuthMock(...args),
+  fetchWithAuth: (...args: unknown[]) => {
+    if (String(args[0]).split("?", 1)[0].endsWith("/ws-ticket")) {
+      return Promise.resolve({ ok: true, json: async () => ({ ticket: "ws-ticket" }) });
+    }
+    return fetchWithAuthMock(...args);
+  },
 }));
 
 vi.mock("../app/context/AuthContext", () => ({
@@ -29,6 +34,12 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => ({
     get: (key: string) => (key === "section" ? currentSection : null),
   }),
+}));
+
+vi.mock("@/app/components/ui/AverQelDialogHost", () => ({
+  averqelConfirm: vi.fn().mockResolvedValue(true),
+  averqelPrompt: vi.fn().mockResolvedValue("test-password"),
+  averqelAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.stubGlobal("confirm", confirmMock);

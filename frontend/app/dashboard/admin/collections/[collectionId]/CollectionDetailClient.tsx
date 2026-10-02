@@ -47,8 +47,14 @@ import {
   resetUnreadCount,
   purgeExpiredMessages,
   clearLocalMessages,
+  enqueuePendingChatMessage,
+  listPendingChatMessages,
+  removePendingChatMessage,
+  markPendingChatMessageRetry,
 } from "@/lib/localDb";
 import { AnimatePresence, motion } from "framer-motion";
+import { averqelConfirm, averqelPrompt } from "@/app/components/ui/AverQelDialogHost";
+import { enableCollectionPush } from "@/lib/collection-push";
 
 interface Collection {
   id: string;
@@ -90,6 +96,19 @@ function normalizeDocumentItems(payload: DocumentListResponse | DocumentItem[] |
     return payload;
   }
   return Array.isArray(payload?.items) ? payload.items : [];
+}
+
+function getCollectionDeviceId(): string {
+  const storageKey = "averqel.collection.device_id";
+  try {
+    const existing = window.localStorage.getItem(storageKey);
+    if (existing && /^[A-Za-z0-9._:-]{8,128}$/.test(existing)) return existing;
+    const next = `browser-${crypto.randomUUID()}`;
+    window.localStorage.setItem(storageKey, next);
+    return next;
+  } catch {
+    return "legacy";
+  }
 }
 
 async function extractApiErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -151,6 +170,9 @@ export default function AdminCollectionDetailPage({
 
   // Real-time Chat States
   const [chats, setChats] = useState<any[]>([]);
+  const [hasOlderChats, setHasOlderChats] = useState(false);
+  const [olderChatCursor, setOlderChatCursor] = useState<string | null>(null);
+  const [loadingOlderChats, setLoadingOlderChats] = useState(false);
   const [chatText, setChatText] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -174,6 +196,7 @@ export default function AdminCollectionDetailPage({
   const [showSearchBar, setShowSearchBar] = useState(false);
   const [wsStatus, setWsStatus] = useState<"connecting" | "online" | "offline">("connecting");
   const [safetyNumber, setSafetyNumber] = useState<string>("");
+  const [pushStatus, setPushStatus] = useState<"idle" | "enabled" | "unavailable">("idle");
   const [isExportingBackup, setIsExportingBackup] = useState(false);
   const [isImportingBackup, setIsImportingBackup] = useState(false);
   const [activePreviewFile, setActivePreviewFile] = useState<{
@@ -186,12 +209,27 @@ export default function AdminCollectionDetailPage({
   const [activeMessageMenuId, setActiveMessageMenuId] = useState<string | null>(null);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
 
+  const handleEnablePush = async () => {
+    try {
+      const result = await enableCollectionPush(getCollectionDeviceId());
+      setPushStatus(result);
+      if (result === "enabled") toast.success("Collection notifications enabled.");
+      else toast.error("Push notifications are not configured or permission was denied.");
+    } catch {
+      setPushStatus("unavailable");
+      toast.error("Push notifications could not be enabled.");
+    }
+  };
+
   // WebSockets Persistent connection Ref
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const reconnectDelayRef = useRef<number>(1000); // Start at 1s
+  const heartbeatRef = useRef<number | null>(null);
   const connectWebSocketRef = useRef<(() => void) | null>(null);
   const processedMessageIdsRef = useRef<Set<string>>(new Set());
+  const lastEventCursorRef = useRef<string | null>(null);
+  const wsTicketRef = useRef<string | null>(null);
 
   const scrollChatToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -267,9 +305,11 @@ export default function AdminCollectionDetailPage({
 
         // 2. Sync history from server using the derived key
         try {
-          const chatsRes = await fetchWithAuth(`/collections/${collectionId}/chats`);
+          const chatsRes = await fetchWithAuth(`/collections/${collectionId}/chats?limit=100`);
           if (chatsRes.ok) {
             const chatsData = await chatsRes.json();
+            setHasOlderChats(chatsRes.headers.get("X-Chat-Has-More") === "true");
+            setOlderChatCursor(chatsRes.headers.get("X-Chat-Next-Cursor"));
             await resetUnreadCount(collectionId);
 
             const decryptedChats = [];
@@ -298,6 +338,34 @@ export default function AdminCollectionDetailPage({
     }
   }, [collectionId, cryptoKey, collection?.expiry_days]);
 
+  const loadOlderChats = async () => {
+    if (!collectionId || !cryptoKey || !olderChatCursor || loadingOlderChats) return;
+    setLoadingOlderChats(true);
+    try {
+      const response = await fetchWithAuth(
+        `/collections/${collectionId}/chats?limit=100&before=${encodeURIComponent(olderChatCursor)}`,
+      );
+      if (!response.ok) throw new Error("Failed to load older messages.");
+      const payload = await response.json();
+      const olderMessages: any[] = [];
+      for (const msg of payload) {
+        processedMessageIdsRef.current.add(msg.id);
+        const decryptedText = await decryptMessage(msg.message, cryptoKey);
+        const decryptedMsg = { ...msg, message: decryptedText };
+        await saveLocalMessage(decryptedMsg);
+        olderMessages.push(decryptedMsg);
+      }
+      setChats((current) => [...olderMessages, ...current]);
+      setHasOlderChats(response.headers.get("X-Chat-Has-More") === "true");
+      setOlderChatCursor(response.headers.get("X-Chat-Next-Cursor"));
+    } catch (error) {
+      console.error("Failed to load older chat messages:", error);
+      toast.error("Failed to load older messages.");
+    } finally {
+      setLoadingOlderChats(false);
+    }
+  };
+
   // Handle typing state input change trigger
   const handleTypingActivity = () => {
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
@@ -317,19 +385,63 @@ export default function AdminCollectionDetailPage({
     }, 2000);
   };
 
+  const flushPendingChatMessages = useCallback(async () => {
+    if (!collectionId) return;
+    const pending = await listPendingChatMessages(collectionId);
+    for (const item of pending.sort((a, b) => a.next_attempt_at - b.next_attempt_at)) {
+      if (item.next_attempt_at > Date.now()) continue;
+      try {
+        const response = await fetchWithAuth(`/collections/${collectionId}/chats`, {
+          method: "POST",
+          body: JSON.stringify(item.payload),
+        });
+        if (!response.ok) {
+          throw new Error(`Retry failed with HTTP ${response.status}`);
+        }
+        await removePendingChatMessage(item.client_message_id);
+      } catch (error) {
+        await markPendingChatMessageRetry(
+          item,
+          error instanceof Error ? error.message : "Retry failed",
+        );
+      }
+    }
+  }, [collectionId]);
+
   const connectWebSocket = useCallback(() => {
     if (!collectionId) return;
+    const deviceId = getCollectionDeviceId();
+
+    if (!wsTicketRef.current) {
+      void fetchWithAuth(
+        `/collections/${collectionId}/ws-ticket?device_id=${encodeURIComponent(deviceId)}`,
+      )
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Unable to authorize collection WebSocket");
+          const payload = (await response.json()) as { ticket?: string };
+          if (!payload.ticket) throw new Error("Collection WebSocket ticket was empty");
+          wsTicketRef.current = payload.ticket;
+          connectWebSocketRef.current?.();
+        })
+        .catch((error) => {
+          console.error("Collection WebSocket authorization failed:", error);
+          setWsStatus("offline");
+        });
+      return;
+    }
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    const token = window.localStorage.getItem("averqel_token");
     const tenantId = window.localStorage.getItem("averqel_tenant_id");
     const params = new URLSearchParams();
-    if (token) params.set("token", token);
+    params.set("ticket", wsTicketRef.current);
+    params.set("device_id", deviceId);
     if (tenantId) params.set("tenant_id", tenantId);
+    if (lastEventCursorRef.current) params.set("last_event_id", lastEventCursorRef.current);
     const wsUrl = `${protocol}//${host}/api/v1/collections/${collectionId}/ws?${params.toString()}`;
 
-    console.log(`Connecting to Collection WebSocket: ${wsUrl}`);
+    // Never log the token-bearing WebSocket URL.
+    console.log("Connecting to Collection WebSocket", { collectionId });
     setWsStatus("connecting");
     const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
@@ -342,18 +454,32 @@ export default function AdminCollectionDetailPage({
         window.clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
+      if (heartbeatRef.current) window.clearInterval(heartbeatRef.current);
+      heartbeatRef.current = window.setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ action: "ping" }));
+        }
+      }, 25_000);
       socket.send(JSON.stringify({ action: "read" }));
+      void flushPendingChatMessages();
     };
 
     socket.onmessage = async (event) => {
       try {
         const data = JSON.parse(event.data);
+        if (typeof data.event_cursor === "string") {
+          lastEventCursorRef.current = data.event_cursor;
+        }
         // Normalize: backend sends {type, data}, frontend expects {type, payload}
         if (!data.payload && data.data) data.payload = data.data;
         console.log("WebSocket message received:", data);
 
         if (data.type === "new_message" && data.payload) {
           const msg = data.payload;
+
+          if (msg.client_message_id) {
+            void removePendingChatMessage(msg.client_message_id).catch(() => undefined);
+          }
 
           if (processedMessageIdsRef.current.has(msg.id)) return;
           processedMessageIdsRef.current.add(msg.id);
@@ -496,11 +622,16 @@ export default function AdminCollectionDetailPage({
     };
 
     socket.onclose = (event) => {
+      if (heartbeatRef.current) {
+        window.clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
       console.warn(
         `WebSocket closed. Code=${event.code}, Reason=${event.reason}. Scheduling reconnect...`,
       );
       setWsStatus("offline");
       socketRef.current = null;
+      wsTicketRef.current = null;
       if (event.code === 4004) {
         onCollectionDeleted?.();
         return;
@@ -523,7 +654,7 @@ export default function AdminCollectionDetailPage({
     // Reconnection deliberately follows the current socket lifecycle; loading collection state inside
     // this callback would create a declaration-order cycle with the data loader below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collectionId, cryptoKey, user?.id]);
+  }, [collectionId, cryptoKey, user?.id, flushPendingChatMessages]);
 
   useEffect(() => {
     connectWebSocketRef.current = connectWebSocket;
@@ -540,6 +671,11 @@ export default function AdminCollectionDetailPage({
         socketRef.current.onclose = null;
         socketRef.current.close();
         socketRef.current = null;
+      }
+      wsTicketRef.current = null;
+      if (heartbeatRef.current) {
+        window.clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
       }
       if (reconnectTimeoutRef.current) {
         window.clearTimeout(reconnectTimeoutRef.current);
@@ -694,9 +830,9 @@ export default function AdminCollectionDetailPage({
 
   const handleClearChatHistory = async () => {
     if (
-      !window.confirm(
+      !(await averqelConfirm(
         "Are you absolutely sure you want to permanently clear the entire chat history for everyone? This action is irreversible and deletes all messages and media attachments.",
-      )
+      ))
     ) {
       return;
     }
@@ -719,8 +855,8 @@ export default function AdminCollectionDetailPage({
     }
   };
 
-  const handleDeleteMessage = (messageId: string) => {
-    if (!window.confirm("Delete this message for everyone?")) return;
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!(await averqelConfirm("Delete this message for everyone?"))) return;
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
@@ -730,6 +866,41 @@ export default function AdminCollectionDetailPage({
       );
     } else {
       toast.error("WebSocket offline, deletion failed.");
+    }
+  };
+
+  const handleReportMessage = async (message: any) => {
+    const reason = await averqelPrompt("Why are you reporting this message?", "spam");
+    if (!reason?.trim()) return;
+    try {
+      const response = await fetchWithAuth(`/collections/${collectionId}/security/reports`, {
+        method: "POST",
+        body: JSON.stringify({
+          reported_user_id: message.user_id,
+          message_id: message.id,
+          reason: reason.trim().slice(0, 64),
+        }),
+      });
+      if (!response.ok) throw new Error("Report failed");
+      toast.success("Message reported to the collection owner.");
+    } catch {
+      toast.error("The message could not be reported.");
+    }
+  };
+
+  const handleBlockMember = async (message: any) => {
+    if (!(await averqelConfirm("Block this member from sending messages in this collection?"))) {
+      return;
+    }
+    try {
+      const response = await fetchWithAuth(`/collections/${collectionId}/security/blocks`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: message.user_id }),
+      });
+      if (!response.ok) throw new Error("Block failed");
+      toast.success("Member blocked. New messages from this member are stopped.");
+    } catch {
+      toast.error("The member could not be blocked.");
     }
   };
 
@@ -792,7 +963,7 @@ export default function AdminCollectionDetailPage({
   };
 
   const handleRemoveDocument = async (documentId: string) => {
-    if (!window.confirm("Remove this document from the shared collection?")) return;
+    if (!(await averqelConfirm("Remove this document from the shared collection?"))) return;
     setSavingDocs(true);
     try {
       const res = await fetchWithAuth(`/collections/${collectionId}/documents`, {
@@ -862,7 +1033,7 @@ export default function AdminCollectionDetailPage({
       toast.error("No messages to back up.");
       return;
     }
-    const password = window.prompt("Enter a strong security password to encrypt your chat backup:");
+    const password = await averqelPrompt("Enter a strong security password to encrypt your chat backup:");
     if (!password) return;
 
     setIsExportingBackup(true);
@@ -903,7 +1074,7 @@ export default function AdminCollectionDetailPage({
             toast.error("Invalid backup file format. Missing metadata.");
             return;
           }
-          const password = window.prompt(
+          const password = await averqelPrompt(
             "Enter the security password used to encrypt this backup:",
           );
           if (!password) return;
@@ -945,7 +1116,7 @@ export default function AdminCollectionDetailPage({
   // This owner-only action remains available to the parent collection control surface.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteCollection = async () => {
-    if (!window.confirm("Are you sure you want to delete this collection for all members?")) return;
+    if (!(await averqelConfirm("Are you sure you want to delete this collection for all members?"))) return;
     setDeletingCollection(true);
     try {
       const res = await fetchWithAuth(`/collections/${collectionId}`, {
@@ -970,7 +1141,7 @@ export default function AdminCollectionDetailPage({
   };
 
   const handleLeaveCollection = async () => {
-    if (!window.confirm("Leave this collection bridge?")) return;
+    if (!(await averqelConfirm("Leave this collection bridge?"))) return;
     setDeletingCollection(true);
     try {
       const res = await fetchWithAuth(`/collections/${collectionId}/permissions`, {
@@ -1023,7 +1194,7 @@ export default function AdminCollectionDetailPage({
   };
 
   const handleRemoveMember = async (userId: string, email: string | null | undefined) => {
-    if (!window.confirm(`Remove ${email || "this member"} from the collection?`)) return;
+    if (!(await averqelConfirm(`Remove ${email || "this member"} from the collection?`))) return;
     setSavingPermissions(true);
     try {
       const res = await fetchWithAuth(`/collections/${collectionId}/permissions`, {
@@ -1092,8 +1263,11 @@ export default function AdminCollectionDetailPage({
               JSON.stringify({
                 action: "post_message",
                 content: encryptedPayload,
+                client_message_id: crypto.randomUUID(),
                 is_media: true,
                 media_mime_type: file.type,
+                media_id: uploadData.media_id,
+                media_object_key: uploadData.object_key,
               }),
             );
           } else {
@@ -1101,8 +1275,11 @@ export default function AdminCollectionDetailPage({
               method: "POST",
               body: JSON.stringify({
                 message: encryptedPayload,
+                client_message_id: crypto.randomUUID(),
                 is_media: true,
                 media_mime_type: file.type,
+                media_id: uploadData.media_id,
+                media_object_key: uploadData.object_key,
               }),
             });
             if (res.ok) {
@@ -1123,19 +1300,46 @@ export default function AdminCollectionDetailPage({
           payloadMessage = await encryptMessage(trimmedText, cryptoKey);
         }
 
+        const clientMessageId = crypto.randomUUID();
+        const requestPayload = {
+          message: payloadMessage,
+          client_message_id: clientMessageId,
+          is_media: false,
+        };
+        let queuedForRetry = false;
+
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+          await enqueuePendingChatMessage({
+            client_message_id: clientMessageId,
+            collection_id: collectionId,
+            payload: requestPayload,
+            local_message: {
+              id: `pending-${clientMessageId}`,
+              collection_id: collectionId,
+              user_id: user?.id || "self",
+              user_email: user?.email || "You",
+              message: trimmedText,
+              status: "pending",
+              is_media: false,
+              media_mime_type: null,
+              created_at: new Date().toISOString(),
+            },
+            attempts: 0,
+            next_attempt_at: Date.now(),
+          });
           socketRef.current.send(
             JSON.stringify({
               action: "post_message",
-              content: payloadMessage,
-              is_media: false,
+              content: requestPayload.message,
+              client_message_id: requestPayload.client_message_id,
+              is_media: requestPayload.is_media,
             }),
           );
           setChatText("");
         } else {
           const res = await fetchWithAuth(`/collections/${collectionId}/chats`, {
             method: "POST",
-            body: JSON.stringify({ message: payloadMessage, is_media: false }),
+            body: JSON.stringify(requestPayload),
           });
           if (res.ok) {
             const newMsg = await res.json();
@@ -1146,9 +1350,35 @@ export default function AdminCollectionDetailPage({
               return [...current, decryptedMsg];
             });
             setChatText("");
+          } else {
+            const pendingItem = {
+              client_message_id: clientMessageId,
+              collection_id: collectionId,
+              payload: requestPayload,
+              local_message: {
+                id: `pending-${clientMessageId}`,
+                collection_id: collectionId,
+                user_id: user?.id || "self",
+                user_email: user?.email || "You",
+                message: trimmedText,
+                status: "pending",
+                is_media: false,
+                media_mime_type: null,
+                created_at: new Date().toISOString(),
+              },
+              attempts: 0,
+              next_attempt_at: Date.now() + 2_000,
+              last_error: `HTTP ${res.status}`,
+            };
+            await enqueuePendingChatMessage(pendingItem);
+            await saveLocalMessage(pendingItem.local_message);
+            setChats((current) => [...current, pendingItem.local_message]);
+            toast("Message queued for retry when the connection returns.", { id: toastId });
+            queuedForRetry = true;
+            setChatText("");
           }
         }
-        toast.success("Message sent securely.", { id: toastId });
+        if (!queuedForRetry) toast.success("Message sent securely.", { id: toastId });
       }
       setTimeout(scrollChatToBottom, 100);
     } catch (err) {
@@ -1239,7 +1469,7 @@ export default function AdminCollectionDetailPage({
             >
               <ShieldCheck size={14} className="animate-pulse text-emerald-500" />
               <span className="hover:text-foreground text-[9px] font-extrabold tracking-widest text-slate-500 uppercase">
-                E2EE SECURE CHANNEL
+                CLIENT-ENCRYPTED CHANNEL
               </span>
             </button>
           </div>
@@ -1388,6 +1618,17 @@ export default function AdminCollectionDetailPage({
             </div>
           )}
 
+          {hasOlderChats && (
+            <button
+              type="button"
+              onClick={() => void loadOlderChats()}
+              disabled={loadingOlderChats}
+              className="mx-auto block cursor-pointer rounded-full border border-emerald-500/20 px-3 py-1.5 text-[10px] font-bold text-emerald-500 transition hover:bg-emerald-500/10 disabled:cursor-wait disabled:opacity-60"
+            >
+              {loadingOlderChats ? "Loading older messages…" : "Load older messages"}
+            </button>
+          )}
+
           {filteredChats.length > 0
             ? filteredChats.map((msg) => {
                 const isSelf = msg.user_id === user?.id;
@@ -1441,6 +1682,30 @@ export default function AdminCollectionDetailPage({
                             >
                               Delete
                             </button>
+                          )}
+                          {!isSelf && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleReportMessage(msg);
+                                  setActiveMessageMenuId(null);
+                                }}
+                                className="w-full cursor-pointer px-3 py-2 text-left transition hover:bg-white/5 hover:text-white"
+                              >
+                                Report
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleBlockMember(msg);
+                                  setActiveMessageMenuId(null);
+                                }}
+                                className="w-full cursor-pointer px-3 py-2 text-left text-amber-400 transition hover:bg-amber-500/10"
+                              >
+                                Block member
+                              </button>
+                            </>
                           )}
                           <button
                             type="button"
@@ -2038,7 +2303,7 @@ export default function AdminCollectionDetailPage({
         </div>
       </div>
 
-      {/* E2EE Shield Details Modal */}
+      {/* Collection encryption details modal */}
       <AnimatePresence>
         {showShieldModal && (
           <motion.div
@@ -2063,10 +2328,10 @@ export default function AdminCollectionDetailPage({
                 </div>
                 <div className="space-y-1.5">
                   <h3 className="text-foreground text-center text-sm font-black tracking-widest uppercase">
-                    Zero-Knowledge E2EE Bridge
+                    Client-Encrypted Collection Bridge
                   </h3>
                   <p className="text-slate-550 text-center text-[11px] font-medium dark:text-slate-400">
-                    Fully Secure End-to-End Cryptography Activated
+                    AES-GCM client encryption is active for chat payloads
                   </p>
                 </div>
 
@@ -2074,25 +2339,25 @@ export default function AdminCollectionDetailPage({
                   <div className="flex items-start gap-2.5">
                     <span className="mt-0.5 text-xs text-emerald-500">🔑</span>
                     <p>
-                      <strong className="text-foreground">PBKDF2 Key Derivation:</strong> Symmetric
-                      keys are derived locally on your device using a combination of the collection
-                      ID and connection keys.
+                      <strong className="text-foreground">Local key derivation:</strong> The
+                      current browser client derives a shared chat key from the collection ID and
+                      connection code.
                     </p>
                   </div>
                   <div className="flex items-start gap-2.5">
                     <span className="mt-0.5 text-xs text-emerald-500">🔒</span>
                     <p>
-                      <strong className="text-foreground">AES-GCM-256 Encryption:</strong> All
-                      message texts and files are encrypted client-side using random 12-byte IVs
-                      before transit.
+                      <strong className="text-foreground">AES-GCM-256:</strong> Chat messages and
+                      files are encrypted client-side with random 12-byte IVs before transit.
                     </p>
                   </div>
                   <div className="flex items-start gap-2.5">
                     <span className="mt-0.5 text-xs text-emerald-500">☁️</span>
                     <p>
-                      <strong className="text-foreground">Zero Server Readability:</strong> The
-                      central server storage only stores encrypted base64 ciphertexts. Your privacy
-                      is 100% math-guaranteed.
+                      <strong className="text-foreground">Security boundary:</strong> Chat
+                      ciphertext is stored by the server, but this is not an audited Signal
+                      protocol: per-device ratchets, forward secrecy, and membership key rotation
+                      are not active yet.
                     </p>
                   </div>
                   {safetyNumber && (
@@ -2109,6 +2374,21 @@ export default function AdminCollectionDetailPage({
                       </p>
                     </div>
                   )}
+                </div>
+
+                <div className="w-full rounded-2xl border border-foreground/5 bg-foreground/[0.02] p-4 text-left dark:border-white/5">
+                  <p className="text-foreground text-[11px] font-bold">Browser notifications</p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                    Receive collection activity when this browser is offline. Delivery uses your
+                    deployment&apos;s configured VAPID push service.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleEnablePush()}
+                    className="mt-3 w-full rounded-xl border border-emerald-500/20 bg-emerald-600 py-2.5 text-[11px] font-bold text-white transition hover:bg-emerald-500"
+                  >
+                    {pushStatus === "enabled" ? "Notifications enabled" : "Enable notifications"}
+                  </button>
                 </div>
 
                 <button

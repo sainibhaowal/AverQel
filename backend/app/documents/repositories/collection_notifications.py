@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.documents.models.collection_notification import CollectionNotification
+from app.documents.models.collection_security import CollectionPushDelivery
 from app.platform.database.session import set_db_tenant_context
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
@@ -27,6 +28,13 @@ class CollectionNotificationsRepository(BaseRepository):
             try:
                 with self.db.begin_nested():
                     self.db.add(notification)
+                    self.db.flush()
+                    self.db.add(
+                        CollectionPushDelivery(
+                            notification_id=notification.id,
+                            recipient_user_id=notification.recipient_user_id,
+                        )
+                    )
                     self.db.flush()
             except IntegrityError:
                 if getattr(notification, "idempotency_key", None):

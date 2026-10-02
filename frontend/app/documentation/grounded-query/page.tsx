@@ -13,6 +13,10 @@ export default function GroundedQueryDocsPage() {
             body: "Uploaded files are processed into text, chunked for retrieval, embedded, indexed, and tracked with processing status, progress, and extraction metadata.",
           },
           {
+            title: "OCR, embeddings, and reranking",
+            body: "OCR runs during ingestion for scanned pages and images. Indexed chunks use the configured embedding model and existing reranker; a deterministic lexical fallback keeps answers usable when those services are unavailable.",
+          },
+          {
             title: "Grounded Answers",
             body: "The query runtime is built to answer from accessible documents and return results tied to actual source material instead of only ungrounded generation.",
           },

@@ -5,6 +5,14 @@ import { Activity } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
 import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 
+function healthVersionInfo(data: Record<string, unknown>): string | null {
+  const version = typeof data.version === "string" ? data.version.trim() : "";
+  const sha = typeof data.git_sha === "string" ? data.git_sha.trim() : "";
+  const hasSha = sha.length > 0 && sha.toLowerCase() !== "unknown";
+  if (!version) return null;
+  return `${version}${hasSha ? ` • ${sha.slice(0, 7)}` : ""}`;
+}
+
 export default function SystemStatus() {
   const [isHealthy, setIsHealthy] = useState<boolean>(true);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
@@ -19,23 +27,25 @@ export default function SystemStatus() {
         if (!mounted) return;
 
         if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          if (data.version)
-            setVersionInfo(
-              `${data.version}${data.git_sha ? ` • ${String(data.git_sha).slice(0, 7)}` : ""}`,
-            );
+          const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+          setVersionInfo(healthVersionInfo(data));
           setIsHealthy(true);
           setErrorDetails(null);
           return;
         }
 
-        const data = await res.json().catch(() => ({}));
-        if (data.version)
-          setVersionInfo(
-            `${data.version}${data.git_sha ? ` • ${String(data.git_sha).slice(0, 7)}` : ""}`,
-          );
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        setVersionInfo(healthVersionInfo(data));
         setIsHealthy(false);
-        setErrorDetails(data.error?.message || `HTTP ${res.status} Error`);
+        const errorPayload =
+          data.error && typeof data.error === "object"
+            ? (data.error as Record<string, unknown>)
+            : null;
+        setErrorDetails(
+          typeof errorPayload?.message === "string"
+            ? errorPayload.message
+            : `HTTP ${res.status} Error`,
+        );
       } catch (error: unknown) {
         if (!mounted) return;
         const message = error instanceof Error ? error.message : "Network Error";
@@ -59,10 +69,7 @@ export default function SystemStatus() {
             .json()
             .catch(() => ({}))
             .then((data: Record<string, unknown>) => {
-              if (typeof data.version === "string")
-                setVersionInfo(
-                  `${data.version}${typeof data.git_sha === "string" ? ` • ${String(data.git_sha).slice(0, 7)}` : ""}`,
-                );
+              setVersionInfo(healthVersionInfo(data));
             });
           setIsHealthy(true);
           setErrorDetails(null);
@@ -74,7 +81,15 @@ export default function SystemStatus() {
           .catch(() => ({}))
           .then((data) => {
             setIsHealthy(false);
-            setErrorDetails(data.error?.message || `HTTP ${res.status} Error`);
+            const errorPayload =
+              data.error && typeof data.error === "object"
+                ? (data.error as Record<string, unknown>)
+                : null;
+            setErrorDetails(
+              typeof errorPayload?.message === "string"
+                ? errorPayload.message
+                : `HTTP ${res.status} Error`,
+            );
           });
       })
       .catch((error: unknown) => {
@@ -98,7 +113,6 @@ export default function SystemStatus() {
     <div
       className="ui-tooltip bg-muted border-glass-border relative inline-flex h-9 w-9 cursor-help items-center justify-center rounded-xl border"
       data-tooltip={tooltip}
-      title={`${label}${versionInfo ? ` • ${versionInfo}` : ""}`}
       aria-label={`${label}${versionInfo ? ` • ${versionInfo}` : ""}`}
       role="status"
       tabIndex={0}

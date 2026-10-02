@@ -58,6 +58,44 @@ DEEPSPACE_CONTINUATION_EVENTS_TOTAL = Counter(
     "Full-autonomy continuation lifecycle events",
     labelnames=("status",),
 )
+DEEPSPACE_CACHE_USAGE_TOTAL = Counter(
+    "aks_deepspace_cache_usage_total",
+    "DeepSpace provider cache usage observations",
+    labelnames=("provider", "status"),
+)
+DEEPSPACE_CONTEXT_COMPACTIONS_TOTAL = Counter(
+    "aks_deepspace_context_compactions_total",
+    "DeepSpace context compaction events",
+    labelnames=("reason",),
+)
+DEEPSPACE_MCP_RESULT_REFERENCES_TOTAL = Counter(
+    "aks_deepspace_mcp_result_references_total",
+    "MCP results stored as bounded server-side references",
+)
+DEEPSPACE_CONTEXT_OVERFLOW_PREVENTED_TOTAL = Counter(
+    "aks_deepspace_context_overflow_prevented_total",
+    "Requests made safe by context fitting or compaction",
+    labelnames=("action",),
+)
+DEEPSPACE_BUDGET_ALLOCATIONS_TOTAL = Counter(
+    "aks_deepspace_budget_allocations_total",
+    "Adaptive DeepSpace budget allocations by workload and context tier",
+    labelnames=("workload", "context_tier"),
+)
+DEEPSPACE_RESULT_REFERENCE_EVENTS_TOTAL = Counter(
+    "aks_deepspace_result_reference_events_total",
+    "DeepSpace native and MCP result-reference events",
+    labelnames=("kind", "status"),
+)
+DEEPSPACE_EXECUTION_BATCHES_TOTAL = Counter(
+    "aks_deepspace_execution_batches_total",
+    "DeepSpace execution batches by scheduling mode",
+    labelnames=("mode",),
+)
+DEEPSPACE_CANARY_MISMATCHES_TOTAL = Counter(
+    "aks_deepspace_canary_mismatches_total",
+    "Non-authoritative DeepSpace tool-profile canary mismatches",
+)
 
 QUERY_PIPELINE_DURATION_SECONDS = Histogram(
     "aks_query_pipeline_duration_seconds",
@@ -90,6 +128,11 @@ EXTRACTION_FAILURE_TOTAL = Counter(
     "aks_extraction_failure_total",
     "Extraction failures by canonical error code",
     labelnames=("code",),
+)
+UNSUPPORTED_FORMAT_FALLBACK_TOTAL = Counter(
+    "aks_unsupported_format_fallback_total",
+    "Accepted uploads handled by download/text fallback",
+    labelnames=("extension",),
 )
 EXTRACTION_STAGE_DURATION_SECONDS = Histogram(
     "aks_extraction_stage_duration_seconds",
@@ -147,6 +190,25 @@ MAINTENANCE_JOB_EVENTS_TOTAL = Counter(
     "Maintenance job events by job and status",
     labelnames=("job", "status"),
 )
+STORAGE_RETENTION_RUNS_TOTAL = Counter(
+    "aks_storage_retention_runs_total",
+    "Storage retention and reconciliation runs by operation and status",
+    labelnames=("operation", "status"),
+)
+STORAGE_RETENTION_ITEMS_TOTAL = Counter(
+    "aks_storage_retention_items_total",
+    "Storage lifecycle items by retention decision",
+    labelnames=("decision",),
+)
+STORAGE_RETENTION_MISMATCHES_TOTAL = Counter(
+    "aks_storage_retention_mismatches_total",
+    "Storage reconciliation category mismatches",
+)
+STORAGE_QUOTA_RESERVATIONS_TOTAL = Counter(
+    "aks_storage_quota_reservations_total",
+    "Atomic storage reservation outcomes",
+    labelnames=("outcome",),
+)
 
 
 def _safe_label(value: str, *, default: str = "unknown") -> str:
@@ -158,9 +220,9 @@ def metrics_payload() -> tuple[bytes, str]:
     return generate_latest(), CONTENT_TYPE_LATEST
 
 
-def read_metrics_summary() -> tuple[int, int, int]:
+def read_metrics_summary() -> tuple[int, int, int, int, int]:
     """Return request, error, and database-query counts from this process."""
-    totals = {"requests": 0, "errors": 0, "queries": 0}
+    totals = {"requests": 0, "errors": 0, "queries": 0, "retries": 0, "dead_letters": 0}
     for family in API_REQUESTS_TOTAL.collect():
         for sample in family.samples:
             if sample.name == "aks_api_requests_total":
@@ -173,7 +235,54 @@ def read_metrics_summary() -> tuple[int, int, int]:
         for sample in family.samples:
             if sample.name == "aks_db_query_duration_seconds_count":
                 totals["queries"] += int(sample.value)
-    return totals["requests"], totals["errors"], totals["queries"]
+    for family in WORKER_RETRIES_TOTAL.collect():
+        for sample in family.samples:
+            if sample.name == "aks_worker_retries_total":
+                totals["retries"] += int(sample.value)
+    for family in WORKER_DEAD_LETTER_TOTAL.collect():
+        for sample in family.samples:
+            if sample.name == "aks_worker_dead_letter_total":
+                totals["dead_letters"] += int(sample.value)
+    return (
+        totals["requests"],
+        totals["errors"],
+        totals["queries"],
+        totals["retries"],
+        totals["dead_letters"],
+    )
+
+
+def read_deepspace_metrics_summary() -> dict[str, int]:
+    """Return aggregate DeepSpace counters for the admin metrics view."""
+
+    def total(counter: Counter) -> int:
+        return int(
+            sum(float(sample.value) for family in counter.collect() for sample in family.samples)
+        )
+
+    reads = sum(
+        float(sample.value)
+        for family in DEEPSPACE_CACHE_USAGE_TOTAL.collect()
+        for sample in family.samples
+        if sample.labels.get("status") == "read"
+    )
+    writes = sum(
+        float(sample.value)
+        for family in DEEPSPACE_CACHE_USAGE_TOTAL.collect()
+        for sample in family.samples
+        if sample.labels.get("status") == "write"
+    )
+    return {
+        "deepspace_cache_reads_total": int(reads),
+        "deepspace_cache_writes_total": int(writes),
+        "deepspace_context_compactions_total": total(DEEPSPACE_CONTEXT_COMPACTIONS_TOTAL),
+        "deepspace_overflow_prevented_total": total(DEEPSPACE_CONTEXT_OVERFLOW_PREVENTED_TOTAL),
+        "deepspace_mcp_result_references_total": total(DEEPSPACE_MCP_RESULT_REFERENCES_TOTAL),
+        "deepspace_budget_allocations_total": total(DEEPSPACE_BUDGET_ALLOCATIONS_TOTAL),
+        "deepspace_result_reference_events_total": total(DEEPSPACE_RESULT_REFERENCE_EVENTS_TOTAL),
+        "deepspace_execution_batches_total": total(DEEPSPACE_EXECUTION_BATCHES_TOTAL),
+        "deepspace_canary_mismatches_total": total(DEEPSPACE_CANARY_MISMATCHES_TOTAL),
+    }
 
 
 def increment_query_cache_event(*, event: str) -> None:

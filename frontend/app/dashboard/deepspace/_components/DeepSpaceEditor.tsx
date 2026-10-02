@@ -238,7 +238,7 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
       },
     }));
 
-    const handleExport = async (format: "pdf" | "docx" | "md") => {
+    const handleExport = async (format: "pdf" | "docx" | "md" | "pptx") => {
       if (!conversationId) {
         setExportMessage("Save the workspace before exporting it.");
         return;
@@ -586,6 +586,19 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
                   >
                     <FileText size={14} className="text-success" />
                     Export as Markdown
+                  </button>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    role="menuitem"
+                    onClick={() => {
+                      setShowExportMenu(false);
+                      void handleExport("pptx");
+                    }}
+                    className="text-muted-foreground hover:bg-surface-1 hover:text-primary flex items-center gap-3 rounded-xl px-3 py-2 text-left text-xs font-medium"
+                  >
+                    <FileText size={14} className="text-warning" />
+                    Export as PPTX
                   </button>
                 </div>
               </div>

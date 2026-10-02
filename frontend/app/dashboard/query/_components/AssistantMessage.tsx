@@ -144,7 +144,7 @@ export default function AssistantMessage({
           </div>
 
           {!isStreaming ? (
-            <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <div className="text-muted-foreground mt-3 flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 text-xs">
               {versionCount > 1 && onActivateVersion ? (
                 <>
                   <button
@@ -156,7 +156,7 @@ export default function AssistantMessage({
                       )
                     }
                     disabled={activeVersionPosition === 0}
-                    className="border-glass-border hover:bg-surface-1 rounded-full border px-2 py-1 transition disabled:opacity-40"
+                    className="border-glass-border hover:bg-surface-1 shrink-0 rounded-lg border px-2 py-1 transition disabled:opacity-40"
                   >
                     ←
                   </button>
@@ -172,7 +172,7 @@ export default function AssistantMessage({
                       )
                     }
                     disabled={activeVersionPosition >= versionCount - 1}
-                    className="border-glass-border hover:bg-surface-1 rounded-full border px-2 py-1 transition disabled:opacity-40"
+                    className="border-glass-border hover:bg-surface-1 shrink-0 rounded-lg border px-2 py-1 transition disabled:opacity-40"
                   >
                     →
                   </button>
@@ -181,7 +181,7 @@ export default function AssistantMessage({
               <button
                 type="button"
                 onClick={handleCopy}
-                className="border-glass-border hover:bg-surface-1 inline-flex items-center gap-1 rounded-full border px-3 py-1 transition"
+                className="border-glass-border hover:bg-surface-1 inline-flex shrink-0 items-center gap-1 rounded-lg border px-3 py-1 transition"
               >
                 {copied ? <Check size={12} /> : <Copy size={12} />}
                 <span>{copied ? "Copied" : "Copy"}</span>
@@ -190,7 +190,7 @@ export default function AssistantMessage({
                 <button
                   type="button"
                   onClick={() => onDelete(message.id)}
-                  className="border-glass-border hover:bg-surface-1 inline-flex items-center gap-1 rounded-full border px-3 py-1 transition"
+                  className="border-glass-border hover:bg-surface-1 inline-flex shrink-0 items-center gap-1 rounded-lg border px-3 py-1 transition"
                 >
                   <Trash2 size={12} />
                   <span>Delete</span>

@@ -17,6 +17,12 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => ({ get: () => null }),
 }));
 
+vi.mock("@/app/components/ui/AverQelDialogHost", () => ({
+  averqelConfirm: vi.fn().mockResolvedValue(true),
+  averqelPrompt: vi.fn().mockResolvedValue("test-value"),
+  averqelAlert: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.stubGlobal("confirm", confirmMock);
 
 describe("collections admin page", () => {

@@ -186,6 +186,7 @@ class QueryService:
         source_types: list[str] | None,
         min_extraction_coverage: float | None,
         max_extraction_coverage: float | None,
+        collection_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
         conversation_kind: str = "query",
         search_mode: str = "hybrid",
@@ -193,6 +194,12 @@ class QueryService:
     ) -> AsyncIterator[str]:
         self._enforce_quota(auth)
         self._validate_top_k(top_k)
+
+        document_ids = self._resolve_collection_scope(
+            auth=auth,
+            collection_id=collection_id,
+            document_ids=document_ids,
+        )
 
         normalized_query = self.normalize_query(query_text)
         self.normalize_filters(filters)
@@ -1420,6 +1427,7 @@ class QueryService:
         source_types: list[str] | None,
         min_extraction_coverage: float | None,
         max_extraction_coverage: float | None,
+        collection_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
         conversation_kind: str = "query",
         search_mode: str = "hybrid",
@@ -1427,6 +1435,12 @@ class QueryService:
     ) -> QueryExecutionResult:
         self._enforce_quota(auth)
         self._validate_top_k(top_k)
+
+        document_ids = self._resolve_collection_scope(
+            auth=auth,
+            collection_id=collection_id,
+            document_ids=document_ids,
+        )
 
         normalized_query = self.normalize_query(query_text)
         normalized_filters = self.normalize_filters(filters)
@@ -1437,24 +1451,6 @@ class QueryService:
         )
         embedding_candidate = (
             embedding_selection.candidates[0] if embedding_selection.candidates else None
-        )
-
-        cache_key = self.build_cache_key(
-            tenant_id=auth.tenant_id,
-            normalized_query=normalized_query,
-            normalized_filters=normalized_filters,
-            top_k=top_k,
-            embedding_provider=(
-                embedding_candidate.provider_type
-                if embedding_candidate is not None
-                else self.settings.embedding_provider
-            ),
-            embedding_model=(
-                embedding_candidate.model_name
-                if embedding_candidate is not None
-                else self.settings.embedding_model
-            ),
-            search_mode=search_mode,
         )
 
         conversation = self._resolve_or_create_conversation(
@@ -1608,17 +1604,60 @@ class QueryService:
                 },
             )
 
-        cached_payload = self.cache.get(cache_key)
-        cached = cached_payload is not None
-        QUERY_CACHE_EVENTS_TOTAL.labels(event="hit" if cached else "miss").inc()
-
-        answer_result = None  # type: ignore[assignment]
-        trace = None
         provider_candidates = self.provider_selection.resolve_chat(
             tenant_id=auth.tenant_id,
             workspace_id=None,
             actor_user_id=auth.user_id,
         ).candidates
+
+        # A cached answer is safe only for a standalone turn whose document
+        # access scope and indexed document versions are part of the key.
+        # Follow-up turns must always see their conversation context.
+        cache_key: str | None = None
+        if not previous_messages:
+            accessible_document_ids = self.documents.get_accessible_document_ids_global(
+                user_id=auth.user_id,
+            )
+            access_scope_version = self._build_access_scope_version(
+                accessible_document_ids=accessible_document_ids,
+            )
+            selected_chat_provider = provider_candidates[0] if provider_candidates else None
+            cache_key = self.build_cache_key(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                access_scope_version=access_scope_version,
+                normalized_query=normalized_query,
+                normalized_filters=normalized_filters,
+                top_k=top_k,
+                embedding_provider=(
+                    embedding_candidate.provider_type
+                    if embedding_candidate is not None
+                    else self.settings.embedding_provider
+                ),
+                embedding_model=(
+                    embedding_candidate.model_name
+                    if embedding_candidate is not None
+                    else self.settings.embedding_model
+                ),
+                chat_provider=(
+                    selected_chat_provider.provider_type
+                    if selected_chat_provider is not None
+                    else self.settings.llm_provider
+                ),
+                chat_model=(
+                    selected_chat_provider.model_name
+                    if selected_chat_provider is not None
+                    else self.settings.llm_model
+                ),
+                search_mode=search_mode,
+            )
+
+        cached_payload = self.cache.get(cache_key) if cache_key is not None else None
+        cached = cached_payload is not None
+        QUERY_CACHE_EVENTS_TOTAL.labels(event="hit" if cached else "miss").inc()
+
+        answer_result = None  # type: ignore[assignment]
+        trace = None
 
         if cached_payload is not None:
             answer = cast(
@@ -1678,15 +1717,16 @@ class QueryService:
                 for citation in answer_result.citations
             ]
 
-            self.cache.set(
-                key=cache_key,
-                value={
-                    "answer": self._serialize_answer_for_cache(answer),
-                    "confidence": confidence,
-                    "citations": citations,
-                },
-                ttl_seconds=self.settings.query_cache_ttl_seconds,
-            )
+            if cache_key is not None:
+                self.cache.set(
+                    key=cache_key,
+                    value={
+                        "answer": self._serialize_answer_for_cache(answer),
+                        "confidence": confidence,
+                        "citations": citations,
+                    },
+                    ttl_seconds=self.settings.query_cache_ttl_seconds,
+                )
 
         trace_id = self._resolve_trace_id()
         persist_start = time.perf_counter()
@@ -3973,28 +4013,89 @@ class QueryService:
     def normalize_query(query_text: str) -> str:
         return " ".join(query_text.strip().split()).lower()
 
+    def _resolve_collection_scope(
+        self,
+        *,
+        auth: AuthContext,
+        collection_id: uuid.UUID | None,
+        document_ids: list[uuid.UUID] | None,
+    ) -> list[uuid.UUID] | None:
+        """Resolve a collection server-side instead of trusting client ID lists."""
+        if collection_id is None:
+            return document_ids
+        permission = self.collections.get_user_permission_global(
+            collection_id=collection_id,
+            user_id=auth.user_id,
+        )
+        if permission is None or str(getattr(permission, "role", "")) not in {
+            "owner",
+            "member",
+            "shared",
+        }:
+            raise ApiError(
+                code="FORBIDDEN",
+                message="You do not have access to this collection.",
+                status_code=403,
+            )
+        scoped_ids = self.collections.list_document_ids_for_user(
+            collection_id=collection_id,
+            user_id=auth.user_id,
+        )
+        if document_ids is None:
+            return scoped_ids
+        scoped_set = set(scoped_ids)
+        return [document_id for document_id in document_ids if document_id in scoped_set]
+
     @staticmethod
     def normalize_filters(filters: dict[str, Any]) -> dict[str, Any]:
         return cast(dict[str, Any], json.loads(json.dumps(filters, sort_keys=True, default=str)))
+
+    def _build_access_scope_version(
+        self,
+        *,
+        accessible_document_ids: set[uuid.UUID],
+    ) -> str:
+        """Build a stable version for the user's visible indexed corpus.
+
+        The document set captures sharing/collection permission changes, while
+        each document's updated timestamp changes when extraction, status, or
+        indexed content changes. Old Redis entries may remain until TTL, but a
+        changed scope or document version can never reuse them.
+        """
+        versions = self.documents.get_updated_at_by_ids_global(
+            document_ids=accessible_document_ids,
+        )
+        version_payload = "\n".join(
+            f"{document_id}:{updated_at.isoformat()}" for document_id, updated_at in versions
+        )
+        return hashlib.sha256(version_payload.encode("utf-8")).hexdigest()
 
     @staticmethod
     def build_cache_key(
         *,
         tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        access_scope_version: str,
         normalized_query: str,
         normalized_filters: dict[str, Any],
         top_k: int,
         embedding_provider: str,
         embedding_model: str,
+        chat_provider: str,
+        chat_model: str,
         search_mode: str = "hybrid",
     ) -> str:
         payload = {
             "tenant_id": str(tenant_id),
+            "user_id": str(user_id),
+            "access_scope_version": access_scope_version,
             "query": normalized_query,
             "filters": normalized_filters,
             "top_k": top_k,
             "embedding_provider": embedding_provider,
             "embedding_model": embedding_model,
+            "chat_provider": chat_provider,
+            "chat_model": chat_model,
             "search_mode": search_mode,
         }
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":"))

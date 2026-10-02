@@ -49,10 +49,11 @@ export default function MobileNav() {
   };
 
   const navLinks = [
-    { name: "How It Works", href: "#how-it-works" },
-    { name: "Surfaces", href: "#platform-surfaces" },
-    { name: "Features", href: "#features" },
-    { name: "Security", href: "#security" },
+    { name: "Capabilities", href: "#capabilities" },
+    { name: "How It Works", href: "/documentation/getting-started" },
+    { name: "Surfaces", href: "/documentation/features" },
+    { name: "Features", href: "/documentation/features" },
+    { name: "Security", href: "/documentation/privacy-security" },
     { name: "Docs", href: "/documentation" },
   ];
 

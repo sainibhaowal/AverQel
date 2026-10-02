@@ -8,10 +8,12 @@ from sqlalchemy import func, select, update
 
 from app.documents.models.collection import CollectionDocument, CollectionPermission
 from app.documents.models.document import Document
+from app.documents.models.organization import DocumentShare, DocumentTagAssignment
 from app.ingestion.services.extractors.base import ExtractionResult
 from app.platform.database.session import set_db_tenant_context
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
+from app.system.services.storage_lifecycle import StorageLifecycleService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
@@ -25,6 +27,7 @@ class DocumentsRepository(BaseRepository):
         with observe_db_query("documents.create"):
             self.db.add(document)
             self.db.flush()
+        self._touch_lifecycle(document, activity_kind="document_created")
         return document
 
     def get_by_id(self, *, tenant_id: uuid.UUID, document_id: uuid.UUID) -> Document | None:
@@ -60,6 +63,7 @@ class DocumentsRepository(BaseRepository):
         with observe_db_query("documents.set_status"):
             document.status = status
             document.updated_at = datetime.now(tz=UTC)
+        self._touch_lifecycle(document, activity_kind="document_status_changed")
 
     def set_extraction_metadata(
         self,
@@ -76,6 +80,18 @@ class DocumentsRepository(BaseRepository):
             document.extraction_vision_used = extraction.vision_used
             document.extraction_warnings = list(extraction.warnings)
             document.updated_at = datetime.now(tz=UTC)
+        self._touch_lifecycle(document, activity_kind="document_extraction_changed")
+
+    def _touch_lifecycle(self, document: Document, *, activity_kind: str) -> None:
+        """Mark a durable document write as meaningful retention activity."""
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=document.tenant_id,
+            category="files",
+            source_type="document",
+            source_id=str(document.id),
+            owner_user_id=document.uploaded_by_user_id,
+            activity_kind=activity_kind,
+        )
 
     def count_by_tenant(self, *, tenant_id: uuid.UUID) -> int:
         self.apply_tenant_scope(tenant_id)
@@ -191,11 +207,18 @@ class DocumentsRepository(BaseRepository):
                 Document.is_deleted.is_(False),
             )
         )
+        q_shared = select(DocumentShare.document_id).where(
+            DocumentShare.tenant_id == tenant_id,
+            DocumentShare.user_id == user_id,
+        )
         if not include_quarantined:
             q_uploaded = q_uploaded.where(Document.quarantined.is_(False))
             q_collected = q_collected.where(Document.quarantined.is_(False))
+            q_shared = q_shared.join(Document, Document.id == DocumentShare.document_id).where(
+                Document.quarantined.is_(False)
+            )
 
-        accessible_ids = sa.union(q_uploaded, q_collected).subquery()
+        accessible_ids = sa.union(q_uploaded, q_collected, q_shared).subquery()
         query = (
             select(Document)
             .join(accessible_ids, Document.id == accessible_ids.c.id)
@@ -209,6 +232,103 @@ class DocumentsRepository(BaseRepository):
         )
         with observe_db_query("documents.list_accessible_for_user"):
             return list(self.db.execute(query).scalars().all())
+
+    def search_accessible_for_user(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        query_text: str | None = None,
+        statuses: list[str] | None = None,
+        content_type: str | None = None,
+        ocr_used: bool | None = None,
+        quarantined: bool | None = None,
+        owner_id: uuid.UUID | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+        tag_ids: list[uuid.UUID] | None = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[Document], int]:
+        """Search only documents the user can already access within the tenant."""
+        self.apply_tenant_scope(tenant_id)
+        q_uploaded = select(Document.id).where(
+            Document.tenant_id == tenant_id,
+            Document.uploaded_by_user_id == user_id,
+            Document.is_deleted.is_(False),
+        )
+        q_collected = (
+            select(CollectionDocument.document_id)
+            .join(Document, Document.id == CollectionDocument.document_id)
+            .join(
+                CollectionPermission,
+                CollectionPermission.collection_id == CollectionDocument.collection_id,
+            )
+            .where(
+                Document.tenant_id == tenant_id,
+                CollectionPermission.user_id == user_id,
+                CollectionPermission.role.in_(["member", "owner", "shared"]),
+                Document.is_deleted.is_(False),
+            )
+        )
+        q_shared = select(DocumentShare.document_id).where(
+            DocumentShare.tenant_id == tenant_id,
+            DocumentShare.user_id == user_id,
+        )
+        accessible_ids = sa.union(q_uploaded, q_collected, q_shared).subquery()
+        conditions = [
+            Document.tenant_id == tenant_id,
+            Document.is_deleted.is_(False),
+            Document.id == accessible_ids.c.id,
+        ]
+        if query_text:
+            conditions.append(Document.filename.ilike(f"%{query_text.strip()}%"))
+        if statuses:
+            conditions.append(Document.status.in_(statuses))
+        if content_type:
+            conditions.append(Document.content_type == content_type)
+        if ocr_used is not None:
+            conditions.append(Document.extraction_ocr_used.is_(ocr_used))
+        if quarantined is not None:
+            conditions.append(Document.quarantined.is_(quarantined))
+        if owner_id is not None:
+            conditions.append(Document.uploaded_by_user_id == owner_id)
+        if created_from is not None:
+            conditions.append(Document.created_at >= created_from)
+        if created_to is not None:
+            conditions.append(Document.created_at <= created_to)
+        if tag_ids:
+            tagged_documents = select(DocumentTagAssignment.document_id).where(
+                DocumentTagAssignment.tenant_id == tenant_id,
+                DocumentTagAssignment.tag_id.in_(tag_ids),
+            )
+            conditions.append(Document.id.in_(tagged_documents))
+
+        base = select(Document).where(*conditions)
+        total = int(self.db.scalar(select(func.count()).select_from(base.subquery())) or 0)
+        rows = list(
+            self.db.execute(
+                base.order_by(Document.created_at.desc(), Document.id.desc())
+                .offset(max(skip, 0))
+                .limit(max(min(limit, 500), 1))
+            )
+            .scalars()
+            .all()
+        )
+        return rows, total
+
+    def list_accessible_duplicate_groups(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID
+    ) -> list[list[Document]]:
+        """Return duplicate groups without exposing inaccessible tenant rows."""
+        rows, _ = self.search_accessible_for_user(
+            tenant_id=tenant_id, user_id=user_id, skip=0, limit=500
+        )
+        groups: dict[str, list[Document]] = {}
+        for document in rows:
+            if document.sha256_hash:
+                groups.setdefault(document.sha256_hash, []).append(document)
+        return [group for group in groups.values() if len(group) > 1]
 
     def list_by_ids(
         self,
@@ -334,10 +454,17 @@ class DocumentsRepository(BaseRepository):
                 Document.is_deleted.is_(False),
             )
         )
+        q_shared = select(DocumentShare.document_id).where(
+            DocumentShare.tenant_id == tenant_id,
+            DocumentShare.user_id == user_id,
+        )
         if not include_quarantined:
             q_collected = q_collected.where(Document.quarantined.is_(False))
+            q_shared = q_shared.join(Document, Document.id == DocumentShare.document_id).where(
+                Document.quarantined.is_(False)
+            )
 
-        query = sa.union(q_uploaded, q_collected)
+        query = sa.union(q_uploaded, q_collected, q_shared)
         with observe_db_query("documents.get_accessible_document_ids"):
             return set(self.db.execute(query).scalars().all())
 
@@ -369,10 +496,14 @@ class DocumentsRepository(BaseRepository):
                 Document.is_deleted.is_(False),
             )
         )
+        q_shared = select(DocumentShare.document_id).where(DocumentShare.user_id == user_id)
         if not include_quarantined:
             q_collected = q_collected.where(Document.quarantined.is_(False))
+            q_shared = q_shared.join(Document, Document.id == DocumentShare.document_id).where(
+                Document.quarantined.is_(False)
+            )
 
-        query = sa.union(q_uploaded, q_collected)
+        query = sa.union(q_uploaded, q_collected, q_shared)
         with observe_db_query("documents.get_accessible_document_ids_global"):
             return set(self.db.execute(query).scalars().all())
 
@@ -394,6 +525,35 @@ class DocumentsRepository(BaseRepository):
         )
         with observe_db_query("documents.list_by_ids_global"):
             return list(self.db.execute(query).scalars().all())
+
+    def get_updated_at_by_ids_global(
+        self,
+        *,
+        document_ids: set[uuid.UUID] | list[uuid.UUID],
+    ) -> list[tuple[uuid.UUID, datetime]]:
+        """Return current document versions for a permission-scoped cache key.
+
+        Query answers may be cached only when the cache identity reflects both
+        the user's accessible set and the current indexed document versions.
+        This lightweight projection avoids loading full document rows while
+        preserving the global repository's existing authorization boundary.
+        """
+        self._apply_bypass_scope()
+        if not document_ids:
+            return []
+        query = (
+            select(Document.id, Document.updated_at)
+            .where(
+                Document.id.in_(document_ids),
+                Document.is_deleted.is_(False),
+            )
+            .order_by(Document.id.asc())
+        )
+        with observe_db_query("documents.get_updated_at_by_ids_global"):
+            return [
+                (document_id, updated_at)
+                for document_id, updated_at in self.db.execute(query).all()
+            ]
 
     def soft_delete_batch(self, *, tenant_id: uuid.UUID, document_ids: list[uuid.UUID]) -> None:
         self.apply_tenant_scope(tenant_id)

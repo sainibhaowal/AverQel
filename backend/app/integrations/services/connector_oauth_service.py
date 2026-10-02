@@ -24,6 +24,7 @@ from app.integrations.models.connector_secret import ConnectorSecret
 from app.integrations.models.integration import Integration
 from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 from app.integrations.services.mcp_http_client import build_safe_sync_client
+from app.system.services.storage_quota import StorageQuotaService
 
 try:  # pragma: no cover - optional runtime dependency
     from mcp.client.auth.utils import (
@@ -234,7 +235,7 @@ class ConnectorOAuthService:
 
             client_metadata = OAuthClientMetadata(
                 redirect_uris=[redirect_uri],
-                token_endpoint_auth_method="client_secret_post",  # nosec B106 - OAuth protocol metadata, not a credential
+                token_endpoint_auth_method="client_secret_post",  # OAuth protocol metadata; nosec B106
                 scope=scope,
                 client_name=APP_BRAND_NAME,
                 client_uri=self._public_origin(),
@@ -793,8 +794,34 @@ class ConnectorOAuthService:
                     "provider_key": (connector.integration.slug if connector.integration else None),
                 },
             )
+            StorageQuotaService(self.session).ensure_capacity(
+                tenant_id=connector.tenant_id,
+                user_id=connector.user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    secret.secret_ciphertext,
+                    secret.secret_nonce,
+                    secret.secret_kid,
+                    secret.metadata_json,
+                ),
+            )
             self.session.add(secret)
         else:
+            StorageQuotaService(self.session).ensure_capacity(
+                tenant_id=connector.tenant_id,
+                user_id=connector.user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    encrypted.ciphertext,
+                    encrypted.nonce,
+                    encrypted.kid,
+                    {"auth_mode": "mcp"},
+                ),
+                replacing_bytes=StorageQuotaService.estimate_bytes(
+                    secret.secret_ciphertext,
+                    secret.secret_nonce,
+                    secret.secret_kid,
+                    secret.metadata_json,
+                ),
+            )
             secret.secret_ciphertext = encrypted.ciphertext
             secret.secret_nonce = encrypted.nonce
             secret.secret_kid = encrypted.kid

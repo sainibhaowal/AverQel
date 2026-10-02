@@ -14,6 +14,9 @@ _KNOWN_WARNING_PREFIXES = (
     "multi_column_",
     "ipynb_",
     "utf8_",
+    "fallback_",
+    "unsupported_",
+    "download_",
 )
 
 
@@ -56,4 +59,6 @@ def fallback_reasons(result: ExtractionResult) -> list[tuple[str, str]]:
             "layout_complexity" if "vision_layout_fallback_used" in warning_set else "low_coverage"
         )
         reasons.append(("vision", reason))
+    if "download_only_fallback" in warning_set:
+        reasons.append(("format", "download_only"))
     return reasons

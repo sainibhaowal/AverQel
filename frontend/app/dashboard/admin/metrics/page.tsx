@@ -12,12 +12,24 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { fetchWithAuth } from "@/lib/api";
+import { useRealtimeEvents } from "@/lib/realtime";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 
 interface MetricsSummary {
   api_requests_total: number;
   api_errors_total: number;
   db_query_count: number;
+  worker_retries_total: number;
+  worker_dead_letters_total: number;
+  deepspace_cache_reads_total: number;
+  deepspace_cache_writes_total: number;
+  deepspace_context_compactions_total: number;
+  deepspace_overflow_prevented_total: number;
+  deepspace_mcp_result_references_total: number;
+  deepspace_budget_allocations_total: number;
+  deepspace_result_reference_events_total: number;
+  deepspace_execution_batches_total: number;
+  deepspace_canary_mismatches_total: number;
 }
 
 interface Capabilities {
@@ -76,9 +88,14 @@ export default function MetricsPage() {
 
   useEffect(() => {
     queueMicrotask(() => void fetchMetrics());
-    const interval = setInterval(fetchMetrics, 15000);
-    return () => clearInterval(interval);
   }, [fetchMetrics]);
+
+  useRealtimeEvents(
+    () => {
+      void fetchMetrics();
+    },
+    ["metrics", "deepspace", "documents", "queues", "mcp"],
+  );
 
   return (
     <div className="space-y-8 pb-10">
@@ -165,7 +182,53 @@ export default function MetricsPage() {
           </p>
         </div>
 
-        <div className="glass-card from-primary/5 flex flex-col gap-8 bg-gradient-to-br to-purple-500/5 p-6 sm:p-8 md:col-span-3 md:flex-row md:items-center">
+        <div className="glass-card border-l-4 border-l-amber-500 p-6 hover:border-l-amber-400">
+          <h3 className="mb-1 text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            Worker retries
+          </h3>
+          <p className="text-foreground font-mono text-4xl font-black">
+            {summary ? summary.worker_retries_total.toLocaleString() : "--"}
+          </p>
+        </div>
+        <div className="glass-card border-l-4 border-l-rose-500 p-6 hover:border-l-rose-400">
+          <h3 className="mb-1 text-sm font-semibold tracking-wider text-slate-400 uppercase">
+            Dead letters
+          </h3>
+          <p className="text-foreground font-mono text-4xl font-black">
+            {summary ? summary.worker_dead_letters_total.toLocaleString() : "--"}
+          </p>
+      </div>
+
+      <section className="glass-card space-y-4 p-6">
+        <div>
+          <h2 className="text-lg font-bold">DeepSpace Runtime Monitoring</h2>
+          <p className="text-muted-foreground text-xs">
+            Live process counters from provider cache telemetry, context safety, and MCP result storage.
+          </p>
+        </div>
+        <div className="runtime-monitoring-grid">
+          {[
+            ["Cache reads", summary?.deepspace_cache_reads_total],
+            ["Cache writes", summary?.deepspace_cache_writes_total],
+            ["Compactions", summary?.deepspace_context_compactions_total],
+            ["Overflow prevented", summary?.deepspace_overflow_prevented_total],
+            ["MCP references", summary?.deepspace_mcp_result_references_total],
+            ["Budget allocations", summary?.deepspace_budget_allocations_total],
+            ["Result references", summary?.deepspace_result_reference_events_total],
+            ["Execution batches", summary?.deepspace_execution_batches_total],
+            ["Canary mismatches", summary?.deepspace_canary_mismatches_total],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="runtime-monitoring-card min-w-0 overflow-hidden rounded-2xl border border-white/5 bg-white/5 p-3 sm:p-4">
+              <p className="runtime-monitoring-label text-muted-foreground font-bold tracking-[0.12em] uppercase">{label}</p>
+              <p className="runtime-monitoring-value text-foreground mt-2 font-mono font-black">
+                {typeof value === "number" ? value.toLocaleString() : "--"}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="glass-card from-primary/5 flex flex-col gap-8 bg-gradient-to-br to-purple-500/5 p-6 sm:p-8 md:col-span-3 md:flex-row md:items-center">
           <div className="min-w-0 flex-1 space-y-4">
             <h2 className="flex min-w-0 items-center gap-2 text-xl font-bold">
               <Cpu className="text-primary" size={24} />

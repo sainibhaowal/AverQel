@@ -12,11 +12,19 @@ import {
   Database,
   Upload,
   Eye,
+  Search,
+  Activity,
+  CheckSquare,
+  Square,
+  Download,
+  ChevronDown,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { fetchWithAuth, getApiBaseUrl } from "@/lib/api";
+import { useRealtimeEvents } from "@/lib/realtime";
 import UploadModal from "@/app/components/dashboard/documents/UploadModal";
 import DocumentInspector from "@/app/components/dashboard/documents/DocumentInspector";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
@@ -28,6 +36,10 @@ import { saveDocumentContentToDeepSpace } from "@/app/lib/deepspace-document-not
 import toast from "react-hot-toast";
 import { useAuth } from "@/app/context/AuthContext";
 import { normalizeRole } from "@/lib/roles";
+import DocumentOrganizationPanel from "./DocumentOrganizationPanel";
+import { averqelPrompt } from "@/app/components/ui/AverQelDialogHost";
+import { LibraryPreview } from "../deepspace/_components/DeepSpaceLibraryPreview";
+import { libraryFileKind } from "../deepspace/_components/DeepSpaceLibraryFormats";
 
 interface Document {
   document_id: string;
@@ -45,6 +57,7 @@ interface Document {
   extraction_vision_used?: boolean;
   extraction_warnings?: string[];
   updated_at?: string;
+  tags?: Array<{ id: string; name: string; color?: string }>;
 }
 
 interface DocumentStatusUpdate {
@@ -52,6 +65,11 @@ interface DocumentStatusUpdate {
   status: string;
   progress: number;
   updated_at?: string | null;
+}
+
+interface OrganizationChoice {
+  id: string;
+  name: string;
 }
 
 const PIPELINE_STAGE_ORDER: Record<string, number> = {
@@ -120,6 +138,81 @@ function mergeDocumentStatus(current: Document, incoming: DocumentStatusUpdate):
   };
 }
 
+function RoundedTagFilter({
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  options: OrganizationChoice[];
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((option) => option.id === value)?.name ?? "All tags";
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  return (
+    <div ref={rootRef} className="relative min-w-44">
+      <button
+        type="button"
+        aria-label="Filter documents by tag"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        className="theme-input flex h-10 w-full items-center justify-between rounded-xl px-3 text-left text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {selected}
+        <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && !disabled ? (
+        <div
+          role="listbox"
+          className="bg-background border-primary/25 absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border p-1 shadow-xl"
+        >
+          <button
+            type="button"
+            role="option"
+            aria-selected={!value}
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+            }}
+            className={`w-full rounded-lg px-3 py-2 text-left text-xs ${!value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-primary/5"}`}
+          >
+            All tags
+          </button>
+          {options.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              aria-selected={option.id === value}
+              onClick={() => {
+                onChange(option.id);
+                setOpen(false);
+              }}
+              className={`w-full rounded-lg px-3 py-2 text-left text-xs ${option.id === value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-primary/5"}`}
+            >
+              {option.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 interface SupportedFormat {
   extension: string;
   category: string;
@@ -133,6 +226,16 @@ interface SupportedFormatsResponse {
   items: SupportedFormat[];
 }
 
+interface DocumentObservability {
+  status_counts: Record<string, number>;
+  active_ingestion_jobs: number;
+  failed_documents: number;
+  quarantined_documents: number;
+  total_documents: number;
+  indexed_documents: number;
+  storage_bytes: number;
+}
+
 type PendingDocumentAction = {
   type: "delete" | "reingest";
   id: string;
@@ -140,15 +243,32 @@ type PendingDocumentAction = {
 };
 
 export default function DocumentsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const savedViewId = searchParams.get("saved_view");
+  const smartCollectionId = searchParams.get("smart_collection");
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [quarantineOnly, setQuarantineOnly] = useState(false);
+  const [tagFilter, setTagFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [showFormats, setShowFormats] = useState(false);
   const [supportedFormats, setSupportedFormats] = useState<SupportedFormatsResponse | null>(null);
+  const [observability, setObservability] = useState<DocumentObservability | null>(null);
+  const [duplicateCount, setDuplicateCount] = useState<number | null>(null);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkTags, setBulkTags] = useState<OrganizationChoice[]>([]);
+  const [bulkFolders, setBulkFolders] = useState<OrganizationChoice[]>([]);
+  const [activeSavedViewName, setActiveSavedViewName] = useState<string | null>(null);
   const [inspectorTarget, setInspectorTarget] = useState<{ id: string; name: string } | null>(null);
   const [rawViewerTarget, setRawViewerTarget] = useState<{ id: string; name: string } | null>(null);
   const [rawFileUrl, setRawFileUrl] = useState<string | null>(null);
+  const [pagePreviewUrl, setPagePreviewUrl] = useState<string | null>(null);
+  const [pagePreviewNumber, setPagePreviewNumber] = useState(1);
+  const [pagePreviewLoading, setPagePreviewLoading] = useState(false);
   const [rawFileContentType, setRawFileContentType] = useState<string | null>(null);
   const [rawTextContent, setRawTextContent] = useState<string | null>(null);
   const [isRawLoading, setIsRawLoading] = useState(false);
@@ -171,34 +291,124 @@ export default function DocumentsPage() {
     queueMicrotask(() => setMounted(true));
   }, []);
 
-  const fetchDocuments = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
-    try {
-      const res = (await fetchWithAuth("/documents")) as Response;
-      if (res.ok) {
-        const data = await res.json();
-        setDocuments(data.items);
-        setError(null);
-      } else {
+  const fetchDocuments = useCallback(
+    async (showLoading = true, search = searchQuery) => {
+      if (showLoading) setLoading(true);
+      try {
+        const normalizedSearch = search.trim();
+        const query = new URLSearchParams();
+        if (normalizedSearch) query.set("q", normalizedSearch);
+        if (quarantineOnly) query.set("quarantined", "true");
+        if (tagFilter) query.set("tag_id", tagFilter);
+        let endpoint = `/documents${query.size ? `?${query}` : ""}`;
+        if (smartCollectionId) {
+          query.set("smart_collection_id", smartCollectionId);
+          query.set("limit", "100");
+          endpoint = `/documents?${query}`;
+        } else if (savedViewId) {
+          endpoint = `/documents/organization/saved-views/${encodeURIComponent(savedViewId)}/documents`;
+        }
+        let res = (await fetchWithAuth(endpoint)) as Response;
+        // The API deliberately returns 503 when its DB pool is temporarily
+        // saturated. Recover from that short startup burst automatically rather
+        // than making the user refresh the whole page.
+        if ([502, 503, 504].includes(res.status)) {
+          const retryAfter = Number(res.headers.get("Retry-After"));
+          await new Promise((resolve) =>
+            window.setTimeout(
+              resolve,
+              Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 750,
+            ),
+          );
+          res = (await fetchWithAuth(endpoint)) as Response;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          if (savedViewId) {
+            setActiveSavedViewName(typeof data.name === "string" ? data.name : "Saved view");
+            setDocuments(
+              (data.items ?? []).map((item: Record<string, unknown>) => ({
+                document_id: String(item.document_id),
+                filename: String(item.filename ?? "Unnamed document"),
+                content_type: String(item.content_type ?? "application/octet-stream"),
+                size_bytes: Number(item.size_bytes ?? 0),
+                status: String(item.status ?? "unknown"),
+                processing_progress: Number(item.processing_progress ?? 0),
+                quarantined: Boolean(item.quarantined),
+                information_yield: null,
+                created_at: String(item.created_at ?? ""),
+              })),
+            );
+          } else {
+            setActiveSavedViewName(null);
+            setDocuments(data.items);
+          }
+          setError(null);
+        } else {
+          setDocuments([]);
+          setError(
+            res.status === 401
+              ? "Session expired. Redirecting to login..."
+              : "Failed to load documents.",
+          );
+        }
+      } catch (error) {
+        console.error("Failed to fetch documents", error);
         setDocuments([]);
-        setError(
-          res.status === 401
-            ? "Session expired. Redirecting to login..."
-            : "Failed to load documents.",
-        );
+        setError("Failed to load documents.");
+      } finally {
+        if (showLoading) setLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to fetch documents", error);
-      setDocuments([]);
-      setError("Failed to load documents.");
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  };
+    },
+    [quarantineOnly, savedViewId, searchQuery, smartCollectionId, tagFilter],
+  );
 
   useEffect(() => {
-    queueMicrotask(() => void fetchDocuments());
+    // The first load must clear the initial loading state after the API
+    // response. Background refreshes continue to use showLoading=false.
+    const timer = window.setTimeout(() => void fetchDocuments(true, searchQuery), 250);
+    return () => window.clearTimeout(timer);
+  }, [fetchDocuments, searchQuery]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchOperations = async () => {
+      try {
+        const [opsRes, duplicatesRes, tagsRes, foldersRes] = (await Promise.all([
+          fetchWithAuth("/documents/ops/observability"),
+          fetchWithAuth("/documents/duplicates"),
+          fetchWithAuth("/documents/organization/tags"),
+          fetchWithAuth("/documents/organization/folders"),
+        ])) as [Response, Response, Response, Response];
+        if (!cancelled && opsRes.ok)
+          setObservability((await opsRes.json()) as DocumentObservability);
+        if (!cancelled && duplicatesRes.ok) {
+          const data = (await duplicatesRes.json()) as { total_duplicate_documents?: number };
+          setDuplicateCount(data.total_duplicate_documents ?? 0);
+        }
+        if (!cancelled && tagsRes.ok) {
+          const data = (await tagsRes.json()) as { items?: OrganizationChoice[] };
+          setBulkTags(data.items ?? []);
+        }
+        if (!cancelled && foldersRes.ok) {
+          const data = (await foldersRes.json()) as { items?: OrganizationChoice[] };
+          setBulkFolders(data.items ?? []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch document operations", error);
+      }
+    };
+    void fetchOperations();
+    const timer = window.setInterval(() => void fetchOperations(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
+
+  useRealtimeEvents(() => {
+    void fetchDocuments(false);
+  }, ["documents"]);
 
   // Real-time updates via SSE
   useEffect(() => {
@@ -242,19 +452,6 @@ export default function DocumentsPage() {
     };
   }, []);
 
-  // SSE is the fast path, but this authoritative refresh repairs a missed or
-  // unauthorized stream without making the page appear stuck indefinitely.
-  const hasActiveDocuments = documents.some(
-    (doc) => !TERMINAL_DOCUMENT_STATUSES.has(doc.status.toLowerCase()),
-  );
-  useEffect(() => {
-    if (!hasActiveDocuments) return;
-    const intervalId = window.setInterval(() => {
-      void fetchDocuments(false);
-    }, 4000);
-    return () => window.clearInterval(intervalId);
-  }, [hasActiveDocuments]);
-
   useEffect(() => {
     const fetchSupportedFormats = async () => {
       try {
@@ -271,15 +468,19 @@ export default function DocumentsPage() {
 
   const openRawViewer = async (id: string, name: string) => {
     if (rawFileUrl) URL.revokeObjectURL(rawFileUrl);
+    if (pagePreviewUrl) URL.revokeObjectURL(pagePreviewUrl);
     setRawViewerTarget({ id, name });
     setIsRawLoading(true);
     setRawTextContent(null);
     setRawFileUrl(null);
+    setPagePreviewUrl(null);
+    setPagePreviewNumber(1);
     setRawFileContentType(null);
     setRawLoadingPhase("secure");
     setViewerMode("raw"); // Default to the original source file
     try {
       // Fetch both for seamless switching
+      let sourceContentType = "";
       const [downloadRes, fullTextRes] = await Promise.all([
         fetchWithAuth(`/documents/${id}/download`),
         fetchWithAuth(`/documents/${id}/full-text`),
@@ -287,6 +488,7 @@ export default function DocumentsPage() {
 
       if (downloadRes.ok) {
         const contentType = downloadRes.headers.get("content-type") || "";
+        sourceContentType = contentType;
         if (contentType) {
           const blob = await (downloadRes as Response).blob();
           setRawFileUrl(URL.createObjectURL(blob));
@@ -294,18 +496,98 @@ export default function DocumentsPage() {
         }
       }
 
+      // Use the authenticated server renderer for PDF and LibreOffice-backed
+      // formats in the eye drawer. This keeps the original private and makes
+      // the outside preview match the document detail page.
+      const extension = name.split(".").pop()?.toLowerCase() ?? "";
+      const visualExtensions = new Set([
+        "pdf",
+        "doc",
+        "docx",
+        "docm",
+        "dot",
+        "dotx",
+        "dotm",
+        "odt",
+        "ott",
+        "odm",
+        "oth",
+        "rtf",
+        "ppt",
+        "pptx",
+        "pptm",
+        "pot",
+        "potx",
+        "potm",
+        "pps",
+        "ppsx",
+        "ppsm",
+        "odp",
+        "otp",
+        "xls",
+        "xlsx",
+        "xlsm",
+        "xlt",
+        "xltx",
+        "xltm",
+        "xlsb",
+        "ods",
+        "ots",
+        "odg",
+        "otg",
+        "odc",
+        "otc",
+        "odf",
+        "otf",
+        "odi",
+        "oti",
+      ]);
+      if (visualExtensions.has(extension)) {
+        const pageResponse = (await fetchWithAuth(`/documents/${id}/pages/1`)) as Response;
+        if (pageResponse.ok && pageResponse.headers.get("content-type")?.startsWith("image/")) {
+          const pageBlob = await pageResponse.blob();
+          setPagePreviewUrl(URL.createObjectURL(pageBlob));
+        }
+      }
+
       setRawLoadingPhase("text");
       if (fullTextRes.ok) {
         const data = await (fullTextRes as Response).json();
-        setRawTextContent(data.content);
-        // If PDF failed, default to text mode
-        if (!downloadRes.ok) setViewerMode("text");
+        const extractedContent = typeof data.content === "string" ? data.content : "";
+        setRawTextContent(extractedContent);
+        const kind = libraryFileKind(name, sourceContentType);
+        // PDFs/images keep their native browser surface. CSV, Office,
+        // Markdown, JSON, and source files open in the format-aware renderer
+        // instead of showing a download-only fallback.
+        if (
+          !downloadRes.ok ||
+          (extractedContent.trim() && !["pdf", "image", "svg", "video", "audio"].includes(kind))
+        ) {
+          setViewerMode("text");
+        }
       }
     } catch (err) {
       console.error("Error loading raw document", err);
     } finally {
       setRawLoadingPhase("ready");
       setIsRawLoading(false);
+    }
+  };
+
+  const loadPagePreview = async (page: number) => {
+    if (!rawViewerTarget || page < 1) return;
+    setPagePreviewLoading(true);
+    try {
+      const response = (await fetchWithAuth(
+        `/documents/${rawViewerTarget.id}/pages/${page}`,
+      )) as Response;
+      if (!response.ok || !response.headers.get("content-type")?.startsWith("image/")) return;
+      const nextUrl = URL.createObjectURL(await response.blob());
+      if (pagePreviewUrl) URL.revokeObjectURL(pagePreviewUrl);
+      setPagePreviewUrl(nextUrl);
+      setPagePreviewNumber(page);
+    } finally {
+      setPagePreviewLoading(false);
     }
   };
 
@@ -392,8 +674,10 @@ export default function DocumentsPage() {
 
   const closeRawViewer = () => {
     if (rawFileUrl) URL.revokeObjectURL(rawFileUrl);
+    if (pagePreviewUrl) URL.revokeObjectURL(pagePreviewUrl);
     setRawViewerTarget(null);
     setRawFileUrl(null);
+    setPagePreviewUrl(null);
     setRawFileContentType(null);
     setPasteDialogOpen(false);
     setPasteDraft("");
@@ -470,6 +754,85 @@ export default function DocumentsPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  const toggleDocumentSelection = (documentId: string) => {
+    setSelectedDocumentIds((current) => {
+      const next = new Set(current);
+      if (next.has(documentId)) next.delete(documentId);
+      else next.add(documentId);
+      return next;
+    });
+  };
+
+  const runBulkOperation = async (
+    operation: "retry" | "resume" | "reprocess" | "export" | "tag" | "untag" | "move",
+    extra?: { tag_id?: string; tag_ids?: string[]; folder_id?: string },
+  ) => {
+    const documentIds = [...selectedDocumentIds];
+    if (!documentIds.length) return;
+    setBulkBusy(true);
+    try {
+      const response = (await fetchWithAuth(`/documents/bulk/${operation}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ document_ids: documentIds, ...extra }),
+      })) as Response;
+      if (!response.ok)
+        throw new Error(await readApiErrorMessage(response, "Bulk operation failed."));
+      if (operation === "export") {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = "documents-export.zip";
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const result = (await response.json()) as { accepted_ids?: string[] };
+        toast.success(`${result.accepted_ids?.length ?? 0} document(s) queued.`);
+        await fetchDocuments(false);
+      }
+      setSelectedDocumentIds(new Set());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Bulk operation failed.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const runBulkMetadataOperation = async (operation: "tag" | "untag" | "move") => {
+    const choices = operation === "tag" || operation === "untag" ? bulkTags : bulkFolders;
+    const label = operation === "tag" || operation === "untag" ? "tag" : "folder";
+    if (!choices.length) {
+      toast.error(`Create a ${label} before using this action.`);
+      return;
+    }
+    const options = choices.map((choice) => `${choice.name} (${choice.id})`).join("\n");
+    const value = await averqelPrompt(
+      `Enter one or more ${label} names or IDs, separated by commas:\n\n${options}`,
+    );
+    const requested = (value ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (!requested.length) return;
+    const selectedIds = requested
+      .map(
+        (entry) =>
+          choices.find(
+            (choice) => choice.id === entry || choice.name.toLowerCase() === entry.toLowerCase(),
+          )?.id,
+      )
+      .filter((id): id is string => Boolean(id));
+    if (selectedIds.length !== requested.length) {
+      toast.error(`One or more ${label}s were not found in this workspace.`);
+      return;
+    }
+    await runBulkOperation(
+      operation,
+      operation === "move" ? { folder_id: selectedIds[0] } : { tag_ids: [...new Set(selectedIds)] },
+    );
+  };
+
   const statusColors: Record<string, string> = {
     queued: "!text-primary !bg-primary/5 !border-primary/20",
     downloading: "!text-warning !bg-warning/5 !border-warning/20",
@@ -486,11 +849,11 @@ export default function DocumentsPage() {
     <div className="documents-theme-scope space-y-10">
       <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
         <DashboardSectionHeader
-          title="Documents"
-          subtitle="Neural Intelligence Node Matrix"
+          title="Documents Hub"
+          subtitle="Secure document ingestion and intelligence"
           icon={FileText}
-          accentClassName="bg-blue-500 text-blue-500"
-          accentGlowClassName="shadow-[0_0_20px_rgba(59,130,246,0.4)]"
+          accentClassName="bg-emerald-500 text-emerald-500"
+          accentGlowClassName="shadow-[0_0_20px_rgba(16,185,129,0.35)]"
           actions={
             <>
               <button
@@ -512,12 +875,175 @@ export default function DocumentsPage() {
                 className="bg-primary text-primary-foreground shadow-primary/20 flex h-12 items-center gap-3 rounded-2xl px-8 text-sm font-black tracking-widest uppercase shadow-xl transition-all hover:scale-[1.03] hover:brightness-110 active:scale-95"
               >
                 <Upload size={18} className="stroke-[2.5]" />
-                Ingest Source
+                Add documents
               </button>
             </>
           }
         />
       </motion.div>
+
+      <div className="theme-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        {savedViewId ? (
+          <div className="bg-primary/10 text-primary border-primary/20 flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs font-bold sm:w-auto sm:shrink-0">
+            <span>Live view: {activeSavedViewName ?? "Loading…"}</span>
+            <button
+              type="button"
+              onClick={() => router.replace("/dashboard/documents")}
+              className="text-primary/70 hover:text-primary underline underline-offset-2"
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
+        {smartCollectionId ? (
+          <div className="bg-primary/10 text-primary border-primary/20 flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs font-bold sm:w-auto sm:shrink-0">
+            <span>Smart Collection results</span>
+            <button
+              type="button"
+              onClick={() => router.replace("/dashboard/documents")}
+              className="text-primary/70 hover:text-primary underline underline-offset-2"
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
+        <div className="relative min-w-0 flex-1">
+          <Search
+            className="text-foreground/35 pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2"
+            size={17}
+          />
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search documents by filename..."
+            aria-label="Search documents"
+            disabled={Boolean(savedViewId || smartCollectionId)}
+            className="border-glass-border bg-background/60 text-foreground placeholder:text-foreground/35 focus:border-primary/50 h-11 w-full rounded-xl border pr-4 pl-10 text-sm transition-colors outline-none"
+          />
+        </div>
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="text-foreground/50 hover:text-primary h-10 rounded-lg px-3 text-xs font-bold transition-colors"
+          >
+            Clear search
+          </button>
+        )}
+        <motion.button
+          type="button"
+          disabled={Boolean(savedViewId || smartCollectionId)}
+          onClick={() => setQuarantineOnly((value) => !value)}
+          whileTap={{ scale: 0.96 }}
+          className={`theme-pill h-10 min-w-36 px-3 text-xs font-bold transition-colors duration-300 ${quarantineOnly ? "border-warning/40 text-warning shadow-[0_0_18px_rgba(245,158,11,0.14)]" : ""} ${savedViewId || smartCollectionId ? "cursor-not-allowed opacity-50" : ""}`}
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={quarantineOnly ? "showing-quarantine" : "review-quarantine"}
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              transition={{ duration: 0.18 }}
+            >
+              {quarantineOnly ? "Showing quarantine" : "Review quarantine"}
+            </motion.span>
+          </AnimatePresence>
+        </motion.button>
+        <RoundedTagFilter
+          value={tagFilter}
+          options={bulkTags}
+          disabled={Boolean(savedViewId || smartCollectionId)}
+          onChange={setTagFilter}
+        />
+        {tagFilter ? (
+          <button
+            type="button"
+            onClick={() => setTagFilter("")}
+            className="text-foreground/50 hover:text-primary px-2 text-xs font-bold"
+          >
+            Clear tag
+          </button>
+        ) : null}
+      </div>
+
+      <DocumentOrganizationPanel />
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          ["Indexed", observability?.indexed_documents ?? "—"],
+          ["Active jobs", observability?.active_ingestion_jobs ?? "—"],
+          ["Failures", observability?.failed_documents ?? "—"],
+          ["Duplicate files", duplicateCount ?? "—"],
+        ].map(([label, value]) => (
+          <div key={label} className="theme-panel flex items-center gap-3 p-4">
+            <Activity size={16} className="text-primary" />
+            <div>
+              <p className="text-foreground/45 text-[9px] font-black tracking-widest uppercase">
+                {label}
+              </p>
+              <p className="text-foreground mt-1 text-lg font-black tabular-nums">{value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {selectedDocumentIds.size > 0 ? (
+        <div className="theme-panel flex flex-wrap items-center gap-2 p-3">
+          <span className="text-primary mr-2 text-xs font-bold">
+            {selectedDocumentIds.size} selected
+          </span>
+          {(["retry", "resume", "reprocess"] as const).map((operation) => (
+            <button
+              key={operation}
+              type="button"
+              onClick={() => void runBulkOperation(operation)}
+              disabled={bulkBusy}
+              className="theme-pill px-3 py-2 text-[10px] font-bold uppercase disabled:opacity-50"
+            >
+              {operation}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => void runBulkMetadataOperation("tag")}
+            disabled={bulkBusy}
+            className="theme-pill px-3 py-2 text-[10px] font-bold uppercase disabled:opacity-50"
+          >
+            Add tags
+          </button>
+          <button
+            type="button"
+            onClick={() => void runBulkMetadataOperation("untag")}
+            disabled={bulkBusy}
+            className="theme-pill px-3 py-2 text-[10px] font-bold uppercase disabled:opacity-50"
+          >
+            Remove tags
+          </button>
+          <button
+            type="button"
+            onClick={() => void runBulkMetadataOperation("move")}
+            disabled={bulkBusy}
+            className="theme-pill px-3 py-2 text-[10px] font-bold uppercase disabled:opacity-50"
+          >
+            Move
+          </button>
+          <button
+            type="button"
+            onClick={() => void runBulkOperation("export")}
+            disabled={bulkBusy}
+            className="theme-pill flex items-center gap-1 px-3 py-2 text-[10px] font-bold uppercase disabled:opacity-50"
+          >
+            <Download size={13} /> Export
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedDocumentIds(new Set())}
+            className="text-foreground/50 ml-auto px-2 py-2 text-[10px] font-bold"
+          >
+            Clear
+          </button>
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="theme-panel divide-glass-border divide-y">
@@ -539,12 +1065,38 @@ export default function DocumentsPage() {
           description={error}
         />
       ) : documents.length > 0 ? (
-        <div className="theme-panel overflow-hidden">
+        <motion.div
+          key={
+            savedViewId ??
+            smartCollectionId ??
+            (quarantineOnly ? "quarantine-results" : "document-results")
+          }
+          layout
+          className="theme-panel overflow-hidden"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        >
           {/* Desktop Table View */}
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left">
               <thead className="text-foreground/40 border-glass-border border-b text-[10px] font-black tracking-[0.2em] uppercase">
                 <tr>
+                  <th className="px-6 py-5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedDocumentIds(
+                          selectedDocumentIds.size === documents.length
+                            ? new Set()
+                            : new Set(documents.map((doc) => doc.document_id)),
+                        )
+                      }
+                      title="Select all"
+                    >
+                      <CheckSquare size={16} className="text-primary" />
+                    </button>
+                  </th>
                   <th className="px-6 py-5">Source Node</th>
                   <th className="px-6 py-5">Status Pipeline</th>
                   <th className="px-6 py-5">Intelligence Yield</th>
@@ -559,6 +1111,19 @@ export default function DocumentsPage() {
                     key={doc.document_id}
                     className="group hover:bg-primary/[0.02] transition-colors"
                   >
+                    <td className="px-6 py-5">
+                      <button
+                        type="button"
+                        onClick={() => toggleDocumentSelection(doc.document_id)}
+                        aria-label={`Select ${doc.filename}`}
+                      >
+                        {selectedDocumentIds.has(doc.document_id) ? (
+                          <CheckSquare size={16} className="text-primary" />
+                        ) : (
+                          <Square size={16} className="text-foreground/30" />
+                        )}
+                      </button>
+                    </td>
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-4">
                         <div className="bg-primary/5 text-primary border-primary/10 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border">
@@ -576,6 +1141,18 @@ export default function DocumentsPage() {
                           <p className="text-foreground/35 mt-1 text-[10px] font-bold tracking-widest uppercase">
                             {doc.content_type.split("/")[1] || "DOC"}
                           </p>
+                          {doc.tags?.length ? (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {doc.tags.map((tag) => (
+                                <span
+                                  key={tag.id}
+                                  className="border-primary/20 bg-primary/5 text-primary rounded-md border px-1.5 py-0.5 text-[9px] font-bold"
+                                >
+                                  {tag.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </td>
@@ -703,9 +1280,33 @@ export default function DocumentsPage() {
                           {formatBytes(doc.size_bytes)}
                         </span>
                       </div>
+                      {doc.tags?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {doc.tags.map((tag) => (
+                            <span
+                              key={tag.id}
+                              className="border-primary/20 bg-primary/5 text-primary rounded-md border px-1.5 py-0.5 text-[9px] font-bold"
+                            >
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleDocumentSelection(doc.document_id)}
+                      aria-label={`Select ${doc.filename}`}
+                      className="text-foreground/40 flex h-9 w-9 items-center justify-center rounded-lg"
+                    >
+                      {selectedDocumentIds.has(doc.document_id) ? (
+                        <CheckSquare size={16} className="text-primary" />
+                      ) : (
+                        <Square size={16} />
+                      )}
+                    </button>
                     <button
                       onClick={() => openRawViewer(doc.document_id, doc.filename)}
                       aria-label={`View ${doc.filename}`}
@@ -766,7 +1367,7 @@ export default function DocumentsPage() {
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <EmptyState
@@ -869,8 +1470,8 @@ export default function DocumentsPage() {
                     )}
                   </AnimatePresence>
 
-                  <div className="border-glass-border/60 bg-surface-0/40 flex items-center justify-between border-b px-6 py-5 backdrop-blur-xl">
-                    <div className="flex items-center gap-4">
+                  <div className="border-glass-border/60 bg-surface-0/40 flex min-h-[84px] flex-wrap items-center justify-between gap-3 border-b px-6 py-4 backdrop-blur-xl">
+                    <div className="flex min-w-0 items-center gap-4">
                       <div className="bg-primary shadow-primary/20 flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-lg">
                         <Eye size={22} className="stroke-[2.5]" />
                       </div>
@@ -881,25 +1482,25 @@ export default function DocumentsPage() {
                         <div className="mt-1 flex items-center gap-1">
                           <button
                             onClick={() => setViewerMode("raw")}
-                            className={`rounded-md px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-all ${viewerMode === "raw" ? "bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
+                            className={`documents-view-mode inline-flex h-7 items-center rounded-md px-2 text-[9px] leading-none font-black tracking-widest whitespace-nowrap uppercase transition-all ${viewerMode === "raw" ? "documents-view-mode-active bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
                           >
                             Source File
                           </button>
                           <button
                             onClick={() => setViewerMode("text")}
-                            className={`rounded-md px-2 py-0.5 text-[9px] font-black tracking-widest uppercase transition-all ${viewerMode === "text" ? "bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
+                            className={`documents-view-mode inline-flex h-7 items-center rounded-md px-2 text-[9px] leading-none font-black tracking-widest whitespace-nowrap uppercase transition-all ${viewerMode === "text" ? "documents-view-mode-active bg-primary text-white" : "bg-foreground/5 text-foreground/40 hover:bg-foreground/10"}`}
                           >
                             Intelligence View
                           </button>
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="bg-foreground/5 flex items-center rounded-xl p-1 backdrop-blur-sm">
+                    <div className="flex shrink-0 items-center gap-3">
+                      <div className="bg-foreground/5 flex h-10 items-center rounded-xl p-1 backdrop-blur-sm">
                         <button
                           onClick={handlePasteSelection}
                           disabled={isRawLoading}
-                          className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
+                          className="hover:bg-primary text-foreground/70 inline-flex h-8 items-center justify-center gap-2 rounded-lg px-3 text-[10px] leading-none font-black tracking-wider whitespace-nowrap uppercase transition-all hover:text-white disabled:opacity-50"
                           title="Paste copied text or save the selected Intelligence View text"
                         >
                           <Plus size={14} className="stroke-[2.5]" />
@@ -909,7 +1510,7 @@ export default function DocumentsPage() {
                         <button
                           onClick={() => saveToNotes("full")}
                           disabled={isRawLoading}
-                          className="hover:bg-primary text-foreground/70 flex h-9 items-center gap-2 rounded-lg px-3 text-[10px] font-black tracking-wider uppercase transition-all hover:text-white disabled:opacity-50"
+                          className="hover:bg-primary text-foreground/70 inline-flex h-8 items-center justify-center gap-2 rounded-lg px-3 text-[10px] leading-none font-black tracking-wider whitespace-nowrap uppercase transition-all hover:text-white disabled:opacity-50"
                         >
                           {isRawLoading ? (
                             <RefreshCcw size={14} className="animate-spin" />
@@ -921,7 +1522,7 @@ export default function DocumentsPage() {
                       </div>
                       <button
                         onClick={closeRawViewer}
-                        className="bg-foreground/5 text-foreground/40 hover:text-danger hover:bg-danger/10 flex h-10 w-10 items-center justify-center rounded-xl transition-all"
+                        className="bg-foreground/5 text-foreground/40 hover:text-danger hover:bg-danger/10 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all"
                       >
                         <X size={22} className="stroke-[2.5]" />
                       </button>
@@ -966,20 +1567,49 @@ export default function DocumentsPage() {
                           </p>
                         </div>
                       </div>
-                    ) : viewerMode === "raw" && rawFileUrl ? (
-                      rawFileContentType?.startsWith("image/") ? (
+                    ) : viewerMode === "raw" && (rawFileUrl || pagePreviewUrl) ? (
+                      pagePreviewUrl ? (
+                        <div className="flex h-full flex-col items-center gap-3 overflow-auto p-4">
+                          <div className="border-foreground/10 bg-foreground/5 flex w-full shrink-0 items-center justify-between rounded-lg border px-3 py-2 text-xs">
+                            <button
+                              type="button"
+                              disabled={pagePreviewLoading || pagePreviewNumber <= 1}
+                              onClick={() => void loadPagePreview(pagePreviewNumber - 1)}
+                              className="rounded-md px-3 py-1.5 disabled:opacity-40"
+                            >
+                              Previous
+                            </button>
+                            <span className="font-semibold">Page {pagePreviewNumber}</span>
+                            <button
+                              type="button"
+                              disabled={pagePreviewLoading}
+                              onClick={() => void loadPagePreview(pagePreviewNumber + 1)}
+                              className="rounded-md px-3 py-1.5 disabled:opacity-40"
+                            >
+                              {pagePreviewLoading ? "Loading…" : "Next"}
+                            </button>
+                          </div>
+                          {/* Server-rendered PDF/Office page; never the source file itself. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={pagePreviewUrl}
+                            alt={`${rawViewerTarget.name} page ${pagePreviewNumber}`}
+                            className="max-w-full rounded-lg object-contain shadow-lg"
+                          />
+                        </div>
+                      ) : rawFileContentType?.startsWith("image/") ? (
                         <div className="flex h-full items-center justify-center overflow-auto p-8">
                           {/* Blob URLs cannot be optimized by Next Image. */}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={rawFileUrl}
+                            src={rawFileUrl ?? ""}
                             alt={`Original ${rawViewerTarget.name}`}
                             className="max-h-full max-w-full object-contain"
                           />
                         </div>
                       ) : rawFileContentType?.includes("pdf") ? (
                         <iframe
-                          src={rawFileUrl}
+                          src={rawFileUrl ?? ""}
                           className="h-full w-full border-none"
                           title="Original Document"
                         />
@@ -1005,11 +1635,15 @@ export default function DocumentsPage() {
                         </div>
                       )
                     ) : viewerMode === "text" && rawTextContent ? (
-                      <div className="bg-surface-0 h-full overflow-y-auto px-12 py-16">
-                        <div className="mx-auto max-w-3xl">
-                          <pre className="text-foreground/90 selection:bg-primary/40 max-w-none font-mono text-sm leading-7 whitespace-pre-wrap selection:text-white">
-                            {rawTextContent}
-                          </pre>
+                      <div className="bg-surface-0 h-full min-h-0 overflow-auto px-6 py-6 sm:px-10 sm:py-10">
+                        <div className="mx-auto h-full min-h-0 max-w-5xl">
+                          <LibraryPreview
+                            kind={libraryFileKind(rawViewerTarget.name, rawFileContentType ?? "")}
+                            contentType={rawFileContentType ?? "text/plain"}
+                            value={rawTextContent}
+                            previewUrl={rawFileUrl}
+                            sizeBytes={undefined}
+                          />
                         </div>
                       </div>
                     ) : (
@@ -1102,7 +1736,7 @@ export default function DocumentsPage() {
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-surface-0 border-glass-border relative max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-3xl border p-8 shadow-2xl"
+              className="bg-surface-0 border-glass-border relative max-h-[85vh] w-[min(96vw,64rem)] overflow-hidden rounded-3xl border p-5 shadow-2xl sm:p-8"
             >
               <div className="mb-6 flex items-center justify-between">
                 <div>
@@ -1122,13 +1756,17 @@ export default function DocumentsPage() {
               </div>
 
               <div className="border-glass-border bg-foreground/[0.01] max-h-[60vh] overflow-y-auto rounded-2xl border shadow-inner">
-                <table className="w-full border-collapse text-left">
+                <table className="w-full table-fixed border-collapse text-left">
                   <thead className="bg-surface-0/80 border-glass-border sticky top-0 z-10 border-b backdrop-blur-sm">
                     <tr className="text-foreground/40 text-[10px] font-bold tracking-[0.2em] uppercase">
-                      <th className="px-5 py-4">Extension</th>
-                      <th className="px-5 py-4">Category</th>
-                      <th className="px-5 py-4">Method</th>
-                      <th className="px-5 py-4 text-right">Mode</th>
+                      <th className="w-[24%] px-3 py-3 sm:px-5 sm:py-4">Extension</th>
+                      <th className="w-[28%] px-3 py-3 sm:px-5 sm:py-4">Category</th>
+                      <th className="hidden w-[28%] px-3 py-3 sm:table-cell sm:px-5 sm:py-4">
+                        Method
+                      </th>
+                      <th className="w-[48%] px-3 py-3 text-right sm:w-[20%] sm:px-5 sm:py-4">
+                        Mode
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-glass-border divide-y">
@@ -1137,16 +1775,16 @@ export default function DocumentsPage() {
                         key={`${item.extension}-${item.extraction_method}`}
                         className="hover-yellow transition-colors"
                       >
-                        <td className="text-primary px-5 py-4 font-mono text-[13px] font-bold">
+                        <td className="text-primary truncate px-3 py-3 font-mono text-[12px] font-bold sm:px-5 sm:py-4 sm:text-[13px]">
                           {item.extension}
                         </td>
-                        <td className="text-foreground/60 px-5 py-4 text-[13px] font-medium">
+                        <td className="text-foreground/60 truncate px-3 py-3 text-[12px] font-medium sm:px-5 sm:py-4 sm:text-[13px]">
                           {item.category}
                         </td>
-                        <td className="text-foreground/30 px-5 py-4 font-mono text-[11px] italic">
+                        <td className="text-foreground/30 hidden truncate px-3 py-3 font-mono text-[11px] italic sm:table-cell sm:px-5 sm:py-4">
                           {item.extraction_method}
                         </td>
-                        <td className="px-5 py-4 text-right">
+                        <td className="px-3 py-3 text-right sm:px-5 sm:py-4">
                           <span
                             className={`theme-pill ${
                               item.needs_conversion

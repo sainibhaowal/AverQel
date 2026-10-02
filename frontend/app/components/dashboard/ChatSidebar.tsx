@@ -6,6 +6,8 @@ import {
   CheckSquare,
   History,
   MessageSquare,
+  ArchiveRestore,
+  Pin,
   Pencil,
   Plus,
   Square,
@@ -15,7 +17,9 @@ import {
 import { useCallback, useEffect, useState } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
+import { useRealtimeEvents } from "@/lib/realtime";
 import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
+import { averqelPrompt } from "@/app/components/ui/AverQelDialogHost";
 
 interface Conversation {
   id: string;
@@ -48,6 +52,9 @@ interface ChatSidebarProps {
   variant?: "dock" | "floating";
   onClose?: () => void;
   enableRename?: boolean;
+  enableArchived?: boolean;
+  enableRetentionControls?: boolean;
+  isTenantAdmin?: boolean;
   onConversationRenamed?: (conversation: Conversation) => void;
   children?: React.ReactNode;
 }
@@ -60,6 +67,9 @@ export default function ChatSidebar({
   variant = "dock",
   onClose,
   enableRename = true,
+  enableArchived = false,
+  enableRetentionControls = false,
+  isTenantAdmin = false,
   onConversationRenamed,
   children,
 }: ChatSidebarProps) {
@@ -72,10 +82,23 @@ export default function ChatSidebar({
     { type: "single"; id: string; title: string } | { type: "bulk"; ids: string[] } | null
   >(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [retentionDialog, setRetentionDialog] = useState<{
+    id: string;
+    title: string;
+    pinned: boolean;
+    legalHold: boolean;
+    adminExempt: boolean;
+    protectionReason: string | null;
+  } | null>(null);
+  const [retentionBusy, setRetentionBusy] = useState(false);
+  const [retentionError, setRetentionError] = useState<string | null>(null);
 
   const fetchConversations = useCallback(async () => {
     try {
-      const res = (await fetchWithAuth(endpointBase)) as Response;
+      const res = (await fetchWithAuth(
+        showArchived ? `${endpointBase}/archived` : endpointBase,
+      )) as Response;
       if (res.ok) {
         const data = await res.json();
         setConversations(data.items);
@@ -98,12 +121,17 @@ export default function ChatSidebar({
     } finally {
       setLoading(false);
     }
-  }, [endpointBase]);
+  }, [endpointBase, showArchived]);
+
+  useRealtimeEvents(
+    useCallback(() => {
+      void fetchConversations();
+    }, [fetchConversations]),
+    ["conversations"],
+  );
 
   useEffect(() => {
     queueMicrotask(() => void fetchConversations());
-    const interval = setInterval(fetchConversations, 10000);
-    return () => clearInterval(interval);
   }, [fetchConversations]);
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
@@ -163,7 +191,7 @@ export default function ChatSidebar({
 
   const handleRename = async (e: React.MouseEvent, conversation: Conversation) => {
     e.stopPropagation();
-    const nextTitle = window.prompt("Rename conversation", conversation.title)?.trim();
+    const nextTitle = (await averqelPrompt("Rename conversation", conversation.title))?.trim();
     if (!nextTitle || nextTitle === conversation.title) {
       return;
     }
@@ -183,6 +211,62 @@ export default function ChatSidebar({
       onConversationRenamed?.(updated);
     } catch (error) {
       console.error("Rename failed", error);
+    }
+  };
+
+  const openRetentionControls = async (event: React.MouseEvent, conversation: Conversation) => {
+    event.stopPropagation();
+    setRetentionError(null);
+    try {
+      const response = (await fetchWithAuth(
+        `${endpointBase}/retention/${conversation.id}`,
+      )) as Response;
+      if (!response.ok) {
+        throw new Error(`Retention status failed with ${response.status}`);
+      }
+      const status = (await response.json()) as {
+        pinned: boolean;
+        legal_hold: boolean;
+        admin_exempt: boolean;
+        protection_reason: string | null;
+      };
+      setRetentionDialog({
+        id: conversation.id,
+        title: conversation.title,
+        pinned: Boolean(status.pinned),
+        legalHold: Boolean(status.legal_hold),
+        adminExempt: Boolean(status.admin_exempt),
+        protectionReason: status.protection_reason ?? null,
+      });
+    } catch (error) {
+      console.error("Failed to load conversation retention status", error);
+      setRetentionError("Could not load retention controls. Your conversation was not changed.");
+    }
+  };
+
+  const saveRetentionControls = async () => {
+    if (!retentionDialog || retentionBusy) return;
+    setRetentionBusy(true);
+    setRetentionError(null);
+    try {
+      const payload: Record<string, boolean> = { pinned: retentionDialog.pinned };
+      if (isTenantAdmin) {
+        payload.legal_hold = retentionDialog.legalHold;
+        payload.admin_exempt = retentionDialog.adminExempt;
+      }
+      const response = (await fetchWithAuth(
+        `${endpointBase}/${retentionDialog.id}/retention/protection`,
+        { method: "PATCH", body: JSON.stringify(payload) },
+      )) as Response;
+      if (!response.ok) {
+        throw new Error(`Retention update failed with ${response.status}`);
+      }
+      setRetentionDialog(null);
+    } catch (error) {
+      console.error("Failed to save conversation retention controls", error);
+      setRetentionError("Could not save retention controls. No conversation data was changed.");
+    } finally {
+      setRetentionBusy(false);
     }
   };
 
@@ -242,6 +326,19 @@ export default function ChatSidebar({
               <Plus size={16} className="!stroke-primary text-primary stroke-[3]" />
             </button>
           )}
+          {enableArchived && !selectionMode && (
+            <button
+              type="button"
+              onClick={() => setShowArchived((value) => !value)}
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl border transition ${showArchived ? "border-primary/30 bg-primary/10 text-primary" : "text-foreground/60 hover:text-primary border-white/10"}`}
+              title={showArchived ? "Show active conversations" : "Show archived conversations"}
+              aria-label={
+                showArchived ? "Show active conversations" : "Show archived conversations"
+              }
+            >
+              <ArchiveRestore size={16} />
+            </button>
+          )}
           {variant === "floating" && onClose ? (
             <button
               onClick={onClose}
@@ -254,7 +351,7 @@ export default function ChatSidebar({
         </div>
       </div>
 
-      {selectionMode && conversations.length > 0 && (
+      {selectionMode && conversations.length > 0 && !showArchived && (
         <div className="mb-4 flex items-center justify-between rounded-xl bg-white/5 p-2 px-3">
           <button
             onClick={toggleSelectAll}
@@ -364,7 +461,7 @@ export default function ChatSidebar({
                           : "opacity-0 group-hover:opacity-100"
                       }`}
                     >
-                      {enableRename ? (
+                      {!showArchived && enableRename ? (
                         <button
                           onClick={(e) => handleRename(e, conv)}
                           className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
@@ -377,17 +474,55 @@ export default function ChatSidebar({
                           <Pencil size={14} />
                         </button>
                       ) : null}
-                      <button
-                        onClick={(e) => handleDelete(e, conv.id)}
-                        className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
-                          currentConversationId === conv.id
-                            ? "text-primary/70 dark:text-primary/70 hover:bg-red-500/20 hover:text-red-500 dark:hover:bg-red-500/20 dark:hover:text-red-400"
-                            : "text-foreground/30 hover:bg-red-500/10 hover:text-red-500"
-                        }`}
-                        title="Delete conversation"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {!showArchived && enableRetentionControls ? (
+                        <button
+                          onClick={(event) => void openRetentionControls(event, conv)}
+                          className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
+                            currentConversationId === conv.id
+                              ? "text-primary/70 hover:bg-primary/20 hover:text-primary dark:text-primary/70 dark:hover:bg-primary/20 dark:hover:text-primary"
+                              : "text-foreground/30 hover:bg-primary/10 hover:text-primary"
+                          }`}
+                          title="Retention protection"
+                          aria-label={`Retention protection for ${conv.title}`}
+                        >
+                          <Pin size={14} />
+                        </button>
+                      ) : null}
+                      {!showArchived ? (
+                        <button
+                          onClick={(e) => handleDelete(e, conv.id)}
+                          className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
+                            currentConversationId === conv.id
+                              ? "text-primary/70 dark:text-primary/70 hover:bg-red-500/20 hover:text-red-500 dark:hover:bg-red-500/20 dark:hover:text-red-400"
+                              : "text-foreground/30 hover:bg-red-500/10 hover:text-red-500"
+                          }`}
+                          title="Delete conversation"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            const response = (await fetchWithAuth(
+                              `${endpointBase}/${conv.id}/restore`,
+                              {
+                                method: "POST",
+                              },
+                            )) as Response;
+                            if (response.ok) {
+                              setConversations((previous) =>
+                                previous.filter((item) => item.id !== conv.id),
+                              );
+                            }
+                          }}
+                          className="text-foreground/45 hover:bg-primary/10 hover:text-primary flex h-8 w-8 items-center justify-center rounded-full transition"
+                          title="Restore conversation"
+                          aria-label="Restore conversation"
+                        >
+                          <ArchiveRestore size={14} />
+                        </button>
+                      )}
                     </div>
                   ) : null}
                 </div>
@@ -435,6 +570,110 @@ export default function ChatSidebar({
         confirmLabel={deleteDialog?.type === "bulk" ? "Delete Conversations" : "Delete"}
         loading={deleteBusy}
       />
+      <AnimatePresence>
+        {retentionDialog ? (
+          <motion.div
+            className="absolute inset-0 z-20 flex items-end bg-black/45 p-3 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Retention protection for ${retentionDialog.title}`}
+          >
+            <motion.div
+              className="border-glass-border bg-background/95 w-full rounded-2xl border p-4 shadow-2xl"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+            >
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Retention protection</p>
+                  <p className="text-foreground/55 mt-1 truncate text-xs">
+                    {retentionDialog.title}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRetentionDialog(null)}
+                  disabled={retentionBusy}
+                  className="text-foreground/55 hover:text-foreground rounded-lg p-1 transition"
+                  aria-label="Close retention protection"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <label className="text-foreground/80 flex cursor-pointer items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={retentionDialog.pinned}
+                  onChange={(event) =>
+                    setRetentionDialog((current) =>
+                      current ? { ...current, pinned: event.target.checked } : current,
+                    )
+                  }
+                />
+                Pin this conversation — automatic archive will skip it.
+              </label>
+              {isTenantAdmin ? (
+                <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+                  <label className="text-foreground/80 flex cursor-pointer items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={retentionDialog.legalHold}
+                      onChange={(event) =>
+                        setRetentionDialog((current) =>
+                          current ? { ...current, legalHold: event.target.checked } : current,
+                        )
+                      }
+                    />
+                    Legal hold — preserve until an admin removes the hold.
+                  </label>
+                  <label className="text-foreground/80 flex cursor-pointer items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={retentionDialog.adminExempt}
+                      onChange={(event) =>
+                        setRetentionDialog((current) =>
+                          current ? { ...current, adminExempt: event.target.checked } : current,
+                        )
+                      }
+                    />
+                    Administrator exemption — exclude from automatic archive.
+                  </label>
+                </div>
+              ) : null}
+              {retentionDialog.protectionReason ? (
+                <p className="text-foreground/50 mt-3 text-[11px]">
+                  Current protection: {retentionDialog.protectionReason.replaceAll("_", " ")}
+                </p>
+              ) : null}
+              {retentionError ? (
+                <p className="mt-3 text-xs text-red-400">{retentionError}</p>
+              ) : null}
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRetentionDialog(null)}
+                  disabled={retentionBusy}
+                  className="text-foreground/65 hover:text-foreground rounded-xl px-3 py-2 text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveRetentionControls()}
+                  disabled={retentionBusy}
+                  className="bg-primary text-primary-foreground rounded-xl px-3 py-2 text-xs font-semibold transition disabled:opacity-60"
+                >
+                  {retentionBusy ? "Saving…" : "Save protection"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </aside>
   );
 }

@@ -115,4 +115,87 @@ describe("DeepSpaceThread virtualization", () => {
     expect(screen.getByText(/^Agent message 1$/)).toBeInTheDocument();
     expect(screen.getByText(/^Agent message 80$/)).toBeInTheDocument();
   });
+
+  it("hides response dots as soon as any streamed progress begins", () => {
+    const { rerender } = render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "pending-assistant",
+            role: "assistant" as const,
+            content: "",
+            rawContent: "",
+            createdAt: new Date().toISOString(),
+            status: "streaming" as const,
+            agentSteps: [],
+            timeline: [],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(
+      screen.getByRole("status", { name: "AverQel is preparing a response" }),
+    ).toBeInTheDocument();
+
+    rerender(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "pending-assistant",
+            role: "assistant" as const,
+            content: "Hello",
+            rawContent: "Hello",
+            createdAt: new Date().toISOString(),
+            status: "streaming" as const,
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("status", { name: "AverQel is preparing a response" }),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "pending-assistant",
+            role: "assistant" as const,
+            content: "",
+            rawContent: "",
+            createdAt: new Date().toISOString(),
+            status: "streaming" as const,
+            timeline: [
+              {
+                id: "thinking-1",
+                stepId: "thinking-1",
+                turnIndex: 1,
+                phase: "thinking",
+                type: "thinking" as const,
+                title: "Internal Thought",
+                status: "running" as const,
+                startedAt: new Date().toISOString(),
+                details: "Working…",
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("status", { name: "AverQel is preparing a response" }),
+    ).not.toBeInTheDocument();
+  });
 });

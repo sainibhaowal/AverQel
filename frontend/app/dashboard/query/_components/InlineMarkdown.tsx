@@ -2,8 +2,6 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 
 import InlineCitation from "@/app/components/query/InlineCitation";
 
@@ -15,8 +13,10 @@ export function InlineMarkdown({ content }: { content: string }) {
       // <a> tags. Without this, remark-gfm treats "PG19:" as a URL-like
       // patterns and wraps the text in an <a> element, which inherits the
       // cyan link color — making table cell data appear blue.
-      remarkPlugins={[[remarkGfm, { autoLinkLiterals: false }], remarkMath]}
-      rehypePlugins={[rehypeKatex]}
+      // This surface also renders provider/tool text. Do not run KaTeX on it:
+      // ordinary prices such as `$0.05 / min` and copied Unicode can be
+      // mistaken for math and have previously produced parser failures.
+      remarkPlugins={[[remarkGfm, { autoLinkLiterals: false }]]}
       components={{
         p: ({ children }) => <>{children}</>,
         pre: ({ children, ...props }) => (

@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Activity, Link2, Link2Off } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   type CreateProviderInput,
@@ -39,6 +39,7 @@ interface ProviderFormProps {
 
 const PROVIDER_BASE_URL_PRESETS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
+  deepseek: "https://api.deepseek.com",
   anthropic: "https://api.anthropic.com/v1",
   google: "https://generativelanguage.googleapis.com/v1beta",
   groq: "https://api.groq.com/openai/v1",
@@ -47,6 +48,7 @@ const PROVIDER_BASE_URL_PRESETS: Record<string, string> = {
   together: "https://api.together.xyz/v1",
   fireworks: "https://api.fireworks.ai/inference/v1",
   perplexity: "https://api.perplexity.ai",
+  openrouter: "https://openrouter.ai/api/v1",
   "opencode-zen": "https://opencode.ai/zen/v1",
   cohere: "https://api.cohere.ai/v1",
   tavily: "https://api.tavily.com",
@@ -84,6 +86,7 @@ export default function ProviderForm({
   onReconnect,
 }: ProviderFormProps) {
   const activeProviderType = provider?.provider_type || catalogEntry?.provider_type || "";
+  const catalogFamilyRef = useRef(activeProviderType);
 
   const [apiBaseUrl, setApiBaseUrl] = useState(
     provider?.api_base_url || PROVIDER_BASE_URL_PRESETS[activeProviderType] || "",
@@ -150,6 +153,32 @@ export default function ProviderForm({
       });
     }
   }, [provider, models]);
+
+  // A catalog family is a wholly new configuration. Never retain another
+  // provider's endpoint, credentials, selected model, or discovery result
+  // while creating a new provider. The previous implementation only synced
+  // saved providers, which made every newly selected family inherit the last
+  // form's OpenCode Zen state.
+  useEffect(() => {
+    if (provider || !catalogEntry) return;
+    if (catalogFamilyRef.current === catalogEntry.provider_type) return;
+    catalogFamilyRef.current = catalogEntry.provider_type;
+    queueMicrotask(() => {
+      const providerType = catalogEntry.provider_type;
+      setApiBaseUrl(PROVIDER_BASE_URL_PRESETS[providerType] || "");
+      setAuthMode(catalogEntry.auth_modes[0] || "api_key");
+      setSecretValue("");
+      setDefaultChatModel("");
+      setDefaultEmbeddingModel("");
+      setDefaultRerankerModel("");
+      setPreviewModels([]);
+      setDiscoveringModels(false);
+      setDiscoverError(null);
+      setSearchLanguage("auto");
+      setAllowedDomains("");
+      setBlockedDomains("");
+    });
+  }, [catalogEntry, provider]);
 
   const normalizeApiBaseUrl = useCallback(
     (value: string): string => {

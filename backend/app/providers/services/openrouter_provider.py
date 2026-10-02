@@ -29,7 +29,9 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         return self
 
     @staticmethod
-    def _build_headers(api_key: str | None) -> dict[str, str]:
+    def _build_headers(
+        api_key: str | None, extra_headers: dict[str, str] | None = None
+    ) -> dict[str, str]:
         headers = {
             "Content-Type": "application/json",
             "HTTP-Referer": "https://averqel.ai",
@@ -37,6 +39,14 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+        if extra_headers:
+            headers.update(
+                {
+                    str(name): str(value)
+                    for name, value in extra_headers.items()
+                    if str(name).strip() and str(value).strip()
+                }
+            )
         return headers
 
     @classmethod

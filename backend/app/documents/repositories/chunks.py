@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, func, select
 
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.document import Document
@@ -13,6 +13,7 @@ from app.documents.models.document_chunk import DocumentChunk
 from app.platform.database.session import set_db_tenant_context
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
+from app.system.services.storage_quota import EMBEDDING_BYTES_PER_VECTOR, StorageQuotaService
 
 
 @dataclass(slots=True)
@@ -54,6 +55,27 @@ class ChunksRepository(BaseRepository):
         chunks: list[DocumentChunk],
     ) -> list[DocumentChunk]:
         self.apply_tenant_scope(tenant_id)
+        old_chunks = (
+            self.db.execute(
+                select(DocumentChunk).where(
+                    DocumentChunk.tenant_id == tenant_id,
+                    DocumentChunk.document_id == document_id,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            additional_bytes=sum(
+                StorageQuotaService.estimate_bytes(chunk.content, chunk.chunk_metadata)
+                for chunk in chunks
+            ),
+            replacing_bytes=sum(
+                StorageQuotaService.estimate_bytes(chunk.content, chunk.chunk_metadata)
+                for chunk in old_chunks
+            ),
+        )
         with observe_db_query("chunks.replace_document_chunks"):
             self.db.execute(
                 delete(DocumentChunk).where(
@@ -76,6 +98,19 @@ class ChunksRepository(BaseRepository):
         embeddings: list[ChunkEmbedding],
     ) -> list[ChunkEmbedding]:
         self.apply_tenant_scope(tenant_id)
+        old_embedding_count = self.db.execute(
+            select(func.count(ChunkEmbedding.id)).where(
+                ChunkEmbedding.tenant_id == tenant_id,
+                ChunkEmbedding.document_id == document_id,
+            )
+        ).scalar_one()
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            additional_bytes=sum(
+                len(list(embedding.embedding or [])) * 4 for embedding in embeddings
+            ),
+            replacing_bytes=int(old_embedding_count or 0) * EMBEDDING_BYTES_PER_VECTOR,
+        )
         with observe_db_query("chunks.replace_chunk_embeddings"):
             self.db.execute(
                 delete(ChunkEmbedding).where(
@@ -455,6 +490,58 @@ class ChunksRepository(BaseRepository):
             )
             result = self.db.scalars(stmt).all()
         return list(result)
+
+    def get_all_by_document_id(
+        self, *, tenant_id: uuid.UUID, document_id: uuid.UUID
+    ) -> list[DocumentChunk]:
+        self.apply_tenant_scope(tenant_id)
+        stmt = (
+            select(DocumentChunk)
+            .where(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.document_id == document_id,
+            )
+            .order_by(DocumentChunk.chunk_index.asc())
+        )
+        return list(self.db.scalars(stmt).all())
+
+    def get_embedded_chunk_ids(
+        self, *, tenant_id: uuid.UUID, document_id: uuid.UUID
+    ) -> set[uuid.UUID]:
+        self.apply_tenant_scope(tenant_id)
+        stmt = select(ChunkEmbedding.chunk_id).where(
+            ChunkEmbedding.tenant_id == tenant_id,
+            ChunkEmbedding.document_id == document_id,
+        )
+        return set(self.db.scalars(stmt).all())
+
+    def insert_chunk_embeddings(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        document_id: uuid.UUID,
+        embeddings: list[ChunkEmbedding],
+    ) -> int:
+        """Insert only missing vectors; safe to call again after a worker crash."""
+        self.apply_tenant_scope(tenant_id)
+        existing = self.get_embedded_chunk_ids(tenant_id=tenant_id, document_id=document_id)
+        pending = []
+        for embedding in embeddings:
+            if embedding.tenant_id != tenant_id or embedding.document_id != document_id:
+                raise ValueError("Embedding tenant_id/document_id mismatch")
+            if embedding.chunk_id not in existing:
+                pending.append(embedding)
+        if not pending:
+            return 0
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            additional_bytes=sum(len(list(item.embedding or [])) * 4 for item in pending),
+            replacing_bytes=0,
+        )
+        for embedding in pending:
+            self.db.add(embedding)
+        self.db.flush()
+        return len(pending)
 
     def count_by_document_id(
         self,

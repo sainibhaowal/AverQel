@@ -91,7 +91,7 @@ export default function ProductScreenshotGallery() {
         </motion.div>
 
         <div className="relative overflow-hidden rounded-[2.25rem] border border-white/10 bg-[linear-gradient(145deg,rgba(8,14,21,0.96),rgba(4,8,13,0.88))] p-5 shadow-[0_34px_120px_rgba(0,0,0,0.38)] sm:p-8 lg:p-10">
-          <div className="absolute inset-0 [background-image:linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px)] [background-size:42px_42px] opacity-40" />
+          <div className="absolute inset-0 [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.12)_1px,transparent_1.35px)] [background-size:42px_42px] opacity-40" />
           <div className="relative grid gap-8 xl:grid-cols-[0.8fr_1.2fr] xl:gap-12">
             <div className="flex flex-col justify-between">
               <div>

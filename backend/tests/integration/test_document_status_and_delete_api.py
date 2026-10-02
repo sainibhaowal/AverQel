@@ -106,6 +106,7 @@ def _seed_document_with_embeddings(
 
         document_id = generate_uuid7_with_fallback()
         chunk_id = generate_uuid7_with_fallback()
+        second_chunk_id = generate_uuid7_with_fallback()
         document = Document(
             id=document_id,
             tenant_id=tenant_id,
@@ -134,6 +135,16 @@ def _seed_document_with_embeddings(
             char_end=40,
             chunk_metadata={"mode": "text", "page_number": 1},
         )
+        second_chunk = DocumentChunk(
+            id=second_chunk_id,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            chunk_index=1,
+            content="Second seeded chunk preserves the Reader Mode boundary.",
+            char_start=41,
+            char_end=95,
+            chunk_metadata={"mode": "ocr", "page_number": 2},
+        )
         job = IngestionJob(
             id=generate_uuid7_with_fallback(),
             tenant_id=tenant_id,
@@ -142,7 +153,7 @@ def _seed_document_with_embeddings(
             attempt_count=1,
             max_attempts=3,
         )
-        session.add_all([document, chunk, job])
+        session.add_all([document, chunk, second_chunk, job])
         session.flush()
         embedding = ChunkEmbedding(
             id=generate_uuid7_with_fallback(),
@@ -196,12 +207,47 @@ def test_document_status_returns_embedding_runtime_metadata(
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "embedding"
+    assert payload["filename"] == "status-source.pdf"
+    assert payload["content_type"] == "application/pdf"
+    assert payload["size_bytes"] == 2048
+    assert payload["sha256_hash"] == "a" * 64
+    assert payload["version"] == 1
     assert payload["processing_progress"] == 70
     assert payload["active_stage"] == "embedding"
     assert payload["stage_progress"] > 0
     assert payload["embedding_provider"] == "sentence-transformers"
     assert payload["embedding_model"] == "BAAI/bge-small-en-v1.5"
+    assert payload["total_chunk_count"] == 2
     assert payload["embedded_chunk_count"] == 1
+
+
+def test_full_text_preserves_persisted_chunk_boundaries(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    seeded = seed_user(
+        "tenant-reader-boundaries",
+        "reader-boundaries@tenant.example",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    document_id = _seed_document_with_embeddings(
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        provider="sentence-transformers",
+        model="BAAI/bge-small-en-v1.5",
+    )
+
+    response = client.get(
+        f"/api/v1/documents/{document_id}/full-text",
+        headers=_auth_headers(seeded, roles=("admin",)),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["content"] == (
+        "Seeded content chunk for status inspection.\n\n"
+        "Second seeded chunk preserves the Reader Mode boundary."
+    )
 
 
 def test_editor_can_delete_document_and_purge_chunks(

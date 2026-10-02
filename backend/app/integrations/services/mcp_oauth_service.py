@@ -23,6 +23,7 @@ from app.integrations.services.connector_secret_crypto import ConnectorSecretCry
 from app.integrations.services.mcp_endpoint_security import validate_remote_endpoint
 from app.integrations.services.mcp_http_client import build_safe_sync_client
 from app.integrations.services.mcp_provider_auth import get_mcp_provider_profile
+from app.system.services.storage_quota import StorageQuotaService
 
 logger = logging.getLogger(__name__)
 
@@ -419,8 +420,34 @@ class MCPServerOAuthService:
                 expires_at=expires_at,
                 granted_scopes=granted_scopes,
             )
+            StorageQuotaService(self.db).ensure_capacity(
+                tenant_id=server.tenant_id,
+                user_id=server.user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    record.secret_ciphertext,
+                    record.secret_nonce,
+                    record.secret_kid,
+                    record.granted_scopes,
+                ),
+            )
             self.db.add(record)
         else:
+            StorageQuotaService(self.db).ensure_capacity(
+                tenant_id=server.tenant_id,
+                user_id=server.user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    encrypted.ciphertext,
+                    encrypted.nonce,
+                    encrypted.kid,
+                    granted_scopes,
+                ),
+                replacing_bytes=StorageQuotaService.estimate_bytes(
+                    record.secret_ciphertext,
+                    record.secret_nonce,
+                    record.secret_kid,
+                    record.granted_scopes,
+                ),
+            )
             record.secret_ciphertext = encrypted.ciphertext
             record.secret_nonce = encrypted.nonce
             record.secret_kid = encrypted.kid
@@ -540,7 +567,7 @@ class MCPServerOAuthService:
         from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata
 
         scope = get_client_metadata_scopes(None, resource_metadata, oauth_metadata) or ""
-        metadata = OAuthClientMetadata(  # nosec B106 - OAuth public-client metadata
+        metadata = OAuthClientMetadata(  # OAuth public-client metadata; nosec B106
             redirect_uris=[redirect_uri],
             token_endpoint_auth_method="none",
             scope=scope,
@@ -728,8 +755,34 @@ class MCPServerOAuthService:
                 expires_at=expires_at,
                 granted_scopes=self._safe_scope_list(getattr(token, "scope", None)),
             )
+            StorageQuotaService(self.db).ensure_capacity(
+                tenant_id=server.tenant_id,
+                user_id=server.user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    record.secret_ciphertext,
+                    record.secret_nonce,
+                    record.secret_kid,
+                    record.granted_scopes,
+                ),
+            )
             self.db.add(record)
         else:
+            StorageQuotaService(self.db).ensure_capacity(
+                tenant_id=server.tenant_id,
+                user_id=server.user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    encrypted.ciphertext,
+                    encrypted.nonce,
+                    encrypted.kid,
+                    self._safe_scope_list(getattr(token, "scope", None)),
+                ),
+                replacing_bytes=StorageQuotaService.estimate_bytes(
+                    record.secret_ciphertext,
+                    record.secret_nonce,
+                    record.secret_kid,
+                    record.granted_scopes,
+                ),
+            )
             record.user_id = server.user_id
             record.registry_entry_id = server.registry_entry_id
             record.provider_slug = (

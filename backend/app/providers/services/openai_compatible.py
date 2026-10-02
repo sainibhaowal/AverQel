@@ -10,6 +10,7 @@ from typing import Any, cast
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.context_window import (
     extract_context_window,
+    extract_max_output_tokens,
     resolve_verified_context_window,
 )
 from app.providers.services.reasoning_capabilities import (
@@ -65,10 +66,20 @@ class OpenAICompatibleProvider:
         return importlib.import_module("httpx")
 
     @staticmethod
-    def _build_headers(api_key: str | None) -> dict[str, str]:
+    def _build_headers(
+        api_key: str | None, extra_headers: dict[str, str] | None = None
+    ) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+        if extra_headers:
+            headers.update(
+                {
+                    str(name): str(value)
+                    for name, value in extra_headers.items()
+                    if str(name).strip() and str(value).strip()
+                }
+            )
         return headers
 
     @staticmethod
@@ -143,9 +154,10 @@ class OpenAICompatibleProvider:
         payload = {
             "model": request.model,
             "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
             "messages": messages,
         }
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
         if request.tools:
             payload["tools"] = request.tools
         effective_tool_choice = self._effective_tool_choice(request)
@@ -155,7 +167,7 @@ class OpenAICompatibleProvider:
         self._apply_reasoning_request_settings(payload, request)
         response = httpx_module.post(
             f"{base_url}/chat/completions",
-            headers=self._build_headers(request.api_key),
+            headers=self._build_headers(request.api_key, request.metadata.get("extra_headers")),
             json=payload,
             timeout=float(request.metadata.get("timeout_seconds", 8.0)),
         )
@@ -213,10 +225,11 @@ class OpenAICompatibleProvider:
         payload = {
             "model": request.model,
             "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
             "messages": messages,
             "stream": True,
         }
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
         if request.tools:
             payload["tools"] = request.tools
         effective_tool_choice = self._effective_tool_choice(request)
@@ -231,7 +244,7 @@ class OpenAICompatibleProvider:
             async with client.stream(
                 "POST",
                 f"{base_url}/chat/completions",
-                headers=self._build_headers(request.api_key),
+                headers=self._build_headers(request.api_key, request.metadata.get("extra_headers")),
                 json=payload,
             ) as response:
                 if response.status_code >= 400:
@@ -264,6 +277,9 @@ class OpenAICompatibleProvider:
                         chunk = json.loads(data)
                     except json.JSONDecodeError:
                         continue
+                    usage = chunk.get("usage")
+                    if isinstance(usage, dict):
+                        yield {"type": "usage", "usage": usage}
                     choices = chunk.get("choices")
                     if not isinstance(choices, list) or not choices:
                         continue
@@ -349,10 +365,11 @@ class OpenAICompatibleProvider:
         payload = {
             "model": request.model,
             "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
             "messages": messages,
             "stream": True,
         }
+        if request.max_tokens is not None:
+            payload["max_tokens"] = request.max_tokens
         if request.tools:
             payload["tools"] = request.tools
         effective_tool_choice = self._effective_tool_choice(request)
@@ -366,7 +383,7 @@ class OpenAICompatibleProvider:
         with httpx_module.stream(
             "POST",
             f"{base_url}/chat/completions",
-            headers=self._build_headers(request.api_key),
+            headers=self._build_headers(request.api_key, request.metadata.get("extra_headers")),
             json=payload,
             timeout=timeout,
         ) as response:
@@ -440,6 +457,7 @@ class OpenAICompatibleProvider:
             if not self._is_chat_model_name(model_name):
                 continue
             live_context_window = self._extract_context_window(item)
+            max_output_tokens = extract_max_output_tokens(item)
             verified_context_window = resolve_verified_context_window(
                 model_name,
                 provider_type=self.provider_name,
@@ -454,12 +472,18 @@ class OpenAICompatibleProvider:
                     kind="chat",
                     context_window=context_window,
                     context_window_source=context_window_source,
+                    max_output_tokens=max_output_tokens,
                     display_name=None,
                     capabilities={
                         "object": item.get("object", "model"),
                         **(
                             {"context_window_source": context_window_source}
                             if context_window_source
+                            else {}
+                        ),
+                        **(
+                            {"max_output_tokens": max_output_tokens}
+                            if max_output_tokens is not None
                             else {}
                         ),
                         **reasoning_capabilities(
@@ -532,7 +556,10 @@ class OpenAICompatibleProvider:
         payload = {"model": request.model, "input": request.texts}
         response = httpx_module.post(
             f"{base_url}/embeddings",
-            headers=self._build_headers(str(request.metadata.get("api_key") or "") or None),
+            headers=self._build_headers(
+                str(request.metadata.get("api_key") or "") or None,
+                request.metadata.get("extra_headers"),
+            ),
             json=payload,
             timeout=float(request.timeout_seconds),
         )
@@ -772,6 +799,32 @@ class OpenAICompatibleProvider:
             else:
                 payload["include_reasoning"] = False
                 payload.pop("reasoning_effort", None)
+            return
+        if str(request.metadata.get("provider_type") or "").lower() == "deepseek":
+            if reasoning_enabled:
+                deepseek_effort = {
+                    "low": "low",
+                    "medium": "high",
+                    "high": "high",
+                    "very_high": "max",
+                    "extreme_high": "max",
+                }.get(request.reasoning_effort or "medium", "high")
+                payload["thinking"] = {"type": "enabled"}
+                payload["reasoning_effort"] = deepseek_effort
+            else:
+                payload["thinking"] = {"type": "disabled"}
+                payload["reasoning_effort"] = "none"
+            return
+        if str(request.metadata.get("provider_type") or "").lower() == "lmstudio":
+            payload["reasoning"] = (
+                request.reasoning_effort or "medium" if reasoning_enabled else "off"
+            )
+            if self._uses_enable_thinking_controls(request):
+                payload["enable_thinking"] = bool(reasoning_enabled)
+                if reasoning_enabled:
+                    payload["reasoning_effort"] = request.reasoning_effort or "medium"
+                else:
+                    payload.pop("reasoning_effort", None)
             return
         if not self.model_supports_reasoning(request.model):
             return

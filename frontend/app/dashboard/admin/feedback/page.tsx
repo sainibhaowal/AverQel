@@ -110,7 +110,7 @@ export default function AdminFeedbackPage() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="dashboard-theme-scope space-y-10">
       <div className="flex items-center justify-between">
         <DashboardSectionHeader
           title="Feedback Center"

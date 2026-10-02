@@ -49,6 +49,39 @@ class StorageService:
         self._client: BaseClient | None = None
         self._bucket_verified = False
 
+    @staticmethod
+    def is_tenant_object_key(*, tenant_id: uuid.UUID, object_key: str) -> bool:
+        """Verify the canonical tenant prefix without accepting path traversal."""
+        key = str(object_key).replace("\\", "/")
+        prefix = f"{tenant_id}/"
+        return key.startswith(prefix) and ".." not in key.split("/")
+
+    def get_tenant_bytes(self, *, tenant_id: uuid.UUID, bucket: str, object_key: str) -> bytes:
+        """Tenant-guarded read for new lifecycle/archive integrations.
+
+        Existing legacy reads remain unchanged until their stored keys are
+        individually verified; callers using this boundary cannot cross a
+        tenant prefix.
+        """
+        if not self.is_tenant_object_key(tenant_id=tenant_id, object_key=object_key):
+            raise StorageServiceError(
+                code="STORAGE_TENANT_PREFIX_MISMATCH",
+                message="Object storage key is not owned by this tenant.",
+                retryable=False,
+            )
+        return self.get_bytes(bucket=bucket, object_key=object_key)
+
+    def delete_tenant_object(
+        self, *, tenant_id: uuid.UUID, bucket: str, object_key: str, raise_on_error: bool = False
+    ) -> None:
+        if not self.is_tenant_object_key(tenant_id=tenant_id, object_key=object_key):
+            raise StorageServiceError(
+                code="STORAGE_TENANT_PREFIX_MISMATCH",
+                message="Object storage key is not owned by this tenant.",
+                retryable=False,
+            )
+        self.delete_object(bucket=bucket, object_key=object_key, raise_on_error=raise_on_error)
+
     def put_bytes(
         self,
         *,

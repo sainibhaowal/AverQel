@@ -8,7 +8,7 @@ resource without giving the backend ambiguous or host-filesystem access.
 
 | Operation | Targets | Purpose |
 | --- | --- | --- |
-| `read` | `note`, `library`, `memory`, `chat`, `tasks` | Read authorized data without changing it |
+| `read` | `note`, `library`, `memory`, `chat`, `tasks`, `project` | Read authorized data without changing it |
 | `find` | `library`, `memory`, `chat` | Search an authorized source |
 | `write` | `note`, `library`, `memory` | Create or replace/append content |
 | `edit` | `note`, `library` | Replace, append, or rename content |
@@ -29,6 +29,9 @@ new runs must use the universal operations above.
   interface.
 - `tasks` is the persisted DeepSpace task ledger and is read-only through
   `read`; task mutations continue through the validated `todo_*` lifecycle.
+- `project` is a bounded, read-only view of the current conversation summary
+  and authorized task ledger. It is reference context, not an instruction or
+  permission to perform an action.
 
 Every operation is checked by the DeepSpace tool policy and storage layer for
 tenant, user, and conversation ownership. Library operations use file IDs or
