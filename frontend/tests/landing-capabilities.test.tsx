@@ -89,6 +89,14 @@ describe("DocumentsHubMarketing", () => {
 
     expect(screen.getByText(/matching safety numbers confirm member devices/i)).toBeInTheDocument();
   });
+
+  it("names join requests, typing, and ticks", () => {
+    render(<CollectionCollaboration />);
+
+    expect(screen.getByText(/no silent joins, ever/i)).toBeInTheDocument();
+    expect(screen.getByText(/live typing indicators/i)).toBeInTheDocument();
+    expect(screen.getByText(/experimental beta/i)).toBeInTheDocument();
+  });
 });
 
 describe("VoiceDocsPage", () => {

@@ -5,8 +5,10 @@ import {
   FileLock2,
   FolderHeart,
   ImagePlus,
+  Keyboard,
   MessageCircleMore,
   ShieldCheck,
+  UserPlus,
   UsersRound,
 } from "lucide-react";
 import { useLandingSectionMotion } from "./landingMotion";
@@ -28,11 +30,25 @@ const collaborationSteps = [
     color: "text-emerald-300 border-emerald-400/25 bg-emerald-500/[0.08]",
   },
   {
+    icon: UserPlus,
+    label: "Request to join",
+    detail:
+      "Share your collection ID, send a join request, and start chatting once the owner approves — no silent joins, ever.",
+    color: "text-emerald-300 border-emerald-400/25 bg-emerald-500/[0.08]",
+  },
+  {
     icon: MessageCircleMore,
     label: "Talk in real time",
     detail:
       "Encrypted collection messages keep the project conversation together — matching safety numbers confirm member devices.",
     color: "text-cyan-300 border-cyan-400/25 bg-cyan-500/[0.08]",
+  },
+  {
+    icon: Keyboard,
+    label: "Typing and green ticks",
+    detail:
+      "See live typing indicators, emoji reactions, and delivered-and-read ticks on every message.",
+    color: "text-sky-300 border-sky-400/25 bg-sky-500/[0.08]",
   },
   {
     icon: ImagePlus,
@@ -80,6 +96,7 @@ export default function CollectionCollaboration() {
             Collections let approved people work together without opening an entire workspace. Chat
             in real time, exchange encrypted attachments, and share the documents that belong to the
             project. Members see and use only the sources their collection permissions allow.
+            Collections are in experimental beta while external device proof completes.
           </p>
         </motion.div>
 
