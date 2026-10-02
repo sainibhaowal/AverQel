@@ -44,6 +44,12 @@ type PlansResponse = {
   };
   plans: PlanCard[];
   storage_scope: string;
+  beta?: {
+    enabled: boolean;
+    plan_id: string;
+    plan_name: string;
+    resurface_hours: number;
+  };
 };
 
 function formatBytes(bytes: number): string {
@@ -165,6 +171,26 @@ export default function PlanPage() {
               </div>
             </div>
           </section>
+
+          {data.beta?.enabled && (
+            <section
+              aria-label="Beta notice"
+              className="settings-featured flex flex-col gap-2 p-6 sm:flex-row sm:items-center sm:gap-4"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-foreground">
+                  You&apos;re assigned to {data.beta.plan_name} — free until production release
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Everything in AverQel is open during beta. Paid subscriptions arrive with the
+                  production release; your workspace carries over unchanged.
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                Beta · Free
+              </span>
+            </section>
+          )}
 
           <section>
             <div className="mb-4 flex items-center justify-between">

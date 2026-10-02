@@ -177,11 +177,12 @@ def test_register_rejects_weak_password(
     assert body["error"]["code"] == "INVALID_PASSWORD"
 
 
-def test_register_defaults_to_user_role(
+def test_register_defaults_to_editor_role_while_beta_grant_is_enabled(
     client: TestClient,
     settings: Settings,
 ) -> None:
     settings.bootstrap_super_admin_emails = ["rav.singh@averqel.com"]
+    settings.beta_free_editor_enabled = True
 
     register_response = client.post(
         "/api/v1/auth/register",
@@ -192,6 +193,27 @@ def test_register_defaults_to_user_role(
     login_response = client.post(
         "/api/v1/auth/login",
         json={"email": "normal.user@example.com", "password": "StrongPass!1234"},
+    )
+    assert login_response.status_code == 200
+    assert login_response.json()["user"]["roles"] == ["editor"]
+
+
+def test_register_falls_back_to_user_role_when_beta_grant_is_disabled(
+    client: TestClient,
+    settings: Settings,
+) -> None:
+    settings.bootstrap_super_admin_emails = ["rav.singh@averqel.com"]
+    settings.beta_free_editor_enabled = False
+
+    register_response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "plain.user@example.com", "password": "StrongPass!1234"},
+    )
+    assert register_response.status_code == 200
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "plain.user@example.com", "password": "StrongPass!1234"},
     )
     assert login_response.status_code == 200
     assert login_response.json()["user"]["roles"] == ["user"]

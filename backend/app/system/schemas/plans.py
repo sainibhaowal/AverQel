@@ -37,11 +37,23 @@ class CurrentPlanSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BetaNoticeSchema(BaseModel):
+    """Config-driven beta grant notice. `enabled` is False for admins."""
+
+    enabled: bool = False
+    plan_id: str = "free"
+    plan_name: str = ""
+    resurface_hours: int = 36
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class PlansResponse(BaseModel):
     current_plan: CurrentPlanSchema
     usage: StorageUsageSchema
     plans: list[PlanCardSchema]
     storage_scope: str
+    beta: BetaNoticeSchema = BetaNoticeSchema()
 
     model_config = ConfigDict(extra="forbid")
 

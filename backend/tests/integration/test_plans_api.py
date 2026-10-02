@@ -132,13 +132,38 @@ def test_storage_retention_policy_is_tenant_scoped_and_safe_by_default(
     assert preview["candidate_count"] == 0
 
 
-def test_new_registration_receives_real_free_storage_allocation(
+def test_new_registration_receives_editor_storage_allocation_while_beta_grant_is_enabled(
     client: TestClient,
     db_session,
+    settings,
 ) -> None:
+    settings.beta_free_editor_enabled = True
     response = client.post(
         "/api/v1/auth/register",
         json={"email": "allocated@example.com", "password": "StrongPass!1234"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user_id"]
+    user_id = response.json()["user_id"]
+    tenant_id = db_session.execute(select(User.tenant_id).where(User.id == user_id)).scalar_one()
+    allocation = db_session.execute(
+        select(TenantStorageAllocation).where(TenantStorageAllocation.tenant_id == tenant_id)
+    ).scalar_one()
+    assert user_id
+    assert allocation.plan_id == "editor"
+    assert allocation.allocated_bytes == 1024 * 1024 * 1024
+
+
+def test_new_registration_receives_free_storage_allocation_when_beta_grant_is_disabled(
+    client: TestClient,
+    db_session,
+    settings,
+) -> None:
+    settings.beta_free_editor_enabled = False
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "allocated-free@example.com", "password": "StrongPass!1234"},
     )
 
     assert response.status_code == 200
@@ -196,3 +221,81 @@ def test_chat_history_is_metered_and_rejected_at_the_tenant_limit(
             content="This message must be rejected before it is persisted.",
             user_id=seeded.user_id,
         )
+
+
+def test_beta_notice_is_enabled_for_editor_and_hidden_for_admin(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    settings,
+) -> None:
+    settings.beta_free_editor_enabled = True
+    editor = seed_user(
+        "beta-notice-editor", "beta-editor@example.com", "StrongPass!1234", ("editor",)
+    )
+    admin = seed_user("beta-notice-admin", "beta-admin@example.com", "StrongPass!1234", ("admin",))
+
+    editor_body = client.get(
+        "/api/v1/plans/current",
+        headers={
+            "Authorization": f"Bearer {_login(client, editor)}",
+            "X-Tenant-Id": str(editor.tenant_id),
+        },
+    ).json()
+    assert editor_body["beta"]["enabled"] is True
+    assert editor_body["beta"]["plan_id"] == "editor"
+    assert editor_body["beta"]["plan_name"] == "Editor"
+    assert editor_body["beta"]["resurface_hours"] == 36
+
+    admin_body = client.get(
+        "/api/v1/plans/current",
+        headers={
+            "Authorization": f"Bearer {_login(client, admin)}",
+            "X-Tenant-Id": str(admin.tenant_id),
+        },
+    ).json()
+    assert admin_body["beta"]["enabled"] is False
+
+
+def test_beta_notice_is_disabled_when_grant_flag_is_off(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    settings,
+) -> None:
+    settings.beta_free_editor_enabled = False
+    editor = seed_user("beta-off-editor", "beta-off@example.com", "StrongPass!1234", ("editor",))
+
+    body = client.get(
+        "/api/v1/plans/current",
+        headers={
+            "Authorization": f"Bearer {_login(client, editor)}",
+            "X-Tenant-Id": str(editor.tenant_id),
+        },
+    ).json()
+    assert body["beta"]["enabled"] is False
+
+
+def test_registered_user_sees_editor_plan_and_beta_notice(
+    client: TestClient,
+    settings,
+) -> None:
+    settings.beta_free_editor_enabled = True
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": "beta-new@example.com", "password": "StrongPass!1234"},
+        ).status_code
+        == 200
+    )
+    token_body = client.post(
+        "/api/v1/auth/login",
+        json={"email": "beta-new@example.com", "password": "StrongPass!1234"},
+    ).json()
+    token = token_body["access_token"]
+    tenant_id = token_body["user"]["tenant_id"]
+
+    body = client.get(
+        "/api/v1/plans/current",
+        headers={"Authorization": f"Bearer {token}", "X-Tenant-Id": tenant_id},
+    ).json()
+    assert body["current_plan"]["id"] == "editor"
+    assert body["beta"]["enabled"] is True

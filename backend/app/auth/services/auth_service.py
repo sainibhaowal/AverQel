@@ -340,18 +340,29 @@ class AuthService:
         self.users.create(user)
 
         self._assign_initial_role(user=user)
+        initial_roles = (
+            ("admin",)
+            if self._is_bootstrap_super_admin_email(user.email)
+            else (self._beta_role_name(),)
+        )
         StorageQuotaService(self.db).ensure_allocation(
             tenant_id=user.tenant_id,
-            requested_plan=resolve_storage_plan(
-                ("admin",) if self._is_bootstrap_super_admin_email(user.email) else ("user",)
-            ),
+            requested_plan=resolve_storage_plan(initial_roles),
         )
 
         self.db.commit()
         return user
 
+    def _beta_role_name(self) -> str:
+        """Default role for non-admin registrations (config-driven beta grant)."""
+        if getattr(self.settings, "beta_free_editor_enabled", False):
+            return "editor"
+        return "user"
+
     def _assign_initial_role(self, *, user: User) -> None:
-        role_name = "admin" if self._is_bootstrap_super_admin_email(user.email) else "user"
+        role_name = (
+            "admin" if self._is_bootstrap_super_admin_email(user.email) else self._beta_role_name()
+        )
         self._replace_user_roles(tenant_id=user.tenant_id, user_id=user.id, role_name=role_name)
 
     def complete_external_login(
