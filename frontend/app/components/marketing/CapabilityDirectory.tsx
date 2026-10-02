@@ -9,6 +9,7 @@ import {
   FileStack,
   Globe2,
   Layers3,
+  Mic,
   Network,
   ShieldCheck,
   Sparkles,
@@ -38,7 +39,7 @@ const capabilities: Capability[] = [
     icon: Layers3,
     title: "DeepSpace workspace",
     description:
-      "Keep streaming chat, notes, memory, collections, and durable conversation history in one private workspace.",
+      "Keep streaming chat, notes, memory, collections, and durable conversation history in one private workspace — with a turn queue (pause, resume, steer, retry from checkpoint), approval gates, and reconnectable runs.",
     href: "/documentation/memory-workspace",
     status: "Available",
     accent: "blue",
@@ -95,6 +96,15 @@ const capabilities: Capability[] = [
     href: "/documentation/connectors-mcp",
     status: "Available · approved connectors",
     accent: "rose",
+  },
+  {
+    icon: Mic,
+    title: "Voice + realtime",
+    description:
+      "Dictate with speech-to-text and hear spoken commentary over a private realtime session in DeepSpace.",
+    href: "/documentation/voice",
+    status: "Deployment gated",
+    accent: "violet",
   },
 ];
 

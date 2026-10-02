@@ -9,13 +9,16 @@ making the first page excessively long.
 
 ## 2. What is shown
 
-1. DeepSpace workspace, notes, memory, and collections.
+1. DeepSpace workspace, notes, memory, and collections — including the durable
+   turn queue (pause, resume, steer, retry from checkpoint), approval gates,
+   and reconnectable runs.
 2. Library and document intelligence.
 3. Evidence-first web research.
 4. Sandboxed Python and read-only SQL analysis.
 5. Private artifacts and exports.
 6. Schedules and long-running work.
 7. Providers and approved MCP connections.
+8. Voice and realtime dictation/commentary (deployment-gated).
 
 Each card has a status label. Optional deployment dependencies are stated as setup requirements;
 the page does not imply that a disabled local service is currently running.
@@ -49,8 +52,10 @@ flowchart LR
 4. `frontend/app/components/layout/Footer.tsx` uses the same documentation destinations.
 5. `frontend/app/documentation/_components/docsNav.tsx` exposes the new guides in desktop and mobile
    documentation navigation.
-6. `frontend/app/documentation/library/page.tsx`, `sandbox/page.tsx`, `artifacts/page.tsx`, and
-   `automation/page.tsx` document the capability contracts with numbered workflows and diagrams.
+6. `frontend/app/documentation/library/page.tsx`, `sandbox/page.tsx`, `artifacts/page.tsx`,
+   `automation/page.tsx`, and `voice/page.tsx` document the capability contracts with numbered workflows and diagrams.
+7. `frontend/app/documentation/_components/docsNav.tsx` lists every documentation
+   route, including Voice & Realtime; every card link must resolve to a listed route.
 
 ## 5. Truthfulness and release state
 
@@ -63,6 +68,9 @@ flowchart LR
    worker and Beat services must be running for recurring execution.
 5. Approved MCP connectors are discoverable through the existing marketplace and policy system; the
    landing page does not invent or promise arbitrary integrations.
+6. “Deployment gated” (voice) means the browser controls render only when the
+   realtime service is enabled and the microphone is granted; local transport
+   checks pass, while physical-device and external staging proof remain open.
 
 ## 6. What must not change
 
@@ -78,7 +86,7 @@ flowchart LR
 
 1. `pnpm --dir frontend exec eslint` passes for the changed components and documentation pages.
 2. `pnpm --dir frontend exec tsc --noEmit` passes.
-3. The focused landing/documentation tests cover all seven cards, honest optional-service statuses, and
+3. The focused landing/documentation tests cover all eight cards, honest optional-service statuses, and
    existing hero/documentation rendering.
 4. The full frontend suite remains the release gate; warnings from existing asynchronous UI tests do
    not fail the run.

@@ -84,6 +84,11 @@ export const docsNavGroups: NavGroup[] = [
         href: "/documentation/memory-workspace",
         icon: <Layers3 size={14} />,
       },
+      {
+        title: "Voice & Realtime",
+        href: "/documentation/voice",
+        icon: <Layers3 size={14} />,
+      },
     ],
   },
   {

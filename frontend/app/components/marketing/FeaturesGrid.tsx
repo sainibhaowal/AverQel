@@ -61,7 +61,7 @@ const features = [
       { icon: BrainCircuit, text: "Visible activity, approval prompts, and saved progress" },
       {
         icon: FileText,
-        text: "Streaming answers, approvals, and saved conversation history",
+        text: "Queued turns with pause, resume, steer, and retry from checkpoints",
       },
     ],
   },

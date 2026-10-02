@@ -77,6 +77,7 @@ const capabilities = [
     body: "DeepSpace persists authorized conversation state, activity, and saved answers so users can return to their work after a browser reload or interruption.",
     items: [
       "Saved conversation history and visible activity",
+      "Queued turns with pause, resume, steer, and retry from checkpoints",
       "Tenant-scoped run and workspace state",
       "Explicit cancellation and safe recovery boundaries",
       "Provider or remote-service failures remain visible rather than hidden",

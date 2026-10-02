@@ -78,6 +78,7 @@ const surfaces = [
     bullets: [
       "Streaming answers and saved conversation history",
       "Approval gates for external actions and risky operations",
+      "Queued turns with pause, resume, steer, retry, and reconnect",
       "Notes, exports, memory, and provider controls",
       "Tenant-scoped persistence after reload",
     ],
