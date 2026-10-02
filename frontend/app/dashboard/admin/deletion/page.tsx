@@ -325,7 +325,7 @@ export default function DeletionPage() {
   };
 
   return (
-    <div className="w-full space-y-8">
+    <div className="dashboard-theme-scope w-full space-y-8">
       <DashboardSectionHeader
         title="Data Deletion"
         subtitle="Permanent Workspace Data Removal"

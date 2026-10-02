@@ -34,6 +34,7 @@ from app.integrations.services.connector_orchestrator import ConnectorOrchestrat
 from app.integrations.services.connector_secret_crypto import ConnectorSecretCrypto
 from app.platform.database.session import get_db
 from app.system.models.audit_log import AuditLog
+from app.system.services.storage_quota import StorageQuotaService
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +263,15 @@ def create_connector(
         config=payload.config,
         sync_frequency=payload.sync_frequency,
     )
+    StorageQuotaService(session).ensure_capacity(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        additional_bytes=StorageQuotaService.estimate_bytes(
+            connector.name,
+            connector.config,
+            connector.sync_frequency,
+        ),
+    )
     session.add(connector)
     session.flush()  # Get connector ID
 
@@ -277,6 +287,16 @@ def create_connector(
                 secret_nonce=encrypted.nonce,
                 secret_kid=encrypted.kid,
                 secret_type=key,
+            )
+            StorageQuotaService(session).ensure_capacity(
+                tenant_id=auth.tenant_id,
+                user_id=auth.user_id,
+                additional_bytes=StorageQuotaService.estimate_bytes(
+                    secret.secret_ciphertext,
+                    secret.secret_nonce,
+                    secret.secret_kid,
+                    secret.metadata_json,
+                ),
             )
             session.add(secret)
 
@@ -543,12 +563,28 @@ def update_connector(
     if not connector or connector.tenant_id != auth.tenant_id:
         raise HTTPException(status_code=404, detail="Connector not found")
 
-    if "name" in payload:
-        connector.name = payload["name"]
-    if "config" in payload:
-        connector.config.update(payload["config"])
-    if "sync_frequency" in payload:
-        connector.sync_frequency = payload["sync_frequency"]
+    next_name = payload.get("name", connector.name)
+    next_config = dict(connector.config or {})
+    if "config" in payload and isinstance(payload["config"], dict):
+        next_config.update(payload["config"])
+    next_sync_frequency = payload.get("sync_frequency", connector.sync_frequency)
+    StorageQuotaService(session).ensure_capacity(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        additional_bytes=StorageQuotaService.estimate_bytes(
+            next_name,
+            next_config,
+            next_sync_frequency,
+        ),
+        replacing_bytes=StorageQuotaService.estimate_bytes(
+            connector.name,
+            connector.config,
+            connector.sync_frequency,
+        ),
+    )
+    connector.name = next_name
+    connector.config = next_config
+    connector.sync_frequency = next_sync_frequency
 
     session.commit()
     session.refresh(connector)

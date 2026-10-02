@@ -9,6 +9,17 @@ const nextConfig: NextConfig = {
   },
   // Playwright's local browser uses the loopback origin for Next assets.
   allowedDevOrigins: ["127.0.0.1"],
+  async rewrites() {
+    if (process.env.PLAYWRIGHT_E2E !== "1") {
+      return [];
+    }
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: "http://127.0.0.1:1000/api/v1/:path*",
+      },
+    ];
+  },
   // Explicitly opt in to the Next 16 default bundler while retaining the
   // webpack fallback used by the desktop build and CI compatibility checks.
   turbopack: {

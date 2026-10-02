@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import { updateMCPToolPolicy, type MCPTool, type MCPToolMode } from "@/lib/mcp-api";
 
+import MCPToolDescription from "./MCPToolDescription";
+
 const MODES: MCPToolMode[] = ["always_allow", "needs_approval", "blocked"];
 
 export default function MCPToolPermissionTable({
@@ -35,7 +37,7 @@ export default function MCPToolPermissionTable({
   };
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+    <section className="mcp-tool-permissions-panel rounded-2xl border border-white/10 bg-white/[0.03] p-5">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-white">Tool permissions</h2>
@@ -49,9 +51,9 @@ export default function MCPToolPermissionTable({
       {items.length === 0 ? (
         <p className="mt-5 text-sm text-white/50">No tools are available in the current catalog.</p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
+        <div className="mcp-tool-permissions-list mt-4 max-h-[min(38rem,65vh)] overflow-auto overscroll-contain pr-2 [scrollbar-width:thin]">
           <table className="w-full min-w-[620px] text-left text-sm">
-            <thead className="text-xs tracking-wide text-white/40 uppercase">
+            <thead className="sticky top-0 z-10 bg-surface-1 text-xs tracking-wide text-white/40 uppercase">
               <tr>
                 <th className="pr-4 pb-3">Tool</th>
                 <th className="pr-4 pb-3">Category</th>
@@ -63,10 +65,7 @@ export default function MCPToolPermissionTable({
               {items.map((tool) => (
                 <tr key={tool.name}>
                   <td className="py-3 pr-4">
-                    <p className="font-mono text-emerald-200">{tool.name}</p>
-                    <p className="mt-1 max-w-sm text-xs text-white/45">
-                      {tool.description || "No description provided."}
-                    </p>
+                    <MCPToolDescription tool={tool} />
                   </td>
                   <td className="py-3 pr-4 text-white/55">{tool.category || "General"}</td>
                   <td className="py-3 pr-4">

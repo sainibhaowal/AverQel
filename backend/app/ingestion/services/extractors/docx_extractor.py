@@ -64,15 +64,10 @@ class DocxExtractor(BaseExtractor):
                     blocks.append(" | ".join(values))
 
         text = "\n".join(blocks).strip()
-        if len(text) > self.max_text_chars:
-            raise ApiError(
-                code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
-                message="Parsed document exceeds text processing limit.",
-                status_code=422,
-                details={"max_chars": self.max_text_chars},
-            )
-
         warnings: list[str] = []
+        if len(text) > self.max_text_chars:
+            warnings.append("large_text_processed_in_batches")
+
         extraction_method = self.extraction_method
         if not text:
             fallback, source = extract_openxml_text(
@@ -86,13 +81,8 @@ class DocxExtractor(BaseExtractor):
                 extraction_method = f"docx_{source or 'fallback'}"
             else:
                 warnings.append("docx_no_text_extracted")
-        if len(text) > self.max_text_chars:
-            raise ApiError(
-                code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
-                message="Parsed document exceeds text processing limit.",
-                status_code=422,
-                details={"max_chars": self.max_text_chars},
-            )
+        if len(text) > self.max_text_chars and "large_text_processed_in_batches" not in warnings:
+            warnings.append("large_text_processed_in_batches")
 
         return ExtractionResult(
             text=text,

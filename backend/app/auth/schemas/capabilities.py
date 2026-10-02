@@ -27,6 +27,10 @@ class CapabilitiesResponse(BaseModel):
     supported_formats: list[SupportedFormat]
     ocr_enabled: bool
     vision_enabled: bool
+    research_enabled: bool = False
+    browser_renderer_enabled: bool = False
+    sandbox_enabled: bool = False
+    voice_enabled: bool = False
     limits: SystemLimits
 
     model_config = ConfigDict(extra="forbid")

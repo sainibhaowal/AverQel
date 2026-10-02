@@ -24,6 +24,11 @@ import {
   Sparkles,
   CheckCircle2,
   CircleAlert,
+  BrainCircuit,
+  Globe2,
+  Radio,
+  ServerCog,
+  Mic2,
 } from "lucide-react";
 
 import Link from "next/link";
@@ -37,6 +42,7 @@ import { fetchWithAuth } from "../../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
+import { useRealtimeEvents, type RealtimeConnectionState } from "@/lib/realtime";
 
 interface DashboardStats {
   total_documents: number;
@@ -114,6 +120,21 @@ interface DashboardOverview {
   provider_trend: DashboardProviderTrendPoint[];
 }
 
+interface DashboardCapabilities {
+  ocr_enabled: boolean;
+  vision_enabled: boolean;
+  research_enabled: boolean;
+  browser_renderer_enabled: boolean;
+  sandbox_enabled: boolean;
+  voice_enabled: boolean;
+}
+
+interface DashboardServiceSnapshot {
+  storage: "ready" | "unavailable";
+  mcp: "connected" | "empty" | "unavailable";
+  agent: "ready" | "unavailable";
+}
+
 type AttentionTone = "healthy" | "working" | "risk" | "neutral";
 
 interface AttentionItem {
@@ -152,6 +173,15 @@ const EMPTY_OVERVIEW: DashboardOverview = {
   provider_trend: [],
 };
 
+const EMPTY_CAPABILITIES: DashboardCapabilities = {
+  ocr_enabled: false,
+  vision_enabled: false,
+  research_enabled: false,
+  browser_renderer_enabled: false,
+  sandbox_enabled: false,
+  voice_enabled: false,
+};
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const { theme } = useTheme();
@@ -159,33 +189,75 @@ export default function DashboardPage() {
   const hasProviderSettingsAccess = hasProviderAccess(user?.roles);
   const [overview, setOverview] = useState<DashboardOverview>(EMPTY_OVERVIEW);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [clientClock, setClientClock] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<DashboardCapabilities>(EMPTY_CAPABILITIES);
+  const [services, setServices] = useState<DashboardServiceSnapshot>({
+    storage: "unavailable",
+    mcp: "unavailable",
+    agent: "unavailable",
+  });
 
   const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   const fetchDashboardData = useCallback(async () => {
+    setLoadError(null);
     try {
       const overviewRes = (await fetchWithAuth("/dashboard/overview")) as Response;
 
-      if (overviewRes.ok) {
-        setOverview(await overviewRes.json());
+      if (!overviewRes.ok) {
+        throw new Error(`Dashboard overview request failed (${overviewRes.status})`);
       }
+
+      setOverview(await overviewRes.json());
     } catch (error) {
       console.error("Failed to fetch dashboard overview", error);
+      setLoadError("Live dashboard data could not be loaded. Retry to reconnect.");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const fetchCapabilityData = useCallback(async () => {
+    const [capabilitiesRes, storageRes, mcpRes, agentRes] = await Promise.allSettled([
+      fetchWithAuth("/capabilities"),
+      fetchWithAuth("/storage/current"),
+      fetchWithAuth("/mcp/servers"),
+      fetchWithAuth("/deepspace/chats/operational-summary"),
+    ]);
+    if (capabilitiesRes.status === "fulfilled" && capabilitiesRes.value.ok) {
+      setCapabilities((await capabilitiesRes.value.json()) as DashboardCapabilities);
+    }
+    setServices({
+      storage: storageRes.status === "fulfilled" && storageRes.value.ok ? "ready" : "unavailable",
+      mcp:
+        mcpRes.status !== "fulfilled" || !mcpRes.value.ok
+          ? "unavailable"
+          : (await mcpRes.value.json()).length > 0
+            ? "connected"
+            : "empty",
+      agent: agentRes.status === "fulfilled" && agentRes.value.ok ? "ready" : "unavailable",
+    });
   }, []);
 
   useEffect(() => {
     queueMicrotask(() => {
       setClientClock(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
       void fetchDashboardData();
+      void fetchCapabilityData();
     });
-  }, [fetchDashboardData]);
+  }, [fetchCapabilityData, fetchDashboardData]);
 
   useVisibilityAwareInterval(fetchDashboardData, 30000);
+  useVisibilityAwareInterval(fetchCapabilityData, 30000);
+  const realtimeStatus = useRealtimeEvents(
+    () => {
+      void fetchDashboardData();
+      void fetchCapabilityData();
+    },
+    ["documents", "storage", "conversations", "mcp", "metrics"],
+  );
 
   const stats = overview.stats;
   const breakdown = overview.document_breakdown;
@@ -316,6 +388,24 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-theme-scope space-y-8 pb-10">
+      {loadError ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-300/70 bg-rose-50 px-4 py-3 text-sm text-rose-900 shadow-sm"
+        >
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              void fetchDashboardData();
+            }}
+            className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-bold text-rose-800 transition hover:bg-rose-100"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       <motion.section
         {...CARD_ENTER}
         transition={{ duration: 0.5 }}
@@ -450,6 +540,11 @@ export default function DashboardPage() {
       </motion.section>
 
       <DashboardTelemetry overview={overview} loading={loading} theme={theme} />
+      <DashboardCapabilityGrid
+        capabilities={capabilities}
+        services={services}
+        realtimeStatus={realtimeStatus}
+      />
       <DashboardTrends overview={overview} loading={loading} />
 
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-[0.95fr_1.05fr_0.95fr]">
@@ -727,7 +822,7 @@ export default function DashboardPage() {
                                 config.color.includes("emerald")
                                   ? "bg-emerald-500"
                                   : config.color.includes("blue")
-                                    ? "bg-blue-500"
+                                    ? "bg-cyan-500"
                                     : config.color.includes("amber")
                                       ? "bg-amber-500"
                                       : "bg-primary"
@@ -777,7 +872,7 @@ export default function DashboardPage() {
                                           subConfig.color.includes("emerald")
                                             ? "bg-emerald-500/50"
                                             : subConfig.color.includes("blue")
-                                              ? "bg-blue-500/50"
+                                              ? "bg-cyan-500/50"
                                               : "bg-primary/50"
                                         }`}
                                       />
@@ -830,7 +925,7 @@ export default function DashboardPage() {
                               : runtime.feature_scope === "embeddings"
                                 ? "!border-cyan-300 !bg-cyan-50/70 !text-cyan-900 dark:!border-cyan-500/40 dark:!bg-cyan-500/15 dark:!text-cyan-300"
                                 : runtime.feature_scope === "reranking"
-                                  ? "!border-purple-300 !bg-purple-50/70 !text-purple-900 dark:!border-purple-500/40 dark:!bg-purple-500/15 dark:!text-purple-300"
+                                  ? "!border-teal-300 !bg-teal-50/70 !text-teal-900 dark:!border-teal-500/40 dark:!bg-teal-500/15 dark:!text-teal-300"
                                   : "!border-amber-300 !bg-amber-50/70 !text-amber-900 dark:!border-amber-500/40 dark:!bg-amber-500/15 dark:!text-amber-300"
                           }`}
                         >
@@ -962,6 +1057,140 @@ export default function DashboardPage() {
   );
 }
 
+function DashboardCapabilityGrid({
+  capabilities,
+  services,
+  realtimeStatus,
+}: {
+  capabilities: DashboardCapabilities;
+  services: DashboardServiceSnapshot;
+  realtimeStatus: RealtimeConnectionState;
+}) {
+  const statusLabel = (enabled: boolean) => (enabled ? "Ready" : "Not enabled");
+  const statusClass = (ready: boolean) =>
+    ready
+      ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
+      : "border-amber-400/25 bg-amber-400/10 text-amber-300";
+  const realtimeReady = realtimeStatus === "connected";
+  const cards = [
+    {
+      label: "Realtime gateway",
+      detail:
+        realtimeStatus === "connected"
+          ? "Live events and missed-event replay active"
+          : realtimeStatus === "reconnecting"
+            ? "Reconnecting and restoring missed events"
+            : "Waiting for authenticated event connection",
+      value: realtimeStatus === "connected" ? "Live" : realtimeStatus,
+      ready: realtimeReady,
+      icon: Radio,
+    },
+    {
+      label: "DeepSpace agent",
+      detail: services.agent === "ready" ? "Runs, tools, and model activity available" : "Operational data unavailable",
+      value: services.agent === "ready" ? "Ready" : "Check",
+      ready: services.agent === "ready",
+      icon: BrainCircuit,
+    },
+    {
+      label: "Research tools",
+      detail: capabilities.research_enabled
+        ? capabilities.browser_renderer_enabled
+          ? "Web search, URL reading, and browser fallback enabled"
+          : "Web search and URL reading enabled"
+        : "Research tools disabled",
+      value: capabilities.research_enabled ? "Ready" : "Off",
+      ready: capabilities.research_enabled,
+      icon: Globe2,
+    },
+    {
+      label: "Sandbox",
+      detail: capabilities.sandbox_enabled
+        ? "Isolated execution endpoint enabled"
+        : "Disabled until isolated executor is deployed",
+      value: statusLabel(capabilities.sandbox_enabled),
+      ready: capabilities.sandbox_enabled,
+      icon: ServerCog,
+    },
+    {
+      label: "Voice transport",
+      detail: capabilities.voice_enabled
+        ? "LiveKit voice transport configured"
+        : "Voice transport is not configured",
+      value: statusLabel(capabilities.voice_enabled),
+      ready: capabilities.voice_enabled,
+      icon: Mic2,
+    },
+    {
+      label: "Storage lifecycle",
+      detail:
+        services.storage === "ready"
+          ? "Quota, retention, and archive state available"
+          : "Storage status unavailable",
+      value: services.storage === "ready" ? "Ready" : "Check",
+      ready: services.storage === "ready",
+      icon: Database,
+    },
+    {
+      label: "MCP connections",
+      detail:
+        services.mcp === "connected"
+          ? "Connected workspace servers available"
+          : services.mcp === "empty"
+            ? "No connected servers yet"
+            : "MCP status unavailable",
+      value: services.mcp === "connected" ? "Ready" : services.mcp === "empty" ? "Empty" : "Check",
+      ready: services.mcp !== "unavailable",
+      icon: Cable,
+    },
+    {
+      label: "Document intelligence",
+      detail: `OCR ${capabilities.ocr_enabled ? "enabled" : "off"} · Vision ${capabilities.vision_enabled ? "enabled" : "off"}`,
+      value: capabilities.ocr_enabled || capabilities.vision_enabled ? "Ready" : "Basic",
+      ready: capabilities.ocr_enabled || capabilities.vision_enabled,
+      icon: FileSearch,
+    },
+  ];
+
+  return (
+    <motion.section
+      {...CARD_ENTER}
+      transition={{ duration: 0.45, delay: 0.16 }}
+      className="theme-panel relative overflow-hidden rounded-[1.45rem] p-5 sm:p-6"
+      aria-label="AverQel capability health"
+    >
+      <div className="pointer-events-none absolute -top-24 right-0 h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl" />
+      <div className="relative flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-primary text-[10px] font-black tracking-[0.22em] uppercase">Capability network</p>
+          <h2 className="text-foreground mt-1 text-xl font-black tracking-tight">Everything connected to your workspace</h2>
+          <p className="text-muted-foreground mt-1 text-xs leading-5">Live readiness signals for the systems behind your daily work.</p>
+        </div>
+        <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black tracking-[0.12em] uppercase ${statusClass(realtimeReady)}`}>
+          {realtimeReady ? "Live monitoring" : "Reconnecting"}
+        </span>
+      </div>
+      <div className="relative mt-5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div key={card.label} className="group border-foreground/10 bg-foreground/[0.025] hover:border-primary/25 rounded-xl border p-3.5 transition-colors dark:border-white/8 dark:bg-white/[0.025]">
+              <div className="flex items-start justify-between gap-3">
+                <span className="theme-accent-pill flex h-8 w-8 items-center justify-center rounded-lg">
+                  <Icon size={15} />
+                </span>
+                <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusClass(card.ready)}`}>{card.value}</span>
+              </div>
+              <p className="text-foreground mt-3 text-xs font-bold">{card.label}</p>
+              <p className="text-muted-foreground mt-1 min-h-8 text-[10px] leading-4">{card.detail}</p>
+            </div>
+          );
+        })}
+      </div>
+    </motion.section>
+  );
+}
+
 function DashboardTelemetry({
   overview,
   loading,
@@ -990,8 +1219,8 @@ function DashboardTelemetry({
     {
       label: "Quarantined",
       value: breakdown.quarantined,
-      tone: "bg-violet-400",
-      text: "text-violet-300",
+      tone: "bg-emerald-400",
+      text: "text-emerald-300",
     },
   ];
   const pipelineTotal = pipeline.reduce((sum, item) => sum + item.value, 0);
@@ -1051,7 +1280,7 @@ function DashboardTelemetry({
                         ? "#fbbf24"
                         : color === "rose"
                           ? "#fb7185"
-                          : "#a78bfa";
+                          : "#34d399";
                 return (
                   <motion.circle
                     key={item.label}
@@ -1104,7 +1333,7 @@ function DashboardTelemetry({
             label="Queries recorded"
             value={overview.stats.total_queries}
             max={Math.max(1, overview.stats.total_queries)}
-            tone="violet"
+            tone="cyan"
           />
           <div>
             <div className="mb-2 flex items-center justify-between text-xs">
@@ -1206,7 +1435,7 @@ function DashboardTrends({ overview, loading }: { overview: DashboardOverview; l
         />
         <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
           <TrendLegend color="bg-cyan-400" label="Documents" />
-          <TrendLegend color="bg-violet-400" label="Queries" />
+          <TrendLegend color="bg-emerald-400" label="Queries" />
           <span className="text-muted-foreground ml-auto">
             {loading ? "Loading telemetry" : `${activityTotal} actions recorded`}
           </span>
@@ -1356,7 +1585,7 @@ function TrendChart({ points, loading }: { points: DashboardTrendPoint[]; loadin
           <motion.path
             d={makePath("queries")}
             fill="none"
-            stroke="#a78bfa"
+            stroke="#34d399"
             strokeWidth="3"
             strokeLinecap="round"
             initial={{ pathLength: 0 }}
@@ -1392,7 +1621,7 @@ function TelemetryMeter({
   label: string;
   value: number;
   max: number;
-  tone: "cyan" | "violet";
+  tone: "cyan" | "emerald";
 }) {
   const percentage = Math.min(100, Math.max(0, (value / Math.max(1, max)) * 100));
   return (
@@ -1403,7 +1632,7 @@ function TelemetryMeter({
       </div>
       <div className="bg-foreground/10 h-2 overflow-hidden rounded-full dark:bg-white/10">
         <motion.div
-          className={`h-full rounded-full ${tone === "cyan" ? "bg-cyan-400" : "bg-violet-400"}`}
+          className={`h-full rounded-full ${tone === "cyan" ? "bg-cyan-400" : "bg-emerald-400"}`}
           initial={{ width: 0 }}
           animate={{ width: `${percentage}%` }}
           transition={{ duration: 0.65, ease: "easeOut" }}
@@ -1521,7 +1750,7 @@ function getActivityConfig(event: DashboardActivityItem) {
         : isError
           ? "Probe Warning"
           : "Connectivity Probe",
-      color: isSuccess ? "text-emerald-500" : isError ? "text-rose-500" : "text-blue-500",
+      color: isSuccess ? "text-emerald-500" : isError ? "text-rose-500" : "text-cyan-600",
       detail: event.resource_id ? `Target: ${event.resource_id.slice(0, 8)}` : "System Path",
     };
   }
@@ -1561,7 +1790,7 @@ function getActivityConfig(event: DashboardActivityItem) {
     return {
       icon: Settings2,
       label: "System Configuration",
-      color: "text-indigo-500",
+      color: "text-teal-600",
       detail: "Sync Applied",
     };
   }
@@ -1569,7 +1798,7 @@ function getActivityConfig(event: DashboardActivityItem) {
     return {
       icon: Layers3,
       label: "Namespace Event",
-      color: "text-purple-500",
+      color: "text-emerald-600",
       detail: "State Change",
     };
   }

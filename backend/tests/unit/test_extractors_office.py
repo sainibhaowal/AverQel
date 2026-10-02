@@ -2,9 +2,6 @@ from io import BytesIO
 from unittest.mock import MagicMock, patch
 from zipfile import ZIP_DEFLATED, ZipFile
 
-import pytest
-
-from app.core.errors import ApiError
 from app.ingestion.services.extractors.base import ExtractionRequest
 from app.ingestion.services.extractors.docx_extractor import DocxExtractor
 from app.ingestion.services.extractors.pptx_extractor import PptxExtractor
@@ -53,9 +50,9 @@ def test_docx_extractor_exceeds_limit(mock_load):
         payload=b"dummy",
     )
 
-    with pytest.raises(ApiError) as exc:
-        extractor.extract(req)
-    assert exc.value.code == "DOCUMENT_TEXT_LIMIT_EXCEEDED"
+    result = extractor.extract(req)
+    assert result.text == "Longtext here"
+    assert "large_text_processed_in_batches" in result.warnings
 
 
 @patch("app.ingestion.services.extractors.docx_extractor.DocxExtractor._load_document_constructor")

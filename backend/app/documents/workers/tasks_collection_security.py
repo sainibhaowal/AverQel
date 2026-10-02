@@ -35,12 +35,16 @@ def _send(subscription: CollectionPushSubscription, payload: dict[str, str]) -> 
         raise RuntimeError("web push VAPID credentials are not configured")
     if webpush is None:
         raise RuntimeError("pywebpush is not installed in this worker image")
-    auth = ConnectorSecretCrypto(settings).decrypt(
-        ciphertext=subscription.auth_ciphertext,
-        nonce=subscription.auth_nonce,
-        kid=subscription.auth_kid,
-        aad=f"collection-push:{subscription.tenant_id}:{subscription.user_id}".encode(),
-    ).decode("utf-8")
+    auth = (
+        ConnectorSecretCrypto(settings)
+        .decrypt(
+            ciphertext=subscription.auth_ciphertext,
+            nonce=subscription.auth_nonce,
+            kid=subscription.auth_kid,
+            aad=f"collection-push:{subscription.tenant_id}:{subscription.user_id}".encode(),
+        )
+        .decode("utf-8")
+    )
     webpush(
         subscription_info={
             "endpoint": subscription.endpoint,
@@ -65,7 +69,10 @@ def dispatch_collection_push_outbox(*, limit: int = 100) -> int:
             session.query(CollectionPushDelivery)
             .filter(
                 CollectionPushDelivery.status.in_(("queued", "retrying")),
-                (CollectionPushDelivery.next_attempt_at.is_(None) | (CollectionPushDelivery.next_attempt_at <= now)),
+                (
+                    CollectionPushDelivery.next_attempt_at.is_(None)
+                    | (CollectionPushDelivery.next_attempt_at <= now)
+                ),
             )
             .order_by(CollectionPushDelivery.created_at.asc(), CollectionPushDelivery.id.asc())
             .with_for_update(skip_locked=True)
@@ -127,7 +134,9 @@ def dispatch_collection_push_outbox(*, limit: int = 100) -> int:
                 delivery.last_error = "; ".join(failures)[:2000]
             else:
                 delivery.status = "retrying"
-                delivery.next_attempt_at = now + timedelta(seconds=min(900, 2 ** delivery.attempt_count * 5))
+                delivery.next_attempt_at = now + timedelta(
+                    seconds=min(900, 2**delivery.attempt_count * 5)
+                )
                 delivery.last_error = "; ".join(failures)[:2000]
             processed += 1
         session.commit()

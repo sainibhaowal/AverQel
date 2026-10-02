@@ -24,6 +24,18 @@ interface SummaryResponse {
   items: TenantDocumentSummary[];
 }
 
+interface RecoveryItem {
+  job_id: string;
+  document_id: string;
+  status: string;
+  checkpoint_stage?: string | null;
+  checkpoint_cursor?: number | null;
+  resume_count: number;
+  pause_reason?: string | null;
+  last_error_message?: string | null;
+  updated_at?: string;
+}
+
 const formatStorage = (bytes: number) => {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -34,6 +46,7 @@ export default function AdminDocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [recovery, setRecovery] = useState<RecoveryItem[]>([]);
 
   const totals = useMemo(
     () =>
@@ -59,6 +72,11 @@ export default function AdminDocumentsPage() {
       }
       const data = (await res.json()) as SummaryResponse;
       setItems(Array.isArray(data.items) ? data.items : []);
+      const recoveryRes = (await fetchWithAuth("/admin/documents/recovery-history?limit=50")) as Response;
+      if (recoveryRes.ok) {
+        const recoveryData = (await recoveryRes.json()) as { items?: RecoveryItem[] };
+        setRecovery(Array.isArray(recoveryData.items) ? recoveryData.items : []);
+      }
       setLastUpdated(new Date());
     } catch (err) {
       console.error(err);
@@ -79,8 +97,8 @@ export default function AdminDocumentsPage() {
         title="Document Privacy"
         subtitle="Metadata-Only Platform Oversight"
         icon={ShieldCheck}
-        accentClassName="bg-blue-500 text-blue-500"
-        accentGlowClassName="shadow-[0_0_20px_rgba(59,130,246,0.4)]"
+        accentClassName="bg-emerald-500 text-emerald-500"
+        accentGlowClassName="shadow-[0_0_20px_rgba(16,185,129,0.35)]"
         backHref="/dashboard"
         backLabel="Back To Dashboard"
         actions={
@@ -168,6 +186,14 @@ export default function AdminDocumentsPage() {
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="theme-panel rounded-[1.5rem] p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div><h2 className="text-foreground text-sm font-bold tracking-[0.18em] uppercase">Recovery history</h2><p className="text-muted-foreground mt-1 text-xs">Checkpoint-based resumptions and failure context, scoped to the current admin tenant.</p></div>
+          <span className="text-muted-foreground text-xs">{recovery.length} records</span>
+        </div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="text-muted-foreground border-glass-border border-b text-xs uppercase"><tr><th className="py-3 pr-4">Document</th><th className="py-3 pr-4">Stage</th><th className="py-3 pr-4">Status</th><th className="py-3 pr-4">Resumes</th><th className="py-3 pr-4">Reason</th></tr></thead><tbody>{recovery.map((item) => <tr key={item.job_id} className="border-glass-border border-b last:border-b-0"><td className="text-foreground py-3 pr-4 font-mono text-xs">{item.document_id}</td><td className="py-3 pr-4">{item.checkpoint_stage ?? "—"}{item.checkpoint_cursor != null ? ` @ ${item.checkpoint_cursor}` : ""}</td><td className="py-3 pr-4">{item.status}</td><td className="py-3 pr-4">{item.resume_count}</td><td className="text-muted-foreground max-w-[320px] truncate py-3 pr-4">{item.pause_reason || item.last_error_message || "—"}</td></tr>)}</tbody></table>{!recovery.length ? <p className="text-muted-foreground py-6 text-center text-sm">No recovery events recorded.</p> : null}</div>
       </section>
     </div>
   );

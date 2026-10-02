@@ -8,6 +8,7 @@ class CollectionChatMessage(BaseModel):
     collection_id: str
     user_id: str
     user_email: str
+    user_avatar: str | None = None
     message: str
     client_message_id: str | None = None
     status: str = "sent"
@@ -17,6 +18,8 @@ class CollectionChatMessage(BaseModel):
     media_object_key: str | None = None
     reactions: str = "{}"
     receipts: list[dict[str, str | None]] = Field(default_factory=list)
+    is_encrypted: bool = False
+    crypto_epoch: int = 0
     created_at: str
 
 

@@ -31,7 +31,12 @@ class Message(Base):
     )
     active_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("message_versions.id", ondelete="SET NULL"),
+        ForeignKey(
+            "message_versions.id",
+            ondelete="SET NULL",
+            name="fk_messages_active_version_id",
+            use_alter=True,
+        ),
         nullable=True,
         index=True,
     )

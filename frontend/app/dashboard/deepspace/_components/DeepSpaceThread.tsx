@@ -43,10 +43,45 @@ const RECENT_MESSAGE_WINDOW = 14;
 const HISTORY_REVEAL_BATCH = 20;
 const VIRTUAL_WINDOW_MIN_MESSAGES = 14;
 const VIRTUAL_WINDOW_OVERSCAN_PX = 1200;
+const ROTATING_PROMPT_BANK = [
+  "Turn a rough idea into a clear, practical plan.",
+  "Rewrite this message so it sounds concise and confident.",
+  "Compare these options and explain the trade-offs.",
+  "Help me break this complex task into the next three steps.",
+  "Summarize the important points and highlight what is missing.",
+  "Review this draft and suggest a stronger structure.",
+  "Explain this topic simply, then give me an expert version.",
+  "Find the risks in this approach and propose safer alternatives.",
+  "Create a focused checklist I can use to finish this work.",
+  "Transform these notes into a polished update for my team.",
+  "Help me decide what deserves attention first.",
+  "Ask the right questions before helping me solve this problem.",
+] as const;
+const ROTATING_WELCOME_MESSAGES = [
+  "What would you like to work through today?",
+  "Bring an idea, question, or task — we can shape it together.",
+  "Ready when you are. Start with a thought and build from there.",
+  "Draft, explore, compare, or solve something with DeepSpace.",
+] as const;
+
+function formatUserName(value?: string | null): string {
+  const source = (value || "")
+    .split("@")[0]
+    .replace(/[._-]+/g, " ")
+    .trim();
+  if (!source) return "there";
+  return source
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
 
 interface DeepSpaceThreadProps {
   messages: DeepSpaceMessage[];
   emptyPrompts: string[];
+  userName?: string | null;
   onPromptSelect: (prompt: string) => void;
   onInsertLatestAnswer: () => void;
   onDeleteAssistant?: (messageId: string) => void;
@@ -111,7 +146,7 @@ function QuestionCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.24, ease: "easeOut" }}
       aria-label="DeepSpace question"
-      className="relative mt-5 max-w-2xl overflow-hidden rounded-2xl border border-cyan-300/20 bg-[linear-gradient(135deg,rgba(18,42,42,.82),rgba(8,20,20,.92))] p-4 shadow-[0_18px_60px_-32px_rgba(34,211,238,.7)] backdrop-blur-xl sm:p-5"
+      className="deepspace-question-card relative mt-5 max-w-2xl overflow-hidden rounded-2xl border border-cyan-300/20 bg-[linear-gradient(135deg,rgba(18,42,42,.82),rgba(8,20,20,.92))] p-4 shadow-[0_18px_60px_-32px_rgba(34,211,238,.7)] backdrop-blur-xl sm:p-5"
     >
       <div className="pointer-events-none absolute -top-16 -right-16 h-32 w-32 rounded-full bg-cyan-300/10 blur-3xl" />
       <div className="relative flex items-start gap-3">
@@ -120,14 +155,19 @@ function QuestionCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-bold tracking-[0.18em] text-cyan-100/70 uppercase">
-              DeepSpace needs your input
+            <span className="deepspace-question-title text-[10px] font-bold tracking-[0.18em] text-cyan-100/70 uppercase">
+              Action needed to continue
             </span>
-            <span className="rounded-full border border-cyan-200/15 bg-cyan-200/10 px-2 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-cyan-100/60 uppercase">
-              Continue task
+            <span className="deepspace-question-status rounded-full border border-cyan-200/15 bg-cyan-200/10 px-2 py-0.5 text-[9px] font-semibold tracking-[0.12em] text-cyan-100/60 uppercase">
+              Paused safely
             </span>
           </div>
-          <p className="mt-2 text-sm leading-6 text-white/90">{question}</p>
+          <p className="deepspace-question-prompt mt-2 text-sm leading-6 text-white/90">
+            {question}
+          </p>
+          <p className="deepspace-question-hint mt-2 text-[11px] leading-5 text-cyan-100/50">
+            Choose an option to send your decision and resume this task.
+          </p>
         </div>
       </div>
 
@@ -141,19 +181,22 @@ function QuestionCard({
               onClick={() => void submit(option)}
               whileHover={{ y: -1 }}
               whileTap={{ scale: 0.985 }}
-              className="group flex min-h-12 items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-2.5 text-left text-xs text-white/75 transition-colors hover:border-cyan-200/35 hover:bg-cyan-200/[0.09] hover:text-white disabled:cursor-wait disabled:opacity-50"
+              aria-label={`${index === 0 ? "Recommended " : "Choose: "}${option}`}
+              className="deepspace-question-option group flex min-h-14 items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-3 text-left text-xs text-white/75 transition-colors hover:border-cyan-200/35 hover:bg-cyan-200/[0.09] hover:text-white focus-visible:ring-2 focus-visible:ring-cyan-200/60 focus-visible:outline-none disabled:cursor-wait disabled:opacity-50"
             >
-              <span className="min-w-0">
+              <span className="min-w-0 flex-1">
                 {index === 0 ? (
-                  <span className="mb-1 block text-[9px] font-bold tracking-[0.14em] text-cyan-200/70 uppercase">
+                  <span className="deepspace-question-recommended mb-1 block text-[9px] font-bold tracking-[0.14em] text-cyan-200/70 uppercase">
                     Recommended
                   </span>
                 ) : null}
-                <span className="block truncate">{option}</span>
+                <span className="deepspace-question-option-text block leading-5 break-words">
+                  {option}
+                </span>
               </span>
               <ArrowUp
                 size={14}
-                className="shrink-0 -rotate-45 text-cyan-200/50 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                className="deepspace-question-option-arrow shrink-0 -rotate-45 text-cyan-200/50 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
               />
             </motion.button>
           ))}
@@ -165,7 +208,7 @@ function QuestionCard({
           type="button"
           disabled={submitting}
           onClick={() => setOtherOpen((open) => !open)}
-          className="text-xs font-medium text-white/55 transition-colors hover:text-cyan-100 disabled:opacity-50"
+          className="deepspace-question-other text-xs font-medium text-white/55 transition-colors hover:text-cyan-100 disabled:opacity-50"
         >
           {otherOpen ? "Write a different answer" : "Other / write my own answer"}
         </button>
@@ -195,13 +238,13 @@ function QuestionCard({
                 rows={2}
                 disabled={submitting}
                 placeholder="Write your answer…"
-                className="min-h-12 min-w-0 flex-1 resize-none rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-xs leading-5 text-white/85 transition-colors outline-none placeholder:text-white/30 focus:border-cyan-200/45 focus:bg-black/30"
+                className="deepspace-question-input min-h-12 min-w-0 flex-1 resize-none rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-xs leading-5 text-white/85 transition-colors outline-none placeholder:text-white/30 focus:border-cyan-200/45 focus:bg-black/30"
               />
               <button
                 type="submit"
                 disabled={!customAnswer.trim() || submitting}
                 aria-label="Send answer"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-200/25 bg-cyan-300/15 text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-35"
+                className="deepspace-question-submit flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-200/25 bg-cyan-300/15 text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-35"
               >
                 {submitting ? (
                   <LoaderCircle size={16} className="animate-spin" />
@@ -214,7 +257,7 @@ function QuestionCard({
         </AnimatePresence>
       </div>
       {submitting ? (
-        <div className="mt-3 flex items-center gap-2 text-[10px] font-medium text-cyan-100/60">
+        <div className="deepspace-question-sending mt-3 flex items-center gap-2 text-[10px] font-medium text-cyan-100/60">
           <LoaderCircle size={12} className="animate-spin" /> Sending answer and resuming the task…
         </div>
       ) : null}
@@ -384,6 +427,22 @@ const MessageBubble = memo(
                 ) : (
                   message.content
                 )}
+                {message.attachments?.length ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Attachments sent with this message">
+                    {message.attachments.map((attachment) => (
+                      <button
+                        key={attachment.id}
+                        type="button"
+                        onClick={() => window.dispatchEvent(new CustomEvent("deepspace-library-open", { detail: { fileId: attachment.id } }))}
+                        className="flex min-w-0 items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-50/70 px-2 py-2 text-left text-xs hover:bg-emerald-100 dark:bg-emerald-950/30"
+                        title="Open this secure file in Library"
+                      >
+                        <FileText size={15} className="shrink-0 text-emerald-600" />
+                        <span className="min-w-0"><span className="block truncate font-semibold">{attachment.name}</span><span className="text-[10px] text-emerald-800/70">Saved in Library</span></span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="text-muted-foreground mt-2 flex items-center justify-end gap-3 text-[10px]">
@@ -502,7 +561,8 @@ const MessageBubble = memo(
             <div className="text-foreground/90 leading-relaxed">
               {message.thinkingContent?.trim() ||
               message.agentSteps?.some((step) => step.type !== "thinking") ||
-              message.timeline?.length ? (
+              message.timeline?.length ||
+              message.status === "streaming" ? (
                 <DeepSpaceThinkingPanel
                   content={message.thinkingContent ?? ""}
                   isStreaming={message.status === "streaming"}
@@ -591,11 +651,18 @@ const MessageBubble = memo(
                 <motion.div
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="mb-4 flex items-center gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.05] px-3 py-2 text-xs text-cyan-100/80"
+                  className="deepspace-answer-strip mb-4 flex items-center gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.05] px-3 py-2 text-xs text-cyan-100/80"
                 >
-                  <MessageCircleQuestion size={14} className="shrink-0 text-cyan-300" />
-                  <span className="font-semibold text-cyan-200/80">Your answer</span>
-                  <span className="min-w-0 truncate">{message.userQuestionAnswer}</span>
+                  <MessageCircleQuestion
+                    size={14}
+                    className="deepspace-answer-icon shrink-0 text-cyan-300"
+                  />
+                  <span className="deepspace-answer-label font-semibold text-cyan-200/80">
+                    Your answer
+                  </span>
+                  <span className="deepspace-answer-text min-w-0 truncate">
+                    {message.userQuestionAnswer}
+                  </span>
                 </motion.div>
               ) : null}
 
@@ -630,15 +697,19 @@ const MessageBubble = memo(
               ) : null}
 
               {message.error ? (
-                <div className="mt-6 mb-6 rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-sm shadow-lg shadow-red-500/5">
-                  <div className="mb-2 flex items-center gap-2 text-red-400">
+                <div className="deepspace-execution-error mt-6 mb-6 rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-sm shadow-lg shadow-red-500/5">
+                  <div className="deepspace-execution-error-title mb-2 flex items-center gap-2 text-red-400">
                     <AlertCircle size={14} />
                     <span className="text-[10px] font-black tracking-widest uppercase">
                       System Execution Fault
                     </span>
                   </div>
-                  <p className="font-semibold text-red-200/90">{message.error.message}</p>
-                  <p className="mt-1 font-mono text-[10px] text-red-400/50">{message.error.code}</p>
+                  <p className="deepspace-execution-error-message font-semibold text-red-200/90">
+                    {message.error.message}
+                  </p>
+                  <p className="deepspace-execution-error-code mt-1 font-mono text-[10px] text-red-400/50">
+                    {message.error.code}
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -1027,6 +1098,7 @@ function buildWindowedMessages(
 export default function DeepSpaceThread({
   messages,
   emptyPrompts,
+  userName,
   onPromptSelect,
   onRegenerate = () => {},
   onStartEdit = () => {},
@@ -1084,6 +1156,20 @@ export default function DeepSpaceThread({
     [hasDynamicAgentContent, hasStreamingMessage, renderSourceMessages, scrollMetrics],
   );
   const shouldVirtualize = windowedMessages.visibleMessages.length < renderSourceMessages.length;
+  const [promptRotation, setPromptRotation] = useState(0);
+  const promptPool = Array.from(new Set([...emptyPrompts, ...ROTATING_PROMPT_BANK]));
+  const visiblePrompts = Array.from(
+    { length: 4 },
+    (_, index) => promptPool[(promptRotation + index) % promptPool.length],
+  );
+
+  useEffect(() => {
+    if (messages.length > 0 || promptPool.length <= 4) return;
+    const timer = window.setInterval(() => {
+      setPromptRotation((current) => (current + 1) % promptPool.length);
+    }, 6500);
+    return () => window.clearInterval(timer);
+  }, [messages.length, promptPool.length]);
 
   if (messages.length === 0) {
     return (
@@ -1091,14 +1177,14 @@ export default function DeepSpaceThread({
         <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <div className="theme-accent-pill mb-4 inline-flex rounded-xl p-3 shadow-[0_20px_56px_-36px_rgba(var(--primary),0.28)]">
+              <div className="deepspace-empty-accent theme-accent-pill mb-4 inline-flex rounded-[0.9rem] p-3 shadow-[0_20px_56px_-36px_rgba(var(--primary),0.28)]">
                 <Sparkles size={24} />
               </div>
               <h1 className="text-foreground text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">
-                DeepSpace chat
+                Welcome, {formatUserName(userName)}
               </h1>
-              <p className="text-foreground/60 mt-3 max-w-2xl text-sm leading-7 sm:text-[15px]">
-                Open conversation for drafting, ideation, rewriting, and general help.
+              <p className="deepspace-welcome-message text-foreground/60 mt-3 max-w-2xl text-sm leading-7 sm:text-[15px]">
+                {ROTATING_WELCOME_MESSAGES[promptRotation % ROTATING_WELCOME_MESSAGES.length]}
               </p>
             </div>
             <button
@@ -1113,16 +1199,22 @@ export default function DeepSpaceThread({
           </div>
 
           <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
-            {emptyPrompts.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                onClick={() => onPromptSelect(prompt)}
-                className="theme-panel-muted text-foreground/80 hover:border-primary/25 min-h-[7.5rem] rounded-xl p-5 text-left text-[15px] leading-8 transition"
-              >
-                {prompt}
-              </button>
-            ))}
+            <AnimatePresence mode="popLayout" initial={false}>
+              {visiblePrompts.map((prompt, index) => (
+                <motion.button
+                  key={`${prompt}-${promptRotation}-${index}`}
+                  type="button"
+                  onClick={() => onPromptSelect(prompt)}
+                  initial={{ opacity: 0, y: 8, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.985 }}
+                  transition={{ duration: 0.22, delay: index * 0.035, ease: "easeOut" }}
+                  className={`deepspace-empty-prompt deepspace-prompt-tone-${index} theme-panel-muted text-foreground/80 hover:border-primary/25 min-h-[7.5rem] rounded-[1rem] p-5 text-left text-[15px] leading-8 transition`}
+                >
+                  {prompt}
+                </motion.button>
+              ))}
+            </AnimatePresence>
           </div>
         </div>
       </div>

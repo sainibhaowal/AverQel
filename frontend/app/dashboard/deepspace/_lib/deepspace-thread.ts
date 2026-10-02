@@ -2222,44 +2222,6 @@ export function findPendingUserQuestion(
   return null;
 }
 
-/** Prevent a pending clarification from capturing an unrelated new request. */
-export function shouldResumePendingUserQuestion(
-  messages: DeepSpaceMessage[],
-  prompt: string,
-): boolean {
-  const pending = findPendingUserQuestion(messages);
-  if (!pending) return false;
-  const normalizedPrompt = prompt.trim().toLowerCase();
-  if (/^(?:hi|hello|hey)(?:\s+there)?[!.]?$/.test(normalizedPrompt)) return false;
-
-  const serviceFromText = (value: string): string | null => {
-    const normalized = value.toLowerCase();
-    if (/\bgit\s*hub\b|\bgithub\b/.test(normalized)) return "github";
-    if (/\bgmail\b|\bgoogle\s+mail\b|\binbox\b|\bdrafts?\b|\bsent\s+box\b/.test(normalized)) {
-      return "gmail";
-    }
-    if (/\bgoogle\s+drive\b|\bmy\s+drive\b/.test(normalized)) return "drive";
-    if (/\bgoogle\s+calendar\b|\bmy\s+calendar\b/.test(normalized)) return "calendar";
-    if (/\bslack\b/.test(normalized)) return "slack";
-    return null;
-  };
-
-  const pendingMessage = messages.find((message) => message.id === pending.messageId);
-  const pendingQuestion = pendingMessage?.agentSteps
-    ?.slice()
-    .reverse()
-    .find(
-      (step) =>
-        step.type === "ask_user_question" &&
-        String(step.data?.question_id ?? "").trim() === pending.questionId,
-    );
-  const pendingService = serviceFromText(
-    String(pendingQuestion?.data?.message ?? pendingQuestion?.data?.question ?? ""),
-  );
-  const requestedService = serviceFromText(normalizedPrompt);
-  return !(pendingService && requestedService && pendingService !== requestedService);
-}
-
 function rehydrateMetricsFromHistory(
   metadata: Record<string, unknown>,
   createdAt: string,
@@ -2316,6 +2278,15 @@ function rehydrateMetricsFromHistory(
     typeof metadata.prompt_cache_eligible === "boolean"
       ? metadata.prompt_cache_eligible
       : undefined;
+  const promptCacheStatus =
+    typeof metadata.prompt_cache_status === "string" ? metadata.prompt_cache_status : undefined;
+  const readNullableNumber = (key: string): number | null | undefined =>
+    metadata[key] === null ? null : readNumber(key);
+  const systemContextTokens = readNumber("system_context_tokens");
+  const toolSchemaTokens = readNumber("tool_schema_tokens");
+  const toolResultTokens = readNumber("tool_result_tokens");
+  const cachedInputTokens = readNullableNumber("cached_input_tokens");
+  const uncachedInputTokens = readNullableNumber("uncached_input_tokens");
   const reservedOutputTokens = readNumber("reserved_output_tokens");
   const hasContextMetrics =
     contextUsedTokens !== undefined ||
@@ -2364,12 +2335,30 @@ function rehydrateMetricsFromHistory(
     ...(conversationVisibleTokens !== undefined ? { conversationVisibleTokens } : {}),
     ...(promptCacheMode !== undefined ? { promptCacheMode } : {}),
     ...(promptCacheEligible !== undefined ? { promptCacheEligible } : {}),
+    ...(promptCacheStatus !== undefined ? { promptCacheStatus } : {}),
+    ...(systemContextTokens !== undefined ? { systemContextTokens } : {}),
+    ...(toolSchemaTokens !== undefined ? { toolSchemaTokens } : {}),
+    ...(toolResultTokens !== undefined ? { toolResultTokens } : {}),
+    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+    ...(uncachedInputTokens !== undefined ? { uncachedInputTokens } : {}),
+    ...(typeof metadata.token_category_source === "string"
+      ? { tokenCategorySource: metadata.token_category_source }
+      : {}),
     ...(reservedOutputTokens !== undefined ? { reservedOutputTokens } : {}),
     ...(typeof metadata.context_usage_source === "string"
       ? { contextUsageSource: metadata.context_usage_source }
       : {}),
     ...(typeof metadata.context_compacted === "boolean"
       ? { contextCompacted: metadata.context_compacted }
+      : {}),
+    ...(typeof metadata.context_epoch === "number"
+      ? { contextEpoch: metadata.context_epoch }
+      : {}),
+    ...(typeof metadata.context_epoch_reason === "string"
+      ? { contextEpochReason: metadata.context_epoch_reason }
+      : {}),
+    ...(Array.isArray(metadata.context_source_updates)
+      ? { contextSourceUpdates: metadata.context_source_updates.filter((item): item is string => typeof item === "string") }
       : {}),
     startedAt: createdAt,
   };
@@ -2519,6 +2508,17 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
           }),
         )
         .filter((item) => item.id && item.url)
+    : undefined;
+  const attachments = Array.isArray(metadata.attachments)
+    ? metadata.attachments
+        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+        .map((item) => ({
+          id: String(item.id ?? ""),
+          name: String(item.name ?? "Library file"),
+          content_type: String(item.content_type ?? "application/octet-stream"),
+          size_bytes: typeof item.size_bytes === "number" ? item.size_bytes : 0,
+        }))
+        .filter((item) => item.id)
     : undefined;
   // Rehydrate timeline from agentSteps if timeline is not explicitly persisted
   let timeline: TimelineStep[] = [];
@@ -2681,6 +2681,7 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     compaction,
     memoryUsed,
     artifacts,
+    attachments,
     error: persistedError,
   };
 }

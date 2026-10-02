@@ -10,6 +10,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceAgentStep
+from app.deepspace.models.message import Message
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaService, ensure_capacity_if_supported
 
 DEFAULT_RETAINED_STEPS = 10_000
 ACTIVE_RUN_STATUSES = {"running", "awaiting_user", "awaiting_approval", "cancelling"}
@@ -51,8 +54,23 @@ class DeepSpaceRuntimeStore:
             checkpoint=dict(checkpoint or {}),
             heartbeat_at=datetime.now(UTC),
         )
+        ensure_capacity_if_supported(
+            self.db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(run.checkpoint),
+        )
         self.db.add(run)
         self.db.flush()
+        StorageLifecycleService(self.db).record_activity(
+            tenant_id=tenant_id,
+            owner_user_id=user_id,
+            category="activity_and_runs",
+            source_type="conversation",
+            source_id=str(conversation_id),
+            activity_kind="run_started",
+            size_bytes=StorageQuotaService.estimate_bytes(run.checkpoint),
+        )
         self.db.commit()
         return run
 
@@ -65,6 +83,22 @@ class DeepSpaceRuntimeStore:
         last_error: str | None = None,
     ) -> None:
         now = datetime.now(UTC)
+        run = self.db.execute(
+            select(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id)
+        ).scalar_one()
+        if checkpoint is not None or last_error is not None:
+            old_payload = StorageQuotaService.estimate_bytes(run.checkpoint, run.last_error)
+            new_payload = StorageQuotaService.estimate_bytes(
+                checkpoint if checkpoint is not None else run.checkpoint,
+                last_error if last_error is not None else run.last_error,
+            )
+            ensure_capacity_if_supported(
+                self.db,
+                tenant_id=run.tenant_id,
+                user_id=run.user_id,
+                additional_bytes=new_payload,
+                replacing_bytes=old_payload,
+            )
         values: dict[str, Any] = {"updated_at": now}
         if status is not None:
             values["status"] = status
@@ -76,6 +110,15 @@ class DeepSpaceRuntimeStore:
             values["heartbeat_at"] = now
         self.db.execute(
             update(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id).values(**values)
+        )
+        StorageLifecycleService(self.db).record_activity(
+            tenant_id=run.tenant_id,
+            owner_user_id=run.user_id,
+            category="activity_and_runs",
+            source_type="conversation",
+            source_id=str(run.conversation_id),
+            activity_kind="run_checkpoint",
+            size_bytes=StorageQuotaService.estimate_bytes(run.checkpoint, run.last_error),
         )
         self.db.commit()
 
@@ -150,6 +193,19 @@ class DeepSpaceRuntimeStore:
             input_json=self._bounded_json(input_json),
             result_json=self._bounded_json(result_json),
         )
+        ensure_capacity_if_supported(
+            self.db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                step.step_type,
+                step.tool_name,
+                step.tool_call_id,
+                step.status,
+                step.input_json,
+                step.result_json,
+            ),
+        )
         self.db.add(step)
         run.last_sequence = sequence
         run.step_count = int(run.step_count or 0) + 1
@@ -171,6 +227,22 @@ class DeepSpaceRuntimeStore:
             self.db.execute(
                 delete(DeepSpaceAgentStep).where(DeepSpaceAgentStep.id.in_(old_step_ids))
             )
+        StorageLifecycleService(self.db).record_activity(
+            tenant_id=tenant_id,
+            owner_user_id=user_id,
+            category="activity_and_runs",
+            source_type="conversation",
+            source_id=str(conversation_id),
+            activity_kind="run_step",
+            size_bytes=StorageQuotaService.estimate_bytes(
+                step.step_type,
+                step.tool_name,
+                step.tool_call_id,
+                step.status,
+                step.input_json,
+                step.result_json,
+            ),
+        )
         self.db.commit()
         return sequence
 
@@ -264,6 +336,37 @@ class DeepSpaceRuntimeStore:
             )
         return result
 
+    def replayable_tool_results(self, *, run_id: uuid.UUID) -> list[dict[str, object]]:
+        """Return successful tool results needed to continue a failed run safely."""
+        steps = (
+            self.db.execute(
+                select(DeepSpaceAgentStep)
+                .where(
+                    DeepSpaceAgentStep.run_id == run_id,
+                    DeepSpaceAgentStep.step_type == "tool_result",
+                    DeepSpaceAgentStep.status == "completed",
+                )
+                .order_by(DeepSpaceAgentStep.sequence.asc())
+            )
+            .scalars()
+            .all()
+        )
+        replay: list[dict[str, object]] = []
+        for step in steps:
+            payload = dict(step.result_json or {})
+            output = payload.get("output")
+            if not step.tool_name or not step.tool_call_id or not isinstance(output, str):
+                continue
+            replay.append(
+                {
+                    "tool_name": step.tool_name,
+                    "tool_call_id": step.tool_call_id,
+                    "arguments": dict(step.input_json or {}),
+                    "output": output,
+                }
+            )
+        return replay
+
     def get_run_for_approval(
         self,
         *,
@@ -294,6 +397,30 @@ class DeepSpaceRuntimeStore:
             if isinstance(pending, dict) and str(pending.get("approval_id") or "") == approval_id:
                 return run
         return None
+
+    def get_failed_run_for_request_id(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        request_id: str,
+    ) -> DeepSpaceAgentRun | None:
+        """Return a failed run that belongs to the requested durable turn."""
+        return self.db.execute(
+            select(DeepSpaceAgentRun)
+            .join(Message, Message.id == DeepSpaceAgentRun.assistant_message_id)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.status.in_({"failed", "blocked"}),
+                Message.conversation_id == conversation_id,
+                Message.metadata_json["client_request_id"].astext == request_id,
+            )
+            .order_by(DeepSpaceAgentRun.updated_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
 
     def get_run_for_user_question(
         self,
@@ -530,6 +657,11 @@ class DeepSpaceRuntimeStore:
         return int(getattr(result, "rowcount", 0) or 0)
 
     def finish(self, *, run_id: uuid.UUID, status: str, error: str | None = None) -> None:
+        run = self.db.execute(
+            select(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id)
+        ).scalar_one_or_none()
+        if run is None:
+            return
         values: dict[str, Any] = {
             "status": status,
             "updated_at": datetime.now(UTC),
@@ -540,6 +672,15 @@ class DeepSpaceRuntimeStore:
         try:
             self.db.execute(
                 update(DeepSpaceAgentRun).where(DeepSpaceAgentRun.id == run_id).values(**values)
+            )
+            StorageLifecycleService(self.db).record_activity(
+                tenant_id=run.tenant_id,
+                owner_user_id=run.user_id,
+                category="activity_and_runs",
+                source_type="conversation",
+                source_id=str(run.conversation_id),
+                activity_kind="run_finished",
+                size_bytes=StorageQuotaService.estimate_bytes(error),
             )
             self.db.commit()
         except SQLAlchemyError:

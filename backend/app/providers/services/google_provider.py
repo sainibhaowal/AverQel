@@ -458,6 +458,9 @@ class GoogleProvider:
                         payload_obj = json.loads(data)
                     except json.JSONDecodeError:
                         continue
+                    usage = payload_obj.get("usageMetadata")
+                    if isinstance(usage, dict):
+                        yield {"type": "usage", "usage": usage}
                     candidates = payload_obj.get("candidates", [])
                     if not isinstance(candidates, list) or not candidates:
                         continue

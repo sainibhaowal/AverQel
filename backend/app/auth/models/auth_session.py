@@ -32,7 +32,9 @@ class AuthSession(Base):
         UUID(as_uuid=True), nullable=False, index=True
     )
     device_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    label: Mapped[str] = mapped_column(String(128), nullable=False, server_default=text("'Browser'"))
+    label: Mapped[str] = mapped_column(
+        String(128), nullable=False, server_default=text("'Browser'")
+    )
     user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
     ip_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -41,5 +43,7 @@ class AuthSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     revocation_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)

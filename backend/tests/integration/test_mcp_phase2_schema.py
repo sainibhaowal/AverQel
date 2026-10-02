@@ -64,7 +64,7 @@ def test_mcp_phase2_schema_has_identity_metadata_and_rls(db_session: Session) ->
     assert rls_enabled is True
     assert rls_forced is True
     policy_name = db_session.execute(
-        text("SELECT policyname FROM pg_policies " "WHERE tablename = 'mcp_connection_policies'")
+        text("SELECT policyname FROM pg_policies WHERE tablename = 'mcp_connection_policies'")
     ).scalar_one()
     assert policy_name == "tenant_isolation_mcp_connection_policies"
 

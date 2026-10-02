@@ -52,6 +52,25 @@ from app.documents.schemas.collection_chat import (
 )
 from app.documents.schemas.collection_expiry import UpdateExpiryPayload
 from app.documents.schemas.documents import DocumentMetadataResponse
+from app.documents.services.collection_chat_encryption import (
+    ChatEncryptionError,
+    ChatEncryptionNotConfiguredError,
+)
+from app.documents.services.collection_chat_encryption import (
+    open_for_read as open_chat_message,
+)
+from app.documents.services.collection_chat_encryption import (
+    rotate_epoch as rotate_chat_epoch,
+)
+from app.documents.services.collection_chat_encryption import (
+    seal_for_send as seal_chat_message,
+)
+from app.documents.services.collection_chat_encryption import (
+    sender_label as chat_sender_label,
+)
+from app.documents.services.collection_chat_encryption import (
+    shred_epochs as shred_chat_epochs,
+)
 from app.ingestion.services.extraction_quality import confidence_band
 from app.platform.database.session import get_db
 from app.system.models.storage_cleanup import StorageCleanupJob
@@ -169,6 +188,7 @@ def _collection_response(
         requester_access_role=requester_access_role,
         member_count=member_count,
         security_epoch=collection.security_epoch,
+        chat_encryption_enabled=bool(collection.chat_encryption_enabled),
         created_at=collection.created_at,
         updated_at=collection.updated_at,
     )
@@ -452,6 +472,24 @@ def _create_collection_notification(
     )
 
 
+def _maybe_rotate_chat_epoch(db: Session, *, collection: DocumentCollection, reason: str) -> None:
+    """Rotate the sealed-chat epoch when encryption is enabled.
+
+    No-op for plaintext collections. When encryption is enabled but the
+    deployment keyring is missing, rotation is skipped with a warning and
+    sends keep failing closed until the keyring is restored.
+    """
+    if not bool(getattr(collection, "chat_encryption_enabled", False)):
+        return
+    try:
+        rotate_chat_epoch(db, collection=collection, reason=reason)
+    except ChatEncryptionNotConfiguredError:
+        logger.warning(
+            "Skipping sealed-chat rotation for collection %s: chat keyring is not configured",
+            collection.id,
+        )
+
+
 def _record_collection_security_change(
     *,
     db: Session,
@@ -463,10 +501,13 @@ def _record_collection_security_change(
 ) -> None:
     """Advance the membership epoch and notify remaining members.
 
-    This is an auditable security boundary. It does not claim to rotate the
-    legacy shared AES key; the protocol migration remains explicitly gated.
+    This is an auditable security boundary: collections with sealed chat
+    enabled also rotate to a fresh chat epoch, so removed members' epoch
+    exposure ends at rotation. Plaintext collections only advance the
+    membership counter.
     """
     collection.security_epoch = int(collection.security_epoch or 0) + 1
+    _maybe_rotate_chat_epoch(db, collection=collection, reason="membership-change")
     excluded = excluded_user_ids or set()
     for permission in repo.get_permissions_global(collection_id=collection.id):
         if permission.user_id == actor_user_id or permission.user_id in excluded:
@@ -1414,6 +1455,7 @@ def respond_to_collection_invitation(
                 user_ids=[auth.user_id],
             )
             collection.security_epoch = int(collection.security_epoch or 0) + 1
+            _maybe_rotate_chat_epoch(db, collection=collection, reason="member-removed")
         db.commit()
     except Exception as exc:  # noqa: BLE001
         db.rollback()
@@ -2219,26 +2261,107 @@ def get_collection_chats(
                     "read_at": receipt.read_at.isoformat() if receipt.read_at else None,
                 }
             )
-    return [
-        CollectionChatMessage(
-            id=str(msg.id),
-            collection_id=str(msg.collection_id),
-            user_id=str(msg.user_id),
-            user_email=email,
-            user_avatar=avatar,
-            message=msg.message,
-            client_message_id=msg.client_message_id,
-            status=msg.status,
-            is_media=msg.is_media,
-            media_mime_type=msg.media_mime_type,
-            media_id=str(msg.media_id) if msg.media_id else None,
-            media_object_key=msg.media_object_key,
-            reactions=msg.reactions,
-            receipts=receipts_by_message.get(msg.id, []),
-            created_at=msg.created_at.isoformat(),
+    responses: list[CollectionChatMessage] = []
+    for msg, email, avatar in db_messages:
+        if bool(getattr(msg, "is_encrypted", False)):
+            if collection is None:
+                raise ApiError(
+                    code="CHAT_DECRYPTION_FAILED",
+                    message="Stored chat history cannot be opened with the current chat keys.",
+                    status_code=500,
+                )
+            try:
+                text = open_chat_message(db, collection=collection, db_message=msg)
+            except ChatEncryptionError as exc:
+                raise ApiError(
+                    code="CHAT_DECRYPTION_FAILED",
+                    message="Stored chat history cannot be opened with the current chat keys.",
+                    status_code=500,
+                ) from exc
+        else:
+            text = msg.message
+        responses.append(
+            CollectionChatMessage(
+                id=str(msg.id),
+                collection_id=str(msg.collection_id),
+                user_id=str(msg.user_id),
+                user_email=email,
+                user_avatar=avatar,
+                message=text,
+                client_message_id=msg.client_message_id,
+                status=msg.status,
+                is_media=msg.is_media,
+                media_mime_type=msg.media_mime_type,
+                media_id=str(msg.media_id) if msg.media_id else None,
+                media_object_key=msg.media_object_key,
+                reactions=msg.reactions,
+                receipts=receipts_by_message.get(msg.id, []),
+                is_encrypted=bool(getattr(msg, "is_encrypted", False)),
+                crypto_epoch=int(getattr(msg, "crypto_epoch", 0) or 0),
+                created_at=msg.created_at.isoformat(),
+            )
         )
-        for msg, email, avatar in db_messages
-    ]
+    return responses
+
+
+def _chat_message_response(
+    *,
+    db: Session,
+    collection: DocumentCollection,
+    db_msg: DBCollectionChatMessage,
+    user_email: str,
+    user_avatar: str | None = None,
+    receipts: list[dict[str, str | None]] | None = None,
+) -> CollectionChatMessage:
+    """Build the API view of one chat row, unsealing sealed rows for members."""
+    if bool(getattr(db_msg, "is_encrypted", False)):
+        try:
+            text = open_chat_message(db, collection=collection, db_message=db_msg)
+        except ChatEncryptionError as exc:
+            raise ApiError(
+                code="CHAT_DECRYPTION_FAILED",
+                message="This message cannot be opened with the current chat keys.",
+                status_code=500,
+            ) from exc
+    else:
+        text = db_msg.message
+    return CollectionChatMessage(
+        id=str(db_msg.id),
+        collection_id=str(db_msg.collection_id),
+        user_id=str(db_msg.user_id),
+        user_email=user_email,
+        user_avatar=user_avatar,
+        message=text,
+        client_message_id=db_msg.client_message_id,
+        status=db_msg.status,
+        is_media=db_msg.is_media,
+        media_mime_type=db_msg.media_mime_type,
+        media_id=str(db_msg.media_id) if db_msg.media_id else None,
+        media_object_key=db_msg.media_object_key,
+        reactions=db_msg.reactions,
+        receipts=receipts or [],
+        is_encrypted=bool(getattr(db_msg, "is_encrypted", False)),
+        crypto_epoch=int(getattr(db_msg, "crypto_epoch", 0) or 0),
+        created_at=db_msg.created_at.isoformat(),
+    )
+
+
+def _chat_idempotency_conflict(
+    *,
+    existing: DBCollectionChatMessage,
+    collection: DocumentCollection,
+    payload_message: str,
+    payload_hash: str | None,
+    is_media: bool,
+    media_object_key: str | None,
+) -> bool:
+    """Compare a replayed send against the stored row without leaking plaintext."""
+    if bool(getattr(existing, "is_encrypted", False)):
+        if payload_hash is None or existing.message_hash != payload_hash:
+            return True
+    elif existing.message != payload_message:
+        return True
+    return existing.is_media != is_media or existing.media_object_key != media_object_key
 
 
 @router.post("/{collection_id}/chats", response_model=CollectionChatMessage)
@@ -2275,6 +2398,16 @@ async def create_collection_chat(
     users_repo = UsersRepository(db)
     user = users_repo.get_by_id_global(auth.user_id)
     user_email = user.email if user else "anonymous@averqel.com"
+    user_avatar = user.avatar if user else None
+
+    chat_encrypted = bool(getattr(collection, "chat_encryption_enabled", False))
+    payload_hash: str | None = None
+    if chat_encrypted:
+        from app.documents.services.collection_chat_crypto import (
+            plaintext_hash as _plaintext_hash,
+        )
+
+        payload_hash = _plaintext_hash(payload.message)
 
     media_id, media_object_key = _require_complete_media_reference(
         collection=collection,
@@ -2300,42 +2433,70 @@ async def create_collection_chat(
             .first()
         )
         if existing is not None:
-            if (
-                existing.message != payload.message
-                or existing.is_media != payload.is_media
-                or existing.media_object_key != media_object_key
+            if _chat_idempotency_conflict(
+                existing=existing,
+                collection=collection,
+                payload_message=payload.message,
+                payload_hash=payload_hash,
+                is_media=payload.is_media,
+                media_object_key=media_object_key,
             ):
                 raise ApiError(
                     code="IDEMPOTENCY_CONFLICT",
                     message="This client message ID was already used for different content.",
                     status_code=409,
                 )
-            return CollectionChatMessage(
-                id=str(existing.id),
-                collection_id=str(existing.collection_id),
-                user_id=str(existing.user_id),
+            return _chat_message_response(
+                db=db,
+                collection=collection,
+                db_msg=existing,
                 user_email=user_email,
-                message=existing.message,
-                client_message_id=existing.client_message_id,
-                status=existing.status,
-                is_media=existing.is_media,
-                media_mime_type=existing.media_mime_type,
-                media_id=str(existing.media_id) if existing.media_id else None,
-                media_object_key=existing.media_object_key,
-                reactions=existing.reactions,
-                created_at=existing.created_at.isoformat(),
+                user_avatar=user_avatar,
             )
+
+    stored_message = payload.message
+    crypto_epoch = 0
+    crypto_idx = 0
+    message_hash = payload_hash
+    if chat_encrypted:
+        try:
+            sealed = seal_chat_message(
+                db,
+                collection=collection,
+                sender=chat_sender_label(user_id=auth.user_id, device_id=None),
+                plaintext=payload.message,
+            )
+        except ChatEncryptionNotConfiguredError as exc:
+            raise ApiError(
+                code="CHAT_ENCRYPTION_UNAVAILABLE",
+                message="Sealed chat is enabled but encryption is not configured on this deployment.",
+                status_code=503,
+            ) from exc
+        except ChatEncryptionError as exc:
+            raise ApiError(
+                code="CHAT_ENCRYPTION_FAILED",
+                message="The message could not be sealed.",
+                status_code=500,
+            ) from exc
+        stored_message = sealed.envelope
+        crypto_epoch = sealed.epoch
+        crypto_idx = sealed.idx
+        message_hash = sealed.message_hash
 
     db_msg = DBCollectionChatMessage(
         id=uuid.uuid4(),
         collection_id=collection_id,
         user_id=auth.user_id,
-        message=payload.message,
+        message=stored_message,
         client_message_id=payload.client_message_id,
         is_media=payload.is_media,
         media_mime_type=payload.media_mime_type,
         media_id=media_id,
         media_object_key=media_object_key,
+        is_encrypted=chat_encrypted,
+        crypto_epoch=crypto_epoch,
+        crypto_idx=crypto_idx,
+        message_hash=message_hash,
     )
     try:
         repo.create_chat_message(chat_message=db_msg)
@@ -2355,10 +2516,13 @@ async def create_collection_chat(
         )
         if existing is None:
             raise
-        if (
-            existing.message != payload.message
-            or existing.is_media != payload.is_media
-            or existing.media_object_key != media_object_key
+        if _chat_idempotency_conflict(
+            existing=existing,
+            collection=collection,
+            payload_message=payload.message,
+            payload_hash=payload_hash,
+            is_media=payload.is_media,
+            media_object_key=media_object_key,
         ):
             raise ApiError(
                 code="IDEMPOTENCY_CONFLICT",
@@ -2366,20 +2530,12 @@ async def create_collection_chat(
                 status_code=409,
             ) from None
         db_msg = existing
-        return CollectionChatMessage(
-            id=str(existing.id),
-            collection_id=str(existing.collection_id),
-            user_id=str(existing.user_id),
+        return _chat_message_response(
+            db=db,
+            collection=collection,
+            db_msg=existing,
             user_email=user_email,
-            message=existing.message,
-            client_message_id=existing.client_message_id,
-            status=existing.status,
-            is_media=existing.is_media,
-            media_mime_type=existing.media_mime_type,
-            media_id=str(existing.media_id) if existing.media_id else None,
-            media_object_key=existing.media_object_key,
-            reactions=existing.reactions,
-            created_at=existing.created_at.isoformat(),
+            user_avatar=user_avatar,
         )
 
     for permission in repo.get_permissions_global(collection_id=collection_id):
@@ -2402,26 +2558,39 @@ async def create_collection_chat(
         registered_media.attached_message_id = db_msg.id
     db.commit()
 
+    response = _chat_message_response(
+        db=db,
+        collection=collection,
+        db_msg=db_msg,
+        user_email=user_email,
+        user_avatar=user.avatar if user else None,
+    )
+
+    # Broadcasts never carry plaintext for sealed collections; members fetch
+    # the opened message over the authenticated API.
+    broadcast_message = "" if response.is_encrypted else response.message
     msg_payload = {
-        "id": str(db_msg.id),
-        "collection_id": str(db_msg.collection_id),
-        "user_id": str(db_msg.user_id),
+        "id": response.id,
+        "collection_id": response.collection_id,
+        "user_id": response.user_id,
         "user_email": user_email,
         "user_avatar": user.avatar if user else None,
-        "message": db_msg.message,
-        "client_message_id": db_msg.client_message_id,
-        "status": db_msg.status,
-        "is_media": db_msg.is_media,
-        "media_mime_type": db_msg.media_mime_type,
-        "media_id": str(db_msg.media_id) if db_msg.media_id else None,
-        "media_object_key": db_msg.media_object_key,
-        "reactions": db_msg.reactions,
-        "created_at": db_msg.created_at.isoformat(),
+        "message": broadcast_message,
+        "client_message_id": response.client_message_id,
+        "status": response.status,
+        "is_media": response.is_media,
+        "media_mime_type": response.media_mime_type,
+        "media_id": response.media_id,
+        "media_object_key": response.media_object_key,
+        "reactions": response.reactions,
+        "is_encrypted": response.is_encrypted,
+        "crypto_epoch": response.crypto_epoch,
+        "created_at": response.created_at,
     }
 
     await broadcast_manager.publish_event(str(collection_id), "new_message", msg_payload)
 
-    return CollectionChatMessage(**msg_payload)
+    return response
 
 
 from fastapi import File, UploadFile  # noqa: E402
@@ -2610,12 +2779,160 @@ async def clear_collection_chats(
             bucket=settings.minio_bucket,
         )
         db.delete(message)
+    # Crypto-shred sealed history: without epoch keys, retained backups of the
+    # deleted rows can never be unsealed again.
+    shred_chat_epochs(db, collection=collection)
     db.commit()
 
     # Broadcast clear event to instantly purge active clients' state/cache
     await broadcast_manager.publish_event(str(collection_id), "chat_cleared", {})
 
     return {"status": "success", "message": "Chat history cleared successfully"}
+
+
+def _require_collection_owner(
+    *, repo: CollectionsRepository, collection_id: uuid.UUID, user_id: uuid.UUID
+) -> None:
+    role = _enforce_collection_access_global(
+        repo=repo,
+        collection_id=collection_id,
+        user_id=user_id,
+    )
+    if _normalize_member_role(role) != "owner":
+        raise ApiError(
+            code="FORBIDDEN",
+            message="Only the collection owner can manage sealed chat.",
+            status_code=403,
+        )
+
+
+@router.post("/{collection_id}/chat-encryption/enable")
+def enable_sealed_chat(
+    collection_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Enable sealed chat (signal-pattern-v1) for a collection. Owner only."""
+    from app.documents.services.collection_chat_encryption import (
+        enable_encryption as _enable_encryption,
+    )
+
+    repo = CollectionsRepository(db)
+    _require_collection_owner(repo=repo, collection_id=collection_id, user_id=auth.user_id)
+    collection = repo.get_by_id_global(collection_id=collection_id)
+    if collection is None:
+        raise ApiError(
+            code="COLLECTION_NOT_FOUND", message="Collection not found.", status_code=404
+        )
+    try:
+        epoch_row = _enable_encryption(db, collection=collection)
+    except ChatEncryptionNotConfiguredError as exc:
+        raise ApiError(
+            code="CHAT_ENCRYPTION_UNAVAILABLE",
+            message="Sealed chat cannot be enabled because encryption is not configured on this deployment.",
+            status_code=503,
+        ) from exc
+    db.commit()
+    return {
+        "status": "success",
+        "chat_encryption_enabled": True,
+        "crypto_epoch": epoch_row.epoch,
+        "protocol": "signal-pattern-v1",
+    }
+
+
+@router.post("/{collection_id}/chat-encryption/rotate")
+def rotate_sealed_chat_epoch(
+    collection_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Rotate to a fresh sealed-chat epoch. Owner only. History stays readable."""
+    repo = CollectionsRepository(db)
+    _require_collection_owner(repo=repo, collection_id=collection_id, user_id=auth.user_id)
+    collection = repo.get_by_id_global(collection_id=collection_id)
+    if collection is None:
+        raise ApiError(
+            code="COLLECTION_NOT_FOUND", message="Collection not found.", status_code=404
+        )
+    if not bool(getattr(collection, "chat_encryption_enabled", False)):
+        raise ApiError(
+            code="CHAT_ENCRYPTION_DISABLED",
+            message="Sealed chat is not enabled for this collection.",
+            status_code=409,
+        )
+    try:
+        epoch_row = rotate_chat_epoch(db, collection=collection, reason="manual-rotation")
+    except ChatEncryptionNotConfiguredError as exc:
+        raise ApiError(
+            code="CHAT_ENCRYPTION_UNAVAILABLE",
+            message="Sealed chat cannot rotate because encryption is not configured on this deployment.",
+            status_code=503,
+        ) from exc
+    db.commit()
+    return {
+        "status": "success",
+        "crypto_epoch": epoch_row.epoch,
+        "protocol": "signal-pattern-v1",
+    }
+
+
+@router.post("/{collection_id}/chat-encryption/device-key")
+def register_sealed_chat_device_key(
+    collection_id: uuid.UUID,
+    payload: dict[str, str],
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Register this member device's X25519 identity key (phase-2 custody)."""
+    from app.documents.services.collection_chat_crypto import (
+        CollectionChatCryptoError as _ChatCryptoError,
+    )
+    from app.documents.services.collection_chat_encryption import (
+        register_device_key as _register_device_key,
+    )
+
+    repo = CollectionsRepository(db)
+    _enforce_collection_access_global(
+        repo=repo,
+        collection_id=collection_id,
+        user_id=auth.user_id,
+    )
+    collection = repo.get_by_id_global(collection_id=collection_id)
+    if collection is None:
+        raise ApiError(
+            code="COLLECTION_NOT_FOUND", message="Collection not found.", status_code=404
+        )
+    device_id = (payload.get("device_id") or "").strip()
+    public_key = (payload.get("public_key") or "").strip()
+    if not device_id or len(device_id) > 128:
+        raise ApiError(
+            code="INVALID_DEVICE_KEY",
+            message="device_id must be a non-empty string.",
+            status_code=422,
+        )
+    if not public_key:
+        raise ApiError(
+            code="INVALID_DEVICE_KEY",
+            message="public_key must be a base64 X25519 key.",
+            status_code=422,
+        )
+    try:
+        _register_device_key(
+            db,
+            tenant_id=collection.tenant_id,
+            user_id=auth.user_id,
+            device_id=device_id,
+            public_key_b64=public_key,
+        )
+    except (ChatEncryptionError, _ChatCryptoError) as exc:
+        raise ApiError(
+            code="INVALID_DEVICE_KEY",
+            message="public_key is not a valid X25519 identity key.",
+            status_code=422,
+        ) from exc
+    db.commit()
+    return {"status": "success", "protocol": "signal-pattern-v1"}
 
 
 @router.get("/{collection_id}/presence")

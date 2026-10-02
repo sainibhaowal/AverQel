@@ -16,6 +16,8 @@ from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
 from app.deepspace.services.library_storage import safe_archive_entries
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaService, ensure_capacity_if_supported
 from app.system.services.storage_service import StorageService, StorageServiceError
 
 TASK_STATUSES = {"pending", "in_progress", "completed", "blocked", "failed"}
@@ -247,6 +249,27 @@ class DeepSpaceTaskLoopStore:
                     task_id if task_id in existing else str(uuid.uuid4()),
                 )
             normalized_tasks.append((raw, task_id))
+
+        current_storage_bytes = sum(
+            StorageQuotaService.estimate_bytes(task.content, task.active_form)
+            for task in existing.values()
+        )
+        planned_storage_bytes = sum(
+            StorageQuotaService.estimate_bytes(
+                str(raw.get("content") or "").strip()[:MAX_TASK_TEXT],
+                str(
+                    raw.get("active_form") or raw.get("activeForm") or raw.get("content") or ""
+                ).strip()[:MAX_TASK_TEXT],
+            )
+            for raw, _requested_id in normalized_tasks
+        )
+        ensure_capacity_if_supported(
+            self.db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=planned_storage_bytes,
+            replacing_bytes=current_storage_bytes,
+        )
 
         for index, (raw, requested_id) in enumerate(normalized_tasks):
             content = str(raw.get("content") or "").strip()[:MAX_TASK_TEXT]
@@ -489,6 +512,23 @@ class DeepSpaceTaskLoopStore:
                 DeepSpaceWorkspaceFile.parent_folder_id == parent_id,
             )
         ).scalar_one_or_none()
+        old_size = file.size_bytes if file is not None else 0
+        next_content = (
+            f"{file.content}\n{content}"
+            if file is not None and mode == "append" and file.content
+            else content
+        )
+        next_size = len(next_content.encode("utf-8"))
+        try:
+            StorageQuotaService(self.db).ensure_capacity(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                additional_bytes=next_size,
+                replacing_bytes=old_size,
+            )
+        except Exception:
+            self.db.rollback()
+            raise
         if file is None:
             file = DeepSpaceWorkspaceFile(
                 tenant_id=tenant_id,
@@ -497,18 +537,25 @@ class DeepSpaceTaskLoopStore:
                 parent_folder_id=parent_id,
                 name=normalized_name,
                 content_type=_workspace_content_type(normalized_name),
-                content=content,
+                content=next_content,
                 source="agent",
-                size_bytes=len(content.encode("utf-8")),
+                size_bytes=next_size,
             )
             self.db.add(file)
         else:
-            file.content = (
-                f"{file.content}\n{content}" if mode == "append" and file.content else content
-            )
-            file.size_bytes = len(file.content.encode("utf-8"))
+            file.content = next_content
+            file.size_bytes = next_size
             file.source = "agent"
             file.updated_at = _now()
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=tenant_id,
+            category="library",
+            source_type="workspace_file",
+            source_id=str(file.id),
+            owner_user_id=user_id,
+            dependency_group_id=str(conversation_id),
+            activity_kind="agent_library_file_written",
+        )
         self.db.commit()
         return {
             "id": str(file.id),

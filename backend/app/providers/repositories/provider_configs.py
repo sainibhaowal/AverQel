@@ -7,9 +7,22 @@ from sqlalchemy import delete, or_, select, update
 
 from app.providers.models.provider_config import ProviderConfig
 from app.system.repositories.base import BaseRepository
+from app.system.services.storage_quota import StorageQuotaService
 
 
 class ProviderConfigsRepository(BaseRepository):
+    @staticmethod
+    def _metered_values(provider_config: ProviderConfig) -> tuple[object, ...]:
+        return (
+            provider_config.display_name,
+            provider_config.provider_type,
+            provider_config.auth_mode,
+            provider_config.api_base_url,
+            provider_config.default_chat_model,
+            provider_config.default_embedding_model,
+            provider_config.default_reranker_model,
+        )
+
     def create(self, provider_config: ProviderConfig) -> ProviderConfig:
         self.apply_tenant_scope(provider_config.tenant_id)
         if not provider_config.visibility_scope:
@@ -19,6 +32,13 @@ class ProviderConfigsRepository(BaseRepository):
             and provider_config.owner_user_id is None
         ):
             provider_config.visibility_scope = "system"
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=provider_config.tenant_id,
+            user_id=provider_config.owner_user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                *self._metered_values(provider_config)
+            ),
+        )
         self.db.add(provider_config)
         self.db.flush()
         return provider_config
@@ -106,6 +126,28 @@ class ProviderConfigsRepository(BaseRepository):
         values: dict[str, object],
     ) -> bool:
         self.apply_tenant_scope(tenant_id)
+        current = self.get_by_id(tenant_id=tenant_id, provider_config_id=provider_config_id)
+        if current is None:
+            return False
+        old_values = self._metered_values(current)
+        new_values = tuple(
+            values.get(name, getattr(current, name))
+            for name in (
+                "display_name",
+                "provider_type",
+                "auth_mode",
+                "api_base_url",
+                "default_chat_model",
+                "default_embedding_model",
+                "default_reranker_model",
+            )
+        )
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=current.owner_user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(*new_values),
+            replacing_bytes=StorageQuotaService.estimate_bytes(*old_values),
+        )
         stmt = (
             update(ProviderConfig)
             .where(

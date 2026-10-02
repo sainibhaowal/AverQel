@@ -5,6 +5,7 @@ import MCPInspector from "../app/dashboard/mcp/inspector/[id]/page";
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({ id: "server-1", entryId: "provider-1" }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
 }));
 vi.mock("@/lib/mcp-context", () => ({
   readMCPActiveContext: () => ({ conversation_id: "conversation-1", deepspace_id: "deepspace-1" }),

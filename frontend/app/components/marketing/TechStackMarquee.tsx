@@ -30,7 +30,7 @@ const technologies = [
   { name: "Next.js", color: "#ffffff" },
   { name: "React 19", color: "#61dafb" },
   { name: "TypeScript", color: "#3178c6" },
-  { name: "Tailwind CSS", color: "#38bdf8" },
+  { name: "Tailwind CSS", color: "#22d3ee" },
 ];
 
 export default function TechStackMarquee() {

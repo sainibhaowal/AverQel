@@ -9,10 +9,11 @@ from typing import Any, cast
 
 import redis
 from celery import Task
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
+from app.deepspace.models.agent_runtime import DeepSpaceRunEvent
 from app.deepspace.models.artifact_job import DeepSpaceArtifactJob
 from app.deepspace.models.schedule_run import DeepSpaceScheduleRun
 from app.deepspace.services.chat_service import DeepSpaceChatService, sse
@@ -24,6 +25,39 @@ from app.platform.database.session import get_session_factory, set_db_tenant_con
 from app.platform.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+@celery_app.task(name="deepspace.index_conversation")  # type: ignore[misc]
+def index_deepspace_conversation(*, tenant_id: str, user_id: str, conversation_id: str) -> str:
+    """Build derived chat-search rows outside the interactive chat worker."""
+    session = get_session_factory()()
+    try:
+        parsed_tenant_id = uuid.UUID(tenant_id)
+        parsed_user_id = uuid.UUID(user_id)
+        parsed_conversation_id = uuid.UUID(conversation_id)
+        session.execute(text("SET ROLE aks_app"))
+        set_db_tenant_context(session, parsed_tenant_id)
+        from app.deepspace.services.conversation_retrieval import ConversationRetrievalService
+
+        result = ConversationRetrievalService(session, get_settings()).index_conversation(
+            tenant_id=parsed_tenant_id,
+            user_id=parsed_user_id,
+            conversation_id=parsed_conversation_id,
+        )
+        session.commit()
+        return f"indexed={result['indexed']} removed={result['removed']}"
+    except Exception:
+        session.rollback()
+        logger.warning("DeepSpace conversation indexing failed safely", exc_info=True)
+        raise
+    finally:
+        try:
+            session.rollback()
+            session.execute(text("RESET ROLE"))
+            session.commit()
+        except Exception:  # noqa: BLE001
+            session.rollback()
+        cast(Any, session).close()
 
 
 @celery_app.task(name="deepspace.dispatch_turn_queue")  # type: ignore[misc]
@@ -43,19 +77,30 @@ def dispatch_deepspace_turn_queue(*, tenant_id: str, user_id: str, conversation_
         )
         if claimed is None:
             return "idle"
-        run_deepspace_task.apply_async(
-            kwargs={
-                "tenant_id": str(claimed.tenant_id),
-                "user_id": str(claimed.user_id),
-                "roles": claimed.roles,
-                "permissions": claimed.permissions,
-                "conversation_id": str(claimed.conversation_id),
-                "prompt": claimed.prompt,
-                "client_request_id": claimed.client_request_id,
-                "thinking_enabled": claimed.thinking_enabled,
-                "reasoning_effort": claimed.reasoning_effort,
-            }
-        )
+        try:
+            run_deepspace_task.apply_async(
+                kwargs={
+                    "tenant_id": str(claimed.tenant_id),
+                    "user_id": str(claimed.user_id),
+                    "roles": claimed.roles,
+                    "permissions": claimed.permissions,
+                    "conversation_id": str(claimed.conversation_id),
+                    "prompt": claimed.prompt,
+                    "client_request_id": claimed.client_request_id,
+                    "resume_from_request_id": claimed.resume_from_request_id,
+                    "thinking_enabled": claimed.thinking_enabled,
+                    "reasoning_effort": claimed.reasoning_effort,
+                    "attachment_file_ids": claimed.attachment_file_ids,
+                }
+            )
+        except Exception:
+            DeepSpaceTurnQueueStore(session).release_claim(
+                tenant_id=claimed.tenant_id,
+                user_id=claimed.user_id,
+                conversation_id=claimed.conversation_id,
+                client_request_id=claimed.client_request_id,
+            )
+            raise
         return "dispatched"
     finally:
         try:
@@ -76,6 +121,7 @@ def _publish_failure(
     conversation_id: uuid.UUID | None,
     client_request_id: str,
     message: str,
+    run_id: uuid.UUID | None = None,
 ) -> None:
     if conversation_id is None:
         return
@@ -86,6 +132,7 @@ def _publish_failure(
         user_id=user_id,
         conversation_id=conversation_id,
         client_request_id=client_request_id,
+        run_id=run_id,
         frame=sse("error", {"code": "DEEPSPACE_WORKER_FAILED", "message": message}),
     )
 
@@ -105,6 +152,8 @@ def run_deepspace_task(
     reasoning_effort: str | None = None,
     resume_approval_id: str | None = None,
     resume_user_question_id: str | None = None,
+    resume_from_request_id: str | None = None,
+    attachment_file_ids: list[str] | None = None,
 ) -> str:
     """Run a DeepSpace turn outside the browser request lifecycle."""
     settings = get_settings()
@@ -122,6 +171,7 @@ def run_deepspace_task(
     resolved_conversation_id = parsed_conversation_id
     terminal_status = "completed"
     terminal_error: str | None = None
+    resolved_run_id: uuid.UUID | None = None
 
     def update_schedule_run(status: str, error: str | None = None) -> None:
         if not request_id.startswith("schedule-"):
@@ -151,6 +201,8 @@ def run_deepspace_task(
         set_db_tenant_context(session, parsed_tenant_id)
         update_schedule_run("running")
         if lock.get(cancellation_key(parsed_tenant_id, parsed_user_id, request_id)):
+            terminal_status = "cancelled"
+            terminal_error = "user_cancelled"
             if resolved_conversation_id is not None:
                 append_event(
                     session,
@@ -159,6 +211,7 @@ def run_deepspace_task(
                     user_id=parsed_user_id,
                     conversation_id=resolved_conversation_id,
                     client_request_id=request_id,
+                    run_id=resolved_run_id,
                     frame=sse(
                         "done",
                         {
@@ -197,7 +250,7 @@ def run_deepspace_task(
         service = DeepSpaceChatService(db=session, settings=settings)
 
         async def execute() -> None:
-            nonlocal resolved_conversation_id, terminal_error, terminal_status
+            nonlocal resolved_conversation_id, resolved_run_id, terminal_error, terminal_status
             async for frame in service.stream_turn(
                 auth=auth,
                 conversation_id=parsed_conversation_id,
@@ -208,24 +261,42 @@ def run_deepspace_task(
                 request=None,
                 resume_approval_id=resume_approval_id,
                 resume_user_question_id=resume_user_question_id,
+                resume_from_request_id=resume_from_request_id,
+                attachment_file_ids=attachment_file_ids,
             ):
                 # Every frame is committed before Redis fan-out. This is what
                 # makes a later browser reconnect lossless.
-                if resolved_conversation_id is None:
-                    data_line = next(
-                        (
-                            line[5:].strip()
-                            for line in frame.splitlines()
-                            if line.startswith("data:")
-                        ),
-                        "",
-                    )
-                    try:
-                        data = json.loads(data_line)
-                        resolved_conversation_id = uuid.UUID(str(data["conversation_id"]))
-                    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-                        pass
+                data_line = next(
+                    (line[5:].strip() for line in frame.splitlines() if line.startswith("data:")),
+                    "",
+                )
+                try:
+                    data = json.loads(data_line)
+                    if isinstance(data, dict):
+                        if resolved_conversation_id is None and data.get("conversation_id"):
+                            resolved_conversation_id = uuid.UUID(str(data["conversation_id"]))
+                        raw_run_id = data.get("run_id")
+                        if raw_run_id:
+                            resolved_run_id = uuid.UUID(str(raw_run_id))
+                except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                    pass
                 if resolved_conversation_id is not None:
+                    if resolved_run_id is not None:
+                        # The first meta frame may arrive after earlier
+                        # frames. Backfill those rows before publishing the
+                        # current event. Legacy rows from before this release
+                        # remain NULL and are conservatively protected.
+                        session.execute(
+                            update(DeepSpaceRunEvent)
+                            .where(
+                                DeepSpaceRunEvent.tenant_id == parsed_tenant_id,
+                                DeepSpaceRunEvent.user_id == parsed_user_id,
+                                DeepSpaceRunEvent.conversation_id == resolved_conversation_id,
+                                DeepSpaceRunEvent.client_request_id == request_id,
+                                DeepSpaceRunEvent.run_id.is_(None),
+                            )
+                            .values(run_id=resolved_run_id)
+                        )
                     append_event(
                         session,
                         settings=settings,
@@ -234,6 +305,7 @@ def run_deepspace_task(
                         conversation_id=resolved_conversation_id,
                         client_request_id=request_id,
                         frame=frame,
+                        run_id=resolved_run_id,
                     )
                 if "event: done" in frame:
                     data_line = next(
@@ -253,7 +325,21 @@ def run_deepspace_task(
                     # completed queue turn merely because no `done` frame was
                     # emitted. The queue can then advance with truthful state.
                     terminal_status = "failed"
-                    terminal_error = "DeepSpace stream returned an error"
+                    data_line = next(
+                        (
+                            line[5:].strip()
+                            for line in frame.splitlines()
+                            if line.startswith("data:")
+                        ),
+                        "{}",
+                    )
+                    try:
+                        terminal_error = str(
+                            json.loads(data_line).get("message")
+                            or "DeepSpace stream returned an error"
+                        )[:2000]
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        terminal_error = "DeepSpace stream returned an error"
 
         asyncio.run(execute())
         # A clarification or approval is deliberately non-terminal.  Its
@@ -286,6 +372,7 @@ def run_deepspace_task(
                 conversation_id=parsed_conversation_id,
                 client_request_id=request_id,
                 message="DeepSpace could not complete this response. Please retry.",
+                run_id=resolved_run_id,
             )
         except Exception:  # noqa: BLE001
             logger.exception("Failed to persist detached DeepSpace failure")
@@ -293,7 +380,8 @@ def run_deepspace_task(
     finally:
         if resolved_conversation_id is not None:
             try:
-                DeepSpaceTurnQueueStore(session).finish(
+                queue_store = DeepSpaceTurnQueueStore(session)
+                queue_store.finish(
                     tenant_id=parsed_tenant_id,
                     user_id=parsed_user_id,
                     conversation_id=resolved_conversation_id,
@@ -301,13 +389,25 @@ def run_deepspace_task(
                     status=terminal_status,
                     error=terminal_error,
                 )
-                dispatch_deepspace_turn_queue.apply_async(
-                    kwargs={
-                        "tenant_id": str(parsed_tenant_id),
-                        "user_id": str(parsed_user_id),
-                        "conversation_id": str(resolved_conversation_id),
-                    }
-                )
+                if (
+                    terminal_status not in {"failed", "blocked"}
+                    and not queue_store.state(
+                        tenant_id=parsed_tenant_id,
+                        user_id=parsed_user_id,
+                        conversation_id=resolved_conversation_id,
+                    ).paused
+                ):
+                    # Queue-owned turns advance here. A direct run-now turn
+                    # may also need to wake work that the user resumed while
+                    # that independent chat was running; an idle dispatcher
+                    # is harmless when no queued row exists.
+                    dispatch_deepspace_turn_queue.apply_async(
+                        kwargs={
+                            "tenant_id": str(parsed_tenant_id),
+                            "user_id": str(parsed_user_id),
+                            "conversation_id": str(resolved_conversation_id),
+                        }
+                    )
             except Exception:  # noqa: BLE001
                 logger.exception("Failed to advance DeepSpace turn queue")
         try:

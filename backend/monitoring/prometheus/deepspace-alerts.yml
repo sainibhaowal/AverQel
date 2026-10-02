@@ -1,6 +1,96 @@
 # Prometheus alert rules for the Full Autonomy continuation worker.
 # Load this file from the Prometheus rule_files configuration.
 groups:
+  - name: deepspace-context-and-cache
+    interval: 30s
+    rules:
+      - alert: DeepSpaceContextCompactionRateHigh
+        expr: increase(aks_deepspace_context_compactions_total[15m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+          service: deepspace
+        annotations:
+          summary: DeepSpace is compacting context frequently
+          description: More than 20 context compactions occurred in 15 minutes; inspect prompt growth and tool result bounds.
+      - alert: DeepSpaceContextOverflowPreventionActive
+        expr: increase(aks_deepspace_context_overflow_prevented_total[10m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: deepspace
+        annotations:
+          summary: DeepSpace prevented context overflow
+          description: One or more requests required compaction to remain within the selected model context window.
+      - alert: DeepSpaceProviderCacheReadUnavailable
+        expr: increase(aks_deepspace_cache_usage_total{status="read"}[30m]) == 0
+          and increase(aks_api_requests_total[30m]) > 0
+        for: 15m
+        labels:
+          severity: info
+          service: deepspace
+        annotations:
+          summary: No provider cache-read telemetry observed
+          description: This may be expected for providers without native cache reporting; verify provider capability before changing configuration.
+      - alert: DeepSpaceMcpResultReferenceSpike
+        expr: increase(aks_deepspace_mcp_result_references_total[10m]) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: deepspace-mcp
+        annotations:
+          summary: MCP result references are unusually high
+          description: Inspect MCP result size, pagination, and repeated retrieval behavior.
+      - alert: DeepSpaceBudgetAllocationSpike
+        expr: increase(aks_deepspace_budget_allocations_total[10m]) > 10000
+        for: 5m
+        labels:
+          severity: warning
+          service: deepspace
+        annotations:
+          summary: DeepSpace budget allocation volume is unusually high
+          description: Inspect model retries, runaway rounds, or provider instability before changing budget policy.
+      - alert: DeepSpaceToolProfileCanaryMismatch
+        expr: increase(aks_deepspace_canary_mismatches_total[10m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          service: deepspace
+        annotations:
+          summary: DeepSpace selected an unregistered native tool
+          description: The canary is observational, but a mismatch means the native registry and provider profile need investigation.
+
+  - name: storage-retention
+    interval: 60s
+    rules:
+      - alert: StorageRetentionReconciliationMismatch
+        expr: increase(aks_storage_retention_mismatches_total[2h]) > 0
+        for: 15m
+        labels:
+          severity: info
+          service: storage
+        annotations:
+          summary: Storage reconciliation completed
+          description: Review the persisted reconciliation report before enabling any archive action; permanent purge is disabled.
+      - alert: StorageRetentionRunFailure
+        expr: increase(aks_storage_retention_runs_total{status="failed"}[30m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          service: storage
+        annotations:
+          summary: Storage retention or reconciliation run failed
+          description: The conservative failure path preserves source data; inspect the run and retry after the cause is fixed.
+      - alert: StorageQuotaReservationRejects
+        expr: increase(aks_storage_quota_reservations_total{outcome="rejected"}[15m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+          service: storage
+        annotations:
+          summary: Storage quota reservations are being rejected
+          description: Verify expected quota pressure and upload retries; do not bypass the atomic reservation guard.
+
   - name: deepspace-continuation
     interval: 30s
     rules:

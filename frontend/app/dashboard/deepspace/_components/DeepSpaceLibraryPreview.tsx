@@ -99,6 +99,61 @@ export function parseCsvPreview(value: string): { rows: string[][]; truncated: b
   return { rows, truncated: limit < value.length };
 }
 
+type CsvPage = {
+  columns: string[];
+  rows: string[][];
+  offset: number;
+  limit: number;
+  has_more: boolean;
+};
+
+/** Parse only one visible page while retaining the complete CSV in memory. */
+function parseCsvPage(value: string, offset: number, limit: number): CsvPage {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  let logicalRow = -1; // The header is logical row -1 and is returned separately.
+  let columns: string[] = [];
+  let hasMore = false;
+  const pushRow = () => {
+    const parsed = row.slice(0, CSV_PREVIEW_MAX_COLUMNS);
+    row = [];
+    if (logicalRow < 0) {
+      columns = parsed;
+    } else if (logicalRow >= offset && logicalRow < offset + limit) {
+      rows.push(parsed);
+    } else if (logicalRow >= offset + limit) {
+      hasMore = true;
+    }
+    logicalRow += 1;
+  };
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    const next = value[index + 1];
+    if (character === '"' && quoted && next === '"') {
+      cell += '"';
+      index += 1;
+    } else if (character === '"') quoted = !quoted;
+    else if (character === "," && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && next === "\n") index += 1;
+      row.push(cell);
+      cell = "";
+      pushRow();
+      if (hasMore) break;
+    } else cell += character;
+  }
+  if (!hasMore && (cell || row.length)) {
+    row.push(cell);
+    pushRow();
+  }
+  return { columns, rows, offset, limit, has_more: hasMore };
+}
+
 function parseDiff(value: string): DiffRow[] {
   const rows: DiffRow[] = [];
   for (const line of value.split(/\r?\n/)) {
@@ -320,7 +375,7 @@ function CsvPreviewTable({
   pageUrl?: string | null;
 }) {
   const preview = useMemo(() => parseCsvPreview(value), [value]);
-  const limited = preview.truncated || contentTruncated;
+  const [localOffset, setLocalOffset] = useState(0);
   const [page, setPage] = useState<{
     columns: string[];
     rows: string[][];
@@ -345,7 +400,24 @@ function CsvPreviewTable({
   useEffect(() => {
     if (pageUrl) queueMicrotask(() => void loadPage(0));
   }, [pageUrl]); // eslint-disable-line react-hooks/exhaustive-deps
-  const displayedRows = page ? [page.columns, ...page.rows] : preview.rows;
+  const localPage = useMemo(
+    () => (pageUrl ? null : parseCsvPage(value, localOffset, CSV_PREVIEW_MAX_ROWS)),
+    [pageUrl, value, localOffset],
+  );
+  const activePage = page ?? localPage;
+  const displayedRows = activePage
+    ? [activePage.columns, ...activePage.rows]
+    : preview.rows;
+  const limited = Boolean(
+    contentTruncated ||
+      activePage?.has_more ||
+      (activePage?.offset ?? 0) > 0 ||
+      preview.truncated,
+  );
+  const goToPage = (offset: number) => {
+    if (pageUrl) void loadPage(offset);
+    else setLocalOffset(Math.max(0, offset));
+  };
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1">
@@ -353,7 +425,7 @@ function CsvPreviewTable({
           rows={displayedRows}
           notice={
             limited
-              ? `Showing ${page ? `rows ${page.offset + 1}–${page.offset + page.rows.length}` : `the first ${CSV_PREVIEW_MAX_ROWS} rows`} / ${CSV_PREVIEW_MAX_COLUMNS} columns. The browser renders one page at a time; the original ${
+              ? `Showing rows ${(activePage?.offset ?? 0) + 1}–${(activePage?.offset ?? 0) + (activePage?.rows.length ?? preview.rows.length)} / ${CSV_PREVIEW_MAX_COLUMNS} columns. Use Next to view more rows; the original ${
                   sizeBytes ? `${Math.ceil(sizeBytes / 1024 / 1024)} MB ` : ""
                 }file stays private and can be downloaded or analyzed in the sandbox.`
               : null
@@ -364,19 +436,19 @@ function CsvPreviewTable({
         <div className="border-glass-border flex shrink-0 items-center justify-between border-t px-3 py-2 text-[11px]">
           <button
             type="button"
-            disabled={loadingPage || !page?.offset}
-            onClick={() => void loadPage(Math.max(0, (page?.offset ?? 0) - CSV_PREVIEW_MAX_ROWS))}
+            disabled={loadingPage || !(activePage?.offset ?? 0)}
+            onClick={() => goToPage(Math.max(0, (activePage?.offset ?? 0) - CSV_PREVIEW_MAX_ROWS))}
             className="inline-flex items-center gap-1 disabled:opacity-40"
           >
             <ChevronLeft size={13} /> Previous
           </button>
           <span className="text-foreground/55">
-            {loadingPage ? "Loading rows…" : "Paged table view"}
+            {loadingPage ? "Loading rows…" : `Rows ${(activePage?.offset ?? 0) + 1}–${(activePage?.offset ?? 0) + (activePage?.rows.length ?? 0)}`}
           </span>
           <button
             type="button"
-            disabled={loadingPage || !page?.has_more}
-            onClick={() => void loadPage((page?.offset ?? 0) + CSV_PREVIEW_MAX_ROWS)}
+            disabled={loadingPage || !activePage?.has_more}
+            onClick={() => goToPage((activePage?.offset ?? 0) + CSV_PREVIEW_MAX_ROWS)}
             className="inline-flex items-center gap-1 disabled:opacity-40"
           >
             Next <ChevronRight size={13} />

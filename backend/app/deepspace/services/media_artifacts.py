@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaService
 from app.system.services.storage_service import StorageService
 
 
@@ -114,6 +116,11 @@ class DeepSpaceMediaArtifactService:
             raise ValueError("Generated media payload was invalid.") from exc
         if not payload:
             raise ValueError("Generated media payload was empty.")
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=len(payload),
+        )
         artifact = DeepSpaceMediaArtifact(
             tenant_id=tenant_id,
             user_id=user_id,
@@ -140,6 +147,15 @@ class DeepSpaceMediaArtifactService:
         artifact.storage_key = stored.object_key
         artifact.size_bytes = stored.size_bytes
         self.db.add(artifact)
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=tenant_id,
+            category="artifacts",
+            source_type="media_artifact",
+            source_id=str(artifact.id),
+            owner_user_id=user_id,
+            dependency_group_id=str(conversation_id),
+            activity_kind="artifact_created",
+        )
         self.db.commit()
         return {
             "id": str(artifact.id),

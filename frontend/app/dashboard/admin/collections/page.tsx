@@ -32,6 +32,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import CollectionDetailClient from "./[collectionId]/CollectionDetailClient";
 import { getUnreadCount, incrementUnreadCount, saveLocalMessage } from "@/lib/localDb";
 import { deriveKey, decryptMessage } from "@/lib/crypto";
+import { averqelConfirm } from "@/app/components/ui/AverQelDialogHost";
 
 interface Collection {
   id: string;
@@ -490,7 +491,7 @@ export default function AdminCollectionsPage() {
 
   const handleLeaveOrDelete = async (collection: Collection) => {
     const isOwner = collection.requester_access_role === "owner";
-    const confirmed = window.confirm(
+    const confirmed = await averqelConfirm(
       isOwner ? `Delete "${collection.name}" for all members?` : `Leave "${collection.name}"?`,
     );
     if (!confirmed) {

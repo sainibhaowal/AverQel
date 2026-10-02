@@ -379,6 +379,9 @@ class AnthropicProvider:
                         payload_obj = json.loads(data)
                     except json.JSONDecodeError:
                         continue
+                    usage = payload_obj.get("usage")
+                    if isinstance(usage, dict):
+                        yield {"type": "usage", "usage": usage}
                     if event_name == "content_block_delta":
                         delta = payload_obj.get("delta", {})
                         if not isinstance(delta, dict):

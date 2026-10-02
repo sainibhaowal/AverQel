@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
 import {
   Sparkles,
   Layers,
@@ -15,6 +16,7 @@ import type { QueryThreadMessage } from "../_lib/stream-protocol";
 
 import AssistantMessage from "./AssistantMessage";
 import UserMessage from "./UserMessage";
+import { useAuth } from "../../../context/AuthContext";
 
 interface MessageThreadProps {
   mode?: "query" | "deepspace";
@@ -36,7 +38,7 @@ interface MessageThreadProps {
     activeJobs: number;
     storageBytes: number;
     indexHealth: number;
-    latencyMs: number;
+    latencyMs: number | null;
   } | null;
 }
 
@@ -56,9 +58,77 @@ export default function MessageThread({
   onFollowupSelect,
   realTimeStats,
 }: MessageThreadProps) {
+  const { user } = useAuth();
+  const [welcomeIndex, setWelcomeIndex] = useState(0);
+
+  const displayName = useMemo(() => {
+    const localPart = user?.email?.split("@")[0] ?? "there";
+    return localPart
+      .replace(/[._-]+/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(" ");
+  }, [user?.email]);
+
+  const welcomeMessages = useMemo(
+    () => [
+      `Welcome back, ${displayName}. Ask anything grounded in your workspace.`,
+      "Compare documents, extract decisions, and keep every answer tied to evidence.",
+      "Try a precise question, then inspect the supporting sources and citations.",
+      "Need a starting point? Ask for a summary, timeline, risks, or an evidence-backed plan.",
+    ],
+    [displayName],
+  );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setWelcomeIndex((index) => (index + 1) % welcomeMessages.length);
+    }, 6500);
+    return () => window.clearInterval(timer);
+  }, [welcomeMessages.length]);
+
+  const groundedOperationPrompts = useMemo(
+    () => [
+      [
+        "What are the most important findings across my indexed documents?",
+        "Summarize the key themes and decisions across my source material.",
+        "What should I know first from the documents in this workspace?",
+      ],
+      [
+        "Compare related documents and highlight the differences that actually matter.",
+        "Where do these sources agree, disagree, or leave important gaps?",
+        "Audit these documents for conflicting dates, claims, or requirements.",
+      ],
+      [
+        "Which files contain the strongest evidence for this topic?",
+        "Find the most relevant passages and explain why they support the answer.",
+        "Locate the source sections that best answer this question.",
+      ],
+      [
+        "Answer only from grounded evidence and show the supporting citations.",
+        "Separate verified facts from assumptions and cite every key claim.",
+        "Build an evidence-backed answer and call out anything the sources do not confirm.",
+      ],
+    ],
+    [],
+  );
+  const [operationPromptIndex, setOperationPromptIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setOperationPromptIndex((index) => index + 1);
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   if (messages.length === 0) {
     const indexHealth = realTimeStats ? realTimeStats.indexHealth.toFixed(1) + "%" : "99.8%";
-    const latency = realTimeStats ? realTimeStats.latencyMs + "ms" : "42ms";
+    const latency = realTimeStats
+      ? realTimeStats.latencyMs === null
+        ? "Not measured"
+        : realTimeStats.latencyMs + "ms"
+      : "Loading";
     const totalDocuments = realTimeStats ? realTimeStats.totalDocuments : 0;
     const activeJobs = realTimeStats ? realTimeStats.activeJobs : 0;
     const storageBytes = realTimeStats ? realTimeStats.storageBytes : 0;
@@ -84,6 +154,15 @@ export default function MessageThread({
           <p className="mx-auto mt-2 max-w-xl text-xs font-bold tracking-[0.2em] text-slate-500 uppercase sm:text-[10px] dark:text-slate-400">
             Neural Context Router • Hybrid Search Engine • Source-Isolated Guardrails
           </p>
+          <motion.p
+            key={welcomeMessages[welcomeIndex]}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+            className="text-foreground/75 mx-auto mt-5 max-w-2xl text-sm font-medium leading-6 sm:text-base"
+          >
+            {welcomeMessages[welcomeIndex]}
+          </motion.p>
         </header>
 
         {/* Real-time Diagnostics Control Panel */}
@@ -183,7 +262,7 @@ export default function MessageThread({
             </h2>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {emptyPrompts.map((prompt, idx) => {
+            {emptyPrompts.map((fallbackPrompt, idx) => {
               // Custom operation details per card
               let operationTitle = "Cross-Doc Analysis";
               let operationDesc = "Synthesize findings across active sources";
@@ -203,9 +282,12 @@ export default function MessageThread({
                 operationIcon = <ShieldCheck size={16} className="text-primary" />;
               }
 
+              const promptSet = groundedOperationPrompts[idx] ?? [fallbackPrompt];
+              const prompt = promptSet[operationPromptIndex % promptSet.length] ?? fallbackPrompt;
+
               return (
                 <button
-                  key={prompt}
+                  key={`${idx}-${prompt}`}
                   type="button"
                   onClick={() => onFollowupSelect(prompt)}
                   className="hover:border-primary/30 dark:hover:border-primary/20 group relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/50 p-5 text-left transition-all hover:translate-y-[-2px] hover:bg-white hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:border-slate-800/80 dark:bg-black/10 dark:hover:bg-slate-900/40"
@@ -223,9 +305,15 @@ export default function MessageThread({
                       </p>
                     </div>
                   </div>
-                  <p className="relative z-10 mt-3 border-t border-slate-100 pt-3 text-xs leading-relaxed font-semibold text-slate-700 dark:border-slate-800/60 dark:text-slate-300">
+                  <motion.p
+                    key={prompt}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="relative z-10 mt-3 border-t border-slate-100 pt-3 text-xs leading-relaxed font-semibold text-slate-700 dark:border-slate-800/60 dark:text-slate-300"
+                  >
                     &quot;{prompt}&quot;
-                  </p>
+                  </motion.p>
                   {/* Subtle hover gradient glow */}
                   <div className="from-primary/5 pointer-events-none absolute inset-0 bg-gradient-to-r via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 </button>

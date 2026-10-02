@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.deepspace.models.agent_runtime import DeepSpaceRunEvent
+from app.deepspace.services.reasoning_privacy import redact_reasoning_text
+from app.system.services.storage_quota import StorageQuotaService, ensure_capacity_if_supported
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,7 @@ def append_event(
     conversation_id: uuid.UUID,
     client_request_id: str,
     frame: str,
+    run_id: uuid.UUID | None = None,
 ) -> DeepSpaceRunEvent:
     """Commit one frame before publishing it, so reconnects never miss it."""
     normalized_id = str(client_request_id).strip()
@@ -65,10 +68,17 @@ def append_event(
         tenant_id=tenant_id,
         user_id=user_id,
         conversation_id=conversation_id,
+        run_id=run_id,
         client_request_id=normalized_id,
         sequence=int(latest or 0) + 1,
         frame=frame,
         event_name=event_name_from_frame(frame),
+    )
+    ensure_capacity_if_supported(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        additional_bytes=StorageQuotaService.estimate_bytes(frame),
     )
     db.add(event)
     db.commit()
@@ -117,6 +127,30 @@ def load_events(
         .scalars()
         .all()
     )
+
+
+def latest_sequence(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    client_request_id: str,
+) -> int:
+    """Return the durable replay cursor for one authorized run stream."""
+    db.execute(
+        text("SELECT set_config('app.tenant_id', :tenant_id, false)"),
+        {"tenant_id": str(tenant_id)},
+    )
+    value = db.execute(
+        select(func.max(DeepSpaceRunEvent.sequence)).where(
+            DeepSpaceRunEvent.tenant_id == tenant_id,
+            DeepSpaceRunEvent.user_id == user_id,
+            DeepSpaceRunEvent.conversation_id == conversation_id,
+            DeepSpaceRunEvent.client_request_id == str(client_request_id).strip(),
+        )
+    ).scalar_one()
+    return int(value or 0)
 
 
 def decode_live_event(payload: str) -> tuple[int, str] | None:
@@ -191,6 +225,11 @@ def timeline_events(
         if not isinstance(payload, dict):
             continue
         payload = dict(payload)
+        if event_name in _THINKING_EVENT_NAMES and isinstance(payload.get("text"), str):
+            # Event rows are durable and can be replayed long after the live
+            # stream. Apply the same privacy boundary during replay so a
+            # reload never exposes a raw provider reasoning fragment.
+            payload["text"] = redact_reasoning_text(payload["text"])
         payload.setdefault("timestamp", event.created_at.isoformat())
         if event_name in _THINKING_EVENT_NAMES and result:
             previous = result[-1]

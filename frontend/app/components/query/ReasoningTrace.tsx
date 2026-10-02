@@ -65,7 +65,7 @@ export default function ReasoningTrace({ trace, confidence = 0 }: ReasoningTrace
           <button
             type="button"
             onClick={() => void copyTrace()}
-            className="theme-chip text-foreground/65 hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-full"
+            className="theme-chip text-foreground/65 hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg"
             aria-label="Copy reasoning trace"
             title={copied ? "Copied" : "Copy trace JSON"}
           >
@@ -74,7 +74,7 @@ export default function ReasoningTrace({ trace, confidence = 0 }: ReasoningTrace
           <button
             type="button"
             onClick={exportTrace}
-            className="theme-chip text-foreground/65 hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-full"
+            className="theme-chip text-foreground/65 hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg"
             aria-label="Export reasoning trace as JSON"
             title="Export trace JSON"
           >

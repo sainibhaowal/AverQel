@@ -63,7 +63,7 @@ class OAuthLoginService:
                 client_id=client_id or "",
                 client_secret=client_secret or "",
                 authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
-                token_url="https://oauth2.googleapis.com/token",  # nosec B106 - protocol endpoint, not a credential
+                token_url="https://oauth2.googleapis.com/token",  # OAuth endpoint; nosec B106
                 user_url="https://openidconnect.googleapis.com/v1/userinfo",
                 email_url=None,
                 scopes=("openid", "email", "profile"),
@@ -76,7 +76,7 @@ class OAuthLoginService:
                 client_id=client_id or "",
                 client_secret=client_secret or "",
                 authorize_url="https://github.com/login/oauth/authorize",
-                token_url="https://github.com/login/oauth/access_token",  # nosec B106 - protocol endpoint, not a credential
+                token_url="https://github.com/login/oauth/access_token",  # OAuth endpoint; nosec B106
                 user_url="https://api.github.com/user",
                 email_url="https://api.github.com/user/emails",
                 scopes=("read:user", "user:email"),

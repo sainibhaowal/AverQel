@@ -61,6 +61,7 @@ next-env.d.ts
 
 # User excluded directories
 /.vscode/
+/assets/
 /ZevaConnector/
 /scratch/
 /applications/*
@@ -76,6 +77,9 @@ next-env.d.ts
 /runtime/docs/*
 /Docs/*
 !/Docs/README.md
+!/Docs/DeepSpace-Retention-01-Current-State-and-Minimal-Fixes.md
+!/Docs/DeepSpace-Retention-02-Safe-Additive-Implementation-Plan.md
+!/Docs/DeepSpace-Retention-03-Decision-Gates-and-High-Risk-Changes.md
 !/Docs/brand/
 /Docs/brand/*
 !/Docs/brand/averqel-readme-banner.svg

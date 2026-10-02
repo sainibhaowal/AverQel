@@ -107,10 +107,11 @@ projects, not silently implied by this pass:
 - true linked-device cryptographic session management and recovery. Account
   sessions are now revocable, but that is not cryptographic forward secrecy;
 - browser subscription activation and deployment configuration. The durable
-  worker and admin moderation queue are implemented, but production must
+  outbox and isolated `collection_push` worker are implemented, but production must
   configure `AKS_WEB_PUSH_VAPID_PRIVATE_KEY`,
   `AKS_WEB_PUSH_VAPID_PUBLIC_KEY`, and `AKS_WEB_PUSH_SUBJECT`, then register
-  subscriptions from the frontend;
+  subscriptions from the frontend. Authenticated browser-provider delivery
+  still requires a real browser subscription test in the target deployment;
 
 The media registry and orphan sweep are implemented, but storage cleanup still
 depends on the maintenance worker running.

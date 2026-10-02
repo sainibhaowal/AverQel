@@ -60,7 +60,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 def _token_response(result: LoginResult) -> TokenResponse:
     return TokenResponse(
         access_token=result.access_token,
-        token_type="bearer",  # nosec B106
+        token_type="bearer",
         expires_in=result.expires_in,
         user=AuthUserResponse(
             user_id=str(result.user.id),
@@ -185,7 +185,7 @@ def login(
     if result.requires_2fa:
         return TokenResponse(
             access_token="",
-            token_type="bearer",  # nosec B106
+            token_type="bearer",
             expires_in=0,
             user=AuthUserResponse(
                 user_id=str(result.user.id),
@@ -200,7 +200,7 @@ def login(
 
     return TokenResponse(
         access_token=result.access_token,
-        token_type="bearer",  # nosec B106 - OAuth token type constant, not a secret
+        token_type="bearer",
         expires_in=result.expires_in,
         user=AuthUserResponse(
             user_id=str(result.user.id),
@@ -746,7 +746,7 @@ def verify_2fa(
 
     return TokenResponse(
         access_token=result.access_token,
-        token_type="bearer",  # nosec B106
+        token_type="bearer",
         expires_in=result.expires_in,
         user=AuthUserResponse(
             user_id=str(result.user.id),

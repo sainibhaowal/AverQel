@@ -6,7 +6,8 @@ import io
 import re
 import zipfile
 from collections.abc import Iterable
-from xml.etree import ElementTree
+
+from defusedxml import ElementTree
 
 from app.ingestion.services.parser_service import sanitize_document_text
 

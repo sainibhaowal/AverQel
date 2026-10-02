@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, Response
 
 from app.auth.rbac import require_permissions
 from app.system.schemas.metrics_summary import MetricsSummaryResponse
-from app.system.services.metrics_service import metrics_payload, read_metrics_summary
+from app.system.services.metrics_service import (
+    metrics_payload,
+    read_deepspace_metrics_summary,
+    read_metrics_summary,
+)
 
 router = APIRouter(tags=["metrics"])
 
@@ -32,4 +36,5 @@ def get_metrics_summary() -> MetricsSummaryResponse:
         db_query_count=db_queries,
         worker_retries_total=worker_retries,
         worker_dead_letters_total=worker_dead_letters,
+        **read_deepspace_metrics_summary(),
     )

@@ -1,0 +1,18 @@
+# Gitleaks configuration for AverQel.
+#
+# The blocking pre-commit hook has no baseline file; without these entries
+# every commit touching collection/document reads is rejected because the
+# generic-api-key rule matches the boolean query kwarg below. This allowlist
+# is intentionally narrow: it matches only the literal boolean keyword
+# argument, never an assignment carrying a secret value.
+#
+# Audited 2026-10-02: all 8 findings were
+# `tenant_id=auth.tenant_id, user_id=auth.user_id, include_quarantined=True`
+# in backend/app/documents/api/{documents,organization}.py. No secret material.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Boolean query kwarg misread as a generic API key (no secret value)"
+regexes = ['''include_quarantined=True''']

@@ -119,23 +119,23 @@ export default function StatusHistoryPanel({
   }
 
   return (
-    <section className="theme-panel rounded-[1.7rem] px-4 py-4 sm:px-5">
+    <section className="query-status-panel theme-panel rounded-[1.15rem] px-4 py-4 sm:px-5">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-foreground/66 flex items-center gap-2 text-[11px] font-semibold tracking-[0.18em] uppercase">
             Status Timeline
           </div>
           <div className="text-foreground/48 mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="rounded-full border border-white/10 px-2 py-0.5">
+            <span className="query-status-chip rounded-lg border px-2 py-0.5">
               {summary.totalSteps} {summary.totalSteps === 1 ? "step" : "steps"}
             </span>
             {summary.latestLabel ? (
-              <span className="rounded-full border border-white/10 px-2 py-0.5">
+              <span className="query-status-chip rounded-lg border px-2 py-0.5">
                 Latest: {summary.latestLabel}
               </span>
             ) : null}
             {totalDurationLabel ? (
-              <span className="rounded-full border border-white/10 px-2 py-0.5">
+              <span className="query-status-chip rounded-lg border px-2 py-0.5">
                 Total {totalDurationLabel}
               </span>
             ) : null}
@@ -144,7 +144,7 @@ export default function StatusHistoryPanel({
         <button
           type="button"
           onClick={() => setUserExpanded(!expanded)}
-          className="text-foreground/72 hover:text-foreground inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 px-3 py-1.5 text-[11px] font-medium transition"
+          className="query-status-toggle text-foreground/72 hover:text-foreground inline-flex shrink-0 items-center gap-1 rounded-md border px-3 py-1.5 text-[11px] font-medium transition"
           aria-expanded={expanded}
         >
           <span>{expanded ? "Hide Timeline" : "View Timeline"}</span>
@@ -192,7 +192,7 @@ export default function StatusHistoryPanel({
             return (
               <div
                 key={`${entry.code ?? entry.label}-${entry.state}-${index}`}
-                className="theme-code-surface rounded-[1.1rem] border px-3.5 py-2.5"
+                className="query-status-row theme-code-surface rounded-[0.9rem] border px-3.5 py-2.5"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">

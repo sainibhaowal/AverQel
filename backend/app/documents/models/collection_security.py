@@ -190,14 +190,20 @@ class CollectionPushDelivery(Base):
         UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback
     )
     notification_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("collection_notifications.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("collection_notifications.id", ondelete="CASCADE"),
+        nullable=False,
     )
     recipient_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'queued'"), index=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'queued'"), index=True
+    )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

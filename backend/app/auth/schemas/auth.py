@@ -16,7 +16,9 @@ class AuthUserResponse(BaseModel):
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=1024)
-    device_id: str | None = Field(default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+    device_id: str | None = Field(
+        default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$"
+    )
     device_label: str = Field(default="Browser", min_length=1, max_length=128)
 
     model_config = ConfigDict(extra="forbid")
@@ -186,7 +188,9 @@ class CookiePreferencesResponse(BaseModel):
 class TotpVerifyRequest(BaseModel):
     pending_token: str = Field(min_length=1)
     code: str = Field(min_length=6, max_length=16)
-    device_id: str | None = Field(default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+    device_id: str | None = Field(
+        default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$"
+    )
     device_label: str = Field(default="Browser", min_length=1, max_length=128)
 
     model_config = ConfigDict(extra="forbid")

@@ -8,6 +8,8 @@ import {
   Cable,
   ShieldCheck,
   ArrowRight,
+  HardDrive,
+  Database,
   MessageSquare,
   Sparkles,
 } from "lucide-react";
@@ -65,6 +67,24 @@ export default function SettingsPage() {
       accent: "text-primary",
       accentBg: "bg-primary/10 border-primary/20",
       glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(var(--primary),0.35)]",
+    },
+    {
+      title: "Plan & Storage",
+      href: "/dashboard/settings/plan",
+      icon: <HardDrive size={20} />,
+      desc: "View your role-based plan, tenant storage limit, and current usage.",
+      accent: "text-info",
+      accentBg: "bg-info/10 border-info/20",
+      glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(var(--info),0.35)]",
+    },
+    {
+      title: "Storage details",
+      href: "/dashboard/settings/storage",
+      icon: <Database size={20} />,
+      desc: "Inspect what uses storage across files, chat, memory, queues, and activity.",
+      accent: "text-cyan-600 dark:text-cyan-300",
+      accentBg: "bg-cyan-500/10 border-cyan-500/20",
+      glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(6,182,212,0.35)]",
     },
     {
       title: "Trust & Privacy",

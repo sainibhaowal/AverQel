@@ -850,10 +850,7 @@ class MCPConnectorRuntime:
             }
 
         markdown_content = (
-            f"# {title}\n\n"
-            f"**Scope:** {scope_label}\n"
-            f"**Tool:** {tool_name}\n\n"
-            f"{rendered}"
+            f"# {title}\n\n**Scope:** {scope_label}\n**Tool:** {tool_name}\n\n{rendered}"
         )
         content_hash = hashlib.sha256(markdown_content.encode("utf-8")).hexdigest()
         return {
@@ -1713,8 +1710,7 @@ async def execute_mcp_tool(
 
     stmt = select(ConnectorSecret).where(
         ConnectorSecret.connector_id == connector.id,
-        ConnectorSecret.secret_type
-        == "credentials",  # nosec B105 - storage record type, not a credential value
+        ConnectorSecret.secret_type == "credentials",  # Storage record type; nosec B105
     )
     secret = db.execute(stmt).scalars().first()
     if not secret:

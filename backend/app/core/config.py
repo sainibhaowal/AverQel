@@ -128,15 +128,15 @@ def _is_private_service_host(value: str) -> bool:
     if host in {
         "localhost",
         "127.0.0.1",
-        "0.0.0.0",
         "::1",
         "host.docker.internal",
-    }:  # nosec B104 - classifier, not a bind operation
+    }:
         return True
     if "." not in host:
         return True
     try:
-        return ipaddress.ip_address(host).is_private
+        address = ipaddress.ip_address(host)
+        return address.is_private or address.is_unspecified
     except ValueError:
         return False
 
@@ -222,6 +222,10 @@ class Settings(BaseSettings):
     deepspace_research_browser_token: str | None = None
     deepspace_url_read_timeout_seconds: int = Field(default=15, ge=5, le=30)
     deepspace_url_read_max_bytes: int = Field(default=2_000_000, ge=16_384, le=2_000_000)
+    # Model-facing web content must have a character ceiling in addition to
+    # the transport byte ceiling, otherwise a large page can consume the
+    # remaining context window in one tool result.
+    deepspace_url_read_max_chars: int = Field(default=48_000, ge=4_000, le=200_000)
     deepspace_url_allowed_domains: list[str] = Field(default_factory=list)
     # Sandboxed code/data execution is off unless a separately isolated
     # executor has been deployed and authenticated.  It is never run in the
@@ -293,6 +297,10 @@ class Settings(BaseSettings):
     provider_secret_audit_reads: bool = True
     totp_secret_active_kid: str | None = None
     totp_secret_keyring_json: str | None = None
+    # Sealed collection-chat keyring (signal-pattern-v1 epoch keys). Optional;
+    # enabling chat encryption without this pair fails closed with 503.
+    collection_chat_active_kid: str | None = None
+    collection_chat_keyring_json: str | None = None
     auth_oauth_redirect_uri: str | None = None
     auth_oauth_frontend_redirect_uri: str | None = None
     auth_google_oauth_client_id: str | None = None
@@ -416,10 +424,54 @@ class Settings(BaseSettings):
             ".gif",
             ".doc",
             ".docx",
+            ".docm",
+            ".dot",
+            ".dotx",
+            ".dotm",
+            ".odt",
+            ".ott",
+            ".odm",
+            ".oth",
+            ".rtf",
             ".ppt",
             ".pptx",
+            ".pptm",
+            ".pot",
+            ".potx",
+            ".potm",
+            ".pps",
+            ".ppsx",
+            ".ppsm",
+            ".odp",
+            ".otp",
             ".xls",
             ".xlsx",
+            ".xlsm",
+            ".xlt",
+            ".xltx",
+            ".xltm",
+            ".xlm",
+            ".xla",
+            ".xlw",
+            ".xlsb",
+            ".ods",
+            ".ots",
+            ".odg",
+            ".otg",
+            ".odc",
+            ".otc",
+            ".odf",
+            ".otf",
+            ".odi",
+            ".oti",
+            # Apple iWork and WPS originals are retained for download.  Their
+            # ingestion path provides bounded text when the package exposes it.
+            ".pages",
+            ".numbers",
+            ".key",
+            ".wps",
+            ".dps",
+            ".et",
             ".py",
             ".js",
             ".ts",
@@ -602,6 +654,9 @@ class Settings(BaseSettings):
     rate_limit_auth_login_per_tenant_email_per_5_minutes: int = 30
     rate_limit_auth_refresh_per_ip_per_5_minutes: int = 60
     rate_limit_auth_logout_per_user_per_5_minutes: int = 60
+    collection_ws_messages_per_user_per_minute: int = 120
+    collection_ws_connections_per_user: int = 8
+    collection_chat_page_size: int = 100
 
     provider_timeout_seconds: int = 8
     provider_retry_attempts: int = 3
@@ -610,6 +665,9 @@ class Settings(BaseSettings):
 
     audit_log_retention_days: int = 90
     transient_record_retention_days: int = 30
+    # Archive is metadata-only and remains disabled unless an explicitly
+    # non-production environment opts in. Permanent purge has no setting.
+    storage_retention_automatic_archive_enabled: bool = False
 
     celery_task_always_eager: bool = False
 
@@ -788,6 +846,9 @@ class Settings(BaseSettings):
         "rate_limit_auth_login_per_tenant_email_per_5_minutes",
         "rate_limit_auth_refresh_per_ip_per_5_minutes",
         "rate_limit_auth_logout_per_user_per_5_minutes",
+        "collection_ws_messages_per_user_per_minute",
+        "collection_ws_connections_per_user",
+        "collection_chat_page_size",
         "provider_timeout_seconds",
         "provider_retry_attempts",
         "provider_circuit_breaker_threshold",
@@ -891,6 +952,8 @@ class Settings(BaseSettings):
         "provider_secret_keyring_json",
         "totp_secret_active_kid",
         "totp_secret_keyring_json",
+        "collection_chat_active_kid",
+        "collection_chat_keyring_json",
         "provider_openai_oauth_client_id",
         "provider_openai_oauth_redirect_uri",
         "mcp_google_oauth_client_id",
@@ -1177,7 +1240,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_provider_secret_keyring(self) -> Settings:
-        if self.provider_secret_backend == "aws_kms":  # nosec B105 - backend selector, not a secret
+        if self.provider_secret_backend == "aws_kms":  # Backend selector; nosec B105
             if self.provider_secret_active_kid or self.provider_secret_keyring_json:
                 raise ValueError(
                     "provider_secret_active_kid/provider_secret_keyring_json are not used when provider_secret_backend=aws_kms"
@@ -1204,6 +1267,32 @@ class Settings(BaseSettings):
             raise ValueError(
                 "provider_secret_active_kid must exist in provider_secret_keyring_json"
             )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_collection_chat_keyring(self) -> Settings:
+        has_active_kid = bool(self.collection_chat_active_kid)
+        has_keyring = bool(self.collection_chat_keyring_json)
+
+        if has_active_kid != has_keyring:
+            raise ValueError(
+                "collection_chat_active_kid and collection_chat_keyring_json must be set together"
+            )
+
+        if not has_keyring:
+            return self
+
+        keyring = _parse_provider_secret_keyring(self.collection_chat_keyring_json)
+        if self.collection_chat_active_kid not in keyring:
+            raise ValueError(
+                "collection_chat_active_kid must exist in collection_chat_keyring_json"
+            )
+        for kid, key_bytes in keyring.items():
+            if len(key_bytes) != 32:
+                raise ValueError(
+                    f"collection chat key for kid={kid!r} must decode to 32 bytes for AES-256-GCM"
+                )
 
         return self
 

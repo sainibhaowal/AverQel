@@ -75,7 +75,11 @@ class PdfExtractor(BaseExtractor):
                 page_parse_failures += 1
             cleaned = sanitize_document_text(text).strip()
             extracted.append(cleaned)
-            if len(cleaned) < 30:
+            # A page may contain a scanned/image layer plus a small amount of
+            # native text (a caption, footer, or hidden OCR layer). Treat those
+            # pages as OCR candidates too, while keeping normal born-digital
+            # pages on the more accurate native-text path.
+            if len(cleaned) < 30 or (self._page_contains_images(page) and len(cleaned) < 120):
                 low_coverage_pages.append(index)
 
         if page_parse_failures == len(reader.pages) and reader.pages:
@@ -94,22 +98,28 @@ class PdfExtractor(BaseExtractor):
             ocr_pages = self._ocr_low_coverage_pages(
                 payload=request.payload, page_numbers=low_coverage_pages
             )
-            ocr_used = bool(ocr_pages)
+            successful_ocr_pages: list[int] = []
             for ocr_page in ocr_pages:
                 page_idx = ocr_page.page_number - 1
                 if ocr_page.text.strip():
-                    extracted[page_idx] = sanitize_document_text(ocr_page.text).strip()
+                    native_text = extracted[page_idx]
+                    ocr_text = sanitize_document_text(ocr_page.text).strip()
+                    extracted[page_idx] = self._merge_page_text(native_text, ocr_text)
+                    successful_ocr_pages.append(ocr_page.page_number)
                 warnings.extend(ocr_page.warnings)
-            warnings.append("pdf_ocr_fallback_used")
+            ocr_used = bool(successful_ocr_pages)
+            if ocr_used:
+                warnings.append("pdf_ocr_fallback_used")
+            elif low_coverage_pages:
+                warnings.append("pdf_ocr_no_text_extracted")
 
         full_text = sanitize_document_text("\n".join(extracted)).strip()
+        # The ingestion pipeline chunks and embeds incrementally after extraction.
+        # Do not reject an otherwise valid PDF merely because its combined text is
+        # larger than the per-extraction safety threshold; retain all page text and
+        # expose the condition as a quality warning for the inspector.
         if len(full_text) > self.max_text_chars:
-            raise ApiError(
-                code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
-                message="Parsed document exceeds text processing limit.",
-                status_code=422,
-                details={"max_chars": self.max_text_chars},
-            )
+            warnings.append("large_text_processed_in_batches")
 
         score = min(len(full_text) / 1500.0, 1.0) if full_text else 0.0
         if page_parse_failures:
@@ -134,6 +144,25 @@ class PdfExtractor(BaseExtractor):
         ):
             return self.vision_extractor.extract_with_primary(request, result)
         return result
+
+    @staticmethod
+    def _page_contains_images(page: object) -> bool:
+        try:
+            images = getattr(page, "images", None)
+            return bool(images)
+        except Exception:  # noqa: BLE001
+            return False
+
+    @staticmethod
+    def _merge_page_text(native_text: str, ocr_text: str) -> str:
+        """Keep native text while adding OCR-only image text without duplication."""
+        if not native_text:
+            return ocr_text
+        if not ocr_text or ocr_text in native_text:
+            return native_text
+        if native_text in ocr_text:
+            return ocr_text
+        return f"{native_text}\n{ocr_text}"
 
     def _ocr_low_coverage_pages(
         self, *, payload: bytes, page_numbers: list[int]

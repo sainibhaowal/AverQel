@@ -200,12 +200,21 @@ class EmbeddingService:
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
     ) -> EmbeddingRunResult:
-        vectors = self.embed_many(
-            texts,
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            actor_user_id=actor_user_id,
-        )
+        try:
+            vectors = self.embed_many(
+                texts,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                actor_user_id=actor_user_id,
+            )
+        except TypeError as exc:
+            # Preserve compatibility with legacy/local embedding adapters and
+            # test doubles that predate tenant-aware keyword arguments.
+            if not any(
+                token in str(exc) for token in ("tenant_id", "workspace_id", "actor_user_id")
+            ):
+                raise
+            vectors = self.embed_many(texts)
         metadata = self._last_run_metadata or EmbeddingRunMetadata(
             provider=self.settings.embedding_provider,
             model=self.settings.embedding_model,

@@ -44,6 +44,12 @@ from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore
 from app.deepspace.workers.library_uploads import finalize_library_upload, profile_library_dataset
 from app.ingestion.services.office_writer import text_to_docx, text_to_pptx, text_to_xlsx
 from app.platform.database.session import get_db
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import (
+    StorageQuotaExceededError,
+    StorageQuotaService,
+    StorageReservationError,
+)
 from app.system.services.storage_service import StorageService, StorageServiceError
 
 router = APIRouter(prefix="/deepspace/library", tags=["deepspace-library"])
@@ -126,6 +132,36 @@ _LIBRARY_CONTENT_TYPES = {
     "audio/x-m4a",
     "application/octet-stream",
 }
+
+
+def _ensure_storage_capacity(
+    *,
+    db: Session,
+    auth: AuthContext,
+    additional_bytes: int,
+    replacing_bytes: int = 0,
+) -> None:
+    try:
+        StorageQuotaService(db).ensure_capacity(
+            tenant_id=auth.tenant_id,
+            roles=auth.roles,
+            additional_bytes=additional_bytes,
+            replacing_bytes=replacing_bytes,
+        )
+    except StorageQuotaExceededError as exc:
+        raise ApiError(
+            code="STORAGE_QUOTA_EXCEEDED",
+            message="Your workspace storage limit has been reached. Choose a larger plan or remove old files.",
+            status_code=413,
+            details={
+                "plan": exc.plan.id,
+                "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                "usage_bytes": exc.usage_bytes,
+                "requested_bytes": exc.requested_bytes,
+            },
+        ) from exc
+
+
 _EXTRACTABLE_LIBRARY_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -695,6 +731,15 @@ def _add_version(db: Session, file: DeepSpaceWorkspaceFile) -> None:
             metadata_json={"is_binary": file.is_binary},
         )
     )
+    StorageLifecycleService(db).touch_source(
+        tenant_id=file.tenant_id,
+        category="library",
+        source_type="workspace_file",
+        source_id=str(file.id),
+        owner_user_id=file.user_id,
+        dependency_group_id=str(file.conversation_id),
+        activity_kind="library_file_written",
+    )
 
 
 def _serialize_upload(upload: DeepSpaceLibraryUpload) -> LibraryUploadSchema:
@@ -789,10 +834,36 @@ async def create_library_upload(
             message="This file type is not supported in the DeepSpace Library.",
             status_code=422,
         )
+    upload_id = uuid.uuid4()
+    try:
+        StorageQuotaService(db).reserve_capacity(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            roles=auth.roles,
+            reservation_key=f"library-upload:{upload_id}",
+            reserved_bytes=payload.size_bytes,
+        )
+    except (StorageQuotaExceededError, StorageReservationError) as exc:
+        if isinstance(exc, StorageQuotaExceededError):
+            raise ApiError(
+                code="STORAGE_QUOTA_EXCEEDED",
+                message="Your workspace storage limit has been reached. Choose a larger plan or remove old files.",
+                status_code=413,
+                details={
+                    "plan": exc.plan.id,
+                    "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                    "usage_bytes": exc.usage_bytes,
+                    "requested_bytes": exc.requested_bytes,
+                },
+            ) from exc
+        raise ApiError(
+            code="STORAGE_RESERVATION_FAILED", message=str(exc), status_code=409
+        ) from exc
     total_chunks = (
         payload.size_bytes + _LIBRARY_UPLOAD_CHUNK_SIZE - 1
     ) // _LIBRARY_UPLOAD_CHUNK_SIZE
     upload = DeepSpaceLibraryUpload(
+        id=upload_id,
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
         conversation_id=conversation_id,
@@ -807,6 +878,11 @@ async def create_library_upload(
         status="pending",
     )
     db.add(upload)
+    StorageQuotaService(db).release_capacity(
+        tenant_id=auth.tenant_id,
+        reservation_key=f"library-upload:{upload_id}",
+        status="committed",
+    )
     db.commit()
     db.refresh(upload)
     return _serialize_upload(upload)
@@ -1517,6 +1593,11 @@ async def create_workspace_file(
             message="The file exceeds the configured upload limit.",
             status_code=413,
         )
+    _ensure_storage_capacity(
+        db=db,
+        auth=auth,
+        additional_bytes=len(decoded.payload),
+    )
     file_id = uuid.uuid4()
     is_binary = decoded.is_binary or not decoded.content_type.startswith(
         ("text/", "application/json", "application/xml", "application/yaml")
@@ -1647,6 +1728,12 @@ async def update_workspace_file(
                 raise ApiError(
                     code="DOC_TOO_LARGE", message="The edited file is too large.", status_code=413
                 )
+            _ensure_storage_capacity(
+                db=db,
+                auth=auth,
+                additional_bytes=len(generated_binary),
+                replacing_bytes=file.size_bytes,
+            )
             try:
                 stored = StorageService(settings).put_bytes(
                     tenant_id=auth.tenant_id,
@@ -1663,9 +1750,16 @@ async def update_workspace_file(
             file.size_bytes = len(generated_binary)
             file.checksum_sha256 = hashlib.sha256(generated_binary).hexdigest()
         else:
+            encoded_content = payload.content.encode("utf-8")
+            _ensure_storage_capacity(
+                db=db,
+                auth=auth,
+                additional_bytes=len(encoded_content),
+                replacing_bytes=file.size_bytes,
+            )
             file.content = payload.content
-            file.size_bytes = len(payload.content.encode("utf-8"))
-            file.checksum_sha256 = hashlib.sha256(payload.content.encode("utf-8")).hexdigest()
+            file.size_bytes = len(encoded_content)
+            file.checksum_sha256 = hashlib.sha256(encoded_content).hexdigest()
     if changed:
         file.version += 1
         file.updated_at = datetime.now(UTC)
@@ -1724,6 +1818,11 @@ async def upload_workspace_file(
             message="The file exceeds the configured upload limit.",
             status_code=413,
         )
+    _ensure_storage_capacity(
+        db=db,
+        auth=auth,
+        additional_bytes=len(payload),
+    )
     content_type = (file.content_type or _content_type_for_name(name)).lower().split(";", 1)[0]
     if content_type not in _LIBRARY_CONTENT_TYPES:
         content_type = _content_type_for_name(name)
@@ -1844,6 +1943,11 @@ async def copy_workspace_file(
         extracted_text=source.extracted_text,
         is_binary=source.is_binary,
     )
+    _ensure_storage_capacity(
+        db=db,
+        auth=auth,
+        additional_bytes=source.size_bytes,
+    )
     stored = None
     if source.is_binary and source.storage_bucket and source.storage_key:
         db.add(clone)
@@ -1945,6 +2049,12 @@ async def restore_workspace_file_version(
     ).scalar_one_or_none()
     if snapshot is None:
         raise ApiError(code="NOT_FOUND", message="Library file version not found", status_code=404)
+    _ensure_storage_capacity(
+        db=db,
+        auth=auth,
+        additional_bytes=snapshot.size_bytes,
+        replacing_bytes=file.size_bytes,
+    )
     # SQLAlchemy's class-level Column typing is not precise for ORM instances.
     restored_file = cast(Any, file)
     restored_file.name = snapshot.name

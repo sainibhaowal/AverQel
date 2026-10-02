@@ -32,16 +32,20 @@ def _binding(name: str, *, description: str = "Read a record") -> SimpleNamespac
     )
 
 
-def test_broker_exposes_only_three_small_model_tools() -> None:
+def test_broker_keeps_legacy_definitions_and_exposes_one_compact_model_tool() -> None:
     definitions = MCPToolBroker.definitions()
     names = {item["function"]["name"] for item in definitions}
 
-    assert names == set(MCP_BROKER_TOOL_NAMES)
+    assert names == {MCP_SEARCH_TOOLS, MCP_GET_TOOL_SCHEMA, MCP_CALL_TOOL}
     assert len(definitions) == 3
     assert all(len(json.dumps(item)) < 2_000 for item in definitions)
     assert MCP_CALL_TOOL in names
     assert MCP_GET_TOOL_SCHEMA in names
     assert MCP_SEARCH_TOOLS in names
+
+    compact = MCPToolBroker.compact_definitions()
+    assert len(compact) == 1
+    assert compact[0]["function"]["name"] in MCP_BROKER_TOOL_NAMES
 
 
 def test_search_returns_references_without_full_input_schema() -> None:

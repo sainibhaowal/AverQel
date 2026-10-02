@@ -24,6 +24,7 @@ from app.documents.models.document import Document
 from app.documents.models.document_chunk import DocumentChunk
 from app.documents.repositories.chunks import ChunksRepository
 from app.documents.repositories.documents import DocumentsRepository
+from app.documents.services.classification_service import ClassificationService
 from app.ingestion.models.ingestion_job import IngestionJob
 from app.ingestion.repositories.ingestion_jobs import IngestionJobsRepository
 from app.ingestion.services.chunking_service import ChunkingService
@@ -37,6 +38,7 @@ from app.ingestion.services.extractors.base import ExtractionResult
 from app.ingestion.services.extractors.router import ExtractorRouter
 from app.ingestion.services.parser_service import ParserService, sanitize_document_text
 from app.ingestion.services.security.malware_scan_service import MalwareScanService
+from app.realtime.event_bus import publish_event_sync
 from app.system.repositories.idempotency_keys import IdempotencyKeysRepository
 from app.system.services.idempotency_service import IdempotencyService
 from app.system.services.metrics_service import (
@@ -51,6 +53,7 @@ from app.system.services.metrics_service import (
     WORKER_STAGE_DURATION_SECONDS,
     observe_extraction_stage,
 )
+from app.system.services.storage_quota import StorageQuotaExceededError, StorageQuotaService
 from app.system.services.storage_service import StorageService, StorageServiceError
 
 logger = logging.getLogger(__name__)
@@ -71,6 +74,18 @@ class UploadResult:
 @dataclass(slots=True)
 class DocumentStatusResult:
     document_id: uuid.UUID
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256_hash: str
+    language: str | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    security_scan_result: str | None
+    security_scan_reason: str | None
+    security_scanned_at: datetime | None
+    security_scan_required: bool
     status: str
     processing_progress: int
     quarantined: bool
@@ -90,9 +105,17 @@ class DocumentStatusResult:
     extraction_confidence_band: str
     embedding_provider: str | None
     embedding_model: str | None
+    total_chunk_count: int
     embedded_chunk_count: int
+    average_chunk_quality: float | None
     active_stage: str
     stage_progress: int
+    recovery_available: bool
+    recovery_stage: str | None
+    recovery_reason: str | None
+    last_checkpoint_at: datetime | None
+    remaining_chunk_count: int
+    resume_count: int
 
 
 class IngestionService:
@@ -145,6 +168,9 @@ class IngestionService:
         ".xlsx": frozenset({"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}),
     }
     _LEGACY_OFFICE_EXTENSIONS = frozenset({".doc", ".ppt", ".xls"})
+    _DOWNLOAD_TEXT_FALLBACK_EXTENSIONS = frozenset(
+        {".pages", ".numbers", ".key", ".wps", ".dps", ".et"}
+    )
     _ZIP_MIME_TYPES = frozenset(
         {"application/zip", "application/x-zip-compressed", "application/octet-stream"}
     )
@@ -190,6 +216,7 @@ class IngestionService:
         self.chunks = ChunksRepository(db)
         self.idempotency = IdempotencyService(IdempotencyKeysRepository(db))
         self.storage = storage_service or StorageService(settings)
+        self.storage_quota = StorageQuotaService(db)
         self.malware = malware_scan_service or MalwareScanService(settings)
         self.parser = parser_service or ParserService()
         self.extractor_router = extractor_router or ExtractorRouter(settings=settings)
@@ -254,6 +281,27 @@ class IngestionService:
                 ),  # 0 UUID if no job (shouldn't happen)
             )
 
+        try:
+            storage_quota = getattr(self, "storage_quota", None)
+            if storage_quota is not None:
+                storage_quota.ensure_capacity(
+                    tenant_id=auth.tenant_id,
+                    roles=auth.roles,
+                    additional_bytes=len(payload),
+                )
+        except StorageQuotaExceededError as exc:
+            raise ApiError(
+                code="STORAGE_QUOTA_EXCEEDED",
+                message="Your workspace storage limit has been reached. Choose a larger plan or remove old files.",
+                status_code=413,
+                details={
+                    "plan": exc.plan.id,
+                    "storage_limit_bytes": exc.plan.storage_limit_bytes,
+                    "usage_bytes": exc.usage_bytes,
+                    "requested_bytes": exc.requested_bytes,
+                },
+            ) from exc
+
         scan = self.malware.scan_bytes(
             filename=filename,
             content_type=content_type,
@@ -314,6 +362,9 @@ class IngestionService:
             content_type=content_type,
             size_bytes=len(payload),
             sha256_hash=payload_sha256,
+            security_scan_result="passed",
+            security_scan_reason=scan.reason or "clean",
+            security_scanned_at=datetime.now(tz=UTC),
             storage_bucket=stored.bucket,
             storage_object_key=stored.object_key,
             status="queued",
@@ -322,6 +373,7 @@ class IngestionService:
             connector_id=connector_id,
         )
         self.documents.create(document)
+        self.apply_classification_rules(document)
 
         job = IngestionJob(
             id=generate_uuid7_with_fallback(),
@@ -377,6 +429,17 @@ class IngestionService:
         self._enqueue_ingestion(job_id=job_id, tenant_id=auth.tenant_id, queue=queue_name)
         return UploadResult(document_id=document_id, status="queued", ingestion_job_id=job_id)
 
+    def apply_classification_rules(self, document: Document) -> int:
+        """Apply enabled tenant rules idempotently; classification never blocks ingestion."""
+        try:
+            return ClassificationService(self.db).apply_enabled_rules_to_document(document)
+        except Exception:
+            logger.exception(
+                "Classification failed during upload; continuing ingestion",
+                extra={"document_id": str(document.id)},
+            )
+            return 0
+
     def get_document(
         self,
         *,
@@ -425,11 +488,54 @@ class IngestionService:
             tenant_id=tenant_id,
             document_id=document_id,
         )
+        chunk_stats = self.chunks.get_chunk_stats_by_document_ids(
+            tenant_id=tenant_id,
+            document_ids=[document_id],
+        ).get(document_id)
+        total_chunks = chunk_stats.chunk_count if chunk_stats is not None else 0
+        embedded_chunks = len(
+            self.chunks.get_embedded_chunk_ids(tenant_id=tenant_id, document_id=document_id)
+        )
+        remaining_chunks = max(total_chunks - embedded_chunks, 0)
+        active_statuses = {"queued", "downloading", "parsing", "chunking", "embedding"}
+        checkpoint_at = job.checkpoint_updated_at if job is not None else None
+        stale = bool(
+            job is not None
+            and job.status in active_statuses
+            and datetime.now(tz=UTC) - max(job.updated_at, document.updated_at)
+            >= self.STALE_QUEUE_RECOVERY_AFTER
+        )
+        recovery_available = bool(
+            job is not None
+            and remaining_chunks > 0
+            and (
+                job.checkpoint_stage == "embedding"
+                or job.status in {"failed", "dead_lettered"}
+                or stale
+            )
+        )
+        recovery_reason = None
+        if recovery_available:
+            recovery_reason = job.pause_reason if job else None
+            if not recovery_reason:
+                recovery_reason = "Worker stopped before all embeddings were committed."
         active_stage = self._normalize_pipeline_stage(
             job.status if job is not None else document.status
         )
         return DocumentStatusResult(
             document_id=document.id,
+            filename=document.filename,
+            content_type=document.content_type,
+            size_bytes=document.size_bytes,
+            sha256_hash=document.sha256_hash,
+            language=document.language,
+            version=document.version,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+            security_scan_result=document.security_scan_result,
+            security_scan_reason=document.security_scan_reason,
+            security_scanned_at=document.security_scanned_at,
+            security_scan_required=self.settings.malware_scan_required,
             status=document.status,
             processing_progress=document.processing_progress,
             quarantined=document.quarantined,
@@ -451,15 +557,73 @@ class IngestionService:
                 embedding_summary.provider if embedding_summary is not None else None
             ),
             embedding_model=(embedding_summary.model if embedding_summary is not None else None),
-            embedded_chunk_count=(
-                embedding_summary.embedded_chunk_count if embedding_summary is not None else 0
+            total_chunk_count=total_chunks,
+            embedded_chunk_count=embedded_chunks,
+            average_chunk_quality=(
+                chunk_stats.avg_quality_score if chunk_stats is not None else None
             ),
             active_stage=active_stage,
             stage_progress=self._compute_stage_progress(
                 active_stage=active_stage,
                 overall_progress=document.processing_progress,
             ),
+            recovery_available=recovery_available,
+            recovery_stage=job.checkpoint_stage if job is not None else None,
+            recovery_reason=recovery_reason,
+            last_checkpoint_at=checkpoint_at,
+            remaining_chunk_count=remaining_chunks,
+            resume_count=job.resume_count if job is not None else 0,
         )
+
+    def resume_document_from_checkpoint(
+        self, *, tenant_id: uuid.UUID, document_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> UploadResult:
+        document = self.get_document(tenant_id=tenant_id, document_id=document_id, user_id=user_id)
+        job = self.jobs.get_by_document_id(tenant_id=tenant_id, document_id=document_id)
+        if job is None:
+            raise ApiError(
+                code="INGESTION_RECOVERY_UNAVAILABLE",
+                message="No ingestion job exists for this document.",
+                status_code=409,
+            )
+        total = self.chunks.count_by_document_id(tenant_id=tenant_id, document_id=document_id)
+        embedded = len(
+            self.chunks.get_embedded_chunk_ids(tenant_id=tenant_id, document_id=document_id)
+        )
+        if total == 0 or embedded >= total:
+            raise ApiError(
+                code="INGESTION_RECOVERY_UNAVAILABLE",
+                message="There is no incomplete embedding checkpoint to resume.",
+                status_code=409,
+            )
+        active = {"queued", "downloading", "parsing", "chunking", "embedding"}
+        stale = (
+            job.status in active
+            and datetime.now(tz=UTC) - max(job.updated_at, document.updated_at)
+            >= self.STALE_QUEUE_RECOVERY_AFTER
+        )
+        if job.status in active and not stale:
+            raise ApiError(
+                code="INGESTION_JOB_ACTIVE",
+                message="Ingestion is still active; resume becomes available if the worker stops making progress.",
+                status_code=409,
+            )
+        self.jobs.set_status(tenant_id=tenant_id, job=job, status="queued")
+        self.jobs.set_checkpoint(tenant_id=tenant_id, job=job, stage="embedding", cursor=embedded)
+        self.jobs.increment_resume_count(tenant_id=tenant_id, job=job)
+        document.status = "embedding"
+        document.processing_progress = max(
+            document.processing_progress,
+            self._scaled_progress(stage="embedding", current=embedded, total=total),
+        )
+        self.db.commit()
+        self._enqueue_ingestion(
+            job_id=job.id,
+            tenant_id=tenant_id,
+            queue=self._choose_ingestion_queue(document.filename),
+        )
+        self._publish_update(tenant_id, document.id, "embedding", document.processing_progress)
+        return UploadResult(document_id=document.id, status="queued", ingestion_job_id=job.id)
 
     def _recover_stale_queued_job_if_needed(
         self,
@@ -534,6 +698,49 @@ class IngestionService:
                 f"document_updates:{tenant_id}:{document.uploaded_by_user_id}",
                 message,
             )
+            publish_event_sync(
+                redis_client,
+                tenant_id=tenant_id,
+                user_id=document.uploaded_by_user_id,
+                event_type="document.status.updated",
+                resource="documents",
+                data={
+                    "document_id": str(document_id),
+                    "status": published_status,
+                    "progress": published_progress,
+                    "active_stage": active_stage,
+                    "stage_progress": self._compute_stage_progress(
+                        active_stage=active_stage,
+                        overall_progress=published_progress,
+                    ),
+                },
+            )
+            # Delivery is best-effort and isolated from the ingestion commit;
+            # the webhook worker owns retries and circuit disabling.
+            from app.documents.workers.tasks_webhooks import dispatch_document_webhooks
+
+            webhook_type = (
+                "document.indexed"
+                if published_status in {"indexed", "completed"}
+                else (
+                    "document.failed"
+                    if published_status in {"failed", "dead_lettered"}
+                    else "document.status.updated"
+                )
+            )
+            dispatch_document_webhooks.delay(
+                tenant_id=str(tenant_id),
+                event={
+                    "event_id": str(uuid.uuid4()),
+                    "type": webhook_type,
+                    "resource": "documents",
+                    "data": {
+                        "document_id": str(document_id),
+                        "status": published_status,
+                        "progress": published_progress,
+                    },
+                },
+            )
         except Exception:
             logger.warning("Failed to publish real-time update to Redis", exc_info=True)
 
@@ -577,6 +784,13 @@ class IngestionService:
             return
 
         self.jobs.increment_attempt(tenant_id=tenant_id, job=job)
+
+        if getattr(job, "checkpoint_stage", None) == "embedding":
+            # Checkpoint recovery can fail before its first batch commits. Keep
+            # the attempt durable so retry/dead-letter limits remain correct.
+            self.db.commit()
+            self._resume_embedding_checkpoint(tenant_id=tenant_id, document=document, job=job)
+            return
 
         try:
             stage_start = time.perf_counter()
@@ -624,6 +838,27 @@ class IngestionService:
                 extraction=extraction,
             )
             if not extraction.text.strip():
+                if "download_only_fallback" in extraction.warnings:
+                    # Preserve the uploaded original as a usable document even
+                    # when the fallback format contains no safely extractable
+                    # text. There is intentionally no synthetic chunk: it must
+                    # never pollute retrieval or embeddings.
+                    document.information_yield = 0.0
+                    document.processing_progress = 100
+                    self.jobs.set_status(tenant_id=tenant_id, job=job, status="indexed")
+                    self.documents.set_processing_progress(
+                        tenant_id=tenant_id,
+                        document_id=document.id,
+                        progress=100,
+                        status="indexed",
+                    )
+                    self._publish_update(tenant_id, document.id, "indexed", 100)
+                    self.db.commit()
+                    WORKER_JOB_TRANSITIONS_TOTAL.labels(stage="indexed", status="fallback").inc()
+                    QUERY_PIPELINE_DURATION_SECONDS.labels(segment="ingestion_total").observe(
+                        time.perf_counter() - overall_start
+                    )
+                    return
                 raise ApiError(
                     code="DOCUMENT_EMPTY_AFTER_PARSE",
                     message="Document does not contain parseable text.",
@@ -743,6 +978,21 @@ class IngestionService:
 
             stage_start = time.perf_counter()
             self.jobs.set_status(tenant_id=tenant_id, job=job, status="embedding")
+            existing_embedded = (
+                len(
+                    self.chunks.get_embedded_chunk_ids(tenant_id=tenant_id, document_id=document.id)
+                )
+                if hasattr(self.chunks, "get_embedded_chunk_ids")
+                else 0
+            )
+            if hasattr(self.jobs, "set_checkpoint"):
+                self.jobs.set_checkpoint(
+                    tenant_id=tenant_id,
+                    job=job,
+                    stage="embedding",
+                    cursor=existing_embedded,
+                )
+            self.db.commit()
             self._set_progress(
                 tenant_id=tenant_id,
                 document_id=document.id,
@@ -750,8 +1000,8 @@ class IngestionService:
                 progress=60,
             )
             embedding_metadata = None
+            embedded_count = existing_embedded
             try:
-                vectors: list[list[float]] = []
                 batch_size = max(self.settings.embedding_batch_size, 1)
                 total_batches = max(
                     (len(chunk_rows) + batch_size - 1) // batch_size,
@@ -767,9 +1017,53 @@ class IngestionService:
                         tenant_id=document.tenant_id,
                         actor_user_id=getattr(document, "uploaded_by_user_id", None),
                     )
-                    vectors.extend(embedding_result.vectors)
                     if embedding_metadata is None:
                         embedding_metadata = embedding_result.metadata
+                    provider = (
+                        embedding_result.metadata.provider
+                        if embedding_result.metadata
+                        else self.settings.embedding_provider
+                    )
+                    model = (
+                        embedding_result.metadata.model
+                        if embedding_result.metadata
+                        else self.settings.embedding_model
+                    )
+                    batch_embeddings = [
+                        ChunkEmbedding(
+                            id=generate_uuid7_with_fallback(),
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            chunk_id=row.id,
+                            embedding=vector,
+                            provider=provider,
+                            model=model,
+                        )
+                        for row, vector in zip(batch_rows, embedding_result.vectors, strict=True)
+                    ]
+                    if hasattr(self.chunks, "insert_chunk_embeddings"):
+                        inserted = self.chunks.insert_chunk_embeddings(
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            embeddings=batch_embeddings,
+                        )
+                    else:
+                        self.chunks.replace_chunk_embeddings(
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            embeddings=batch_embeddings,
+                        )
+                        inserted = len(batch_embeddings)
+                    self.db.commit()
+                    embedded_count += inserted
+                    if hasattr(self.jobs, "set_checkpoint"):
+                        self.jobs.set_checkpoint(
+                            tenant_id=tenant_id,
+                            job=job,
+                            stage="embedding",
+                            cursor=embedded_count,
+                        )
+                    self.db.commit()
                     self._set_progress(
                         tenant_id=tenant_id,
                         document_id=document.id,
@@ -791,42 +1085,102 @@ class IngestionService:
                         [row.content for row in chunk_rows],
                         tenant_id=document.tenant_id,
                     )
-                    vectors = embedding_result.vectors
                     embedding_metadata = embedding_result.metadata
+                    provider = (
+                        embedding_metadata.provider
+                        if embedding_metadata
+                        else self.settings.embedding_provider
+                    )
+                    model = (
+                        embedding_metadata.model
+                        if embedding_metadata
+                        else self.settings.embedding_model
+                    )
+                    legacy_embeddings = [
+                        ChunkEmbedding(
+                            id=generate_uuid7_with_fallback(),
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            chunk_id=row.id,
+                            embedding=vector,
+                            provider=provider,
+                            model=model,
+                        )
+                        for row, vector in zip(chunk_rows, embedding_result.vectors, strict=True)
+                    ]
+                    if hasattr(self.chunks, "insert_chunk_embeddings"):
+                        self.chunks.insert_chunk_embeddings(
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            embeddings=legacy_embeddings,
+                        )
+                    else:
+                        self.chunks.replace_chunk_embeddings(
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            embeddings=legacy_embeddings,
+                        )
+                    self.db.commit()
+                    embedded_count = (
+                        len(
+                            self.chunks.get_embedded_chunk_ids(
+                                tenant_id=tenant_id, document_id=document.id
+                            )
+                        )
+                        if hasattr(self.chunks, "get_embedded_chunk_ids")
+                        else len(chunk_rows)
+                    )
+                    if hasattr(self.jobs, "set_checkpoint"):
+                        self.jobs.set_checkpoint(
+                            tenant_id=tenant_id, job=job, stage="embedding", cursor=embedded_count
+                        )
+                    self.db.commit()
                 except TypeError as fallback_exc:
                     if "tenant_id" not in str(fallback_exc):
                         raise
                     vectors = self.embedding.embed_many([row.content for row in chunk_rows])
                     embedding_metadata = None
-
-            embedding_rows: list[ChunkEmbedding] = []
-            embedding_provider = (
-                embedding_metadata.provider
-                if embedding_metadata is not None
-                else self.settings.embedding_provider
-            )
-            embedding_model = (
-                embedding_metadata.model
-                if embedding_metadata is not None
-                else self.settings.embedding_model
-            )
-            for row, vector in zip(chunk_rows, vectors, strict=True):
-                embedding_rows.append(
-                    ChunkEmbedding(
-                        id=generate_uuid7_with_fallback(),
-                        tenant_id=tenant_id,
-                        document_id=document.id,
-                        chunk_id=row.id,
-                        embedding=vector,
-                        provider=embedding_provider,
-                        model=embedding_model,
+                    fallback_provider = self.settings.embedding_provider
+                    fallback_model = self.settings.embedding_model
+                    fallback_embeddings = [
+                        ChunkEmbedding(
+                            id=generate_uuid7_with_fallback(),
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            chunk_id=row.id,
+                            embedding=vector,
+                            provider=fallback_provider,
+                            model=fallback_model,
+                        )
+                        for row, vector in zip(chunk_rows, vectors, strict=True)
+                    ]
+                    if hasattr(self.chunks, "insert_chunk_embeddings"):
+                        self.chunks.insert_chunk_embeddings(
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            embeddings=fallback_embeddings,
+                        )
+                    else:
+                        self.chunks.replace_chunk_embeddings(
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            embeddings=fallback_embeddings,
+                        )
+                    self.db.commit()
+                    embedded_count = (
+                        len(
+                            self.chunks.get_embedded_chunk_ids(
+                                tenant_id=tenant_id, document_id=document.id
+                            )
+                        )
+                        if hasattr(self.chunks, "get_embedded_chunk_ids")
+                        else len(chunk_rows)
                     )
-                )
-            self.chunks.replace_chunk_embeddings(
-                tenant_id=tenant_id,
-                document_id=document.id,
-                embeddings=embedding_rows,
-            )
+                    if hasattr(self.jobs, "set_checkpoint"):
+                        self.jobs.set_checkpoint(
+                            tenant_id=tenant_id, job=job, stage="embedding", cursor=embedded_count
+                        )
+                    self.db.commit()
             WORKER_STAGE_DURATION_SECONDS.labels(stage="embedding").observe(
                 time.perf_counter() - stage_start
             )
@@ -834,7 +1188,13 @@ class IngestionService:
 
             # ── Yield & Quarantine Calculation ──────────────────────────
             total_detected = len(parts) if parts else 1
-            successfully_embedded = len(embedding_rows)
+            successfully_embedded = (
+                len(
+                    self.chunks.get_embedded_chunk_ids(tenant_id=tenant_id, document_id=document.id)
+                )
+                if hasattr(self.chunks, "get_embedded_chunk_ids")
+                else embedded_count
+            )
             coverage = extraction.coverage_score if extraction.coverage_score else 1.0
             information_yield = round((successfully_embedded / total_detected) * coverage * 100, 2)
             document.information_yield = information_yield
@@ -871,13 +1231,16 @@ class IngestionService:
                 retryable=exc.retryable,
             )
         except ApiError as exc:
-            WORKER_JOB_TRANSITIONS_TOTAL.labels(stage="ingestion", status="error").inc()
+            # Parsing, OCR, validation, and provider errors must become a
+            # durable terminal/retryable job state. Leaving them to Celery
+            # alone strands the document in its prior pipeline stage.
             retryable_codes = {
                 "EMBEDDING_PROVIDER_UNAVAILABLE",
                 "EMBEDDING_CIRCUIT_OPEN",
                 "PROVIDER_CIRCUIT_OPEN",
                 "STORAGE_UNAVAILABLE",
             }
+            WORKER_JOB_TRANSITIONS_TOTAL.labels(stage="ingestion", status="error").inc()
             self._handle_failure(
                 tenant_id=tenant_id,
                 document=document,
@@ -895,6 +1258,122 @@ class IngestionService:
                 job=job,
                 code="INGESTION_UNEXPECTED_ERROR",
                 message="Unhandled ingestion failure.",
+                retryable=True,
+            )
+
+    def _resume_embedding_checkpoint(
+        self, *, tenant_id: uuid.UUID, document: Document, job: IngestionJob
+    ) -> None:
+        """Continue from committed chunks/vectors without re-downloading or re-parsing."""
+        try:
+            chunks = self.chunks.get_all_by_document_id(
+                tenant_id=tenant_id, document_id=document.id
+            )
+            embedded_ids = self.chunks.get_embedded_chunk_ids(
+                tenant_id=tenant_id, document_id=document.id
+            )
+            missing = [chunk for chunk in chunks if chunk.id not in embedded_ids]
+            if not missing:
+                self.jobs.set_status(tenant_id=tenant_id, job=job, status="indexed")
+                self.documents.set_processing_progress(
+                    tenant_id=tenant_id, document_id=document.id, progress=100, status="indexed"
+                )
+                self.db.commit()
+                return
+            self.jobs.set_status(tenant_id=tenant_id, job=job, status="embedding")
+            batch_size = max(self.settings.embedding_batch_size, 1)
+            for start in range(0, len(missing), batch_size):
+                batch = missing[start : start + batch_size]
+                try:
+                    result = self.embedding.embed_many_with_metadata(
+                        [row.content for row in batch],
+                        tenant_id=document.tenant_id,
+                        actor_user_id=getattr(document, "uploaded_by_user_id", None),
+                    )
+                except TypeError as exc:
+                    if not any(token in str(exc) for token in ("tenant_id", "actor_user_id")):
+                        raise
+                    result = self.embedding.embed_many_with_metadata(
+                        [row.content for row in batch], tenant_id=document.tenant_id
+                    )
+                metadata = getattr(result, "metadata", None)
+                provider = metadata.provider if metadata else self.settings.embedding_provider
+                model = metadata.model if metadata else self.settings.embedding_model
+                self.chunks.insert_chunk_embeddings(
+                    tenant_id=tenant_id,
+                    document_id=document.id,
+                    embeddings=[
+                        ChunkEmbedding(
+                            id=generate_uuid7_with_fallback(),
+                            tenant_id=tenant_id,
+                            document_id=document.id,
+                            chunk_id=row.id,
+                            embedding=vector,
+                            provider=provider,
+                            model=model,
+                        )
+                        for row, vector in zip(batch, result.vectors, strict=True)
+                    ],
+                )
+                self.db.commit()
+                committed = len(
+                    self.chunks.get_embedded_chunk_ids(tenant_id=tenant_id, document_id=document.id)
+                )
+                self.jobs.set_checkpoint(
+                    tenant_id=tenant_id, job=job, stage="embedding", cursor=committed
+                )
+                progress = self._scaled_progress(
+                    stage="embedding", current=committed, total=len(chunks)
+                )
+                self.documents.set_processing_progress(
+                    tenant_id=tenant_id,
+                    document_id=document.id,
+                    progress=progress,
+                    status="embedding",
+                )
+                self.db.commit()
+                self._publish_update(tenant_id, document.id, "embedding", progress)
+            total = len(chunks)
+            committed = len(
+                self.chunks.get_embedded_chunk_ids(tenant_id=tenant_id, document_id=document.id)
+            )
+            extraction_coverage = document.extraction_coverage_score or 1.0
+            document.information_yield = round(
+                (committed / max(total, 1)) * extraction_coverage * 100, 2
+            )
+            if document.information_yield < 50.0:
+                document.quarantined = True
+            self.jobs.set_status(tenant_id=tenant_id, job=job, status="indexed")
+            self.jobs.set_checkpoint(
+                tenant_id=tenant_id, job=job, stage="indexed", cursor=committed
+            )
+            self.documents.set_processing_progress(
+                tenant_id=tenant_id, document_id=document.id, progress=100, status="indexed"
+            )
+            self.db.commit()
+            self._publish_update(tenant_id, document.id, "indexed", 100)
+        except ApiError as exc:
+            retryable_codes = {
+                "EMBEDDING_PROVIDER_UNAVAILABLE",
+                "EMBEDDING_CIRCUIT_OPEN",
+                "PROVIDER_CIRCUIT_OPEN",
+                "STORAGE_UNAVAILABLE",
+            }
+            self._handle_failure(
+                tenant_id=tenant_id,
+                document=document,
+                job=job,
+                code=exc.code,
+                message=exc.message,
+                retryable=exc.code in retryable_codes or exc.status_code >= 500,
+            )
+        except Exception:  # noqa: BLE001
+            self._handle_failure(
+                tenant_id=tenant_id,
+                document=document,
+                job=job,
+                code="INGESTION_RESUME_FAILED",
+                message="Embedding checkpoint recovery failed.",
                 retryable=True,
             )
 
@@ -1158,6 +1637,9 @@ class IngestionService:
 
         if extension in self._LEGACY_OFFICE_EXTENSIONS:
             return normalized in self._GENERIC_BINARY_MIME_TYPES
+
+        if extension in self._DOWNLOAD_TEXT_FALLBACK_EXTENSIONS:
+            return normalized in self._ZIP_MIME_TYPES | self._GENERIC_BINARY_MIME_TYPES
 
         return False
 

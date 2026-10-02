@@ -27,10 +27,14 @@ export default function UploadModal({ isOpen, onClose, onSuccess }: UploadModalP
 
   useEffect(() => {
     const timer = window.setTimeout(() => setMounted(true), 0);
-    return () => window.clearTimeout(timer);
+    const formatsTimer = window.setTimeout(() => void fetchFormats(), 0);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(formatsTimer);
+    };
   }, []);
 
-  const fetchFormats = async () => {
+  async function fetchFormats() {
     try {
       const response = await fetchWithAuth("/capabilities");
       if (response.ok) {
@@ -40,7 +44,7 @@ export default function UploadModal({ isOpen, onClose, onSuccess }: UploadModalP
     } catch (error) {
       console.error("Failed to fetch formats:", error);
     }
-  };
+  }
 
   if (!mounted) return null;
 
@@ -67,10 +71,10 @@ export default function UploadModal({ isOpen, onClose, onSuccess }: UploadModalP
               <div className="flex flex-col">
                 <h2 className="text-foreground flex items-center gap-3 text-2xl font-black tracking-tight">
                   <div className="bg-primary h-8 w-1.5 rounded-full shadow-[0_0_15px_rgba(var(--primary),0.3)]" />
-                  Ingest Intelligence
+                  Documents Hub
                 </h2>
                 <p className="text-muted-foreground/60 border-primary/20 mt-1 ml-4 border-l-2 py-0.5 pl-3 text-[11px] font-black tracking-widest uppercase">
-                  Vectorization Gateway
+                  Secure document ingestion
                 </p>
               </div>
               <button
@@ -114,7 +118,7 @@ export default function UploadModal({ isOpen, onClose, onSuccess }: UploadModalP
                   initial={{ opacity: 0, x: "100%" }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: "100%" }}
-                  className="dark:bg-surface-0 absolute inset-0 z-10 flex flex-col bg-white p-8"
+                  className="dark:bg-surface-0 absolute inset-0 z-10 flex min-w-0 flex-col bg-white p-5 sm:p-8"
                 >
                   <div className="mb-8 flex items-center justify-between">
                     <div>
@@ -151,7 +155,7 @@ export default function UploadModal({ isOpen, onClose, onSuccess }: UploadModalP
                           <div className="bg-primary/40 h-1.5 w-1.5 rounded-full" />
                           {category.replace("-", " ")}
                         </h4>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                           {items.map((item) => (
                             <div
                               key={item.extension}

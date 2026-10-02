@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import re
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -10,7 +11,11 @@ from app.providers.services.base import ProviderCapabilityError, ProviderRequest
 from app.providers.services.context_window import extract_context_window
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.providers.services.reasoning_capabilities import reasoning_capabilities
-from app.providers.services.types import ChatGenerateRequest, ProviderModelInfo
+from app.providers.services.types import (
+    ChatGenerateRequest,
+    ChatGenerateResponse,
+    ProviderModelInfo,
+)
 from app.providers.services.url_resolution import resolve_provider_base_url
 
 
@@ -265,23 +270,36 @@ class LMStudioProvider(OpenAICompatibleProvider):
             cursor = end
         return chunks
 
+    def _normalized_request(self, request: ChatGenerateRequest) -> ChatGenerateRequest:
+        """Use LM Studio's OpenAI-compatible ``/v1`` endpoint for every call."""
+
+        normalized_base_url = self.normalize_base_url(request.base_url)
+        if normalized_base_url == request.base_url:
+            return request
+        return replace(request, base_url=normalized_base_url)
+
+    def generate(self, request: ChatGenerateRequest) -> ChatGenerateResponse:
+        return super().generate(self._normalized_request(request))
+
     async def stream_generate(self, request: ChatGenerateRequest):
+        normalized_request = self._normalized_request(request)
         try:
-            async for chunk in super().stream_generate(request):
+            async for chunk in super().stream_generate(normalized_request):
                 yield chunk
             return
         except Exception:
-            response = self.generate(request)
+            response = self.generate(normalized_request)
             for chunk in self._chunk_fallback_content(response.content):
                 yield chunk
 
     async def stream_generate_events(self, request: ChatGenerateRequest):
+        normalized_request = self._normalized_request(request)
         try:
-            async for event in super().stream_generate_events(request):
+            async for event in super().stream_generate_events(normalized_request):
                 yield event
             return
         except Exception:
-            response = self.generate(request)
+            response = self.generate(normalized_request)
             if response.thinking_content:
                 for chunk in self._chunk_fallback_content(response.thinking_content):
                     yield {"type": "thinking", "text": chunk}
@@ -289,11 +307,12 @@ class LMStudioProvider(OpenAICompatibleProvider):
                 yield {"type": "delta", "text": chunk}
 
     def stream_generate_sync(self, request: ChatGenerateRequest):
+        normalized_request = self._normalized_request(request)
         try:
-            yield from super().stream_generate_sync(request)
+            yield from super().stream_generate_sync(normalized_request)
             return
         except Exception:
-            response = self.generate(request)
+            response = self.generate(normalized_request)
             yield from self._chunk_fallback_content(response.content)
 
     @staticmethod

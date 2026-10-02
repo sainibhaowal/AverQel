@@ -1,0 +1,16 @@
+{
+  "fixture_version": 1,
+  "case": "mixed_read_write_batch",
+  "sensitive_data": false,
+  "calls": [
+    {"id": "read_a", "mode": "read"},
+    {"id": "read_b", "mode": "read"},
+    {"id": "write_a", "mode": "write"},
+    {"id": "read_c", "mode": "read"}
+  ],
+  "expected_batches": [
+    {"parallel": true, "ids": ["read_a", "read_b"]},
+    {"parallel": false, "ids": ["write_a"]},
+    {"parallel": true, "ids": ["read_c"]}
+  ]
+}

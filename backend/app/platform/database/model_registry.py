@@ -11,6 +11,7 @@ from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
 from app.deepspace.models.agent_activity import AgentActivity
 from app.deepspace.models.agent_memory import AgentMemory
+from app.deepspace.models.agent_memory_preferences import AgentMemoryPreferences
 from app.deepspace.models.agent_runtime import (
     DeepSpaceAgentRun,
     DeepSpaceAgentStep,
@@ -18,7 +19,11 @@ from app.deepspace.models.agent_runtime import (
 )
 from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.artifact_job import DeepSpaceArtifactJob
+from app.deepspace.models.context_epoch import DeepSpaceContextEpoch
 from app.deepspace.models.conversation import Conversation
+from app.deepspace.models.conversation_context_summary import (
+    DeepSpaceConversationContextSummary,
+)
 from app.deepspace.models.conversation_retrieval_chunk import (  # noqa: F401
     DeepSpaceConversationRetrievalChunk,
 )
@@ -39,6 +44,7 @@ from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
 from app.documents.models.chunk_embedding import ChunkEmbedding
 from app.documents.models.collection import (
     CollectionChatDelivery,
+    CollectionChatEpoch,
     CollectionChatMedia,
     CollectionChatMessage,
     CollectionDocument,
@@ -100,6 +106,7 @@ from app.query.models.feedback import Feedback
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
 from app.query.models.query_citation import QueryCitation
+from app.system.models.app_feedback import AppFeedback, FeedbackCampaign
 from app.system.models.audit_log import AuditLog
 from app.system.models.break_glass_grant import BreakGlassGrant
 from app.system.models.idempotency_key import IdempotencyKey
@@ -131,6 +138,7 @@ __all__ = [
     "CollectionPermission",
     "CollectionDocument",
     "CollectionChatMessage",
+    "CollectionChatEpoch",
     "CollectionChatMedia",
     "CollectionChatDelivery",
     "UserPresence",
@@ -203,6 +211,11 @@ __all__ = [
     "ConnectorSecret",
     "MCPConnectionPolicy",
     "AgentMemory",
+    "AgentMemoryPreferences",
+    "DeepSpaceContextEpoch",
+    "DeepSpaceConversationContextSummary",
+    "AppFeedback",
+    "FeedbackCampaign",
     "DeepSpaceAgentRun",
     "DeepSpaceArtifactJob",
     "DeepSpaceQueuedTurn",

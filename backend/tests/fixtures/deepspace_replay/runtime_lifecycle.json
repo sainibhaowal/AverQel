@@ -1,0 +1,17 @@
+{
+  "fixture_version": 1,
+  "case": "runtime_approval_and_cancellation",
+  "sensitive_data": false,
+  "events": [
+    {"type": "runtime_transition", "phase": "context_assembled", "turn_index": 0},
+    {"type": "runtime_transition", "phase": "model_requested", "turn_index": 0},
+    {"type": "runtime_transition", "phase": "actions_validated", "turn_index": 0},
+    {"type": "runtime_transition", "phase": "awaiting_approval", "turn_index": 0},
+    {"type": "approval", "status": "requested"},
+    {"type": "approval", "status": "denied"},
+    {"type": "cancellation", "status": "requested"},
+    {"type": "runtime_transition", "phase": "finalizing", "turn_index": 0},
+    {"type": "cancellation", "status": "completed"},
+    {"type": "final", "status": "cancelled"}
+  ]
+}

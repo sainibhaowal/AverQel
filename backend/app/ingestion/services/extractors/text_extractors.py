@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from app.core.errors import ApiError
 from app.ingestion.services.extractors.base import (
     BaseExtractor,
     ExtractionRequest,
@@ -120,12 +119,7 @@ def _decode_text_payload(
 
     normalized = sanitize_document_text(text).strip()
     if len(normalized) > max_text_chars:
-        raise ApiError(
-            code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
-            message="Parsed document exceeds text processing limit.",
-            status_code=422,
-            details={"max_chars": max_text_chars},
-        )
+        warnings.append("large_text_processed_in_batches")
 
     score = 1.0 if normalized else 0.0
     return ExtractionResult(

@@ -21,11 +21,11 @@ export default function ThinkingPanel({ content, isStreaming }: ThinkingPanelPro
   }
 
   return (
-    <div className="mb-4 overflow-hidden rounded-lg border border-white/5 bg-white/[0.02] transition-all duration-200">
+    <div className="query-thinking-panel mb-4 overflow-hidden rounded-[0.85rem] border transition-all duration-200">
       <button
         type="button"
         onClick={() => setManualExpanded((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.03]"
+        className="query-thinking-toggle flex w-full items-center gap-2 rounded-[0.8rem] px-3 py-2 text-left transition-colors"
       >
         <ChevronDown
           size={14}
@@ -54,7 +54,7 @@ export default function ThinkingPanel({ content, isStreaming }: ThinkingPanelPro
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeInOut" }}
           >
-            <div className="border-t border-white/5 px-4 py-3">
+            <div className="query-thinking-body border-t px-4 py-3">
               <div className="prose prose-invert text-foreground/60 max-w-none text-[12px] leading-relaxed">
                 <InlineMarkdown content={trimmed} />
                 {isStreaming && (

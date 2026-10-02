@@ -6,7 +6,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import String, delete, exists, select, text, update
+from sqlalchemy import cast as sql_cast
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
@@ -27,6 +28,9 @@ from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
 from app.deepspace.services.context_cache import DeepSpaceContextCache
 from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.models.storage_lifecycle import StorageLifecycleItem
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaService
 from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
@@ -56,8 +60,22 @@ class DeepSpaceChatRepository:
             kind=kind,
             content_html=content_html,
         )
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(title, content_html),
+        )
         self.db.add(conversation)
         self.db.flush()
+        StorageLifecycleService(self.db).record_activity(
+            tenant_id=tenant_id,
+            owner_user_id=user_id,
+            category="chat_history",
+            source_type="conversation",
+            source_id=str(conversation.id),
+            activity_kind="conversation_created",
+            size_bytes=StorageQuotaService.estimate_bytes(title, content_html),
+        )
         return conversation
 
     def get_conversation(
@@ -88,15 +106,51 @@ class DeepSpaceChatRepository:
         limit: int = 50,
         offset: int = 0,
         kind: str = "deepspace",
+        include_archived: bool = False,
+    ) -> Sequence[Conversation]:
+        stmt = select(Conversation).where(
+            Conversation.tenant_id == tenant_id,
+            Conversation.user_id == user_id,
+            Conversation.kind == kind,
+        )
+        if not include_archived:
+            stmt = stmt.where(
+                ~exists().where(
+                    StorageLifecycleItem.tenant_id == tenant_id,
+                    StorageLifecycleItem.category == "chat_history",
+                    StorageLifecycleItem.source_type == "conversation",
+                    StorageLifecycleItem.source_id == sql_cast(Conversation.id, String),
+                    StorageLifecycleItem.state == "archived",
+                )
+            )
+        stmt = stmt.order_by(Conversation.updated_at.desc()).limit(limit).offset(offset)
+        return self.db.execute(stmt).scalars().all()
+
+    def list_archived_conversations(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        limit: int = 50,
+        offset: int = 0,
+        kind: str = "deepspace",
     ) -> Sequence[Conversation]:
         stmt = (
             select(Conversation)
+            .join(
+                StorageLifecycleItem,
+                (StorageLifecycleItem.tenant_id == Conversation.tenant_id)
+                & (StorageLifecycleItem.source_type == "conversation")
+                & (StorageLifecycleItem.source_id == sql_cast(Conversation.id, String))
+                & (StorageLifecycleItem.category == "chat_history")
+                & (StorageLifecycleItem.state == "archived"),
+            )
             .where(
                 Conversation.tenant_id == tenant_id,
                 Conversation.user_id == user_id,
                 Conversation.kind == kind,
             )
-            .order_by(Conversation.updated_at.desc())
+            .order_by(StorageLifecycleItem.archived_at.desc().nullslast())
             .limit(limit)
             .offset(offset)
         )
@@ -117,6 +171,27 @@ class DeepSpaceChatRepository:
             values["title"] = title
         if content_html is not None:
             values["content_html"] = content_html
+        conversation = self.get_conversation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            user_id=user_id,
+            kind=kind,
+        )
+        if conversation is None:
+            return False
+        old_bytes = StorageQuotaService.estimate_bytes(
+            conversation.title, conversation.content_html
+        )
+        new_bytes = StorageQuotaService.estimate_bytes(
+            title if title is not None else conversation.title,
+            content_html if content_html is not None else conversation.content_html,
+        )
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=new_bytes,
+            replacing_bytes=old_bytes,
+        )
         result = self.db.execute(
             update(Conversation)
             .where(
@@ -127,6 +202,16 @@ class DeepSpaceChatRepository:
             )
             .values(**values)
         )
+        if getattr(result, "rowcount", 0):
+            StorageLifecycleService(self.db).record_activity(
+                tenant_id=tenant_id,
+                owner_user_id=user_id,
+                category="chat_history",
+                source_type="conversation",
+                source_id=str(conversation_id),
+                activity_kind="conversation_edited",
+                size_bytes=new_bytes,
+            )
         return bool(getattr(result, "rowcount", 0))
 
     def append_conversation_content(
@@ -158,9 +243,28 @@ class DeepSpaceChatRepository:
         conversation.content_html = (
             f"{existing}{separator}{content_html}" if existing else content_html
         )
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                conversation.title, conversation.content_html
+            ),
+            replacing_bytes=StorageQuotaService.estimate_bytes(conversation.title, existing),
+        )
         if title and conversation.title.strip().lower() in {"", "untitled note"}:
             conversation.title = title
         conversation.updated_at = datetime.now(UTC)
+        StorageLifecycleService(self.db).record_activity(
+            tenant_id=tenant_id,
+            owner_user_id=user_id,
+            category="chat_history",
+            source_type="conversation",
+            source_id=str(conversation_id),
+            activity_kind="note_edited",
+            size_bytes=StorageQuotaService.estimate_bytes(
+                conversation.title, conversation.content_html
+            ),
+        )
         self.db.flush()
         return conversation
 
@@ -381,6 +485,7 @@ class DeepSpaceChatRepository:
         content: str,
         metadata_json: dict[str, Any] | None = None,
         kind: str = "deepspace",
+        user_id: uuid.UUID | None = None,
     ) -> Message:
         conversation = self.get_conversation(
             tenant_id=tenant_id, conversation_id=conversation_id, kind=kind
@@ -388,6 +493,12 @@ class DeepSpaceChatRepository:
         if conversation is None:
             raise ValueError("DeepSpace conversation not found")
         metadata = dict(metadata_json or {})
+        message_bytes = StorageQuotaService.estimate_bytes(content, metadata)
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=message_bytes * 2,
+        )
         message = Message(
             conversation_id=conversation_id,
             role=role,
@@ -410,6 +521,17 @@ class DeepSpaceChatRepository:
             update(Conversation)
             .where(Conversation.id == conversation_id)
             .values(updated_at=datetime.now(UTC))
+        )
+        StorageLifecycleService(self.db).record_activity(
+            tenant_id=tenant_id,
+            owner_user_id=user_id,
+            category="chat_history",
+            source_type="conversation",
+            source_id=str(conversation_id),
+            activity_kind="message_added",
+            size_bytes=StorageQuotaService.estimate_bytes(
+                conversation.title, conversation.content_html, content, metadata
+            ),
         )
         self.db.flush()
         return message
@@ -601,12 +723,21 @@ class DeepSpaceChatRepository:
         )
         if message is None:
             return None
+        old_content = str(message.content or "")
+        next_metadata = dict(metadata_json or message.metadata_json or {})
+        new_version_bytes = StorageQuotaService.estimate_bytes(content, next_metadata)
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=new_version_bytes,
+            replacing_bytes=(len(old_content.encode("utf-8")) if activate else 0),
+        )
         next_index = max((version.version_index for version in message.versions), default=0) + 1
         version = MessageVersion(
             message_id=message.id,
             version_index=next_index,
             content=content,
-            metadata_json=dict(metadata_json or message.metadata_json or {}),
+            metadata_json=next_metadata,
             source_type=source_type,
         )
         self.db.add(version)

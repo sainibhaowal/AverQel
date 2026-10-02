@@ -34,6 +34,7 @@ from app.integrations.services.mcp_runtime import UniversalMCPConnector
 from app.integrations.services.web.web_connector import WebConnector
 from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.system.services.audit_service import AuditService
+from app.system.services.storage_quota import StorageQuotaService
 
 logger = logging.getLogger(__name__)
 
@@ -1453,6 +1454,14 @@ class ConnectorOrchestrator:
                         ),
                         duration_ms=sync_elapsed_ms(),
                     )
+                    StorageQuotaService(err_session).ensure_capacity(
+                        tenant_id=connector.tenant_id,
+                        user_id=connector.user_id,
+                        additional_bytes=StorageQuotaService.estimate_bytes(
+                            "Sync failed",
+                            failure_report,
+                        ),
+                    )
                     err_session.add(
                         AgentActivity(
                             tenant_id=connector.tenant_id,
@@ -1715,6 +1724,16 @@ class ConnectorOrchestrator:
         metadata: dict[str, Any] | None = None,
         commit: bool = False,
     ) -> None:
+        StorageQuotaService(self.session).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=None,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                activity_type,
+                description,
+                source,
+                metadata,
+            ),
+        )
         self.session.add(
             AgentActivity(
                 tenant_id=tenant_id,

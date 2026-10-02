@@ -42,6 +42,47 @@ def test_reasoning_privacy_filter_preserves_safe_text_and_masks_sensitive_spans(
     assert "••••••••" in visible
 
 
+def test_reasoning_history_restores_deepseek_field_only_for_deepseek():
+    messages = [
+        {
+            "role": "assistant",
+            "content": "The answer.",
+            "__deepspace_reasoning_content": "Plan first.",
+        },
+        {"role": "user", "content": "Continue."},
+    ]
+
+    deepseek = DeepSpaceChatService._prepare_reasoning_history(messages, "deepseek")
+    other_provider = DeepSpaceChatService._prepare_reasoning_history(messages, "openai")
+
+    assert deepseek[0] == {
+        "role": "assistant",
+        "content": "The answer.",
+        "reasoning_content": "Plan first.",
+    }
+    assert other_provider[0] == {"role": "assistant", "content": "The answer."}
+    assert "__deepspace_reasoning_content" not in deepseek[0]
+    assert "__deepspace_reasoning_content" not in other_provider[0]
+
+
+def test_dynamic_system_instruction_replaces_previous_retry_without_accumulating():
+    messages = [{"role": "system", "content": "Stable policy"}]
+
+    DeepSpaceChatService._set_dynamic_system_instruction(
+        messages, key="recovery", content="First recovery"
+    )
+    DeepSpaceChatService._set_dynamic_system_instruction(
+        messages, key="recovery", content="Latest recovery"
+    )
+
+    assert [item["content"] for item in messages] == ["Stable policy", "Latest recovery"]
+    prepared = DeepSpaceChatService._prepare_reasoning_history(messages, "deepseek")
+    assert prepared == [
+        {"role": "system", "content": "Stable policy"},
+        {"role": "system", "content": "Latest recovery"},
+    ]
+
+
 class _EmptyProvider:
     calls = 0
 

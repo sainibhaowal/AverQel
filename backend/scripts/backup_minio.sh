@@ -55,7 +55,13 @@ META_FILE="$BACKUP_FILE.metadata.json"
 
 cd "$BACKEND_DIR"
 
-BACKUP_CMD="docker compose exec -T $MINIO_SERVICE sh -c 'tar -C /data -czf - .' > '$BACKUP_FILE'"
+MINIO_CONTAINER_ID="$(docker compose ps -q "$MINIO_SERVICE")"
+if [[ -z "$MINIO_CONTAINER_ID" ]]; then
+  echo "MinIO service is not running: $MINIO_SERVICE" >&2
+  exit 1
+fi
+
+BACKUP_CMD="docker cp $MINIO_CONTAINER_ID:/data/. - | gzip -c > '$BACKUP_FILE'"
 
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "DRY RUN: $BACKUP_CMD"

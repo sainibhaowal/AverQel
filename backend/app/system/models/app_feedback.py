@@ -17,12 +17,15 @@ class FeedbackCampaign(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(tz=UTC))
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(tz=UTC), nullable=False
+    )
     updated_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(tz=UTC),
         onupdate=lambda: datetime.now(tz=UTC),
+        nullable=False,
     )
 
 
@@ -43,6 +46,10 @@ class AppFeedback(Base):
     subject = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
     rating = Column(JSON, nullable=True)  # Store structured ratings if needed
-    category = Column(String(50), default="suggestion")  # suggestion, bug, achievement, etc
+    category = Column(
+        String(50), default="suggestion", nullable=False
+    )  # suggestion, bug, achievement, etc
 
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(tz=UTC))
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(tz=UTC), nullable=False
+    )

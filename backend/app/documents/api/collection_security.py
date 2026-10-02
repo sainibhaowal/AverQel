@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -38,10 +39,31 @@ from app.integrations.services.connector_secret_crypto import (
 )
 from app.platform.database.session import get_db, set_db_tenant_context
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/collections", tags=["collection-security"])
 
 
-@router.get("/security/push-config", dependencies=[Depends(require_permissions("collections:read"))])
+def _rotate_sealed_chat_epoch(db: Session, *, collection: DocumentCollection, reason: str) -> None:
+    """Rotate the sealed-chat epoch when encryption is enabled (no-op otherwise)."""
+    if not bool(getattr(collection, "chat_encryption_enabled", False)):
+        return
+    from app.documents.services.collection_chat_encryption import (
+        ChatEncryptionNotConfiguredError,
+        rotate_epoch,
+    )
+
+    try:
+        rotate_epoch(db, collection=collection, reason=reason)
+    except ChatEncryptionNotConfiguredError:
+        logger.warning(
+            "Skipping sealed-chat rotation for collection %s: chat keyring is not configured",
+            collection.id,
+        )
+
+
+@router.get(
+    "/security/push-config", dependencies=[Depends(require_permissions("collections:read"))]
+)
 def get_push_config() -> dict[str, str | bool | None]:
     """Expose only the public VAPID key; private delivery credentials stay server-side."""
     from app.core.config import get_settings
@@ -63,7 +85,9 @@ def get_push_config() -> dict[str, str | bool | None]:
     dependencies=[Depends(require_permissions("admin:collections:read"))],
 )
 def list_moderation_reports(
-    status: str | None = Query(default="open", pattern=r"^(open|reviewing|resolved|dismissed|all)$"),
+    status: str | None = Query(
+        default="open", pattern=r"^(open|reviewing|resolved|dismissed|all)$"
+    ),
     limit: int = Query(default=100, ge=1, le=500),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
@@ -71,7 +95,11 @@ def list_moderation_reports(
     query = db.query(CollectionChatReport).filter(CollectionChatReport.tenant_id == auth.tenant_id)
     if status != "all":
         query = query.filter(CollectionChatReport.status == status)
-    rows = query.order_by(CollectionChatReport.created_at.desc(), CollectionChatReport.id.desc()).limit(limit).all()
+    rows = (
+        query.order_by(CollectionChatReport.created_at.desc(), CollectionChatReport.id.desc())
+        .limit(limit)
+        .all()
+    )
     return [CollectionModerationReportResponse.model_validate(row) for row in rows]
 
 
@@ -88,11 +116,15 @@ def update_moderation_report(
 ) -> CollectionModerationReportResponse:
     row = (
         db.query(CollectionChatReport)
-        .filter(CollectionChatReport.id == report_id, CollectionChatReport.tenant_id == auth.tenant_id)
+        .filter(
+            CollectionChatReport.id == report_id, CollectionChatReport.tenant_id == auth.tenant_id
+        )
         .first()
     )
     if row is None:
-        raise ApiError(code="REPORT_NOT_FOUND", message="Moderation report not found.", status_code=404)
+        raise ApiError(
+            code="REPORT_NOT_FOUND", message="Moderation report not found.", status_code=404
+        )
     row.status = payload.status
     row.resolved_at = datetime.now(UTC) if payload.status in {"resolved", "dismissed"} else None
     if payload.moderator_note:
@@ -114,20 +146,35 @@ def collection_member_spam_score(
 ) -> dict[str, int | str]:
     collection = _collection(db, collection_id, auth)
     cutoff = datetime.now(UTC) - timedelta(hours=24)
-    reports = db.query(func.count(CollectionChatReport.id)).filter(
-        CollectionChatReport.tenant_id == auth.tenant_id,
-        CollectionChatReport.collection_id == collection.id,
-        CollectionChatReport.reported_user_id == user_id,
-        CollectionChatReport.created_at >= cutoff,
-        CollectionChatReport.status.in_(("open", "reviewing")),
-    ).scalar() or 0
-    messages = db.query(func.count(CollectionChatMessage.id)).filter(
-        CollectionChatMessage.collection_id == collection.id,
-        CollectionChatMessage.user_id == user_id,
-        CollectionChatMessage.created_at >= cutoff,
-    ).scalar() or 0
+    reports = (
+        db.query(func.count(CollectionChatReport.id))
+        .filter(
+            CollectionChatReport.tenant_id == auth.tenant_id,
+            CollectionChatReport.collection_id == collection.id,
+            CollectionChatReport.reported_user_id == user_id,
+            CollectionChatReport.created_at >= cutoff,
+            CollectionChatReport.status.in_(("open", "reviewing")),
+        )
+        .scalar()
+        or 0
+    )
+    messages = (
+        db.query(func.count(CollectionChatMessage.id))
+        .filter(
+            CollectionChatMessage.collection_id == collection.id,
+            CollectionChatMessage.user_id == user_id,
+            CollectionChatMessage.created_at >= cutoff,
+        )
+        .scalar()
+        or 0
+    )
     score = min(100, int(reports) * 25 + max(0, int(messages) - 100) // 5)
-    return {"user_id": str(user_id), "score": score, "reports_24h": int(reports), "messages_24h": int(messages)}
+    return {
+        "user_id": str(user_id),
+        "score": score,
+        "reports_24h": int(reports),
+        "messages_24h": int(messages),
+    }
 
 
 def _collection(db: Session, collection_id: uuid.UUID, auth: AuthContext) -> DocumentCollection:
@@ -186,12 +233,31 @@ def register_collection_device(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> CollectionDeviceResponse:
-    if payload.protocol_version != "legacy-shared-key":
+    if payload.protocol_version not in {"legacy-shared-key", "signal-pattern-v1"}:
         raise ApiError(
             code="VALIDATION_ERROR",
-            message="This deployment only supports the explicitly labelled legacy collection protocol.",
+            message="Unsupported collection protocol version.",
             status_code=422,
         )
+    if payload.protocol_version == "signal-pattern-v1":
+        if not payload.identity_public_key:
+            raise ApiError(
+                code="VALIDATION_ERROR",
+                message="signal-pattern-v1 devices must register an X25519 identity public key.",
+                status_code=422,
+            )
+        from app.documents.services.collection_chat_crypto import (
+            validate_device_public_key,
+        )
+
+        try:
+            validate_device_public_key(payload.identity_public_key)
+        except Exception as exc:
+            raise ApiError(
+                code="VALIDATION_ERROR",
+                message="identity_public_key is not a valid X25519 key.",
+                status_code=422,
+            ) from exc
     created = False
     row = (
         db.query(CollectionDevice)
@@ -307,6 +373,7 @@ def block_collection_member(
                 reason=payload.reason,
             )
         )
+        _rotate_sealed_chat_epoch(db, collection=collection, reason="member-blocked")
         db.commit()
     return {"status": "blocked"}
 
@@ -335,6 +402,7 @@ def unblock_collection_member(
     )
     if row is not None:
         db.delete(row)
+        _rotate_sealed_chat_epoch(db, collection=collection, reason="member-unblocked")
         db.commit()
     return Response(status_code=204)
 

@@ -93,6 +93,14 @@ class DeepSpaceRunEvent(Base):
         nullable=False,
         index=True,
     )
+    # Nullable for legacy events created before the retention/run-link
+    # migration. Unknown legacy events are preserved conservatively.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("deepspace_agent_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     client_request_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     frame: Mapped[str] = mapped_column(Text, nullable=False)

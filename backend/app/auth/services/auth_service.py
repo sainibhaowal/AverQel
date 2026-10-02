@@ -48,6 +48,7 @@ from app.query.models.conversation import Conversation
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
 from app.system.services.audit_service import AuditService
+from app.system.services.storage_quota import StorageQuotaService, resolve_storage_plan
 from app.system.services.storage_service import StorageService
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
@@ -339,6 +340,12 @@ class AuthService:
         self.users.create(user)
 
         self._assign_initial_role(user=user)
+        StorageQuotaService(self.db).ensure_allocation(
+            tenant_id=user.tenant_id,
+            requested_plan=resolve_storage_plan(
+                ("admin",) if self._is_bootstrap_super_admin_email(user.email) else ("user",)
+            ),
+        )
 
         self.db.commit()
         return user

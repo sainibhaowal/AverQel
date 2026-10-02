@@ -24,6 +24,16 @@ def test_library_profile_keeps_document_capabilities_without_mutation_tools() ->
     assert "delete" not in _names(tools)
 
 
+def test_library_save_request_receives_read_and_write_capabilities() -> None:
+    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
+        "Read the AI news and save it as a .txt file in the Library and note editor",
+        PRODUCTIVITY_TOOLS,
+    )
+
+    assert profile == "library+workspace_edit"
+    assert {"document_read", "document_query", "write", "edit", "final"} <= _names(tools)
+
+
 def test_ordinary_request_uses_direct_profile_without_unrelated_native_tools() -> None:
     tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
         "Help me solve this difficult problem", PRODUCTIVITY_TOOLS
@@ -31,6 +41,17 @@ def test_ordinary_request_uses_direct_profile_without_unrelated_native_tools() -
 
     assert profile == "direct"
     assert _names(tools) == {"ask_user"}
+
+
+def test_retrospective_request_receives_only_read_only_context_tools() -> None:
+    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
+        "What did we decide before, and are we still on the right track?",
+        PRODUCTIVITY_TOOLS,
+    )
+
+    assert profile == "retrospective"
+    assert {"read", "find", "final"} <= _names(tools)
+    assert not {"write", "edit", "delete", "sandbox_execute"} & _names(tools)
 
 
 def test_is_placeholder_response_identifies_stalling_messages() -> None:

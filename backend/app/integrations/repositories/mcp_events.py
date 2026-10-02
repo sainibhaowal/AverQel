@@ -6,6 +6,7 @@ from sqlalchemy import select, text
 
 from app.integrations.models.mcp_server import MCPEvent
 from app.system.repositories.base import BaseRepository
+from app.system.services.storage_quota import StorageQuotaService
 
 
 class MCPEventsRepository(BaseRepository):
@@ -37,6 +38,11 @@ class MCPEventsRepository(BaseRepository):
             event_type=event_type,
             sequence=int(last or 0) + 1,
             payload=payload,
+        )
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(event_type, payload),
         )
         self.db.add(event)
         self.db.flush()

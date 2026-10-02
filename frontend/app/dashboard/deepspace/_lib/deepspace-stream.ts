@@ -4,6 +4,13 @@ export function estimateTokens(text: string): number {
 }
 
 export interface MessageMetrics {
+  providerUsage?: {
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    cached_input_tokens?: number | null;
+    cache_write_input_tokens?: number | null;
+    usage_source?: string;
+  } | null;
   tokensPerSec?: number;
   totalTokens?: number;
   ttftMs?: number;
@@ -29,6 +36,23 @@ export interface MessageMetrics {
   conversationVisibleTokens?: number;
   promptCacheMode?: string;
   promptCacheEligible?: boolean;
+  promptCacheStatus?: string;
+  promptCachePrefixDigest?: string;
+  systemContextTokens?: number;
+  toolSchemaTokens?: number;
+  toolResultTokens?: number;
+  adaptiveHistoryBudgetTokens?: number | null;
+  adaptiveToolResultBudgetTokens?: number | null;
+  adaptiveMcpPreviewChars?: number;
+  nativeToolResultCharsUsed?: number;
+  nativeToolResultCharsLimit?: number | null;
+  toolProfileCanary?: {
+    tool_count: number;
+    native_schema_digests: string[];
+  };
+  cachedInputTokens?: number | null;
+  uncachedInputTokens?: number | null;
+  tokenCategorySource?: string;
   maxOutputTokens?: number;
   contextStatus?:
     | "normal"
@@ -39,6 +63,9 @@ export interface MessageMetrics {
     | "compacted"
     | "unknown";
   contextCompacted?: boolean;
+  contextEpoch?: number;
+  contextEpochReason?: string;
+  contextSourceUpdates?: string[];
   phase?: string;
   activeTools?: string[];
   latencyTimeline?: Array<{ label: string; atMs: number; detail?: string }>;
@@ -437,6 +464,7 @@ export interface DeepSpaceMessage {
   memoryUsed?: Array<{ id: string; key: string; source?: string }>;
   artifacts?: DeepSpaceMediaArtifact[];
   mediaStatus?: DeepSpaceMediaStatus;
+  attachments?: Array<{ id: string; name: string; content_type: string; size_bytes: number }>;
 }
 
 export interface DeepSpaceMediaArtifact {

@@ -9,6 +9,8 @@ from app.query.models.query import Query
 from app.query.models.query_citation import QueryCitation
 from app.system.repositories.base import BaseRepository
 from app.system.services.metrics_service import observe_db_query
+from app.system.services.storage_lifecycle import StorageLifecycleService
+from app.system.services.storage_quota import StorageQuotaService
 
 
 class QueriesRepository(BaseRepository):
@@ -27,6 +29,16 @@ class QueriesRepository(BaseRepository):
         trace_id: str,
     ) -> Query:
         self.apply_tenant_scope(tenant_id)
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                query_text,
+                normalized_query,
+                filters,
+                answer,
+            ),
+        )
         row = Query(
             tenant_id=tenant_id,
             user_id=user_id,
@@ -42,6 +54,14 @@ class QueriesRepository(BaseRepository):
         with observe_db_query("queries.create_query"):
             self.db.add(row)
             self.db.flush()
+        StorageLifecycleService(self.db).touch_source(
+            tenant_id=tenant_id,
+            category="queries",
+            source_type="grounded_query",
+            source_id=str(row.id),
+            owner_user_id=user_id,
+            activity_kind="grounded_query_created",
+        )
         return row
 
     def create_citations(

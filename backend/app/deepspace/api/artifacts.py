@@ -20,6 +20,7 @@ from app.deepspace.models.artifact_job import DeepSpaceArtifactJob
 from app.deepspace.models.media_artifact import DeepSpaceMediaArtifact
 from app.deepspace.workers.tasks import create_artifact_task
 from app.platform.database.session import get_db
+from app.system.services.storage_lifecycle import StorageLifecycleService
 from app.system.services.storage_service import StorageService, StorageServiceError
 
 router = APIRouter(prefix="/deepspace/artifacts", tags=["deepspace-artifacts"])
@@ -90,6 +91,16 @@ def create_artifact_job(
         content=payload.content,
     )
     db.add(job)
+    db.flush()
+    StorageLifecycleService(db).touch_source(
+        tenant_id=auth.tenant_id,
+        category="artifacts",
+        source_type="artifact_job",
+        source_id=str(job.id),
+        owner_user_id=auth.user_id,
+        dependency_group_id=str(job.conversation_id),
+        activity_kind="artifact_job_created",
+    )
     db.commit()
     db.refresh(job)
     create_artifact_task.delay(

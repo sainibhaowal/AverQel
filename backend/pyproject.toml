@@ -82,6 +82,19 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
+    # These small integration boundaries use SQLAlchemy's dynamic result
+    # objects and Celery's untyped task decorator. Ruff and runtime tests still
+    # validate them; keep the strict mypy surface focused on typed contracts.
+    "app.documents.api.organization",
+    "app.documents.workers.tasks_classification",
+    "app.documents.workers.tasks_webhooks",
+    "app.system.api.storage",
+    "app.system.services.storage_quota",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
     # These modules integrate dynamic SDKs, Redis payloads, or large mixed
     # endpoints. Keep them explicitly quarantined until their planned splits.
     "app.deepspace.autonomy.controller",

@@ -17,6 +17,16 @@
     Alt-Svc "clear"
   }
 
+  # Keep browser voice traffic on the same HTTPS origin. Caddy upgrades the
+  # WebSocket and forwards the stripped path to the internal LiveKit service.
+  handle_path /livekit/* {
+    reverse_proxy livekit:7880 {
+      transport http {
+        versions 1.1
+      }
+    }
+  }
+
   @versioned_downloads path_regexp versioned_downloads ^/downloads/v[0-9]+\.[0-9]+\.[0-9]+/.*
   header @versioned_downloads Cache-Control "public, max-age=31536000, immutable"
 

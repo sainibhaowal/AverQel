@@ -8,7 +8,9 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -57,6 +59,12 @@ class DocumentCollection(Base):
         Integer,
         default=0,
         server_default="0",
+        nullable=False,
+    )
+    chat_encryption_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("'false'"),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -143,6 +151,10 @@ class CollectionChatMessage(Base):
             "client_message_id",
             name="uq_collection_chat_client_message",
         ),
+        # NOTE: (collection_id, crypto_epoch, crypto_idx) uniqueness for sealed
+        # rows is enforced by a partial unique index (is_encrypted only), so
+        # legacy plaintext rows sharing (0, 0) are unaffected. See migration
+        # 20261012_0008.
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -163,8 +175,34 @@ class CollectionChatMessage(Base):
         index=True,
     )
     message: Mapped[str] = mapped_column(
-        String(4096),
+        # Text (not varchar): sealed envelopes for max-length plaintext exceed
+        # 4096 chars (base64 + headers). Plaintext input is still capped at
+        # 4096 chars by the API schema.
+        Text,
         nullable=False,
+    )
+    is_encrypted: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("'false'"),
+        nullable=False,
+    )
+    crypto_epoch: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    crypto_idx: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+    )
+    message_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True,
     )
     client_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     status: Mapped[str] = mapped_column(
@@ -185,7 +223,12 @@ class CollectionChatMessage(Base):
     )
     media_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("collection_chat_media.id", ondelete="SET NULL"),
+        ForeignKey(
+            "collection_chat_media.id",
+            ondelete="SET NULL",
+            name="fk_collection_chat_messages_media_id",
+            use_alter=True,
+        ),
         nullable=True,
         index=True,
     )
@@ -293,7 +336,6 @@ class CollectionChatDelivery(Base):
 
 class UserPresence(Base):
     __tablename__ = "user_presence"
-
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -309,4 +351,37 @@ class UserPresence(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+
+class CollectionChatEpoch(Base):
+    """Wrapped epoch key for sealed collection chat (signal-pattern-v1).
+
+    One row per ``(collection_id, epoch)``. The epoch key itself is random
+    256-bit material wrapped under the server chat keyring; deleting a row
+    crypto-shreds every message sealed under that epoch because per-message
+    keys are derived and never persisted.
+    """
+
+    __tablename__ = "collection_chat_epochs"
+    __table_args__ = (UniqueConstraint("collection_id", "epoch", name="uq_collection_chat_epoch"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback
+    )
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    epoch: Mapped[int] = mapped_column(Integer, nullable=False)
+    wrapped_key: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    key_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    key_kid: Mapped[str] = mapped_column(String(128), nullable=False)
+    reason: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default=text("'enabled'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )

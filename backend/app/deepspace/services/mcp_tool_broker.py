@@ -20,7 +20,11 @@ from typing import Any
 MCP_SEARCH_TOOLS = "mcp_search_tools"
 MCP_GET_TOOL_SCHEMA = "mcp_get_tool_schema"
 MCP_CALL_TOOL = "mcp_call_tool"
-MCP_BROKER_TOOL_NAMES = frozenset({MCP_SEARCH_TOOLS, MCP_GET_TOOL_SCHEMA, MCP_CALL_TOOL})
+MCP_GET_RESULT = "mcp_get_result"
+MCP_BROKER_TOOL = "mcp_broker"
+MCP_BROKER_TOOL_NAMES = frozenset(
+    {MCP_BROKER_TOOL, MCP_SEARCH_TOOLS, MCP_GET_TOOL_SCHEMA, MCP_CALL_TOOL, MCP_GET_RESULT}
+)
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -188,6 +192,53 @@ class MCPToolBroker:
                     },
                 },
             },
+        ]
+
+    @staticmethod
+    def compact_definitions() -> list[dict[str, Any]]:
+        """Return one stable model-facing MCP interface.
+
+        The complete catalogue and exact schemas remain private.  The model
+        selects a broker operation; the runtime dispatches it to the existing
+        search/schema/call implementation after policy and reference checks.
+        """
+
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": MCP_BROKER_TOOL,
+                    "description": (
+                        "Use the connected MCP broker. Set operation to search to find a tool, "
+                        "schema to load one compact schema, or call to execute one exact tool_ref. "
+                        "The private MCP catalogue and exact upstream schemas are never exposed."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "operation": {
+                                "type": "string",
+                                "enum": ["search", "schema", "call", "result"],
+                            },
+                            "query": {
+                                "type": "string",
+                                "maxLength": 500,
+                                "description": "Short service, resource, and action description for search.",
+                            },
+                            "cursor": {"type": "string", "maxLength": 128},
+                            "tool_ref": {"type": "string", "maxLength": 128},
+                            "result_ref": {"type": "string", "maxLength": 128},
+                            "arguments": {
+                                "type": "object",
+                                "description": "Arguments for the selected MCP tool when operation is call.",
+                                "additionalProperties": True,
+                            },
+                        },
+                        "required": ["operation"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
         ]
 
     @staticmethod

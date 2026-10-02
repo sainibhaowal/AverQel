@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.deepspace.models.request_metric import DeepSpaceRequestMetric
+from app.system.services.storage_quota import StorageQuotaService
 
 
 class DeepSpaceRequestMetricsRepository:
@@ -14,6 +15,16 @@ class DeepSpaceRequestMetricsRepository:
         self.db = db
 
     def record(self, row: DeepSpaceRequestMetric) -> None:
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=row.tenant_id,
+            user_id=row.user_id,
+            additional_bytes=StorageQuotaService.estimate_bytes(
+                row.provider_type,
+                row.model_name,
+                row.error_code,
+                row.metadata_json,
+            ),
+        )
         self.db.add(row)
         self.db.flush()
 

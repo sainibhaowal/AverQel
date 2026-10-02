@@ -125,6 +125,7 @@ export default function DeepSpaceLibraryDrawer({
   const [folderStack, setFolderStack] = useState<string[]>([]);
   const [selected, setSelected] = useState<LibraryFile | null>(null);
   const selectedFileIdRef = useRef<string | null>(null);
+  const selectFileRef = useRef<(file: LibraryFile) => Promise<void>>(async () => {});
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -204,7 +205,7 @@ export default function DeepSpaceLibraryDrawer({
     });
   };
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (!conversationId) return;
     setLoading(true);
     try {
@@ -240,11 +241,20 @@ export default function DeepSpaceLibraryDrawer({
     } finally {
       setLoading(false);
     }
-  };
+  }, [conversationId, currentFolderId]);
+
+  useEffect(() => {
+    const onLibraryUpdated = (event: Event) => {
+      const updatedConversationId = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
+      if (updatedConversationId === conversationId) void refresh();
+    };
+    window.addEventListener("deepspace-library-updated", onLibraryUpdated);
+    return () => window.removeEventListener("deepspace-library-updated", onLibraryUpdated);
+  }, [conversationId, refresh]);
 
   useEffect(() => {
     if (open) queueMicrotask(() => void refresh());
-  }, [open, conversationId, currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, refresh]);
 
   useEffect(() => {
     if (open && conversationId) queueMicrotask(() => void resumeUploadsRef.current?.());
@@ -313,6 +323,27 @@ export default function DeepSpaceLibraryDrawer({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    selectFileRef.current = selectFile;
+  });
+
+  useEffect(() => {
+    const openRequestedFile = (event: Event) => {
+      const fileId = (event as CustomEvent<{ fileId?: string }>).detail?.fileId;
+      if (!fileId || !conversationId) return;
+      void (async () => {
+        const response = (await fetchWithAuth(
+          `/deepspace/library/${conversationId}/files/${encodeURIComponent(fileId)}`,
+          { timeoutMs: 8_000 },
+        )) as Response;
+        if (!response.ok) return;
+        await selectFileRef.current((await response.json()) as LibraryFile);
+      })();
+    };
+    window.addEventListener("deepspace-library-open", openRequestedFile);
+    return () => window.removeEventListener("deepspace-library-open", openRequestedFile);
+  }, [conversationId]);
 
   const openArchiveEntry = async (entry: { name: string; directory: boolean }) => {
     if (!conversationId || !selected || entry.directory) return;

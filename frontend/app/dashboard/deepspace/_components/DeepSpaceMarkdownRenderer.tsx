@@ -99,7 +99,7 @@ function MermaidPreview({ source }: { source: string }) {
   };
 
   return (
-    <div className="group relative my-4 overflow-x-auto rounded-xl border border-border bg-surface-1 p-4">
+    <div className="group border-border bg-surface-1 relative my-4 overflow-visible rounded-xl border p-4">
       <div className="absolute top-3 right-3 z-10 h-8 w-36 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
         <button
           type="button"
@@ -121,7 +121,7 @@ function MermaidPreview({ source }: { source: string }) {
             <Download size={14} /> Export <ChevronDown size={13} />
           </button>
           {exportOpen ? (
-            <div className="theme-panel absolute top-10 right-0 grid min-w-36 gap-1 rounded-xl p-1 shadow-xl">
+            <div className="absolute top-10 right-0 z-50 grid min-w-36 gap-1 rounded-xl border border-border bg-surface-1 p-1 shadow-xl">
               <button
                 type="button"
                 onClick={downloadSource}
@@ -157,13 +157,15 @@ function MermaidPreview({ source }: { source: string }) {
           ) : null}
         </div>
       </div>
-      {svg ? (
-        <div dangerouslySetInnerHTML={{ __html: svg }} />
-      ) : (
-        <pre className="text-xs text-cyan-100">
-          <code>{error ? sanitizedSource : "Rendering diagram…"}</code>
-        </pre>
-      )}
+      <div className="overflow-x-auto">
+        {svg ? (
+          <div dangerouslySetInnerHTML={{ __html: svg }} />
+        ) : (
+          <pre className="text-xs text-cyan-100">
+            <code>{error ? sanitizedSource : "Rendering diagram…"}</code>
+          </pre>
+        )}
+      </div>
     </div>
   );
 }
@@ -203,7 +205,7 @@ function AsciiDiagramPreview({ source }: { source: string }) {
         </button>
       </div>
       <div className="overflow-x-auto p-5 sm:p-6">
-        <pre className="m-0 w-max min-w-full font-mono text-[11px] leading-6 whitespace-pre text-slate-800 [font-variant-ligatures:none] dark:text-cyan-100 sm:text-xs">
+        <pre className="m-0 w-max min-w-full font-mono text-[11px] leading-6 whitespace-pre text-slate-800 [font-variant-ligatures:none] sm:text-xs dark:text-cyan-100">
           <code>{source}</code>
         </pre>
       </div>
@@ -412,7 +414,7 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
           <input {...props} />
         ),
       blockquote: ({ children }) => (
-        <blockquote className="my-3 border-l-2 border-cyan-400/50 bg-cyan-400/5 px-4 py-3">
+        <blockquote className="deepspace-markdown-blockquote my-3 border-l-2 border-cyan-400/50 bg-cyan-400/5 px-4 py-3">
           {children}
         </blockquote>
       ),

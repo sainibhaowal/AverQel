@@ -277,6 +277,9 @@ class OpenAICompatibleProvider:
                         chunk = json.loads(data)
                     except json.JSONDecodeError:
                         continue
+                    usage = chunk.get("usage")
+                    if isinstance(usage, dict):
+                        yield {"type": "usage", "usage": usage}
                     choices = chunk.get("choices")
                     if not isinstance(choices, list) or not choices:
                         continue

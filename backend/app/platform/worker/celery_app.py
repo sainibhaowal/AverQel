@@ -42,6 +42,7 @@ celery_app.conf.update(
         "ingestion.process_job": {"queue": "ingestion_heavy"},
         "ingestion.ping": {"queue": "ingestion_light"},
         "documents.*": {"queue": "maintenance"},
+        "collections.dispatch_push_outbox": {"queue": "collection_push"},
         "maintenance.process_data_deletion": {"queue": "maintenance"},
         "maintenance.retention_cleanup": {"queue": "maintenance"},
         "maintenance.heartbeat": {"queue": "maintenance"},

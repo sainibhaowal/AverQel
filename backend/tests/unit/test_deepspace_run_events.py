@@ -5,16 +5,32 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm.exc import DetachedInstanceError
 
+from app.deepspace.models.conversation import Conversation
 from app.deepspace.services.run_events import (
     append_event,
     decode_live_event,
     event_name_from_frame,
     frames_after,
     is_terminal_event,
+    latest_sequence,
     load_events,
     timeline_events,
 )
 from app.platform.database.session import managed_db_session
+from app.realtime.event_bus import decode_event, stream_key
+
+
+def test_realtime_event_envelope_is_bounded_and_tenant_scoped() -> None:
+    tenant_id = uuid4()
+    user_id = uuid4()
+    assert stream_key(tenant_id, user_id) == f"averqel:realtime:v1:{tenant_id}:{user_id}"
+    assert decode_event(
+        {"payload": '{"type":"conversation.updated","resource":"conversations"}'}
+    ) == {
+        "type": "conversation.updated",
+        "resource": "conversations",
+    }
+    assert decode_event({"payload": "not-json"}) is None
 
 
 def test_event_name_is_read_from_real_sse_frame() -> None:
@@ -105,7 +121,7 @@ def test_frames_after_filters_replayed_cursor() -> None:
     assert frames_after(events, after_sequence=1) == [(3, "three")]
 
 
-def test_replay_frames_survive_managed_session_close(db_session, settings) -> None:
+def test_replay_frames_survive_managed_session_close(db_session, settings, seed_user) -> None:
     """Regression: the DeepSpace SSE iterator must materialize replay frames
     while the ORM session is still open.
 
@@ -117,12 +133,23 @@ def test_replay_frames_survive_managed_session_close(db_session, settings) -> No
     SSE event, which the UI reports as "The chat provider returned an empty
     stream." (STREAM_INCOMPLETE).
     """
-    tenant_id = uuid4()
-    user_id = uuid4()
+    seeded = seed_user("replay-tenant", "replay@example.com", "StrongPass!1234", ("user",))
+    tenant_id = seeded.tenant_id
+    user_id = seeded.user_id
     conversation_id = uuid4()
     client_request_id = f"regression-replay-{uuid4()}"
     start_frame = "event: start\ndata: {}\n\n"
     delta_frame = 'event: delta\ndata: {"text":"hello"}\n\n'
+    db_session.add(
+        Conversation(
+            id=conversation_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            title="Replay test",
+            kind="deepspace",
+        )
+    )
+    db_session.commit()
 
     append_event(
         db_session,
@@ -164,6 +191,43 @@ def test_replay_frames_survive_managed_session_close(db_session, settings) -> No
     # rather than SimpleNamespace mocks.
     with pytest.raises(DetachedInstanceError):
         _ = stored[0].sequence  # type: ignore[index]
+
+
+def test_latest_sequence_is_an_authorized_resume_cursor(db_session, settings, seed_user) -> None:
+    seeded = seed_user("cursor-tenant", "cursor@example.com", "StrongPass!1234", ("user",))
+    conversation_id = uuid4()
+    request_id = f"resume-cursor-{uuid4()}"
+    db_session.add(
+        Conversation(
+            id=conversation_id,
+            tenant_id=seeded.tenant_id,
+            user_id=seeded.user_id,
+            title="Resume cursor test",
+            kind="deepspace",
+        )
+    )
+    db_session.commit()
+    for frame in ("event: start\\ndata: {}\\n\\n", "event: done\\ndata: {}\\n\\n"):
+        append_event(
+            db_session,
+            settings=settings,
+            tenant_id=seeded.tenant_id,
+            user_id=seeded.user_id,
+            conversation_id=conversation_id,
+            client_request_id=request_id,
+            frame=frame,
+        )
+
+    assert (
+        latest_sequence(
+            db_session,
+            tenant_id=seeded.tenant_id,
+            user_id=seeded.user_id,
+            conversation_id=conversation_id,
+            client_request_id=request_id,
+        )
+        == 2
+    )
 
 
 def test_timeline_coalesces_adjacent_thinking_but_not_across_tools() -> None:

@@ -43,7 +43,7 @@ export default function ProviderOAuthPanel({
           type="button"
           onClick={onConnect}
           disabled={!status?.available || connecting}
-          className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#14b8a6,#0ea5e9)] px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#14b8a6,#0891b2)] px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <ExternalLink size={14} />
           {status?.connected ? "Reconnect" : "Connect OpenAI / Codex"}

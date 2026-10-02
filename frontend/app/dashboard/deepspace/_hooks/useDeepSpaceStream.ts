@@ -55,6 +55,19 @@ export function useDeepSpaceStream({
     onUserCancelRef.current = onUserCancel;
   }, [onEvent, onEvents, onFinally, onTransportError, onUserCancel]);
 
+  useEffect(() => {
+    return () => {
+      // Unmounting the chat view is not a server-side cancellation. Stop only
+      // this browser reader so a later visit can reconnect to the durable run
+      // without an old component delivering events into stale state.
+      if (!abortRef.current) return;
+      cancelledByUserRef.current = true;
+      suppressFinallyRef.current = true;
+      abortRef.current.abort();
+      abortRef.current = null;
+    };
+  }, []);
+
   const cancel = useCallback(() => {
     if (!abortRef.current) return;
     cancelledByUserRef.current = true;

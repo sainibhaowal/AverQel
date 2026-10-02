@@ -22,8 +22,18 @@ def upgrade() -> None:
         sa.Column("label", sa.String(128), server_default=sa.text("'Browser'"), nullable=False),
         sa.Column("user_agent", sa.String(512), nullable=True),
         sa.Column("ip_hash", sa.String(128), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
-        sa.Column("last_seen_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
+        sa.Column(
+            "last_seen_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=False,
+        ),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("revocation_reason", sa.String(100), nullable=True),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
@@ -43,7 +53,12 @@ def upgrade() -> None:
         sa.Column("session_id", postgresql.UUID(as_uuid=True), nullable=True),
     )
     op.create_foreign_key(
-        "fk_refresh_tokens_session_id", "refresh_tokens", "auth_sessions", ["session_id"], ["id"], ondelete="SET NULL"
+        "fk_refresh_tokens_session_id",
+        "refresh_tokens",
+        "auth_sessions",
+        ["session_id"],
+        ["id"],
+        ondelete="SET NULL",
     )
     op.create_index("ix_refresh_tokens_session_id", "refresh_tokens", ["session_id"])
 

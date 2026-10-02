@@ -177,14 +177,15 @@ class DatasetDerivativeService:
                 handle.write(payload)
                 path = handle.name
             connection = duckdb.connect(":memory:", read_only=False)
-            quoted = ", ".join(f'"{column.replace("\"", "\"\"")}"' for column in selected)
+            quoted = ", ".join(f'"{column.replace('"', '""')}"' for column in selected)
             order = (
-                f' ORDER BY "{order_by.replace("\"", "\"\"")}" {"DESC" if descending else "ASC"}'
+                f' ORDER BY "{order_by.replace('"', '""')}" {"DESC" if descending else "ASC"}'
                 if order_by
                 else ""
             )
             result = connection.execute(
-                f"SELECT {quoted} FROM read_parquet(?) {where_sql}{order} LIMIT ? OFFSET ?",
+                # Identifiers and clauses are allowlisted above; row values remain bound.
+                f"SELECT {quoted} FROM read_parquet(?) {where_sql}{order} LIMIT ? OFFSET ?",  # nosec B608
                 [path, *where_values, limit + 1, offset],
             )
             values = result.fetchall()
@@ -245,12 +246,14 @@ class DatasetDerivativeService:
             if group_by:
                 group = f'"{self._quote(group_by)}"'
                 statement = (
-                    f"SELECT {group} AS group, {expression} AS value FROM read_parquet(?)"
+                    f"SELECT {group} AS group, {expression} AS value FROM read_parquet(?)"  # nosec B608
                     f" {where_sql} GROUP BY {group} ORDER BY value DESC NULLS LAST LIMIT ?"
                 )
                 result_columns = ["group", "value"]
             else:
-                statement = f"SELECT {expression} AS value FROM read_parquet(?) {where_sql}"
+                statement = (
+                    f"SELECT {expression} AS value FROM read_parquet(?) {where_sql}"  # nosec B608
+                )
                 result_columns = ["value"]
             rows = connection.execute(
                 statement, [path, *where_values, *([limit] if group_by else [])]
@@ -320,7 +323,8 @@ class DatasetDerivativeService:
                 f'r."{self._quote(item)}" AS "right_{self._quote(item)}"' for item in right_selected
             )
             rows = connection.execute(
-                f'SELECT {left_expr}, {right_expr} FROM read_parquet(?) l {join_type.upper()} JOIN read_parquet(?) r ON l."{self._quote(left_on)}" = r."{self._quote(right_on)}" LIMIT ?',
+                # Columns and join type are allowlisted above; paths and limit are bound.
+                f'SELECT {left_expr}, {right_expr} FROM read_parquet(?) l {join_type.upper()} JOIN read_parquet(?) r ON l."{self._quote(left_on)}" = r."{self._quote(right_on)}" LIMIT ?',  # nosec B608
                 [paths[0], paths[1], limit],
             ).fetchall()
             columns = [f"left_{item}" for item in left_selected] + [

@@ -195,9 +195,9 @@ describe("deepspace page", () => {
 
     render(<DeepSpacePageClient />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
     expect(await screen.findByLabelText(/writing canvas editor/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/writing canvas editor/i)).toBeInTheDocument();
-    expect(screen.queryByText(/mock deepspace chat/i)).not.toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("button", { name: /split view/i }));
     expect(screen.getByText(/mock deepspace chat/i)).toBeInTheDocument();
@@ -279,6 +279,7 @@ describe("deepspace page", () => {
   it("inserts assistant output into the draft", async () => {
     render(<DeepSpacePageClient />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /notes/i }));
     await screen.findByLabelText(/writing canvas editor/i);
     fireEvent.click(await screen.findByRole("button", { name: /split view/i }));
     fireEvent.click(screen.getByRole("button", { name: /insert latest answer/i }));

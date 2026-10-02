@@ -201,7 +201,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className={`bg-primary absolute left-0 rounded-r-full ${
                 !sidebarOpen && !isMobile ? "h-6 w-[3px]" : "h-5 w-[3px]"
               }`}
-              transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
             />
           )}
 
@@ -210,13 +210,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           >
             {item.icon}
           </div>
-          {(sidebarOpen || isMobile) && (
-            <span
-              className={`truncate text-sm font-bold tracking-tight ${isActive ? "" : "font-medium"}`}
-            >
-              {item.name}
-            </span>
-          )}
+          <motion.span
+            initial={false}
+            animate={{
+              maxWidth: sidebarOpen || isMobile ? 180 : 0,
+              opacity: sidebarOpen || isMobile ? 1 : 0,
+            }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className={`block truncate overflow-hidden text-sm font-bold tracking-tight whitespace-nowrap ${isActive ? "" : "font-medium"}`}
+            aria-hidden={!sidebarOpen && !isMobile}
+          >
+            {item.name}
+          </motion.span>
         </motion.div>
 
         {/* Sliding Background Pill */}
@@ -224,7 +229,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <motion.div
             layoutId="active-nav-pill"
             className="bg-primary/10 absolute inset-0 z-0 rounded-xl"
-            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
           />
         )}
       </Link>
@@ -236,7 +241,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div
         className={`flex h-18 items-center px-4 pt-2 ${!sidebarOpen && !isMobile ? "justify-center px-0" : "justify-between"}`}
       >
-        <AverQelLogo size="nav" showWordmark={sidebarOpen || isMobile} />
+        <AverQelLogo
+          size="nav"
+          showWordmark
+          animateWordmark={!isMobile}
+          wordmarkVisible={sidebarOpen || isMobile}
+        />
         {(sidebarOpen || isMobile) && isMobile && (
           <button
             onClick={() => setMobileMenuOpen(false)}
@@ -293,27 +303,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         >
           <motion.button
             onClick={() => setSidebarOpen((prev) => !prev)}
-            className={`ui-btn btn-ghost sweeping-light-btn h-12 ${sidebarOpen ? "w-full justify-start gap-2 px-4" : "border-glass-border bg-surface-1/40 w-full justify-center rounded-2xl shadow-xl"}`}
+            className={`sidebar-collapse-control ui-btn btn-ghost sweeping-light-btn h-12 ${sidebarOpen ? "w-full justify-start gap-2 px-4" : "border-glass-border bg-surface-1/40 w-full justify-center rounded-2xl shadow-xl"}`}
             aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-            whileTap={{ scale: 0.96 }}
+            whileTap={{ scale: 0.98 }}
           >
             <motion.span
               initial={false}
               animate={{ rotate: sidebarOpen ? 0 : 180 }}
-              transition={{ type: "spring", stiffness: 420, damping: 30 }}
+              transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
             >
               {sidebarOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
             </motion.span>
-            {sidebarOpen && <span className="text-sm font-bold">Collapse</span>}
+            <motion.span
+              initial={false}
+              animate={{
+                maxWidth: sidebarOpen ? 100 : 0,
+                opacity: sidebarOpen ? 1 : 0,
+              }}
+              transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+              className="block overflow-hidden text-sm font-bold whitespace-nowrap"
+              aria-hidden={!sidebarOpen}
+            >
+              Collapse
+            </motion.span>
           </motion.button>
-          {sidebarOpen && (
-            <div className="bg-primary/5 border-primary/10 text-primary/70 flex items-center justify-center rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.14em] uppercase">
+          <motion.div
+            initial={false}
+            animate={{
+              height: sidebarOpen ? "auto" : 0,
+              opacity: sidebarOpen ? 1 : 0,
+              scale: sidebarOpen ? 1 : 0.96,
+            }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+            aria-hidden={!sidebarOpen}
+          >
+            <div className="bg-primary/5 border-primary/10 text-primary/70 flex items-center justify-center rounded-full border px-2 py-1 text-[10px] font-bold tracking-[0.14em] whitespace-nowrap uppercase">
               {APP_VERSION}
               {process.env.NEXT_PUBLIC_GIT_SHA && process.env.NEXT_PUBLIC_GIT_SHA !== "unknown"
                 ? ` • ${String(process.env.NEXT_PUBLIC_GIT_SHA).slice(0, 7)}`
                 : ""}
             </div>
-          )}
+          </motion.div>
         </div>
       )}
     </>
@@ -342,8 +373,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <motion.aside
             initial={false}
             animate={{ width: sidebarOpen ? 256 : 84 }}
-            transition={{ type: "spring", stiffness: 280, damping: 28, mass: 0.9 }}
-            className="card-elevated relative z-20 my-4 mr-3 ml-4 flex h-[calc(100svh-2rem)] flex-col rounded-l-xl rounded-r-2xl border-r-0"
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="dashboard-sidebar-shell card-elevated relative z-20 my-4 mr-3 ml-4 flex h-[calc(100svh-2rem)] flex-col overflow-hidden rounded-l-xl rounded-r-2xl border-r-0"
           >
             {renderSidebarContent()}
           </motion.aside>
@@ -435,9 +466,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
 
               <div
-                className={`border-primary/35 bg-primary/15 text-primary flex h-9 w-9 items-center justify-center rounded-full border text-sm font-bold ${isDeepSpaceRoute ? "hidden sm:flex" : ""}`}
+                className={`dashboard-user-avatar relative flex h-9 w-9 items-center justify-center rounded-full border text-sm font-bold ${isDeepSpaceRoute ? "hidden sm:flex" : ""}`}
+                title={user?.email ?? "Account"}
+                aria-label={`Account for ${user?.email ?? "user"}`}
               >
-                {user?.email?.[0].toUpperCase()}
+                <span className="dashboard-user-avatar-letter relative z-10">
+                  {user?.email?.[0]?.toUpperCase() ?? "U"}
+                </span>
+                <span className="dashboard-user-avatar-status" aria-hidden="true" />
               </div>
 
               <button

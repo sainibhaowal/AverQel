@@ -69,15 +69,10 @@ class PptxExtractor(BaseExtractor):
                 lines.append(f"## Slide {slide_index}\n" + "\n".join(slide_lines))
 
         text = "\n\n".join(lines).strip()
-        if len(text) > self.max_text_chars:
-            raise ApiError(
-                code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
-                message="Parsed document exceeds text processing limit.",
-                status_code=422,
-                details={"max_chars": self.max_text_chars},
-            )
-
         warnings: list[str] = []
+        if len(text) > self.max_text_chars:
+            warnings.append("large_text_processed_in_batches")
+
         extraction_method = self.extraction_method
         if not text:
             fallback, source = extract_openxml_text(
@@ -91,13 +86,8 @@ class PptxExtractor(BaseExtractor):
                 extraction_method = f"pptx_{source or 'fallback'}"
             else:
                 warnings.append("pptx_no_text_extracted")
-        if len(text) > self.max_text_chars:
-            raise ApiError(
-                code="DOCUMENT_TEXT_LIMIT_EXCEEDED",
-                message="Parsed document exceeds text processing limit.",
-                status_code=422,
-                details={"max_chars": self.max_text_chars},
-            )
+        if len(text) > self.max_text_chars and "large_text_processed_in_batches" not in warnings:
+            warnings.append("large_text_processed_in_batches")
 
         return ExtractionResult(
             text=text,

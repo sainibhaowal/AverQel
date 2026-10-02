@@ -55,6 +55,11 @@ class Document(Base):
     content_type: Mapped[str] = mapped_column(String(128), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     sha256_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    security_scan_result: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    security_scan_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    security_scanned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     storage_bucket: Mapped[str] = mapped_column(String(128), nullable=False)
     storage_object_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)

@@ -39,6 +39,12 @@ export function resolveApiBaseUrl(params: {
 
 export const getApiBaseUrl = () => {
   if (isDesktopEnvironment()) {
+    // An explicit API URL is authoritative for local desktop/E2E runs and
+    // packaged deployments. Without it, retain the existing same-origin
+    // localhost behavior.
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL;
+    }
     if (typeof window !== "undefined") {
       const { hostname, origin } = window.location;
       // Electron development loads the web app from the local HTTPS origin.
@@ -408,10 +414,11 @@ export async function fetchWithAuth(
     _isRetry?: boolean;
     _skipAuthRefresh?: boolean;
     timeoutMs?: number;
+    silentTimeout?: boolean;
   } = {},
 ) {
   const endpointPath = normalizeEndpointPath(endpoint);
-  const { _isRetry, _skipAuthRefresh, timeoutMs, ...requestInit } = options;
+  const { _isRetry, _skipAuthRefresh, timeoutMs, silentTimeout, ...requestInit } = options;
   let token = localStorage.getItem("averqel_token");
   let tenantId = getRequestTenantId(token);
 
@@ -465,7 +472,7 @@ export async function fetchWithAuth(
       endpointPath,
     );
   } catch (error) {
-    if (error instanceof ApiRequestTimeoutError) {
+    if (error instanceof ApiRequestTimeoutError && !silentTimeout) {
       toast.error("This request took too long. No data was changed; please retry.", {
         id: "api-timeout-busy",
         duration: 4_000,

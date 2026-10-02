@@ -47,6 +47,7 @@ class DocumentCollectionResponse(DocumentCollectionBase):
     )
     member_count: int = 0
     security_epoch: int = 0
+    chat_encryption_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 

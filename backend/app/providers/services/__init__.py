@@ -30,6 +30,7 @@ from app.providers.services.types import (
     WebSearchResponse,
     WebSearchResultItem,
 )
+from app.providers.services.usage_normalizer import normalize_chat_usage
 
 __all__ = [
     "ChatGenerateRequest",
@@ -60,4 +61,5 @@ __all__ = [
     "ProviderOAuthService",
     "ProviderRegistry",
     "OpenCodeZenProvider",
+    "normalize_chat_usage",
 ]

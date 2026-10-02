@@ -26,6 +26,7 @@ describe("settings page", () => {
     render(<SettingsPage />);
 
     expect(screen.getByRole("link", { name: /providers/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /plan & storage/i })).toBeInTheDocument();
   });
 
   it("shows providers in settings for editor role", () => {

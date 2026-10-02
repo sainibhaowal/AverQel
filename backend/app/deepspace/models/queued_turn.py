@@ -38,6 +38,9 @@ class DeepSpaceQueuedTurn(Base):
         index=True,
     )
     client_request_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    resume_from_request_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -45,6 +48,8 @@ class DeepSpaceQueuedTurn(Base):
     reasoning_effort: Mapped[str | None] = mapped_column(String(20), nullable=True)
     roles_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     permissions_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    # References only: uploaded bytes remain in the tenant-scoped Library.
+    attachment_file_ids_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", index=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

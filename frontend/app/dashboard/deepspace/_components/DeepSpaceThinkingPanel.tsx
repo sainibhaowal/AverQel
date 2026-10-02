@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { BrainCircuit } from "lucide-react";
 import {
   CheckCircle2,
@@ -333,7 +333,7 @@ function StepIcon({ step }: { step: AgentStep }) {
   if (step.data?.phase === "provider_ready")
     return <CheckCircle2 size={13} className="text-emerald-400" />;
   if (step.type === "plan") return <ListChecks size={13} className="text-violet-300" />;
-  if (step.type === "observing") return <Eye size={13} className="text-sky-300" />;
+  if (step.type === "observing") return <Eye size={13} className="text-cyan-300" />;
   if (step.type === "agent_testing" || step.type === "agent_verifying") {
     return <FlaskConical size={13} className="text-blue-300" />;
   }
@@ -414,7 +414,7 @@ function TimelineIcon({ step }: { step: TimelineStep }) {
   if (step.type === "model_message")
     return <MessageCircleQuestion size={13} className="text-cyan-300" />;
   if (step.type === "plan") return <ListChecks size={13} className="text-violet-300" />;
-  if (step.type === "observation") return <Eye size={13} className="text-sky-300" />;
+  if (step.type === "observation") return <Eye size={13} className="text-cyan-300" />;
   if (step.type === "testing") return <FlaskConical size={13} className="text-blue-300" />;
   if (step.type === "permission") return <ShieldCheck size={13} className="text-amber-300" />;
   if (step.type === "error") return <CircleAlert size={13} className="text-red-300" />;
@@ -600,18 +600,7 @@ export default function DeepSpaceThinkingPanel({
   const [panelOpen, setPanelOpen] = useState(isStreaming);
   const activityPanelId = `deepspace-activity-${useId().replace(/:/g, "")}`;
   const wasStreaming = useRef(isStreaming);
-  const panelTriggerRef = useRef<HTMLButtonElement>(null);
-  const panelContentRef = useRef<HTMLDivElement>(null);
   const [clock, setClock] = useState(() => Date.now());
-
-  const closePanel = useCallback(() => {
-    // Never hide an element that contains the active control. Chromium blocks
-    // that aria-hidden change, and keyboard users would lose their focus.
-    if (panelContentRef.current?.contains(document.activeElement)) {
-      panelTriggerRef.current?.focus();
-    }
-    setPanelOpen(false);
-  }, []);
 
   // Opening a newly active run should remain automatic, but completion must
   // not forcibly collapse the panel or override a user's expand/collapse
@@ -622,12 +611,8 @@ export default function DeepSpaceThinkingPanel({
       wasStreaming.current = true;
       return () => window.clearTimeout(timer);
     }
-    const timer = wasStreaming.current ? window.setTimeout(closePanel, 0) : undefined;
     wasStreaming.current = false;
-    return () => {
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
-  }, [closePanel, isStreaming]);
+  }, [isStreaming]);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -693,7 +678,6 @@ export default function DeepSpaceThinkingPanel({
   return (
     <div className="motion-safe:animate-in motion-safe:fade-in mb-4 motion-safe:duration-300 motion-safe:ease-out">
       <button
-        ref={panelTriggerRef}
         type="button"
         aria-expanded={panelOpen}
         aria-controls={activityPanelId}
@@ -710,7 +694,6 @@ export default function DeepSpaceThinkingPanel({
       </button>
       <div
         id={activityPanelId}
-        ref={panelContentRef}
         aria-hidden={!panelOpen}
         className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${panelOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
       >

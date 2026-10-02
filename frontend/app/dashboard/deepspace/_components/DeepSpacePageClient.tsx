@@ -175,7 +175,10 @@ export default function DeepSpacePageClient() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [agentNotePreview, setAgentNotePreview] = useState<DeepSpaceAgentNotePreview | null>(null);
-  const [panelMode, setPanelMode] = useState<WorkspacePanel>("notes");
+  // Chat is the primary DeepSpace workspace. Notes remains available through
+  // the workspace switcher and as the default left panel when split view is
+  // explicitly enabled.
+  const [panelMode, setPanelMode] = useState<WorkspacePanel>("chat");
   const editorRef = useRef<DeepSpaceEditorHandle>(null);
   const agentPreviewBaseContentRef = useRef<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -296,6 +299,15 @@ export default function DeepSpacePageClient() {
     agentPreviewBaseContentRef.current = null;
     queueMicrotask(() => setAgentNotePreview(null));
   }, [activeNote?.id]);
+
+  useEffect(() => {
+    const openLibrary = () => {
+      if (isSplitView) setSplitWorkspacePanel("library");
+      else setPanelMode("library");
+    };
+    window.addEventListener("deepspace-library-open", openLibrary);
+    return () => window.removeEventListener("deepspace-library-open", openLibrary);
+  }, [isSplitView]);
 
   // ── Auto-save ────────────────────────────────────────────────────────────
 

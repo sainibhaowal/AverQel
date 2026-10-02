@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AuthProvider } from "../app/context/AuthContext";
 import DeepSpaceChatClient from "../app/dashboard/deepspace/_components/DeepSpaceChatClient";
 
 const listProvidersMock = vi.fn();
@@ -18,6 +19,8 @@ vi.mock("@/lib/providers-api", () => ({
 
 vi.mock("@/lib/api", () => ({
   fetchWithAuth: vi.fn(async () => ({ ok: true, json: async () => ({ messages: [] }) })),
+  isDesktopEnvironment: () => false,
+  getAccessTokenExpiry: () => null,
 }));
 
 vi.mock("../app/dashboard/deepspace/_hooks/useDeepSpaceStream", () => ({
@@ -71,7 +74,11 @@ describe("DeepSpace composer model default", () => {
   });
 
   it("uses the enabled provider default immediately for the composer context meter", async () => {
-    render(<DeepSpaceChatClient activeConversationId={null} />);
+    render(
+      <AuthProvider>
+        <DeepSpaceChatClient activeConversationId={null} />
+      </AuthProvider>,
+    );
 
     await waitFor(() => {
       expect(screen.getByTestId("composer-model-state")).toHaveTextContent("qwen3-32b|131072");

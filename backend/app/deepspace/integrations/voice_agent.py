@@ -361,9 +361,7 @@ async def entrypoint(ctx: JobContext) -> None:
                         "Voice system active.",
                         "TTS synthesis initialized.",
                     ]
-                    msg = random.choice(
-                        greetings
-                    )  # nosec B311 - greeting selection is not security-sensitive
+                    msg = random.choice(greetings)
                     asyncio.create_task(
                         synthesize_and_speak(msg, audio_source, ctx.room, node_id="orchestrator")
                     )
