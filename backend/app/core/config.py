@@ -657,6 +657,11 @@ class Settings(BaseSettings):
     collection_ws_messages_per_user_per_minute: int = 120
     collection_ws_connections_per_user: int = 8
     collection_chat_page_size: int = 100
+    # Beta phase: every non-admin registration is granted the editor role
+    # free until production. Flip to False when paid subscriptions launch;
+    # no code change needed anywhere else.
+    beta_free_editor_enabled: bool = True
+    beta_notice_resurface_hours: int = 36
 
     provider_timeout_seconds: int = 8
     provider_retry_attempts: int = 3
@@ -849,6 +854,7 @@ class Settings(BaseSettings):
         "collection_ws_messages_per_user_per_minute",
         "collection_ws_connections_per_user",
         "collection_chat_page_size",
+        "beta_notice_resurface_hours",
         "provider_timeout_seconds",
         "provider_retry_attempts",
         "provider_circuit_breaker_threshold",

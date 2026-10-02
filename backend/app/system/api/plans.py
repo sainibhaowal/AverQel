@@ -5,8 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.roles import is_admin_role
+from app.core.config import Settings, get_settings
 from app.platform.database.session import get_db
 from app.system.schemas.plans import (
+    BetaNoticeSchema,
     CurrentPlanSchema,
     PlanCardSchema,
     PlansResponse,
@@ -15,6 +17,29 @@ from app.system.schemas.plans import (
 from app.system.services.storage_quota import PLANS, StorageQuotaService, resolve_storage_plan
 
 router = APIRouter(prefix="/plans", tags=["plans"])
+
+
+def _beta_notice(
+    *,
+    roles: list[str] | set[str] | tuple[str, ...] | frozenset[str],
+    current_plan_id: str,
+    settings: Settings | None = None,
+) -> BetaNoticeSchema:
+    """Beta grant notice. Admins never see it; flag-off disables it for all."""
+    resolved = settings or get_settings()
+    if is_admin_role(roles):
+        return BetaNoticeSchema(enabled=False)
+    if not resolved.beta_free_editor_enabled:
+        return BetaNoticeSchema(enabled=False)
+    editor = PLANS["editor"]
+    if current_plan_id != editor.id:
+        return BetaNoticeSchema(enabled=False)
+    return BetaNoticeSchema(
+        enabled=True,
+        plan_id=editor.id,
+        plan_name=editor.name,
+        resurface_hours=resolved.beta_notice_resurface_hours,
+    )
 
 
 @router.get("/current", response_model=PlansResponse)
@@ -55,4 +80,5 @@ def get_current_plan(
             for plan in visible_plans
         ],
         storage_scope="Shared across this authenticated tenant/workspace.",
+        beta=_beta_notice(roles=auth.roles, current_plan_id=current.id),
     )

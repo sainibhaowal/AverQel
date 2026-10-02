@@ -36,6 +36,7 @@ import AverQelLogo from "@/app/components/ui/AverQelLogo";
 import { APP_VERSION } from "@/lib/release";
 import Breadcrumbs from "@/app/components/ui/Breadcrumbs";
 import SystemStatus from "@/app/components/dashboard/SystemStatus";
+import BetaNoticeBanner from "@/app/components/dashboard/BetaNoticeBanner";
 import { getRoleLabel, hasAdminRole } from "@/lib/roles";
 import DisabledOverlay from "@/app/components/auth/DisabledOverlay";
 
@@ -499,6 +500,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             }`}
           >
             <div className={isFullHeightRoute ? "flex h-full min-h-0 w-full flex-col" : "w-full"}>
+              {!isFullHeightRoute && <BetaNoticeBanner />}
               {isAdminRoute && !hasAdminAccess
                 ? renderRestrictedContent({
                     title: "Admin Console Restricted",

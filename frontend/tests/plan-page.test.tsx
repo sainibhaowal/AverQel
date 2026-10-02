@@ -82,4 +82,26 @@ describe("plan page", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument());
     expect(screen.getByText("Admin account")).toBeInTheDocument();
   });
+
+  it("shows the beta grant notice when the API enables it", async () => {
+    fetchWithAuthMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...baseResponse,
+        beta: { enabled: true, plan_id: "editor", plan_name: "Editor", resurface_hours: 36 },
+      }),
+    });
+    render(<PlanPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/assigned to Editor/i)).toBeInTheDocument(),
+    );
+  });
+
+  it("hides the beta grant notice when the API disables it", async () => {
+    render(<PlanPage />);
+
+    await waitFor(() => expect(screen.getByText("Available plans")).toBeInTheDocument());
+    expect(screen.queryByText(/assigned to Editor/i)).not.toBeInTheDocument();
+  });
 });
