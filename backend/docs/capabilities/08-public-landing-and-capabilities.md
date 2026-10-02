@@ -12,7 +12,9 @@ making the first page excessively long.
 1. DeepSpace workspace, notes, memory, and collections — including the durable
    turn queue (pause, resume, steer, retry from checkpoint), approval gates,
    and reconnectable runs.
-2. Library and document intelligence.
+2. Library and document intelligence — including versions with diff and
+   restore, duplicates, quarantine review, quality signals, bulk operations,
+   expiring share links, comments, webhooks, and sealed collection chat.
 3. Evidence-first web research.
 4. Sandboxed Python and read-only SQL analysis.
 5. Private artifacts and exports.

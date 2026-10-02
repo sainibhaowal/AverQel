@@ -42,10 +42,13 @@ const features = [
     accent: "blue",
     size: "large",
     capabilities: [
-      { icon: ScanSearch, text: "Source-backed grounded answers" },
-      { icon: FileText, text: "Document text, chunks, versions, and downloads" },
-      { icon: BarChart3, text: "Processing, retry, and extraction-quality visibility" },
-      { icon: Shield, text: "Accessible-document boundaries enforced server-side" },
+      { icon: ScanSearch, text: "Source-backed grounded answers with citations" },
+      { icon: FileText, text: "Versions with diff and restore, duplicates, and downloads" },
+      {
+        icon: BarChart3,
+        text: "Quarantine review, quality signals, and bulk retry, reprocess, and export",
+      },
+      { icon: Shield, text: "Expiring share links, comments, webhooks, and access boundaries" },
     ],
   },
   {
