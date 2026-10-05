@@ -1,18 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  History,
-  RefreshCw,
-  ShieldAlert,
-} from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, History, RefreshCw, Flag } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { fetchWithAuth } from "@/lib/api";
 import RoundedSelect from "@/app/components/ui/RoundedSelect";
+import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 
 type ReportStatus = "open" | "reviewing" | "resolved" | "dismissed";
 type StatusFilter = ReportStatus | "all";
@@ -223,19 +217,16 @@ export default function CollectionModerationPage() {
   };
 
   return (
-    <main className="dashboard-theme-scope w-full space-y-6 p-4 sm:p-6 lg:p-8">
-      <section className="theme-panel rounded-2xl p-5 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="mb-2 flex items-center gap-2 text-xs font-bold tracking-[0.2em] text-cyan-700 uppercase dark:text-cyan-300">
-              <ShieldAlert size={15} /> Collection security
-            </p>
-            <h1 className="text-foreground text-2xl font-black">Moderation queue</h1>
-            <p className="text-muted-foreground mt-2 max-w-2xl text-sm">
-              Review member-submitted reports for this workspace. This queue shows report details
-              and message references; it does not return chat message bodies.
-            </p>
-          </div>
+    <main className="dashboard-theme-scope w-full min-w-0 space-y-6">
+      <DashboardSectionHeader
+        title="Moderation Queue"
+        subtitle="Review member-submitted reports; message bodies are not shown here"
+        icon={Flag}
+        accentClassName="bg-cyan-500 text-cyan-500"
+        accentGlowClassName="shadow-[0_0_18px_rgba(6,182,212,0.28)]"
+        backHref="/dashboard"
+        backLabel="Back To Dashboard"
+        actions={
           <button
             type="button"
             onClick={() => void loadReports()}
@@ -244,8 +235,8 @@ export default function CollectionModerationPage() {
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
-        </div>
-      </section>
+        }
+      />
 
       <section className="theme-panel rounded-2xl p-4 shadow-sm sm:p-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">

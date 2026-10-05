@@ -263,12 +263,27 @@ export default function ProfilePage() {
     }
   };
 
+  const profileHeader = (
+    <DashboardSectionHeader
+      title="Account Profile"
+      subtitle="Identity And Security Preference"
+      icon={User}
+      accentClassName="bg-indigo-500 text-indigo-500"
+      accentGlowClassName="shadow-[0_0_20px_rgba(99,102,241,0.4)]"
+      backHref="/dashboard/settings"
+      backLabel="Back"
+    />
+  );
+
   if (loading) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="text-primary animate-spin" size={32} />
-          <p className="text-muted-foreground text-sm">Loading profile...</p>
+      <div className="dashboard-theme-scope w-full space-y-8">
+        {profileHeader}
+        <div className="flex min-h-[300px] items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="text-primary animate-spin" size={32} />
+            <p className="text-muted-foreground text-sm">Loading profile...</p>
+          </div>
         </div>
       </div>
     );
@@ -276,15 +291,18 @@ export default function ProfilePage() {
 
   if (error) {
     return (
-      <div className="flex min-h-[400px] flex-col items-center justify-center space-y-4">
-        <AlertCircle className="text-red-500" size={48} />
-        <p className="text-foreground font-medium">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="bg-primary text-primary-foreground rounded-xl px-6 py-2 text-xs font-bold tracking-widest uppercase transition-colors hover:brightness-110"
-        >
-          Retry
-        </button>
+      <div className="dashboard-theme-scope w-full space-y-8">
+        {profileHeader}
+        <div className="flex min-h-[300px] flex-col items-center justify-center space-y-4">
+          <AlertCircle className="text-red-500" size={48} />
+          <p className="text-foreground font-medium">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-primary text-primary-foreground rounded-xl px-6 py-2 text-xs font-bold tracking-widest uppercase transition-colors hover:brightness-110"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -293,21 +311,7 @@ export default function ProfilePage() {
 
   return (
     <div className="dashboard-theme-scope w-full space-y-8">
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-      >
-        <DashboardSectionHeader
-          title="Account Profile"
-          subtitle="Identity And Security Preference"
-          icon={User}
-          accentClassName="bg-indigo-500 text-indigo-500"
-          accentGlowClassName="shadow-[0_0_20px_rgba(99,102,241,0.4)]"
-          backHref="/dashboard/settings"
-          backLabel="Back To Settings"
-        />
-      </motion.div>
+      {profileHeader}
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
         {/* Core Identity */}

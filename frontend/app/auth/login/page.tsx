@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import AverQelLogo from "@/app/components/ui/AverQelLogo";
 import { useAuth } from "../../context/AuthContext";
 import { getApiBaseUrl, isDesktopEnvironment } from "../../../lib/api";
+import { getAuthSessionDevice } from "@/lib/auth-session-device";
 
 function GoogleMark() {
   return (
@@ -48,12 +49,31 @@ export default function LoginPage() {
   const [totpCode, setTotpCode] = useState("");
   const [verifying2fa, setVerifying2fa] = useState(false);
 
-  const startOAuth = (provider: OAuthProvider) => {
+  const startOAuth = (provider: OAuthProvider, event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
     if (loading || oauthProvider) {
       return false;
     }
     setError("");
     setOauthProvider(provider);
+    void (async () => {
+      const device = getAuthSessionDevice();
+      if (device.device_id) {
+        const response = await fetch(`${getApiBaseUrl()}/auth/oauth/session-device`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ device_id: device.device_id }),
+        });
+        if (!response.ok) throw new Error("Device details could not be prepared for sign-in.");
+      }
+      window.location.assign(
+        `${getApiBaseUrl()}/auth/oauth/${provider}/start?return_to=%2Fauth%2Flogin`,
+      );
+    })().catch((err: unknown) => {
+      setOauthProvider(null);
+      setError(err instanceof Error ? err.message : "Social sign-in could not be started.");
+    });
     return true;
   };
 
@@ -274,7 +294,11 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: formData.email, password: formData.password }),
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          ...getAuthSessionDevice(),
+        }),
         signal: controller.signal,
       });
       window.clearTimeout(timeout);
@@ -338,9 +362,11 @@ export default function LoginPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify(
-            oauthTwoFactor ? { code: totpCode } : { pending_token: pendingToken, code: totpCode },
-          ),
+          body: JSON.stringify({
+            ...(oauthTwoFactor ? {} : { pending_token: pendingToken }),
+            code: totpCode,
+            ...getAuthSessionDevice(),
+          }),
         },
       );
 
@@ -426,9 +452,7 @@ export default function LoginPage() {
                   href={`${getApiBaseUrl()}/auth/oauth/google/start?return_to=%2Fauth%2Flogin`}
                   aria-disabled={Boolean(oauthProvider)}
                   aria-busy={oauthProvider === "google"}
-                  onClick={(event) => {
-                    if (!startOAuth("google")) event.preventDefault();
-                  }}
+                  onClick={(event) => startOAuth("google", event)}
                   className={`border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex min-h-14 items-center justify-center rounded-lg border px-4 py-3 text-sm leading-tight font-semibold transition-colors ${oauthProvider ? "cursor-wait opacity-70" : ""}`}
                 >
                   <span className="flex items-center gap-2.5">
@@ -444,9 +468,7 @@ export default function LoginPage() {
                   href={`${getApiBaseUrl()}/auth/oauth/github/start?return_to=%2Fauth%2Flogin`}
                   aria-disabled={Boolean(oauthProvider)}
                   aria-busy={oauthProvider === "github"}
-                  onClick={(event) => {
-                    if (!startOAuth("github")) event.preventDefault();
-                  }}
+                  onClick={(event) => startOAuth("github", event)}
                   className={`border-glass-border bg-surface-1 text-foreground hover:border-primary/60 hover:bg-surface-2 flex min-h-14 items-center justify-center rounded-lg border px-4 py-3 text-sm leading-tight font-semibold transition-colors ${oauthProvider ? "cursor-wait opacity-70" : ""}`}
                 >
                   <span className="flex items-center gap-2.5">

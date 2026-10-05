@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import socketserver
+import threading
+from email.parser import Parser
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -7,7 +10,51 @@ from fastapi.testclient import TestClient
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
+from app.documents.models.collection_notification import CollectionNotification
+from app.documents.repositories.collection_notifications import CollectionNotificationsRepository
 from tests.conftest import SeededUser
+
+
+class _LocalSMTPHandler(socketserver.StreamRequestHandler):
+    def handle(self) -> None:
+        self.wfile.write(b"220 localhost ESMTP AverQel test sink\r\n")
+        while line := self.rfile.readline():
+            command = line.decode("ascii", errors="replace").strip()
+            upper = command.upper()
+            if upper.startswith("EHLO"):
+                self.wfile.write(b"250-localhost\r\n250 SIZE 10000000\r\n")
+            elif upper.startswith(("HELO", "MAIL FROM", "RCPT TO", "RSET", "NOOP")):
+                self.wfile.write(b"250 OK\r\n")
+            elif upper == "DATA":
+                self.wfile.write(b"354 End data with <CR><LF>.<CR><LF>\r\n")
+                message: list[bytes] = []
+                while data_line := self.rfile.readline():
+                    if data_line == b".\r\n":
+                        break
+                    message.append(data_line[1:] if data_line.startswith(b"..") else data_line)
+                self.server.messages.append(b"".join(message).decode("utf-8", errors="replace"))  # type: ignore[attr-defined]
+                self.wfile.write(b"250 queued\r\n")
+            elif upper == "QUIT":
+                self.wfile.write(b"221 bye\r\n")
+                return
+            else:
+                self.wfile.write(b"500 unsupported command\r\n")
+
+
+class _LocalSMTPServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+    def __init__(self) -> None:
+        super().__init__(("127.0.0.1", 0), _LocalSMTPHandler)
+        self.messages: list[str] = []
+
+
+def _start_local_smtp_sink() -> tuple[_LocalSMTPServer, threading.Thread]:
+    server = _LocalSMTPServer()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
 
 
 def test_assigned_admin_sla_notice_uses_recipient_tenant(monkeypatch) -> None:
@@ -122,6 +169,28 @@ def test_support_ticket_thread_and_durable_notifications(
     assert preferences.status_code == 200
     assert preferences.json()["email_delivery_available"] is False
     assert preferences.json()["digest_frequency"] == "daily"
+    assert preferences.json()["timezone"] == "UTC"
+    assert {item["code"] for item in preferences.json()["categories"]} >= {
+        "documents",
+        "deepspace",
+        "collections",
+    }
+    unavailable = client.put(
+        "/api/v1/notifications/preferences",
+        headers=headers,
+        json={"email_enabled": True},
+    )
+    assert unavailable.status_code == 422
+    assert unavailable.json()["error"]["code"] == "NOTIFICATION_EMAIL_UNAVAILABLE"
+    empty_update = client.put("/api/v1/notifications/preferences", headers=headers, json={})
+    assert empty_update.status_code == 422
+    assert empty_update.json()["error"]["code"] == "EMPTY_NOTIFICATION_PREFERENCES"
+    invalid_zone = client.put(
+        "/api/v1/notifications/preferences",
+        headers=headers,
+        json={"timezone": "Mars/Olympus"},
+    )
+    assert invalid_zone.status_code == 422
     muted_feed = client.get("/api/v1/notifications", headers=headers)
     assert muted_feed.status_code == 200
     assert all(item["event_domain"] != "support" for item in muted_feed.json())
@@ -192,8 +261,11 @@ def test_opted_in_notification_uses_retryable_email_outbox(
         "Email Notice Tenant", "email-notice@example.org", "StrongPass!1234", ("admin",)
     )
     settings = get_settings()
-    monkeypatch.setattr(settings, "notification_smtp_host", "smtp.example.test")
+    monkeypatch.setattr(settings, "notification_smtp_host", "127.0.0.1")
     monkeypatch.setattr(settings, "notification_smtp_from", "notices@example.test")
+    monkeypatch.setattr(settings, "notification_smtp_starttls", False)
+    monkeypatch.setattr(settings, "notification_smtp_username", None)
+    monkeypatch.setattr(settings, "notification_smtp_password", None)
     monkeypatch.setattr(settings, "bootstrap_super_admin_emails", [seeded.email])
     headers = _headers(seeded)
     opted_in = client.put(
@@ -212,9 +284,90 @@ def test_opted_in_notification_uses_retryable_email_outbox(
 
     from app.system.workers import tasks_notifications
 
+    smtp_server, smtp_thread = _start_local_smtp_sink()
+    monkeypatch.setattr(settings, "notification_smtp_port", smtp_server.server_address[1])
+    try:
+        delivered = tasks_notifications.dispatch_email_outbox.run()
+        assert delivered == 2
+        assert len(smtp_server.messages) == 2
+        subjects = {Parser().parsestr(message)["Subject"] for message in smtp_server.messages}
+        assert subjects == {"Support request received", "New support request"}
+    finally:
+        smtp_server.shutdown()
+        smtp_server.server_close()
+        smtp_thread.join(timeout=2)
+
+
+def test_opt_out_suppresses_queued_notification_email(
+    client: TestClient, seed_user, monkeypatch
+) -> None:
+    seeded = seed_user(
+        "Email Opt Out Tenant", "email-opt-out@example.org", "StrongPass!1234", ("admin",)
+    )
+    settings = get_settings()
+    monkeypatch.setattr(settings, "notification_smtp_host", "smtp.example.test")
+    monkeypatch.setattr(settings, "notification_smtp_from", "notices@example.test")
+    monkeypatch.setattr(settings, "bootstrap_super_admin_emails", [seeded.email])
+    headers = _headers(seeded)
+    enabled = client.put(
+        "/api/v1/notifications/preferences",
+        headers=headers,
+        json={"email_enabled": True, "digest_frequency": "daily"},
+    )
+    assert enabled.status_code == 200
+    submitted = client.post(
+        "/api/v1/support/tickets",
+        headers=headers,
+        json={"subject": "Opt-out test", "description": "Queued before opt-out."},
+    )
+    assert submitted.status_code == 200
+
+    disabled = client.put(
+        "/api/v1/notifications/preferences",
+        headers=headers,
+        json={"email_enabled": False},
+    )
+    assert disabled.status_code == 200
+
+    from app.system.workers import tasks_notifications
+
     sent: list[dict[str, str]] = []
     monkeypatch.setattr(tasks_notifications, "_send_email", lambda **kwargs: sent.append(kwargs))
-    delivered = tasks_notifications.dispatch_email_outbox.run()
-    assert delivered >= 1
-    assert len(sent) == 1
-    assert "Support request received" in sent[0]["body"]
+    assert tasks_notifications.dispatch_email_outbox.run() == 0
+    assert sent == []
+
+
+def test_collection_mute_hides_global_inbox_without_deleting_history(
+    client: TestClient, seed_user, db_session
+) -> None:
+    seeded = seed_user(
+        "Collection Mute Tenant", "collection-mute@example.org", "StrongPass!1234", ("admin",)
+    )
+    notification = CollectionNotification(
+        recipient_user_id=seeded.user_id,
+        actor_user_id=None,
+        collection_id=None,
+        collection_name="Research",
+        event_type="document_added",
+        idempotency_key=f"collection-mute:{seeded.user_id}",
+        message="A document was added to Research.",
+    )
+    repository = CollectionNotificationsRepository(db_session)
+    repository.create(notification)
+    db_session.commit()
+    headers = _headers(seeded)
+
+    visible = client.get("/api/v1/collections/notifications", headers=headers)
+    assert visible.status_code == 200
+    assert len(visible.json()) == 1
+
+    muted = client.put(
+        "/api/v1/notifications/preferences",
+        headers=headers,
+        json={"muted_domains": ["collections"]},
+    )
+    assert muted.status_code == 200
+    hidden = client.get("/api/v1/collections/notifications", headers=headers)
+    assert hidden.status_code == 200
+    assert hidden.json() == []
+    assert len(repository.list_for_user(user_id=seeded.user_id, limit=10)) == 1

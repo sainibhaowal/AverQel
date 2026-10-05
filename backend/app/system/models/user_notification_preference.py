@@ -29,6 +29,9 @@ class UserNotificationPreference(Base):
     digest_frequency: Mapped[str] = mapped_column(
         String(16), nullable=False, default="none", server_default=text("'none'")
     )
+    timezone: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="UTC", server_default=text("'UTC'")
+    )
     muted_domains: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )

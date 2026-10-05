@@ -236,31 +236,43 @@ export default function AdminFeedbackPage() {
 
   if (loading) {
     return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <Loader2 className="text-primary animate-spin" size={32} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="dashboard-theme-scope space-y-10">
-      <div className="flex items-center justify-between">
+      <div className="dashboard-theme-scope space-y-8">
         <DashboardSectionHeader
           title="Feedback Center"
           subtitle="Manage User Engagement And Feedback Requests"
           icon={Sparkles}
           accentClassName="bg-amber-500 text-amber-500"
           accentGlowClassName="shadow-[0_0_20px_rgba(245,158,11,0.4)]"
+          backHref="/dashboard"
+          backLabel="Back To Dashboard"
         />
-
-        <button
-          onClick={() => setShowCreateCampaign(true)}
-          className="bg-primary shadow-primary/20 flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-black shadow-lg transition-all hover:scale-[1.02] active:scale-98"
-        >
-          <Plus size={18} />
-          Launch Campaign
-        </button>
+        <div className="flex h-[60vh] items-center justify-center">
+          <Loader2 className="text-primary animate-spin" size={32} />
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="dashboard-theme-scope space-y-10">
+      <DashboardSectionHeader
+        title="Feedback Center"
+        subtitle="Manage User Engagement And Feedback Requests"
+        icon={Sparkles}
+        accentClassName="bg-amber-500 text-amber-500"
+        accentGlowClassName="shadow-[0_0_20px_rgba(245,158,11,0.4)]"
+        backHref="/dashboard"
+        backLabel="Back To Dashboard"
+        actions={
+          <button
+            onClick={() => setShowCreateCampaign(true)}
+            className="bg-primary shadow-primary/20 flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-black shadow-lg transition-all hover:scale-[1.02] active:scale-98"
+          >
+            <Plus size={18} />
+            Launch Campaign
+          </button>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-4">
         {/* Campaigns Column */}

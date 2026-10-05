@@ -5,11 +5,12 @@ import logging
 import smtplib
 import ssl
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import parseaddr
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.auth.models.user import User
@@ -19,6 +20,7 @@ from app.platform.worker.celery_app import celery_app
 from app.system.models.notification_delivery import NotificationDelivery
 from app.system.models.support_ticket import SupportTicket
 from app.system.models.user_notification import UserNotification
+from app.system.models.user_notification_preference import UserNotificationPreference
 from app.system.services.user_notifications import add_user_notification, notify_platform_admins
 
 logger = logging.getLogger(__name__)
@@ -91,67 +93,179 @@ def _send_email(*, recipient: str, subject: str, body: str, delivery_id: str) ->
 @celery_app.task(name="notifications.dispatch_email_outbox", acks_late=True, max_retries=0)  # type: ignore[misc]
 def dispatch_email_outbox(batch_size: int = 50) -> int:
     """Claim and deliver pending email outbox rows, retrying with bounded backoff."""
+    settings = get_settings()
+    if not settings.notification_smtp_host or not settings.notification_smtp_from:
+        return 0
     delivered = 0
     claimed_ids: list[str] = []
     with managed_db_session() as db:
         set_db_tenant_context(db, "bypass")
         now = datetime.now(UTC)
-        rows = (
+        due_filter = or_(
+            (NotificationDelivery.status == "pending")
+            & (NotificationDelivery.next_attempt_at <= now),
+            (NotificationDelivery.status == "processing")
+            & (NotificationDelivery.leased_until <= now),
+        )
+        due_accounts = (
+            select(
+                NotificationDelivery.tenant_id.label("tenant_id"),
+                NotificationDelivery.recipient_user_id.label("user_id"),
+            )
+            .where(NotificationDelivery.channel == "email", due_filter)
+            .group_by(NotificationDelivery.tenant_id, NotificationDelivery.recipient_user_id)
+            .order_by(func.min(NotificationDelivery.created_at))
+            .limit(max(1, min(batch_size, 50)))
+            .subquery()
+        )
+        # Lock each account preference once. This prevents multiple workers from
+        # splitting one account's due digest into separate messages.
+        locked_preferences = (
             db.execute(
-                select(NotificationDelivery)
+                select(UserNotificationPreference)
                 .where(
-                    NotificationDelivery.channel == "email",
-                    or_(
-                        (NotificationDelivery.status == "pending")
-                        & (NotificationDelivery.next_attempt_at <= now),
-                        (NotificationDelivery.status == "processing")
-                        & (NotificationDelivery.leased_until <= now),
-                    ),
+                    tuple_(
+                        UserNotificationPreference.tenant_id,
+                        UserNotificationPreference.user_id,
+                    ).in_(select(due_accounts.c.tenant_id, due_accounts.c.user_id))
                 )
-                .order_by(NotificationDelivery.created_at)
                 .with_for_update(skip_locked=True)
-                .limit(max(1, min(batch_size, 200)))
             )
             .scalars()
             .all()
         )
+        account_keys = [(row.tenant_id, row.user_id) for row in locked_preferences]
+        rows: Sequence[NotificationDelivery] = ()
+        if account_keys:
+            rows = (
+                db.execute(
+                    select(NotificationDelivery)
+                    .where(
+                        NotificationDelivery.channel == "email",
+                        due_filter,
+                        tuple_(
+                            NotificationDelivery.tenant_id,
+                            NotificationDelivery.recipient_user_id,
+                        ).in_(account_keys),
+                    )
+                    .order_by(NotificationDelivery.created_at)
+                    .with_for_update(skip_locked=True)
+                )
+                .scalars()
+                .all()
+            )
         for row in rows:
             row.status = "processing"
-            row.leased_until = now + timedelta(minutes=2)
+            # The worker sends these account groups serially; keep the lease
+            # longer than the bounded batch's SMTP timeout budget so another
+            # worker cannot duplicate slow but healthy sends.
+            row.leased_until = now + timedelta(minutes=20)
             claimed_ids.append(str(row.id))
         db.commit()
 
     # Do not hold database locks or a transaction open while talking to SMTP.
-    grouped: dict[str, dict[str, object]] = {}
+    grouped: dict[tuple[uuid.UUID, uuid.UUID, str, str, str], dict[str, object]] = {}
     if claimed_ids:
         with managed_db_session() as db:
             set_db_tenant_context(db, "bypass")
             joined = db.execute(
-                select(NotificationDelivery, UserNotification, User)
-                .join(UserNotification, UserNotification.id == NotificationDelivery.notification_id)
-                .join(User, User.id == NotificationDelivery.recipient_user_id)
+                select(NotificationDelivery, UserNotification, User, UserNotificationPreference)
+                .join(
+                    UserNotification,
+                    (UserNotification.id == NotificationDelivery.notification_id)
+                    & (UserNotification.tenant_id == NotificationDelivery.tenant_id),
+                )
+                .join(
+                    User,
+                    (User.id == NotificationDelivery.recipient_user_id)
+                    & (User.tenant_id == NotificationDelivery.tenant_id),
+                )
+                .outerjoin(
+                    UserNotificationPreference,
+                    (UserNotificationPreference.user_id == NotificationDelivery.recipient_user_id)
+                    & (UserNotificationPreference.tenant_id == NotificationDelivery.tenant_id),
+                )
                 .where(
                     NotificationDelivery.id.in_(claimed_ids),
                     NotificationDelivery.status == "processing",
                 )
             ).all()
-            for row, notification, user in joined:
-                if not user.email:
-                    row.status = "failed"
-                    row.last_error = "recipient_email_missing"
+            for row, notification, user, preference in joined:
+                if (
+                    not user.email
+                    or preference is None
+                    or not preference.email_enabled
+                    or notification.event_domain in (preference.muted_domains or [])
+                ):
+                    row.status = "suppressed"
+                    row.last_error = "preference_or_recipient_unavailable"
                     row.leased_until = None
                     continue
-                group = grouped.setdefault(user.email, {"ids": [], "items": []})
+                frequency = preference.digest_frequency or "none"
+                key = (
+                    row.tenant_id,
+                    row.recipient_user_id,
+                    frequency,
+                    user.email,
+                    str(row.id) if frequency == "none" else "digest",
+                )
+                group = grouped.setdefault(
+                    key,
+                    {"ids": [], "items": [], "email": user.email, "frequency": frequency},
+                )
                 cast_ids = group["ids"]
                 cast_items = group["items"]
                 assert isinstance(cast_ids, list) and isinstance(cast_items, list)
                 cast_ids.append(str(row.id))
                 cast_items.append((notification.title, notification.message, notification.href))
             db.commit()
-    for recipient, group in grouped.items():
+    for group in grouped.values():
+        recipient = str(group["email"])
         delivery_ids = group["ids"]
         items = group["items"]
         assert isinstance(delivery_ids, list) and isinstance(items, list)
+        # Re-check opt-out and category mutes just before handing content to SMTP.
+        with managed_db_session() as db:
+            set_db_tenant_context(db, "bypass")
+            current_rows = db.execute(
+                select(NotificationDelivery, UserNotification, UserNotificationPreference)
+                .join(
+                    UserNotification,
+                    (UserNotification.id == NotificationDelivery.notification_id)
+                    & (UserNotification.tenant_id == NotificationDelivery.tenant_id),
+                )
+                .outerjoin(
+                    UserNotificationPreference,
+                    (UserNotificationPreference.user_id == NotificationDelivery.recipient_user_id)
+                    & (UserNotificationPreference.tenant_id == NotificationDelivery.tenant_id),
+                )
+                .where(
+                    NotificationDelivery.id.in_(delivery_ids),
+                    NotificationDelivery.status == "processing",
+                )
+                .with_for_update(of=NotificationDelivery)
+            ).all()
+            sendable_ids: list[str] = []
+            sendable_items: list[tuple[str, str, str]] = []
+            for row, notification, preference in current_rows:
+                if (
+                    preference is None
+                    or not preference.email_enabled
+                    or notification.event_domain in (preference.muted_domains or [])
+                ):
+                    row.status = "suppressed"
+                    row.last_error = "preference_changed_before_dispatch"
+                    row.leased_until = None
+                else:
+                    sendable_ids.append(str(row.id))
+                    sendable_items.append(
+                        (notification.title, notification.message, notification.href)
+                    )
+            db.commit()
+        delivery_ids = sendable_ids
+        items = sendable_items
+        if not delivery_ids:
+            continue
         stable_id = hashlib.sha256("|".join(sorted(delivery_ids)).encode()).hexdigest()[:32]
         title = "AverQel notification digest" if len(items) > 1 else str(items[0][0])
         email_settings = get_settings()
@@ -316,7 +430,7 @@ def cleanup_notification_retention() -> dict[str, int]:
         )
         deliveries = db.execute(
             delete(NotificationDelivery).where(
-                NotificationDelivery.status == "delivered",
+                NotificationDelivery.status.in_(["delivered", "suppressed"]),
                 NotificationDelivery.created_at
                 < now - timedelta(days=settings.notification_delivery_retention_days),
             )

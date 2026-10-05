@@ -284,7 +284,6 @@ services:
     environment:
       AKS_WORKER_QUEUES: maintenance
       AKS_WORKER_CONCURRENCY: ${AKS_MAINTENANCE_WORKER_CONCURRENCY:-1}
-
   collection-push-worker:
     extends:
       service: worker

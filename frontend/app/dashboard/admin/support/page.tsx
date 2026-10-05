@@ -338,6 +338,8 @@ function SupportContent() {
         icon={LifeBuoy}
         accentClassName="bg-purple-500 text-purple-500"
         accentGlowClassName="shadow-[0_0_20px_rgba(168,85,247,0.4)]"
+        backHref="/dashboard"
+        backLabel="Back To Dashboard"
       />
 
       <div className="mt-4 flex flex-wrap items-center gap-3">

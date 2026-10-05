@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select, update
 
+from app.auth.models.auth_session import AuthSession
 from app.auth.models.refresh_token import RefreshToken
 from app.auth.security import hash_refresh_token
 from app.system.repositories.base import BaseRepository
@@ -19,9 +20,13 @@ class RefreshTokensRepository(BaseRepository):
 
     def get_by_hash(self, tenant_id: uuid.UUID, token_hash: str) -> RefreshToken | None:
         self.apply_tenant_scope(tenant_id)
-        query = select(RefreshToken).where(
-            RefreshToken.tenant_id == tenant_id,
-            RefreshToken.token_hash == token_hash,
+        query = (
+            select(RefreshToken)
+            .where(
+                RefreshToken.tenant_id == tenant_id,
+                RefreshToken.token_hash == token_hash,
+            )
+            .with_for_update()
         )
         return self.db.execute(query).scalar_one_or_none()
 
@@ -36,6 +41,17 @@ class RefreshTokensRepository(BaseRepository):
         now = datetime.now(tz=UTC)
         token.revoked_at = token.revoked_at or now
         token.revocation_reason = reason
+        session_id = getattr(token, "session_id", None)
+        if session_id is not None:
+            self.db.execute(
+                update(AuthSession)
+                .where(
+                    AuthSession.id == session_id,
+                    AuthSession.tenant_id == tenant_id,
+                    AuthSession.revoked_at.is_(None),
+                )
+                .values(revoked_at=now, revocation_reason=reason)
+            )
 
     def mark_rotated(self, *, tenant_id: uuid.UUID, token: RefreshToken) -> None:
         self.apply_tenant_scope(tenant_id)
@@ -66,6 +82,15 @@ class RefreshTokensRepository(BaseRepository):
             )
         )
         self.db.execute(statement)
+        self.db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.tenant_id == tenant_id,
+                AuthSession.token_family_id == token_family_id,
+                AuthSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=now, revocation_reason=reason)
+        )
 
     def revoke_all_for_user(
         self,
@@ -89,6 +114,15 @@ class RefreshTokensRepository(BaseRepository):
             )
         )
         self.db.execute(statement)
+        self.db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.tenant_id == tenant_id,
+                AuthSession.user_id == user_id,
+                AuthSession.revoked_at.is_(None),
+            )
+            .values(revoked_at=now, revocation_reason=reason)
+        )
 
     def revoke_by_raw_token(
         self,

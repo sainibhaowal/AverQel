@@ -18,7 +18,7 @@ from app.core.config import Settings, get_settings
 from app.core.context import set_tenant_id, set_user_id
 from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
-from app.platform.database.session import get_db
+from app.platform.database.session import get_db, set_db_tenant_context
 
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
@@ -432,6 +432,7 @@ def build_auth_context_from_jwt(
     if session_id is not None:
         from app.auth.models.auth_session import AuthSession  # noqa: PLC0415
 
+        set_db_tenant_context(db, tenant_id)
         session = (
             db.query(AuthSession)
             .filter(

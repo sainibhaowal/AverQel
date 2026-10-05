@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,6 +17,13 @@ class AuthSession(Base):
     __tablename__ = "auth_sessions"
     __table_args__ = (
         UniqueConstraint("tenant_id", "token_family_id", name="uq_auth_session_family"),
+        Index(
+            "ix_auth_sessions_owner_last_seen",
+            "tenant_id",
+            "user_id",
+            "last_seen_at",
+            "id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

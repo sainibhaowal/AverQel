@@ -25,7 +25,7 @@ export default function ProvidersErrorPage({
         accentClassName="bg-cyan-400 text-cyan-300"
         accentGlowClassName="shadow-[0_0_18px_rgba(34,211,238,0.3)]"
         backHref="/dashboard/settings"
-        backLabel="Back To Settings"
+        backLabel="Back"
       />
 
       <div className="settings-section p-6">

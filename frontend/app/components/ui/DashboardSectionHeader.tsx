@@ -63,9 +63,11 @@ export default function DashboardSectionHeader({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 36, opacity: 1 }}
             transition={{ type: "spring", stiffness: 300, damping: 24, delay: 0.1 }}
-            style={{
-              "--dashboard-header-accent-light": LIGHT_ACCENT_COLORS[accentColor] ?? "#0f766e",
-            } as React.CSSProperties}
+            style={
+              {
+                "--dashboard-header-accent-light": LIGHT_ACCENT_COLORS[accentColor] ?? "#0f766e",
+              } as React.CSSProperties
+            }
             className={`dashboard-section-header-accent w-2 shrink-0 rounded-full ${accentClassName.split(" ")[0]} ${accentGlowClassName}`}
           />
           <div className="flex min-w-0 items-center gap-3">

@@ -206,6 +206,8 @@ def retention_cleanup() -> dict[str, int]:
     session = get_session_factory()()
     cleaned_audit_total = 0
     cleaned_transient_total = 0
+    cleaned_auth_session_total = 0
+    cleaned_auth_token_total = 0
 
     try:
         session.execute(text("SET ROLE aks_app"))
@@ -222,6 +224,10 @@ def retention_cleanup() -> dict[str, int]:
         transient_cutoff = datetime.now(tz=UTC) - timedelta(
             days=settings.transient_record_retention_days
         )
+        auth_session_cutoff = datetime.now(tz=UTC) - timedelta(
+            days=settings.auth_session_retention_days
+        )
+        retention_now = datetime.now(tz=UTC)
 
         for tenant_id in tenant_ids:
             session.execute(
@@ -252,6 +258,57 @@ def retention_cleanup() -> dict[str, int]:
                     """),
                 {"tenant_id": str(tenant_id), "cutoff": transient_cutoff},
             )
+            # A session with no currently valid refresh credential has ended.
+            # Revoke it explicitly so any still-live access JWT is rejected by
+            # the normal session check before retention removes its history.
+            session.execute(
+                text("""
+                    UPDATE auth_sessions AS auth_session
+                    SET revoked_at = :now,
+                        revocation_reason = 'expired'
+                    WHERE auth_session.tenant_id = :tenant_id
+                      AND auth_session.revoked_at IS NULL
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM refresh_tokens AS refresh_token
+                          WHERE refresh_token.tenant_id = auth_session.tenant_id
+                            AND refresh_token.session_id = auth_session.id
+                            AND refresh_token.revoked_at IS NULL
+                            AND refresh_token.expires_at > :now
+                      )
+                    """),
+                {"tenant_id": str(tenant_id), "now": retention_now},
+            )
+            # Token hashes are no longer useful after every credential in a
+            # revoked family has exceeded the session history retention window.
+            old_session_tokens = session.execute(
+                text("""
+                    DELETE FROM refresh_tokens AS refresh_token
+                    USING auth_sessions AS auth_session
+                    WHERE refresh_token.tenant_id = :tenant_id
+                      AND auth_session.tenant_id = :tenant_id
+                      AND refresh_token.session_id = auth_session.id
+                      AND auth_session.revoked_at < :cutoff
+                    """),
+                {"tenant_id": str(tenant_id), "cutoff": auth_session_cutoff},
+            )
+            old_unlinked_tokens = session.execute(
+                text("""
+                    DELETE FROM refresh_tokens
+                    WHERE tenant_id = :tenant_id
+                      AND session_id IS NULL
+                      AND COALESCE(revoked_at, expires_at) < :cutoff
+                    """),
+                {"tenant_id": str(tenant_id), "cutoff": auth_session_cutoff},
+            )
+            old_sessions = session.execute(
+                text("""
+                    DELETE FROM auth_sessions
+                    WHERE tenant_id = :tenant_id
+                      AND revoked_at < :cutoff
+                    """),
+                {"tenant_id": str(tenant_id), "cutoff": auth_session_cutoff},
+            )
             # Legacy run events have no durable run identity. They may belong
             # to an active, paused, waiting, or retryable run, so preserving
             # them is the only safe decision until an authoritative linkage is
@@ -269,6 +326,19 @@ def retention_cleanup() -> dict[str, int]:
                 else 0
             )
             cleaned_transient_total += idempotency_deleted + deletions_deleted + run_events_deleted
+            cleaned_auth_session_total += (
+                int(old_sessions.rowcount or 0) if isinstance(old_sessions, CursorResult) else 0
+            )
+            cleaned_auth_token_total += (
+                int(old_session_tokens.rowcount or 0)
+                if isinstance(old_session_tokens, CursorResult)
+                else 0
+            )
+            cleaned_auth_token_total += (
+                int(old_unlinked_tokens.rowcount or 0)
+                if isinstance(old_unlinked_tokens, CursorResult)
+                else 0
+            )
 
         session.commit()
         MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="retention_cleanup", status="ok").inc()
@@ -278,6 +348,8 @@ def retention_cleanup() -> dict[str, int]:
             extra={
                 "audit_logs_deleted": cleaned_audit_total,
                 "transient_records_deleted": cleaned_transient_total,
+                "auth_sessions_deleted": cleaned_auth_session_total,
+                "auth_refresh_tokens_deleted": cleaned_auth_token_total,
                 "duration_seconds": round(time.perf_counter() - start, 4),
             },
         )
@@ -285,6 +357,8 @@ def retention_cleanup() -> dict[str, int]:
         return {
             "audit_logs_deleted": cleaned_audit_total,
             "transient_records_deleted": cleaned_transient_total,
+            "auth_sessions_deleted": cleaned_auth_session_total,
+            "auth_refresh_tokens_deleted": cleaned_auth_token_total,
         }
 
     except Exception:  # noqa: BLE001

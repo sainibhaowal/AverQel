@@ -6,6 +6,7 @@ import {
   Settings as SettingsIcon,
   User,
   Cable,
+  MonitorSmartphone,
   ShieldCheck,
   ArrowRight,
   HardDrive,
@@ -70,6 +71,15 @@ export default function SettingsPage() {
       glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(var(--primary),0.35)]",
     },
     {
+      title: "Linked Sessions",
+      href: "/dashboard/settings/sessions",
+      icon: <MonitorSmartphone size={20} />,
+      desc: "Review browsers signed in to your account and revoke sessions you no longer recognize.",
+      accent: "text-success",
+      accentBg: "bg-success/10 border-success/20",
+      glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(var(--success),0.35)]",
+    },
+    {
       title: "Plan & Storage",
       href: "/dashboard/settings/plan",
       icon: <HardDrive size={20} />,
@@ -132,6 +142,8 @@ export default function SettingsPage() {
           icon={SettingsIcon}
           accentClassName="bg-slate-500 text-slate-500"
           accentGlowClassName="shadow-[0_0_20px_rgba(100,116,139,0.4)]"
+          backHref="/dashboard"
+          backLabel="Back To Dashboard"
         />
       </motion.div>
 
@@ -195,7 +207,7 @@ export default function SettingsPage() {
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Link
                 href="/dashboard/settings/privacy"
-                className="border-primary/25 bg-primary text-primary-foreground inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-semibold shadow-sm transition-colors hover:bg-primary/90 focus-visible:ring-primary/40 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                className="border-primary/25 bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-primary/40 inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-semibold shadow-sm transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
               >
                 <ShieldCheck size={16} strokeWidth={2} />
                 Trust &amp; Privacy
@@ -203,9 +215,13 @@ export default function SettingsPage() {
               </Link>
               <Link
                 href="/dashboard/feedback"
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-background/55 px-4 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-amber-500/35 hover:bg-amber-500/8 focus-visible:ring-amber-500/30 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                className="border-border bg-background/55 text-foreground inline-flex h-10 items-center gap-2 rounded-md border px-4 text-sm font-semibold shadow-sm transition-colors hover:border-amber-500/35 hover:bg-amber-500/8 focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-2 focus-visible:outline-none"
               >
-                <Sparkles size={16} strokeWidth={2} className="text-amber-600 dark:text-amber-400" />
+                <Sparkles
+                  size={16}
+                  strokeWidth={2}
+                  className="text-amber-600 dark:text-amber-400"
+                />
                 Share feedback
               </Link>
             </div>
@@ -224,12 +240,16 @@ export default function SettingsPage() {
           href="/dashboard/support"
           aria-label="Open support"
           title="Support"
-          className="group bg-primary relative flex h-12 w-12 items-center justify-center rounded-lg text-primary-foreground shadow-lg shadow-black/10 transition-colors hover:bg-primary/90 focus-visible:ring-primary/40 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          className="group bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-primary/40 relative flex h-12 w-12 items-center justify-center rounded-lg shadow-lg shadow-black/10 transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
-          <MessageSquare size={20} strokeWidth={2} className="transition-transform duration-200 group-hover:-rotate-6" />
+          <MessageSquare
+            size={20}
+            strokeWidth={2}
+            className="transition-transform duration-200 group-hover:-rotate-6"
+          />
 
           <span className="sr-only">Support</span>
-          <div className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 border-background bg-red-500" />
+          <div className="border-background absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full border-2 bg-red-500" />
         </Link>
       </motion.div>
     </div>

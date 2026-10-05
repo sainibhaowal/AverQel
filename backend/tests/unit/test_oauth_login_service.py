@@ -42,6 +42,23 @@ def test_start_uses_signed_state_and_pkce() -> None:
     assert payload["cookie_id"] in cookie_name
 
 
+def test_start_binds_the_random_browser_id_to_signed_state() -> None:
+    response = Response()
+    service = OAuthLoginService(None, _settings())
+
+    service.start(
+        provider_name="google",
+        response=response,
+        device_id="browser-12345678",
+    )
+
+    cookie = SimpleCookie()
+    cookie.load(response.headers["set-cookie"])
+    cookie_name = next(name for name in cookie if name.startswith(OAUTH_STATE_COOKIE_PREFIX))
+    payload = service._verify_state(cookie[cookie_name].value, "google")
+    assert payload["device_id"] == "browser-12345678"
+
+
 def test_start_uses_a_distinct_cookie_for_each_login_attempt() -> None:
     service = OAuthLoginService(None, _settings())
     first = Response()
@@ -112,6 +129,7 @@ def test_new_user_callback_restores_bypass_context_before_identity_insert(
         tenant_id=tenant_id,
     )
     contexts: list[str] = []
+    completed_login: dict[str, object] = {}
 
     class FakeSession:
         def execute(self, *_args, **_kwargs):
@@ -138,6 +156,7 @@ def test_new_user_callback_restores_bypass_context_before_identity_insert(
 
         @staticmethod
         def complete_external_login(**_kwargs):
+            completed_login.update(_kwargs)
             return "logged-in"
 
     service = OAuthLoginService(FakeSession(), _settings())
@@ -151,7 +170,11 @@ def test_new_user_callback_restores_bypass_context_before_identity_insert(
     def verify_state(cookie: str, _provider: str):
         if cookie == "stale":
             raise ApiError(code="OAUTH_STATE_INVALID", message="stale", status_code=400)
-        return {"state": "expected", "verifier": "verifier"}
+        return {
+            "state": "expected",
+            "verifier": "verifier",
+            "device_id": "browser-12345678",
+        }
 
     monkeypatch.setattr(service, "_verify_state", verify_state)
     monkeypatch.setattr(service, "_exchange_code", lambda *_args: "provider-token")
@@ -166,7 +189,10 @@ def test_new_user_callback_restores_bypass_context_before_identity_insert(
         code="code",
         state="expected",
         state_cookies=["stale", "cookie"],
+        user_agent="Mozilla/5.0 Chrome/153.0.0.0 Linux",
     )
 
     assert result == "logged-in"
     assert contexts == ["bypass", "bypass"]
+    assert completed_login["device_id"] == "browser-12345678"
+    assert completed_login["user_agent"] == "Mozilla/5.0 Chrome/153.0.0.0 Linux"

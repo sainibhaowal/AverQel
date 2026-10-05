@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import desc, func, select, text, update
 from sqlalchemy.orm import Session
@@ -17,6 +18,26 @@ from app.system.models.user_notification import UserNotification
 from app.system.models.user_notification_preference import UserNotificationPreference
 
 logger = logging.getLogger(__name__)
+
+
+def next_notification_delivery_at(
+    *, frequency: str, timezone_name: str, now: datetime | None = None
+) -> datetime:
+    """Return the next delivery boundary in the recipient's timezone, as UTC."""
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    current = current.astimezone(UTC)
+    if frequency == "none":
+        return current
+    zone = ZoneInfo(timezone_name or "UTC")
+    local_now = current.astimezone(zone)
+    candidate = datetime.combine(local_now.date(), time(hour=8), tzinfo=zone)
+    if frequency == "weekly":
+        candidate += timedelta(days=(7 - local_now.weekday()) % 7)
+    if candidate <= local_now:
+        candidate += timedelta(days=1 if frequency == "daily" else 7)
+    return candidate.astimezone(UTC)
 
 
 def add_user_notification(
@@ -74,19 +95,11 @@ def add_user_notification(
             and preference.email_enabled
             and event_domain not in muted
         ):
-            now = datetime.now(UTC)
             frequency = preference.digest_frequency or "none"
-            due = now
-            if frequency == "daily":
-                due = now.replace(hour=8, minute=0, second=0, microsecond=0)
-                if due <= now:
-                    due += timedelta(days=1)
-            elif frequency == "weekly":
-                due = now.replace(hour=8, minute=0, second=0, microsecond=0)
-                days_until_monday = (7 - now.weekday()) % 7
-                due += timedelta(days=days_until_monday)
-                if due <= now:
-                    due += timedelta(days=7)
+            due = next_notification_delivery_at(
+                frequency=frequency,
+                timezone_name=preference.timezone or "UTC",
+            )
             db.add(
                 NotificationDelivery(
                     tenant_id=tenant_id,

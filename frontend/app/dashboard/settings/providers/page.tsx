@@ -409,7 +409,7 @@ export default function ProvidersSettingsPage() {
             accentClassName="bg-primary text-primary"
             accentGlowClassName="shadow-[0_0_18px_hsl(var(--primary)/0.28)]"
             backHref="/dashboard/settings"
-            backLabel="Back To Settings"
+            backLabel="Back"
           />
         </div>
         <div className="flex flex-1 items-center justify-center">
@@ -436,7 +436,7 @@ export default function ProvidersSettingsPage() {
           accentClassName="bg-primary text-primary"
           accentGlowClassName="shadow-[0_0_18px_hsl(var(--primary)/0.28)]"
           backHref="/dashboard/settings"
-          backLabel="Back To Settings"
+          backLabel="Back"
           actions={
             <div className="border-glass-border bg-surface-1/50 flex flex-wrap items-center gap-1 rounded-xl border p-1 shadow-inner">
               <NavItem

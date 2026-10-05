@@ -71,6 +71,7 @@ and must be checked against their target and date before release decisions.
 
 - [API reliability](platform/01-api-reliability.md)
 - [OAuth login](platform/02-auth-oauth-login.md)
+- [Linked-session security and rollout](security/linked-sessions-production-hardening.md)
 - [Backend testing](platform/03-testing.md)
 - [Historical Documents Hub end-to-end verification (2026-09-27)](platform/04-end-to-end-verification.md)
 - [Realtime websocket events](platform/04-realtime-events.md)

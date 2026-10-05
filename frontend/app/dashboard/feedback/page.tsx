@@ -297,6 +297,8 @@ export default function FeedbackPage() {
           icon={Sparkles}
           accentClassName="bg-amber-400 text-amber-400"
           accentGlowClassName="shadow-[0_0_20px_rgba(251,191,36,0.4)]"
+          backHref="/dashboard"
+          backLabel="Back To Dashboard"
         />
       </motion.div>
 

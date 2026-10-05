@@ -49,12 +49,14 @@ describe("collection moderation page", () => {
 
     render(<CollectionModerationPage />);
 
+    expect(screen.getByRole("link", { name: "Back To Dashboard" })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
     expect(await screen.findByText("Repeated links")).toBeInTheDocument();
     expect(screen.getByText("Team workspace")).toBeInTheDocument();
     expect(screen.getByText("user-1")).toBeInTheDocument();
-    expect(
-      screen.getByText(/This queue shows report details and message references/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/message bodies are not shown here/i)).toBeInTheDocument();
     expect(screen.getByText("(message body not returned)")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Resolve" }));
 

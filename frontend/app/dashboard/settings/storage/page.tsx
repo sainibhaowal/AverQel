@@ -1,12 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Activity,
   AlertCircle,
-  ArrowLeft,
   Brain,
   ChevronDown,
   CircleDashed,
@@ -84,7 +82,8 @@ const metricIcons: Record<string, typeof FileText> = {
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${Math.max(0, bytes)} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
@@ -107,19 +106,55 @@ function metricPercent(metric: StorageMetric, total: number): number {
 
 const metricColors: Record<string, { solid: string; text: string; soft: string }> = {
   documents: { solid: "#0f766e", text: "text-teal-700 dark:text-teal-300", soft: "bg-teal-500/15" },
-  library: { solid: "#7c3aed", text: "text-violet-700 dark:text-violet-300", soft: "bg-violet-500/15" },
+  library: {
+    solid: "#7c3aed",
+    text: "text-violet-700 dark:text-violet-300",
+    soft: "bg-violet-500/15",
+  },
   artifacts: { solid: "#db2777", text: "text-pink-700 dark:text-pink-300", soft: "bg-pink-500/15" },
-  pending_uploads: { solid: "#ca8a04", text: "text-yellow-700 dark:text-yellow-300", soft: "bg-yellow-500/15" },
-  grounded_queries: { solid: "#16a34a", text: "text-green-700 dark:text-green-300", soft: "bg-green-500/15" },
+  pending_uploads: {
+    solid: "#ca8a04",
+    text: "text-yellow-700 dark:text-yellow-300",
+    soft: "bg-yellow-500/15",
+  },
+  grounded_queries: {
+    solid: "#16a34a",
+    text: "text-green-700 dark:text-green-300",
+    soft: "bg-green-500/15",
+  },
   memory: { solid: "#dc2626", text: "text-red-700 dark:text-red-300", soft: "bg-red-500/15" },
-  collections_and_index: { solid: "#4f46e5", text: "text-indigo-700 dark:text-indigo-300", soft: "bg-indigo-500/15" },
-  activity_and_runs: { solid: "#be123c", text: "text-rose-700 dark:text-rose-300", soft: "bg-rose-500/15" },
-  queues_and_tasks: { solid: "#ea580c", text: "text-orange-700 dark:text-orange-300", soft: "bg-orange-500/15" },
-  workspace_structure: { solid: "#64748b", text: "text-slate-700 dark:text-slate-300", soft: "bg-slate-500/15" },
-  providers_and_connections: { solid: "#0f766e", text: "text-teal-700 dark:text-teal-300", soft: "bg-teal-500/15" },
+  collections_and_index: {
+    solid: "#4f46e5",
+    text: "text-indigo-700 dark:text-indigo-300",
+    soft: "bg-indigo-500/15",
+  },
+  activity_and_runs: {
+    solid: "#be123c",
+    text: "text-rose-700 dark:text-rose-300",
+    soft: "bg-rose-500/15",
+  },
+  queues_and_tasks: {
+    solid: "#ea580c",
+    text: "text-orange-700 dark:text-orange-300",
+    soft: "bg-orange-500/15",
+  },
+  workspace_structure: {
+    solid: "#64748b",
+    text: "text-slate-700 dark:text-slate-300",
+    soft: "bg-slate-500/15",
+  },
+  providers_and_connections: {
+    solid: "#0f766e",
+    text: "text-teal-700 dark:text-teal-300",
+    soft: "bg-teal-500/15",
+  },
 };
 
-const fallbackMetricColor = { solid: "#475569", text: "text-slate-700 dark:text-slate-300", soft: "bg-slate-500/15" };
+const fallbackMetricColor = {
+  solid: "#475569",
+  text: "text-slate-700 dark:text-slate-300",
+  soft: "bg-slate-500/15",
+};
 function getMetricColor(key: string) {
   return metricColors[key] ?? fallbackMetricColor;
 }
@@ -170,12 +205,9 @@ export default function StorageDetailsPage() {
     }
   }, []);
 
-  useRealtimeEvents(
-    () => {
-      void load(false);
-    },
-    ["storage", "documents", "conversations"],
-  );
+  useRealtimeEvents(() => {
+    void load(false);
+  }, ["storage", "documents", "conversations"]);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);
@@ -199,7 +231,9 @@ export default function StorageDetailsPage() {
         setRetentionMode(policy.mode);
         setRetentionError(null);
       } catch (reason) {
-        setRetentionError(reason instanceof Error ? reason.message : "Unable to load retention settings.");
+        setRetentionError(
+          reason instanceof Error ? reason.message : "Unable to load retention settings.",
+        );
       }
     };
     const initialLoad = window.setTimeout(() => void loadRetention(), 0);
@@ -219,7 +253,9 @@ export default function StorageDetailsPage() {
       setRetentionMode(policy.mode);
       setRetentionError(null);
     } catch (reason) {
-      setRetentionError(reason instanceof Error ? reason.message : "Unable to save retention settings.");
+      setRetentionError(
+        reason instanceof Error ? reason.message : "Unable to save retention settings.",
+      );
     } finally {
       setRetentionSaving(false);
     }
@@ -245,33 +281,28 @@ export default function StorageDetailsPage() {
         icon={Database}
         accentClassName="bg-cyan-500 text-cyan-500"
         accentGlowClassName="shadow-[0_0_20px_rgba(6,182,212,0.35)]"
+        backHref="/dashboard/settings/plan"
+        backLabel="Back"
+        actions={
+          <button
+            type="button"
+            onClick={() => void load(true)}
+            disabled={loading || refreshing}
+            className="border-border/70 bg-card/50 text-muted-foreground hover:text-foreground inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={14} />
+            Refresh now
+          </button>
+        }
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link
-          href="/dashboard/settings/plan"
-          className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft size={16} /> Back to Plan & Storage
-        </Link>
-        <button
-          type="button"
-          onClick={() => void load(true)}
-          disabled={loading || refreshing}
-          className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card/50 px-3 py-2 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-        >
-          <RefreshCw size={14} />
-          Refresh now
-        </button>
-      </div>
-
       {loading && (
-        <div className="settings-featured flex items-center gap-3 p-7 text-sm text-muted-foreground">
+        <div className="settings-featured text-muted-foreground flex items-center gap-3 p-7 text-sm">
           <Loader2 size={18} /> Loading storage inventory…
         </div>
       )}
       {error && (
-        <div className="settings-featured flex items-center gap-3 p-7 text-sm text-destructive">
+        <div className="settings-featured text-destructive flex items-center gap-3 p-7 text-sm">
           <AlertCircle size={18} /> {error}
         </div>
       )}
@@ -284,48 +315,73 @@ export default function StorageDetailsPage() {
                 <div className="mb-3 flex items-center gap-2 text-xs font-bold tracking-[0.2em] text-cyan-600 uppercase dark:text-cyan-300">
                   <ShieldCheck size={15} /> {data.current_plan.name} plan
                 </div>
-                <h2 className="text-3xl font-black tracking-tight text-foreground">
-                  {formatBytes(data.usage.total_bytes)} <span className="text-lg text-muted-foreground">of {formatLimit(data.current_plan.storage_limit_bytes)}</span>
+                <h2 className="text-foreground text-3xl font-black tracking-tight">
+                  {formatBytes(data.usage.total_bytes)}{" "}
+                  <span className="text-muted-foreground text-lg">
+                    of {formatLimit(data.current_plan.storage_limit_bytes)}
+                  </span>
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  This meter is shared across the authenticated tenant/workspace. It updates automatically when workspace data changes and when you return to the tab.
+                <p className="text-muted-foreground mt-2 text-sm leading-6">
+                  This meter is shared across the authenticated tenant/workspace. It updates
+                  automatically when workspace data changes and when you return to the tab.
                 </p>
               </div>
-              <div className="rounded-2xl border border-border/70 bg-background/45 p-5">
+              <div className="border-border/70 bg-background/45 rounded-2xl border p-5">
                 <div className="mb-3 flex items-center justify-between text-sm font-semibold">
                   <span>Quota usage</span>
-                  <span className={usagePercent >= 90 ? "text-destructive" : "text-muted-foreground"}>{usagePercent.toFixed(1)}%</span>
+                  <span
+                    className={usagePercent >= 90 ? "text-destructive" : "text-muted-foreground"}
+                  >
+                    {usagePercent.toFixed(1)}%
+                  </span>
                 </div>
-                <div className="h-4 overflow-hidden rounded-full bg-muted/60">
+                <div className="bg-muted/60 h-4 overflow-hidden rounded-full">
                   <div
                     className={`h-full rounded-full ${usagePercent >= 90 ? "bg-destructive" : "bg-cyan-500"}`}
                     style={{ width: `${usagePercent}%` }}
                   />
                 </div>
-                <div className="mt-4 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-cyan-500" /> Counts toward plan</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-violet-400" /> Informational inventory</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-slate-400" /> Protected metadata</span>
+                <div className="text-muted-foreground mt-4 flex flex-wrap gap-3 text-xs">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-cyan-500" /> Counts toward plan
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-violet-400" /> Informational
+                    inventory
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-slate-400" /> Protected metadata
+                  </span>
                 </div>
               </div>
             </div>
           </section>
 
-          <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.06] p-4 text-sm leading-6 text-muted-foreground">
-            <div className="flex gap-3"><InfoIcon /> <span>{data.quota_metering_note}</span></div>
+          <div className="text-muted-foreground rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.06] p-4 text-sm leading-6">
+            <div className="flex gap-3">
+              <InfoIcon /> <span>{data.quota_metering_note}</span>
+            </div>
           </div>
 
-          <section className="settings-featured overflow-hidden p-6" aria-labelledby="storage-retention-policy">
+          <section
+            className="settings-featured overflow-hidden p-6"
+            aria-labelledby="storage-retention-policy"
+          >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-xs font-bold tracking-[0.18em] text-violet-600 uppercase dark:text-violet-300">
                   <ShieldCheck size={15} /> Storage lifecycle policy
                 </div>
-                <h2 id="storage-retention-policy" className="mt-2 text-xl font-black tracking-tight text-foreground">
+                <h2
+                  id="storage-retention-policy"
+                  className="text-foreground mt-2 text-xl font-black tracking-tight"
+                >
                   Remove only data that has not been meaningfully used
                 </h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                  This is one tenant-scoped setting for quota-linked user content. Background refreshes do not reset the timer. Active runs, queues, uploads, provider credentials, security records, and unknown legacy data stay protected.
+                <p className="text-muted-foreground mt-1 max-w-3xl text-sm leading-6">
+                  This is one tenant-scoped setting for quota-linked user content. Background
+                  refreshes do not reset the timer. Active runs, queues, uploads, provider
+                  credentials, security records, and unknown legacy data stay protected.
                 </p>
               </div>
               <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-300">
@@ -333,14 +389,19 @@ export default function StorageDetailsPage() {
               </span>
             </div>
             <div className="mt-5 flex flex-wrap items-end gap-3">
-              <label className="grid gap-2 text-xs font-bold text-muted-foreground" htmlFor="storage-retention-mode">
+              <label
+                className="text-muted-foreground grid gap-2 text-xs font-bold"
+                htmlFor="storage-retention-mode"
+              >
                 Inactivity period
                 <select
                   id="storage-retention-mode"
                   value={retentionMode}
-                  onChange={(event) => setRetentionMode(event.target.value as StorageRetentionPolicy["mode"])}
+                  onChange={(event) =>
+                    setRetentionMode(event.target.value as StorageRetentionPolicy["mode"])
+                  }
                   disabled={retentionSaving || !retention}
-                  className="min-w-44 rounded-xl border border-border/70 bg-background/70 px-3 py-2.5 text-sm font-semibold text-foreground outline-none focus:border-cyan-500"
+                  className="border-border/70 bg-background/70 text-foreground min-w-44 rounded-xl border px-3 py-2.5 text-sm font-semibold outline-none focus:border-cyan-500"
                 >
                   <option value="off">Off</option>
                   <option value="30">30 days</option>
@@ -356,36 +417,58 @@ export default function StorageDetailsPage() {
               >
                 {retentionSaving ? "Saving…" : "Save policy"}
               </button>
-              <span className="text-xs text-muted-foreground">
-                {retention?.mode === "off" ? "No automatic candidates are created." : `Eligible after ${retention?.days} days of no meaningful activity.`}
+              <span className="text-muted-foreground text-xs">
+                {retention?.mode === "off"
+                  ? "No automatic candidates are created."
+                  : `Eligible after ${retention?.days} days of no meaningful activity.`}
               </span>
             </div>
-            {retentionError && <p className="mt-3 text-xs font-semibold text-destructive">{retentionError}</p>}
+            {retentionError && (
+              <p className="text-destructive mt-3 text-xs font-semibold">{retentionError}</p>
+            )}
           </section>
 
-          <StorageVisualization key={refreshKey} data={data} metered={metered} usagePercent={usagePercent} />
+          <StorageVisualization
+            key={refreshKey}
+            data={data}
+            metered={metered}
+            usagePercent={usagePercent}
+          />
 
           <section className="space-y-4">
             <div>
-              <h2 className="text-xl font-black tracking-tight text-foreground">Storage used by category</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Expand any row to see its measurement, records, and quota status.</p>
+              <h2 className="text-foreground text-xl font-black tracking-tight">
+                Storage used by category
+              </h2>
+              <p className="text-muted-foreground mt-1 text-sm">
+                Expand any row to see its measurement, records, and quota status.
+              </p>
             </div>
             <div className="grid gap-3">
-              {metered.map((metric) => <MetricRow key={metric.key} metric={metric} total={data.usage.total_bytes} />)}
+              {metered.map((metric) => (
+                <MetricRow key={metric.key} metric={metric} total={data.usage.total_bytes} />
+              ))}
             </div>
           </section>
 
           <section className="space-y-4">
             <div>
-              <h2 className="text-xl font-black tracking-tight text-foreground">Account data inventory</h2>
-              <p className="mt-1 text-sm text-muted-foreground">These durable records belong to your tenant and are included using safe logical byte estimates where possible.</p>
+              <h2 className="text-foreground text-xl font-black tracking-tight">
+                Account data inventory
+              </h2>
+              <p className="text-muted-foreground mt-1 text-sm">
+                These durable records belong to your tenant and are included using safe logical byte
+                estimates where possible.
+              </p>
             </div>
             <div className="grid gap-3">
-              {informational.map((metric) => <MetricRow key={metric.key} metric={metric} total={0} />)}
+              {informational.map((metric) => (
+                <MetricRow key={metric.key} metric={metric} total={0} />
+              ))}
             </div>
           </section>
 
-          <p className="text-right text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-right text-xs">
             Last updated {new Date(data.generated_at).toLocaleTimeString()}
           </p>
         </>
@@ -410,17 +493,24 @@ function StorageVisualization({
   const categoryTotal = metered.reduce((sum, metric) => sum + Math.max(0, metric.bytes), 0);
 
   return (
-    <section className="settings-featured overflow-hidden p-6" aria-labelledby="storage-visual-overview">
+    <section
+      className="settings-featured overflow-hidden p-6"
+      aria-labelledby="storage-visual-overview"
+    >
       <div className="relative z-[1] mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold tracking-[0.18em] text-cyan-600 uppercase dark:text-cyan-300">
             <PieChart size={15} /> Visual storage overview
           </div>
-          <h2 id="storage-visual-overview" className="mt-2 text-xl font-black tracking-tight text-foreground">
+          <h2
+            id="storage-visual-overview"
+            className="text-foreground mt-2 text-xl font-black tracking-tight"
+          >
             See exactly what is filling your allocation
           </h2>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Colors are consistent across the quota ring, category bar, and legend. The view refreshes with the live storage meter every 5 seconds.
+          <p className="text-muted-foreground mt-1 max-w-2xl text-sm leading-6">
+            Colors are consistent across the quota ring, category bar, and legend. The view
+            refreshes with the live storage meter every 5 seconds.
           </p>
         </div>
         <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-300">
@@ -439,27 +529,50 @@ function StorageVisualization({
               className="storage-visual-ring absolute inset-0 rounded-full p-5"
               style={{ background: `conic-gradient(${gradient})` }}
             />
-            <div className="absolute inset-5 z-[1] flex flex-col items-center justify-center rounded-full border border-border/70 bg-background/95 text-center shadow-inner">
+            <div className="border-border/70 bg-background/95 absolute inset-5 z-[1] flex flex-col items-center justify-center rounded-full border text-center shadow-inner">
               <Gauge className="mb-2 text-cyan-300" size={22} />
-              <span className="text-3xl font-black text-foreground">{usagePercent.toFixed(1)}%</span>
-              <span className="mt-1 text-xs font-semibold text-muted-foreground">allocation used</span>
+              <span className="text-foreground text-3xl font-black">
+                {usagePercent.toFixed(1)}%
+              </span>
+              <span className="text-muted-foreground mt-1 text-xs font-semibold">
+                allocation used
+              </span>
             </div>
           </div>
         </div>
 
         <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-3">
-            <VisualStat label="Used" value={formatBytes(used)} accent="text-cyan-300" icon={<Database size={15} />} />
-            <VisualStat label="Available" value={formatBytes(remaining)} accent="text-emerald-300" icon={<CircleDashed size={15} />} />
-            <VisualStat label="Allocation" value={formatLimit(limit)} accent="text-violet-300" icon={<HardDrive size={15} />} />
+            <VisualStat
+              label="Used"
+              value={formatBytes(used)}
+              accent="text-cyan-300"
+              icon={<Database size={15} />}
+            />
+            <VisualStat
+              label="Available"
+              value={formatBytes(remaining)}
+              accent="text-emerald-300"
+              icon={<CircleDashed size={15} />}
+            />
+            <VisualStat
+              label="Allocation"
+              value={formatLimit(limit)}
+              accent="text-violet-300"
+              icon={<HardDrive size={15} />}
+            />
           </div>
 
           <div>
-            <div className="mb-2 flex items-center justify-between text-xs font-bold text-muted-foreground">
+            <div className="text-muted-foreground mb-2 flex items-center justify-between text-xs font-bold">
               <span>Metered category distribution</span>
               <span>{metered.filter((metric) => metric.bytes > 0).length} active categories</span>
             </div>
-            <div className="flex h-5 w-full overflow-hidden rounded-full border border-border/70 bg-slate-900/80" role="img" aria-label="Storage used by category">
+            <div
+              className="border-border/70 flex h-5 w-full overflow-hidden rounded-full border bg-slate-900/80"
+              role="img"
+              aria-label="Storage used by category"
+            >
               {metered.map((metric) => {
                 const width = categoryTotal > 0 ? (metric.bytes / categoryTotal) * 100 : 0;
                 if (width <= 0) return null;
@@ -467,34 +580,58 @@ function StorageVisualization({
                   <span
                     key={metric.key}
                     className="h-full min-w-[3px]"
-                    style={{ width: `${width}%`, backgroundColor: getMetricColor(metric.key).solid }}
+                    style={{
+                      width: `${width}%`,
+                      backgroundColor: getMetricColor(metric.key).solid,
+                    }}
                     title={`${metric.label}: ${formatBytes(metric.bytes)} (${width.toFixed(1)}%)`}
                   />
                 );
               })}
             </div>
-            <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+            <div className="text-muted-foreground mt-2 flex items-center justify-between text-[11px]">
               <span>0 B</span>
               <span>{formatBytes(used)} metered usage</span>
             </div>
           </div>
 
-          <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-3" aria-label="Storage category legend">
+          <div
+            className="grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-3"
+            aria-label="Storage category legend"
+          >
             {metered.map((metric) => {
               const color = getMetricColor(metric.key);
               const share = used > 0 ? (metric.bytes / used) * 100 : 0;
               return (
-                <div key={metric.key} className="flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-xs transition-colors hover:bg-muted/50">
-                  <span className="h-3 w-3 shrink-0 rounded-full ring-2 ring-background" style={{ backgroundColor: color.solid }} />
-                  <span className="min-w-0 flex-1 truncate font-medium text-muted-foreground" title={metric.label}>{metric.label}</span>
-                  <span className="shrink-0 font-black" style={{ color: color.solid }}>{share.toFixed(1)}%</span>
+                <div
+                  key={metric.key}
+                  className="hover:bg-muted/50 flex min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-xs transition-colors"
+                >
+                  <span
+                    className="ring-background h-3 w-3 shrink-0 rounded-full ring-2"
+                    style={{ backgroundColor: color.solid }}
+                  />
+                  <span
+                    className="text-muted-foreground min-w-0 flex-1 truncate font-medium"
+                    title={metric.label}
+                  >
+                    {metric.label}
+                  </span>
+                  <span className="shrink-0 font-black" style={{ color: color.solid }}>
+                    {share.toFixed(1)}%
+                  </span>
                 </div>
               );
             })}
           </div>
-          <div className="flex flex-wrap gap-4 border-t border-border/60 pt-4 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-cyan-400" /> Metered and counts toward limit</span>
-            <span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-violet-400" /> Inventory shown separately</span>
+          <div className="border-border/60 text-muted-foreground flex flex-wrap gap-4 border-t pt-4 text-xs">
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-cyan-400" /> Metered and counts toward
+              limit
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-violet-400" /> Inventory shown separately
+            </span>
           </div>
         </div>
       </div>
@@ -502,50 +639,113 @@ function StorageVisualization({
   );
 }
 
-function VisualStat({ label, value, accent, icon }: { label: string; value: string; accent: string; icon: ReactNode }) {
+function VisualStat({
+  label,
+  value,
+  accent,
+  icon,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+  icon: ReactNode;
+}) {
   return (
-    <div className="rounded-xl border border-border/70 bg-background/35 p-3">
-      <div className={`mb-2 flex items-center gap-2 text-xs font-bold ${accent}`}>{icon}{label}</div>
-      <div className="text-lg font-black text-foreground">{value}</div>
+    <div className="border-border/70 bg-background/35 rounded-xl border p-3">
+      <div className={`mb-2 flex items-center gap-2 text-xs font-bold ${accent}`}>
+        {icon}
+        {label}
+      </div>
+      <div className="text-foreground text-lg font-black">{value}</div>
     </div>
   );
 }
 
 function InfoIcon() {
-  return <span className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-cyan-500/30 text-xs font-black text-cyan-600 dark:text-cyan-300">i</span>;
+  return (
+    <span className="mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-cyan-500/30 text-xs font-black text-cyan-600 dark:text-cyan-300">
+      i
+    </span>
+  );
 }
 
 function MetricRow({ metric, total }: { metric: StorageMetric; total: number }) {
   const Icon = metricIcons[metric.key] ?? Database;
-  const color = metric.included_in_quota ? getMetricColor(metric.key) : { solid: "#8b5cf6", text: "text-violet-700 dark:text-violet-300", soft: "bg-violet-500/15" };
+  const color = metric.included_in_quota
+    ? getMetricColor(metric.key)
+    : { solid: "#8b5cf6", text: "text-violet-700 dark:text-violet-300", soft: "bg-violet-500/15" };
   const percent = metricPercent(metric, total);
   const [open, setOpen] = useState(false);
   return (
-    <div className={`storage-metric-row rounded-2xl border border-border/70 bg-card/35 transition-colors ${open ? "border-cyan-500/30 bg-card/60" : ""}`}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)} className="flex w-full cursor-pointer items-center gap-4 p-4 text-left">
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${metric.included_in_quota ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-300" : "bg-violet-500/10 text-violet-500"}`}>
+    <div
+      className={`storage-metric-row border-border/70 bg-card/35 rounded-2xl border transition-colors ${open ? "bg-card/60 border-cyan-500/30" : ""}`}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full cursor-pointer items-center gap-4 p-4 text-left"
+      >
+        <span
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${metric.included_in_quota ? "bg-cyan-500/10 text-cyan-600 dark:text-cyan-300" : "bg-violet-500/10 text-violet-500"}`}
+        >
           <Icon size={18} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2 text-sm font-bold text-foreground">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-background" style={{ backgroundColor: color.solid }} aria-hidden="true" />
+          <span className="text-foreground flex flex-wrap items-center gap-2 text-sm font-bold">
+            <span
+              className="ring-background h-2.5 w-2.5 shrink-0 rounded-full ring-2"
+              style={{ backgroundColor: color.solid }}
+              aria-hidden="true"
+            />
             {metric.label}
-            {metric.included_in_quota ? <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-700 uppercase dark:text-cyan-300">metered</span> : <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-600 uppercase dark:text-violet-300">inventory</span>}
+            {metric.included_in_quota ? (
+              <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-700 uppercase dark:text-cyan-300">
+                metered
+              </span>
+            ) : (
+              <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold text-violet-600 uppercase dark:text-violet-300">
+                inventory
+              </span>
+            )}
           </span>
-          <span className="mt-1 block truncate text-xs text-muted-foreground">{metric.description}</span>
+          <span className="text-muted-foreground mt-1 block truncate text-xs">
+            {metric.description}
+          </span>
         </span>
         <span className="text-right">
-          <span className="block text-sm font-black text-foreground">{formatBytes(metric.bytes)}</span>
-          <span className="block text-xs text-muted-foreground">{metric.record_count.toLocaleString()} records</span>
+          <span className="text-foreground block text-sm font-black">
+            {formatBytes(metric.bytes)}
+          </span>
+          <span className="text-muted-foreground block text-xs">
+            {metric.record_count.toLocaleString()} records
+          </span>
         </span>
-        <ChevronDown className="shrink-0 text-muted-foreground" size={17} />
+        <ChevronDown className="text-muted-foreground shrink-0" size={17} />
       </button>
-      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+      >
         <div className="min-h-0 overflow-hidden">
-          <div className={`grid gap-4 border-t border-border/60 px-4 py-4 text-xs text-muted-foreground transition-opacity duration-300 sm:grid-cols-3 ${open ? "opacity-100" : "opacity-0"}`}>
-            <div><span className="block font-bold text-foreground">Measurement</span>{metric.measurement}</div>
-            <div><span className="block font-bold text-foreground">Plan share</span>{metric.included_in_quota ? `${percent.toFixed(1)}% of metered usage` : "Not included in current plan meter"}</div>
-            <div><span className="block font-bold text-foreground">Additional metric</span>{metric.tokens !== undefined && metric.tokens !== null ? formatTokens(metric.tokens) : `${metric.record_count.toLocaleString()} retained records`}</div>
+          <div
+            className={`border-border/60 text-muted-foreground grid gap-4 border-t px-4 py-4 text-xs transition-opacity duration-300 sm:grid-cols-3 ${open ? "opacity-100" : "opacity-0"}`}
+          >
+            <div>
+              <span className="text-foreground block font-bold">Measurement</span>
+              {metric.measurement}
+            </div>
+            <div>
+              <span className="text-foreground block font-bold">Plan share</span>
+              {metric.included_in_quota
+                ? `${percent.toFixed(1)}% of metered usage`
+                : "Not included in current plan meter"}
+            </div>
+            <div>
+              <span className="text-foreground block font-bold">Additional metric</span>
+              {metric.tokens !== undefined && metric.tokens !== null
+                ? formatTokens(metric.tokens)
+                : `${metric.record_count.toLocaleString()} retained records`}
+            </div>
           </div>
         </div>
       </div>

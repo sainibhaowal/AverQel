@@ -272,6 +272,7 @@ class Settings(BaseSettings):
     jwt_access_ttl_minutes: int = 15
     jwt_refresh_ttl_days: int = 7
     refresh_token_hash_secret: str = DEFAULT_REFRESH_SECRET
+    auth_session_retention_days: int = Field(default=90, ge=1, le=3650)
 
     refresh_cookie_name: str = "aks_refresh_token"
     refresh_cookie_secure: bool = True

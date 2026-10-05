@@ -16,9 +16,17 @@ export default function ProfileDocsPage() {
       </DocsSection>
       <DocsSection title="Linked sessions">
         <p>
-          Review the signed-in browser or device sessions associated with your account. You can
-          revoke another active session if you no longer recognize or use it. The current session
-          must be ended through the normal sign-out flow.
+          Review the signed-in browser or device sessions associated with your account. New web
+          sign-ins use a random browser ID and a browser/platform label to help distinguish them;
+          this does not identify physical hardware. The page also shows the recorded user-agent,
+          sign-in time, and most recent token refresh time. Older sessions may not have browser
+          details.
+        </p>
+        <p>
+          You can revoke another active session if you no longer recognize or use it. That session’s
+          refresh tokens and access tokens are rejected. End the current session through Log out,
+          or use Sign out everywhere to end all of your sessions. Old revoked session records are
+          removed according to the deployment’s retention setting.
         </p>
       </DocsSection>
       <DocsSection title="Account export and deletion">
