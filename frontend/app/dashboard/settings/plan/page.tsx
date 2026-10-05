@@ -99,7 +99,7 @@ export default function PlanPage() {
         accentClassName="bg-primary text-primary"
         accentGlowClassName="shadow-[0_0_20px_rgba(var(--primary),0.35)]"
         backHref="/dashboard/settings"
-        backLabel="Back"
+        backLabel="Back to Settings"
       />
 
       {loading && (
