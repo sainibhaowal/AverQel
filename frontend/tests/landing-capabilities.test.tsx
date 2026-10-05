@@ -150,12 +150,19 @@ describe("DocumentsHubMarketing", () => {
 });
 
 describe("VoiceDocsPage", () => {
-  it("states the deployment gates without promising availability", () => {
+  it("documents voice setup, permissions, and availability limits", () => {
     render(<VoiceDocsPage />);
 
-    const headings = screen.getAllByRole("heading", { name: /Voice & Realtime/i });
-    expect(headings.length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/deployment-gated/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/microphone permission/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("heading", { name: /DeepSpace voice/i }).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("heading", { name: /Deployment requirements/i }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/secure HTTPS\/WSS connectivity/i).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Microphone access requires a secure browser context/i).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Local UI code or a simulated test does not establish/i).length,
+    ).toBeGreaterThan(0);
   });
 });
