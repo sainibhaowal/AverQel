@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
@@ -20,6 +20,7 @@ from app.documents.models.collection_security import (
     CollectionChatBlock,
     CollectionChatReport,
     CollectionDevice,
+    CollectionModerationAction,
     CollectionPushSubscription,
 )
 from app.documents.repositories.collection_notifications import CollectionNotificationsRepository
@@ -28,6 +29,7 @@ from app.documents.schemas.collection_security import (
     CollectionBlockRequest,
     CollectionDeviceResponse,
     CollectionDeviceUpsert,
+    CollectionModerationActionResponse,
     CollectionModerationReportResponse,
     CollectionPushSubscriptionRequest,
     CollectionReportRequest,
@@ -38,6 +40,8 @@ from app.integrations.services.connector_secret_crypto import (
     ConnectorSecretCryptoError,
 )
 from app.platform.database.session import get_db, set_db_tenant_context
+from app.system.services.rate_limit_service import RateLimitService
+from app.system.services.user_notifications import notify_tenant_admins
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/collections", tags=["collection-security"])
@@ -85,22 +89,89 @@ def get_push_config() -> dict[str, str | bool | None]:
     dependencies=[Depends(require_permissions("admin:collections:read"))],
 )
 def list_moderation_reports(
+    response: Response,
     status: str | None = Query(
         default="open", pattern=r"^(open|reviewing|resolved|dismissed|all)$"
     ),
+    report_id: uuid.UUID | None = None,
     limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> list[CollectionModerationReportResponse]:
     query = db.query(CollectionChatReport).filter(CollectionChatReport.tenant_id == auth.tenant_id)
-    if status != "all":
+    if report_id is not None:
+        query = query.filter(CollectionChatReport.id == report_id)
+    elif status != "all":
         query = query.filter(CollectionChatReport.status == status)
+    total = int(query.with_entities(func.count(CollectionChatReport.id)).scalar() or 0)
     rows = (
-        query.order_by(CollectionChatReport.created_at.desc(), CollectionChatReport.id.desc())
+        query.outerjoin(
+            DocumentCollection,
+            and_(
+                DocumentCollection.id == CollectionChatReport.collection_id,
+                DocumentCollection.tenant_id == auth.tenant_id,
+            ),
+        )
+        .with_entities(CollectionChatReport, DocumentCollection.name)
+        .order_by(CollectionChatReport.created_at.desc(), CollectionChatReport.id.desc())
         .limit(limit)
+        .offset(offset)
         .all()
     )
-    return [CollectionModerationReportResponse.model_validate(row) for row in rows]
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Has-More"] = "true" if offset + len(rows) < total else "false"
+    response.headers["X-Page-Offset"] = str(offset)
+    responses = []
+    for report, collection_name in rows:
+        serialized = CollectionModerationReportResponse.model_validate(report).model_dump()
+        serialized["collection_name"] = collection_name
+        responses.append(CollectionModerationReportResponse.model_validate(serialized))
+    return responses
+
+
+@router.get(
+    "/admin/security/reports/{report_id}/history",
+    response_model=list[CollectionModerationActionResponse],
+    dependencies=[Depends(require_permissions("admin:collections:read"))],
+)
+def list_moderation_report_history(
+    report_id: uuid.UUID,
+    response: Response,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1_000_000),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> list[CollectionModerationActionResponse]:
+    report_exists = (
+        db.query(CollectionChatReport.id)
+        .filter(
+            CollectionChatReport.id == report_id,
+            CollectionChatReport.tenant_id == auth.tenant_id,
+        )
+        .first()
+    )
+    if report_exists is None:
+        raise ApiError(
+            code="REPORT_NOT_FOUND", message="Moderation report not found.", status_code=404
+        )
+    query = db.query(CollectionModerationAction).filter(
+        CollectionModerationAction.report_id == report_id,
+        CollectionModerationAction.tenant_id == auth.tenant_id,
+    )
+    total = int(query.with_entities(func.count(CollectionModerationAction.id)).scalar() or 0)
+    rows = (
+        query.order_by(
+            CollectionModerationAction.created_at.desc(), CollectionModerationAction.id.desc()
+        )
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Has-More"] = "true" if offset + len(rows) < total else "false"
+    response.headers["X-Page-Offset"] = str(offset)
+    return [CollectionModerationActionResponse.model_validate(row) for row in rows]
 
 
 @router.post(
@@ -119,16 +190,54 @@ def update_moderation_report(
         .filter(
             CollectionChatReport.id == report_id, CollectionChatReport.tenant_id == auth.tenant_id
         )
+        .with_for_update()
         .first()
     )
     if row is None:
         raise ApiError(
             code="REPORT_NOT_FOUND", message="Moderation report not found.", status_code=404
         )
+    previous_status = row.status
+    allowed_transitions = {
+        "open": {"open", "reviewing", "resolved", "dismissed"},
+        "reviewing": {"open", "reviewing", "resolved", "dismissed"},
+        "resolved": {"open", "resolved"},
+        "dismissed": {"open", "dismissed"},
+    }
+    if payload.status not in allowed_transitions.get(previous_status, set()):
+        raise ApiError(
+            code="INVALID_REPORT_STATUS_TRANSITION",
+            message=f"A {previous_status} report can’t be changed directly to {payload.status}.",
+            status_code=409,
+        )
     row.status = payload.status
-    row.resolved_at = datetime.now(UTC) if payload.status in {"resolved", "dismissed"} else None
-    if payload.moderator_note:
-        row.details = f"{row.details or ''}\nModerator: {payload.moderator_note}".strip()[:4000]
+    if previous_status != payload.status:
+        row.resolved_at = datetime.now(UTC) if payload.status in {"resolved", "dismissed"} else None
+    if previous_status != payload.status:
+        db.add(
+            CollectionModerationAction(
+                tenant_id=auth.tenant_id,
+                report_id=row.id,
+                actor_user_id=auth.user_id,
+                actor_role="admin" if "admin" in auth.roles else "moderator",
+                action_type="status_changed",
+                previous_status=previous_status,
+                new_status=payload.status,
+            )
+        )
+    note = payload.moderator_note.strip() if payload.moderator_note else ""
+    if note:
+        db.add(
+            CollectionModerationAction(
+                tenant_id=auth.tenant_id,
+                report_id=row.id,
+                actor_user_id=auth.user_id,
+                actor_role="admin" if "admin" in auth.roles else "moderator",
+                action_type="note_added",
+                new_status=payload.status,
+                note=note,
+            )
+        )
     db.commit()
     db.refresh(row)
     return CollectionModerationReportResponse.model_validate(row)
@@ -418,7 +527,16 @@ def report_collection_member(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
+    from app.core.config import get_settings
+
     collection = _collection(db, collection_id, auth)
+    settings = get_settings()
+    RateLimitService(settings).enforce_counter(
+        key=f"rate_limit:collection_report:{auth.user_id}:{collection_id}",
+        limit=settings.collection_reports_per_user_per_5_minutes,
+        window_seconds=300,
+        scope="collection_report",
+    )
     repo = CollectionsRepository(db)
     if payload.reported_user_id is not None:
         _enforce_collection_access_global(
@@ -446,16 +564,36 @@ def report_collection_member(
                 status_code=422,
             )
     set_db_tenant_context(db, "bypass")
+    report = CollectionChatReport(
+        tenant_id=collection.tenant_id,
+        collection_id=collection_id,
+        reporter_user_id=auth.user_id,
+        reported_user_id=payload.reported_user_id,
+        message_id=payload.message_id,
+        reason=payload.reason,
+        details=payload.details,
+    )
+    db.add(report)
+    db.flush()
     db.add(
-        CollectionChatReport(
+        CollectionModerationAction(
             tenant_id=collection.tenant_id,
-            collection_id=collection_id,
-            reporter_user_id=auth.user_id,
-            reported_user_id=payload.reported_user_id,
-            message_id=payload.message_id,
-            reason=payload.reason,
-            details=payload.details,
+            report_id=report.id,
+            actor_user_id=auth.user_id,
+            actor_role="reporter",
+            action_type="report_created",
+            new_status="open",
         )
+    )
+    notify_tenant_admins(
+        db,
+        tenant_id=collection.tenant_id,
+        event_domain="collection_moderation",
+        event_type="report_created",
+        title="New collection report",
+        message="A member submitted a report that needs review.",
+        href=f"/dashboard/admin/collections/moderation?report={report.id}",
+        resource_id=report.id,
     )
     db.commit()
     return {"status": "reported"}

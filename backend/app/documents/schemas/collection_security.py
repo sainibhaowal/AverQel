@@ -53,12 +53,27 @@ class CollectionReportStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class CollectionModerationActionResponse(BaseModel):
+    id: uuid.UUID
+    report_id: uuid.UUID
+    actor_user_id: uuid.UUID | None
+    actor_role: str
+    action_type: str
+    previous_status: str | None
+    new_status: str | None
+    note: str | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
 class CollectionModerationReportResponse(BaseModel):
     id: uuid.UUID
     collection_id: uuid.UUID
     reporter_user_id: uuid.UUID
     reported_user_id: uuid.UUID | None
     message_id: uuid.UUID | None
+    collection_name: str | None = None
     reason: str
     details: str | None
     status: str

@@ -57,6 +57,7 @@ from app.documents.models.collection_security import (
     CollectionChatBlock,
     CollectionChatReport,
     CollectionDevice,
+    CollectionModerationAction,
     CollectionPushDelivery,
     CollectionPushSubscription,
 )
@@ -107,9 +108,11 @@ from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
 from app.query.models.query_citation import QueryCitation
 from app.system.models.app_feedback import AppFeedback, FeedbackCampaign
+from app.system.models.app_feedback_message import AppFeedbackMessage
 from app.system.models.audit_log import AuditLog
 from app.system.models.break_glass_grant import BreakGlassGrant
 from app.system.models.idempotency_key import IdempotencyKey
+from app.system.models.notification_delivery import NotificationDelivery  # noqa: F401
 from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.models.storage_lifecycle import (
     StorageArchiveManifest,
@@ -120,8 +123,12 @@ from app.system.models.storage_lifecycle import (
     StorageRetentionRun,
 )
 from app.system.models.support_ticket import SupportTicket
+from app.system.models.support_ticket_attachment import SupportTicketAttachment
+from app.system.models.support_ticket_message import SupportTicketMessage
 from app.system.models.tenant_storage_allocation import TenantStorageAllocation
 from app.system.models.usage_record import UsageRecord
+from app.system.models.user_notification import UserNotification
+from app.system.models.user_notification_preference import UserNotificationPreference  # noqa: F401
 
 __all__ = [
     "Tenant",
@@ -146,6 +153,7 @@ __all__ = [
     "CollectionDevice",
     "CollectionChatBlock",
     "CollectionChatReport",
+    "CollectionModerationAction",
     "CollectionPushSubscription",
     "CollectionPushDelivery",
     "IngestionJob",
@@ -205,6 +213,12 @@ __all__ = [
     "Comment",
     "UsageRecord",
     "SupportTicket",
+    "SupportTicketMessage",
+    "SupportTicketAttachment",
+    "AppFeedbackMessage",
+    "UserNotification",
+    "UserNotificationPreference",
+    "NotificationDelivery",
     "Integration",
     "Connector",
     "ConnectorStatus",

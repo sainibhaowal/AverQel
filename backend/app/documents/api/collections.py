@@ -667,12 +667,13 @@ def list_pending_invitations(
     dependencies=[Depends(require_permissions("collections:read"))],
 )
 def list_collection_notifications(
+    offset: int = Query(default=0, ge=0, le=100_000),
     request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> list[CollectionNotificationResponse]:
     repo = CollectionNotificationsRepository(db)
-    items = repo.list_for_user(user_id=auth.user_id, limit=30)
+    items = repo.list_for_user(user_id=auth.user_id, limit=30, offset=offset)
     return [_notification_response(item) for item in items]
 
 
@@ -910,6 +911,7 @@ def delete_collection(
         )
         db.commit()
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to delete collection %s", collection_id)
         db.rollback()
         raise ApiError(
             code="INTERNAL_SERVER_ERROR",
