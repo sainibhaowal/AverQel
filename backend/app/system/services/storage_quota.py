@@ -49,9 +49,11 @@ from app.providers.models.provider_config import ProviderConfig
 from app.providers.models.provider_secret import ProviderSecret
 from app.query.models.query import Query
 from app.system.models.storage_lifecycle import StorageQuotaReservation
+from app.system.models.support_ticket_attachment import SupportTicketAttachment
 from app.system.models.tenant_storage_allocation import TenantStorageAllocation
 from app.system.models.usage_record import UsageRecord
 from app.system.services.metrics_service import STORAGE_QUOTA_RESERVATIONS_TOTAL
+from app.system.services.user_notifications import add_user_notification
 
 BYTES_PER_MB: Final[int] = 1024 * 1024
 FREE_STORAGE_BYTES: Final[int] = 500 * BYTES_PER_MB
@@ -507,6 +509,17 @@ class StorageQuotaService:
                 measurement="Token count, not storage bytes",
                 tokens=self._sum_column(UsageRecord, UsageRecord.total_tokens, tenant_id),
             ),
+            StorageMetric(
+                key="support_attachments",
+                label="Support attachments",
+                description="Private files attached to support conversations.",
+                bytes=self._sum_column(
+                    SupportTicketAttachment, SupportTicketAttachment.size_bytes, tenant_id
+                ),
+                record_count=self._count(SupportTicketAttachment, tenant_id),
+                included_in_quota=True,
+                measurement="Exact private object size",
+            ),
         )
 
     def ensure_capacity(
@@ -534,10 +547,48 @@ class StorageQuotaService:
             if roles
             else self.plan_for_user(tenant_id=tenant_id, user_id=user_id)
         )
+        prior_allocation = self.db.execute(
+            select(TenantStorageAllocation).where(TenantStorageAllocation.tenant_id == tenant_id)
+        ).scalar_one_or_none()
+        prior_plan_id = prior_allocation.plan_id if prior_allocation is not None else None
         allocation = self.ensure_allocation(tenant_id=tenant_id, requested_plan=plan)
         usage = self.usage(tenant_id=tenant_id)
         effective_usage = max(0, usage.total_bytes - safe_replacing)
         allocated_plan = PLANS.get(allocation.plan_id, plan)
+        projected_usage = effective_usage + safe_additional
+        if (
+            user_id
+            and allocation.allocated_bytes > 0
+            and projected_usage <= allocation.allocated_bytes
+        ):
+            month_key = datetime.now(UTC).strftime("%Y-%m")
+            for threshold in (80, 90, 100):
+                if projected_usage * 100 >= allocation.allocated_bytes * threshold:
+                    add_user_notification(
+                        self.db,
+                        tenant_id=tenant_id,
+                        recipient_user_id=user_id,
+                        event_domain="storage",
+                        event_type="quota_threshold",
+                        title=f"Storage usage reached {threshold}%",
+                        message=f"Your workspace is using about {threshold}% of its {allocated_plan.name} storage allocation.",
+                        href="/dashboard/settings/storage",
+                        resource_id=f"{tenant_id}:{month_key}:{threshold}",
+                        idempotency_key=f"storage:quota:{tenant_id}:{month_key}:{threshold}",
+                    )
+        if prior_plan_id is not None and prior_plan_id != allocated_plan.id and user_id:
+            add_user_notification(
+                self.db,
+                tenant_id=tenant_id,
+                recipient_user_id=user_id,
+                event_domain="plan",
+                event_type="role_plan_changed",
+                title="Workspace storage plan updated",
+                message=f"Your workspace allocation is now {allocated_plan.name}.",
+                href="/dashboard/settings/plan",
+                resource_id=tenant_id,
+                idempotency_key=f"plan:allocation:{tenant_id}:{allocated_plan.id}",
+            )
         if effective_usage + safe_additional > allocation.allocated_bytes:
             raise StorageQuotaExceededError(
                 plan=allocated_plan,
@@ -693,6 +744,13 @@ class StorageQuotaService:
         if requested_plan.storage_limit_bytes > current.storage_limit_bytes:
             allocation.plan_id = requested_plan.id
             allocation.allocated_bytes = requested_plan.storage_limit_bytes
+        elif (
+            requested_plan.storage_limit_bytes == current.storage_limit_bytes
+            and requested_plan.id != current.id
+        ):
+            # Roles can change plan identity even when both tiers share the
+            # same byte allowance (for example Editor -> Admin).
+            allocation.plan_id = requested_plan.id
         return allocation
 
     def plan_for_user(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID | None) -> StoragePlan:

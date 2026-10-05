@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 import {
   Send,
@@ -13,9 +13,12 @@ import {
   ChevronDown,
   ChevronUp,
   LifeBuoy,
+  Paperclip,
+  UploadCloud,
 } from "lucide-react";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
 
@@ -25,18 +28,128 @@ interface Ticket {
   description: string;
   category: string;
   status: string;
+  priority: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface TicketMessage {
+  id: string;
+  author_role: string;
+  kind: string;
+  body: string;
   created_at: string;
 }
+
+interface TicketDetail extends Ticket {
+  messages: TicketMessage[];
+  attachments?: Array<{ id: string; filename: string; size_bytes: number; download_url: string }>;
+}
+
+const supportCategories = [
+  ["query", "General question"],
+  ["technical_issue", "Technical issue"],
+  ["account_access", "Account or access"],
+  ["billing_plan", "Billing or plan"],
+  ["documents_storage", "Documents or storage"],
+  ["query_results", "Query results"],
+  ["deepspace_agent", "DeepSpace agent"],
+  ["provider_integrations", "Providers or integrations"],
+  ["security_privacy", "Security or privacy"],
+  ["feature_request", "Feature request"],
+  ["complaint", "Complaint"],
+  ["other", "Other"],
+] as const;
 
 export default function SupportPage() {
   const { userDisabled } = useAuth();
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState<"complaint" | "feedback" | "query">("query");
+  const [category, setCategory] = useState<string>("query");
   const [submitting, setSubmitting] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
+  const [ticketDetails, setTicketDetails] = useState<Record<string, TicketDetail>>({});
+  const [replyDraft, setReplyDraft] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+
+  const uploadAttachment = async (ticketId: string, file?: File) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Attachments are limited to 5 MiB.");
+      return;
+    }
+    setUploadingAttachment(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetchWithAuth(`/support/tickets/${ticketId}/attachments`, {
+        method: "POST",
+        body: form,
+      });
+      if (!response.ok) throw new Error(`Upload failed (${response.status})`);
+      await loadTicketDetail(ticketId);
+      toast.success("Attachment uploaded securely.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Could not upload this attachment.");
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const openAttachment = async (url: string, filename: string) => {
+    try {
+      const response = await fetchWithAuth(url);
+      if (!response.ok) throw new Error(`Download failed (${response.status})`);
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error(error);
+      toast.error("Could not download this attachment.");
+    }
+  };
+
+  const loadTicketDetail = async (ticketId: string) => {
+    try {
+      const res = await fetchWithAuth(`/support/tickets/${ticketId}`);
+      if (res.ok) {
+        const detail = (await res.json()) as TicketDetail;
+        setTicketDetails((current) => ({ ...current, [ticketId]: detail }));
+      }
+    } catch (err) {
+      console.error("Failed to load ticket conversation", err);
+      toast.error("Could not load this ticket conversation.");
+    }
+  };
+
+  const handleReply = async (ticketId: string) => {
+    if (!replyDraft.trim()) return;
+    setSendingReply(true);
+    try {
+      const res = await fetchWithAuth(`/support/tickets/${ticketId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ body: replyDraft.trim() }),
+      });
+      if (!res.ok) throw new Error(`Reply failed (${res.status})`);
+      const detail = (await res.json()) as TicketDetail;
+      setTicketDetails((current) => ({ ...current, [ticketId]: detail }));
+      setTickets((current) => current.map((ticket) => (ticket.id === detail.id ? detail : ticket)));
+      setReplyDraft("");
+      toast.success("Reply sent.");
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not send your reply. Please try again.");
+    } finally {
+      setSendingReply(false);
+    }
+  };
 
   const loadTickets = async () => {
     try {
@@ -56,6 +169,16 @@ export default function SupportPage() {
     queueMicrotask(() => void loadTickets());
   }, []);
 
+  useEffect(() => {
+    const ticketId = new URLSearchParams(window.location.search).get("ticket");
+    if (ticketId) {
+      queueMicrotask(() => {
+        setExpandedTicket(ticketId);
+        void loadTicketDetail(ticketId);
+      });
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subject.trim() || !description.trim()) {
@@ -71,11 +194,16 @@ export default function SupportPage() {
       });
 
       if (res.ok) {
-        toast.success("Support ticket submitted successfully.");
+        const created = (await res.json()) as Ticket;
+        toast.success(`Request submitted. Reference AQ-${created.id.slice(0, 8).toUpperCase()}.`);
         setSubject("");
         setDescription("");
         setCategory("query");
-        void loadTickets();
+        setExpandedTicket(created.id);
+        await loadTickets();
+        await loadTicketDetail(created.id);
+      } else {
+        throw new Error(`Ticket submission failed (${res.status})`);
       }
     } catch (err) {
       console.error(err);
@@ -89,6 +217,8 @@ export default function SupportPage() {
     switch (status.toLowerCase()) {
       case "open":
         return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+      case "waiting_user":
+        return "bg-amber-500/10 text-amber-700 border-amber-500/30";
       case "in_progress":
         return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
       case "resolved":
@@ -132,12 +262,12 @@ export default function SupportPage() {
         backLabel="Back To Dashboard"
       />
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_24rem]">
+      <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {/* Submit Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="theme-panel rounded-[2rem] p-8"
+          className="theme-panel w-full rounded-2xl p-6 sm:p-8"
         >
           <div className="mb-8">
             <h2 className="text-foreground text-xl font-bold">How can we help?</h2>
@@ -153,22 +283,14 @@ export default function SupportPage() {
                   Topic / Category
                 </label>
 
-                <div className="flex flex-wrap gap-2">
-                  {(["query", "feedback", "complaint"] as const).map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setCategory(cat)}
-                      className={`min-w-[90px] flex-1 rounded-xl border py-3 text-[10px] font-black tracking-[0.12em] uppercase transition ${
-                        category === cat
-                          ? "border-primary bg-primary/10 text-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]"
-                          : "border-foreground/10 bg-foreground/5 text-muted-foreground hover:bg-foreground/10"
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
+                <RoundedSelect
+                  label="Support ticket category"
+                  value={category}
+                  onChange={setCategory}
+                  className="w-full"
+                  triggerClassName="w-full px-4 py-3 text-sm"
+                  options={supportCategories.map(([value, label]) => ({ value, label }))}
+                />
               </div>
 
               <div className="space-y-2">
@@ -176,6 +298,8 @@ export default function SupportPage() {
                   Subject
                 </label>
                 <input
+                  required
+                  maxLength={255}
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   placeholder="Summarize your issue..."
@@ -189,6 +313,8 @@ export default function SupportPage() {
                 Detailed Description
               </label>
               <textarea
+                required
+                maxLength={20_000}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Please provide as much detail as possible..."
@@ -242,9 +368,11 @@ export default function SupportPage() {
                     className="group border-foreground/10 bg-foreground/[0.03] hover:border-primary/20 overflow-hidden rounded-2xl border transition"
                   >
                     <button
-                      onClick={() =>
-                        setExpandedTicket(expandedTicket === ticket.id ? null : ticket.id)
-                      }
+                      onClick={() => {
+                        const next = expandedTicket === ticket.id ? null : ticket.id;
+                        setExpandedTicket(next);
+                        if (next) void loadTicketDetail(ticket.id);
+                      }}
                       className="flex w-full items-start gap-4 p-4 text-left"
                     >
                       <div className="mt-1 flex flex-col items-center gap-1">
@@ -252,11 +380,13 @@ export default function SupportPage() {
                           className={`h-2 w-2 rounded-full ${
                             ticket.status === "open"
                               ? "bg-blue-500"
-                              : ticket.status === "in_progress"
-                                ? "bg-yellow-500"
-                                : ticket.status === "resolved"
-                                  ? "bg-green-500"
-                                  : "bg-slate-500"
+                              : ticket.status === "waiting_user"
+                                ? "bg-amber-500"
+                                : ticket.status === "in_progress"
+                                  ? "bg-yellow-500"
+                                  : ticket.status === "resolved"
+                                    ? "bg-green-500"
+                                    : "bg-slate-500"
                           }`}
                         />
                       </div>
@@ -285,11 +415,116 @@ export default function SupportPage() {
                       </div>
                     </button>
 
-                    {expandedTicket === ticket.id && (
-                      <div className="text-muted-foreground border-foreground/5 bg-foreground/5 mt-2 border-t px-4 py-3 pt-0 pb-4 text-xs">
-                        <p className="leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
-                      </div>
-                    )}
+                    <AnimatePresence initial={false}>
+                      {expandedTicket === ticket.id && (
+                        <motion.div
+                          key={`support-thread-${ticket.id}`}
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="text-muted-foreground border-foreground/5 bg-foreground/5 mt-2 space-y-4 border-t px-4 py-4 text-xs">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-foreground/70 font-semibold">
+                                Request AQ-{ticket.id.slice(0, 8).toUpperCase()}
+                              </p>
+                              <p>Priority: {ticket.priority}</p>
+                            </div>
+                            <p className="leading-relaxed whitespace-pre-wrap">
+                              {ticket.description}
+                            </p>
+                            <div className="space-y-2">
+                              <p className="text-foreground/70 font-semibold">Attachments</p>
+                              {(ticketDetails[ticket.id]?.attachments ?? []).map((attachment) => (
+                                <button
+                                  key={attachment.id}
+                                  type="button"
+                                  onClick={() =>
+                                    void openAttachment(
+                                      attachment.download_url,
+                                      attachment.filename,
+                                    )
+                                  }
+                                  className="border-border bg-background/70 text-foreground hover:border-primary/40 flex max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs"
+                                >
+                                  <Paperclip size={14} className="text-primary shrink-0" />
+                                  <span className="truncate">{attachment.filename}</span>
+                                  <span className="text-muted-foreground shrink-0">
+                                    {(attachment.size_bytes / 1024).toFixed(0)} KB
+                                  </span>
+                                </button>
+                              ))}
+                              <label className="border-border text-foreground hover:border-primary/40 inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold">
+                                <UploadCloud size={14} />{" "}
+                                {uploadingAttachment
+                                  ? "Uploading…"
+                                  : "Attach PDF, PNG, JPEG, or TXT (max 5 MiB)"}
+                                <input
+                                  type="file"
+                                  accept=".pdf,.png,.jpg,.jpeg,.txt"
+                                  disabled={uploadingAttachment}
+                                  className="sr-only"
+                                  onChange={(event) => {
+                                    void uploadAttachment(ticket.id, event.target.files?.[0]);
+                                    event.currentTarget.value = "";
+                                  }}
+                                />
+                              </label>
+                            </div>
+                            {(ticketDetails[ticket.id]?.messages ?? []).map((message) => (
+                              <div
+                                key={message.id}
+                                className="border-foreground/10 bg-background/70 rounded-xl border p-3"
+                              >
+                                <div className="mb-1 flex justify-between gap-3 text-[10px]">
+                                  <span className="text-foreground font-semibold">
+                                    {message.kind === "status_changed"
+                                      ? "Status update"
+                                      : message.author_role === "admin"
+                                        ? "Support team"
+                                        : "You"}
+                                  </span>
+                                  <time>{new Date(message.created_at).toLocaleString()}</time>
+                                </div>
+                                <p className="whitespace-pre-wrap">{message.body}</p>
+                              </div>
+                            ))}
+                            <form
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                void handleReply(ticket.id);
+                              }}
+                              className="space-y-2"
+                            >
+                              <label
+                                className="text-foreground/70 font-semibold"
+                                htmlFor={`reply-${ticket.id}`}
+                              >
+                                Reply or add details
+                              </label>
+                              <textarea
+                                id={`reply-${ticket.id}`}
+                                maxLength={10_000}
+                                value={replyDraft}
+                                onChange={(event) => setReplyDraft(event.target.value)}
+                                className="border-foreground/10 bg-background text-foreground focus:border-primary/40 min-h-20 w-full rounded-xl border p-3 outline-none"
+                                placeholder="Write a message to support…"
+                              />
+                              <div className="flex justify-end">
+                                <button
+                                  disabled={sendingReply || !replyDraft.trim()}
+                                  className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-50"
+                                >
+                                  {sendingReply ? "Sending…" : "Send reply"}
+                                </button>
+                              </div>
+                            </form>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 ))
               )}

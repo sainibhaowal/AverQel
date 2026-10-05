@@ -652,9 +652,12 @@ class Settings(BaseSettings):
     rate_limit_global_per_ip_per_5_minutes: int = 10000
     rate_limit_upload_per_user_per_5_minutes: int = 20
     rate_limit_auth_login_per_tenant_email_per_5_minutes: int = 30
+    rate_limit_support_submissions_per_hour: int = 10
+    rate_limit_feedback_submissions_per_hour: int = 20
     rate_limit_auth_refresh_per_ip_per_5_minutes: int = 60
     rate_limit_auth_logout_per_user_per_5_minutes: int = 60
     collection_ws_messages_per_user_per_minute: int = 120
+    collection_reports_per_user_per_5_minutes: int = Field(default=10, ge=1, le=100)
     collection_ws_connections_per_user: int = 8
     collection_chat_page_size: int = 100
     # Beta phase: every non-admin registration is granted the editor role
@@ -675,6 +678,14 @@ class Settings(BaseSettings):
     storage_retention_automatic_archive_enabled: bool = False
 
     celery_task_always_eager: bool = False
+    notification_smtp_host: str | None = None
+    notification_smtp_port: int = Field(default=587, ge=1, le=65535)
+    notification_smtp_username: str | None = None
+    notification_smtp_password: str | None = Field(default=None, repr=False)
+    notification_smtp_from: str | None = None
+    notification_smtp_starttls: bool = True
+    notification_retention_days: int = 365
+    notification_delivery_retention_days: int = 90
 
     # OpenTelemetry is process instrumentation, not a runtime-selection flag.
     otel_enabled: bool = True
@@ -849,9 +860,14 @@ class Settings(BaseSettings):
         "rate_limit_global_per_ip_per_5_minutes",
         "rate_limit_upload_per_user_per_5_minutes",
         "rate_limit_auth_login_per_tenant_email_per_5_minutes",
+        "rate_limit_support_submissions_per_hour",
+        "rate_limit_feedback_submissions_per_hour",
+        "notification_retention_days",
+        "notification_delivery_retention_days",
         "rate_limit_auth_refresh_per_ip_per_5_minutes",
         "rate_limit_auth_logout_per_user_per_5_minutes",
         "collection_ws_messages_per_user_per_minute",
+        "collection_reports_per_user_per_5_minutes",
         "collection_ws_connections_per_user",
         "collection_chat_page_size",
         "beta_notice_resurface_hours",
@@ -1145,6 +1161,18 @@ class Settings(BaseSettings):
 
         if self.minio_secret_key == DEFAULT_MINIO_SECRET_KEY:
             raise ValueError("Production requires a non-default minio_secret_key")
+
+        if self.notification_smtp_host and self.notification_smtp_from:
+            if not self.notification_smtp_starttls:
+                raise ValueError("Production notification email requires SMTP STARTTLS")
+            if bool(self.notification_smtp_username) != bool(self.notification_smtp_password):
+                raise ValueError(
+                    "Notification SMTP username and password must be configured together"
+                )
+            if not (self.averqel_public_origin or self.averqel_domain):
+                raise ValueError(
+                    "Production notification email requires averqel_public_origin or averqel_domain"
+                )
 
         if not self.refresh_cookie_secure:
             raise ValueError("Production requires refresh_cookie_secure=true")

@@ -19,6 +19,7 @@ celery_app = Celery(
         "app.documents.workers.tasks_classification",
         "app.system.workers.tasks_maintenance",
         "app.system.workers.tasks_retention",
+        "app.system.workers.tasks_notifications",
         "app.integrations.workers.tasks_connectors",
         "app.integrations.workers.tasks_mcp",
         "app.integrations.workers.tasks_mcp_catalog",
@@ -45,6 +46,7 @@ celery_app.conf.update(
         "collections.dispatch_push_outbox": {"queue": "collection_push"},
         "maintenance.process_data_deletion": {"queue": "maintenance"},
         "maintenance.retention_cleanup": {"queue": "maintenance"},
+        "notifications.*": {"queue": "maintenance"},
         "maintenance.heartbeat": {"queue": "maintenance"},
         "maintenance.storage_cleanup": {"queue": "maintenance"},
         "maintenance.collection_chat_media_orphan_sweep": {"queue": "maintenance"},
@@ -73,6 +75,18 @@ celery_app.conf.update(
         "maintenance-retention-cleanup": {
             "task": "maintenance.retention_cleanup",
             "schedule": crontab(hour=2, minute=0),
+        },
+        "notifications-email-outbox": {
+            "task": "notifications.dispatch_email_outbox",
+            "schedule": crontab(minute="*"),
+        },
+        "notifications-support-sla": {
+            "task": "notifications.check_support_sla",
+            "schedule": crontab(minute="*/5"),
+        },
+        "notifications-retention-cleanup": {
+            "task": "notifications.cleanup_retention",
+            "schedule": crontab(hour=4, minute=20, day_of_week="sun"),
         },
         "maintenance-storage-cleanup": {
             "task": "maintenance.storage_cleanup",

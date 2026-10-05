@@ -15,7 +15,7 @@ from app.auth.rbac import require_permissions
 from app.auth.tenancy import require_request_tenant_id
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.platform.database.session import get_db
+from app.platform.database.session import get_db, managed_db_session, set_db_tenant_context
 from app.providers.services.reasoning_capabilities import reasoning_capabilities
 from app.providers.services.selection_service import ProviderSelectionService
 from app.query.schemas.queries import (
@@ -30,6 +30,7 @@ from app.query.services.query_service import QueryService
 from app.system.services.audit_service import AuditService
 from app.system.services.quality_service import QualityService
 from app.system.services.rate_limit_service import RateLimitService
+from app.system.services.user_notifications import add_user_notification
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +195,31 @@ def _safe_audit_commit(
         )
 
 
+def _record_query_failure(*, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    """Persist a content-free alert without allowing alerting failure to mask the query error."""
+    try:
+        with managed_db_session() as notification_db:
+            set_db_tenant_context(notification_db, tenant_id)
+            add_user_notification(
+                notification_db,
+                tenant_id=tenant_id,
+                recipient_user_id=user_id,
+                event_domain="query",
+                event_type="query_failed",
+                title="A query could not be completed",
+                message="A query failed while contacting a model or retrieving workspace information. Review the query and provider status.",
+                href="/dashboard/query",
+                idempotency_key=f"query:failed:{uuid.uuid4()}",
+            )
+            notification_db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "Unable to persist query failure notification",
+            extra={"tenant_id": str(tenant_id), "user_id": str(user_id)},
+            exc_info=True,
+        )
+
+
 @router.post(
     "",
     response_model=QueryResponse,
@@ -219,24 +245,29 @@ async def run_query(
     # synchronous retrieval pipeline. Running it directly here blocks the
     # event loop while provider or database work is in progress, causing
     # unrelated health/auth/UI requests to time out.
-    result = await run_in_threadpool(
-        service.execute,
-        auth=auth,
-        query_text=payload.query,
-        top_k=payload.top_k,
-        filters=payload.filters.model_dump(exclude_none=True),
-        document_ids=payload.filters.document_ids,
-        collection_id=payload.filters.collection_id,
-        created_at_from=payload.filters.created_at_from,
-        created_at_to=payload.filters.created_at_to,
-        source_types=payload.filters.source_types,
-        min_extraction_coverage=payload.filters.min_extraction_coverage,
-        max_extraction_coverage=payload.filters.max_extraction_coverage,
-        conversation_id=payload.conversation_id,
-        conversation_kind=payload.conversation_kind,
-        search_mode=payload.search_mode,
-        thinking_enabled=payload.thinking_enabled,
-    )
+    try:
+        result = await run_in_threadpool(
+            service.execute,
+            auth=auth,
+            query_text=payload.query,
+            top_k=payload.top_k,
+            filters=payload.filters.model_dump(exclude_none=True),
+            document_ids=payload.filters.document_ids,
+            collection_id=payload.filters.collection_id,
+            created_at_from=payload.filters.created_at_from,
+            created_at_to=payload.filters.created_at_to,
+            source_types=payload.filters.source_types,
+            min_extraction_coverage=payload.filters.min_extraction_coverage,
+            max_extraction_coverage=payload.filters.max_extraction_coverage,
+            conversation_id=payload.conversation_id,
+            conversation_kind=payload.conversation_kind,
+            search_mode=payload.search_mode,
+            thinking_enabled=payload.thinking_enabled,
+        )
+    except Exception:
+        request.state.notification_recorded = True
+        _record_query_failure(tenant_id=auth.tenant_id, user_id=auth.user_id)
+        raise
 
     _safe_audit_commit(
         db=db,
@@ -278,26 +309,31 @@ async def stream_query(
     service = QueryService(db=db, settings=settings)
 
     async def event_generator() -> Any:
-        async for chunk in service.stream_execute(
-            auth=auth,
-            query_text=payload.query,
-            top_k=payload.top_k,
-            filters=payload.filters.model_dump(exclude_none=True),
-            document_ids=payload.filters.document_ids,
-            collection_id=payload.filters.collection_id,
-            created_at_from=payload.filters.created_at_from,
-            created_at_to=payload.filters.created_at_to,
-            source_types=payload.filters.source_types,
-            min_extraction_coverage=payload.filters.min_extraction_coverage,
-            max_extraction_coverage=payload.filters.max_extraction_coverage,
-            conversation_id=payload.conversation_id,
-            conversation_kind=payload.conversation_kind,
-            search_mode=payload.search_mode,
-            thinking_enabled=payload.thinking_enabled,
-        ):
-            if await request.is_disconnected():
-                break
-            yield chunk
+        try:
+            async for chunk in service.stream_execute(
+                auth=auth,
+                query_text=payload.query,
+                top_k=payload.top_k,
+                filters=payload.filters.model_dump(exclude_none=True),
+                document_ids=payload.filters.document_ids,
+                collection_id=payload.filters.collection_id,
+                created_at_from=payload.filters.created_at_from,
+                created_at_to=payload.filters.created_at_to,
+                source_types=payload.filters.source_types,
+                min_extraction_coverage=payload.filters.min_extraction_coverage,
+                max_extraction_coverage=payload.filters.max_extraction_coverage,
+                conversation_id=payload.conversation_id,
+                conversation_kind=payload.conversation_kind,
+                search_mode=payload.search_mode,
+                thinking_enabled=payload.thinking_enabled,
+            ):
+                if await request.is_disconnected():
+                    break
+                yield chunk
+        except Exception:
+            request.state.notification_recorded = True
+            _record_query_failure(tenant_id=auth.tenant_id, user_id=auth.user_id)
+            raise
 
     return StreamingResponse(
         event_generator(),

@@ -12,6 +12,7 @@ import {
   Database,
   MessageSquare,
   Sparkles,
+  BellRing,
 } from "lucide-react";
 
 import { useAuth } from "@/app/context/AuthContext";
@@ -94,6 +95,15 @@ export default function SettingsPage() {
       accent: "text-success",
       accentBg: "bg-success/10 border-success/20",
       glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(var(--success),0.35)]",
+    },
+    {
+      title: "Notifications",
+      href: "/dashboard/settings/notifications",
+      icon: <BellRing size={20} />,
+      desc: "Choose muted in-app categories and optional email delivery cadence.",
+      accent: "text-amber-700 dark:text-amber-300",
+      accentBg: "bg-amber-500/10 border-amber-500/20",
+      glowColor: "group-hover:shadow-[0_0_24px_-4px_rgba(245,158,11,0.35)]",
     },
   ];
 

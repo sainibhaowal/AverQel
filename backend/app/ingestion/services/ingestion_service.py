@@ -55,6 +55,7 @@ from app.system.services.metrics_service import (
 )
 from app.system.services.storage_quota import StorageQuotaExceededError, StorageQuotaService
 from app.system.services.storage_service import StorageService, StorageServiceError
+from app.system.services.user_notifications import add_user_notification, notify_platform_admins
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
@@ -1436,6 +1437,27 @@ class IngestionService:
             tenant_id=tenant_id,
             document=document,
             status=status,
+        )
+        add_user_notification(
+            self.db,
+            tenant_id=tenant_id,
+            recipient_user_id=document.uploaded_by_user_id,
+            event_domain="documents",
+            event_type="document_ingestion_failed",
+            title="Document processing needs attention",
+            message=f"{document.filename[:350]} could not be processed. Open the document to review its status.",
+            href=f"/dashboard/documents/{document.id}",
+            resource_id=job.id,
+            idempotency_key=f"ingestion:terminal:{job.id}",
+        )
+        notify_platform_admins(
+            self.db,
+            event_domain="documents",
+            event_type="document_ingestion_failed",
+            title="Document processing failed",
+            message=f"{document.filename[:350]} reached a terminal processing state ({status}).",
+            href=f"/dashboard/admin/documents?document={document.id}",
+            resource_id=job.id,
         )
         self.db.commit()
         self._publish_update(

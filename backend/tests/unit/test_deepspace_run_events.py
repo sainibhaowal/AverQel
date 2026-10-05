@@ -18,6 +18,7 @@ from app.deepspace.services.run_events import (
 )
 from app.platform.database.session import managed_db_session
 from app.realtime.event_bus import decode_event, stream_key
+from app.system.models.user_notification import UserNotification
 
 
 def test_realtime_event_envelope_is_bounded_and_tenant_scoped() -> None:
@@ -207,7 +208,7 @@ def test_latest_sequence_is_an_authorized_resume_cursor(db_session, settings, se
         )
     )
     db_session.commit()
-    for frame in ("event: start\\ndata: {}\\n\\n", "event: done\\ndata: {}\\n\\n"):
+    for frame in ("event: start\ndata: {}\n\n", "event: done\ndata: {}\n\n"):
         append_event(
             db_session,
             settings=settings,
@@ -228,6 +229,12 @@ def test_latest_sequence_is_an_authorized_resume_cursor(db_session, settings, se
         )
         == 2
     )
+    run_notification = (
+        db_session.query(UserNotification)
+        .filter_by(recipient_user_id=seeded.user_id, event_type="run_completed")
+        .one()
+    )
+    assert run_notification.href == f"/dashboard/deepspace?conversation={conversation_id}"
 
 
 def test_timeline_coalesces_adjacent_thinking_but_not_across_tools() -> None:

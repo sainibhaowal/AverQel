@@ -113,7 +113,11 @@ const BASE_NAV_ITEMS: NavItem[] = [
     isHeader: true,
     items: [
       { name: "Global Settings", href: "/dashboard/settings", icon: <SettingsIcon size={18} /> },
-      { name: "Linked Sessions", href: "/dashboard/settings/sessions", icon: <ShieldAlert size={18} /> },
+      {
+        name: "Linked Sessions",
+        href: "/dashboard/settings/sessions",
+        icon: <ShieldAlert size={18} />,
+      },
       { name: "Support | Help", href: "/dashboard/support", icon: <LifeBuoy size={18} /> },
       { name: "Share Feedback", href: "/dashboard/feedback", icon: <Sparkles size={18} /> },
     ],
@@ -134,7 +138,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isQueryRoute = pathname === "/dashboard/query";
   const isDeepSpaceRoute =
     pathname === "/dashboard/deepspace" || pathname.startsWith("/dashboard/deepspace/");
-  const isCollectionsRoute = pathname.includes("/collections");
+  const isCollectionsRoute =
+    pathname === "/dashboard/collections" || pathname.startsWith("/dashboard/collections/");
   const isFullHeightRoute = isQueryRoute || isDeepSpaceRoute || isCollectionsRoute;
   const hasAdminAccess = user ? hasAdminRole(user.roles) : false;
 

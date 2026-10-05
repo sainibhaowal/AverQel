@@ -8,6 +8,9 @@ import {
   CheckCheck,
   ChevronRight,
   Link2Off,
+  MessageSquareText,
+  ShieldAlert,
+  FileWarning,
   Trash2,
   UserMinus,
   Users,
@@ -23,8 +26,11 @@ import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterv
 
 type NotificationItem = {
   id: string;
+  source: "collection" | "application";
   collection_id: string | null;
   collection_name: string;
+  href?: string | null;
+  event_domain?: string;
   event_type: string;
   message: string;
   created_at: string;
@@ -51,6 +57,10 @@ function formatWhen(value: string, now: number | null) {
 }
 
 function getNotificationIcon(eventType: string) {
+  if (eventType.startsWith("ticket_") || eventType.startsWith("feedback_"))
+    return MessageSquareText;
+  if (eventType.includes("failed") || eventType.includes("error")) return FileWarning;
+  if (eventType.includes("security")) return ShieldAlert;
   if (eventType === "member_left") return UserMinus;
   if (eventType === "collection_deleted" || eventType === "collection_removed") return Link2Off;
   if (eventType === "agent_intervention") return Zap;
@@ -65,8 +75,12 @@ export default function NotificationCenter() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [olderAvailable, setOlderAvailable] = useState({ collection: false, application: false });
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [offsets, setOffsets] = useState({ collection: 0, application: 0 });
   const [now, setNow] = useState<number | null>(null);
   const notificationsRequestInFlight = useRef(false);
+  const dismissedKeysRef = useRef(new Set<string>());
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.read_at === null).length,
@@ -78,17 +92,147 @@ export default function NotificationCenter() {
     notificationsRequestInFlight.current = true;
     if (!options?.silent) setLoading(true);
     try {
-      const res = (await fetchWithAuth("/collections/notifications", {
-        timeoutMs: 10_000,
-      })) as Response;
-      if (!res.ok) throw new Error(`Failed to load notifications (${res.status})`);
-      setNotifications((await res.json()) as NotificationItem[]);
+      const [collectionResult, applicationResult] = await Promise.allSettled([
+        fetchWithAuth("/collections/notifications?offset=0", {
+          timeoutMs: 10_000,
+        }) as Promise<Response>,
+        fetchWithAuth("/notifications?limit=50&offset=0", {
+          timeoutMs: 10_000,
+        }) as Promise<Response>,
+      ]);
+      const loaded: NotificationItem[] = [];
+      let succeeded = false;
+      if (collectionResult.status === "fulfilled" && collectionResult.value.ok) {
+        const records = (await collectionResult.value.json()) as Omit<NotificationItem, "source">[];
+        loaded.push(...records.map((item) => ({ ...item, source: "collection" as const })));
+        setOffsets((current) => ({
+          ...current,
+          collection: Math.max(current.collection, records.length),
+        }));
+        setOlderAvailable((current) => ({ ...current, collection: records.length === 30 }));
+        succeeded = true;
+      }
+      if (applicationResult.status === "fulfilled" && applicationResult.value.ok) {
+        const records = (await applicationResult.value.json()) as Array<{
+          id: string;
+          event_domain: string;
+          event_type: string;
+          title: string;
+          message: string;
+          href: string;
+          created_at: string;
+          read_at: string | null;
+        }>;
+        setOffsets((current) => ({
+          ...current,
+          application: Math.max(current.application, 50),
+        }));
+        setOlderAvailable((current) => ({ ...current, application: applicationResult.value?.headers.get("X-Has-More") === "true" }));
+        loaded.push(
+          ...records.map((item) => ({
+            ...item,
+            source: "application" as const,
+            collection_id: null,
+            collection_name: item.title,
+          })),
+        );
+        succeeded = true;
+      }
+      if (!succeeded) throw new Error("Both notification feeds failed to load");
+      loaded.sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
+      const firstPageKeys = new Set(loaded.map((item) => `${item.source}:${item.id}`));
+      setNotifications((current) => {
+        const preservedOlder = current.filter((item) => {
+          const key = `${item.source}:${item.id}`;
+          return !firstPageKeys.has(key) && !dismissedKeysRef.current.has(key);
+        });
+        const combined = [...loaded, ...preservedOlder].filter(
+          (item) => !dismissedKeysRef.current.has(`${item.source}:${item.id}`),
+        );
+        const unique = [
+          ...new Map(combined.map((item) => [`${item.source}:${item.id}`, item])).values(),
+        ];
+        unique.sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
+        return unique;
+      });
     } catch (error) {
       console.error(error);
       if (!options?.silent) toast.error("Failed to load notifications.");
     } finally {
       if (!options?.silent) setLoading(false);
       notificationsRequestInFlight.current = false;
+    }
+  };
+
+  const loadOlderNotifications = async () => {
+    if (loadingOlder || (!olderAvailable.collection && !olderAvailable.application)) return;
+    setLoadingOlder(true);
+    try {
+      const [collectionResult, applicationResult] = await Promise.allSettled([
+        olderAvailable.collection
+          ? (fetchWithAuth(`/collections/notifications?offset=${offsets.collection}`, {
+              timeoutMs: 10_000,
+            }) as Promise<Response>)
+          : Promise.resolve(null),
+        olderAvailable.application
+          ? (fetchWithAuth(`/notifications?limit=50&offset=${offsets.application}`, {
+              timeoutMs: 10_000,
+            }) as Promise<Response>)
+          : Promise.resolve(null),
+      ]);
+      const older: NotificationItem[] = [];
+      let partialFailure = false;
+      if (collectionResult.status === "fulfilled" && collectionResult.value?.ok) {
+        const records = (await collectionResult.value.json()) as Omit<NotificationItem, "source">[];
+        older.push(...records.map((item) => ({ ...item, source: "collection" as const })));
+        setOffsets((current) => ({ ...current, collection: current.collection + records.length }));
+        setOlderAvailable((current) => ({ ...current, collection: records.length === 30 }));
+      } else if (olderAvailable.collection) {
+        partialFailure = true;
+      }
+      if (applicationResult.status === "fulfilled" && applicationResult.value?.ok) {
+        const records = (await applicationResult.value.json()) as Array<{
+          id: string;
+          event_domain: string;
+          event_type: string;
+          title: string;
+          message: string;
+          href: string;
+          created_at: string;
+          read_at: string | null;
+        }>;
+        older.push(
+          ...records.map((item) => ({
+            ...item,
+            source: "application" as const,
+            collection_id: null,
+            collection_name: item.title,
+          })),
+        );
+        setOffsets((current) => ({
+          ...current,
+          application: current.application + 50,
+        }));
+        setOlderAvailable((current) => ({ ...current, application: applicationResult.value?.headers.get("X-Has-More") === "true" }));
+      } else if (olderAvailable.application) {
+        partialFailure = true;
+      }
+      setNotifications((current) => {
+        const combined = [...current, ...older].filter(
+          (item) => !dismissedKeysRef.current.has(`${item.source}:${item.id}`),
+        );
+        const unique = [
+          ...new Map(combined.map((item) => [`${item.source}:${item.id}`, item])).values(),
+        ];
+        unique.sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
+        return unique;
+      });
+      if (partialFailure) toast.error("Some older notifications could not be loaded. Try again.");
+    } catch (error) {
+      console.error(error);
+      toast.error("Could not load older notifications.");
+    } finally {
+      setLoadingOlder(false);
     }
   };
 
@@ -118,15 +262,27 @@ export default function NotificationCenter() {
   const markRead = async (notificationId: string) => {
     const item = notifications.find((entry) => entry.id === notificationId);
     if (!item || item.read_at) return;
-    setBusy(notificationId);
+    const path = item.source === "application" ? "/notifications" : "/collections/notifications";
+    setBusy(`${item.source}:${notificationId}`);
     try {
-      const res = (await fetchWithAuth(`/collections/notifications/${notificationId}/read`, {
+      const res = (await fetchWithAuth(`${path}/${notificationId}/read`, {
         method: "POST",
       })) as Response;
       if (!res.ok) throw new Error(`Failed to mark notification read (${res.status})`);
-      const updated = (await res.json()) as NotificationItem;
+      const response = (await res.json()) as Omit<NotificationItem, "source"> & { title?: string };
+      const updated = {
+        ...response,
+        source: item.source,
+        collection_id: item.source === "application" ? null : response.collection_id,
+        collection_name:
+          item.source === "application"
+            ? (response.title ?? item.collection_name)
+            : response.collection_name,
+      } as NotificationItem;
       setNotifications((current) =>
-        current.map((entry) => (entry.id === updated.id ? updated : entry)),
+        current.map((entry) =>
+          entry.id === updated.id && entry.source === updated.source ? updated : entry,
+        ),
       );
     } catch (error) {
       console.error(error);
@@ -137,13 +293,19 @@ export default function NotificationCenter() {
   };
 
   const clearOne = async (notificationId: string) => {
-    setBusy(notificationId);
+    const item = notifications.find((entry) => entry.id === notificationId);
+    if (!item) return;
+    const path = item.source === "application" ? "/notifications" : "/collections/notifications";
+    setBusy(`${item.source}:${notificationId}`);
     try {
-      const res = (await fetchWithAuth(`/collections/notifications/${notificationId}`, {
+      const res = (await fetchWithAuth(`${path}/${notificationId}`, {
         method: "DELETE",
       })) as Response;
       if (!res.ok) throw new Error(`Failed to clear notification (${res.status})`);
-      setNotifications((current) => current.filter((entry) => entry.id !== notificationId));
+      dismissedKeysRef.current.add(`${item.source}:${notificationId}`);
+      setNotifications((current) =>
+        current.filter((entry) => !(entry.id === notificationId && entry.source === item.source)),
+      );
     } catch (error) {
       console.error(error);
       toast.error("Failed to clear notification.");
@@ -155,10 +317,14 @@ export default function NotificationCenter() {
   const markAllRead = async () => {
     setBusy("all-read");
     try {
-      const res = (await fetchWithAuth("/collections/notifications/read-all", {
-        method: "POST",
-      })) as Response;
-      if (!res.ok) throw new Error(`Failed to mark all notifications as read (${res.status})`);
+      const results = await Promise.all([
+        fetchWithAuth("/collections/notifications/read-all", {
+          method: "POST",
+        }) as Promise<Response>,
+        fetchWithAuth("/notifications/read-all", { method: "POST" }) as Promise<Response>,
+      ]);
+      if (results.some((res) => !res.ok))
+        throw new Error("Failed to mark all notifications as read");
       setNotifications((current) =>
         current.map((entry) => ({ ...entry, read_at: entry.read_at ?? new Date().toISOString() })),
       );
@@ -173,11 +339,15 @@ export default function NotificationCenter() {
   const clearAll = async () => {
     setBusy("all-clear");
     try {
-      const res = (await fetchWithAuth("/collections/notifications", {
-        method: "DELETE",
-      })) as Response;
-      if (!res.ok) throw new Error(`Failed to clear notifications (${res.status})`);
+      const results = await Promise.all([
+        fetchWithAuth("/collections/notifications", { method: "DELETE" }) as Promise<Response>,
+        fetchWithAuth("/notifications", { method: "DELETE" }) as Promise<Response>,
+      ]);
+      if (results.some((res) => !res.ok)) throw new Error("Failed to clear notifications");
+      for (const item of notifications) dismissedKeysRef.current.add(`${item.source}:${item.id}`);
       setNotifications([]);
+      setOffsets({ collection: 0, application: 0 });
+      setOlderAvailable({ collection: false, application: false });
     } catch (error) {
       console.error(error);
       toast.error("Failed to clear notifications.");
@@ -189,7 +359,9 @@ export default function NotificationCenter() {
   const openNotification = async (item: NotificationItem) => {
     if (!item.read_at) await markRead(item.id);
     setOpen(false);
-    if (
+    if (item.href) {
+      router.push(item.href);
+    } else if (
       item.collection_id &&
       item.event_type !== "collection_deleted" &&
       item.event_type !== "collection_removed"
@@ -279,7 +451,7 @@ export default function NotificationCenter() {
                     const unread = item.read_at === null;
                     return (
                       <motion.div
-                        key={item.id}
+                        key={`${item.source}:${item.id}`}
                         layout
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -318,7 +490,7 @@ export default function NotificationCenter() {
                               <button
                                 type="button"
                                 onClick={() => void markRead(item.id)}
-                                disabled={busy === item.id}
+                                disabled={busy === `${item.source}:${item.id}`}
                                 className="theme-chip text-foreground/50 inline-flex h-7 w-7 items-center justify-center rounded-lg"
                                 aria-label="Mark read"
                               >
@@ -328,7 +500,7 @@ export default function NotificationCenter() {
                             <button
                               type="button"
                               onClick={() => void clearOne(item.id)}
-                              disabled={busy === item.id}
+                              disabled={busy === `${item.source}:${item.id}`}
                               className="theme-chip text-foreground/50 inline-flex h-7 w-7 items-center justify-center rounded-lg"
                               aria-label="Clear"
                             >
@@ -341,16 +513,22 @@ export default function NotificationCenter() {
                   })}
                 </div>
               )}
+              {!loading && (olderAvailable.collection || olderAvailable.application) ? (
+                <button
+                  type="button"
+                  onClick={() => void loadOlderNotifications()}
+                  disabled={loadingOlder}
+                  className="theme-chip text-foreground/70 mt-4 h-9 w-full rounded-xl text-xs font-semibold disabled:opacity-50"
+                >
+                  {loadingOlder ? "Loading older notifications…" : "Load older notifications"}
+                </button>
+              ) : null}
             </div>
             <div className="border-glass-border border-t px-6 py-4">
-              <button
-                type="button"
-                onClick={() => void loadNotifications()}
-                disabled={loading}
-                className="text-foreground/45 hover:text-foreground inline-flex items-center gap-1.5 text-[9px] font-black tracking-widest uppercase disabled:opacity-40"
-              >
-                Refresh
-              </button>
+              <div className="flex items-center justify-between">
+                <button type="button" onClick={() => void loadNotifications()} disabled={loading} className="text-foreground/45 hover:text-foreground inline-flex items-center gap-1.5 text-[9px] font-black tracking-widest uppercase disabled:opacity-40">Refresh</button>
+                <button type="button" onClick={() => { setOpen(false); router.push("/dashboard/notifications"); }} className="text-primary inline-flex items-center gap-1.5 text-[9px] font-black tracking-widest uppercase">View all notifications <ChevronRight size={12} /></button>
+              </div>
             </div>
           </motion.div>
         </>

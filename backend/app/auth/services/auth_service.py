@@ -47,6 +47,8 @@ from app.query.models.comment import Comment
 from app.query.models.conversation import Conversation
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
+from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.models.support_ticket_attachment import SupportTicketAttachment
 from app.system.services.audit_service import AuditService
 from app.system.services.storage_quota import StorageQuotaService, resolve_storage_plan
 from app.system.services.storage_service import StorageService
@@ -663,6 +665,16 @@ class AuthService:
                 )
             ).all()
         )
+        attachment_objects = list(
+            self.db.execute(
+                select(
+                    SupportTicketAttachment.storage_bucket, SupportTicketAttachment.storage_key
+                ).where(
+                    SupportTicketAttachment.tenant_id == auth.tenant_id,
+                    SupportTicketAttachment.uploaded_by_user_id == auth.user_id,
+                )
+            ).all()
+        )
         for bucket, object_key in objects:
             try:
                 storage.delete_object(bucket=str(bucket), object_key=str(object_key))
@@ -673,6 +685,33 @@ class AuthService:
                         "tenant_id": str(auth.tenant_id),
                         "user_id": str(auth.user_id),
                         "bucket": str(bucket),
+                        "object_key": str(object_key),
+                    },
+                    exc_info=True,
+                )
+        for bucket, object_key in attachment_objects:
+            try:
+                storage.delete_tenant_object(
+                    tenant_id=auth.tenant_id,
+                    bucket=str(bucket),
+                    object_key=str(object_key),
+                    raise_on_error=True,
+                )
+            except Exception:  # noqa: BLE001
+                self.db.add(
+                    StorageCleanupJob(
+                        tenant_id=auth.tenant_id,
+                        owner_user_id=auth.user_id,
+                        bucket=str(bucket),
+                        object_key=str(object_key),
+                        last_error="support_attachment_storage_delete_failed",
+                    )
+                )
+                logger.warning(
+                    "Failed to delete self-owned support attachment from storage.",
+                    extra={
+                        "tenant_id": str(auth.tenant_id),
+                        "user_id": str(auth.user_id),
                         "object_key": str(object_key),
                     },
                     exc_info=True,

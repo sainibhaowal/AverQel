@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 
-from app.core.context import get_trace_id
+from app.core.context import get_tenant_id, get_trace_id, get_user_id
 from app.system.schemas.errors import is_known_error_code
 from app.system.services.metrics_service import API_ERRORS_TOTAL
 from app.system.services.storage_quota import StorageQuotaExceededError
@@ -29,6 +29,84 @@ HTTP_ERROR_CODE_MAP: Final[dict[int, str]] = {
     422: "VALIDATION_ERROR",
     429: "RATE_LIMITED",
 }
+
+
+async def _record_application_error_notification(request: Request, event_code: str) -> None:
+    """Best-effort content-free notification for authenticated server errors."""
+    tenant_raw, user_raw = get_tenant_id(), get_user_id()
+    if not tenant_raw or not user_raw:
+        return
+    try:
+        import uuid
+
+        from starlette.concurrency import run_in_threadpool
+
+        from app.platform.database.session import managed_db_session, set_db_tenant_context
+        from app.system.services.user_notifications import add_user_notification
+
+        tenant_id, user_id = uuid.UUID(tenant_raw), uuid.UUID(user_raw)
+        trace_id = get_trace_id() or str(uuid.uuid4())
+
+        def persist() -> None:
+            with managed_db_session() as db:
+                set_db_tenant_context(db, tenant_id)
+                add_user_notification(
+                    db,
+                    tenant_id=tenant_id,
+                    recipient_user_id=user_id,
+                    event_domain="system",
+                    event_type="application_error",
+                    title="A request encountered an application error",
+                    message=f"A request could not be completed. Reference: {trace_id}",
+                    href="/dashboard/notifications",
+                    resource_id=trace_id,
+                    idempotency_key=f"system:error:{trace_id}:{event_code}",
+                )
+                db.commit()
+
+        await run_in_threadpool(persist)
+        request.state.notification_recorded = True
+    except Exception:  # noqa: BLE001
+        logger.warning("Unable to persist application error notification", exc_info=True)
+
+
+async def _record_storage_quota_notification(request: Request) -> None:
+    """Persist a quota alert outside the rejected write transaction."""
+    tenant_raw, user_raw = get_tenant_id(), get_user_id()
+    if not tenant_raw or not user_raw:
+        return
+    try:
+        import uuid
+
+        from starlette.concurrency import run_in_threadpool
+
+        from app.platform.database.session import managed_db_session, set_db_tenant_context
+        from app.system.services.user_notifications import add_user_notification
+
+        tenant_id, user_id = uuid.UUID(tenant_raw), uuid.UUID(user_raw)
+        month = datetime.now(UTC).strftime("%Y-%m")
+
+        def persist() -> None:
+            with managed_db_session() as db:
+                set_db_tenant_context(db, tenant_id)
+                add_user_notification(
+                    db,
+                    tenant_id=tenant_id,
+                    recipient_user_id=user_id,
+                    event_domain="storage",
+                    event_type="quota_threshold",
+                    title="Storage usage reached 100%",
+                    message="Your workspace has reached its storage limit. Free space or change the workspace plan before retrying this upload.",
+                    href="/dashboard/settings/storage",
+                    resource_id=f"{tenant_id}:{month}:100",
+                    idempotency_key=f"storage:quota:{tenant_id}:{month}:100",
+                )
+                db.commit()
+
+        await run_in_threadpool(persist)
+        request.state.notification_recorded = True
+    except Exception:  # noqa: BLE001
+        logger.warning("Unable to persist storage quota notification", exc_info=True)
 
 
 class ApiError(Exception):
@@ -139,7 +217,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(ApiError)
-    async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
+    async def api_error_handler(request: Request, exc: ApiError) -> JSONResponse:
         logger.info(
             "Handled ApiError.",
             extra={
@@ -147,6 +225,8 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "status_code": exc.status_code,
             },
         )
+        if exc.status_code >= 500 and not getattr(request.state, "notification_recorded", False):
+            await _record_application_error_notification(request, exc.code)
         return build_error_response(
             code=exc.code,
             message=exc.message,
@@ -155,7 +235,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(StorageQuotaExceededError)
-    async def storage_quota_handler(_: Request, exc: StorageQuotaExceededError) -> JSONResponse:
+    async def storage_quota_handler(
+        request: Request, exc: StorageQuotaExceededError
+    ) -> JSONResponse:
+        await _record_storage_quota_notification(request)
         return build_error_response(
             code="STORAGE_QUOTA_EXCEEDED",
             message="Your workspace storage limit has been reached.",
@@ -186,7 +269,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(HTTPException)
-    async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
+    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         code = _map_http_exception_code(exc.status_code)
         detail = exc.detail if isinstance(exc.detail, str) and exc.detail.strip() else "HTTP error."
 
@@ -197,6 +280,8 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "status_code": exc.status_code,
             },
         )
+        if exc.status_code >= 500 and not getattr(request.state, "notification_recorded", False):
+            await _record_application_error_notification(request, code)
         return build_error_response(
             code=code,
             message=detail,
@@ -204,7 +289,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.exception(
             "Unhandled server exception.",
             extra={
@@ -212,6 +297,8 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "status_code": 500,
             },
         )
+        if not getattr(request.state, "notification_recorded", False):
+            await _record_application_error_notification(request, "INTERNAL_SERVER_ERROR")
         return build_error_response(
             code="INTERNAL_SERVER_ERROR",
             message="Internal server error.",

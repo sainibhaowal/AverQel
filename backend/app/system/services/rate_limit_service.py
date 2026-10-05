@@ -306,6 +306,22 @@ class RateLimitService:
             scope="upload_user",
         )
 
+    def enforce_support_submission_limit(self, *, tenant_id: str, user_id: str) -> None:
+        self.enforce_counter(
+            key=f"rate_limit:support_submit:{_safe_key(tenant_id)}:{_safe_key(user_id)}",
+            limit=self.settings.rate_limit_support_submissions_per_hour,
+            window_seconds=3600,
+            scope="support_submission",
+        )
+
+    def enforce_feedback_submission_limit(self, *, tenant_id: str, user_id: str) -> None:
+        self.enforce_counter(
+            key=f"rate_limit:feedback_submit:{_safe_key(tenant_id)}:{_safe_key(user_id)}",
+            limit=self.settings.rate_limit_feedback_submissions_per_hour,
+            window_seconds=3600,
+            scope="feedback_submission",
+        )
+
     def enforce_auth_login_limit(
         self,
         *,

@@ -28,6 +28,7 @@ from app.query.models.conversation import Conversation
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
 from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.models.support_ticket_attachment import SupportTicketAttachment
 from app.system.services.audit_service import AuditService
 from app.system.services.storage_service import StorageService
 
@@ -363,6 +364,16 @@ class AdminUserService:
                 )
             ).all()
         )
+        attachment_objects = list(
+            self.db.execute(
+                select(
+                    SupportTicketAttachment.storage_bucket, SupportTicketAttachment.storage_key
+                ).where(
+                    SupportTicketAttachment.tenant_id == tenant_id,
+                    SupportTicketAttachment.uploaded_by_user_id == user.id,
+                )
+            ).all()
+        )
         cleanup_pending = 0
         for bucket, object_key in objects:
             try:
@@ -384,6 +395,35 @@ class AdminUserService:
                         "tenant_id": str(tenant_id),
                         "user_id": str(user.id),
                         "bucket": str(bucket),
+                        "object_key": str(object_key),
+                    },
+                    exc_info=True,
+                )
+
+        for bucket, object_key in attachment_objects:
+            try:
+                self.storage.delete_tenant_object(
+                    tenant_id=tenant_id,
+                    bucket=str(bucket),
+                    object_key=str(object_key),
+                    raise_on_error=True,
+                )
+            except Exception:  # noqa: BLE001
+                self.db.add(
+                    StorageCleanupJob(
+                        tenant_id=tenant_id,
+                        owner_user_id=user.id,
+                        bucket=str(bucket),
+                        object_key=str(object_key),
+                        last_error="support_attachment_storage_delete_failed",
+                    )
+                )
+                cleanup_pending += 1
+                logger.warning(
+                    "Failed to delete user-owned support attachment from storage.",
+                    extra={
+                        "tenant_id": str(tenant_id),
+                        "user_id": str(user.id),
                         "object_key": str(object_key),
                     },
                     exc_info=True,
@@ -423,6 +463,7 @@ class AdminUserService:
             },
         )
         counts["storage_cleanup_pending"] = cleanup_pending
+        counts["support_attachments"] = len(attachment_objects)
         self.db.commit()
 
         return AdminUserDeleteResult(
