@@ -28,7 +28,6 @@ import AverQelLogo from "../ui/AverQelLogo";
 import {
   APP_VERSION,
   DESKTOP_LINUX_DOWNLOAD_URL,
-  DESKTOP_LINUX_RPM_DOWNLOAD_URL,
   DESKTOP_MACOS_DOWNLOAD_URL,
   DESKTOP_WINDOWS_DOWNLOAD_URL,
 } from "@/lib/release";
@@ -50,11 +49,13 @@ const subscribeToPlatform = () => () => undefined;
 const getServerDesktopPlatform = (): DesktopPlatform => "other";
 
 const navLinks = [
-  { label: "Capabilities", href: "#capabilities" },
-  { label: "How It Works", href: "/documentation/getting-started" },
-  { label: "Surfaces", href: "/documentation/features" },
-  { label: "Use Cases", href: "/documentation/features" },
-  { label: "Control", href: "/documentation/privacy-security" },
+  { label: "Documents Hub", href: "#documents-hub" },
+  { label: "Query", href: "#query" },
+  { label: "Collections", href: "#collections" },
+  { label: "DeepSpace", href: "#deepspace" },
+  { label: "Providers", href: "#providers" },
+  { label: "MCP", href: "#mcp" },
+  { label: "Controls", href: "#workspace-controls" },
   { label: "Docs", href: "/documentation" },
 ];
 
@@ -90,9 +91,9 @@ const pipelineSteps = [
 ];
 
 const signalCards = [
-  { value: "Documents", label: "source-aware workspaces" },
-  { value: "Grounded Query", label: "evidence-backed answers" },
-  { value: "Your control", label: "approval-gated connections" },
+  { value: "Knowledge", label: "Documents · Query · Collections" },
+  { value: "Work", label: "DeepSpace · Providers · MCP" },
+  { value: "Control", label: "Profile · Plan · Storage · Support" },
 ];
 
 export default function HeroSection() {
@@ -111,7 +112,10 @@ export default function HeroSection() {
     linux: { href: DESKTOP_LINUX_DOWNLOAD_URL, label: "Download for Linux (.deb)" },
     windows: { href: DESKTOP_WINDOWS_DOWNLOAD_URL, label: "Download for Windows (.exe)" },
     macos: { href: DESKTOP_MACOS_DOWNLOAD_URL, label: "Download for macOS (.dmg)" },
-    other: { href: DESKTOP_WINDOWS_DOWNLOAD_URL, label: "Download Desktop App" },
+    other: {
+      href: "https://github.com/sainibhaowal/AverQel/releases/latest",
+      label: "Choose a desktop build",
+    },
   }[desktopPlatform];
 
   useVisibilityAwareInterval(() => {
@@ -136,7 +140,7 @@ export default function HeroSection() {
             <AverQelLogo size="nav" />
           </Link>
 
-          <div className="hidden items-center gap-4 md:flex lg:gap-6 xl:gap-7">
+          <div className="hidden items-center gap-3 xl:flex 2xl:gap-5">
             {navLinks.map((link) => (
               <Link
                 key={link.label}
@@ -163,28 +167,27 @@ export default function HeroSection() {
           <MobileNav />
         </nav>
 
-        <main className="flex flex-1 flex-col justify-start gap-8 py-8 sm:gap-10 sm:py-10 lg:justify-center lg:py-14">
+        <div className="flex flex-1 flex-col justify-start gap-8 py-8 sm:gap-10 sm:py-10 lg:justify-center lg:py-14">
           <div className="grid items-start gap-10 text-left lg:grid-cols-[1.05fr_0.95fr] lg:gap-12 xl:gap-16 xl:text-left">
             <div className="flex w-full min-w-0 flex-col items-start text-left">
               <div className="mb-8 inline-flex max-w-full items-center gap-3 rounded-full border border-[#00ffa3]/25 bg-[#07110d]/70 px-4 py-2 text-[11px] font-bold tracking-[0.28em] text-slate-300 uppercase shadow-[0_0_24px_rgba(0,255,163,0.08)] backdrop-blur-md">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#00ffa3]/14 text-[#00ffa3]">
                   <Cpu size={13} />
                 </span>
-                Your Private AI Workspace
+                Your Connected AI Workspace
               </div>
 
               <h1
                 className={`${landingHeroTitleClass} ${landingTitleGradientBySection.hero} ${landingAnimatedGradientTextClass} mb-7 max-w-[12ch] text-left sm:max-w-none 2xl:text-[5.6rem]`}
               >
-                Turn your documents into{" "}
-                <span className="text-inherit">grounded answers and useful work</span>
+                One workspace for knowledge, AI, and action.
               </h1>
 
               <p className="max-w-2xl text-base leading-8 text-slate-300/88 sm:text-lg sm:leading-9">
-                Upload and organize documents, ask source-backed questions, then use DeepSpace to
-                research, draft, save notes, and create exportable deliverables. Add your preferred
-                cloud or local AI provider, and connect supported apps only when you choose to
-                authorize them.
+                AverQel brings Documents Hub, Grounded Query, Collections, and DeepSpace together
+                with your AI providers and approved MCP apps. Manage your profile, review plan and
+                storage, control connected apps, and reach support or feedback in the same
+                workspace.
               </p>
 
               <div className="mt-5 inline-flex items-center rounded-full border border-[#00b8ff]/25 bg-[#06121a]/70 px-3 py-1.5 text-xs font-semibold text-slate-300 backdrop-blur-md">
@@ -198,48 +201,23 @@ export default function HeroSection() {
                   href="/auth/signup"
                   className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#00ffa3_0%,#2dd4bf_48%,#00b8ff_100%)] px-8 py-4 text-sm font-black text-slate-950 shadow-[0_24px_60px_rgba(0,255,163,0.24)] transition-all hover:shadow-[0_28px_72px_rgba(0,255,163,0.34)]"
                 >
-                  Use the Web App
+                  Create your workspace
                   <ArrowRight size={18} />
                 </Link>
                 <a
                   href={recommendedDownload.href}
-                  download
+                  {...(desktopPlatform === "other" ? {} : { download: true })}
                   className="inline-flex items-center gap-2 rounded-full border border-[#00ffa3]/35 bg-[#00ffa3]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00ffa3] hover:bg-[#00ffa3]/20 hover:text-white"
                 >
                   <Download size={17} />
                   {recommendedDownload.label}
                 </a>
                 <a
-                  href={DESKTOP_LINUX_DOWNLOAD_URL}
-                  download
+                  href="https://github.com/sainibhaowal/AverQel/releases/latest"
                   className="inline-flex items-center gap-2 rounded-full border border-[#00b8ff]/35 bg-[#00b8ff]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00b8ff] hover:bg-[#00b8ff]/20 hover:text-white"
                 >
                   <Download size={17} />
-                  Download Linux (.deb)
-                </a>
-                <a
-                  href={DESKTOP_WINDOWS_DOWNLOAD_URL}
-                  download
-                  className="inline-flex items-center gap-2 rounded-full border border-[#00b8ff]/35 bg-[#00b8ff]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00b8ff] hover:bg-[#00b8ff]/20 hover:text-white"
-                >
-                  <Download size={17} />
-                  Download Windows (.exe)
-                </a>
-                <a
-                  href={DESKTOP_MACOS_DOWNLOAD_URL}
-                  download
-                  className="inline-flex items-center gap-2 rounded-full border border-[#00b8ff]/35 bg-[#00b8ff]/10 px-7 py-4 text-sm font-bold text-[#a6e8ff] backdrop-blur-md transition-all hover:border-[#00b8ff] hover:bg-[#00b8ff]/20 hover:text-white"
-                >
-                  <Download size={17} />
-                  Download macOS (.dmg)
-                </a>
-                <a
-                  href={DESKTOP_LINUX_RPM_DOWNLOAD_URL}
-                  download
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/45 px-7 py-4 text-sm font-semibold text-white backdrop-blur-md transition-all hover:border-[#00b8ff]/28 hover:bg-slate-900/65"
-                >
-                  <Download size={17} />
-                  Linux (.rpm)
+                  All desktop builds
                 </a>
                 <Link
                   href="/documentation/privacy-security"
@@ -253,7 +231,7 @@ export default function HeroSection() {
                   className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/45 px-7 py-4 text-sm font-semibold text-white backdrop-blur-md transition-all hover:border-[#00b8ff]/28 hover:bg-slate-900/65"
                 >
                   <FileText size={17} className="text-slate-400" />
-                  Production Docs
+                  Product docs
                 </Link>
               </div>
 
@@ -363,7 +341,7 @@ export default function HeroSection() {
               <HeroMorphingBackground className="!z-0" />
             </div>
           </div>
-        </main>
+        </div>
       </div>
     </motion.section>
   );

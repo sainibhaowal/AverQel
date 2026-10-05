@@ -99,7 +99,7 @@ export default function TrustCommitments() {
   });
 
   return (
-    <motion.section ref={ref} style={style} id="security" className={landingSectionShellClass}>
+    <motion.section ref={ref} style={style} id="trust" className={landingSectionShellClass}>
       <div className={landingContentClass}>
         {/* Section header */}
         <motion.div
@@ -113,13 +113,13 @@ export default function TrustCommitments() {
             Security & Trust
           </p>
           <h2 className={`${landingSectionTitleClass} ${landingTitleGradientBySection.trust}`}>
-            Security built into every layer, not bolted on after the fact
+            Security and privacy controls across the workspace
           </h2>
           <p className={landingSectionLeadClass}>
-            AverQel treats privacy, durability, and control as one runtime contract. DeepSpace keeps
-            authoritative execution state in PostgreSQL, uses Redis only for live projections, and
-            carries tenant isolation, encrypted secrets, workspace policy, approvals, and audit
-            redaction through the execution path.
+            AverQel applies account access, tenant isolation, protected credentials, workspace
+            policy, and approval controls across the relevant runtime paths. The controls below
+            describe how the current product is designed; available settings can depend on the
+            deployment.
           </p>
         </motion.div>
 

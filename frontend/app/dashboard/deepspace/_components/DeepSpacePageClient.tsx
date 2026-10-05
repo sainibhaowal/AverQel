@@ -183,8 +183,7 @@ export default function DeepSpacePageClient() {
   const agentPreviewBaseContentRef = useRef<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSplitView, setIsSplitView] = useState(false);
-  const [splitWorkspacePanel, setSplitWorkspacePanel] =
-    useState<SplitWorkspacePanel>("notes");
+  const [splitWorkspacePanel, setSplitWorkspacePanel] = useState<SplitWorkspacePanel>("notes");
   const [serviceWarnings, setServiceWarnings] = useState<string[]>([]);
   const [serviceRetryKey, setServiceRetryKey] = useState(0);
 
@@ -274,7 +273,13 @@ export default function DeepSpacePageClient() {
         }
       } else {
         const savedId = window.localStorage.getItem(ACTIVE_NOTE_KEY);
-        setActiveNote(items.find((item) => item.id === savedId) || items[0] || null);
+        const requestedId = new URLSearchParams(window.location.search).get("conversation");
+        setActiveNote(
+          items.find((item) => item.id === requestedId) ||
+            items.find((item) => item.id === savedId) ||
+            items[0] ||
+            null,
+        );
       }
       setIsInitialLoading(false);
       setServiceWarnings((previous) =>

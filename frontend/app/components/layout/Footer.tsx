@@ -9,33 +9,43 @@ import { useLandingSectionMotion } from "../marketing/landingMotion";
 
 const links = [
   {
-    title: "Product",
+    title: "Product areas",
     items: [
-      { label: "Capabilities", href: "#capabilities" },
-      { label: "How It Works", href: "/documentation/getting-started" },
-      { label: "Surfaces", href: "/documentation/features" },
-      { label: "Features", href: "/documentation/features" },
-      { label: "Use Cases", href: "/documentation/features" },
-      { label: "Security", href: "/documentation/privacy-security" },
+      { label: "Documents Hub", href: "#documents-hub" },
+      { label: "Query", href: "#query" },
+      { label: "Collections", href: "#collections" },
+      { label: "DeepSpace", href: "#deepspace" },
+      { label: "AI Providers", href: "#providers" },
+      { label: "MCP Servers", href: "#mcp" },
       { label: "Docs", href: "/documentation" },
-    ],
-  },
-  {
-    title: "Legal",
-    items: [
-      { label: "Privacy Policy", href: "/legal/privacy" },
-      { label: "Terms of Service", href: "/legal/terms" },
-      { label: "Data Retention", href: "/legal/data-retention" },
-      { label: "Acceptable Use", href: "/legal/acceptable-use" },
     ],
   },
   {
     title: "Account",
     items: [
-      { label: "Sign Up", href: "/auth/signup" },
-      { label: "Log In", href: "/auth/login" },
-      { label: "Security Overview", href: "/legal/security" },
-      { label: "Support Centre", href: "/documentation/support" },
+      { label: "Profile settings", href: "/documentation/profile" },
+      { label: "Plan and storage", href: "/dashboard/settings/plan" },
+      { label: "Sign up", href: "/auth/signup" },
+      { label: "Log in", href: "/auth/login" },
+    ],
+  },
+  {
+    title: "Trust & help",
+    items: [
+      { label: "Workspace controls", href: "#workspace-controls" },
+      { label: "Trust and policies", href: "/documentation/privacy-security" },
+      { label: "Support centre", href: "/documentation/support" },
+      { label: "Share feedback", href: "/documentation/feedback" },
+    ],
+  },
+  {
+    title: "Legal",
+    items: [
+      { label: "Privacy policy", href: "/legal/privacy" },
+      { label: "Terms of service", href: "/legal/terms" },
+      { label: "Data retention", href: "/legal/data-retention" },
+      { label: "Acceptable use", href: "/legal/acceptable-use" },
+      { label: "Security overview", href: "/legal/security" },
     ],
   },
 ];
@@ -53,14 +63,13 @@ export default function Footer() {
       className="landing-trace-frame border-glass-border bg-surface-0 border-t"
     >
       <div className="mx-auto max-w-[1800px] px-4 py-12 sm:px-8 sm:py-16 lg:px-12">
-        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 xl:grid-cols-5">
           {/* Brand */}
           <div className="md:col-span-1">
             <AverQelLogo size="footer" showWordmark={true} />
             <p className="text-muted-foreground mt-4 max-w-xs text-sm leading-6">
-              The agentic intelligence layer for your entire ecosystem. Grounded chat, DeepSpace,
-              memory, and protected integrations support research and productive work with
-              citations, approvals, and durable conversation history.
+              AverQel brings source documents, evidence-based Query, shared Collections, and
+              DeepSpace work together, with separate provider, MCP, and workspace controls.
             </p>
           </div>
 
@@ -98,7 +107,7 @@ export default function Footer() {
             </span>
           </div>
           <p className="text-muted-foreground/40 text-xs">
-            Privacy, security, and trust documentation stay aligned with the live build.
+            Review the privacy, security, and data-retention policies for current details.
           </p>
         </div>
       </div>
