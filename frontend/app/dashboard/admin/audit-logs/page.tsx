@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ShieldAlert,
+  ScrollText,
   Activity,
   Filter,
   RefreshCcw,
@@ -200,7 +200,7 @@ export default function AuditLogsPage() {
         <DashboardSectionHeader
           title="Audit Logs"
           subtitle="Current Workspace Security Event History"
-          icon={ShieldAlert}
+          icon={ScrollText}
           accentClassName="bg-rose-500 text-rose-500"
           accentGlowClassName="shadow-[0_0_20px_rgba(244,63,94,0.4)]"
           backHref="/dashboard"

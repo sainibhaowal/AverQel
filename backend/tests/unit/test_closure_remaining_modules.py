@@ -648,7 +648,7 @@ def test_deletion_service_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     svc.repo.apply_tenant_scope = lambda _tenant: None  # type: ignore[assignment]
     svc.db = _DB()  # type: ignore[assignment]
     svc.storage = SimpleNamespace(  # type: ignore[assignment]
-        delete_object=lambda **_: (_ for _ in ()).throw(RuntimeError("x"))
+        delete_object=lambda **_: (_ for _ in ()).throw(RuntimeError("x")),
     )
     counts = svc._purge_tenant_data(tenant_id=uuid4())
     assert counts["documents"] == 1

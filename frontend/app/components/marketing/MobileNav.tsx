@@ -49,16 +49,18 @@ export default function MobileNav() {
   };
 
   const navLinks = [
-    { name: "Capabilities", href: "#capabilities" },
-    { name: "How It Works", href: "/documentation/getting-started" },
-    { name: "Surfaces", href: "/documentation/features" },
-    { name: "Features", href: "/documentation/features" },
-    { name: "Security", href: "/documentation/privacy-security" },
+    { name: "Documents Hub", href: "#documents-hub" },
+    { name: "Query", href: "#query" },
+    { name: "Collections", href: "#collections" },
+    { name: "DeepSpace", href: "#deepspace" },
+    { name: "AI Providers", href: "#providers" },
+    { name: "MCP Servers", href: "#mcp" },
+    { name: "Workspace controls", href: "#workspace-controls" },
     { name: "Docs", href: "/documentation" },
   ];
 
   return (
-    <div className="md:hidden">
+    <div className="md:flex xl:hidden">
       <button
         onClick={() => setIsOpen(true)}
         className="text-foreground flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03]"
@@ -132,7 +134,7 @@ export default function MobileNav() {
             {/* Footer */}
             <div className="border-t border-white/[0.05] px-5 py-6 sm:px-8 sm:py-8">
               <p className="text-xs font-bold tracking-widest text-slate-500 uppercase">
-                Agentic Intelligence Layer
+                Knowledge, AI, and action in one workspace
               </p>
             </div>
           </motion.div>

@@ -1,16 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import {
-  AlertCircle,
-  ArrowLeft,
-  CheckCircle2,
-  Crown,
-  HardDrive,
-  Loader2,
-  ShieldCheck,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Crown, HardDrive, Loader2, ShieldCheck } from "lucide-react";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import { useAuth } from "@/app/context/AuthContext";
@@ -96,10 +87,7 @@ export default function PlanPage() {
 
   const usagePercent = useMemo(() => {
     if (!data || data.current_plan.storage_limit_bytes <= 0) return 0;
-    return Math.min(
-      100,
-      (data.usage.total_bytes / data.current_plan.storage_limit_bytes) * 100,
-    );
+    return Math.min(100, (data.usage.total_bytes / data.current_plan.storage_limit_bytes) * 100);
   }, [data]);
 
   return (
@@ -110,23 +98,18 @@ export default function PlanPage() {
         icon={HardDrive}
         accentClassName="bg-primary text-primary"
         accentGlowClassName="shadow-[0_0_20px_rgba(var(--primary),0.35)]"
+        backHref="/dashboard/settings"
+        backLabel="Back to Settings"
       />
 
-      <Link
-        href="/dashboard/settings"
-        className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft size={16} /> Back to Settings
-      </Link>
-
       {loading && (
-        <div className="settings-featured flex items-center gap-3 p-7 text-sm text-muted-foreground">
+        <div className="settings-featured text-muted-foreground flex items-center gap-3 p-7 text-sm">
           <Loader2 className="animate-spin" size={18} /> Loading plan and storage information…
         </div>
       )}
 
       {error && (
-        <div className="settings-featured flex items-center gap-3 p-7 text-sm text-destructive">
+        <div className="settings-featured text-destructive flex items-center gap-3 p-7 text-sm">
           <AlertCircle size={18} /> {error}
         </div>
       )}
@@ -136,32 +119,33 @@ export default function PlanPage() {
           <section className="settings-featured overflow-hidden p-7">
             <div className="relative z-[1] grid gap-7 lg:grid-cols-[1fr_1.2fr] lg:items-center">
               <div>
-                <div className="mb-3 flex items-center gap-2 text-xs font-bold tracking-[0.2em] text-primary uppercase">
+                <div className="text-primary mb-3 flex items-center gap-2 text-xs font-bold tracking-[0.2em] uppercase">
                   <ShieldCheck size={15} /> Current plan
                 </div>
-                <h2 className="text-3xl font-black tracking-tight text-foreground">
+                <h2 className="text-foreground text-3xl font-black tracking-tight">
                   {data.current_plan.name}
                 </h2>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                <p className="text-muted-foreground mt-2 max-w-xl text-sm leading-6">
                   {data.current_plan.description} Your storage is isolated to this authenticated
                   tenant/workspace.
                 </p>
               </div>
-              <div className="rounded-2xl border border-border/70 bg-background/45 p-5">
+              <div className="border-border/70 bg-background/45 rounded-2xl border p-5">
                 <div className="mb-3 flex items-center justify-between text-sm font-semibold">
                   <span>Storage used</span>
                   <span className="text-muted-foreground">
-                    {formatBytes(data.usage.total_bytes)} / {formatLimit(data.current_plan.storage_limit_bytes)}
+                    {formatBytes(data.usage.total_bytes)} /{" "}
+                    {formatLimit(data.current_plan.storage_limit_bytes)}
                   </span>
                 </div>
-                <div className="h-3 overflow-hidden rounded-full bg-muted/60">
+                <div className="bg-muted/60 h-3 overflow-hidden rounded-full">
                   <div
                     className={`h-full rounded-full transition-all ${usagePercent >= 90 ? "bg-destructive" : "bg-primary"}`}
                     style={{ width: `${usagePercent}%` }}
                   />
                 </div>
-                <p className="mt-3 text-xs text-muted-foreground">{data.storage_scope}</p>
-                <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-muted-foreground sm:grid-cols-4">
+                <p className="text-muted-foreground mt-3 text-xs">{data.storage_scope}</p>
+                <div className="text-muted-foreground mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
                   <span>Documents: {formatBytes(data.usage.documents_bytes)}</span>
                   <span>Library: {formatBytes(data.usage.library_bytes)}</span>
                   <span>Artifacts: {formatBytes(data.usage.artifacts_bytes)}</span>
@@ -178,15 +162,15 @@ export default function PlanPage() {
               className="settings-featured flex flex-col gap-2 p-6 sm:flex-row sm:items-center sm:gap-4"
             >
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-foreground">
+                <p className="text-foreground text-sm font-bold">
                   You&apos;re assigned to {data.beta.plan_name} — free until production release
                 </p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                <p className="text-muted-foreground mt-1 text-xs leading-5">
                   Everything in AverQel is open during beta. Paid subscriptions arrive with the
                   production release; your workspace carries over unchanged.
                 </p>
               </div>
-              <span className="shrink-0 rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+              <span className="bg-primary/10 text-primary shrink-0 rounded-full px-3 py-1 text-xs font-bold">
                 Beta · Free
               </span>
             </section>
@@ -195,50 +179,62 @@ export default function PlanPage() {
           <section>
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-black tracking-tight text-foreground">Available plans</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <h2 className="text-foreground text-xl font-black tracking-tight">
+                  Available plans
+                </h2>
+                <p className="text-muted-foreground mt-1 text-sm">
                   Plan access is currently determined by your authenticated account role.
                 </p>
               </div>
-              {isAdmin && <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">Admin account</span>}
+              {isAdmin && (
+                <span className="bg-primary/10 text-primary rounded-full px-3 py-1 text-xs font-bold">
+                  Admin account
+                </span>
+              )}
             </div>
             <div className="grid gap-5 lg:grid-cols-3">
-              {data.plans.filter((plan) => !plan.admin_only || isAdmin).map((plan) => {
-                const current = plan.id === data.current_plan.id;
-                return (
-                  <article
-                    key={plan.id}
-                    className={`relative flex h-full flex-col rounded-2xl border p-6 transition-all ${
-                      current
-                        ? "border-primary/50 bg-primary/[0.06] shadow-[0_0_32px_-12px_rgba(var(--primary),0.45)]"
-                        : "border-border/70 bg-card/40"
-                    }`}
-                  >
-                    {current && (
-                      <span className="absolute top-4 right-4 rounded-full bg-primary px-2.5 py-1 text-[10px] font-black tracking-[0.12em] text-primary-foreground uppercase">
-                        Current
-                      </span>
-                    )}
-                    <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-                      {plan.id === "admin" ? <Crown size={21} /> : <HardDrive size={21} />}
-                    </div>
-                    <h3 className="text-xl font-black text-foreground">{plan.name}</h3>
-                    <p className="mt-2 min-h-12 text-sm leading-6 text-muted-foreground">{plan.description}</p>
-                    <div className="mt-5 flex items-end gap-2">
-                      <span className="text-3xl font-black text-foreground">{formatLimit(plan.storage_limit_bytes)}</span>
-                      <span className="pb-1 text-xs text-muted-foreground">storage</span>
-                    </div>
-                    <ul className="mt-6 space-y-3 border-t border-border/60 pt-5">
-                      {plan.features.map((feature) => (
-                        <li key={feature} className="flex gap-2 text-sm text-muted-foreground">
-                          <CheckCircle2 className="mt-0.5 shrink-0 text-primary" size={16} />
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </article>
-                );
-              })}
+              {data.plans
+                .filter((plan) => !plan.admin_only || isAdmin)
+                .map((plan) => {
+                  const current = plan.id === data.current_plan.id;
+                  return (
+                    <article
+                      key={plan.id}
+                      className={`relative flex h-full flex-col rounded-2xl border p-6 transition-all ${
+                        current
+                          ? "border-primary/50 bg-primary/[0.06] shadow-[0_0_32px_-12px_rgba(var(--primary),0.45)]"
+                          : "border-border/70 bg-card/40"
+                      }`}
+                    >
+                      {current && (
+                        <span className="bg-primary text-primary-foreground absolute top-4 right-4 rounded-full px-2.5 py-1 text-[10px] font-black tracking-[0.12em] uppercase">
+                          Current
+                        </span>
+                      )}
+                      <div className="border-primary/20 bg-primary/10 text-primary mb-5 flex h-11 w-11 items-center justify-center rounded-xl border">
+                        {plan.id === "admin" ? <Crown size={21} /> : <HardDrive size={21} />}
+                      </div>
+                      <h3 className="text-foreground text-xl font-black">{plan.name}</h3>
+                      <p className="text-muted-foreground mt-2 min-h-12 text-sm leading-6">
+                        {plan.description}
+                      </p>
+                      <div className="mt-5 flex items-end gap-2">
+                        <span className="text-foreground text-3xl font-black">
+                          {formatLimit(plan.storage_limit_bytes)}
+                        </span>
+                        <span className="text-muted-foreground pb-1 text-xs">storage</span>
+                      </div>
+                      <ul className="border-border/60 mt-6 space-y-3 border-t pt-5">
+                        {plan.features.map((feature) => (
+                          <li key={feature} className="text-muted-foreground flex gap-2 text-sm">
+                            <CheckCircle2 className="text-primary mt-0.5 shrink-0" size={16} />
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </article>
+                  );
+                })}
             </div>
           </section>
         </>

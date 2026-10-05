@@ -1,41 +1,35 @@
-import { DocsCards, DocsSection, DocsShell } from "../_components/DocsShell";
+import { DocsSection, DocsShell } from "../_components/DocsShell";
 
+/** Direct compatibility route; admin workflows are intentionally omitted from public navigation. */
 export default function AdminDocsPage() {
   return (
     <DocsShell
-      title="Admin"
-      intro="Admin is for platform operation, security, support, and compliance handling. It is not a normal user role."
+      title="Administrative controls"
+      intro="AverQel administrative screens are restricted workflows for specifically authorized operators. They are not part of the normal user workspace."
     >
-      <DocsCards
-        items={[
-          {
-            title: "Who Can Be Admin",
-            body: "Admin access is controlled by configured allowlisted admin emails and roles. Normal users and editors cannot enter admin routes.",
-          },
-          {
-            title: "What Admin Can See",
-            body: "User metadata, role/status, 2FA state, usage counts, audit/security events, document processing counts, and deletion records.",
-          },
-          {
-            title: "What Admin Should Not See By Default",
-            body: "Document text, chat prompts, generated answers, provider API keys, OAuth tokens, or private endpoint secrets.",
-          },
-          {
-            title: "Sensitive Actions",
-            body: "Disable/reactivate users, force logout, terminate accounts, run deletion workflows, and any exceptional privileged actions must be audited.",
-          },
-        ]}
-      />
-      <DocsSection title="Admin Privacy Rule">
+      <DocsSection title="Role and route protection">
         <p>
-          The admin dashboard is metadata-first. Admin exists to operate the SaaS safely, not to
-          browse user content. User deletion and account control can happen without exposing raw
-          provider secrets or normal private content in the admin UI.
+          The dashboard hides administrative navigation from users without an admin role, and
+          protected APIs also enforce backend permissions. Frontend visibility alone is not the
+          security boundary. Access is determined by the authenticated account, tenant, role, and
+          permission required by each route.
         </p>
+      </DocsSection>
+      <DocsSection title="Different queues have different scopes">
         <p>
-          That boundary matters in production because the operational team needs visibility into
-          system health, not user payloads. The audit trail is the source of truth for sensitive
-          actions.
+          Support staff may read support tickets and feedback submissions so they can respond.
+          Tenant administrators may review collection reports scoped to their tenant. These are
+          purpose-specific permissions; they do not create a universal interface for browsing every
+          user&apos;s content. Internal support notes are not returned to the ticket submitter.
+        </p>
+      </DocsSection>
+      <DocsSection title="Operational responsibility">
+        <p>
+          Operators must follow the deployment&apos;s least-privilege, audit, privacy, incident
+          response, and account recovery policies. The availability of an admin page or route does
+          not prove that the current deployment has enabled, migrated, or verified its workflow.
+          Detailed operational procedures belong in the restricted operator runbooks, not the public
+          product guide.
         </p>
       </DocsSection>
     </DocsShell>

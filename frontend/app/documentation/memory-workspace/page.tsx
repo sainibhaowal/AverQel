@@ -3,83 +3,77 @@ import { DocsCards, DocsSection, DocsShell } from "../_components/DocsShell";
 export default function MemoryWorkspaceDocsPage() {
   return (
     <DocsShell
-      title="Memory & Workspace"
-      intro="DeepSpace keeps tenant-scoped memory available across sessions without requiring an IDE-style filesystem or a second memory manager in Settings."
+      title="DeepSpace memory"
+      intro="DeepSpace includes controls for saved memory associated with your account and conversations. Use them to inspect and manage stored context; memory behavior can depend on deployment and model configuration."
     >
       <DocsCards
         items={[
           {
             title: "Memory Facts",
-            body: "DeepSpace stores user-scoped facts and preferences so future conversations can use relevant context.",
+            body: "Saved memory can make selected account context available in later DeepSpace work, subject to its scope and current settings.",
           },
           {
             title: "Conversation History",
-            body: "Saved conversations are the complete transcript. Memory never copies the whole chat, and conversations can be reopened after a reload.",
+            body: "Conversation history and saved memory are separate product concepts. Memory controls apply to saved context, not as a replacement for reviewing a conversation transcript.",
           },
           {
             title: "Search",
-            body: "Search memory directly when you need to find a stored preference or project fact.",
+            body: "Use the available memory controls to find and review stored items.",
           },
           {
             title: "MCP Separation",
-            body: "MCP connections and remote tools stay in their own protected runtime and are not mixed into memory storage.",
-          },
-          {
-            title: "Structured Recall",
-            body: "Each captured fact is classified as a fact, preference, or workflow rule and carries confidence, entities, and related-memory links for better retrieval.",
+            body: "MCP connections are managed separately under Providers & Connections and use their own authorization and tool policies.",
           },
         ]}
       />
 
       <DocsSection title="Memory scopes">
         <p>
-          AverQel keeps conversation history, temporary working memory, and durable memory separate
-          so recalled context stays useful and small.
+          DeepSpace conversations and saved memory have different lifecycles. Check the labels and
+          controls in the memory workspace to understand what is saved and what can be changed.
         </p>
         <ul className="list-disc space-y-2 pl-6">
+          <li>some context is conversation-scoped rather than a durable account memory</li>
           <li>
-            session memory is temporary, can be linked to a conversation, and expires automatically
+            saved items can be reviewed and managed with the controls currently available in
+            DeepSpace
           </li>
-          <li>user memory stores durable user-specific facts and preferences</li>
-          <li>memory access remains tenant-scoped and permission-checked</li>
+          <li>memory access is subject to the authenticated account and backend authorization</li>
         </ul>
       </DocsSection>
 
       <DocsSection title="What users notice">
         <ul className="list-disc space-y-2 pl-6">
-          <li>saved memories can be searched, edited, exported, and removed from DeepSpace</li>
           <li>
-            DeepSpace can save explicit remember requests and lasting preferences through its memory
-            tools; an explicit request is active only after the save succeeds
+            Depending on the enabled controls, review, search, edit, approve, reject, or clear saved
+            memory.
           </li>
           <li>
-            optional automatic capture extracts a bounded set of structured candidates from clear
-            durable facts, preferences, and workflow rules; sensitive information is never
-            auto-saved
+            Use conversation history to review what was said; do not assume a summary or saved
+            memory contains the full exchange.
           </li>
+          <li>Review memory before relying on a future answer that may use it as context.</li>
           <li>
-            repeated facts reinforce one memory record instead of creating duplicates; changed
-            explicit facts supersede the older record while preserving its history
+            Deletion or clearing behavior follows the confirmation and retention policy shown by the
+            current deployment.
           </li>
-          <li>
-            memory metadata stores a small tenant-scoped relationship graph so related project,
-            preference, and workflow facts can be ranked together
-          </li>
-          <li>
-            only active, relevant memories are recalled, using a bounded relevance, importance,
-            confidence, and freshness ranking
-          </li>
-          <li>
-            answers can identify the memories that were used, and inferred candidates can be
-            approved or discarded
-          </li>
-          <li>
-            retention, duplicate cleanup, embedding health, and personal-memory clearing stay in the
-            DeepSpace memory workspace
-          </li>
-          <li>chat history survives page reloads</li>
-          <li>there is no context meter, task ledger, proactive monitor, or runtime dashboard</li>
         </ul>
+      </DocsSection>
+      <DocsSection title="Automatic capture and review">
+        <p>
+          Automatic capture is off by default. If you turn it on, the Review inferred setting
+          controls whether inferred memories stay pending for your approval or can become active
+          without a separate approval. Use memory in chat is a separate setting: turning it off
+          prevents active saved memories from being recalled in answers, but does not delete them.
+        </p>
+      </DocsSection>
+      <DocsSection title="Privacy and reliability">
+        <p>
+          The sensitive-content check is limited and may not detect every sensitive detail. Avoid
+          asking the system to save credentials or highly sensitive personal data.
+          Account export, retention, and deletion behavior is described separately under Trust &amp;
+          Privacy and depends on the current deployment policy.
+        </p>
       </DocsSection>
     </DocsShell>
   );

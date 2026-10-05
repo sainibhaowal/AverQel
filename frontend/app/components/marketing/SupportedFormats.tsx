@@ -105,7 +105,7 @@ export default function SupportedFormats() {
   });
 
   return (
-    <motion.section ref={ref} style={style} className={landingSectionShellClass}>
+    <motion.section ref={ref} style={style} id="sources" className={landingSectionShellClass}>
       <div className={landingContentClass}>
         <div className="grid gap-10 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] xl:items-stretch xl:gap-12">
           {/* Left: Format grid */}
@@ -121,7 +121,7 @@ export default function SupportedFormats() {
               <h2
                 className={`${landingSectionTitleClass} ${landingTitleGradientBySection.supportedFormats}`}
               >
-                Unify your entire production knowledge ecosystem
+                Bring supported sources into one searchable workspace
               </h2>
               <p className={landingSectionLeadClass}>
                 Start with supported files in Documents Hub, then connect a reviewed remote service

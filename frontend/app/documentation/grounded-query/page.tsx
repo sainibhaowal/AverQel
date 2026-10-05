@@ -4,77 +4,58 @@ export default function GroundedQueryDocsPage() {
   return (
     <DocsShell
       title="Grounded Query"
-      intro="AverQel still has a strong grounded retrieval layer for document-first work: upload, parse, chunk, embed, retrieve, stream, and cite source-backed answers."
+      intro="Query is the retrieval-first surface for asking focused questions about documents available to your account and examining the source material behind an answer."
     >
       <DocsCards
         items={[
           {
-            title: "Document Pipeline",
-            body: "Uploaded files are processed into text, chunked for retrieval, embedded, indexed, and tracked with processing status, progress, and extraction metadata.",
+            title: "Question and retrieval",
+            body: "The query service searches the accessible indexed material and supplies relevant context to the configured answer provider.",
           },
           {
-            title: "OCR, embeddings, and reranking",
-            body: "OCR runs during ingestion for scanned pages and images. Indexed chunks use the configured embedding model and existing reranker; a deterministic lexical fallback keeps answers usable when those services are unavailable.",
+            title: "Sources and citations",
+            body: "Review the source references shown with a response. Check the cited document and passage for important decisions; retrieval and generated summaries can be incomplete.",
           },
           {
-            title: "Grounded Answers",
-            body: "The query runtime is built to answer from accessible documents and return results tied to actual source material instead of only ungrounded generation.",
+            title: "History and follow-up",
+            body: "Use the Query interface to continue supported conversations and review saved query history available to your account.",
           },
           {
-            title: "Rich Output",
-            body: "The query UI supports markdown, charts, diagrams, and structured blocks so grounded results can be presented as more than plain text.",
-          },
-          {
-            title: "Document Inspection",
-            body: "Users can inspect status, full text, versions, chunks, download the original file, and save extracted or selected content into DeepSpace notes.",
+            title: "Document preparation",
+            body: "Upload, inspect, and organize source files in Documents Hub. Query does not replace document processing or become a second file manager.",
           },
         ]}
       />
-
-      <DocsSection title="What the user-facing document system includes">
-        <ul className="list-disc space-y-2 pl-6">
-          <li>document uploads with live processing progress</li>
-          <li>supported format discovery</li>
-          <li>download and full-text viewing</li>
-          <li>reingest and retry support</li>
-          <li>quarantine/extraction quality signals</li>
-          <li>query page for grounded question-answering</li>
-          <li>save-to-note flows that turn source material into DeepSpace workspace content</li>
-        </ul>
+      <DocsSection title="How to get better results">
+        <ol className="list-decimal space-y-2 pl-6">
+          <li>Make sure the relevant file has completed processing in Documents Hub.</li>
+          <li>
+            Ask one clear question and name a document, date, or subject when that helps narrow
+            context.
+          </li>
+          <li>
+            Check the cited passages and ask a follow-up if the evidence is incomplete or ambiguous.
+          </li>
+          <li>
+            For work that needs broader research, drafting, analysis, notes, or tools, continue in
+            DeepSpace.
+          </li>
+        </ol>
       </DocsSection>
-
-      <DocsSection title="Document Hub file and security contract">
+      <DocsSection title="Limits and availability">
         <p>
-          The Hub advertises its extractor registry at upload time. Native support includes PDF,
-          TXT, Markdown, OCR-capable images, DOCX, PPTX, XLSX, and the configured code/text formats.
-          Legacy DOC, PPT, and XLS files are converted through the server-side LibreOffice worker
-          when that feature is enabled. Arbitrary binary files, archives, audio, and video are
-          rejected.
-        </p>
-        <p>
-          Every upload is checked against the configured extension and detected MIME type, archive
-          safety limits, and the production ClamAV service before it enters object storage. The
-          original file can be downloaded from the detail view; browser rendering is limited to safe
-          PDF and image previews, while other binary formats are downloaded for native opening.
+          Answer quality depends on the source content, extraction/OCR, indexing, retrieval
+          settings, and configured model provider. A citation shows what the answer references; it
+          does not prove that the source itself is correct or that the response is complete.
+          Provider and search failures may make some paths unavailable.
         </p>
       </DocsSection>
-
-      <DocsSection title="How it differs from DeepSpace chat">
+      <DocsSection title="Query is not DeepSpace">
         <p>
-          Grounded query is best when the user wants evidence-backed answers over documents.
-          DeepSpace is best when the user wants a broader productivity conversation with memory,
-          safe retrieval, and optional source inspection.
-        </p>
-        <p>
-          Both surfaces are important: Query is retrieval-first, while DeepSpace is the broader
-          conversation surface.
-        </p>
-      </DocsSection>
-
-      <DocsSection title="Why it still matters">
-        <p>
-          AverQel depends on solid grounded retrieval to turn private files into usable, trustworthy
-          context for both query answers and DeepSpace conversations.
+          Query is optimized for retrieval-first questions over source documents. DeepSpace is a
+          separate broader conversation workspace with its own working Library and optional
+          research, sandbox, schedule, memory, and connector capabilities. Documents Hub remains the
+          home for source document lifecycle and organization.
         </p>
       </DocsSection>
     </DocsShell>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import cast
@@ -25,6 +26,7 @@ from app.auth.schemas.auth import (
     ExportAccountResponse,
     LoginRequest,
     LogoutResponse,
+    OAuthSessionDeviceRequest,
     OAuthTwoFactorRequest,
     ProfileResponse,
     ProfileUpdateRequest,
@@ -48,13 +50,15 @@ from app.auth.services.oauth_login_service import (
 from app.auth.tenancy import get_login_tenant_id
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
-from app.platform.database.session import get_db
+from app.platform.database.session import get_db, set_db_tenant_context
 from app.system.services.audit_service import AuditService
 from app.system.services.rate_limit_service import RateLimitService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+OAUTH_DEVICE_ID_COOKIE = "averqel_oauth_device_id"
+_DEVICE_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 
 
 def _token_response(result: LoginResult) -> TokenResponse:
@@ -105,6 +109,7 @@ def _clear_oauth_state_cookies(response: Response, request: Request, settings: S
     for name in request.cookies:
         if name == OAUTH_STATE_COOKIE or name.startswith(OAUTH_STATE_COOKIE_PREFIX):
             response.delete_cookie(name, path=cookie_path)
+    response.delete_cookie(OAUTH_DEVICE_ID_COOKIE, path=cookie_path)
 
 
 def _oauth_error_reason(code: str) -> str:
@@ -213,16 +218,45 @@ def login(
 @router.get("/oauth/{provider}/start")
 def oauth_start(
     provider: str,
+    request: Request,
     response: Response,
     return_to: str | None = Query(default="/auth/login"),
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
     service = OAuthLoginService(None, settings)
-    url = service.start(provider_name=provider, response=response, return_to=return_to)
+    raw_device_id = request.cookies.get(OAUTH_DEVICE_ID_COOKIE)
+    device_id = (
+        raw_device_id if raw_device_id and _DEVICE_ID_PATTERN.fullmatch(raw_device_id) else None
+    )
+    url = service.start(
+        provider_name=provider,
+        response=response,
+        return_to=return_to,
+        device_id=device_id,
+    )
     redirect = RedirectResponse(url=url, status_code=307)
     for header, value in response.headers.items():
         redirect.headers[header] = value
     return redirect
+
+
+@router.post("/oauth/session-device")
+def prepare_oauth_session_device(
+    payload: OAuthSessionDeviceRequest,
+    response: Response,
+    settings: Settings = Depends(get_settings),
+) -> dict[str, bool]:
+    """Carry the browser's opaque session ID through the OAuth redirect."""
+    response.set_cookie(
+        OAUTH_DEVICE_ID_COOKIE,
+        payload.device_id,
+        max_age=300,
+        httponly=True,
+        secure=settings.refresh_cookie_secure,
+        samesite="lax",
+        path=f"{settings.api_prefix.rstrip('/')}/auth/oauth",
+    )
+    return {"success": True}
 
 
 @router.get("/oauth/{provider}/callback")
@@ -253,6 +287,7 @@ def oauth_callback(
             state=state or "",
             state_cookie=request.cookies.get(OAUTH_STATE_COOKIE),
             state_cookies=_oauth_state_cookie_values(request),
+            user_agent=request.headers.get("user-agent"),
         )
     except ApiError as exc:
         db.rollback()
@@ -305,7 +340,13 @@ def verify_oauth_2fa(
             status_code=401,
         )
     service = AuthService(db, settings)
-    result = service.verify_totp_login(pending_token=pending_token, code=payload.code)
+    result = service.verify_totp_login(
+        pending_token=pending_token,
+        code=payload.code,
+        device_id=payload.device_id,
+        device_label=payload.device_label,
+        user_agent=request.headers.get("user-agent"),
+    )
     _audit_and_commit(
         db=db,
         tenant_id=result.user.tenant_id,
@@ -397,13 +438,18 @@ def refresh(
 
 @router.get("/sessions", response_model=list[AuthSessionResponse])
 def list_sessions(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> list[AuthSessionResponse]:
+    set_db_tenant_context(db, auth.tenant_id)
     rows = (
         db.query(AuthSession)
         .filter(AuthSession.tenant_id == auth.tenant_id, AuthSession.user_id == auth.user_id)
-        .order_by(AuthSession.last_seen_at.desc())
+        .order_by(AuthSession.last_seen_at.desc(), AuthSession.id.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
     return [
@@ -428,6 +474,13 @@ def revoke_session(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> LogoutResponse:
+    if auth.session_id == session_id:
+        raise ApiError(
+            code="CURRENT_SESSION_CANNOT_BE_REVOKED",
+            message="Use log out to end the current session.",
+            status_code=409,
+        )
+    set_db_tenant_context(db, auth.tenant_id)
     row = (
         db.query(AuthSession)
         .filter(
@@ -435,6 +488,7 @@ def revoke_session(
             AuthSession.tenant_id == auth.tenant_id,
             AuthSession.user_id == auth.user_id,
         )
+        .with_for_update()
         .first()
     )
     if row is None:

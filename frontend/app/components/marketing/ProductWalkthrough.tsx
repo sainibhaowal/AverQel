@@ -127,7 +127,7 @@ export default function ProductWalkthrough() {
   const ActiveIcon = active.icon;
 
   return (
-    <motion.section ref={ref} style={style} className={landingSectionShellClass}>
+    <motion.section ref={ref} style={style} id="workflow" className={landingSectionShellClass}>
       <div className={landingContentClass}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -140,12 +140,11 @@ export default function ProductWalkthrough() {
           <h2
             className={`${landingSectionTitleClass} ${landingTitleGradientBySection.platformSurfaces}`}
           >
-            From a private document to a finished piece of work
+            From workspace setup to governed work
           </h2>
           <p className={landingSectionLeadClass}>
-            AverQel is a connected workspace, not a generic chat box. Follow the steps below to see
-            exactly where documents, grounded answers, DeepSpace, providers, and connected apps fit
-            together.
+            Follow the path from choosing an AI runtime and preparing source material to grounded
+            answers, durable DeepSpace work, and optional connected tools.
           </p>
         </motion.div>
 
@@ -238,7 +237,7 @@ export default function ProductWalkthrough() {
               </div>
               <div className="mt-6 flex flex-wrap items-center gap-3 text-[10px] font-bold tracking-[0.15em] text-slate-500 uppercase">
                 <span className="inline-flex items-center gap-1.5">
-                  <CheckCircle2 size={13} className="text-emerald-300" /> Verified path
+                  <CheckCircle2 size={13} className="text-emerald-300" /> Product workflow
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <ShieldCheck size={13} className="text-cyan-300" /> Policy boundary

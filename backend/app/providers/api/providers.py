@@ -56,6 +56,7 @@ from app.providers.services.provider_models_service import (
     release_model_discovery_slot,
 )
 from app.providers.services.registry import ProviderRegistry
+from app.system.services.user_notifications import add_user_notification, notify_platform_admins
 
 logger = logging.getLogger(__name__)
 
@@ -673,6 +674,34 @@ def test_provider(
         provider_config_id=provider_id,
         actor_user_id=auth.user_id,
     )
+    if row.status.lower() not in {"healthy", "ok", "success"}:
+        provider = ProviderManagementService(db).get_provider(
+            tenant_id=auth.tenant_id,
+            provider_config_id=provider_id,
+            actor_user_id=auth.user_id,
+        )
+        recipient_id = provider.owner_user_id or auth.user_id
+        add_user_notification(
+            db,
+            tenant_id=auth.tenant_id,
+            recipient_user_id=recipient_id,
+            event_domain="provider",
+            event_type="health_check_failed",
+            title="Provider health check failed",
+            message=f"{provider.display_name} is not responding successfully. Review provider settings and health details.",
+            href="/dashboard/settings/providers",
+            resource_id=provider_id,
+            idempotency_key=f"provider:failed:{provider_id}:{row.checked_at.strftime('%Y%m%d%H%M')}",
+        )
+        notify_platform_admins(
+            db,
+            event_domain="provider",
+            event_type="health_check_failed",
+            title="Provider health check failed",
+            message=f"A provider health check failed for {provider.display_name}.",
+            href="/dashboard/settings/providers",
+            resource_id=provider_id,
+        )
     _commit_or_rollback(
         db=db,
         message="Failed to test provider.",

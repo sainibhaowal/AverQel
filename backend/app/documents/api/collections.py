@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Query, Response, WebSocket, WebSocketDisconnect
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -74,6 +74,7 @@ from app.documents.services.collection_chat_encryption import (
 from app.ingestion.services.extraction_quality import confidence_band
 from app.platform.database.session import get_db
 from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.models.user_notification_preference import UserNotificationPreference
 from app.system.services.cache_service import get_redis_client
 from app.system.services.rate_limit_service import RateLimitService
 from app.system.services.storage_lifecycle import StorageLifecycleService
@@ -667,12 +668,24 @@ def list_pending_invitations(
     dependencies=[Depends(require_permissions("collections:read"))],
 )
 def list_collection_notifications(
+    offset: int = Query(default=0, ge=0, le=100_000),
     request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> list[CollectionNotificationResponse]:
+    muted_domains = (
+        db.execute(
+            select(UserNotificationPreference.muted_domains).where(
+                UserNotificationPreference.tenant_id == auth.tenant_id,
+                UserNotificationPreference.user_id == auth.user_id,
+            )
+        ).scalar_one_or_none()
+        or []
+    )
+    if "collections" in muted_domains:
+        return []
     repo = CollectionNotificationsRepository(db)
-    items = repo.list_for_user(user_id=auth.user_id, limit=30)
+    items = repo.list_for_user(user_id=auth.user_id, limit=30, offset=offset)
     return [_notification_response(item) for item in items]
 
 
@@ -910,6 +923,7 @@ def delete_collection(
         )
         db.commit()
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to delete collection %s", collection_id)
         db.rollback()
         raise ApiError(
             code="INTERNAL_SERVER_ERROR",

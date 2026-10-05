@@ -25,6 +25,10 @@ describe("settings page", () => {
   it("shows providers in settings for user role", () => {
     render(<SettingsPage />);
 
+    expect(screen.getByRole("link", { name: "Back To Dashboard" })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
     expect(screen.getByRole("link", { name: /providers/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /plan & storage/i })).toBeInTheDocument();
   });

@@ -112,11 +112,11 @@ action history where available. Actions remain document- and tenant-scoped.
 
 The API and UI enforce these Documents Hub organization tiers:
 
-| Access level | Organization features |
-| --- | --- |
-| Free/user | Tags and folders |
-| Editor | Free features plus saved views, classification rules, and automation schedules |
-| Admin | Editor features plus webhook administration/delivery history and administrative document controls |
+| Access level | Organization features                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| Free/user    | Tags and folders                                                                                  |
+| Editor       | Free features plus saved views, classification rules, and automation schedules                    |
+| Admin        | Editor features plus webhook administration/delivery history and administrative document controls |
 
 Admins can create Smart Collections with `all` or `any` conditions such as
 failed status, quarantine state, OCR coverage, filename/content type, tag, or
@@ -210,13 +210,20 @@ The Documents Hub does not replace or weaken existing platform behavior:
 
 ## Production operation
 
-The feature set is locally verified with backend pytest, frontend Vitest,
-Playwright browser tests, Ruff, mypy, ESLint, TypeScript, production build,
-Python compilation, and whitespace checks. Deployment still requires the
-environment-specific release gates: `alembic upgrade head`, healthy workers,
-real object storage, OCR, malware scanning, external provider credentials,
-and authenticated staging validation.
+The implementation snapshot was locally checked with backend pytest, frontend
+Vitest, Playwright browser tests, Ruff, mypy, ESLint, TypeScript, production
+build, Python compilation, and whitespace checks on 2026-09-27. Those results
+are historical and do not certify later changes or any hosted environment.
+The current source migration graph is at `20261012_0012`; the latest recorded
+Docker database observation is `20261012_0011` on 2026-10-03. This checkout
+does not establish that the current head has been applied to staging or that
+the updated app has been deployed and smoke-tested there. Before release,
+verify the target migration, healthy workers, real object storage, OCR,
+malware scanning, provider credentials, and authenticated staging workflows.
 
-See [`../platform/04-end-to-end-verification.md`](../platform/04-end-to-end-verification.md)
-for the current evidence and [`../release/01-end-to-end-handoff.md`](../release/01-end-to-end-handoff.md)
+See [`../release/03-current-worktree-change-index.md`](../release/03-current-worktree-change-index.md)
+for the latest known source and environment status,
+[`../platform/04-end-to-end-verification.md`](../platform/04-end-to-end-verification.md)
+for the dated Documents Hub evidence, and
+[`../release/01-end-to-end-handoff.md`](../release/01-end-to-end-handoff.md)
 for release procedures.

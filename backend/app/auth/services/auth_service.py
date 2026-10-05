@@ -39,6 +39,7 @@ from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.documents.models.collection import CollectionPermission
 from app.documents.models.document import Document
+from app.platform.database.session import set_db_tenant_context
 from app.providers.services.provider_secret_crypto import (
     ProviderSecretCrypto,
     ProviderSecretCryptoError,
@@ -47,6 +48,8 @@ from app.query.models.comment import Comment
 from app.query.models.conversation import Conversation
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
+from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.models.support_ticket_attachment import SupportTicketAttachment
 from app.system.services.audit_service import AuditService
 from app.system.services.storage_quota import StorageQuotaService, resolve_storage_plan
 from app.system.services.storage_service import StorageService
@@ -99,6 +102,35 @@ def _normalized_device_id(value: str | None) -> str:
     return f"browser-{generate_uuid7_with_fallback()}"
 
 
+def _device_label_from_user_agent(user_agent: str | None) -> str:
+    """Create a useful display label without treating the UA as identity."""
+    value = (user_agent or "").lower()
+    if "edg/" in value:
+        browser = "Edge"
+    elif "firefox/" in value:
+        browser = "Firefox"
+    elif "chrome/" in value or "chromium/" in value:
+        browser = "Chrome"
+    elif "safari/" in value:
+        browser = "Safari"
+    else:
+        browser = "Browser"
+
+    if any(marker in value for marker in ("iphone", "ipad", "ipod")):
+        platform = "iOS"
+    elif "android" in value:
+        platform = "Android"
+    elif "windows" in value:
+        platform = "Windows"
+    elif "mac os" in value or "macintosh" in value:
+        platform = "macOS"
+    elif "linux" in value:
+        platform = "Linux"
+    else:
+        platform = None
+    return f"{browser} on {platform}" if platform else browser
+
+
 class ExportAccountData(TypedDict):
     user_id: str
     tenant_id: str
@@ -132,16 +164,18 @@ class AuthService:
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
         device_id: str | None = None,
-        device_label: str = "Browser",
+        device_label: str | None = None,
         user_agent: str | None = None,
         ip_hash: str | None = None,
     ) -> AuthSession:
+        set_db_tenant_context(self.db, tenant_id)
         session = AuthSession(
             tenant_id=tenant_id,
             user_id=user_id,
             token_family_id=generate_uuid7_with_fallback(),
             device_id=_normalized_device_id(device_id),
-            label=device_label.strip()[:128] or "Browser",
+            label=(device_label or _device_label_from_user_agent(user_agent)).strip()[:128]
+            or "Browser",
             user_agent=user_agent[:512] if user_agent else None,
             ip_hash=ip_hash,
         )
@@ -156,7 +190,7 @@ class AuthService:
         email: str,
         password: str,
         device_id: str | None = None,
-        device_label: str = "Browser",
+        device_label: str | None = None,
         user_agent: str | None = None,
         ip_hash: str | None = None,
     ) -> LoginResult:
@@ -221,6 +255,8 @@ class AuthService:
             pending_token = self._mint_pending_2fa_token(
                 user_id=user.id,
                 tenant_id=resolved_tenant_id,
+                device_id=device_id,
+                device_label=device_label,
             )
             self.db.commit()
             return LoginResult(
@@ -370,7 +406,7 @@ class AuthService:
         *,
         user: User,
         device_id: str | None = None,
-        device_label: str = "Browser",
+        device_label: str | None = None,
         user_agent: str | None = None,
         ip_hash: str | None = None,
     ) -> LoginResult:
@@ -386,7 +422,12 @@ class AuthService:
             )
         self.users.register_successful_login(tenant_id=user.tenant_id, user=user)
         if user.totp_enabled:
-            pending_token = self._mint_pending_2fa_token(user_id=user.id, tenant_id=user.tenant_id)
+            pending_token = self._mint_pending_2fa_token(
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                device_id=device_id,
+                device_label=device_label or _device_label_from_user_agent(user_agent),
+            )
             self.db.commit()
             return LoginResult(
                 user=user,
@@ -663,6 +704,16 @@ class AuthService:
                 )
             ).all()
         )
+        attachment_objects = list(
+            self.db.execute(
+                select(
+                    SupportTicketAttachment.storage_bucket, SupportTicketAttachment.storage_key
+                ).where(
+                    SupportTicketAttachment.tenant_id == auth.tenant_id,
+                    SupportTicketAttachment.uploaded_by_user_id == auth.user_id,
+                )
+            ).all()
+        )
         for bucket, object_key in objects:
             try:
                 storage.delete_object(bucket=str(bucket), object_key=str(object_key))
@@ -673,6 +724,33 @@ class AuthService:
                         "tenant_id": str(auth.tenant_id),
                         "user_id": str(auth.user_id),
                         "bucket": str(bucket),
+                        "object_key": str(object_key),
+                    },
+                    exc_info=True,
+                )
+        for bucket, object_key in attachment_objects:
+            try:
+                storage.delete_tenant_object(
+                    tenant_id=auth.tenant_id,
+                    bucket=str(bucket),
+                    object_key=str(object_key),
+                    raise_on_error=True,
+                )
+            except Exception:  # noqa: BLE001
+                self.db.add(
+                    StorageCleanupJob(
+                        tenant_id=auth.tenant_id,
+                        owner_user_id=auth.user_id,
+                        bucket=str(bucket),
+                        object_key=str(object_key),
+                        last_error="support_attachment_storage_delete_failed",
+                    )
+                )
+                logger.warning(
+                    "Failed to delete self-owned support attachment from storage.",
+                    extra={
+                        "tenant_id": str(auth.tenant_id),
+                        "user_id": str(auth.user_id),
                         "object_key": str(object_key),
                     },
                     exc_info=True,
@@ -761,6 +839,7 @@ class AuthService:
         # session revocation.
         session_id = getattr(token_row, "session_id", None)
         if session_id is not None:
+            set_db_tenant_context(self.db, tenant_id)
             session = (
                 self.db.query(AuthSession)
                 .filter(
@@ -849,6 +928,30 @@ class AuthService:
     def logout(self, *, auth: AuthContext, raw_refresh_token: str | None) -> None:
         self._revoke_access_token(auth=auth, reason="logout")
 
+        # The authenticated session ID is authoritative when a browser has
+        # lost or omitted its refresh cookie. End that session and its entire
+        # refresh family so "Log out" always terminates the current device.
+        if auth.session_id is not None:
+            set_db_tenant_context(self.db, auth.tenant_id)
+            session = (
+                self.db.query(AuthSession)
+                .filter(
+                    AuthSession.id == auth.session_id,
+                    AuthSession.tenant_id == auth.tenant_id,
+                    AuthSession.user_id == auth.user_id,
+                )
+                .with_for_update()
+                .first()
+            )
+            if session is not None and session.revoked_at is None:
+                self.refresh_tokens.revoke_family(
+                    tenant_id=auth.tenant_id,
+                    token_family_id=session.token_family_id,
+                    reason="logout",
+                )
+            self.db.commit()
+            return
+
         if raw_refresh_token is None:
             return
 
@@ -906,7 +1009,9 @@ class AuthService:
             user_id=auth.user_id,
             reason="logout_all",
         )
+        set_db_tenant_context(self.db, auth.tenant_id)
         self.db.query(AuthSession).filter(
+            # RLS is an independent guard; keep the ORM predicate as well.
             AuthSession.tenant_id == auth.tenant_id,
             AuthSession.user_id == auth.user_id,
             AuthSession.revoked_at.is_(None),
@@ -1082,7 +1187,14 @@ class AuthService:
     # Pending 2FA token (short-lived JWT for the 2FA challenge step)
     # ------------------------------------------------------------------
 
-    def _mint_pending_2fa_token(self, *, user_id: uuid.UUID, tenant_id: uuid.UUID) -> str:
+    def _mint_pending_2fa_token(
+        self,
+        *,
+        user_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        device_id: str | None = None,
+        device_label: str | None = None,
+    ) -> str:
         import jwt as pyjwt  # noqa: PLC0415
 
         now = datetime.now(tz=UTC)
@@ -1096,6 +1208,10 @@ class AuthService:
             "iss": self.settings.jwt_issuer,
             "aud": self.settings.jwt_audience,
         }
+        if device_id:
+            payload["device_id"] = device_id
+        if device_label:
+            payload["device_label"] = device_label[:128]
         return pyjwt.encode(payload, self.settings.jwt_secret, algorithm="HS256")
 
     def _decode_pending_2fa_token(self, token: str) -> dict[str, Any]:
@@ -1140,7 +1256,7 @@ class AuthService:
         pending_token: str,
         code: str,
         device_id: str | None = None,
-        device_label: str = "Browser",
+        device_label: str | None = None,
         user_agent: str | None = None,
         ip_hash: str | None = None,
     ) -> LoginResult:
@@ -1148,6 +1264,8 @@ class AuthService:
         claims = self._decode_pending_2fa_token(pending_token)
         user_id = uuid.UUID(claims["sub"])
         tenant_id = uuid.UUID(claims["tenant_id"])
+        device_id = device_id or claims.get("device_id")
+        device_label = device_label or claims.get("device_label")
 
         user = self.users.get_by_id(tenant_id, user_id)
         if user is None or not user.is_active:

@@ -168,7 +168,14 @@ class OAuthLoginService:
                 status_code=400,
             ) from exc
 
-    def start(self, *, provider_name: str, response: Response, return_to: str | None = None) -> str:
+    def start(
+        self,
+        *,
+        provider_name: str,
+        response: Response,
+        return_to: str | None = None,
+        device_id: str | None = None,
+    ) -> str:
         provider = self.provider(provider_name)
         if not provider.client_id or not provider.client_secret:
             raise ApiError(
@@ -184,16 +191,17 @@ class OAuthLoginService:
         verifier = self._pkce_verifier()
         state_value = secrets.token_urlsafe(32)
         cookie_id = secrets.token_urlsafe(18)
-        state = self._sign_state(
-            {
-                "provider": provider.name,
-                "state": state_value,
-                "verifier": verifier,
-                "cookie_id": cookie_id,
-                "return_to": safe_return_to,
-                "expires_at": int(time.time()) + OAUTH_STATE_TTL_SECONDS,
-            }
-        )
+        state_payload: dict[str, Any] = {
+            "provider": provider.name,
+            "state": state_value,
+            "verifier": verifier,
+            "cookie_id": cookie_id,
+            "return_to": safe_return_to,
+            "expires_at": int(time.time()) + OAUTH_STATE_TTL_SECONDS,
+        }
+        if device_id:
+            state_payload["device_id"] = device_id
+        state = self._sign_state(state_payload)
         response.set_cookie(
             self._state_cookie_name(cookie_id),
             state,
@@ -397,6 +405,7 @@ class OAuthLoginService:
         state: str,
         state_cookie: str | None = None,
         state_cookies: list[str] | None = None,
+        user_agent: str | None = None,
     ) -> LoginResult:
         if self.db is None:
             raise ApiError(
@@ -466,4 +475,10 @@ class OAuthLoginService:
             )
             self.db.add(identity)
             self.db.flush()
-        return auth.complete_external_login(user=user)
+        return auth.complete_external_login(
+            user=user,
+            device_id=(
+                payload.get("device_id") if isinstance(payload.get("device_id"), str) else None
+            ),
+            user_agent=user_agent,
+        )

@@ -64,6 +64,7 @@ class CollectionNotificationsRepository(BaseRepository):
         user_id: uuid.UUID,
         collection_id: uuid.UUID | None = None,
         limit: int = 20,
+        offset: int = 0,
     ) -> list[CollectionNotification]:
         self._apply_bypass_scope()
         query = select(CollectionNotification).where(
@@ -71,10 +72,14 @@ class CollectionNotificationsRepository(BaseRepository):
         )
         if collection_id is not None:
             query = query.where(CollectionNotification.collection_id == collection_id)
-        query = query.order_by(
-            CollectionNotification.created_at.desc(),
-            CollectionNotification.id.desc(),
-        ).limit(limit)
+        query = (
+            query.order_by(
+                CollectionNotification.created_at.desc(),
+                CollectionNotification.id.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
         with observe_db_query("collection_notifications.list_for_user"):
             return list(self.db.execute(query).scalars().all())
 

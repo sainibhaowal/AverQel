@@ -1,177 +1,97 @@
 import { DocsCards, DocsSection, DocsShell } from "./_components/DocsShell";
 import { docsNavGroups } from "./_components/docsNav";
 
-export default function DocsIndex() {
-  const cardBodyByTitle: Record<string, string> = {
-    "Getting Started":
-      "Start with the real user flow: providers, documents, connectors, DeepSpace, approvals, and exportable workspaces.",
-    "What Is AverQel":
-      "Product definition, privacy model, and how AverQel evolved from document intelligence into an agentic operating layer.",
-    Features:
-      "Explore grounded retrieval, DeepSpace chat, sandboxed analysis, artifacts, schedules, note editing, memory, providers, and visual answer rendering.",
-    "Grounded Queries":
-      "Document ingestion, grounded retrieval, source-backed answers, rich rendering, and how the classic query layer fits beside DeepSpace.",
-    "Library & OCR":
-      "Supported files, OCR reuse, embeddings, reranking, previews, ownership checks, and the source-to-answer flow.",
-    "Web Research":
-      "Backend-orchestrated search, page fetching, source ranking, browser isolation, freshness, verification, and claim-level citations.",
-    "Sandbox & Data":
-      "Bounded Python and read-only SQL against authorized Library files with cleanup, limits, and isolated execution.",
-    "Artifacts & Exports":
-      "Private generated files, safe previews, durable jobs, charts, diagrams, tables, and authenticated downloads.",
-    "Schedules & Automation":
-      "Tenant-owned recurring prompts, worker-safe dispatch, durable run history, pause/resume, and cancellation.",
-    "Documents Hub":
-      "See how the note editor, math blocks, exports, and split panels work together.",
-    "Collections & Sharing":
-      "Zero-knowledge E2EE bridge with safety numbers, encrypted backups, self-destruct timers, real-time delivery ticks, and peer-to-peer document sharing.",
-    "Connectors & MCP":
-      "See the current connector model, OAuth posture, MCP runtime foundations, and the long-term MCP standardization path.",
-    "Runtime & Streaming":
-      "See how DeepSpace streams answers, safety prompts, persistence, and reconnectable chat state.",
-    "Memory & Workspace":
-      "Understand persistent memory facts and how they support future conversations.",
-    "Privacy & Security":
-      "Deep dive into isolation, encrypted provider and connector secrets, approval gating, and metadata-first admin boundaries.",
-    "Trust & Privacy":
-      "Trust controls, data retention policies, and fine-grained permission boundaries for secure workspace operation.",
-    "Platform Admin":
-      "Operational rules for platform admins, what they can see, and what remains intentionally hidden.",
-    "Profile Settings":
-      "Manage your account identity, connection credentials, active sessions, and permanent peer-to-peer connection IDs.",
-    "Autonomous Memory":
-      "Configure how AverQel stores, compacts, and recalls durable memory facts across sessions and missions.",
-    "Providers Config":
-      "Architectural details on provider routing, cloud and local runtimes, OpenRouter coverage, model discovery, and secret safety.",
-    "Support Centre":
-      "Self-help troubleshooting, system diagnostics, developer ticket submission, and documentation search.",
-    "Share Feedback":
-      "Submit feature requests, usability evaluations, roadmap voting, and community engagement.",
-    "Product Roadmap":
-      "What is finished, what is hardened, and where the platform is headed next without rewriting the core.",
-    "Architecture Spec":
-      "One page that maps frontend surfaces, backend services, persistence, providers, connectors, and runtime flows together.",
-    "System Walkthrough":
-      "A plain-language step-by-step guide to how the UI, chat service, tools, memory, and approvals work together.",
-  };
+const descriptions: Record<string, string> = {
+  "What is AverQel?":
+    "How the workspace areas fit together, what they do, and where optional services apply.",
+  "Getting started":
+    "A practical first-use path from account setup to documents, Query, and DeepSpace.",
+  "Product overview": "A map of the current product areas with links to their dedicated guides.",
+  "Documents Hub":
+    "Upload, process, inspect, organize, and manage source documents in your workspace.",
+  "Organization & collaboration":
+    "Tags, folders, saved views, versions, comments, sharing, and role-dependent controls.",
+  "Grounded queries":
+    "Ask retrieval-first questions over documents you are authorized to access and review their sources.",
+  "DeepSpace workspace":
+    "Conversation-led research and work, with its own Library, notes, tools, and optional services.",
+  "DeepSpace Library":
+    "Files attached to DeepSpace work, datasets, and outputs created during analysis.",
+  "Notes & editor": "Draft, edit, and export notes and deliverables from the DeepSpace workspace.",
+  "Web research":
+    "How configured search and page-fetching services gather evidence, and what they cannot verify.",
+  "Sandbox & data analysis":
+    "The deployment-gated isolated Python and read-only SQL workflow and its limits.",
+  "Artifacts & exports":
+    "Review and download supported generated outputs through authenticated workspace routes.",
+  "Schedules & automation":
+    "Recurring DeepSpace work when scheduler and worker services are enabled.",
+  Memory: "Review and manage DeepSpace memory controls and saved facts available to your account.",
+  Voice:
+    "Optional speech input and spoken responses when the realtime voice services are configured.",
+  Collections:
+    "Invite members, share selected documents, and collaborate within a collection boundary.",
+  "AI providers":
+    "Configure supported model providers and understand which features depend on each provider.",
+  "MCP connectors":
+    "Connect supported remote MCP services and control tool permissions and approvals.",
+  "Profile & sessions":
+    "Account security, password and two-factor settings, and session management.",
+  "Plans, storage & settings":
+    "Understand role-based limits, storage usage, retention controls, and account privacy actions.",
+  Notifications:
+    "In-app notification behavior, user preferences, and deployment-dependent email delivery.",
+  "Privacy & security":
+    "Tenant and user boundaries, credentials, integrations, and operational limits.",
+  "Support centre":
+    "Open a ticket, reply to support, attach supported files, and follow its status.",
+  "Share feedback":
+    "Submit product feedback and follow the status and discussion for your submissions.",
+  "Release notes & roadmap":
+    "Where to find verified releases and how to submit suggestions; no delivery dates are implied.",
+  "Architecture overview":
+    "A source-oriented view of the frontend, API, data services, workers, and optional integrations.",
+  "System walkthrough":
+    "Follow a document from upload to Query or DeepSpace without conflating the two workflows.",
+};
 
+export default function DocsIndex() {
   return (
     <DocsShell
-      title="AverQel Documentation"
-      intro="The in-app source of truth for AverQel: grounded chat, DeepSpace, documents, memory, connectors and MCP, providers, privacy, and product architecture."
+      title="AverQel documentation"
+      intro="Guides for the complete AverQel workspace. Each product area has one home here, with optional features and deployment requirements called out where they matter."
     >
-      {docsNavGroups
-        .filter((g) => g.group !== "Core Concept")
-        .map((group) => {
-          const allItems = group.items.flatMap((item) => {
-            const result = [item];
-            if (item.items) result.push(...item.items);
-            return result;
-          });
-          return (
-            <div key={group.group} className="space-y-4">
-              <h3 className="text-foreground flex items-center gap-3 text-lg font-black tracking-tight">
-                <div className="bg-primary h-4 w-1 rounded-full" />
-                {group.group}
-              </h3>
-              <DocsCards
-                items={allItems
-                  .filter((item) => item.href !== "/documentation")
-                  .map((item) => ({
-                    title: item.title,
-                    href: item.href,
-                    body:
-                      cardBodyByTitle[item.title] ??
-                      `Comprehensive guide to ${item.title.toLowerCase()}.`,
-                  }))}
-              />
-            </div>
-          );
-        })}
-      <DocsSection title="What AverQel Does Now">
+      {docsNavGroups.map((group) => (
+        <section key={group.group} className="space-y-4">
+          <h2 className="text-foreground flex items-center gap-3 text-lg font-black tracking-tight">
+            <span className="bg-primary h-4 w-1 rounded-full" />
+            {group.group}
+          </h2>
+          <DocsCards
+            items={group.items
+              .filter((item) => item.href !== "/documentation")
+              .map((item) => ({
+                title: item.title,
+                href: item.href,
+                body: descriptions[item.title] ?? `Guide to ${item.title.toLowerCase()}.`,
+              }))}
+          />
+        </section>
+      ))}
+      <DocsSection title="How to read feature availability">
         <p>
-          AverQel combines grounded retrieval, DeepSpace chat, provider routing, connector and MCP
-          integrations, persistent memory, document intelligence, sandboxed analysis, artifacts, and
-          scheduled work.
+          The interface and backend contain optional integrations, but an available setting does not
+          mean the service is configured for every deployment. Provider credentials, OAuth clients,
+          workers, schedulers, storage services, malware scanning, email delivery, browser research,
+          sandbox execution, and realtime voice can each have separate requirements. The relevant
+          guide identifies those dependencies.
         </p>
         <p>
-          The command surface is chat. DeepSpace keeps the conversation, provider selection, safe
-          tool execution, memory, and assistant-message persistence tenant-scoped and separate from
-          the MCP runtime.
+          These guides describe behavior implemented in this repository. They do not certify that a
+          particular public deployment has applied its migrations, configured every secret, passed
+          staging, or enabled every optional service. Check the deployment&apos;s release evidence
+          for those facts.
         </p>
-      </DocsSection>
-      <DocsSection title="Durable runtime readiness">
-        <p>
-          DeepSpace keeps chat history and assistant answers durable so a reload can restore the
-          conversation without requiring an IDE-style workspace or control room.
-        </p>
-        <p>
-          The implementation has been validated with focused integration, recovery, chaos, and short
-          real-provider staging tests. This documentation does not promise a universal throughput
-          number: every deployment must validate its own provider, worker, database, Redis,
-          connector, and concurrency limits before broad rollout.
-        </p>
-      </DocsSection>
-      <DocsSection title="How To Use This Documentation">
-        <p>
-          This documentation set is written to replace guesswork with product truth. It covers what
-          the app has now, how the main systems connect, what changed in the recent DeepSpace
-          hardening phases, and where future development should stay careful.
-        </p>
-        <p>
-          If you are a user, start with Getting Started, Documents Hub, Grounded Queries, Web
-          Research, Sandbox & Data, Artifacts & Exports, and Schedules & Automation. If you are
-          developing the system, also read Connectors & MCP, Providers, Privacy & Security, and
-          Architecture.
-        </p>
-      </DocsSection>
-      <DocsCards
-        items={[
-          {
-            title: "Durable-first DeepSpace",
-            body: "New chats no longer ask users to choose a runtime. Durable execution, restart recovery, replay, rehydration, and final-answer persistence happen automatically.",
-          },
-          {
-            title: "Phase 1",
-            body: "Long-session stability and safer runtime contracts are now implemented, including auto-compaction, compaction persistence, and reducer-safe mission state handling.",
-          },
-          {
-            title: "Phase 2",
-            body: "Deep observability and operator confidence are now implemented, including runtime diagnostics, hook and policy summaries, richer lane metadata, and canvas diagnostics.",
-          },
-          {
-            title: "Phase 3",
-            body: "This in-app documentation work is the practical Phase 3 layer for developer clarity, maintenance ease, onboarding, and safer future development.",
-          },
-          {
-            title: "MCP Strategy",
-            body: "The docs now explain what is already MCP-ready, what is still transitional, and how connector standardization fits the current architecture.",
-          },
-          {
-            title: "Editor + Workspace",
-            body: "The docs treat the note editor and workspace as core product surfaces, not side utilities.",
-          },
-          {
-            title: "Provider Clarity",
-            body: "Cloud, local, OpenRouter, embedding, reranker, and web-search runtime responsibilities are documented in one place.",
-          },
-        ]}
-      />
-      <DocsSection title="What The Documentation Covers">
-        <p>The documentation now covers:</p>
-        <ul className="list-disc space-y-2 pl-6">
-          <li>document ingestion and grounded query behavior</li>
-          <li>evidence-first web research and source status</li>
-          <li>sandboxed Python/SQL analysis and automatic cleanup</li>
-          <li>private artifacts, previews, exports, and generated files</li>
-          <li>schedules, long-running work, run history, and cancellation</li>
-          <li>DeepSpace chat, streaming answers, and safe approval prompts</li>
-          <li>note editor, research tasks, exports, and working surfaces</li>
-          <li>persistent memory and conversation history</li>
-          <li>connectors, MCP transition direction, and external system handling</li>
-          <li>provider routing across cloud and local runtimes</li>
-          <li>privacy, secret handling, tenant boundaries, and admin posture</li>
-        </ul>
       </DocsSection>
     </DocsShell>
   );

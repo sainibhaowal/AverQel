@@ -31,6 +31,7 @@ from app.system.api import (
     feedback,
     health,
     metrics,
+    notifications,
     plans,
     storage,
     support,
@@ -137,6 +138,7 @@ def create_app() -> FastAPI:
     app.include_router(integrations.router, prefix=settings.api_prefix)
     app.include_router(support.router, prefix=settings.api_prefix)
     app.include_router(app_feedback.router, prefix=settings.api_prefix)
+    app.include_router(notifications.router, prefix=settings.api_prefix)
     app.include_router(metrics.router, prefix=settings.api_prefix)
     app.include_router(plans.router, prefix=settings.api_prefix)
     app.include_router(storage.router, prefix=settings.api_prefix)

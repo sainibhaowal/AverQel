@@ -184,6 +184,7 @@ The production Docker image uses Node.js 22 and the repository pins pnpm
 10.28.2. Deployment is handled by the checked-in GitHub Actions workflows and
 the VPS runbook, not by a Vercel deployment.
 
-See the [Electron guide](../applications/desktop/README.md), the
-[documentation index](../Docs/README.md), and the root
-[contributor guide](../CONTRIBUTING.md) for environment and release details.
+See the [Electron guide](../applications/desktop/README.md), the repository
+[overview](../README.md), the
+[backend documentation index](../backend/docs/README.md), and the root
+[contributor guide](../CONTRIBUTING.md) for product, environment, and release details.

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, PlugZap, Search } from "lucide-react";
+import { PlugZap, Search } from "lucide-react";
 
 import {
   connectMarketplaceEntry,
@@ -96,12 +96,9 @@ export default function MCPDashboard() {
     queueMicrotask(() => void load());
   }, [load]);
 
-  useRealtimeEvents(
-    () => {
-      void load();
-    },
-    ["mcp"],
-  );
+  useRealtimeEvents(() => {
+    void load();
+  }, ["mcp"]);
 
   useEffect(() => {
     queueMicrotask(() => setClientReady(true));
@@ -160,19 +157,6 @@ export default function MCPDashboard() {
   return (
     <main className="mcp-theme-scope w-full min-w-0 space-y-8 pb-10">
       <header className="space-y-5">
-        <button
-          type="button"
-          onClick={() => {
-            if (window.history.length > 1) router.back();
-            else router.push("/dashboard");
-          }}
-          aria-label="Go back"
-          title="Go back"
-          className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-white/70 transition hover:border-cyan-300/30 hover:bg-white/10 hover:text-white"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Back
-        </button>
         <DashboardSectionHeader
           title="MCP Marketplace"
           subtitle="APPROVED CONNECTORS AND DEEPSPACE TOOLS"

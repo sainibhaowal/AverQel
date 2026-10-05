@@ -19,7 +19,7 @@ class LoginRequest(BaseModel):
     device_id: str | None = Field(
         default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$"
     )
-    device_label: str = Field(default="Browser", min_length=1, max_length=128)
+    device_label: str | None = Field(default=None, min_length=1, max_length=128)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -45,6 +45,16 @@ class TokenResponse(BaseModel):
 
 class OAuthTwoFactorRequest(BaseModel):
     code: str = Field(min_length=6, max_length=16)
+    device_id: str | None = Field(
+        default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$"
+    )
+    device_label: str | None = Field(default=None, min_length=1, max_length=128)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class OAuthSessionDeviceRequest(BaseModel):
+    device_id: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -191,7 +201,7 @@ class TotpVerifyRequest(BaseModel):
     device_id: str | None = Field(
         default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$"
     )
-    device_label: str = Field(default="Browser", min_length=1, max_length=128)
+    device_label: str | None = Field(default=None, min_length=1, max_length=128)
 
     model_config = ConfigDict(extra="forbid")
 

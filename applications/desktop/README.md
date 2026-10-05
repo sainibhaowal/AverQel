@@ -12,9 +12,9 @@ Start the frontend development server and Electron together with one command:
 pnpm electron dev
 ```
 
-By default Electron opens the local frontend at `http://127.0.0.1:1030`. To use
-the local API at `http://127.0.0.1:1000` and never contacts the VPS. To use the
-local HTTPS reverse proxy instead, set both values explicitly:
+By default Electron opens the local frontend at `http://127.0.0.1:1030` and
+uses the local development API configuration. It does not contact the VPS.
+To use the local HTTPS reverse proxy instead, set both values explicitly:
 
 ```bash
 ELECTRON_START_URL=https://averqel.localhost \

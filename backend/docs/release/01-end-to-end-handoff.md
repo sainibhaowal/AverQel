@@ -1,13 +1,20 @@
 # 01. AverQel end-to-end implementation and release handoff
 
-**Status date:** 2026-09-27
+**Snapshot date:** 2026-09-27
 **Scope:** backend, workers, frontend DeepSpace, database migrations, optional
 capability services, tests, and operational documentation.
 
-This is the release-status document for the current workspace. The numbered
-capability documents describe individual features; this document records how
-they connect, what is actually available, and what must be completed before a
-GitHub push or deployment is called end-to-end complete.
+> **Release-state notice (2026-10-05):** This is a dated verification snapshot,
+> not current deployment evidence. The source migration graph now has head
+> `20261012_0012` (checked with `alembic heads`). The latest recorded Docker
+> database observation in `platform/05-feedback-support-notifications.md` is
+> head `20261012_0011` on 2026-10-03. This checkout does not establish that
+> `0012` has been applied to staging or production, or that the current app has
+> been deployed and smoke-tested there. Complete those checks before release.
+
+The numbered capability documents describe individual features; this
+snapshot records the release state observed on its date. Use the notice above
+and the current-worktree index before using it for a release decision.
 
 ## 1. End-to-end request path
 
@@ -43,33 +50,35 @@ Production/VPS automatic archive and external restore proof remain deployment
 gates. See [`02-storage-retention-production-guide.md`](../storage/02-storage-retention-production-guide.md)
 for the exact policy.
 
-## 2. Current capability matrix
+## 2. Capability matrix for the 2026-09-27 verification snapshot
 
-| Capability | Code exists | End-to-end status | Release note |
-|---|---:|---|---|
-| Normal DeepSpace chat | Yes | Available | Uses the authenticated API, provider selection, worker, SSE, and durable message history. |
-| Clarification and approval resume | Yes | Available in worktree; needs release regression | Answers reuse the paused run and original request id. |
-| Composer queue and steer | Yes | Available in worktree; needs migration and load validation | Queue records are tenant/user/conversation scoped. |
-| Provider-aware reasoning and context limits | Yes | Available in worktree; needs provider matrix validation | Provider-specific request shaping must remain capability-aware. |
-| Operational metrics and provider circuit | Yes | Available in worktree; needs migration and dashboard validation | Metrics must remain tenant-safe and must not contain prompts or secrets. |
-| Library, document, OCR, dataset, and artifact workflows | Yes | Available | See documents 1, 2, 4, 8, 10, 11, and 13. |
-| Web search | Yes | Available when a web provider is configured | Search returns normalized result metadata and snippets. |
-| Static webpage text extraction | Yes | Available locally | `url_read` is exposed through normal research routing and is covered by routing, SSRF, redirect, size, and citation tests. |
-| JavaScript webpage extraction | Yes | Available locally; deployment gate remains | The isolated Chromium renderer and egress profile are active locally and rendered a public HTTPS page with HTTP 200. External staging/VPS proof remains separate. |
-| MCP connections | Yes | Available when connected and approved | Reads may run automatically; side effects require approval. |
-| Sandboxed Python/SQL | Yes | Available locally; deployment gate remains | The isolated executor is healthy and an authenticated bounded Python smoke test returned `4`. |
-| Voice | Yes | Local authenticated browser smoke passed; physical-device and deployment proof remain | Disposable local Playwright checks passed over HTTPS/WSS with fake microphone input for STT and local TTS. A physical microphone/browser and external staging/VPS proof remain separate gates. |
-| LM Studio provider | Yes | Local adapter and embedding smoke passed | The loaded `lfm2.5-8b-a1b` model returned visible chat content and usage; local embeddings returned 768 dimensions. External providers still require their own valid credentials and policy entitlement. |
-| Scheduled jobs | Yes | Available when scheduler and migrations are deployed | Beat and worker must be enabled only after migration validation. |
+| Capability                                              | Code exists | End-to-end status                                                                     | Release note                                                                                                                                                                                             |
+| ------------------------------------------------------- | ----------: | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Normal DeepSpace chat                                   |         Yes | Available                                                                             | Uses the authenticated API, provider selection, worker, SSE, and durable message history.                                                                                                                |
+| Clarification and approval resume                       |         Yes | Available in worktree; needs release regression                                       | Answers reuse the paused run and original request id.                                                                                                                                                    |
+| Composer queue and steer                                |         Yes | Available in worktree; needs migration and load validation                            | Queue records are tenant/user/conversation scoped.                                                                                                                                                       |
+| Provider-aware reasoning and context limits             |         Yes | Available in worktree; needs provider matrix validation                               | Provider-specific request shaping must remain capability-aware.                                                                                                                                          |
+| Operational metrics and provider circuit                |         Yes | Available in worktree; needs migration and dashboard validation                       | Metrics must remain tenant-safe and must not contain prompts or secrets.                                                                                                                                 |
+| Library, document, OCR, dataset, and artifact workflows |         Yes | Available                                                                             | See documents 1, 2, 4, 8, 10, 11, and 13.                                                                                                                                                                |
+| Web search                                              |         Yes | Available when a web provider is configured                                           | Search returns normalized result metadata and snippets.                                                                                                                                                  |
+| Static webpage text extraction                          |         Yes | Available locally                                                                     | `url_read` is exposed through normal research routing and is covered by routing, SSRF, redirect, size, and citation tests.                                                                               |
+| JavaScript webpage extraction                           |         Yes | Available locally; deployment gate remains                                            | The isolated Chromium renderer and egress profile are active locally and rendered a public HTTPS page with HTTP 200. External staging/VPS proof remains separate.                                        |
+| MCP connections                                         |         Yes | Available when connected and approved                                                 | Reads may run automatically; side effects require approval.                                                                                                                                              |
+| Sandboxed Python/SQL                                    |         Yes | Available locally; deployment gate remains                                            | The isolated executor is healthy and an authenticated bounded Python smoke test returned `4`.                                                                                                            |
+| Voice                                                   |         Yes | Local authenticated browser smoke passed; physical-device and deployment proof remain | Disposable local Playwright checks passed over HTTPS/WSS with fake microphone input for STT and local TTS. A physical microphone/browser and external staging/VPS proof remain separate gates.           |
+| LM Studio provider                                      |         Yes | Local adapter and embedding smoke passed                                              | The loaded `lfm2.5-8b-a1b` model returned visible chat content and usage; local embeddings returned 768 dimensions. External providers still require their own valid credentials and policy entitlement. |
+| Scheduled jobs                                          |         Yes | Available when scheduler and migrations are deployed                                  | Beat and worker must be enabled only after migration validation.                                                                                                                                         |
 
 “Code exists” does not mean a feature is ready to advertise. A feature is
 release-ready only when its route, worker path, authorization boundary,
 frontend state, migration, tests, and deployment instructions agree.
 
-## 3. Database changes in the current worktree
+## 3. Migration history for the documented feature set
 
-The current uncommitted work adds or updates durable runtime state. Apply and
-verify migrations before starting workers that depend on these tables:
+The feature set described here depends on the following ordered migrations.
+The list is schema history, not evidence that any particular database has
+applied them. Check the current source head and each target database
+independently before starting dependent workers:
 
 - `20260916_0001_deepspace_queued_turns.py`
 - `20260916_0002_deepspace_request_metrics.py`
@@ -84,7 +93,7 @@ verify migrations before starting workers that depend on these tables:
 - `20260927_0001_retention_checkpoints.py`
 - `20260928_0001_retention_protections_and_run_links.py`
 
-The current Documents Hub chain continues with:
+The broader migration chain continues with:
 
 - `20260929_0001_deepspace_conversation_retrieval_index.py`
 - `20260930_0001_deepspace_turn_attachments.py`
@@ -97,6 +106,9 @@ The current Documents Hub chain continues with:
 - `20261007_0001_document_automation.py`
 - `20261008_0001_comment_mentions.py`
 - `20261009_0001_document_webhook_deliveries.py`
+- `20261012_0010_feedback_support_notifications.py`
+- `20261012_0011_support_operations.py`
+- `20261012_0012_collection_moderation_audit.py`
 
 The existing runtime, schedule, artifact, MCP, and Library migrations remain
 part of the same ordered Alembic history. Never manually reorder migration
@@ -174,27 +186,28 @@ pnpm exec eslint .
 pnpm build
 ```
 
-## 7. Current local verification (2026-09-27)
+## 7. Historical local verification snapshot (2026-09-27)
 
-The following checks were run against the current local worktree:
+The following checks were run against the local worktree on that date. They do
+not describe the current source checkout or any hosted environment:
 
-| Check | Result |
-| --- | --- |
-| Applied migration head | `20261009_0001_document_webhook_deliveries` |
-| Focused retention/browser/sandbox workflow | 17 passed |
-| Complete backend suite | Passed at 100% with no failures |
-| Complete frontend suite | 88 files, 325 tests passed |
-| Complete Playwright suite | 10 passed, 0 skipped |
-| Frontend TypeScript | Passed |
-| Frontend ESLint | Passed |
-| Production frontend build | Passed; all dashboard and storage/plan routes generated |
-| PostgreSQL restore proof | Disposable restore succeeded; 83 public tables verified |
-| MinIO restore proof | Disposable volume restored; 150 files and health HTTP 200 verified |
-| Sandbox profile | Healthy; authenticated bounded Python returned `4` |
-| Browser profile | Healthy; authenticated public HTTPS render returned HTTP 200 |
-| LiveKit voice agent | Registered with local LiveKit; no 401 retry loop after credential alignment |
-| Voice browser smoke | Passed locally with disposable account, HTTPS/WSS, fake microphone STT, and TTS audio track |
-| LM Studio chat/embedding smoke | Passed locally with visible chat output and 768-dimensional embeddings |
+| Check                                      | Result                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Applied migration head                     | `20261009_0001_document_webhook_deliveries`                                                 |
+| Focused retention/browser/sandbox workflow | 17 passed                                                                                   |
+| Complete backend suite                     | Passed at 100% with no failures                                                             |
+| Complete frontend suite                    | 88 files, 325 tests passed                                                                  |
+| Complete Playwright suite                  | 10 passed, 0 skipped                                                                        |
+| Frontend TypeScript                        | Passed                                                                                      |
+| Frontend ESLint                            | Passed                                                                                      |
+| Production frontend build                  | Passed; all dashboard and storage/plan routes generated                                     |
+| PostgreSQL restore proof                   | Disposable restore succeeded; 83 public tables verified                                     |
+| MinIO restore proof                        | Disposable volume restored; 150 files and health HTTP 200 verified                          |
+| Sandbox profile                            | Healthy; authenticated bounded Python returned `4`                                          |
+| Browser profile                            | Healthy; authenticated public HTTPS render returned HTTP 200                                |
+| LiveKit voice agent                        | Registered with local LiveKit; no 401 retry loop after credential alignment                 |
+| Voice browser smoke                        | Passed locally with disposable account, HTTPS/WSS, fake microphone STT, and TTS audio track |
+| LM Studio chat/embedding smoke             | Passed locally with visible chat output and 768-dimensional embeddings                      |
 
 The restore database, proof volume, and proof container were removed after
 verification. The active PostgreSQL and MinIO volumes were not overwritten.
@@ -230,9 +243,9 @@ Before committing or pushing:
 - the final diff and commit list are reviewed before `git push`.
 
 The manual semantic-release workflow accepts an explicit canonical
-`release_version` input. To publish the requested patch release after the PR
-is merged to `main`, run it with `release_version=v1.2.20`; the workflow still
-validates the `vMAJOR.MINOR.PATCH` format before tagging.
+`release_version` input. Select the version for the release being prepared,
+then follow the workflow's `vMAJOR.MINOR.PATCH` validation; do not reuse a
+version from an older handoff snapshot.
 
 The local code and verification gate is cleared for this worktree. External
 deployment remains gated on applying the migration and repeating the restore,

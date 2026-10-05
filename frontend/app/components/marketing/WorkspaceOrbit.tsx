@@ -39,7 +39,7 @@ export default function WorkspaceOrbit() {
   const reduceMotion = useReducedMotion();
 
   return (
-    <motion.section ref={ref} style={style} className={landingSectionShellClass}>
+    <motion.section ref={ref} style={style} id="workspace" className={landingSectionShellClass}>
       <div className={landingContentClass}>
         <div className="grid items-center gap-12 xl:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] xl:gap-18">
           <motion.div

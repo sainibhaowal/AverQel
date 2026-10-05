@@ -76,3 +76,51 @@ def test_app_feedback_campaigns_and_admin_submissions_round_trip(
     assert len(submissions) == 1
     assert submissions[0]["email"] == seeded.email
     assert submissions[0]["subject"] == "Dashboard spacing"
+
+    detail_response = client.get(f"/api/v1/app-feedback/mine/{submission['id']}", headers=headers)
+    assert detail_response.status_code == 200
+    assert len(detail_response.json()["messages"]) == 0
+
+    note_response = client.post(
+        f"/api/v1/app-feedback/admin/submissions/{submission['id']}/messages",
+        headers=headers,
+        json={"body": "Internal triage note", "visibility": "internal"},
+    )
+    assert note_response.status_code == 200
+    reply_response = client.post(
+        f"/api/v1/app-feedback/admin/submissions/{submission['id']}/messages",
+        headers=headers,
+        json={"body": "Thanks, we have triaged this.", "visibility": "public"},
+    )
+    assert reply_response.status_code == 200
+
+    user_detail = client.get(f"/api/v1/app-feedback/mine/{submission['id']}", headers=headers)
+    assert user_detail.status_code == 200
+    assert [item["body"] for item in user_detail.json()["messages"]] == [
+        "Thanks, we have triaged this."
+    ]
+    notifications = client.get("/api/v1/notifications", headers=headers)
+    assert notifications.status_code == 200
+    assert {item["event_type"] for item in notifications.json()} >= {
+        "feedback_received",
+        "feedback_reply",
+    }
+    receipt = next(
+        item for item in notifications.json() if item["event_type"] == "feedback_received"
+    )
+    read_response = client.post(f"/api/v1/notifications/{receipt['id']}/read", headers=headers)
+    assert read_response.status_code == 200
+    assert read_response.json()["read_at"] is not None
+    dismiss_response = client.delete(f"/api/v1/notifications/{receipt['id']}", headers=headers)
+    assert dismiss_response.status_code == 204
+    refreshed = client.get("/api/v1/notifications", headers=headers)
+    assert receipt["id"] not in {item["id"] for item in refreshed.json()}
+
+    other = seed_user(
+        "Other Tenant", "other-feedback-user@example.org", "StrongPass!1234", ("user",)
+    )
+    other_headers = _auth_headers(other)
+    forbidden_detail = client.get(
+        f"/api/v1/app-feedback/mine/{submission['id']}", headers=other_headers
+    )
+    assert forbidden_detail.status_code == 404

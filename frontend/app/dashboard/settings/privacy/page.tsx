@@ -263,7 +263,7 @@ export default function PrivacySettingsPage() {
           accentClassName="bg-success text-success"
           accentGlowClassName="shadow-[0_0_20px_rgba(var(--success),0.4)]"
           backHref="/dashboard/settings"
-          backLabel="Back To Settings"
+          backLabel="Back"
         />
       </motion.div>
 

@@ -102,8 +102,10 @@ result budgets are emitted in DeepSpace metrics for operational monitoring.
 2. Tenant/user ownership checks protect servers, tools, and tokens.
 3. No new connector is invented without a requested service and verified
    catalog metadata.
-4. The MCP foundation is production-grade and provider-independent; expanding
-   the catalog is an operational/product choice, not a missing runtime path.
+4. The repository implements a provider-independent runtime for approved MCP
+   catalog entries. Each deployment still needs valid provider credentials,
+   network policy, and provider-specific smoke tests before the connector can
+   be considered ready there.
 
 ## 6. Verification
 

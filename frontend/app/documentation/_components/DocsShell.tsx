@@ -120,7 +120,7 @@ export function DocsShell({
             <div className="mb-8 max-w-4xl">
               <div className="bg-primary/10 text-primary mb-6 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[10px] font-black tracking-[0.3em] uppercase">
                 <Zap size={10} className="animate-pulse" />
-                Technical Guidebook
+                Product guides
               </div>
               <h1 className="text-foreground text-4xl font-black tracking-tight sm:text-5xl">
                 {title}
@@ -140,7 +140,7 @@ export function DocsShell({
                     <div className="mb-16 w-full max-w-none">
                       <div className="bg-primary/10 text-primary mb-6 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[10px] font-black tracking-[0.3em] uppercase">
                         <Zap size={10} className="animate-pulse" />
-                        Technical Guidebook
+                        Product guides
                       </div>
                       <h1 className="text-foreground text-4xl font-black tracking-tight sm:text-5xl lg:text-7xl">
                         {title}

@@ -32,8 +32,11 @@ describe("SimpleSystemWalkthroughPage", () => {
   it("renders the simple walkthrough page", () => {
     render(<SimpleSystemWalkthroughPage />);
 
-    expect(screen.getByText(/Simple System Walkthrough/i)).toBeInTheDocument();
-    expect(screen.getByText(/You type a request into chat or DeepSpace/i)).toBeInTheDocument();
-    expect(screen.getByText(/Chat is the product surface/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "System walkthrough" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Documents Hub to Query" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Where DeepSpace fits" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Documents Hub manages sources\. Query finds evidence/i),
+    ).toBeInTheDocument();
   });
 });

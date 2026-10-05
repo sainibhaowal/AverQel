@@ -1,7 +1,8 @@
 # 07. Documents Hub workflows
 
-**Status:** implemented in the current worktree; local API, frontend, and
-browser verification completed on 2026-09-27.
+**Verification note:** local API, frontend, and browser verification was
+recorded on 2026-09-27. This is a historical result, not current deployment
+evidence; see the [current worktree and release index](../release/03-current-worktree-change-index.md).
 
 The Documents Hub is the tenant-scoped document control plane. It combines
 ingestion, extraction, OCR, embeddings, previews, organization, sharing,

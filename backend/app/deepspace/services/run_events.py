@@ -16,6 +16,7 @@ from app.core.config import Settings
 from app.deepspace.models.agent_runtime import DeepSpaceRunEvent
 from app.deepspace.services.reasoning_privacy import redact_reasoning_text
 from app.system.services.storage_quota import StorageQuotaService, ensure_capacity_if_supported
+from app.system.services.user_notifications import add_user_notification
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,25 @@ def append_event(
         additional_bytes=StorageQuotaService.estimate_bytes(frame),
     )
     db.add(event)
+    if event.event_name in {"done", "error"}:
+        succeeded = event.event_name == "done"
+        run_reference = run_id or normalized_id
+        add_user_notification(
+            db,
+            tenant_id=tenant_id,
+            recipient_user_id=user_id,
+            event_domain="deepspace",
+            event_type="run_completed" if succeeded else "run_failed",
+            title="DeepSpace run completed" if succeeded else "DeepSpace run needs attention",
+            message=(
+                "Your DeepSpace run has finished. Open the conversation to review its response."
+                if succeeded
+                else "Your DeepSpace run stopped with an error. Open the conversation to review it and retry."
+            ),
+            href=f"/dashboard/deepspace?conversation={conversation_id}",
+            resource_id=run_reference,
+            idempotency_key=f"deepspace:{run_reference}:{event.event_name}",
+        )
     db.commit()
     payload = json.dumps(
         {"sequence": event.sequence, "frame": event.frame},

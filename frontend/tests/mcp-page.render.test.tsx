@@ -138,6 +138,7 @@ describe("MCP dashboard", () => {
     render(<MCPDashboard />);
 
     expect(await screen.findByText("MCP Marketplace")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Go back" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /more filters/i }));
     expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Productivity" })).toBeInTheDocument();

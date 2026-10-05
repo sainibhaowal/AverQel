@@ -3,53 +3,44 @@ import { DocsCards, DocsSection, DocsShell } from "../_components/DocsShell";
 export default function VoiceDocsPage() {
   return (
     <DocsShell
-      title="Voice & Realtime"
-      intro="DeepSpace can listen through speech-to-text dictation and speak through text-to-speech commentary over a private realtime session. Voice is deployment-gated: it needs the realtime service and a granted microphone."
+      title="DeepSpace voice"
+      intro="Voice is an optional DeepSpace input and output path. Its controls work only when the deployment has the realtime service and voice agent configured and the browser grants microphone access."
     >
       <DocsCards
         items={[
           {
-            title: "Voice Dictation (STT)",
-            body: "Dictate into the DeepSpace composer instead of typing. Microphone audio stays inside your tenant-scoped realtime session.",
+            title: "Speech input",
+            body: "Use the microphone control to dictate into the DeepSpace composer during a connected voice session.",
           },
           {
-            title: "Voice Commentary (TTS)",
-            body: "Hear spoken commentary on agent progress and answers through a dedicated agent audio track.",
+            title: "Spoken response",
+            body: "Text-to-speech can speak a completed assistant response when the voice session and agent support it; it is not a promise of continuous spoken progress updates.",
           },
           {
-            title: "Same Workspace",
-            body: "Voice drives the same durable chat: queued turns, approvals, memory, notes, and saved history keep working while you talk.",
+            title: "Text remains available",
+            body: "DeepSpace text chat does not require voice. If the realtime service is unavailable, voice may be disabled while text workflows remain separate.",
           },
           {
-            title: "Private Session",
-            body: "The browser connects over the same HTTPS origin and a short-lived token bound to your user identity.",
+            title: "Browser permissions",
+            body: "Microphone access requires a secure browser context and explicit permission. You can revoke that permission in browser settings.",
           },
         ]}
       />
-
-      <DocsSection title="What you need">
-        <ul className="list-disc space-y-2 pl-6">
-          <li>a deployment with the realtime (LiveKit) service enabled</li>
-          <li>HTTPS origin — browsers only grant microphone access in secure contexts</li>
-          <li>microphone permission granted to the site in the browser prompt</li>
-        </ul>
-      </DocsSection>
-
-      <DocsSection title="Deployment status">
+      <DocsSection title="Deployment requirements">
         <p>
-          Voice transport and agent wiring pass local checks with a simulated microphone. A physical
-          microphone and device-permission check, plus external staging proof, remain deployment
-          gates — voice is labelled “Deployment gated” until those are recorded.
+          Operators need to deploy and configure the realtime transport (such as LiveKit) and voice
+          agent, provide secure HTTPS/WSS connectivity, and validate network routing including TURN
+          where needed. The production Compose stack does not itself prove those external services
+          are available.
         </p>
       </DocsSection>
-
-      <DocsSection title="What users notice">
-        <ul className="list-disc space-y-2 pl-6">
-          <li>microphone and speaker buttons in the DeepSpace composer</li>
-          <li>speech-to-text becomes active once the realtime session connects</li>
-          <li>spoken commentary arrives as agent audio without changing the saved transcript</li>
-          <li>if the realtime service is disabled, voice controls stay unavailable — text chat is unaffected</li>
-        </ul>
+      <DocsSection title="Privacy and availability">
+        <p>
+          Voice sends audio through the configured realtime service and agent. Review the privacy
+          information for the deployment and any external voice provider before use. Local UI code
+          or a simulated test does not establish physical-device, network, or hosted-production
+          readiness.
+        </p>
       </DocsSection>
     </DocsShell>
   );

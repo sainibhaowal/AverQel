@@ -68,7 +68,11 @@ case "$GATE" in
     done
     ;;
   safety)
-    safety check --full-report
+    # Scan the declared production and development requirements, not the
+    # temporary CI tool environment. The Safety CLI brings its own runtime
+    # dependencies, which are not application dependencies and must not be
+    # included in this project's security report.
+    safety check --full-report -r requirements.txt -r requirements-dev.txt
     ;;
   pytest)
     pytest -q -m unit_no_db --dist=loadgroup

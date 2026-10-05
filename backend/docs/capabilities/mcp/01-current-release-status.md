@@ -3,6 +3,11 @@
 **Status:** implemented in the local codebase; deployment and provider-specific
 OAuth credentials remain environment gates.
 
+This file summarizes repository behavior. Check the
+[current worktree and release index](../../release/03-current-worktree-change-index.md)
+for migration and deployment evidence before treating a connector as ready in
+a specific environment.
+
 This document is a concise status summary. The implementation contract is
 maintained in [`06-mcp-connections.md`](../06-mcp-connections.md), and
 operational procedures are in the

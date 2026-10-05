@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import (
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -104,6 +105,7 @@ class CollectionChatReport(Base):
         Index(
             "ix_collection_chat_reports_collection_status", "collection_id", "status", "created_at"
         ),
+        UniqueConstraint("id", "tenant_id", name="uq_collection_chat_reports_id_tenant"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -139,6 +141,49 @@ class CollectionChatReport(Base):
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CollectionModerationAction(Base):
+    """Append-only, tenant-scoped audit events for collection reports."""
+
+    __tablename__ = "collection_moderation_actions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["report_id", "tenant_id"],
+            ["collection_chat_reports.id", "collection_chat_reports.tenant_id"],
+            name="fk_collection_moderation_action_report_tenant",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "ix_collection_moderation_actions_report_created",
+            "report_id",
+            "created_at",
+            "id",
+        ),
+        Index(
+            "ix_collection_moderation_actions_tenant_created",
+            "tenant_id",
+            "created_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=generate_uuid7_with_fallback
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    report_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    actor_role: Mapped[str] = mapped_column(String(24), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    previous_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    new_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
 
 
 class CollectionPushSubscription(Base):

@@ -42,30 +42,24 @@ describe("HeroSection", () => {
     render(<HeroSection />);
 
     const heading = screen.getByRole("heading", { level: 1 });
-    expect(heading).toHaveTextContent(/Turn your documents into/i);
-    expect(heading).toHaveTextContent(/grounded answers and useful work/i);
-    expect(screen.getByText(/Your Private AI Workspace/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Use the Web App/i })).toHaveAttribute(
+    expect(heading).toHaveTextContent(/One workspace for knowledge, AI, and action/i);
+    expect(screen.getByText(/Your Connected AI Workspace/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Create your workspace/i })).toHaveAttribute(
       "href",
       "/auth/signup",
     );
-    expect(screen.getByRole("link", { name: /Download Linux \(.deb\)/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /All desktop builds/i })).toHaveAttribute(
       "href",
-      "https://github.com/sainibhaowal/AverQel/releases/latest/download/AverQel-linux-amd64.deb",
+      "https://github.com/sainibhaowal/AverQel/releases/latest",
     );
-    expect(screen.getByRole("link", { name: /Download Windows \(.exe\)/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Security Overview/i })).toHaveAttribute(
       "href",
-      "https://github.com/sainibhaowal/AverQel/releases/latest/download/AverQel-windows-x64.exe",
+      "/documentation/privacy-security",
     );
-    expect(screen.getByRole("link", { name: /Download macOS \(.dmg\)/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Product docs/i })).toHaveAttribute(
       "href",
-      "https://github.com/sainibhaowal/AverQel/releases/latest/download/AverQel-macos-universal.dmg",
+      "/documentation",
     );
-    expect(screen.getByRole("link", { name: /Linux \(.rpm\)/i })).toHaveAttribute(
-      "href",
-      "https://github.com/sainibhaowal/AverQel/releases/latest/download/AverQel-linux-x86_64.rpm",
-    );
-    expect(screen.getByText(/AverQel development/i)).toBeInTheDocument();
     expect(screen.getByText(/averqel \| productivity runtime/i)).toBeInTheDocument();
     expect(screen.getByText(/DeepSpace for research and deliverables/i)).toBeInTheDocument();
   });

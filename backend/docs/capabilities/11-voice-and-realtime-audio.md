@@ -3,10 +3,11 @@
 **Status:** implemented locally; external deployment and real-device verification
 remain release gates.
 
-This document is the current source of truth for AverQel voice behavior. It is
-based on the checked-in backend, frontend, Compose, LiveKit configuration, and
-recorded local verification evidence. It replaces the former
-assets/Voice-setup.md planning note.
+This implementation guide describes AverQel voice behavior based on the
+backend, frontend, Compose, LiveKit configuration, and recorded local evidence.
+Use the [release index](../release/03-current-worktree-change-index.md) for
+the latest checked source and deployment status. This guide replaces the
+former `assets/Voice-setup.md` planning note.
 
 ## 1. What voice currently does
 

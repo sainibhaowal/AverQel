@@ -71,6 +71,7 @@ class _FakeSettings:
     ingestion_max_attempts: int = 3
     audit_log_retention_days: int = 90
     transient_record_retention_days: int = 30
+    auth_session_retention_days: int = 90
 
 
 class _FakeIngestionService:

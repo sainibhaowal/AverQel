@@ -260,11 +260,14 @@ def test_process_ingestion_job_persists_stage_progress(settings) -> None:
     assert 100 in recorded_progress
 
 
-def test_process_ingestion_job_empty_parse_marks_failed(settings) -> None:
+def test_process_ingestion_job_empty_parse_marks_failed(
+    settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
     tenant_id = uuid4()
     job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3)
     doc = SimpleNamespace(
         id=job.document_id,
+        uploaded_by_user_id=uuid4(),
         status="queued",
         filename="x.pdf",
         content_type="application/pdf",
@@ -272,6 +275,13 @@ def test_process_ingestion_job_empty_parse_marks_failed(settings) -> None:
         storage_object_key="k",
     )
     service = _service(settings)
+    monkeypatch.setattr(
+        "app.ingestion.services.ingestion_service.add_user_notification", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        "app.ingestion.services.ingestion_service.notify_platform_admins",
+        lambda *a, **kw: None,
+    )
     service.jobs = _Jobs(job)
     service.documents = _Docs(doc)
     service.parser = SimpleNamespace(parse_bytes=lambda **kwargs: SimpleNamespace(text="   "))
@@ -280,11 +290,14 @@ def test_process_ingestion_job_empty_parse_marks_failed(settings) -> None:
     assert "failed" in service.documents.status_calls
 
 
-def test_process_ingestion_job_no_parts_marks_failed(settings) -> None:
+def test_process_ingestion_job_no_parts_marks_failed(
+    settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
     tenant_id = uuid4()
     job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3)
     doc = SimpleNamespace(
         id=job.document_id,
+        uploaded_by_user_id=uuid4(),
         status="queued",
         filename="x.pdf",
         content_type="application/pdf",
@@ -292,6 +305,13 @@ def test_process_ingestion_job_no_parts_marks_failed(settings) -> None:
         storage_object_key="k",
     )
     service = _service(settings)
+    monkeypatch.setattr(
+        "app.ingestion.services.ingestion_service.add_user_notification", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        "app.ingestion.services.ingestion_service.notify_platform_admins",
+        lambda *a, **kw: None,
+    )
     service.jobs = _Jobs(job)
     service.documents = _Docs(doc)
     service.chunking = SimpleNamespace(chunk=lambda *_a, **_kw: [])
@@ -300,11 +320,14 @@ def test_process_ingestion_job_no_parts_marks_failed(settings) -> None:
     assert "failed" in service.documents.status_calls
 
 
-def test_process_ingestion_job_all_sanitized_out_marks_failed(settings) -> None:
+def test_process_ingestion_job_all_sanitized_out_marks_failed(
+    settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
     tenant_id = uuid4()
     job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=3)
     doc = SimpleNamespace(
         id=job.document_id,
+        uploaded_by_user_id=uuid4(),
         status="queued",
         filename="x.pdf",
         content_type="application/pdf",
@@ -312,6 +335,13 @@ def test_process_ingestion_job_all_sanitized_out_marks_failed(settings) -> None:
         storage_object_key="k",
     )
     service = _service(settings)
+    monkeypatch.setattr(
+        "app.ingestion.services.ingestion_service.add_user_notification", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        "app.ingestion.services.ingestion_service.notify_platform_admins",
+        lambda *a, **kw: None,
+    )
     service.jobs = _Jobs(job)
     service.documents = _Docs(doc)
     service.chunking = SimpleNamespace(
@@ -322,11 +352,14 @@ def test_process_ingestion_job_all_sanitized_out_marks_failed(settings) -> None:
     assert "failed" in service.documents.status_calls
 
 
-def test_process_ingestion_job_storage_error_path(settings) -> None:
+def test_process_ingestion_job_storage_error_path(
+    settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
     tenant_id = uuid4()
     job = SimpleNamespace(id=uuid4(), document_id=uuid4(), attempt_count=0, max_attempts=1)
     doc = SimpleNamespace(
         id=job.document_id,
+        uploaded_by_user_id=uuid4(),
         status="queued",
         filename="x.pdf",
         content_type="application/pdf",
@@ -334,6 +367,13 @@ def test_process_ingestion_job_storage_error_path(settings) -> None:
         storage_object_key="k",
     )
     service = _service(settings)
+    monkeypatch.setattr(
+        "app.ingestion.services.ingestion_service.add_user_notification", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        "app.ingestion.services.ingestion_service.notify_platform_admins",
+        lambda *a, **kw: None,
+    )
     service.jobs = _Jobs(job)
     service.documents = _Docs(doc)
 

@@ -1,16 +1,21 @@
 import { ReactNode } from "react";
 import {
   BookOpen,
-  BarChart3,
+  Boxes,
   CalendarClock,
+  FileStack,
+  FolderKanban,
+  HeartHandshake,
+  HelpCircle,
+  Home,
   Layers3,
   Network,
-  Shield,
-  Zap,
-  Home,
+  Search,
   Settings,
-  HelpCircle,
-  HeartHandshake,
+  Shield,
+  Sparkles,
+  Waypoints,
+  Zap,
 } from "lucide-react";
 
 export interface NavItem {
@@ -25,122 +30,144 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+/** Public documentation follows the product's actual top-level work areas. */
 export const docsNavGroups: NavGroup[] = [
   {
-    group: "Core Concept",
+    group: "Start here",
     items: [
-      { title: "Home", href: "/documentation", icon: <Home size={14} /> },
-      { title: "Getting Started", href: "/documentation/getting-started", icon: <Zap size={14} /> },
+      { title: "Documentation home", href: "/documentation", icon: <Home size={14} /> },
       {
-        title: "What Is AverQel",
+        title: "What is AverQel?",
         href: "/documentation/what-is-averqel",
         icon: <BookOpen size={14} />,
       },
+      { title: "Getting started", href: "/documentation/getting-started", icon: <Zap size={14} /> },
+      { title: "Product overview", href: "/documentation/features", icon: <Layers3 size={14} /> },
     ],
   },
   {
-    group: "Platform Features",
+    group: "Documents Hub",
     items: [
-      { title: "Features Overview", href: "/documentation/features", icon: <Layers3 size={14} /> },
-      { title: "Library & OCR", href: "/documentation/library", icon: <BookOpen size={14} /> },
-      { title: "Documents Hub", href: "/documentation/editor-files", icon: <BookOpen size={14} /> },
       {
-        title: "Grounded Queries",
+        title: "Documents Hub",
+        href: "/documentation/documents-hub",
+        icon: <FileStack size={14} />,
+      },
+      {
+        title: "Organization & collaboration",
+        href: "/documentation/document-organization",
+        icon: <FolderKanban size={14} />,
+      },
+    ],
+  },
+  {
+    group: "Query",
+    items: [
+      {
+        title: "Grounded queries",
         href: "/documentation/grounded-query",
+        icon: <Search size={14} />,
+      },
+    ],
+  },
+  {
+    group: "DeepSpace",
+    items: [
+      {
+        title: "DeepSpace workspace",
+        href: "/documentation/deepspace",
+        icon: <Sparkles size={14} />,
+      },
+      {
+        title: "DeepSpace Library",
+        href: "/documentation/deepspace-library",
+        icon: <Boxes size={14} />,
+      },
+      {
+        title: "Notes & editor",
+        href: "/documentation/editor-files",
         icon: <BookOpen size={14} />,
       },
+      { title: "Web research", href: "/documentation/web-research", icon: <Network size={14} /> },
       {
-        title: "Web Research",
-        href: "/documentation/web-research",
-        icon: <Network size={14} />,
-      },
-      {
-        title: "Sandbox & Data",
+        title: "Sandbox & data analysis",
         href: "/documentation/sandbox",
-        icon: <BarChart3 size={14} />,
+        icon: <Layers3 size={14} />,
       },
       {
-        title: "Artifacts & Exports",
+        title: "Artifacts & exports",
         href: "/documentation/artifacts",
-        icon: <BookOpen size={14} />,
+        icon: <FileStack size={14} />,
       },
       {
-        title: "Schedules & Automation",
+        title: "Schedules & automation",
         href: "/documentation/automation",
         icon: <CalendarClock size={14} />,
       },
+      { title: "Memory", href: "/documentation/memory-workspace", icon: <Layers3 size={14} /> },
+      { title: "Voice", href: "/documentation/voice", icon: <Waypoints size={14} /> },
+    ],
+  },
+  {
+    group: "Collections & sharing",
+    items: [
       {
-        title: "Collections & Sharing",
+        title: "Collections",
         href: "/documentation/collections-sharing",
-        icon: <BookOpen size={14} />,
+        icon: <FolderKanban size={14} />,
       },
+    ],
+  },
+  {
+    group: "Providers & connections",
+    items: [
+      { title: "AI providers", href: "/documentation/providers", icon: <Network size={14} /> },
       {
-        title: "Connectors & MCP",
+        title: "MCP connectors",
         href: "/documentation/connectors-mcp",
-        icon: <Network size={14} />,
-      },
-      {
-        title: "Memory & Workspace",
-        href: "/documentation/memory-workspace",
-        icon: <Layers3 size={14} />,
-      },
-      {
-        title: "Voice & Realtime",
-        href: "/documentation/voice",
-        icon: <Layers3 size={14} />,
+        icon: <Waypoints size={14} />,
       },
     ],
   },
   {
-    group: "Control & Security",
+    group: "Account, trust & settings",
     items: [
+      { title: "Profile & sessions", href: "/documentation/profile", icon: <Settings size={14} /> },
       {
-        title: "Privacy & Security",
+        title: "Plans, storage & settings",
+        href: "/documentation/workspace-settings",
+        icon: <Settings size={14} />,
+      },
+      { title: "Notifications", href: "/documentation/notifications", icon: <Zap size={14} /> },
+      {
+        title: "Privacy & security",
         href: "/documentation/privacy-security",
         icon: <Shield size={14} />,
       },
-      { title: "Platform Admin", href: "/documentation/admin", icon: <Shield size={14} /> },
     ],
   },
   {
-    group: "Global Settings",
+    group: "Help & feedback",
     items: [
-      { title: "Profile Settings", href: "/documentation/profile", icon: <Settings size={14} /> },
+      { title: "Support centre", href: "/documentation/support", icon: <HelpCircle size={14} /> },
       {
-        title: "Trust & Privacy",
-        href: "/documentation/privacy-security",
-        icon: <Shield size={14} />,
-      },
-      {
-        title: "Autonomous Memory",
-        href: "/documentation/memory-workspace",
-        icon: <Layers3 size={14} />,
-      },
-      { title: "Providers Config", href: "/documentation/providers", icon: <Network size={14} /> },
-    ],
-  },
-  {
-    group: "Help & Feedback",
-    items: [
-      { title: "Support Centre", href: "/documentation/support", icon: <HelpCircle size={14} /> },
-      {
-        title: "Share Feedback",
+        title: "Share feedback",
         href: "/documentation/feedback",
         icon: <HeartHandshake size={14} />,
       },
-      { title: "Product Roadmap", href: "/documentation/roadmap", icon: <Zap size={14} /> },
+      { title: "Release notes & roadmap", href: "/documentation/roadmap", icon: <Zap size={14} /> },
     ],
   },
   {
-    group: "Developer Resource",
+    group: "Technical reference",
     items: [
       {
-        title: "Architecture Spec",
+        title: "Architecture overview",
         href: "/documentation/architecture",
         icon: <Layers3 size={14} />,
       },
       {
-        title: "System Walkthrough",
+        title: "System walkthrough",
         href: "/documentation/simple-system-walkthrough",
         icon: <BookOpen size={14} />,
       },
@@ -148,11 +175,6 @@ export const docsNavGroups: NavGroup[] = [
   },
 ];
 
-export const docsNav: NavItem[] = docsNavGroups.flatMap((g) => {
-  return g.items.flatMap((item) => {
-    if (item.items) {
-      return [item, ...item.items];
-    }
-    return [item];
-  });
-});
+export const docsNav: NavItem[] = docsNavGroups.flatMap(({ items }) =>
+  items.flatMap((item) => (item.items ? [item, ...item.items] : [item])),
+);

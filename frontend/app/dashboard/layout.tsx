@@ -26,6 +26,8 @@ import {
   Trash2,
   Cable,
   X,
+  ScrollText,
+  Flag,
 } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
@@ -81,7 +83,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
         href: "/dashboard/admin/tenants",
         icon: <Database size={18} />,
       },
-      { name: "Audit Logs", href: "/dashboard/admin/audit-logs", icon: <ShieldAlert size={18} /> },
+      { name: "Audit Logs", href: "/dashboard/admin/audit-logs", icon: <ScrollText size={18} /> },
       { name: "Analytics", href: "/dashboard/admin/analytics", icon: <Activity size={18} /> },
       {
         name: "Support Management",
@@ -98,7 +100,7 @@ const BASE_NAV_ITEMS: NavItem[] = [
       {
         name: "Collection Moderation",
         href: "/dashboard/admin/collections/moderation",
-        icon: <ShieldAlert size={18} />,
+        icon: <Flag size={18} />,
         admin: true,
       },
 
@@ -113,7 +115,6 @@ const BASE_NAV_ITEMS: NavItem[] = [
     isHeader: true,
     items: [
       { name: "Global Settings", href: "/dashboard/settings", icon: <SettingsIcon size={18} /> },
-      { name: "Linked Sessions", href: "/dashboard/settings/sessions", icon: <ShieldAlert size={18} /> },
       { name: "Support | Help", href: "/dashboard/support", icon: <LifeBuoy size={18} /> },
       { name: "Share Feedback", href: "/dashboard/feedback", icon: <Sparkles size={18} /> },
     ],
@@ -134,7 +135,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isQueryRoute = pathname === "/dashboard/query";
   const isDeepSpaceRoute =
     pathname === "/dashboard/deepspace" || pathname.startsWith("/dashboard/deepspace/");
-  const isCollectionsRoute = pathname.includes("/collections");
+  const isCollectionsRoute =
+    pathname === "/dashboard/collections" || pathname.startsWith("/dashboard/collections/");
   const isFullHeightRoute = isQueryRoute || isDeepSpaceRoute || isCollectionsRoute;
   const hasAdminAccess = user ? hasAdminRole(user.roles) : false;
 

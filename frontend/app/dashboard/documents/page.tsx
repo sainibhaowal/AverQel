@@ -150,20 +150,40 @@ function RoundedTagFilter({
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const selected = options.find((option) => option.id === value)?.name ?? "All tags";
 
   useEffect(() => {
     const close = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const updatePosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (rect) setMenuPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
   return (
     <div ref={rootRef} className="relative min-w-44">
       <button
+        ref={triggerRef}
         type="button"
         aria-label="Filter documents by tag"
         aria-haspopup="listbox"
@@ -175,10 +195,13 @@ function RoundedTagFilter({
         {selected}
         <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && !disabled ? (
+      {open && !disabled && menuPosition && typeof document !== "undefined"
+        ? createPortal(
         <div
+          ref={menuRef}
           role="listbox"
-          className="bg-background border-primary/25 absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border p-1 shadow-xl"
+          style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, width: menuPosition.width }}
+          className="bg-background border-primary/25 z-[1000] max-h-72 overflow-y-auto overscroll-contain rounded-xl border p-1 shadow-xl"
         >
           <button
             type="button"
@@ -207,7 +230,8 @@ function RoundedTagFilter({
               {option.name}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );

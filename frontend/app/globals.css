@@ -3289,7 +3289,63 @@ html:not(.dark) .dashboard-theme-scope [class~="bg-black/10"] {
 html:not(.dark) .dashboard-theme-scope .theme-chip {
   background: rgba(240, 253, 250, 0.82) !important;
   border-color: rgba(13, 148, 136, 0.2) !important;
-  color: #0f766e;
+  color: #115e59 !important;
+}
+
+.dashboard-trend-documents {
+  stroke: #22d3ee;
+}
+
+.dashboard-trend-queries {
+  stroke: #34d399;
+}
+
+.dashboard-trend-document-point {
+  fill: #22d3ee;
+}
+
+.dashboard-trend-query-point {
+  fill: #34d399;
+}
+
+html:not(.dark) .dashboard-section-header-accent {
+  background-color: var(--dashboard-header-accent-light) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--dashboard-header-accent-light) 20%, transparent) !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .theme-accent-pill {
+  border-color: rgba(13, 148, 136, 0.42) !important;
+  background: linear-gradient(145deg, #d1fae5, #cffafe) !important;
+  color: #0f766e !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .theme-chip {
+  border-color: rgba(13, 148, 136, 0.34) !important;
+  background: #e6f7f2 !important;
+}
+
+html:not(.dark) .dashboard-theme-scope .dashboard-trend-documents {
+  stroke: #0e7490;
+}
+
+html:not(.dark) .dashboard-theme-scope .dashboard-trend-queries {
+  stroke: #047857;
+}
+
+html:not(.dark) .dashboard-theme-scope .dashboard-trend-document-point {
+  fill: #0e7490;
+}
+
+html:not(.dark) .dashboard-theme-scope .dashboard-trend-query-point {
+  fill: #047857;
+}
+
+html:not(.dark) .dashboard-theme-scope [class~="text-emerald-300"] {
+  color: #047857 !important;
+}
+
+html:not(.dark) .dashboard-theme-scope [class~="text-rose-300"] {
+  color: #be123c !important;
 }
 
 /* Documents light mode: add frosted depth to the empty state, data panel, and

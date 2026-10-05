@@ -22,13 +22,13 @@ import {
   ShieldCheck,
   Settings2,
   Sparkles,
-  CheckCircle2,
-  CircleAlert,
   BrainCircuit,
   Globe2,
   Radio,
   ServerCog,
   Mic2,
+  PanelsLeftBottom,
+  UserRound,
 } from "lucide-react";
 
 import Link from "next/link";
@@ -135,6 +135,11 @@ interface DashboardServiceSnapshot {
   agent: "ready" | "unavailable";
 }
 
+interface DashboardPlanSummary {
+  current_plan: { name: string; storage_limit_bytes: number };
+  usage: { total_bytes: number };
+}
+
 type AttentionTone = "healthy" | "working" | "risk" | "neutral";
 
 interface AttentionItem {
@@ -198,6 +203,7 @@ export default function DashboardPage() {
     mcp: "unavailable",
     agent: "unavailable",
   });
+  const [planSummary, setPlanSummary] = useState<DashboardPlanSummary | null>(null);
 
   const [isUploadOpen, setIsUploadOpen] = useState(false);
 
@@ -220,14 +226,18 @@ export default function DashboardPage() {
   }, []);
 
   const fetchCapabilityData = useCallback(async () => {
-    const [capabilitiesRes, storageRes, mcpRes, agentRes] = await Promise.allSettled([
+    const [capabilitiesRes, storageRes, mcpRes, agentRes, planRes] = await Promise.allSettled([
       fetchWithAuth("/capabilities"),
       fetchWithAuth("/storage/current"),
       fetchWithAuth("/mcp/servers"),
       fetchWithAuth("/deepspace/chats/operational-summary"),
+      fetchWithAuth("/plans/current"),
     ]);
     if (capabilitiesRes.status === "fulfilled" && capabilitiesRes.value.ok) {
       setCapabilities((await capabilitiesRes.value.json()) as DashboardCapabilities);
+    }
+    if (planRes.status === "fulfilled" && planRes.value.ok) {
+      setPlanSummary((await planRes.value.json()) as DashboardPlanSummary);
     }
     setServices({
       storage: storageRes.status === "fulfilled" && storageRes.value.ok ? "ready" : "unavailable",
@@ -251,16 +261,23 @@ export default function DashboardPage() {
 
   useVisibilityAwareInterval(fetchDashboardData, 30000);
   useVisibilityAwareInterval(fetchCapabilityData, 30000);
-  const realtimeStatus = useRealtimeEvents(
-    () => {
-      void fetchDashboardData();
-      void fetchCapabilityData();
-    },
-    ["documents", "storage", "conversations", "mcp", "metrics"],
-  );
+  const realtimeStatus = useRealtimeEvents(() => {
+    void fetchDashboardData();
+    void fetchCapabilityData();
+  }, ["documents", "storage", "conversations", "mcp", "metrics"]);
 
   const stats = overview.stats;
   const breakdown = overview.document_breakdown;
+  const storagePercent = planSummary
+    ? Math.min(
+        100,
+        Math.round(
+          (planSummary.usage.total_bytes /
+            Math.max(1, planSummary.current_plan.storage_limit_bytes)) *
+            100,
+        ),
+      )
+    : null;
 
   const topStats = useMemo(
     () => [
@@ -387,7 +404,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="dashboard-theme-scope space-y-8 pb-10">
+    <div className="dashboard-theme-scope w-full space-y-8 pb-10">
       {loadError ? (
         <div
           role="alert"
@@ -427,7 +444,7 @@ export default function DashboardPage() {
                 <ShieldAlert size={18} className="stroke-[2.5]" />
               </div>
               <span className="text-primary/80 text-[10px] font-black tracking-[0.25em] uppercase">
-                System Command Surface
+                Your workspace
               </span>
             </div>
 
@@ -437,13 +454,13 @@ export default function DashboardPage() {
                   theme === "dark" ? "text-white" : "text-black"
                 }`}
               >
-                Visibility. <span className="text-primary">Grounded.</span> Ready.
+                Your work, <span className="text-primary">in one place.</span>
               </h1>
               <p
                 className={`text-muted-foreground max-w-lg text-sm leading-relaxed font-medium sm:text-base`}
               >
-                Your workspace is active. Monitor ingestion health, verify model readiness, and
-                command your data pipeline.
+                Manage your documents, organize collections, ask grounded questions, and get work
+                done with DeepSpace.
               </p>
             </div>
 
@@ -453,7 +470,7 @@ export default function DashboardPage() {
                 className="bg-primary shadow-primary/15 flex items-center gap-2 rounded-xl px-6 py-3 text-xs font-black tracking-widest !text-white uppercase shadow-lg transition-all hover:scale-[1.03] hover:brightness-110 active:scale-95"
               >
                 <Upload size={14} className="stroke-[3] !text-white" />
-                Ingest Data
+                Upload documents
               </button>
 
               <Link
@@ -466,7 +483,7 @@ export default function DashboardPage() {
                 }`}
               >
                 <Search size={14} className="stroke-[3]" />
-                Explore
+                Ask Query
               </Link>
             </div>
           </div>
@@ -525,8 +542,10 @@ export default function DashboardPage() {
           }`}
         >
           <div className="flex items-center gap-1.5">
-            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-            Online
+            <div
+              className={`h-1.5 w-1.5 rounded-full ${realtimeStatus === "connected" ? "animate-pulse bg-emerald-500" : "bg-amber-400"}`}
+            />
+            {realtimeStatus === "connected" ? "Live" : "Connecting"}
           </div>
           <div className="flex items-center gap-1.5">
             <Clock3 size={11} className="opacity-50" />
@@ -539,510 +558,664 @@ export default function DashboardPage() {
         </div>
       </motion.section>
 
-      <DashboardTelemetry overview={overview} loading={loading} theme={theme} />
-      <DashboardCapabilityGrid
-        capabilities={capabilities}
-        services={services}
-        realtimeStatus={realtimeStatus}
-      />
-      <DashboardTrends overview={overview} loading={loading} />
-
-      <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-[0.95fr_1.05fr_0.95fr]">
-        <motion.div
-          {...CARD_ENTER}
-          transition={{ duration: 0.35, delay: 0.05 }}
-          className="space-y-5"
-        >
-          <div className="theme-panel rounded-[1.45rem] p-5">
-            <SectionHeader eyebrow="Needs attention" title="Today’s workspace state" chip="Live" />
-            <div className="mt-3 space-y-0.5">
-              {attentionItems.map((item) => {
-                const Icon = item.icon;
-                const tone = toneClass(item.tone);
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    prefetch={false}
-                    className="group border-foreground/5 hover:bg-foreground/[0.015] flex items-center gap-3.5 rounded-lg border-b px-2 py-3.5 transition-all last:border-0 dark:border-white/5 dark:hover:bg-white/[0.015]"
+      <section aria-label="Workspace destinations" className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-primary text-[10px] font-black tracking-[0.2em] uppercase">
+              Get to work
+            </p>
+            <h2 className="text-foreground mt-1 text-xl font-bold tracking-tight">
+              Your workspace
+            </h2>
+            <p className="text-muted-foreground mt-1 text-sm">Choose where you want to continue.</p>
+          </div>
+          <Link
+            href="/dashboard/settings"
+            className="text-primary inline-flex items-center gap-1.5 text-sm font-semibold hover:underline"
+          >
+            Account & settings <ArrowRight size={14} />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+          {[
+            {
+              title: "Documents Hub",
+              detail: "Upload, process, and inspect your files",
+              count: loading ? "…" : `${stats.total_documents} documents`,
+              href: "/dashboard/documents",
+              icon: FileText,
+              accent: "border-cyan-500/20 bg-cyan-500/10 text-cyan-800 dark:text-cyan-300",
+            },
+            {
+              title: "Collections",
+              detail: "Keep related documents together",
+              count: loading ? "…" : `${overview.collections.length} collections`,
+              href: "/dashboard/collections",
+              icon: FolderKanban,
+              accent: "border-violet-500/20 bg-violet-500/10 text-violet-800 dark:text-violet-300",
+            },
+            {
+              title: "Query",
+              detail: "Get answers grounded in your documents",
+              count: loading ? "…" : `${stats.total_queries} queries`,
+              href: "/dashboard/query",
+              icon: Search,
+              accent:
+                "border-emerald-500/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300",
+            },
+            {
+              title: "DeepSpace",
+              detail: "Work with an agent, tools, and memory",
+              count: services.agent === "ready" ? "Ready to work" : "Status unavailable",
+              href: "/dashboard/deepspace",
+              icon: PanelsLeftBottom,
+              accent: "border-indigo-500/20 bg-indigo-500/10 text-indigo-800 dark:text-indigo-300",
+            },
+          ].map((destination) => {
+            const Icon = destination.icon;
+            return (
+              <Link
+                key={destination.title}
+                href={destination.href}
+                prefetch={false}
+                className="theme-panel group hover:border-primary/30 rounded-2xl p-4 transition hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl border ${destination.accent}`}
                   >
-                    <div
-                      className={`flex h-9 w-9 items-center justify-center rounded-lg border ${tone.chip}`}
-                    >
-                      <Icon size={16} className="stroke-[3]" />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-foreground truncate text-sm font-semibold">
-                          {item.label}
-                        </p>
-                        <span
-                          className={`text-base font-black tracking-tight ${tone.chip
-                            .split(" ")
-                            .filter((c) => c.includes("text-"))
-                            .join(" ")}`}
-                        >
-                          {loading ? "…" : item.value}
-                        </span>
-                      </div>
-                      <p className="text-muted-foreground mt-0.5 text-xs font-medium">
-                        {item.helper}
-                      </p>
-                    </div>
-                    <ArrowRight
-                      size={14}
-                      className="text-muted-foreground/30 group-hover:text-primary transition group-hover:translate-x-0.5"
-                    />
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="theme-panel rounded-[1.45rem] p-5">
-            <SectionHeader
-              eyebrow="Recent documents"
-              title="Latest indexed or processing files"
-              chip={`${overview.recent_documents.length} items`}
-            />
-            <div className="mt-3 space-y-0.5">
-              {loading ? (
-                [1, 2, 3].map((row) => (
-                  <div
-                    key={row}
-                    className="bg-foreground/[0.03] border-foreground/5 h-16 animate-pulse rounded-lg border-b last:border-0 dark:border-white/5 dark:bg-white/[0.02]"
+                    <Icon size={18} />
+                  </span>
+                  <ArrowRight
+                    size={16}
+                    className="text-muted-foreground/50 group-hover:text-primary transition group-hover:translate-x-0.5"
                   />
-                ))
-              ) : overview.recent_documents.length > 0 ? (
-                overview.recent_documents.map((document) => (
-                  <Link
-                    key={document.document_id}
-                    href={`/dashboard/documents/${document.document_id}`}
-                    prefetch={false}
-                    className="group border-foreground/5 hover:bg-foreground/[0.015] block rounded-lg border-b px-2 py-3.5 transition-all last:border-0 dark:border-white/5 dark:hover:bg-white/[0.015]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-foreground group-hover:text-primary truncate text-sm font-semibold transition-colors">
-                          {document.filename}
-                        </p>
-                        <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs font-medium">
-                          <span
-                            className={`font-semibold tracking-wider uppercase ${
-                              document.status === "indexed"
-                                ? "text-emerald-500"
-                                : document.status === "failed"
-                                  ? "text-rose-500"
-                                  : "text-amber-500"
-                            }`}
-                          >
-                            {formatStatusLabel(document.status)}
-                          </span>
-                          <span>•</span>
-                          <span>{formatBytes(document.size_bytes)}</span>
-                          <span>•</span>
-                          <span suppressHydrationWarning>
-                            {formatRelativeDate(document.created_at)}
-                          </span>
-                        </div>
-
-                        {document.collection_names.length > 0 ? (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {document.collection_names.slice(0, 2).map((name) => (
-                              <span
-                                key={name}
-                                className="theme-chip rounded-full px-2 py-0.5 text-[9px] font-semibold"
-                              >
-                                {name}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {document.status !== "indexed" ? (
-                          <span className="theme-chip rounded-full px-2.5 py-1 text-[10px] font-medium">
-                            {document.processing_progress}%
-                          </span>
-                        ) : null}
-                        <ArrowRight
-                          size={14}
-                          className="text-muted-foreground/30 group-hover:text-primary transition group-hover:translate-x-0.5"
-                        />
-                      </div>
-                    </div>
-                  </Link>
-                ))
-              ) : (
-                <EmptyState
-                  icon={FileSearch}
-                  title="No documents yet"
-                  body="Upload your first file to start grounded answers and indexing."
-                />
-              )}
+                </div>
+                <h3 className="text-foreground mt-4 text-base font-bold">{destination.title}</h3>
+                <p className="text-muted-foreground mt-1 min-h-10 text-xs leading-5">
+                  {destination.detail}
+                </p>
+                <p className="text-primary mt-3 text-xs font-semibold">{destination.count}</p>
+              </Link>
+            );
+          })}
+        </div>
+        <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
+          <Link
+            href="/dashboard/settings/plan"
+            prefetch={false}
+            className="theme-panel group hover:border-primary/30 rounded-xl p-4 transition"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="theme-accent-pill flex h-9 w-9 items-center justify-center rounded-lg">
+                  <Database size={16} />
+                </span>
+                <div>
+                  <p className="text-foreground text-sm font-bold">Plan & storage</p>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    {planSummary
+                      ? `${planSummary.current_plan.name} · ${formatBytes(planSummary.usage.total_bytes)} of ${formatBytes(planSummary.current_plan.storage_limit_bytes)} used`
+                      : "Plan usage is unavailable right now"}
+                  </p>
+                </div>
+              </div>
+              <ArrowRight
+                size={15}
+                className="text-muted-foreground/50 group-hover:text-primary transition group-hover:translate-x-0.5"
+              />
             </div>
-          </div>
-
-          <div className="theme-panel rounded-[1.45rem] p-5">
-            <SectionHeader
-              eyebrow="Collections"
-              title="Organized document sets"
-              chip={`${overview.collections.length} visible`}
-            />
-            <div className="mt-3 space-y-0.5">
-              {loading ? (
-                [1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="bg-foreground/[0.03] border-foreground/5 h-14 animate-pulse rounded-lg border-b last:border-0 dark:border-white/5 dark:bg-white/[0.02]"
-                  />
-                ))
-              ) : overview.collections.length > 0 ? (
-                overview.collections.map((collection) => {
-                  const cardClassName =
-                    "group block px-2 py-3.5 border-b border-foreground/5 dark:border-white/5 last:border-0 hover:bg-foreground/[0.015] dark:hover:bg-white/[0.015] rounded-lg transition-all";
-
-                  return (
-                    <Link
-                      key={collection.collection_id}
-                      href={`/dashboard/collections/${collection.collection_id}`}
-                      prefetch={false}
-                      className={cardClassName}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="theme-accent-pill flex h-9 w-9 items-center justify-center rounded-lg">
-                          <FolderKanban size={15} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-foreground group-hover:text-primary truncate text-sm font-semibold transition-colors">
-                              {collection.name}
-                            </p>
-                            {hasAdminAccess ? (
-                              <ArrowRight
-                                size={14}
-                                className="text-muted-foreground/30 group-hover:text-primary transition group-hover:translate-x-0.5"
-                              />
-                            ) : null}
-                          </div>
-                          <p className="text-muted-foreground mt-0.5 text-xs font-medium">
-                            {collection.document_count} document
-                            {collection.document_count === 1 ? "" : "s"} • updated{" "}
-                            <span suppressHydrationWarning>
-                              {formatRelativeDate(collection.updated_at)}
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })
-              ) : (
-                <EmptyState
-                  icon={FolderKanban}
-                  title="No collections yet"
-                  body="Create collections to keep document sets focused and reusable."
-                />
-              )}
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          {...CARD_ENTER}
-          transition={{ duration: 0.35, delay: 0.1 }}
-          className="space-y-5"
-        >
-          <div className="theme-panel rounded-[1.45rem] p-5">
-            <SectionHeader
-              eyebrow="Recent work"
-              title="Activity stream"
-              chip={`${overview.recent_activity.length} items`}
-            />
-            <div className="mt-3 space-y-0.5">
-              {loading ? (
-                [1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="bg-foreground/[0.03] border-foreground/5 h-14 animate-pulse rounded-lg border-b last:border-0 dark:border-white/5 dark:bg-white/[0.02]"
-                  />
-                ))
-              ) : overview.recent_activity.length > 0 ? (
-                activityGroups.map((group) => {
-                  const isGroup = group.items.length > 1;
-                  const isExpanded = expandedGroups[group.id];
-                  const mainEvent = group.items[0];
-                  const config = getActivityConfig(mainEvent);
-                  const Icon = config.icon;
-
-                  return (
-                    <div
-                      key={group.id}
-                      className="border-foreground/5 border-b last:border-0 dark:border-white/5"
-                    >
-                      <div className="group flex flex-col rounded-lg transition-all">
-                        <button
-                          onClick={() => isGroup && toggleGroup(group.id)}
-                          disabled={!isGroup}
-                          className="hover:bg-foreground/[0.015] flex w-full items-start justify-between gap-3 rounded-lg px-2 py-3.5 text-left transition-colors dark:hover:bg-white/[0.015]"
-                        >
-                          <div className="flex min-w-0 items-start gap-3">
-                            <div
-                              className={`theme-accent-pill flex h-9 w-9 items-center justify-center rounded-lg ${config.color.replace("text-", "bg-").split("-").join("-")}/10`}
-                            >
-                              <Icon size={15} className={`${config.color} stroke-[2.5]`} />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-foreground group-hover:text-primary truncate text-sm font-bold tracking-tight transition-colors">
-                                {config.label}
-                                {isGroup && (
-                                  <span className="bg-foreground/5 text-muted-foreground ml-2 rounded-full px-2 py-0.5 text-[9px] font-bold dark:bg-white/5">
-                                    {group.items.length} events
-                                  </span>
-                                )}
-                              </p>
-                              <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-medium">
-                                <span className="font-semibold tracking-wider uppercase">
-                                  {mainEvent.resource_type}
-                                </span>
-                                <span>•</span>
-                                <span>{isGroup ? `Latest: ${config.detail}` : config.detail}</span>
-                                <span>•</span>
-                                <span suppressHydrationWarning>
-                                  {formatRelativeDate(mainEvent.created_at)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2.5 self-center">
-                            <div
-                              className={`h-1.5 w-1.5 rounded-full ${
-                                config.color.includes("emerald")
-                                  ? "bg-emerald-500"
-                                  : config.color.includes("blue")
-                                    ? "bg-cyan-500"
-                                    : config.color.includes("amber")
-                                      ? "bg-amber-500"
-                                      : "bg-primary"
-                              }`}
-                            />
-                            {isGroup && (
-                              <motion.div
-                                animate={{ rotate: isExpanded ? 180 : 0 }}
-                                className="text-muted-foreground/30"
-                              >
-                                <ArrowRight size={13} className="rotate-90" />
-                              </motion.div>
-                            )}
-                          </div>
-                        </button>
-
-                        <AnimatePresence>
-                          {isGroup && isExpanded && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }}
-                              className="overflow-hidden"
-                            >
-                              <div className="border-foreground/5 bg-foreground/[0.005] border-t px-2 py-1 pb-3 dark:border-white/5 dark:bg-white/[0.005]">
-                                {group.items.slice(1).map((item) => {
-                                  const subConfig = getActivityConfig(item);
-                                  return (
-                                    <div
-                                      key={item.id}
-                                      className="border-foreground/5 mt-3 ml-4.5 flex items-center justify-between border-l-2 pl-3.5 dark:border-white/5"
-                                    >
-                                      <div className="min-w-0">
-                                        <p className="text-foreground/80 truncate text-[11px] font-bold">
-                                          {subConfig.label}
-                                        </p>
-                                        <div className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[10px]">
-                                          <span>{subConfig.detail}</span>
-                                          <span>•</span>
-                                          <span suppressHydrationWarning>
-                                            {formatRelativeDate(item.created_at)}
-                                          </span>
-                                        </div>
-                                      </div>
-                                      <div
-                                        className={`h-1 w-1 rounded-full ${
-                                          subConfig.color.includes("emerald")
-                                            ? "bg-emerald-500/50"
-                                            : subConfig.color.includes("blue")
-                                              ? "bg-cyan-500/50"
-                                              : "bg-primary/50"
-                                        }`}
-                                      />
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <EmptyState
-                  icon={History}
-                  title="No recent activity"
-                  body="Uploads, queries, retries, and provider changes will appear here."
-                />
-              )}
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          {...CARD_ENTER}
-          transition={{ duration: 0.35, delay: 0.15 }}
-          className="space-y-5"
-        >
-          <div className="theme-panel rounded-[1.45rem] p-5">
-            <SectionHeader
-              eyebrow="Provider runtime"
-              title="Active model routes"
-              chip={`${overview.provider_runtimes.length} scopes`}
-            />
-            <div className="mt-3 space-y-0.5">
-              {overview.provider_runtimes.map((runtime) => (
+            {planSummary && storagePercent !== null ? (
+              <div
+                className="bg-foreground/10 mt-3 h-1.5 overflow-hidden rounded-full dark:bg-white/10"
+                role="progressbar"
+                aria-label="Plan storage used"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={storagePercent}
+              >
                 <div
-                  key={runtime.feature_scope}
-                  className="group border-foreground/5 hover:bg-foreground/[0.015] rounded-lg border-b px-2 py-3.5 transition-all last:border-0 dark:border-white/5 dark:hover:bg-white/[0.015]"
+                  className="bg-primary h-full rounded-full transition-all"
+                  style={{ width: `${storagePercent}%` }}
+                />
+              </div>
+            ) : null}
+          </Link>
+          <div className="flex flex-wrap gap-2">
+            {[
+              ...(hasProviderSettingsAccess
+                ? [{ label: "Providers", href: "/dashboard/settings/providers", icon: Cable }]
+                : []),
+              { label: "Profile & security", href: "/dashboard/settings/profile", icon: UserRound },
+            ].map((destination) => {
+              const Icon = destination.icon;
+              return (
+                <Link
+                  key={destination.label}
+                  href={destination.href}
+                  prefetch={false}
+                  className="theme-chip hover:text-primary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition"
+                >
+                  <Icon size={14} /> {destination.label} <ArrowRight size={12} />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section
+        aria-label="Workspace activity and resources"
+        className="grid min-w-0 grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4"
+      >
+        <div className="theme-panel min-w-0 rounded-[1.25rem] p-4">
+          <SectionHeader eyebrow="Needs attention" title="Today’s workspace state" chip="Live" />
+          <div className="mt-3 space-y-0.5">
+            {attentionItems.map((item) => {
+              const Icon = item.icon;
+              const tone = toneClass(item.tone);
+              return (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  prefetch={false}
+                  className="group border-foreground/5 hover:bg-foreground/[0.015] flex items-center gap-3.5 rounded-lg border-b px-2 py-3.5 transition-all last:border-0 dark:border-white/5 dark:hover:bg-white/[0.015]"
+                >
+                  <div
+                    className={`flex h-9 w-9 items-center justify-center rounded-lg border ${tone.chip}`}
+                  >
+                    <Icon size={16} className="stroke-[3]" />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-foreground truncate text-sm font-semibold">{item.label}</p>
+                      <span
+                        className={`text-base font-black tracking-tight ${tone.chip
+                          .split(" ")
+                          .filter((c) => c.includes("text-"))
+                          .join(" ")}`}
+                      >
+                        {loading ? "…" : item.value}
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground mt-0.5 text-xs font-medium">
+                      {item.helper}
+                    </p>
+                  </div>
+                  <ArrowRight
+                    size={14}
+                    className="text-muted-foreground/30 group-hover:text-primary transition group-hover:translate-x-0.5"
+                  />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="theme-panel min-w-0 rounded-[1.25rem] p-4">
+          <SectionHeader
+            eyebrow="Recent documents"
+            title="Latest indexed or processing files"
+            chip={`${overview.recent_documents.length} items`}
+          />
+          <div className="mt-3 space-y-0.5">
+            {loading ? (
+              [1, 2, 3].map((row) => (
+                <div
+                  key={row}
+                  className="bg-foreground/[0.03] border-foreground/5 h-16 animate-pulse rounded-lg border-b last:border-0 dark:border-white/5 dark:bg-white/[0.02]"
+                />
+              ))
+            ) : overview.recent_documents.length > 0 ? (
+              overview.recent_documents.map((document) => (
+                <Link
+                  key={document.document_id}
+                  href={`/dashboard/documents/${document.document_id}`}
+                  prefetch={false}
+                  className="group border-foreground/5 hover:bg-foreground/[0.015] block rounded-lg border-b px-2 py-3.5 transition-all last:border-0 dark:border-white/5 dark:hover:bg-white/[0.015]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <p className="text-foreground group-hover:text-primary truncate text-sm font-semibold transition-colors">
+                        {document.filename}
+                      </p>
+                      <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs font-medium">
                         <span
-                          className={`rounded-md border px-2.5 py-0.5 text-[9px] font-black tracking-[0.12em] uppercase ${
-                            runtime.feature_scope === "chat"
-                              ? "dark:!border-primary/40 dark:!bg-primary/15 dark:!text-primary !border-teal-300 !bg-teal-50/70 !text-teal-900"
-                              : runtime.feature_scope === "embeddings"
-                                ? "!border-cyan-300 !bg-cyan-50/70 !text-cyan-900 dark:!border-cyan-500/40 dark:!bg-cyan-500/15 dark:!text-cyan-300"
-                                : runtime.feature_scope === "reranking"
-                                  ? "!border-teal-300 !bg-teal-50/70 !text-teal-900 dark:!border-teal-500/40 dark:!bg-teal-500/15 dark:!text-teal-300"
-                                  : "!border-amber-300 !bg-amber-50/70 !text-amber-900 dark:!border-amber-500/40 dark:!bg-amber-500/15 dark:!text-amber-300"
+                          className={`font-semibold tracking-wider uppercase ${
+                            document.status === "indexed"
+                              ? "text-emerald-500"
+                              : document.status === "failed"
+                                ? "text-rose-500"
+                                : "text-amber-500"
                           }`}
                         >
-                          {runtime.feature_scope.replace("_", " ")}
+                          {formatStatusLabel(document.status)}
                         </span>
-
-                        {runtime.health_status ? (
-                          <span
-                            className={`rounded-md border px-2.5 py-0.5 text-[9px] font-black tracking-[0.1em] uppercase ${
-                              runtime.health_status === "healthy"
-                                ? "!border-emerald-300 !bg-emerald-50/70 !text-emerald-900 dark:!border-emerald-500/40 dark:!bg-emerald-500/15 dark:!text-emerald-400"
-                                : "!border-amber-300 !bg-amber-50/70 !text-amber-900 dark:!border-amber-500/40 dark:!bg-amber-500/15 dark:!text-amber-400"
-                            }`}
-                          >
-                            {runtime.health_status}
-                          </span>
-                        ) : null}
+                        <span>•</span>
+                        <span>{formatBytes(document.size_bytes)}</span>
+                        <span>•</span>
+                        <span suppressHydrationWarning>
+                          {formatRelativeDate(document.created_at)}
+                        </span>
                       </div>
-                      <p
-                        className={`mt-2 text-sm font-bold ${
-                          runtime.provider_type === "unconfigured"
-                            ? "text-foreground/45"
-                            : "text-foreground"
-                        }`}
-                      >
-                        {runtime.provider_display_name}
-                      </p>
-                      <p className="text-muted-foreground mt-0.5 text-[10px] font-bold tracking-wider uppercase">
-                        {runtime.model_name}
-                      </p>
+
+                      {document.collection_names.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {document.collection_names.slice(0, 2).map((name) => (
+                            <span
+                              key={name}
+                              className="theme-chip rounded-full px-2 py-0.5 text-[9px] font-semibold"
+                            >
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="text-right">
-                      <p className="text-muted-foreground/60 mt-1.5 text-[9px] font-black tracking-widest uppercase">
-                        {runtime.latency_ms ? `${runtime.latency_ms} ms` : "No health sample"}
-                      </p>
+
+                    <div className="flex items-center gap-2">
+                      {document.status !== "indexed" ? (
+                        <span className="theme-chip rounded-full px-2.5 py-1 text-[10px] font-medium">
+                          {document.processing_progress}%
+                        </span>
+                      ) : null}
+                      <ArrowRight
+                        size={14}
+                        className="text-muted-foreground/30 group-hover:text-primary transition group-hover:translate-x-0.5"
+                      />
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                </Link>
+              ))
+            ) : (
+              <EmptyState
+                icon={FileSearch}
+                title="No documents yet"
+                body="Upload your first file to start grounded answers and indexing."
+              />
+            )}
           </div>
+        </div>
 
-          <div className="theme-panel rounded-[1.45rem] p-5">
-            <SectionHeader
-              eyebrow="Quick actions"
-              title="Move the workspace forward"
-              chip="Connected"
-              accent
-            />
-            <div className="mt-4 space-y-3">
-              {quickActions.map((action, idx) => {
-                const Icon = action.icon;
-                const card = (
-                  <motion.div
-                    key={action.title}
-                    {...CARD_ENTER}
-                    transition={{ duration: 0.28, delay: idx * 0.04 }}
-                    className={
-                      action.primary
-                        ? "group border-primary/20 from-primary to-primary/80 text-primary-foreground rounded-xl border bg-gradient-to-br p-4 shadow-lg transition-all hover:scale-[1.015] hover:brightness-110 active:scale-95"
-                        : "group border-foreground/5 bg-foreground/[0.01] hover:bg-foreground/[0.03] hover:border-primary/20 rounded-xl border p-4 transition-all duration-200 dark:border-white/5 dark:bg-white/[0.01] dark:hover:bg-white/[0.03]"
-                    }
+        <div className="theme-panel min-w-0 rounded-[1.25rem] p-4">
+          <SectionHeader
+            eyebrow="Collections"
+            title="Organized document sets"
+            chip={`${overview.collections.length} visible`}
+          />
+          <div className="mt-3 space-y-0.5">
+            {loading ? (
+              [1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="bg-foreground/[0.03] border-foreground/5 h-14 animate-pulse rounded-lg border-b last:border-0 dark:border-white/5 dark:bg-white/[0.02]"
+                />
+              ))
+            ) : overview.collections.length > 0 ? (
+              overview.collections.map((collection) => {
+                const cardClassName =
+                  "group block px-2 py-3.5 border-b border-foreground/5 dark:border-white/5 last:border-0 hover:bg-foreground/[0.015] dark:hover:bg-white/[0.015] rounded-lg transition-all";
+
+                return (
+                  <Link
+                    key={collection.collection_id}
+                    href={`/dashboard/collections/${collection.collection_id}`}
+                    prefetch={false}
+                    className={cardClassName}
                   >
                     <div className="flex items-start gap-3">
-                      <div
-                        className={
-                          action.primary
-                            ? "flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white"
-                            : "theme-accent-pill flex h-10 w-10 items-center justify-center rounded-lg"
-                        }
-                      >
-                        <Icon size={16} className="stroke-[2.8]" />
+                      <div className="theme-accent-pill flex h-9 w-9 items-center justify-center rounded-lg">
+                        <FolderKanban size={15} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold">{action.title}</p>
-                          <ArrowRight
-                            size={14}
-                            className={
-                              action.primary
-                                ? "text-white/70"
-                                : "text-muted-foreground/40 group-hover:text-primary transition-all group-hover:translate-x-0.5"
-                            }
-                          />
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-foreground group-hover:text-primary truncate text-sm font-semibold transition-colors">
+                            {collection.name}
+                          </p>
+                          {hasAdminAccess ? (
+                            <ArrowRight
+                              size={14}
+                              className="text-muted-foreground/30 group-hover:text-primary transition group-hover:translate-x-0.5"
+                            />
+                          ) : null}
                         </div>
-                        <p
-                          className={`mt-1 text-xs leading-5 ${action.primary ? "opacity-90" : "text-muted-foreground/80 font-medium"}`}
-                        >
-                          {action.body}
+                        <p className="text-muted-foreground mt-0.5 text-xs font-medium">
+                          {collection.document_count} document
+                          {collection.document_count === 1 ? "" : "s"} • updated{" "}
+                          <span suppressHydrationWarning>
+                            {formatRelativeDate(collection.updated_at)}
+                          </span>
                         </p>
                       </div>
                     </div>
-                  </motion.div>
-                );
-
-                if ("action" in action) {
-                  return (
-                    <button
-                      key={action.title}
-                      type="button"
-                      onClick={action.action}
-                      className="w-full text-left"
-                    >
-                      {card}
-                    </button>
-                  );
-                }
-
-                return (
-                  <Link key={action.title} href={action.href} prefetch={false}>
-                    {card}
                   </Link>
                 );
-              })}
-            </div>
+              })
+            ) : (
+              <EmptyState
+                icon={FolderKanban}
+                title="No collections yet"
+                body="Create collections to keep document sets focused and reusable."
+              />
+            )}
           </div>
-        </motion.div>
+        </div>
+        <div className="theme-panel min-w-0 rounded-[1.25rem] p-4">
+          <SectionHeader
+            eyebrow="Recent work"
+            title="Activity stream"
+            chip={`${overview.recent_activity.length} items`}
+          />
+          <div className="mt-3 space-y-0.5">
+            {loading ? (
+              [1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="bg-foreground/[0.03] border-foreground/5 h-14 animate-pulse rounded-lg border-b last:border-0 dark:border-white/5 dark:bg-white/[0.02]"
+                />
+              ))
+            ) : overview.recent_activity.length > 0 ? (
+              activityGroups.map((group) => {
+                const isGroup = group.items.length > 1;
+                const isExpanded = expandedGroups[group.id];
+                const mainEvent = group.items[0];
+                const config = getActivityConfig(mainEvent);
+                const Icon = config.icon;
+
+                return (
+                  <div
+                    key={group.id}
+                    className="border-foreground/5 border-b last:border-0 dark:border-white/5"
+                  >
+                    <div className="group flex flex-col rounded-lg transition-all">
+                      <button
+                        onClick={() => isGroup && toggleGroup(group.id)}
+                        disabled={!isGroup}
+                        className="hover:bg-foreground/[0.015] flex w-full items-start justify-between gap-3 rounded-lg px-2 py-3.5 text-left transition-colors dark:hover:bg-white/[0.015]"
+                      >
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div
+                            className={`theme-accent-pill flex h-9 w-9 items-center justify-center rounded-lg ${config.color.replace("text-", "bg-").split("-").join("-")}/10`}
+                          >
+                            <Icon size={15} className={`${config.color} stroke-[2.5]`} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-foreground group-hover:text-primary truncate text-sm font-bold tracking-tight transition-colors">
+                              {config.label}
+                              {isGroup && (
+                                <span className="bg-foreground/5 text-muted-foreground ml-2 rounded-full px-2 py-0.5 text-[9px] font-bold dark:bg-white/5">
+                                  {group.items.length} events
+                                </span>
+                              )}
+                            </p>
+                            <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-medium">
+                              <span className="font-semibold tracking-wider uppercase">
+                                {mainEvent.resource_type}
+                              </span>
+                              <span>•</span>
+                              <span>{isGroup ? `Latest: ${config.detail}` : config.detail}</span>
+                              <span>•</span>
+                              <span suppressHydrationWarning>
+                                {formatRelativeDate(mainEvent.created_at)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2.5 self-center">
+                          <div
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              config.color.includes("emerald")
+                                ? "bg-emerald-500"
+                                : config.color.includes("blue")
+                                  ? "bg-cyan-500"
+                                  : config.color.includes("amber")
+                                    ? "bg-amber-500"
+                                    : "bg-primary"
+                            }`}
+                          />
+                          {isGroup && (
+                            <motion.div
+                              animate={{ rotate: isExpanded ? 180 : 0 }}
+                              className="text-muted-foreground/30"
+                            >
+                              <ArrowRight size={13} className="rotate-90" />
+                            </motion.div>
+                          )}
+                        </div>
+                      </button>
+
+                      <AnimatePresence>
+                        {isGroup && isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="border-foreground/5 bg-foreground/[0.005] border-t px-2 py-1 pb-3 dark:border-white/5 dark:bg-white/[0.005]">
+                              {group.items.slice(1).map((item) => {
+                                const subConfig = getActivityConfig(item);
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className="border-foreground/5 mt-3 ml-4.5 flex items-center justify-between border-l-2 pl-3.5 dark:border-white/5"
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-foreground/80 truncate text-[11px] font-bold">
+                                        {subConfig.label}
+                                      </p>
+                                      <div className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-[10px]">
+                                        <span>{subConfig.detail}</span>
+                                        <span>•</span>
+                                        <span suppressHydrationWarning>
+                                          {formatRelativeDate(item.created_at)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div
+                                      className={`h-1 w-1 rounded-full ${
+                                        subConfig.color.includes("emerald")
+                                          ? "bg-emerald-500/50"
+                                          : subConfig.color.includes("blue")
+                                            ? "bg-cyan-500/50"
+                                            : "bg-primary/50"
+                                      }`}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <EmptyState
+                icon={History}
+                title="No recent activity"
+                body="Uploads, queries, retries, and provider changes will appear here."
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="theme-panel min-w-0 rounded-[1.25rem] p-4">
+          <SectionHeader
+            eyebrow="Provider runtime"
+            title="Active model routes"
+            chip={`${overview.provider_runtimes.length} scopes`}
+          />
+          <div className="mt-3 space-y-0.5">
+            {overview.provider_runtimes.map((runtime) => (
+              <div
+                key={runtime.feature_scope}
+                className="group border-foreground/5 hover:bg-foreground/[0.015] rounded-lg border-b px-2 py-3.5 transition-all last:border-0 dark:border-white/5 dark:hover:bg-white/[0.015]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-md border px-2.5 py-0.5 text-[9px] font-black tracking-[0.12em] uppercase ${
+                          runtime.feature_scope === "chat"
+                            ? "dark:!border-primary/40 dark:!bg-primary/15 dark:!text-primary !border-teal-300 !bg-teal-50/70 !text-teal-900"
+                            : runtime.feature_scope === "embeddings"
+                              ? "!border-cyan-300 !bg-cyan-50/70 !text-cyan-900 dark:!border-cyan-500/40 dark:!bg-cyan-500/15 dark:!text-cyan-300"
+                              : runtime.feature_scope === "reranking"
+                                ? "!border-teal-300 !bg-teal-50/70 !text-teal-900 dark:!border-teal-500/40 dark:!bg-teal-500/15 dark:!text-teal-300"
+                                : "!border-amber-300 !bg-amber-50/70 !text-amber-900 dark:!border-amber-500/40 dark:!bg-amber-500/15 dark:!text-amber-300"
+                        }`}
+                      >
+                        {runtime.feature_scope.replace("_", " ")}
+                      </span>
+
+                      {runtime.health_status ? (
+                        <span
+                          className={`rounded-md border px-2.5 py-0.5 text-[9px] font-black tracking-[0.1em] uppercase ${
+                            runtime.health_status === "healthy"
+                              ? "!border-emerald-300 !bg-emerald-50/70 !text-emerald-900 dark:!border-emerald-500/40 dark:!bg-emerald-500/15 dark:!text-emerald-400"
+                              : "!border-amber-300 !bg-amber-50/70 !text-amber-900 dark:!border-amber-500/40 dark:!bg-amber-500/15 dark:!text-amber-400"
+                          }`}
+                        >
+                          {runtime.health_status}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p
+                      className={`mt-2 text-sm font-bold ${
+                        runtime.provider_type === "unconfigured"
+                          ? "text-foreground/45"
+                          : "text-foreground"
+                      }`}
+                    >
+                      {runtime.provider_display_name}
+                    </p>
+                    <p className="text-muted-foreground mt-0.5 text-[10px] font-bold tracking-wider uppercase">
+                      {runtime.model_name}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-muted-foreground/60 mt-1.5 text-[9px] font-black tracking-widest uppercase">
+                      {runtime.latency_ms ? `${runtime.latency_ms} ms` : "No health sample"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="theme-panel min-w-0 rounded-[1.25rem] p-4">
+          <SectionHeader
+            eyebrow="Quick actions"
+            title="Move the workspace forward"
+            chip="Connected"
+            accent
+          />
+          <div className="mt-4 space-y-3">
+            {quickActions.map((action, idx) => {
+              const Icon = action.icon;
+              const card = (
+                <motion.div
+                  key={action.title}
+                  {...CARD_ENTER}
+                  transition={{ duration: 0.28, delay: idx * 0.04 }}
+                  className={
+                    action.primary
+                      ? "group border-primary/20 from-primary to-primary/80 text-primary-foreground rounded-xl border bg-gradient-to-br p-4 shadow-lg transition-all hover:scale-[1.015] hover:brightness-110 active:scale-95"
+                      : "group border-foreground/5 bg-foreground/[0.01] hover:bg-foreground/[0.03] hover:border-primary/20 rounded-xl border p-4 transition-all duration-200 dark:border-white/5 dark:bg-white/[0.01] dark:hover:bg-white/[0.03]"
+                  }
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={
+                        action.primary
+                          ? "flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white"
+                          : "theme-accent-pill flex h-10 w-10 items-center justify-center rounded-lg"
+                      }
+                    >
+                      <Icon size={16} className="stroke-[2.8]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">{action.title}</p>
+                        <ArrowRight
+                          size={14}
+                          className={
+                            action.primary
+                              ? "text-white/70"
+                              : "text-muted-foreground/40 group-hover:text-primary transition-all group-hover:translate-x-0.5"
+                          }
+                        />
+                      </div>
+                      <p
+                        className={`mt-1 text-xs leading-5 ${action.primary ? "opacity-90" : "text-muted-foreground/80 font-medium"}`}
+                      >
+                        {action.body}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+
+              if ("action" in action) {
+                return (
+                  <button
+                    key={action.title}
+                    type="button"
+                    onClick={action.action}
+                    className="w-full text-left"
+                  >
+                    {card}
+                  </button>
+                );
+              }
+
+              return (
+                <Link key={action.title} href={action.href} prefetch={false}>
+                  {card}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="system-status-heading"
+        className="grid items-start gap-4 2xl:grid-cols-[minmax(420px,0.9fr)_minmax(0,2fr)]"
+      >
+        <div className="col-span-full px-1">
+          <p className="text-primary text-[10px] font-bold tracking-[0.18em] uppercase">
+            System status
+          </p>
+          <h2
+            id="system-status-heading"
+            className="text-foreground mt-1 text-xl font-bold tracking-tight"
+          >
+            Document processing and available capabilities
+          </h2>
+        </div>
+        <DashboardTelemetry overview={overview} loading={loading} theme={theme} />
+        <DashboardCapabilityGrid
+          capabilities={capabilities}
+          services={services}
+          realtimeStatus={realtimeStatus}
+        />
+      </section>
+      <section aria-labelledby="usage-heading" className="space-y-4">
+        <div className="px-1">
+          <p className="text-primary text-[10px] font-bold tracking-[0.18em] uppercase">
+            Usage & reliability
+          </p>
+          <h2 id="usage-heading" className="text-foreground mt-1 text-xl font-bold tracking-tight">
+            Workspace activity and provider health over time
+          </h2>
+        </div>
+        <DashboardTrends overview={overview} loading={loading} />
       </section>
 
       <UploadModal
@@ -1067,10 +1240,12 @@ function DashboardCapabilityGrid({
   realtimeStatus: RealtimeConnectionState;
 }) {
   const statusLabel = (enabled: boolean) => (enabled ? "Ready" : "Not enabled");
-  const statusClass = (ready: boolean) =>
-    ready
-      ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
-      : "border-amber-400/25 bg-amber-400/10 text-amber-300";
+  const statusClass = (ready: boolean, attention = false) => {
+    if (ready)
+      return "border-emerald-600/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300";
+    if (attention) return "border-amber-600/25 bg-amber-500/10 text-amber-800 dark:text-amber-300";
+    return "border-slate-500/20 bg-slate-500/5 text-slate-600 dark:text-slate-400";
+  };
   const realtimeReady = realtimeStatus === "connected";
   const cards = [
     {
@@ -1087,7 +1262,10 @@ function DashboardCapabilityGrid({
     },
     {
       label: "DeepSpace agent",
-      detail: services.agent === "ready" ? "Runs, tools, and model activity available" : "Operational data unavailable",
+      detail:
+        services.agent === "ready"
+          ? "Runs, tools, and model activity available"
+          : "Operational data unavailable",
       value: services.agent === "ready" ? "Ready" : "Check",
       ready: services.agent === "ready",
       icon: BrainCircuit,
@@ -1140,7 +1318,7 @@ function DashboardCapabilityGrid({
             ? "No connected servers yet"
             : "MCP status unavailable",
       value: services.mcp === "connected" ? "Ready" : services.mcp === "empty" ? "Empty" : "Check",
-      ready: services.mcp !== "unavailable",
+      ready: services.mcp === "connected",
       icon: Cable,
     },
     {
@@ -1162,27 +1340,44 @@ function DashboardCapabilityGrid({
       <div className="pointer-events-none absolute -top-24 right-0 h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl" />
       <div className="relative flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-primary text-[10px] font-black tracking-[0.22em] uppercase">Capability network</p>
-          <h2 className="text-foreground mt-1 text-xl font-black tracking-tight">Everything connected to your workspace</h2>
-          <p className="text-muted-foreground mt-1 text-xs leading-5">Live readiness signals for the systems behind your daily work.</p>
+          <p className="text-primary text-[10px] font-black tracking-[0.22em] uppercase">
+            Capability network
+          </p>
+          <h2 className="text-foreground mt-1 text-xl font-black tracking-tight">
+            Everything connected to your workspace
+          </h2>
+          <p className="text-muted-foreground mt-1 text-xs leading-5">
+            Live readiness signals for the systems behind your daily work.
+          </p>
         </div>
-        <span className={`rounded-full border px-3 py-1.5 text-[10px] font-black tracking-[0.12em] uppercase ${statusClass(realtimeReady)}`}>
+        <span
+          className={`rounded-full border px-3 py-1.5 text-[10px] font-black tracking-[0.12em] uppercase ${statusClass(realtimeReady, !realtimeReady)}`}
+        >
           {realtimeReady ? "Live monitoring" : "Reconnecting"}
         </span>
       </div>
-      <div className="relative mt-5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="relative mt-5 grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
         {cards.map((card) => {
           const Icon = card.icon;
           return (
-            <div key={card.label} className="group border-foreground/10 bg-foreground/[0.025] hover:border-primary/25 rounded-xl border p-3.5 transition-colors dark:border-white/8 dark:bg-white/[0.025]">
+            <div
+              key={card.label}
+              className="group border-foreground/10 bg-foreground/[0.025] hover:border-primary/25 rounded-xl border p-3.5 transition-colors dark:border-white/8 dark:bg-white/[0.025]"
+            >
               <div className="flex items-start justify-between gap-3">
                 <span className="theme-accent-pill flex h-8 w-8 items-center justify-center rounded-lg">
                   <Icon size={15} />
                 </span>
-                <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusClass(card.ready)}`}>{card.value}</span>
+                <span
+                  className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusClass(card.ready, card.value === "Check")}`}
+                >
+                  {card.value}
+                </span>
               </div>
               <p className="text-foreground mt-3 text-xs font-bold">{card.label}</p>
-              <p className="text-muted-foreground mt-1 min-h-8 text-[10px] leading-4">{card.detail}</p>
+              <p className="text-muted-foreground mt-1 min-h-8 text-[10px] leading-4">
+                {card.detail}
+              </p>
             </div>
           );
         })}
@@ -1206,47 +1401,44 @@ function DashboardTelemetry({
       label: "Indexed",
       value: breakdown.indexed,
       tone: "bg-emerald-400",
-      text: "text-emerald-400",
+      text: "text-emerald-700 dark:text-emerald-300",
     },
     {
       label: "Processing",
       value: breakdown.processing,
       tone: "bg-cyan-400",
-      text: "text-cyan-300",
+      text: "text-cyan-700 dark:text-cyan-300",
     },
-    { label: "Queued", value: breakdown.queued, tone: "bg-amber-400", text: "text-amber-300" },
-    { label: "Failed", value: breakdown.failed, tone: "bg-rose-400", text: "text-rose-300" },
+    {
+      label: "Queued",
+      value: breakdown.queued,
+      tone: "bg-amber-400",
+      text: "text-amber-700 dark:text-amber-300",
+    },
+    {
+      label: "Failed",
+      value: breakdown.failed,
+      tone: "bg-rose-400",
+      text: "text-rose-700 dark:text-rose-300",
+    },
     {
       label: "Quarantined",
       value: breakdown.quarantined,
-      tone: "bg-emerald-400",
-      text: "text-emerald-300",
+      tone: "bg-violet-400",
+      text: "text-violet-700 dark:text-violet-300",
     },
   ];
   const pipelineTotal = pipeline.reduce((sum, item) => sum + item.value, 0);
-  const activityCounts = overview.recent_activity.reduce<Record<string, number>>((counts, item) => {
-    const key = item.action.split(".")[0] || "other";
-    counts[key] = (counts[key] ?? 0) + 1;
-    return counts;
-  }, {});
-  const maxActivity = Math.max(1, ...Object.values(activityCounts));
-  const healthyProviders = overview.provider_runtimes.filter(
-    (provider) => provider.health_status?.toLowerCase() === "healthy",
-  ).length;
-  const configuredProviders = overview.provider_runtimes.filter(
-    (provider) => provider.provider_type !== "unconfigured",
-  ).length;
-
   return (
     <motion.section
       {...CARD_ENTER}
       transition={{ duration: 0.45, delay: 0.12 }}
-      className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr_1fr]"
-      aria-label="Workspace telemetry"
+      className="min-w-0"
+      aria-label="Document processing status"
     >
       <div className="theme-panel relative overflow-hidden rounded-[1.45rem] p-5">
         <div className="pointer-events-none absolute -top-20 -right-16 h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl" />
-        <SectionHeader eyebrow="Pipeline telemetry" title="Document flow" chip="Live snapshot" />
+        <SectionHeader eyebrow="Document health" title="Processing status" chip="Current files" />
         <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center">
           <div className="relative mx-auto h-36 w-36 shrink-0 sm:mx-0">
             <svg
@@ -1280,7 +1472,9 @@ function DashboardTelemetry({
                         ? "#fbbf24"
                         : color === "rose"
                           ? "#fb7185"
-                          : "#34d399";
+                          : color === "violet"
+                            ? "#a78bfa"
+                            : "#34d399";
                 return (
                   <motion.circle
                     key={item.label}
@@ -1319,94 +1513,6 @@ function DashboardTelemetry({
           </div>
         </div>
       </div>
-
-      <div className="theme-panel rounded-[1.45rem] p-5">
-        <SectionHeader eyebrow="Workspace load" title="Live capacity" chip="Current" />
-        <div className="mt-5 space-y-5">
-          <TelemetryMeter
-            label="Active jobs"
-            value={overview.stats.active_jobs}
-            max={Math.max(1, overview.stats.active_jobs, breakdown.processing)}
-            tone="cyan"
-          />
-          <TelemetryMeter
-            label="Queries recorded"
-            value={overview.stats.total_queries}
-            max={Math.max(1, overview.stats.total_queries)}
-            tone="cyan"
-          />
-          <div>
-            <div className="mb-2 flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Storage footprint</span>
-              <span className="font-bold">{formatBytes(overview.stats.storage_used_bytes)}</span>
-            </div>
-            <div className="bg-foreground/10 h-2 overflow-hidden rounded-full dark:bg-white/10">
-              <motion.div
-                className="to-primary h-full rounded-full bg-gradient-to-r from-cyan-400"
-                initial={{ width: 0 }}
-                animate={{ width: overview.stats.storage_used_bytes ? "100%" : "0%" }}
-                transition={{ duration: 0.8 }}
-              />
-            </div>
-            <p className="text-muted-foreground/60 mt-2 text-[10px]">
-              Used storage reported by the workspace. No quota percentage is shown because no quota
-              is configured.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="theme-panel rounded-[1.45rem] p-5">
-        <SectionHeader
-          eyebrow="Operational signals"
-          title="Routes and activity"
-          chip={`${overview.recent_activity.length} recent events`}
-        />
-        <div className="mt-5 space-y-4">
-          <div className="border-foreground/5 bg-foreground/[0.02] flex items-center justify-between rounded-xl border p-3 dark:border-white/5 dark:bg-white/[0.02]">
-            <div className="flex items-center gap-3">
-              {healthyProviders === configuredProviders && configuredProviders > 0 ? (
-                <CheckCircle2 className="text-emerald-400" size={18} />
-              ) : (
-                <CircleAlert className="text-amber-300" size={18} />
-              )}
-              <div>
-                <p className="text-sm font-semibold">Provider readiness</p>
-                <p className="text-muted-foreground text-[10px]">
-                  {healthyProviders} healthy of {configuredProviders} configured
-                </p>
-              </div>
-            </div>
-            <span className="text-muted-foreground text-xs font-bold">
-              {overview.provider_runtimes.length} routes
-            </span>
-          </div>
-          {Object.keys(activityCounts).length > 0 ? (
-            Object.entries(activityCounts)
-              .slice(0, 4)
-              .map(([label, value], index) => (
-                <div key={label}>
-                  <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold tracking-wider uppercase">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span>{value}</span>
-                  </div>
-                  <div className="bg-foreground/10 h-1.5 overflow-hidden rounded-full dark:bg-white/10">
-                    <motion.div
-                      className={`h-full rounded-full ${index % 2 ? "bg-primary" : "bg-cyan-400"}`}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(value / maxActivity) * 100}%` }}
-                      transition={{ duration: 0.55, delay: index * 0.08 }}
-                    />
-                  </div>
-                </div>
-              ))
-          ) : (
-            <p className="text-muted-foreground py-5 text-center text-xs">
-              Activity telemetry will appear after workspace actions occur.
-            </p>
-          )}
-        </div>
-      </div>
     </motion.section>
   );
 }
@@ -1424,7 +1530,7 @@ function DashboardTrends({ overview, loading }: { overview: DashboardOverview; l
     <motion.section
       {...CARD_ENTER}
       transition={{ duration: 0.45, delay: 0.18 }}
-      className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]"
+      className="grid gap-4 xl:grid-cols-2"
       aria-label="Workspace trends"
     >
       <div className="theme-panel rounded-[1.45rem] p-5">
@@ -1434,8 +1540,8 @@ function DashboardTrends({ overview, loading }: { overview: DashboardOverview; l
           chip={loading ? "Loading" : activityTotal > 0 ? "Live telemetry" : "No activity yet"}
         />
         <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
-          <TrendLegend color="bg-cyan-400" label="Documents" />
-          <TrendLegend color="bg-emerald-400" label="Queries" />
+          <TrendLegend color="bg-[#0e7490] dark:bg-cyan-400" label="Documents" />
+          <TrendLegend color="bg-[#047857] dark:bg-emerald-400" label="Queries" />
           <span className="text-muted-foreground ml-auto">
             {loading ? "Loading telemetry" : `${activityTotal} actions recorded`}
           </span>
@@ -1448,7 +1554,7 @@ function DashboardTrends({ overview, loading }: { overview: DashboardOverview; l
       </div>
       <div className="theme-panel rounded-[1.45rem] p-5">
         <SectionHeader eyebrow="Provider operations" title="Reliability pulse" chip="Last 7 days" />
-        <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <PulseStat
             label="Health checks"
             value={loading ? "..." : checks}
@@ -1475,7 +1581,13 @@ function DashboardTrends({ overview, loading }: { overview: DashboardOverview; l
         <div className="border-foreground/5 bg-foreground/[0.02] mt-4 rounded-xl border p-3 text-xs dark:border-white/5 dark:bg-white/[0.02]">
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Failures in workspace activity</span>
-            <span className={failures ? "font-bold text-rose-300" : "font-bold text-emerald-300"}>
+            <span
+              className={
+                failures
+                  ? "font-bold text-rose-700 dark:text-rose-300"
+                  : "font-bold text-emerald-700 dark:text-emerald-300"
+              }
+            >
               {loading ? "..." : failures}
             </span>
           </div>
@@ -1515,7 +1627,7 @@ function PulseStat({
         {label}
       </p>
       <p
-        className={`mt-2 text-xl font-black ${tone === "healthy" ? "text-emerald-300" : tone === "risk" ? "text-rose-300" : ""}`}
+        className={`mt-2 text-xl font-black ${tone === "healthy" ? "text-emerald-700 dark:text-emerald-300" : tone === "risk" ? "text-rose-700 dark:text-rose-300" : ""}`}
       >
         {value}
       </p>
@@ -1527,13 +1639,15 @@ function PulseStat({
 function TrendChart({ points, loading }: { points: DashboardTrendPoint[]; loading: boolean }) {
   const width = 640;
   const height = 150;
+  const plotTop = 14;
+  const plotBottom = 112;
   const max = Math.max(1, ...points.flatMap((point) => [point.documents, point.queries]));
   const hasActivity = points.some((point) => point.documents > 0 || point.queries > 0);
   const makePath = (key: "documents" | "queries") =>
     points
       .map((point, index) => {
-        const x = points.length <= 1 ? width / 2 : (index / (points.length - 1)) * width;
-        const y = height - 16 - (point[key] / max) * (height - 32);
+        const x = points.length <= 1 ? width / 2 : 8 + (index / (points.length - 1)) * (width - 16);
+        const y = plotBottom - (point[key] / max) * (plotBottom - plotTop);
         return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
       })
       .join(" ");
@@ -1552,92 +1666,82 @@ function TrendChart({ points, loading }: { points: DashboardTrendPoint[]; loadin
           )}
         </div>
       ) : (
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="h-[150px] w-full"
-          role="img"
-          aria-label="Seven day workspace activity trend"
-        >
-          {[0, 1, 2].map((line) => {
-            const y = 16 + (line / 2) * (height - 32);
-            return (
-              <line
-                key={line}
-                x1="0"
-                x2={width}
-                y1={y}
-                y2={y}
-                stroke="currentColor"
-                className="text-foreground/10"
-              />
-            );
-          })}
-          <motion.path
-            d={makePath("documents")}
-            fill="none"
-            stroke="#22d3ee"
-            strokeWidth="3"
-            strokeLinecap="round"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 0.9 }}
-          />
-          <motion.path
-            d={makePath("queries")}
-            fill="none"
-            stroke="#34d399"
-            strokeWidth="3"
-            strokeLinecap="round"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 0.9, delay: 0.1 }}
-          />
-          {points.map((point, index) => {
-            const x = points.length <= 1 ? width / 2 : (index / (points.length - 1)) * width;
-            return (
-              <text
-                key={point.date}
-                x={x}
-                y={height - 2}
-                textAnchor="middle"
-                className="text-muted-foreground fill-current text-[10px]"
-              >
-                {point.date.slice(5)}
-              </text>
-            );
-          })}
-        </svg>
+        <>
+          <div className="text-muted-foreground mb-1 flex justify-between px-1 text-[9px]">
+            <span>Events per day</span>
+            <span>Scale: 0–{max}</span>
+          </div>
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            preserveAspectRatio="none"
+            className="block h-[132px] w-full"
+            role="img"
+            aria-label={`Seven day workspace activity trend, scaled from zero to ${max} events per day`}
+          >
+            {[0, 0.5, 1].map((fraction) => {
+              const y = plotBottom - fraction * (plotBottom - plotTop);
+              return (
+                <line
+                  key={fraction}
+                  x1="0"
+                  x2={width}
+                  y1={y}
+                  y2={y}
+                  stroke="currentColor"
+                  className="text-foreground/10"
+                />
+              );
+            })}
+            <motion.path
+              d={makePath("documents")}
+              fill="none"
+              className="dashboard-trend-documents"
+              strokeWidth="3"
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 0.9 }}
+            />
+            <motion.path
+              d={makePath("queries")}
+              fill="none"
+              className="dashboard-trend-queries"
+              strokeWidth="3"
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 0.9, delay: 0.1 }}
+            />
+            {points.map((point, index) => {
+              const x =
+                points.length <= 1 ? width / 2 : 8 + (index / (points.length - 1)) * (width - 16);
+              return (
+                <g key={point.date}>
+                  <circle
+                    cx={x}
+                    cy={plotBottom - (point.documents / max) * (plotBottom - plotTop)}
+                    r="3.5"
+                    className="dashboard-trend-document-point"
+                  />
+                  <circle
+                    cx={x}
+                    cy={plotBottom - (point.queries / max) * (plotBottom - plotTop)}
+                    r="3.5"
+                    className="dashboard-trend-query-point"
+                  />
+                </g>
+              );
+            })}
+          </svg>
+        </>
       )}
-    </div>
-  );
-}
-
-function TelemetryMeter({
-  label,
-  value,
-  max,
-  tone,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  tone: "cyan" | "emerald";
-}) {
-  const percentage = Math.min(100, Math.max(0, (value / Math.max(1, max)) * 100));
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <span className="font-bold">{value}</span>
-      </div>
-      <div className="bg-foreground/10 h-2 overflow-hidden rounded-full dark:bg-white/10">
-        <motion.div
-          className={`h-full rounded-full ${tone === "cyan" ? "bg-cyan-400" : "bg-emerald-400"}`}
-          initial={{ width: 0 }}
-          animate={{ width: `${percentage}%` }}
-          transition={{ duration: 0.65, ease: "easeOut" }}
-        />
-      </div>
+      {!loading && points.length > 0 && hasActivity ? (
+        <div className="text-muted-foreground grid grid-cols-7 gap-1 px-1 pt-1 text-center text-[10px]">
+          {points.map((point) => (
+            <span key={point.date}>{point.date.slice(5)}</span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
