@@ -3,8 +3,8 @@ import { DocsCards, DocsSection, DocsShell } from "../_components/DocsShell";
 export default function ArchitectureDocsPage() {
   return (
     <DocsShell
-      title="Architecture"
-      intro="A high-level map of AverQel's chat, documents, memory, providers, integrations, and security boundaries."
+      title="Architecture overview"
+      intro="A high-level map of the AverQel clients, API, workers, data services, and the boundaries between its main product areas."
     >
       <DocsCards
         items={[
@@ -17,12 +17,12 @@ export default function ArchitectureDocsPage() {
             body: "The FastAPI service authenticates requests, applies tenant and user authorization, orchestrates work, and exposes health endpoints.",
           },
           {
-            title: "Workers and inference",
-            body: "Celery workers process documents, DeepSpace jobs, MCP work, maintenance, and schedules. The inference service handles local model work; the voice agent handles realtime STT/TTS rooms.",
+            title: "Workers and optional services",
+            body: "Background workers process configured document, DeepSpace, connector, maintenance, and scheduled work. Local inference, browser rendering, sandbox execution, email, push, and realtime voice require the relevant service configuration.",
           },
           {
             title: "State and storage",
-            body: "PostgreSQL stores durable state, Redis coordinates queues and events, MinIO stores private objects, and ClamAV scans files before processing.",
+            body: "PostgreSQL stores durable application data, Redis supports configured queue and event paths, and private object storage holds files. Production uploads require the configured storage and malware-scanning services.",
           },
           {
             title: "External providers",
@@ -40,15 +40,24 @@ export default function ArchitectureDocsPage() {
         <ol className="list-decimal space-y-3 pl-6">
           <li>The browser or Electron client sends a tenant-authenticated request.</li>
           <li>
-            The API loads authorized history, document context, memory, and provider configuration.
+            The API checks authentication, tenant scope, ownership, and role permissions for that
+            route.
           </li>
           <li>
-            The API selects permitted tools and queues background work when the request needs it.
+            Documents Hub handles source-file operations; Query handles retrieval-first document
+            questions.
           </li>
           <li>
-            The selected model or remote provider returns data through the backend policy boundary.
+            DeepSpace handles its own conversation, working Library, and permitted optional tool
+            workflows.
           </li>
-          <li>The result streams to the client and durable conversation state is persisted.</li>
+          <li>
+            Configured providers and workers perform only the work allowed by the request and
+            policy.
+          </li>
+          <li>
+            The relevant response, event, or durable result returns through its product surface.
+          </li>
         </ol>
       </DocsSection>
 
@@ -59,25 +68,25 @@ export default function ArchitectureDocsPage() {
   -> api
      -> PostgreSQL and Redis
      -> MinIO and ClamAV
-     -> inference and SearXNG
-     -> LiveKit and voice agent (when voice mode is enabled)
-     -> approved external providers
-  -> worker, ingestion, MCP, maintenance, and scheduler queues`}
+     -> configured model and retrieval providers
+     -> private object storage and malware scanner
+     -> optional sandbox, browser, email, push, or voice services
+  -> ingestion, DeepSpace, MCP, maintenance, and scheduler workers`}
         </pre>
         <p className="mt-4">
-          The production service layout is defined by the checked-in backend Compose files. Voice
-          mode requires the LiveKit and voice-agent services to be deployed and healthy; HTTPS/WSS,
-          browser microphone permission, and network-appropriate TURN configuration remain
-          deployment requirements.
+          Compose files define deployable service layouts, not proof that an environment has started
+          or configured every service. Voice, sandbox, research rendering, email, push, and local
+          inference each have additional deployment requirements described in their product guides.
         </p>
       </DocsSection>
 
       <DocsSection title="Safety boundaries">
         <p>
-          Authentication, tenant isolation, encrypted secrets, provider policy, approval checks, and
-          MCP authorization remain backend responsibilities. Clients display authorized results and
-          request actions, while the backend makes the final authorization decision immediately
-          before execution.
+          The backend is the authorization boundary for authenticated requests, tenant access,
+          provider credentials, collection sharing, and tool calls. Some product areas process
+          content server-side, and support staff can read user-submitted support or feedback threads
+          when authorized. Do not infer a client-only or end-to-end encryption guarantee from tenant
+          isolation or encrypted storage.
         </p>
       </DocsSection>
     </DocsShell>

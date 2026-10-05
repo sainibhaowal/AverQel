@@ -5,6 +5,14 @@ verification evidence, and release policies for AverQel. Read this file first;
 the documents are grouped by the order in which the system is understood and
 operated.
 
+For end-user guides, open `/documentation` in the running application; its
+source is [`frontend/app/documentation/`](../../frontend/app/documentation/).
+It is organized by Documents Hub, Query, DeepSpace, Collections, Providers and
+Connections, Account and Trust, and Help. This backend index is primarily
+for developers and operators. Several entries contain commit-specific local
+verification or deployment evidence; those records are not public promises
+and must be checked against their target and date before release decisions.
+
 ## Documentation map
 
 ### 00. Release status
@@ -55,7 +63,7 @@ operated.
 - [Documents Hub workflows](library/07-documents-hub-workflows.md)
 - [Ingestion recovery, security, and observability](library/08-ingestion-recovery-security-observability.md)
 - [Documents Hub user guide](library/09-documents-hub-user-guide.md)
-- [Sealed collection chat](library/10-collection-chat-encryption.md)
+- [Collection chat encryption and custody boundaries](library/10-collection-chat-encryption.md)
 - [Collection chat contract](library/11-collection-chat.md)
 - [Collection rooms: connect, chat, and share](library/12-collection-rooms.md)
 
@@ -64,8 +72,9 @@ operated.
 - [API reliability](platform/01-api-reliability.md)
 - [OAuth login](platform/02-auth-oauth-login.md)
 - [Backend testing](platform/03-testing.md)
-- [Current end-to-end verification](platform/04-end-to-end-verification.md)
+- [Historical Documents Hub end-to-end verification (2026-09-27)](platform/04-end-to-end-verification.md)
 - [Realtime websocket events](platform/04-realtime-events.md)
+- [Feedback, support, and durable notifications](platform/05-feedback-support-notifications.md)
 
 ### 05. Storage and recovery
 
@@ -77,6 +86,24 @@ operated.
 
 - [DeepSpace document attachments and conversion](roadmap/01-deepspace-document-attachments-and-conversion.md)
 
+## Product-area orientation
+
+- **Documents Hub** owns source-document upload, processing, OCR, organization,
+  preview, and document access/sharing.
+- **Query** is the retrieval-first question-answering surface over authorized
+  document sources.
+- **DeepSpace** is the broader conversational work area. Its workspace Library
+  contains files associated with DeepSpace work and is distinct from Documents
+  Hub.
+- **Collections** share selected content with explicitly invited members; they
+  are currently experimental beta. Collection chat must not be described as
+  zero-knowledge or server-blind end-to-end encryption.
+- **Providers and MCP** are separate: model providers generate or embed
+  content, while MCP connections expose policy-controlled remote tools.
+- **Support and feedback** are readable to the submitter and authorized
+  support staff; they are not end-to-end encrypted. Email notification is
+  deployment-dependent.
+
 ## Release-status convention
 
 “Available locally” means the implementation and local verification are
@@ -84,6 +111,12 @@ complete. “Deployment gate remains” means the feature still needs isolated
 VPS/staging proof, real external credentials, or a physical-device test. These
 labels are intentional and must not be replaced with a production claim until
 the documented gate is completed.
+
+For the latest checked source migration head and known environment evidence,
+use the [current worktree and release index](release/03-current-worktree-change-index.md).
+Other verification reports are snapshots: their date and environment define
+what they prove. A source migration head is not evidence that staging or
+production has applied it.
 
 Automatic archive is opt-in per tenant and archive-first. Permanent purge is
 disabled. Existing authentication, tenant isolation, DeepSpace chat/queue

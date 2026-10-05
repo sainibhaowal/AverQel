@@ -1,128 +1,100 @@
-# AverQel - What You Do Every Day
+# AverQel contributor and release quick reference
 
-> You are developer. You change code, push to GitHub, it becomes live on `144.91.118.196` by itself.
-> VPS is `root@144.91.118.196` `/opt/averqel` - you don't SSH every time now.
-> Secrets `VPS_HOST` `VPS_USER` `VPS_SSH_KEY` `GHCR_PAT` already added.
+This page is a short command and workflow guide. It follows the repository's
+current protected-branch, manual-release, and manual-deployment setup. The
+canonical contributor rules are in [`CONTRIBUTING.md`](CONTRIBUTING.md); the
+release and deployment details are in [`README.md`](README.md) and the linked
+GitHub Actions workflows.
 
----
+## Work on a change
 
-## Your Normal Day - 4 Steps
-
-### Step 1 - Change code on your laptop
-
-This is normal. You edit files in `backend/` or `frontend/` like always.
+Start from an up-to-date checkout, create a branch, make the change, and run
+the relevant checks:
 
 ```bash
-cd /home/ravi/Projects/AverQel
+git switch main
 git pull --ff-only origin main
-# now edit your files
+git switch -c docs/short-description
+
+# Run checks that match the files you changed.
+pnpm --dir frontend lint
+pnpm --dir frontend test
+pnpm --dir frontend exec tsc --noEmit
+pnpm --dir frontend build
 ```
 
-### Step 2 - Auto check before commit (you do nothing)
+For backend changes, use the project virtual environment from `backend/`:
 
-**Installed: `.pre-commit-config.yaml:1` + `.git/hooks/pre-commit`**
-Now when you run `git commit`, this runs **automatically** on your laptop before GitHub, before push:
-
-* `backend/.venv/bin/ruff check . --fix` -> fixes lint
-* `backend/.venv/bin/black .` -> fixes format
-* `backend/.venv/bin/mypy .` -> type check
-* `frontend pnpm lint` -> frontend lint
-
-If it fixes files, commit is blocked with `files were modified by this hook` -> just do:
 ```bash
-git add .
-git commit -m "feat: ..."
-```
-again. No need to type those `ruff/black/mypy` commands manually every day.
-
-`pnpm build`, `bandit`, `pytest`, `pip-audit` still run on GitHub `ci.yml:1` - you don't run them daily unless you want. If you want to test all gates manually before push:
-```bash
-cd backend && ./.venv/bin/pytest -q
-cd ../frontend && pnpm build
+cd backend
+./.venv/bin/ruff check app tests
+./.venv/bin/pytest -q
 ```
 
-### Step 3 - Push your work to GitHub
+Do not run formatting commands that rewrite unrelated files. Review
+`git status --short` and the diff, then commit only the intended files:
 
-**Important - Write good commit message.** The system reads your message to decide version:
-
-* You fixed a bug: `fix: ...` -> becomes `v1.0.0` -> `v1.0.1` (patch)
-* You added a feature: `feat: ...` -> becomes `v1.0.1` -> `v1.1.0` (minor)
-* You broke something old: `feat!: ...` -> becomes `v1.1.0` -> `v2.0.0` (major)
-* Docs only: `docs: ...` -> no new version
-
-Example:
 ```bash
-cd /home/ravi/Projects/AverQel
 git status --short
-git add backend/app/your/file.py frontend/app/your/page.tsx
-git commit -m "feat: add search filters"
-git push origin main
+git diff --check
+git diff
+git add path/to/changed-file
+git commit -m "docs: explain a product workflow"
+git push -u origin docs/short-description
 ```
 
-After `git push origin main`:
-* GitHub runs checks `ci.yml` - you see green check on your commit
-* GitHub creates a **Pull Request** called `chore: release v1.1.0` - this is not live yet, just a preview with new version and notes
+Open a pull request and wait for required review and CI. Do not push directly
+to protected `main`.
 
-You can keep pushing more `feat:` / `fix:` to `main` - that same PR will update to `v1.1.0` -> `v1.1.1` etc.
+## Publish a desktop release
 
-### Step 4 - Make it live on VPS (when you are ready)
+The **Release - Manual SemVer and Desktop** workflow is run manually from
+protected `main`. It selects or calculates a canonical `vMAJOR.MINOR.PATCH`
+version, builds desktop packages, and publishes the GitHub release. It does
+not deploy the web application to the VPS.
 
-Go to **GitHub -> Pull requests** -> open `chore: release v1.1.0` -> click `Merge pull request` -> `Confirm merge`.
+Use GitHub **Actions → Release - Manual SemVer and Desktop → Run workflow**.
+Leave the version input empty to calculate the next version, or enter an exact
+canonical version when the release process calls for one. Review the generated
+release assets and manifest after the workflow completes.
 
-Then **without touching VPS**, this happens by itself:
-1. GitHub creates tag `v1.1.0` and Release `AverQel v1.1.0`
-2. Builds 3 private images `ghcr.io/sainibhaowal/averqel-api:v1.1.0` `averqel-worker:v1.1.0` `averqel-frontend:v1.1.0`
-3. SSH to `144.91.118.196` does `git checkout v1.1.0` -> `docker pull` -> `docker up -d` -> deletes old images, keeps only `v1.1.0` -> checks health
+## Deploy the web application
 
-Check it worked (on your laptop):
-```bash
-curl -fsS https://averqel.com/api/v1/health/ready | python3 -m json.tool
-# should show "version": "v1.1.0"
-```
-And footer on website shows `v1.1.0`.
+The **Deploy - Manual Docker Build and VPS** workflow is separate and also
+starts manually from `main`. It builds and tests images from the selected main
+commit, publishes immutable images, then deploys them to the configured VPS.
+The workflow checks migration and service readiness and has rollback handling;
+those checks do not replace authenticated staging or feature-specific smoke
+tests.
 
-**That's your whole day: change -> check -> commit with `feat:/fix:` -> push main -> merge Release PR when ready -> live.**
+Run it only after the intended commit is on `main`, required release gates are
+recorded, and production configuration and backups are ready. Use GitHub
+**Actions → Deploy - Manual Docker Build and VPS → Run workflow**. Confirm the
+source commit shown by the run, inspect every job, and verify the resulting
+release version and health endpoints. Never copy server addresses, credentials,
+or private environment values into this repository or public issue.
 
----
+For the full deployment procedure and evidence requirements, use the
+[release handoff](backend/docs/release/01-end-to-end-handoff.md),
+[production verification guide](backend/docs/release/02-production-e2e-verification.md),
+and [current release index](backend/docs/release/03-current-worktree-change-index.md).
 
-## What you DON'T do anymore
+## Desktop development
 
-* Don't run `ssh root@144.91.118.196` + `git pull origin main` + `docker compose up -d --build` - pipeline does it
-* Don't run `docker image prune` manually - pipeline deletes old builds keeping only active version
-
----
-
-## If you need hotfix without Release PR
-
-If live is broken and you need `v1.0.1` right now without waiting for PR:
-
-```bash
-git tag v1.0.1 -m "hotfix"
-git push origin v1.0.1
-# -> directly builds and deploys v1.0.1 to VPS
-```
-
----
-
-## If you changed desktop app only
-
-Most `v*` pushes don't need desktop. Only when you change `applications/desktop`:
+The desktop client uses the shared frontend and normally opens the local web
+app with:
 
 ```bash
-git tag desktop-v1.0.0 -m "desktop"
-git push origin desktop-v1.0.0
-# -> builds deb/msi/exe only, VPS not touched
+pnpm electron dev
 ```
 
----
+To explicitly use the local HTTPS reverse proxy and its API, set both values:
 
-## If deploy failed - check
-
-* GitHub -> Actions -> `Backend/Web Release - v*` - see which step failed (gates, build, deploy)
-* Only then SSH to VPS:
 ```bash
-ssh root@144.91.118.196
-cd /opt/averqel
-docker compose --env-file backend/.env.vps -f backend/docker-compose.prod.yml ps
-docker compose --env-file backend/.env.vps -f backend/docker-compose.prod.yml logs --tail=100 api
+ELECTRON_START_URL=https://averqel.localhost \
+NEXT_PUBLIC_API_URL=https://averqel.localhost/api/v1 \
+pnpm electron dev
 ```
+
+Desktop packaging instructions are in
+[`applications/desktop/README.md`](applications/desktop/README.md).

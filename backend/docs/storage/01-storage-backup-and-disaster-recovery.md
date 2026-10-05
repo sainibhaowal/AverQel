@@ -24,15 +24,17 @@ access controls.
 
 ## Verification status
 
-The local proof created PostgreSQL and MinIO backups, verified both checksums,
+The recorded local proof created PostgreSQL and MinIO backups, verified both checksums,
 restored PostgreSQL into a disposable database, and validated 83 restored
 public tables. It restored the MinIO archive into an isolated temporary volume
 containing 150 files and verified the isolated MinIO health endpoint with HTTP
 200. Disposable targets were removed after verification; the active database
-and object-store volume were never overwritten. The local database is at
-migration head `20260928_0001`. This is repository/local evidence only; it is
-not a claim that the VPS or an external staging environment has completed a
-restore drill.
+and object-store volume were never overwritten. That restore snapshot used
+migration head `20260928_0001`; it is not the current source head or a statement
+about the current local database. The source and deployment status is tracked
+in the [current worktree and release index](../release/03-current-worktree-change-index.md).
+This historical local evidence does not establish that the VPS or an external
+staging environment has completed a restore drill.
 
 The local staging profile also opts into metadata-only automatic archive for
 proof. The worker archives only reconciled, known user-content categories;

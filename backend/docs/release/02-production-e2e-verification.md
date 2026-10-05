@@ -1,17 +1,26 @@
 # 02. Production end-to-end verification report
 
+> **Current gate (2026-10-05):** Despite this historical file name, the
+> results below are not current production certification. The source migration
+> graph has head `20261012_0012`; the latest recorded Docker database check is
+> `20261012_0011` from 2026-10-03. No evidence in this checkout confirms that
+> `0012` is applied to staging/production or that the updated application has
+> been deployed and smoke-tested there. Record those target-specific results
+> before release.
+
 This report records the reproducible checks for the six advanced capabilities.
 No provider secret or temporary API key is stored in the repository.
 
-The historical results below are retained for provenance. The current local
-verification is recorded in section 8 and must be distinguished from external
-staging/VPS deployment proof.
+The historical results below are retained for provenance. Section 8 is also
+a dated local snapshot, not verification of the current worktree. See the
+[current worktree and release index](03-current-worktree-change-index.md) for
+the latest recorded source and environment status.
 
 The dated results below are historical evidence from the environments and
 commits named in each section. They do not automatically certify the current
-uncommitted worktree. The current release gate is tracked in
-`01-end-to-end-handoff.md` and must be rerun after the pending migrations,
-runtime changes, provider changes, and frontend changes are committed.
+worktree. The current release gate is tracked in
+`01-end-to-end-handoff.md` and must be rerun against the exact release commit
+after its migrations, runtime, provider, and frontend changes are selected.
 
 The current Documents Hub browser coverage and its evidence are maintained in
 [`../platform/04-end-to-end-verification.md`](../platform/04-end-to-end-verification.md).
@@ -30,15 +39,15 @@ The current Documents Hub browser coverage and its evidence are maintained in
 
 ## 2. Automated evidence
 
-| Check | Result | Evidence |
-| --- | --- | --- |
-| Complete backend regression suite (historical) | Passed | Historical evidence; current local result is recorded in section 8 |
-| Targeted capability/provider suite (historical) | Passed | Historical evidence; current focused retention/browser/sandbox result is recorded in section 8 |
-| Complete frontend suite (historical) | Passed | Historical evidence; current local result is 88 test files and 323 tests in section 8 |
-| Compose production configuration | Passed | `docker compose --env-file backend/.env.localprod.example -f backend/docker-compose.prod.yml config --quiet` |
-| Live API liveness | Passed | `GET /api/v1/health/live` returned HTTP 200 and `{"status":"ok"}` |
-| Live API readiness | Passed | `GET /api/v1/health/ready` returned HTTP 200 and `{"status":"ok"}` |
-| OpenZen model discovery | Passed | Authenticated `/zen/v1/models` returned HTTP 200, 70 models, including `nemotron-3.5-lightning-free` |
+| Check                                           | Result | Evidence                                                                                                     |
+| ----------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| Complete backend regression suite (historical)  | Passed | Historical evidence; section 8 records the 2026-09-27 snapshot                                              |
+| Targeted capability/provider suite (historical) | Passed | Historical evidence; section 8 records the 2026-09-27 snapshot                                              |
+| Complete frontend suite (historical)            | Passed | Historical evidence; section 8 records a 2026-09-27 snapshot                                               |
+| Compose production configuration                | Passed | `docker compose --env-file backend/.env.localprod.example -f backend/docker-compose.prod.yml config --quiet` |
+| Live API liveness                               | Passed | `GET /api/v1/health/live` returned HTTP 200 and `{"status":"ok"}`                                            |
+| Live API readiness                              | Passed | `GET /api/v1/health/ready` returned HTTP 200 and `{"status":"ok"}`                                           |
+| OpenZen model discovery                         | Passed | Authenticated `/zen/v1/models` returned HTTP 200, 70 models, including `nemotron-3.5-lightning-free`         |
 
 ## 3. Live OpenZen generation result
 
@@ -143,30 +152,30 @@ AverQel.
 4. Multi-file uploads continue to use independent resumable sessions with
    bounded concurrency, so one rejected file cannot corrupt another upload.
 
-## 8. Current local release status (2026-09-27)
+## 8. Historical local release status (2026-09-27)
 
-The current local worktree was reverified after the retention, optional-service,
+The local worktree was reverified after the retention, optional-service,
 voice configuration, frontend MCP description, and error-registry fixes:
 
-| Check | Result |
-| --- | --- |
-| Migration head | `20261009_0001_document_webhook_deliveries` |
-| Focused retention/browser/sandbox workflow | 17 passed |
-| Complete backend suite | Passed at 100% |
-| Complete frontend suite | 88 files, 325 tests passed |
-| Complete Playwright suite | 10 passed, 0 skipped |
-| Documents Hub browser workflows | Quarantine, webhook history, share-link resolve, citation preview/zoom passed |
-| Frontend TypeScript | Passed |
-| Frontend ESLint | Passed |
-| Production frontend build | Passed |
-| PostgreSQL disposable restore | 83 public tables verified |
-| MinIO disposable restore | 150 files and HTTP 200 health verified |
-| Sandbox executor | Authenticated bounded Python smoke passed |
-| Browser renderer | Authenticated public HTTPS render returned HTTP 200 |
-| LiveKit voice agent | Registered successfully; no local 401 retry loop |
-| Authenticated voice browser smoke | STT fake-microphone and TTS HTTPS/WSS checks passed locally |
-| LM Studio chat adapter | Loaded `lfm2.5-8b-a1b` returned visible content and usage |
-| LM Studio embeddings | Loaded local adapter returned 768-dimensional embedding |
+| Check                                      | Result                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| Migration head                             | `20261009_0001_document_webhook_deliveries`                                   |
+| Focused retention/browser/sandbox workflow | 17 passed                                                                     |
+| Complete backend suite                     | Passed at 100%                                                                |
+| Complete frontend suite                    | 88 files, 325 tests passed                                                    |
+| Complete Playwright suite                  | 10 passed, 0 skipped                                                          |
+| Documents Hub browser workflows            | Quarantine, webhook history, share-link resolve, citation preview/zoom passed |
+| Frontend TypeScript                        | Passed                                                                        |
+| Frontend ESLint                            | Passed                                                                        |
+| Production frontend build                  | Passed                                                                        |
+| PostgreSQL disposable restore              | 83 public tables verified                                                     |
+| MinIO disposable restore                   | 150 files and HTTP 200 health verified                                        |
+| Sandbox executor                           | Authenticated bounded Python smoke passed                                     |
+| Browser renderer                           | Authenticated public HTTPS render returned HTTP 200                           |
+| LiveKit voice agent                        | Registered successfully; no local 401 retry loop                              |
+| Authenticated voice browser smoke          | STT fake-microphone and TTS HTTPS/WSS checks passed locally                   |
+| LM Studio chat adapter                     | Loaded `lfm2.5-8b-a1b` returned visible content and usage                     |
+| LM Studio embeddings                       | Loaded local adapter returned 768-dimensional embedding                       |
 
 The local restore database, temporary object-storage volume, and proof
 container were removed after verification. The active database, MinIO volume,

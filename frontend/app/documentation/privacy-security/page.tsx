@@ -3,115 +3,99 @@ import { DocsCards, DocsSection, DocsShell } from "../_components/DocsShell";
 export default function PrivacySecurityPage() {
   return (
     <DocsShell
-      title="Privacy & Security"
-      intro="How AverQel separates tenants and users, protects provider credentials, limits MCP visibility, and controls agent actions."
+      title="Privacy & security"
+      intro="AverQel applies authentication, tenant and user authorization, and integration policies in its backend. These controls reduce unauthorized access; they do not mean that all content is client-only or invisible to the service."
     >
       <DocsCards
         items={[
           {
-            title: "Tenant + User Isolation",
-            body: "MCP servers, OAuth tokens, policies, account identities, and events are queried with both tenant and user ownership checks.",
+            title: "Tenant and user isolation",
+            body: "Protected API routes scope reads and writes to the authenticated account, tenant, resource ownership, and role permissions.",
           },
           {
-            title: "Encrypted Credentials",
-            body: "OAuth access and refresh tokens are encrypted at rest. The browser receives safe account labels and scope names, never credential material.",
+            title: "Credential handling",
+            body: "Provider and OAuth credential material is handled by backend services and is not intended to be returned in normal frontend responses. Exact protection depends on configured encryption keys and deployment practices.",
           },
           {
-            title: "Connected-account scope",
-            body: "Connected MCP accounts are available across the owning user’s DeepSpace conversations; ownership, catalog freshness, tool policy, risk limits, and approvals remain enforced.",
+            title: "Tool authorization",
+            body: "Connected tools are governed by ownership, enabled status, provider policy, tool modes, risk limits, and required approvals.",
           },
           {
-            title: "Metadata-Only Inspection",
-            body: "The inspector exposes safe status and redacted event summaries, not raw MCP responses, private content, headers, tokens, or server configuration.",
+            title: "Content boundaries",
+            body: "Documents and AI requests are processed by configured server-side services. Authorized support staff can read submitted support and feedback threads.",
           },
         ]}
       />
-
       <DocsSection title="MCP account and tenant isolation">
         <p>
-          Every native MCP connection belongs to one tenant and one user. OAuth token lookup uses
-          the connection&apos;s tenant, user, and server identity together. DeepSpace cannot select
-          a token belonging to another user or use a tenant-wide Google or GitHub token.
-        </p>
-        <p>
-          Conversation and DeepSpace endpoints verify that the referenced object belongs to the
-          current tenant and that the current user may operate it. These checks are repeated in the
-          runtime immediately before remote execution; frontend context is never treated as proof of
-          authorization.
+          MCP connection lookups are scoped by tenant, user, and provider connection. DeepSpace tool
+          execution checks the owning account and relevant connection and conversation permissions;
+          frontend state is not authorization evidence. Review a provider&apos;s requested scopes
+          and policy before connecting it.
         </p>
       </DocsSection>
-
       <DocsSection title="OAuth consent and secret lifecycle">
         <ul className="list-disc space-y-2 pl-6">
-          <li>Users sign in and consent directly at Google, GitHub, or the approved provider.</li>
-          <li>Passwords remain with the provider and are never submitted to AverQel.</li>
           <li>
-            PKCE verifier data and signed OAuth state are held in encrypted, single-use transaction
-            storage.
+            Users consent on the provider&apos;s authorization page; AverQel does not need the
+            provider password.
           </li>
           <li>
-            Access tokens, refresh tokens, and client secrets are encrypted and never serialized
-            into frontend DTOs.
+            Access tokens, refresh tokens, and client secrets are handled server-side and encrypted
+            at rest where the configured credential storage applies.
           </li>
           <li>
-            Verified granted scope names and safe account identity may be returned to the owning
-            user.
+            Only safe account details and granted scope information needed by the interface should
+            be exposed to the owning user.
           </li>
           <li>
-            Disconnect removes the local credential record and attempts provider revocation where
-            the provider supports it.
-          </li>
-          <li>
-            OAuth secrets are excluded from logs, prompts, MCP events, inspector payloads, and
-            marketplace metadata.
+            Disconnect removes local connection credentials and requests provider revocation where
+            supported; remote revocation behavior is provider-dependent.
           </li>
         </ul>
       </DocsSection>
-
       <DocsSection title="Permission modes and precedence">
         <p>
-          <strong>Always allow</strong> means the tool may run without a per-call approval only when
-          every connection, scope, risk, tenant, catalog, and platform rule passes. It is not a
-          global bypass.
-        </p>
-        <p>
-          <strong>Needs approval</strong> pauses a risky action for an explicit user decision.
-          <strong>Blocked</strong> prevents the tool from being offered or called. Blocked wins over
-          every less restrictive setting.
-        </p>
-        <p>
-          <strong>Read-only</strong> prevents writes and higher-risk actions even if a tool was
-          otherwise selected. The risk ceiling limits the highest allowed risk class. Conversation
-          and DeepSpace controls are additional gates: when an override is absent, stale, or false,
-          the connection is denied for that scope.
+          MCP controls can include Read-only, Always allow, Needs approval, or Blocked modes, along
+          with connection, conversation, and risk limits. A more restrictive applicable rule should
+          prevent a tool call. Always allow does not bypass backend authorization, provider state,
+          or platform safety rules. Review the connector guide for current precedence details.
         </p>
       </DocsSection>
-
-      <DocsSection title="DeepSpace behavior">
+      <DocsSection title="AI providers and content processing">
         <p>
-          When a user asks DeepSpace to search Gmail, inspect GitHub, read a Drive file, or perform
-          another MCP task, AverQel checks the current tenant, user, connection, provider approval,
-          authentication state, catalog revision, scope enablement, tool mode, risk policy, and
-          confirmation requirement before planning and again immediately before the remote call.
-        </p>
-        <p>
-          A blocked or disabled tool is not offered to the MCP action surface. A tool result may be
-          summarized for the user, but raw remote payloads are not returned through the MCP
-          inspector or persisted as unredacted MCP events.
+          When a user sends a prompt or document question to an external model provider, the backend
+          sends the content needed for that request to the configured provider. Provider retention,
+          processing location, and contractual terms are separate from AverQel&apos;s tenant access
+          controls. Use a provider approved for the data you intend to process.
         </p>
       </DocsSection>
-
+      <DocsSection title="Collections and encryption">
+        <p>
+          Collection chat includes client encryption helpers and an optional server-mediated sealed
+          storage mode. The collection connection code is available through the API, and the sealed
+          mode can be opened by the API for authorized members. Do not treat collection chat as
+          zero-knowledge or server-blind end-to-end encryption. Collection documents are processed
+          server-side. See the{" "}
+          <a className="text-primary underline" href="/documentation/collections-sharing">
+            Collections guide
+          </a>{" "}
+          for details.
+        </p>
+      </DocsSection>
       <DocsSection title="Admin and operational boundaries">
         <p>
-          Administrators can manage approved catalog metadata through the protected catalog
-          permission. Normal admin views receive operational metadata, not users&apos; OAuth tokens
-          or private MCP content. Audit and deletion workflows remain tenant-aware and do not
-          require exposing raw secrets.
+          Administrative access is role- and route-specific. Some privileged workflows intentionally
+          allow authorized staff to review support tickets, feedback, collection reports, or
+          operational metadata. This is not a promise that administrators can never access user
+          content, nor does it provide a general-purpose browser for every user&apos;s private data.
+          Sensitive access and actions should follow the deployment&apos;s audit and privacy policy.
         </p>
         <p>
-          These controls describe AverQel&apos;s application contract. Operators must still
-          configure production OAuth clients, callback URLs, encryption keys, database RLS,
-          retention, network egress, provider scopes, and incident procedures for their deployment.
+          Operators must protect signing and encryption keys, database and object-storage access,
+          OAuth credentials, backups, logs, network egress, and administrative accounts. Production
+          security depends on deployment configuration, patching, monitoring, incident response, and
+          verified restore procedures as well as application code.
         </p>
       </DocsSection>
     </DocsShell>

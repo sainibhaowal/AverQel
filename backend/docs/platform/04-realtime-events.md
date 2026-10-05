@@ -23,7 +23,7 @@ events still inside the bounded replay window. REST remains authoritative: a
 client must re-fetch the affected resource after an event rather than treating
 event payloads as permission-bearing state.
 
-## Current migration
+## Implemented event publishers and consumers
 
 Conversation create, update, append-content, delete, and bulk delete emit
 user-scoped `conversations` events. The

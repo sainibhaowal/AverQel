@@ -197,9 +197,11 @@ Database migrations include:
 - `alembic/versions/20260928_0001_retention_protections_and_run_links.py`
 
 The queue, metrics, cascade, context, storage, retention, and protection
-changes are present in the current worktree. The local migration, regression,
-and focused restore validations passed; external staging/VPS rollout still
-requires the deployment gate described in the operations runbook.
+changes described here were present in the locally verified snapshot recorded
+on 2026-09-27. Later migrations and current deployment status are tracked in
+the [release index](../release/03-current-worktree-change-index.md). The
+historical local migration, regression, and restore results do not establish
+that staging or VPS rollout is complete.
 
 This runtime does not modify Query, terminal, file-explorer, connector, or
 operating-system storage behavior. It adds only the DeepSpace adapter and the

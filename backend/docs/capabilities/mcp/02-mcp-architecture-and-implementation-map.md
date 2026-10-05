@@ -1,11 +1,12 @@
 # MCP architecture and implementation map
 
-**Status:** current codebase reference, verified by source inspection on 2026-09-23.
+**Status:** implementation-map snapshot; source inspection recorded on 2026-09-23.
 
 This document is the source-grounded implementation map for AverQel MCP. It
-describes what the repository currently implements, where it is implemented,
-what DeepSpace uses, and which boundaries are intentional. It replaces
-historical conversation notes as the current technical reference.
+describes the implementation observed at that inspection date, where it was
+implemented, what DeepSpace used, and which boundaries were intentional.
+Check the current source and the [release index](../../release/03-current-worktree-change-index.md)
+before using this snapshot to make a release decision.
 
 ## 1. Product contract
 

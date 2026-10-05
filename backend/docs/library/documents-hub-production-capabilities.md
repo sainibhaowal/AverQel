@@ -22,5 +22,7 @@ failure handling and checkpoint diagnosis are in
 
 Before release, run the backend test suite from a checkout that includes
 `backend/tests` and the frontend Vitest and Playwright suites. The production
-API image intentionally does not package test sources. Current local evidence
-is recorded in [`platform/04-end-to-end-verification.md`](../platform/04-end-to-end-verification.md).
+API image intentionally does not package test sources. The historical local
+evidence is recorded in [`platform/04-end-to-end-verification.md`](../platform/04-end-to-end-verification.md);
+use the [current release index](../release/03-current-worktree-change-index.md)
+for newer local and environment status.

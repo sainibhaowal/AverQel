@@ -160,7 +160,12 @@ frontend stream/protocol tests. Validate migration/model registration and
 provider payload snapshots. Inspect the final diff to ensure no unrelated
 worktree changes were modified.
 
-## Current implementation status
+## Implementation status recorded by this plan
+
+The phase summary below records work reported when this implementation plan
+was completed. Verify behavior against the current source before relying on a
+specific detail; this section is not a current deployment or release-status
+record. See the [current release index](../release/03-current-worktree-change-index.md).
 
 Implemented in this change:
 

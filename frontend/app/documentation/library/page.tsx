@@ -1,54 +1,35 @@
-import { DocsCards, DocsSection, DocsShell } from "../_components/DocsShell";
+import { DocsSection, DocsShell } from "../_components/DocsShell";
 
+/** Kept as a compatibility URL; the guide now names its actual product area. */
 export default function LibraryDocsPage() {
   return (
     <DocsShell
-      title="Library, OCR & RAG"
-      intro="Library is the governed source layer for document previews, extraction, OCR, retrieval, sandbox inputs, and private artifacts."
+      title="Documents Hub: files, OCR & indexing"
+      intro="Documents Hub processes source files for preview, search, and retrieval. OCR and format support depend on the file and configured extractors; processing state is shown in the product."
     >
-      <DocsCards
-        items={[
-          {
-            title: "Broad file intake",
-            body: "Native extraction covers PDF, DOCX, PPTX, XLSX, CSV, Markdown, text, code, and OCR-capable images. Legacy office conversion is handled only when the configured worker is enabled.",
-          },
-          {
-            title: "OCR before answering",
-            body: "Images and scanned pages pass through the existing OCR extractor during ingestion. Extracted text and quality signals are reused by grounded query and DeepSpace instead of re-reading files in every answer.",
-          },
-          {
-            title: "Embedding + reranking",
-            body: "Indexed chunks use the configured embedding model for retrieval and the existing reranker for relevance ordering. Deterministic lexical matching remains the safe fallback when an index or model is unavailable.",
-          },
-          {
-            title: "Preview and ownership",
-            body: "Users can inspect processing state, extracted text, chunks, versions, and safe previews. Every read, download, sandbox input, and artifact output is checked against tenant and user ownership.",
-          },
-        ]}
-      />
-
-      <DocsSection title="Source-to-answer flow">
-        <pre className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30 p-5 text-xs leading-6 text-slate-300">
-          <code>{`upload → MIME/virus/archive checks → extract/OCR → chunks
-       → embeddings + retrieval → reranking → cited answer
-       → optional sandbox input or private artifact`}</code>
-        </pre>
+      <DocsSection title="File processing">
+        <p>
+          An upload is validated before it is stored and processed. Depending on the format, the
+          pipeline extracts native text or uses OCR, records processing information, and prepares
+          searchable content. The status shown in Documents Hub is the source for whether a file is
+          ready, still processing, or needs attention.
+        </p>
       </DocsSection>
-
-      <DocsSection title="What users can do">
-        <ol className="list-decimal space-y-2 pl-6">
-          <li>
-            Upload one or many supported files into Library and monitor each processing state.
-          </li>
-          <li>Open a safe preview or inspect extracted text before asking a question.</li>
-          <li>
-            Ask DeepSpace or Grounded Query for a summary, comparison, citation, or calculation.
-          </li>
-          <li>
-            Send authorized files to the sandbox for bounded analysis and save the result as an
-            artifact.
-          </li>
-        </ol>
+      <DocsSection title="Preview and retrieval">
+        <p>
+          Safe previews and extracted text help you inspect the content that is available to Query.
+          OCR output, text extraction, embeddings, and search quality vary by document and runtime
+          configuration. Confirm important results against the original page or file.
+        </p>
+      </DocsSection>
+      <DocsSection title="Supported formats and deployment services">
+        <p>
+          The accepted formats are determined by the upload interface and backend extractor
+          registry. Legacy Office conversion and some OCR paths require their configured worker or
+          converter. Malware scanning and private object storage are required parts of the
+          production upload path; a deployment that lacks required services should not be assumed to
+          be production-ready.
+        </p>
       </DocsSection>
     </DocsShell>
   );

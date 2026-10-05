@@ -1,8 +1,12 @@
 # 02. Storage retention lifecycle: production guide
 
-**Status:** implemented locally; local/staging automatic archive is opt-in; production automatic archive is disabled
+**Status:** implemented locally; automatic archive is opt-in in local/staging configurations; production automatic archive is disabled
 **Audience:** application developers, reviewers, operators, and support engineers
 **Last reviewed:** 2026-09-23
+
+The review date above applies to this guide's implementation detail. For the
+latest checked source head and recorded environment state, consult the
+[current worktree and release index](../release/03-current-worktree-change-index.md).
 
 ## 1. Purpose
 

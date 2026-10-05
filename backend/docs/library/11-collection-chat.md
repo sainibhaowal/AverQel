@@ -1,86 +1,70 @@
-# 11. Collection chat contract
+# Collection chat contract
 
-**Status:** available locally. Collection chat is the real-time,
-permission-aware conversation surface inside a collection, separate from
-DeepSpace agent runs and grounded queries.
+**Implementation note:** the repository contains collection chat, membership,
+and report workflows. Hosted availability and security posture remain
+deployment-specific. Collection chat is separate from DeepSpace conversations
+and Query history; see the [release index](../release/03-current-worktree-change-index.md)
+for the checked source and deployment status.
 
-## 1. Two encryption layers
+## 1. Member and message lifecycle
 
-**Client-side end-to-end encryption (default).** The dashboard collections
-client derives a symmetric AES-GCM-256 key in the browser with PBKDF2-SHA-256
-(100,000 iterations) from the collection id and connection code, using
-WebCrypto. Text messages and file attachments are sealed client-side; the
-server stores and relays ciphertext envelopes it cannot open. Members confirm
-matching safety numbers to verify devices, recent history is cached in
-IndexedDB, and chat backups are encrypted with a password-derived key and a
-random 16-byte salt.
+Collections provide explicit membership, shared-document references, chat,
+supported media, presence, notifications, blocking, and member-submitted
+reports. API routes enforce collection membership and tenant access. The
+frontend does not grant access by itself.
 
-**Server-side sealed epochs (opt-in).** Collections can additionally enable
-`signal-pattern-v1` sealed chat: per-epoch keys wrapped under the server chat
-keyring, per-message keys derived and never stored, rotation on membership
-change and block/unblock, and crypto-shredding on clear. See
-[`10-collection-chat-encryption.md`](10-collection-chat-encryption.md). The
-two layers compose: enabling sealed epochs never weakens the client-side
-envelope.
+Chat history is paginated. Sending supports a client message identifier for
+retry handling. Owner clear and expiry workflows remove messages through the
+implemented API and queue media cleanup as applicable. Expiry cleanup is not
+a promise that copies, recipient devices, or all backups are erased.
 
-## 2. Message routes (`/api/v1/collections/{id}/chats`)
+## 2. Encryption boundary
 
-- `GET` history with cursor pagination (`limit`, `before`, `X-Chat-Has-More`
-  / `X-Chat-Next-Cursor`), per-message delivery receipts, and expiry pruning:
-  messages older than the collection `expiry_days` are deleted with their
-  media cleanup queued.
-- `POST` send with `client_message_id` idempotency: replays return the stored
-  message, conflicting reuses fail with `IDEMPOTENCY_CONFLICT` (hash-compared
-  for sealed rows, so retries never leak plaintext).
-- `POST /chats/media` registers an encrypted upload; `GET
-  /chats/media/{media_id}/{filename}` serves it to members.
-- `POST /chats/clear` (owner) deletes history, queues media cleanup,
-  shreds sealed epochs, and broadcasts `chat_cleared` so live clients purge.
-- Broadcasts never carry plaintext for sealed collections; members fetch
-  opened text over the authenticated API.
+The browser contains AES-GCM client encryption helpers. Their key derives from
+the collection ID and connection code, and the collection API returns that
+code to authorized clients. The backend therefore has the derivation inputs;
+do not describe the current chat as zero-knowledge or server-blind
+end-to-end encryption.
 
-## 3. Presence and realtime
+Collections may also enable an optional backend sealed-chat mode. That mode
+seals records at rest using server-held epoch keys, but the API opens messages
+for authorized members. It requires an operator-configured keyring and fails
+closed if that configuration is missing. See
+[`10-collection-chat-encryption.md`](10-collection-chat-encryption.md) for
+the custody details and security limitations. Shared source documents are
+server-readable for normal document features.
 
-- `GET /{id}/ws-ticket` mints a scoped ticket; `websocket /{id}/ws` streams
-  collection events over Redis pub/sub with replay and heartbeat.
-- `GET /{id}/presence` lists online members. Delivery receipts track
-  per-member, per-device state without exposing message content.
+## 3. Realtime, presence, and notifications
 
-## 4. Membership, moderation, and notifications
+Collection routes issue scoped websocket tickets and publish supported
+collection events through the realtime service. Presence and delivery/read
+state are application signals; they do not prove that a person read or
+understood a message. Collection notification and push availability depends on
+the registered device and configured push service.
 
-- Invites are explicit and owner-controlled (`permissions`, `invitations`,
-  accept/decline); every grant, removal, and block advances the membership
-  epoch and notifies remaining members.
-- Members can block abusive peers and file reports with an optional message
-  reference; admins triage reports (`open`/`reviewing`/`resolved`/
-  `dismissed`) with moderation notes. A per-member spam score combines
-  recent reports and message volume.
-- Collection notifications (security changes, invites, device links) carry
-  idempotency keys with read/read-all/delete lifecycle.
-- Browser push subscriptions store WebPush secrets encrypted at rest; fanout
-  runs through the collection push worker.
+## 4. Reports and restricted moderation
 
-## 5. Expiry and retention
+Members may block another member and submit a report, including a supported
+message reference. The moderation queue is an administrative report-triage
+workflow. It is protected by role/permission checks and tenant scope, and is
+not intended as a general interface for browsing member collections or chat
+history. Review access should follow the deployment's support and privacy
+policy.
 
-`PUT /{id}/expiry` sets `expiry_days` (owner). Expired chat rows are pruned
-on history reads with media cleanup queued, and sealed epochs for cleared
-history are shredded so retained backups stay unreadable. Collection deletion
-cascades to messages, media records, epochs, deliveries, and permissions.
+## 5. Deployment and release status
 
-## 6. What must not change
+The implementation includes database-backed collection, chat, membership,
+notification, and report flows. Production readiness still requires the
+release owner to verify migrations, worker and realtime services, object
+storage, push configuration, authorization, recovery, and supported client
+devices in the target environment. A passing local test suite is not hosted
+deployment evidence. The feature is currently treated as experimental beta in
+the repository release documentation.
 
-1. The server must never require or persist plaintext for default
-   collections; sealed rows must fail closed, never silently skipped.
-2. Membership changes must keep advancing the security epoch and rotating
-   sealed epochs when enabled.
-3. Moderation (blocks, reports, spam scores) stays available without
-   breaking the encryption envelopes.
-4. Broadcasts stay metadata-only for sealed collections.
+## 6. Required documentation language
 
-## 7. Verification
-
-Integration coverage exercises idempotent send, conflicting-retry rejection,
-sealed enable/send/read/rotate/clear-shred, tamper-closed reads, device-key
-registration, rotation guards, expiry pruning, and tenant isolation.
-Frontend coverage renders the encrypted chat client, safety numbers,
-media flows, receipts, and expiry controls.
+- Do not claim zero-knowledge, server-blind encryption, or Signal/libsignal
+  protocol compatibility.
+- Do not claim expiry removes all copies or backups.
+- Do not claim moderation grants a platform-wide view of private collections.
+- Keep collection chat, DeepSpace, and Query as distinct product surfaces.

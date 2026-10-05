@@ -1,38 +1,56 @@
-import { DocsSection, DocsShell } from "../_components/DocsShell";
+import { DocsCards, DocsSection, DocsShell } from "../_components/DocsShell";
 
 export default function WhatIsAverQelPage() {
   return (
     <DocsShell
-      title="What Is AverQel?"
-      intro="AverQel is a private document intelligence and autonomous agent platform for uploading, indexing, searching, streaming, and acting on your own data with grounded AI answers."
+      title="What is AverQel?"
+      intro="AverQel is an open-source AI workspace for working with documents, asking evidence-backed questions, and carrying out broader research and productivity work with connected tools."
     >
-      <DocsSection title="Core Idea">
+      <DocsCards
+        items={[
+          {
+            title: "Documents Hub",
+            body: "Manage source files, processing, previews, organization, and authorized sharing.",
+          },
+          {
+            title: "Query",
+            body: "Ask focused questions over documents you can access and inspect the sources used in the answer.",
+          },
+          {
+            title: "DeepSpace",
+            body: "Continue broader conversational work with a separate working Library, notes, and optional tools.",
+          },
+          {
+            title: "Connected workspace",
+            body: "Configure supported AI providers and remote MCP connections; each integration has its own permission and setup requirements.",
+          },
+        ]}
+      />
+      <DocsSection title="How the areas fit together">
         <p>
-          AverQel turns private documents and connected apps into a searchable knowledge and action
-          layer. It is not a public document library. Each user account owns its documents, chats,
-          queries, notes, connectors, and personal providers, with sharing happening only through
-          explicit product features such as collections.
+          Documents Hub is where source files are managed. Query is retrieval-first and centers its
+          work on those sources. DeepSpace is a broader conversation workspace and has its own
+          Library for working attachments and outputs. Collections provide explicit sharing with
+          invited members. Providers and MCP connections extend model and tool options when they are
+          configured and authorized.
         </p>
       </DocsSection>
-      <DocsSection title="What It Does">
+      <DocsSection title="Data and privacy model">
         <p>
-          It processes documents, extracts text, creates retrievable chunks and embeddings, lets
-          users ask questions, streams answers in DeepSpace, and returns results grounded in source
-          evidence. This is a server-processed SaaS workflow with application-level user isolation.
+          AverQel processes account data through its application backend and configured services.
+          Authentication, tenant boundaries, role permissions, and integration policies control
+          access. Some workflows intentionally allow authorized support staff to read submitted
+          support or feedback content; collection chat encryption also has limitations documented in
+          its guide. Do not assume that all workspace content is client-only or end-to-end
+          encrypted.
         </p>
       </DocsSection>
-      <DocsSection title="What It Does Not Mean">
+      <DocsSection title="Availability is deployment-specific">
         <p>
-          AverQel does not make every user&apos;s data visible to other users. Admin views are
-          designed around metadata and operational controls, not casual reading of private user
-          content, provider secrets, or normal chat/document bodies.
-        </p>
-      </DocsSection>
-      <DocsSection title="What It Has Become">
-        <p>
-          AverQel now includes grounded chat, DeepSpace streaming, protected integrations, notes,
-          exports, and persistent memory. It remains tenant-isolated and approval-gated while
-          keeping the product focused on productivity rather than IDE-style operation.
+          The open-source repository contains optional services and integrations. A feature is
+          available in a deployment only when its version, configuration, credentials, workers, and
+          dependent services are present and healthy. Release notes and deployment evidence—not a
+          source page alone—establish what is live.
         </p>
       </DocsSection>
     </DocsShell>

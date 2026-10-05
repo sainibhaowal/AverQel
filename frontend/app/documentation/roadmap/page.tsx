@@ -1,40 +1,29 @@
-import { DocsCards, DocsSection, DocsShell } from "../_components/DocsShell";
+import { DocsSection, DocsShell } from "../_components/DocsShell";
 
 export default function RoadmapPage() {
   return (
     <DocsShell
-      title="Roadmap"
-      intro="The practical direction for AverQel after the current DeepSpace hardening work: keep the native architecture strong, improve maintainability, and extend safely."
+      title="Release notes & product direction"
+      intro="Use published releases and dated release notes for confirmed changes. This page does not promise delivery dates or represent an interactive public roadmap."
     >
-      <DocsCards
-        items={[
-          {
-            title: "Now: Stable Native Runtime",
-            body: "Preserve the current AverQel-native DeepSpace, orchestration, memory, provider, and connector ownership instead of replacing it with an external SDK runtime.",
-          },
-          {
-            title: "Next: MCP Standardization",
-            body: "Keep moving connectors toward a more MCP-centric model where dynamic tool discovery reduces hardcoded per-service maintenance.",
-          },
-          {
-            title: "Next: Operator Acceptance",
-            body: "Continue browser-level operational audits for research, coding, approval, and proactive mission types so documentation and runtime stay aligned.",
-          },
-          {
-            title: "Later: Team And Platform Layers",
-            body: "Shared provider control, richer workspace ownership, and deeper fleet tooling should come only when they solve real product needs.",
-          },
-        ]}
-      />
-      <DocsSection title="Not Current Scope">
+      <DocsSection title="Where to find confirmed changes">
         <p>
-          A risky rewrite of the current runtime is not the goal. The path is additive hardening,
-          better docs, safer observability, stronger runtime contracts, and maintainable connector
-          evolution.
+          Released versions and their published notes are the record of changes that have shipped.
+          Repository documentation can describe code present in a branch, while hosted availability
+          depends on the deployment that has actually been released.
         </p>
         <p>
-          The immediate focus remains stability, streaming clarity, connector control, local/cloud
-          provider flexibility, and agent execution parity across the main DeepSpace workflow.
+          Suggested improvements can be submitted through Share Feedback. A Planned status means a
+          submission is under consideration; it is not a committed release date. This product page
+          does not provide roadmap voting or a community forum.
+        </p>
+      </DocsSection>
+      <DocsSection title="How priorities are handled">
+        <p>
+          Product direction may change as reliability, security, user needs, and deployment
+          readiness are reviewed. A feature described in source or a development note is not
+          necessarily enabled in production. Check the release version, rollout notes, and
+          deployment-specific status before relying on it.
         </p>
       </DocsSection>
     </DocsShell>

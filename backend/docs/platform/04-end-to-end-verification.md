@@ -1,7 +1,11 @@
-# 04. Current end-to-end verification
+# 04. Documents Hub end-to-end verification snapshot
 
-This is the current verification record for the Documents Hub and related
-runtime changes. It supplements the reusable commands in
+> **Historical evidence dated 2026-09-27.** This report is not the current
+> worktree verification or a staging/production certification. Use the
+> [current worktree and release index](../release/03-current-worktree-change-index.md)
+> for the checked source migration head and newer local checks.
+
+This snapshot records Documents Hub and related runtime checks. It supplements the reusable commands in
 [`03-testing.md`](03-testing.md).
 
 ## Browser coverage
@@ -34,7 +38,7 @@ pnpm exec playwright test --workers=1 --timeout=60000
 pnpm build
 ```
 
-Current local result:
+Recorded local results (2026-09-27):
 
 - Vitest: 88 files, 325 tests passed.
 - Playwright: 10 passed, 0 skipped.
@@ -90,7 +94,7 @@ docker compose -f docker-compose.yml --env-file .env.localprod \
   up -d --build --remove-orphans
 ```
 
-The current Documents Hub migration chain ends at
+The migration chain observed for this snapshot ended at
 `20261009_0001_document_webhook_deliveries`. Verify health after rebuilding:
 
 ```bash

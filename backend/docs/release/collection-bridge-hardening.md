@@ -47,6 +47,59 @@ dependency; the latter must not be described as WhatsApp/Signal-equivalent.
   using `pywebpush` with bounded retries. Delivery remains disabled until the
   deployment supplies VAPID credentials.
 
+## Collection report moderation workflow
+
+The moderation console is restricted in the dashboard layout to admin roles;
+the API independently requires `admin:collections:read` or
+`admin:collections:write` and filters every report/history query by the
+authenticated tenant. Collection members can submit reports, but only tenant
+admins receive moderation notifications and can review or change report state.
+Notifications contain no report details and link to the specific report.
+
+The reports endpoint keeps its existing JSON array response and adds bounded
+`limit`/`offset` pagination with `X-Total-Count`, `X-Has-More`, and
+`X-Page-Offset` headers. It also supports `report_id` for notification deep
+links. `GET /api/v1/collections/admin/security/reports/{report_id}/history`
+returns paginated, append-only report actions. Status updates enforce the
+`open`/`reviewing` to terminal (`resolved`/`dismissed`) lifecycle; terminal
+reports can only be reopened or left in their current state. Internal notes are
+separate audit events and never overwrite the submitter's report details.
+The moderation API returns report metadata and an optional message reference;
+it does not return the referenced chat message body. This is an API response
+boundary, not proof that chat encryption hides content from the server.
+Report submission is capped at 10 per user per collection per five minutes by
+default (`AKS_COLLECTION_REPORTS_PER_USER_PER_5_MINUTES`), using the existing
+Redis-backed limiter and its bounded in-memory fallback.
+
+Migration `20261012_0012_collection_moderation_audit` creates the tenant-scoped
+audit table, ties each event to a report with a tenant-matching composite
+foreign key, and protects direct updates/deletes with a database trigger. The
+trigger permits the database's account-erasure nulling and parent-record
+cascades so existing account and collection deletion workflows continue to
+work. Existing reports receive a `history_baseline` marker; previous moderator
+actions cannot be reconstructed. Message bodies are not included in the
+moderation response schema. The current collection encryption design does not
+provide a server-blind key boundary; see
+[`../library/10-collection-chat-encryption.md`](../library/10-collection-chat-encryption.md).
+
+Run the focused verification from `backend/`:
+
+```bash
+.venv/bin/pytest -q tests/integration/test_collection_moderation_admin.py
+.venv/bin/ruff check app/documents/api/collection_security.py \
+  app/documents/models/collection_security.py \
+  app/documents/schemas/collection_security.py \
+  app/system/services/user_notifications.py \
+  alembic/versions/20261012_0012_collection_moderation_audit.py
+.venv/bin/alembic heads
+```
+
+The browser page tests live at
+`frontend/tests/collection-moderation-page.test.tsx`. Apply migration
+`20261012_0012` through the ordered Alembic release procedure before deploying
+the backend code; the disposable test database is not evidence that a target
+environment has been migrated.
+
 ## Added account-session and moderation controls
 
 New access tokens carry a revocable linked-session identifier. Refresh-token
@@ -82,9 +135,9 @@ check must also be run from `frontend/` before deployment.
 
 ## Required deployment step
 
-The migrations `20261012_0001_collection_chat_hardening` through
-`20261012_0006_collection_push_outbox` must be applied to the
-target database before an API or worker using these models is deployed:
+The ordered Alembic chain through `20261012_0012_collection_moderation_audit`
+must be applied to the target database before deploying the API or workers
+that use these models:
 
 ```bash
 alembic upgrade head
