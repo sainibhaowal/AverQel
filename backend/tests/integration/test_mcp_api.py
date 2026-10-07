@@ -169,6 +169,10 @@ def test_marketplace_connect_rebinds_tenant_context_after_oauth_commit(
         return "https://accounts.google.com/o/oauth2/v2/auth?state=test"
 
     monkeypatch.setattr(MCPServerOAuthService, "start", fake_start)
+    monkeypatch.setattr(
+        "app.integrations.services.mcp_endpoint_security.resolve_public_addresses",
+        lambda _host, _port: ("8.8.8.8",),
+    )
 
     entry = db_session.execute(
         select(MCPRegistryEntry).where(MCPRegistryEntry.provider_slug == "google-gmail")

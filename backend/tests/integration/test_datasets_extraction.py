@@ -1,5 +1,4 @@
 import uuid
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -8,9 +7,8 @@ from app.core.config import Settings
 from app.documents.services.pdf_render_service import RenderedPdfPage
 from app.ingestion.services.extractors.router import ExtractorRouter
 from app.ingestion.services.ocr_service import OcrResult
+from tests.support.datasets import DATASET_DIR as DATASET_ROOT
 from tests.support.datasets import ensure_test_datasets
-
-DATASET_ROOT = Path(__file__).parent.parent.parent.parent / "Docs" / "Datasets"
 
 
 @pytest.fixture

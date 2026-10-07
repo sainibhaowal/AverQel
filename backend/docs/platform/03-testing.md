@@ -2,8 +2,9 @@
 
 The backend test suite is split by dependency. Tests marked `unit_no_db` must
 not require PostgreSQL, Redis, MinIO, network access, or application database
-fixtures. Database-backed tests run against an isolated PostgreSQL database per
-xdist worker. Integration tests are parallel-safe by default; only E2E tests
+fixtures. Database-backed tests run in disposable PostgreSQL, Redis, and MinIO
+services that are private to one test run. Each xdist worker gets its own
+database. Integration tests are parallel-safe by default; only E2E tests
 remain serialized until their object-storage namespaces are isolated.
 
 Unit tests without database fixtures or known database-session imports are
@@ -13,11 +14,10 @@ that needs database access can opt out explicitly with
 
 ## Database lifecycle
 
-The first database-backed worker creates a migrated template database. The
-template is rebuilt only when the source `alembic_version` changes. Each worker
-then creates its own database with PostgreSQL's native `TEMPLATE` operation.
-This avoids repeating `pg_dump`, restore, and Alembic migration work for every
-worker.
+The test run creates a fresh schema template by applying the checkout's
+Alembic migrations to its disposable PostgreSQL service. It does not inspect
+or copy schema/data from the active development database. Each worker creates
+its own database with PostgreSQL's native `TEMPLATE` operation.
 
 Ordinary database tests run inside one outer transaction per test and roll it
 back in teardown; application commits are isolated with savepoints. Tests
@@ -28,34 +28,44 @@ was created clean for the worker, so a second pre-test `TRUNCATE` is
 unnecessary. A failed test is still cleaned before the next test; an interrupted
 run is reset when the next session creates the worker database.
 
-Bootstrap failures are fatal by default so a partially initialized database
-cannot produce a false-green test run. For local diagnosis only, an explicit
-`AKS_TEST_ALLOW_BOOTSTRAP_SKIP=true` can restore the old skip behavior.
+Database-backed tests fail closed when run directly in a normal shell. Their
+fixtures reset databases and flush Redis, so run them only through
+`./backend/scripts/test-isolated.sh`. Bootstrap failures are fatal; tests never
+fall back to the development stack. The isolated stack has no network
+interface, publishes no ports, stores data only in temporary container
+storage, and is removed when the command exits.
 
 ## Commands
 
-Run commands from `backend` with the project virtual environment:
+Run the database-free unit selection directly from `backend`:
 
 ```bash
 cd /home/ravi/Projects/AverQel/backend
 source .venv/bin/activate
-pytest tests/unit -m unit_no_db -n auto
-pytest tests/unit -n auto
-pytest tests/integration -n 4
-pytest tests/unit tests/integration tests/security tests/e2e -n 4
+PYTHONDONTWRITEBYTECODE=1 pytest -o cache_dir=/tmp/averqel-pytest-cache \
+  tests/unit -m unit_no_db -n auto
+```
+
+Run database-backed tests from the repository root through the disposable
+stack. Pytest arguments are passed through:
+
+```bash
+./backend/scripts/test-isolated.sh tests/unit
+./backend/scripts/test-isolated.sh tests/integration -n 4
+./backend/scripts/test-isolated.sh tests/unit tests/integration tests/security tests/e2e -n 4
 ```
 
 Coverage is measured against the application source, not test files:
 
 ```bash
-pytest --cov=app --cov-report=term-missing --cov-report=json
+./backend/scripts/test-isolated.sh --cov=app --cov-report=term-missing
 ```
 
 For the production paths changed most often in DeepSpace, run the focused
 regression set before a full suite:
 
 ```bash
-pytest -q \
+./backend/scripts/test-isolated.sh -q \
   tests/unit/test_auth_security.py \
   tests/unit/test_deepspace_chat_service.py \
   tests/unit/test_deepspace_runtime.py \
@@ -76,7 +86,7 @@ while critical-path regressions are release blockers.
 The worker limit can be tuned after measurement:
 
 ```bash
-AKS_TEST_XDIST_MAX_WORKERS=4 pytest tests/unit -n auto
+AKS_TEST_XDIST_MAX_WORKERS=4 ./backend/scripts/test-isolated.sh tests/unit -n auto
 ```
 
 Do not use `-n 0` for normal validation; it explicitly disables parallel
@@ -85,9 +95,8 @@ execution.
 The Documents Hub browser workflows are covered by:
 
 ```bash
-cd ../frontend
-pnpm exec playwright test e2e/documents-hub-workflows.spec.ts --workers=1
-pnpm exec playwright test --workers=1 --timeout=60000
+pnpm --dir frontend exec playwright test e2e/documents-hub-workflows.spec.ts --workers=1
+pnpm --dir frontend exec playwright test --workers=1 --timeout=60000
 ```
 
 The dedicated workflow file covers quarantine review, webhook delivery
@@ -95,10 +104,9 @@ history, expiring share links, citation page preview, and zoom. The full
 local run also covers DeepSpace runtime, budget metrics, Library layout, and
 homepage behavior. It completed with 10 passed and 0 skipped on 2026-09-27.
 
-The production API container intentionally excludes `backend/tests`. Run
-pytest from the repository checkout or build a dedicated test image that
-copies the test tree; do not interpret a missing test directory in the API
-image as a missing test suite.
+The production API image intentionally excludes `backend/tests`. The isolated
+test runner builds a separate image and mounts the test checkout read-only; it
+does not modify or restart the API image or active containers.
 
 ## DeepSpace release-focused checks
 
@@ -107,9 +115,11 @@ routing, or webpage research path, run the focused checks before the full
 suite:
 
 ```bash
-pytest -q tests/unit/test_deepspace_chat_service.py
-pytest -q tests/unit/test_deepspace_runtime.py tests/unit/test_deepspace_run_events.py
-pytest -q tests/unit/test_deepspace_tool_profiles.py tests/unit/test_provider_context_transport.py
+./backend/scripts/test-isolated.sh -q tests/unit/test_deepspace_chat_service.py
+./backend/scripts/test-isolated.sh -q \
+  tests/unit/test_deepspace_runtime.py tests/unit/test_deepspace_run_events.py
+./backend/scripts/test-isolated.sh -q \
+  tests/unit/test_deepspace_tool_profiles.py tests/unit/test_provider_context_transport.py
 ```
 
 The webpage research acceptance path proves the full sequence

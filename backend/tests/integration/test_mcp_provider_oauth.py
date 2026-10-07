@@ -64,6 +64,10 @@ def test_static_provider_oauth_encrypts_pending_data_and_captures_identity(
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr(
+        "app.integrations.services.mcp_endpoint_security.resolve_public_addresses",
+        lambda _host, _port: ("8.8.8.8",),
+    )
     seeded = seed_user(
         "tenant-mcp-provider-oauth",
         "mcp-provider-oauth@example.com",

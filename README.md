@@ -173,6 +173,9 @@ Use a short-lived branch from the latest `main`, make a focused change, add or
 update relevant tests and documentation, and submit a reviewed pull request.
 `main` is protected; direct pushes, force pushes, and unreviewed production
 changes are not the normal contribution path. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Agent-assisted work follows the plan-first production and documentation
+standard in [AGENT_ENGINEERING_STANDARD.md](AGENT_ENGINEERING_STANDARD.md),
+with the shared entry point in [AGENTS.md](AGENTS.md).
 
 CI selects backend and frontend gates based on changed paths. Common local
 checks are:

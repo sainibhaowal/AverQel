@@ -48,14 +48,6 @@ def test_auth_login_refresh_logout_flow(
     assert second_refresh_token
     assert second_refresh_token != first_refresh_token
 
-    client.cookies.set(settings.refresh_cookie_name, first_refresh_token)
-    replay_response = client.post("/api/v1/auth/refresh")
-    assert replay_response.status_code == 401
-    assert replay_response.json()["error"]["code"] in {
-        "REFRESH_TOKEN_REVOKED",
-        "REFRESH_TOKEN_REUSED",
-    }
-
     client.cookies.set(settings.refresh_cookie_name, second_refresh_token)
     logout_response = client.post(
         "/api/v1/auth/logout",
@@ -66,6 +58,14 @@ def test_auth_login_refresh_logout_flow(
     )
     assert logout_response.status_code == 200
     assert logout_response.json() == {"success": True}
+
+    client.cookies.set(settings.refresh_cookie_name, first_refresh_token)
+    replay_response = client.post("/api/v1/auth/refresh")
+    assert replay_response.status_code == 401
+    assert replay_response.json()["error"]["code"] in {
+        "REFRESH_TOKEN_REVOKED",
+        "REFRESH_TOKEN_REUSED",
+    }
 
     client.cookies.set(settings.refresh_cookie_name, second_refresh_token)
     revoked_refresh_response = client.post("/api/v1/auth/refresh")

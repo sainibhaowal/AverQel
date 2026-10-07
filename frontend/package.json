@@ -106,6 +106,8 @@
       "linkify-it": "5.0.2",
       "markdown-it": "14.3.2",
       "postcss": "8.5.23",
+      "prosemirror-view": "1.42.6",
+      "source-map-js": "1.2.2",
       "fflate": "0.8.3",
       "sharp": "0.35.5",
       "uuid": "11.1.1",

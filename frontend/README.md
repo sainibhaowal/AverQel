@@ -180,6 +180,12 @@ pnpm e2e
 pnpm build
 ```
 
+Local browser E2E starts its own loopback-only Next server, does not load
+`.local` runtime settings or reuse an existing server, and sends API proxy
+requests to a closed local test sink. External E2E requires both
+`DEEPSPACE_E2E_BASE_URL` and `DEEPSPACE_E2E_ALLOW_EXTERNAL=1`. See the
+[isolated test run guide](../backend/docs/security/isolated-test-runs.md).
+
 The production Docker image uses Node.js 22 and the repository pins pnpm
 10.28.2. Deployment is handled by the checked-in GitHub Actions workflows and
 the VPS runbook, not by a Vercel deployment.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -8,7 +9,12 @@ from openpyxl import Workbook  # type: ignore[import-untyped]
 from PIL import Image, ImageDraw
 from pptx import Presentation
 
-DATASET_DIR = Path(__file__).parent.parent.parent.parent / "Docs" / "Datasets"
+DATASET_DIR = Path(
+    os.environ.get(
+        "AVERQEL_TEST_DATASET_DIR",
+        str(Path(__file__).parent.parent.parent.parent / "Docs" / "Datasets"),
+    )
+)
 
 
 def _create_clean_docs(out_dir: Path) -> None:

@@ -1,0 +1,126 @@
+services:
+  network-sandbox:
+    image: alpine:3.20
+    command: ["sh", "-c", "while :; do sleep 3600; done"]
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    image: ankane/pgvector:latest
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: isolated-postgres-password
+      POSTGRES_DB: postgres
+    tmpfs:
+      - /var/lib/postgresql/data:rw,noexec,nosuid,size=1g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    network_mode: service:network-sandbox
+    depends_on:
+      network-sandbox:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "isolated-redis-password"]
+    tmpfs:
+      - /data:rw,noexec,nosuid,size=256m
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a isolated-redis-password ping | grep -q PONG"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    network_mode: service:network-sandbox
+    depends_on:
+      network-sandbox:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: isolated-minio-user
+      MINIO_ROOT_PASSWORD: isolated-minio-secret-change-me
+    tmpfs:
+      - /data:rw,noexec,nosuid,size=1g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    network_mode: service:network-sandbox
+    depends_on:
+      network-sandbox:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+
+  minio-init:
+    image: averqel-isolated-test-runner:latest
+    entrypoint: ["python", "/opt/averqel/init-test-storage.py"]
+    environment:
+      AKS_MINIO_ACCESS_KEY: isolated-minio-user
+      AKS_MINIO_SECRET_KEY: isolated-minio-secret-change-me
+      AKS_MINIO_BUCKET: aks-documents
+    depends_on:
+      minio:
+        condition: service_healthy
+    network_mode: service:network-sandbox
+    security_opt:
+      - no-new-privileges:true
+
+  backend-tests:
+    image: averqel-isolated-test-runner:latest
+    build:
+      context: ../..
+      dockerfile: Dockerfile.test
+    working_dir: /workspace/backend
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=2g
+    volumes:
+      - ../../..:/workspace:ro
+    environment:
+      AKS_ENV: test
+      AVERQEL_TEST_ISOLATED_RUN: compose
+      AKS_DATABASE_URL: postgresql+psycopg://postgres:isolated-postgres-password@127.0.0.1:5432/knowledge_test
+      AKS_REDIS_URL: redis://:isolated-redis-password@127.0.0.1:6379/0
+      AKS_MINIO_ENDPOINT: 127.0.0.1:9000
+      AKS_MINIO_ACCESS_KEY: isolated-minio-user
+      AKS_MINIO_SECRET_KEY: isolated-minio-secret-change-me
+      AKS_MINIO_BUCKET: aks-documents
+      AKS_MINIO_SECURE: "false"
+      AKS_MINIO_VERIFY_SSL: "false"
+      AKS_JWT_SECRET: isolated-test-jwt-secret-minimum-32-chars
+      AKS_REFRESH_TOKEN_HASH_SECRET: isolated-test-refresh-secret-minimum-32-chars
+      AKS_REFRESH_COOKIE_SECURE: "false"
+      AKS_CELERY_TASK_ALWAYS_EAGER: "true"
+      AKS_AI_INTEGRATION_SCOPE: embeddings_only
+      AKS_EMBEDDING_PROVIDER: local-deterministic
+      AKS_EMBEDDING_MODEL: hash-v1
+      AKS_EMBEDDING_DIMENSION: "384"
+      AKS_LLM_PROVIDER: disabled
+      AKS_OTEL_ENABLED: "false"
+      AKS_TEST_XDIST_MAX_WORKERS: ${AKS_TEST_XDIST_MAX_WORKERS:-1}
+      AVERQEL_RUNTIME_CACHE_DIR: /tmp/averqel-test-cache
+      AVERQEL_TEST_DATASET_DIR: /tmp/averqel-test-datasets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    network_mode: service:network-sandbox

@@ -41,3 +41,4 @@ docs/
 README.md
 *.md
 requirements-dev.txt
+!requirements-dev.txt
