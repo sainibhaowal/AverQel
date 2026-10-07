@@ -43,7 +43,8 @@ export function normalizeThinkingDisplay(content: string): string {
   if (!text) return "";
 
   let title: string | null = null;
-  const wrapper = /^\s*(?:(?:here(?:['’]s|\s+is)?|this\s+is|that\s+is)|['’]s)\s+(?:a\s+)?thinking\s+process\s*:\s*/i;
+  const wrapper =
+    /^\s*(?:(?:here(?:['’]s|\s+is)?|this\s+is|that\s+is)|['’]s)\s+(?:a\s+)?thinking\s+process\s*:\s*/i;
   if (wrapper.test(text)) {
     text = text.replace(wrapper, "");
   } else {
@@ -70,7 +71,9 @@ export function normalizeThinkingDisplay(content: string): string {
       const bodyStart = (section.index ?? 0) + section[0].length;
       const bodyEnd = index + 1 < sections.length ? sections[index + 1]!.index : text.length;
       const body = text.slice(bodyStart, bodyEnd).trim();
-      rendered.push(`### ${section[1]}. ${section[2]!.trim()}${body ? `\n\n${paragraphizeThinkingText(body)}` : ""}`);
+      rendered.push(
+        `### ${section[1]}. ${section[2]!.trim()}${body ? `\n\n${paragraphizeThinkingText(body)}` : ""}`,
+      );
     }
     return rendered.join("\n\n");
   }

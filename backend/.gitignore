@@ -10,6 +10,7 @@ __pycache__/
 .env.localprod
 .env.vps
 .coverage
+coverage.json
 htmlcov/
 # Runtime Waste
 /models/

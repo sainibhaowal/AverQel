@@ -38,9 +38,8 @@ describe("MCPToolPermissionTable", () => {
     await waitFor(() =>
       expect(screen.getByText(/Additional provider schema details/)).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: "Hide full details for search_mail" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(
+      screen.getByRole("button", { name: "Hide full details for search_mail" }),
+    ).toHaveAttribute("aria-expanded", "true");
   });
 });

@@ -58,6 +58,7 @@ def test_ollama_provider_lists_chat_and_embedding_models_with_runtime_metadata(
 
 
 def test_ollama_provider_pull_model_uses_official_api(monkeypatch) -> None:
+    monkeypatch.setattr("app.providers.services.url_resolution._running_in_docker", lambda: False)
     provider = OllamaProvider().bind("http://localhost:11434")
     calls: list[tuple[str, dict[str, object]]] = []
 

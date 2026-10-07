@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / ".github/scripts/create-release-manifest.py"
@@ -160,8 +161,12 @@ def test_release_workflow_pins_neosis_and_limits_artifacts_to_linux_and_windows(
 
 def test_desktop_pnpm_approves_only_the_reviewed_installer_build_script() -> None:
     policy = (ROOT / "applications/desktop/pnpm-workspace.yaml").read_text(encoding="utf-8")
+    config = yaml.safe_load(policy)
 
-    assert policy.splitlines() == ["allowBuilds:", "  electron-winstaller: true"]
+    assert config == {
+        "packages": ["."],
+        "allowBuilds": {"electron-winstaller": True},
+    }
 
 
 def test_manifest_contract_includes_only_current_assets_and_component_provenance() -> None:

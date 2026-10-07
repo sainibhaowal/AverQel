@@ -11,9 +11,8 @@ test("homepage renders the visual workspace hero without hydration failures", as
   await page.goto("/");
 
   const heading = page.getByRole("heading", { level: 1 });
-  await expect(heading).toContainText("Turn your documents into");
-  await expect(heading).toContainText("grounded answers and useful work");
-  await expect(page.getByText("Your Private AI Workspace")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Start Using AverQel" }).first()).toBeVisible();
+  await expect(heading).toHaveText("One workspace for knowledge, AI, and action.");
+  await expect(page.getByText("Your Connected AI Workspace")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create your workspace" })).toBeVisible();
   await expect.poll(() => hydrationErrors).toEqual([]);
 });

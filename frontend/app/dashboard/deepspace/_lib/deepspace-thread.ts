@@ -2351,14 +2351,16 @@ function rehydrateMetricsFromHistory(
     ...(typeof metadata.context_compacted === "boolean"
       ? { contextCompacted: metadata.context_compacted }
       : {}),
-    ...(typeof metadata.context_epoch === "number"
-      ? { contextEpoch: metadata.context_epoch }
-      : {}),
+    ...(typeof metadata.context_epoch === "number" ? { contextEpoch: metadata.context_epoch } : {}),
     ...(typeof metadata.context_epoch_reason === "string"
       ? { contextEpochReason: metadata.context_epoch_reason }
       : {}),
     ...(Array.isArray(metadata.context_source_updates)
-      ? { contextSourceUpdates: metadata.context_source_updates.filter((item): item is string => typeof item === "string") }
+      ? {
+          contextSourceUpdates: metadata.context_source_updates.filter(
+            (item): item is string => typeof item === "string",
+          ),
+        }
       : {}),
     startedAt: createdAt,
   };
@@ -2511,7 +2513,9 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     : undefined;
   const attachments = Array.isArray(metadata.attachments)
     ? metadata.attachments
-        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+        .filter(
+          (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
+        )
         .map((item) => ({
           id: String(item.id ?? ""),
           name: String(item.name ?? "Library file"),
@@ -3557,7 +3561,7 @@ function reduceDeepSpaceThread(
           phase === "resolving_provider"
             ? "DeepSpace Router"
             : phase === "provider_ready"
-              ? (modelName || "DeepSpace Gateway")
+              ? modelName || "DeepSpace Gateway"
               : phase === "finalizing"
                 ? "Session Store"
                 : "DeepSpace";

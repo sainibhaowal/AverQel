@@ -259,7 +259,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
         )}
       </div>
-
       <nav
         ref={navContainerRef}
         className="relative flex-1 space-y-2 overflow-x-hidden overflow-y-auto p-3"

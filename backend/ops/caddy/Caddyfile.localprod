@@ -51,7 +51,9 @@ https://{$AVERQEL_DOMAIN}, https://127.0.0.1 {
   }
 
   @metrics path /api/v1/metrics
-  respond @metrics 403
+  handle @metrics {
+    respond 403
+  }
 
   handle /api/* {
     reverse_proxy api:1000 {

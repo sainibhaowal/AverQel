@@ -121,7 +121,7 @@ function MermaidPreview({ source }: { source: string }) {
             <Download size={14} /> Export <ChevronDown size={13} />
           </button>
           {exportOpen ? (
-            <div className="absolute top-10 right-0 z-50 grid min-w-36 gap-1 rounded-xl border border-border bg-surface-1 p-1 shadow-xl">
+            <div className="border-border bg-surface-1 absolute top-10 right-0 z-50 grid min-w-36 gap-1 rounded-xl border p-1 shadow-xl">
               <button
                 type="button"
                 onClick={downloadSource}

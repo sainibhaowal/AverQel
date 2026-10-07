@@ -159,7 +159,7 @@ export default function MessageThread({
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
-            className="text-foreground/75 mx-auto mt-5 max-w-2xl text-sm font-medium leading-6 sm:text-base"
+            className="text-foreground/75 mx-auto mt-5 max-w-2xl text-sm leading-6 font-medium sm:text-base"
           >
             {welcomeMessages[welcomeIndex]}
           </motion.p>

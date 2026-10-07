@@ -16,7 +16,12 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/v1/:path*",
-        destination: "http://127.0.0.1:1000/api/v1/:path*",
+        // The isolated Playwright server must never proxy into a developer's
+        // running API. Keep normal web/desktop requests on the local API.
+        destination:
+          process.env.PLAYWRIGHT_E2E === "1"
+            ? "http://127.0.0.1:9/api/v1/:path*"
+            : "http://127.0.0.1:1000/api/v1/:path*",
       },
     ];
   },

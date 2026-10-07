@@ -77,7 +77,7 @@ export default function BetaNoticeBanner() {
     <div
       role="region"
       aria-label="Beta notice"
-      className="mb-3 flex w-full flex-col gap-2 rounded-2xl border border-primary/25 bg-primary/[0.07] p-4 sm:flex-row sm:items-center sm:gap-4"
+      className="border-primary/25 bg-primary/[0.07] mb-3 flex w-full flex-col gap-2 rounded-2xl border p-4 sm:flex-row sm:items-center sm:gap-4"
     >
       <button
         type="button"
@@ -85,14 +85,14 @@ export default function BetaNoticeBanner() {
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
         aria-label={`View your ${beta.plan_name} plan and storage`}
       >
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+        <span className="bg-primary/15 text-primary inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl">
           <Sparkles size={17} />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-bold text-foreground">
+          <span className="text-foreground block truncate text-sm font-bold">
             You&apos;re on {beta.plan_name} — free until production release
           </span>
-          <span className="block truncate text-xs text-muted-foreground">
+          <span className="text-muted-foreground block truncate text-xs">
             Everything in AverQel is open during beta. Tap to see your plan and storage.
           </span>
         </span>
@@ -104,7 +104,7 @@ export default function BetaNoticeBanner() {
             writeNoticeState({ dismissedForever: true, lastShown: Date.now() });
             setVisible(false);
           }}
-          className="rounded-full border border-border/70 px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+          className="border-border/70 text-muted-foreground hover:text-foreground rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors"
         >
           Don&apos;t show again
         </button>
@@ -115,7 +115,7 @@ export default function BetaNoticeBanner() {
             setVisible(false);
           }}
           aria-label="Dismiss beta notice"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:text-foreground"
+          className="border-border/70 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors"
         >
           <X size={15} />
         </button>

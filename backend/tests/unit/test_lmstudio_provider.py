@@ -61,6 +61,7 @@ def test_lmstudio_provider_separates_chat_and_embedding_models_with_selection_on
 
 
 def test_lmstudio_provider_normalizes_root_base_url_to_v1(monkeypatch) -> None:
+    monkeypatch.setattr("app.providers.services.url_resolution._running_in_docker", lambda: False)
     requested_urls: list[str] = []
     provider = LMStudioProvider().bind("http://localhost:1234")
 
@@ -83,6 +84,7 @@ def test_lmstudio_provider_normalizes_root_base_url_to_v1(monkeypatch) -> None:
 def test_lmstudio_provider_prefers_native_models_metadata_for_context_window(
     monkeypatch,
 ) -> None:
+    monkeypatch.setattr("app.providers.services.url_resolution._running_in_docker", lambda: False)
     requested_urls: list[str] = []
     provider = LMStudioProvider().bind("http://localhost:1234/v1")
 

@@ -18,7 +18,10 @@ describe("DeepSpace Library CSV preview", () => {
   });
 
   it("bounds visible CSV columns", () => {
-    const csv = Array.from({ length: CSV_PREVIEW_MAX_COLUMNS + 10 }, (_, index) => `c${index}`).join(",");
+    const csv = Array.from(
+      { length: CSV_PREVIEW_MAX_COLUMNS + 10 },
+      (_, index) => `c${index}`,
+    ).join(",");
 
     const preview = parseCsvPreview(csv);
 

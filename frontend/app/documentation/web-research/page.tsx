@@ -37,9 +37,9 @@ export default function WebResearchDocsPage() {
       <DocsSection title="Independent-source verification">
         <p>
           Fetched passages from different domains are compared before sources are marked confirmed.
-          Materially overlapping evidence can be marked confirmed; overlapping evidence with opposing
-          polarity is marked conflicting. This is a conservative evidence signal, not a claim that a
-          source is universally true.
+          Materially overlapping evidence can be marked confirmed; overlapping evidence with
+          opposing polarity is marked conflicting. This is a conservative evidence signal, not a
+          claim that a source is universally true.
         </p>
       </DocsSection>
       <DocsSection title="Known limits">
@@ -48,10 +48,12 @@ export default function WebResearchDocsPage() {
           be bypassed. AverQel labels unavailable pages and undated current-source results instead
           of presenting them as verified. The optional JavaScript browser must be deployed behind a
           separately administered network-egress policy before it is enabled; a standard Compose
-          network alone is not sufficient isolation. AverQel supplies the <code>research-browser</code>
+          network alone is not sufficient isolation. AverQel supplies the{" "}
+          <code>research-browser</code>
           Compose profile for local/staging use: it separates Chromium from application services and
-          forces browser traffic through a private-range-blocking egress proxy. Set a unique renderer
-          token, start that profile, run its smoke tests, then explicitly enable the browser setting.
+          forces browser traffic through a private-range-blocking egress proxy. Set a unique
+          renderer token, start that profile, run its smoke tests, then explicitly enable the
+          browser setting.
         </p>
       </DocsSection>
     </DocsShell>
