@@ -10,6 +10,8 @@ const {
 const path = require("node:path");
 const { existsSync } = require("node:fs");
 const { spawn } = require("node:child_process");
+const { resolveNeosisSourceRoot } = require("./neosis-source.cjs");
+const { createNeosisEnvironment } = require("./neosis-environment.cjs");
 
 let mainWindow;
 let tray;
@@ -80,18 +82,21 @@ function launchPackagedNeosis() {
   }
   return spawn(process.execPath, [entry, "web", "--patch", profilePatch, "--host", "127.0.0.1", "--port", "0", "--no-open"], {
     cwd: runtimeRoot,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", NEOSIS_HOME: neosisHome() },
+    env: createNeosisEnvironment(process.env, neosisHome(), { electronRunAsNode: true }),
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
 }
 
 function launchDevelopmentNeosis() {
-  const root = path.resolve(__dirname, "../../../neosis");
+  const root = resolveNeosisSourceRoot(__dirname);
   const profilePatch = path.resolve(__dirname, "../assets/neosis-local-profile.patch.yml");
+  if (!existsSync(profilePatch)) {
+    throw new Error("NeoSIS local profile configuration is missing from this AverQel checkout.");
+  }
   const command = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
   return spawn(command, ["neosis", "web", "--patch", profilePatch, "--host", "127.0.0.1", "--port", "0", "--no-open"], {
     cwd: root,
-    env: { ...process.env, NEOSIS_HOME: neosisHome() },
+    env: createNeosisEnvironment(process.env, neosisHome()),
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
 }

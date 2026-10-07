@@ -238,6 +238,29 @@ jobs:
               ;;
           esac
 
+      - name: Enforce the desktop installer size budget
+        shell: bash
+        env:
+          MAX_PACKAGE_BYTES: "167772160"
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            Linux) PACKAGE_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.deb' -print -quit)" ;;
+            Windows) PACKAGE_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.exe' -print -quit)" ;;
+            *) echo "Unsupported runner OS: $RUNNER_OS" >&2; exit 1 ;;
+          esac
+          test -n "$PACKAGE_PATH"
+          node -e '
+            const { statSync } = require("node:fs");
+            const size = statSync(process.argv[1]).size;
+            const maximum = Number(process.env.MAX_PACKAGE_BYTES);
+            if (size > maximum) {
+              console.error("Desktop package is " + (size / 1024 / 1024).toFixed(1) + " MiB; the release limit is " + (maximum / 1024 / 1024).toFixed(0) + " MiB.");
+              process.exit(1);
+            }
+            console.log(process.argv[1] + ": " + (size / 1024 / 1024).toFixed(1) + " MiB (within the 160 MiB release limit)");
+          ' "$PACKAGE_PATH"
+
       - name: Upload desktop packages
         uses: actions/upload-artifact@v4
         with:

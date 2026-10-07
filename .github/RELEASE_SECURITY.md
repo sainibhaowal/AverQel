@@ -1,43 +1,39 @@
-# Release security controls
+# Release security and artifact boundaries
 
-The release and deployment workflows are manual and protected by `main`.
+The desktop release and VPS deployment are separate manual workflows. Run the
+desktop workflow only from protected `main`; it publishes desktop installers to
+GitHub Releases and never starts a VPS deployment.
 
-## Desktop signing
+## Desktop release contents
 
-Run `Release - Manual SemVer and Desktop` with `sign_desktop: true` only after
-these repository secrets are configured:
+| Item | Release behavior |
+| --- | --- |
+| Linux | Builds `AverQel-linux-amd64.deb` |
+| Windows | Builds `AverQel-windows-x64.exe` |
+| NeoSIS | Checks out its repository separately, pins the selected commit and version in the release manifest, bundles its runtime inside the AverQel Electron package, and receives only allowlisted OS environment variables plus its own `NEOSIS_HOME` |
+| Electron | Uses the AverQel desktop shell; the separate NeoSIS Electron application is not packaged |
+| Size | Blocks publication if either compressed installer exceeds 160 MiB |
+| Integrity | Publishes `SHA256SUMS.txt` and `release-manifest.json` with the installers |
+| Website downloads | The website points directly to stable GitHub `releases/latest/download` asset URLs |
+| Website version label | Comes from the deployed frontend build and updates only when the VPS deployment workflow is run |
+| macOS and RPM | Not built or published by this workflow |
+| VPS | Not built, changed, or deployed by this workflow |
 
-- `WINDOWS_CERTIFICATE_BASE64`: base64-encoded Authenticode `.pfx` certificate.
-- `WINDOWS_CERTIFICATE_PASSWORD`: password for that certificate.
-- `APPLE_CERTIFICATE`: base64-encoded Apple Developer ID `.p12` certificate.
-- `APPLE_CERTIFICATE_PASSWORD`: password for that certificate.
-- `APPLE_SIGNING_IDENTITY`: exact Developer ID Application identity.
-- `APPLE_ID`: Apple ID used for notarization.
-- `APPLE_PASSWORD`: app-specific Apple notarization password.
-- `APPLE_TEAM_ID`: Apple Developer Team ID.
+NeoSIS remains a separate source repository. GitHub's source archive for an
+AverQel tag contains the AverQel repository only; NeoSIS is checked out in a
+temporary workflow directory and is not committed or uploaded as a source
+archive.
 
-When enabled, the workflow fails if any secret is missing, signs the Windows
-installer, verifies it with `signtool`, signs the macOS application, and runs
-macOS notarization validation with `stapler`. Secrets are never written to the
-repository or included in release assets.
+## Signing status
 
-When disabled, packages are still built, checksummed, and scanned, but are not
-claimed to be signed.
+The current desktop release workflow does not sign installers. The Windows
+installer may therefore display the operating system's unknown-publisher
+warning. Do not describe the package as signed or notarized. Signing requires a
+separate reviewed workflow change and appropriately scoped signing credentials.
 
-## Images and artifacts
+## VPS deployment boundary
 
-- Desktop releases include `SHA256SUMS.txt` and `release-manifest.json`.
-- The release workflow publishes the checksums and manifest with the GitHub
-  Release assets.
-- Docker images are scanned for high and critical vulnerabilities.
-- Published images receive keyless Cosign signatures through GitHub OIDC and
-  are verified in the same workflow before deployment.
-- SBOM files are retained as GitHub Actions artifacts.
-
-## VPS safety
-
-Desktop packages are not copied to the VPS. The public website uses direct
-GitHub Release asset URLs, so the VPS does not retain duplicate desktop
-installers. The deployment verifies service health and keeps the previous
-application image for immediate rollback. Unrelated VPS files, volumes,
-models, and containers are not removed.
+The manual VPS workflow builds and verifies server images, then deploys them to
+the configured VPS. It is independent from the desktop release workflow. A
+successful desktop release does not prove that the production website or
+backend was deployed or updated.

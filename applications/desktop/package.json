@@ -18,6 +18,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "electron .",
+    "test": "node --test tests/*.test.cjs",
     "prepare:neosis-runtime": "node scripts/prepare-neosis-runtime.mjs",
     "build": "pnpm run prepare:neosis-runtime && electron-builder --publish never",
     "build:linux": "pnpm run prepare:neosis-runtime && electron-builder --publish never --linux deb",
@@ -45,13 +46,6 @@
       {
         "from": ".neosis-runtime/neosis",
         "to": "neosis",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": ".neosis-runtime/neosis/node_modules",
-        "to": "neosis/node_modules",
         "filter": [
           "**/*"
         ]

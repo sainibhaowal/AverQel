@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("framer-motion", async () => {
   const React = await import("react");
@@ -14,6 +14,7 @@ vi.mock("framer-motion", async () => {
       delete domProps.transition;
       delete domProps.animate;
       delete domProps.exit;
+      delete domProps.layout;
       return React.createElement(tag, domProps, children);
     };
 
@@ -38,6 +39,10 @@ vi.mock("framer-motion", async () => {
 import HeroSection from "../app/components/marketing/HeroSection";
 
 describe("HeroSection", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders the current landing hero and runtime monitor", () => {
     render(<HeroSection />);
 
@@ -62,5 +67,20 @@ describe("HeroSection", () => {
     );
     expect(screen.getByText(/averqel \| productivity runtime/i)).toBeInTheDocument();
     expect(screen.getByText(/DeepSpace for research and deliverables/i)).toBeInTheDocument();
+  });
+
+  it("does not offer an unsupported macOS installer", async () => {
+    vi.stubGlobal("navigator", {
+      userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    });
+    render(<HeroSection />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /View Linux and Windows builds/i })).toHaveAttribute(
+        "href",
+        "https://github.com/sainibhaowal/AverQel/releases/latest",
+      );
+    });
+    expect(screen.queryByRole("link", { name: /Download for macOS/i })).not.toBeInTheDocument();
   });
 });
