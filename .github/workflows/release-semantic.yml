@@ -202,6 +202,12 @@ jobs:
           set -euo pipefail
           node .github/scripts/stamp-desktop-version.mjs "${RELEASE_VERSION#v}"
 
+      - name: Install Linux native packaging prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes musl-tools
+
       - name: Build Linux desktop package
         if: matrix.platform == 'ubuntu-22.04'
         run: pnpm --dir applications/desktop build:linux

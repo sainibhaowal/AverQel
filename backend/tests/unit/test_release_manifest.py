@@ -158,6 +158,14 @@ def test_release_workflow_pins_neosis_and_limits_artifacts_to_linux_and_windows(
     assert workflow.index(prepare_environment) < workflow.index(
         "- name: Build Windows desktop package"
     )
+    install_linux_toolchain = "sudo apt-get install --no-install-recommends --yes musl-tools"
+    assert install_linux_toolchain in workflow
+    assert workflow.index(install_linux_toolchain) < workflow.index(
+        "- name: Build Linux desktop package"
+    )
+    install_toolchain_step = workflow.index("- name: Install Linux native packaging prerequisites")
+    linux_package_step = workflow.index("- name: Build Linux desktop package")
+    assert "if: runner.os == 'Linux'" in workflow[install_toolchain_step:linux_package_step]
     assert "macos-latest" not in workflow
     assert "AverQel-linux-amd64.deb" in workflow
     assert "AverQel-windows-x64.exe" in workflow

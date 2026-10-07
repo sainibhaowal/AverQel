@@ -39,6 +39,15 @@ The release workflow builds Linux `.deb` and Windows `.exe` packages. Both
 include the NeoSIS desktop runtime from the NeoSIS repository's pinned `main`
 commit recorded in the GitHub release manifest.
 
+Linux packaging builds NeoSIS's static Landlock launcher with `musl-gcc`. The
+release workflow installs Ubuntu's `musl-tools` package on the Linux runner;
+local Ubuntu builds need the same package:
+
+```bash
+sudo apt-get update
+sudo apt-get install --no-install-recommends --yes musl-tools
+```
+
 Each release runner creates the matching ignored NeoSIS `.env` file from the
 pinned checkout's template for `--prepare-only` runtime staging. It includes
 only the application ID and test policy settings required by that validation;
