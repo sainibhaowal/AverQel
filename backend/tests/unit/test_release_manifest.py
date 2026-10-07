@@ -158,6 +158,12 @@ def test_release_workflow_pins_neosis_and_limits_artifacts_to_linux_and_windows(
     assert "VPS_HOST" not in workflow
 
 
+def test_desktop_pnpm_approves_only_the_reviewed_installer_build_script() -> None:
+    policy = (ROOT / "applications/desktop/pnpm-workspace.yaml").read_text(encoding="utf-8")
+
+    assert policy.splitlines() == ["allowBuilds:", "  electron-winstaller: true"]
+
+
 def test_manifest_contract_includes_only_current_assets_and_component_provenance() -> None:
     script = SCRIPT.read_text(encoding="utf-8")
 

@@ -39,6 +39,11 @@ The release workflow builds Linux `.deb` and Windows `.exe` packages. Both
 include the NeoSIS desktop runtime from the NeoSIS repository's pinned `main`
 commit recorded in the GitHub release manifest.
 
+The desktop pnpm policy allows the `electron-winstaller` install script only.
+That reviewed script copies its bundled 7-Zip binaries to the names required by
+Windows installer packaging; keep this allowlist narrow rather than enabling
+dependency build scripts globally.
+
 ## NeoSIS Local workspace
 
 The desktop build contains one Electron shell. Signed-in AverQel users can open
