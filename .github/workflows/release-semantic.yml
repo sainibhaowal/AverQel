@@ -191,6 +191,9 @@ jobs:
       - name: Install NeoSIS dependencies
         run: pnpm --dir neosis install --frozen-lockfile
 
+      - name: Prepare temporary NeoSIS runtime packaging settings
+        run: node applications/desktop/scripts/prepare-neosis-package-env.mjs neosis
+
       - name: Stamp the semantic release version into the desktop app
         shell: bash
         env:
