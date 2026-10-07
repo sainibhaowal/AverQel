@@ -1,0 +1,4 @@
+# The shipped Web profile keeps the sidebar Browser off by default.
+# AverQel's local NeoSIS desktop surface opts it in for this installation.
+- id: ui-sidebar-browser
+  disabled: false

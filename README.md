@@ -206,9 +206,11 @@ integration tests do not establish production deployment status.
 The repository's release and VPS deployment workflows are manual and use
 protected `main`:
 
-1. **Release - Manual SemVer and Desktop** calculates the next version, builds
-   desktop packages, creates checksums and a release manifest, and publishes a
-   GitHub release.
+1. **Release - Manual SemVer and Desktop** calculates the next version, checks
+   out NeoSIS separately at a recorded commit, builds the Linux `.deb` and
+   Windows `.exe` desktop packages, creates checksums and a release manifest,
+   and publishes a GitHub release. NeoSIS source is not added to the AverQel
+   repository or its source archives.
 2. **Deploy - Manual Docker Build and VPS** uses the exact release commit to
    build and test API, worker, and frontend images, scan them, create SBOMs,
    sign and publish the immutable images, and deploy them to the configured
@@ -227,7 +229,10 @@ security, and monitoring evidence. Do not infer that a deployment happened
 from a successful local build or a checked-in workflow.
 
 Desktop installers are GitHub Release assets and are not copied to the VPS.
-The public landing page download links point to the latest release assets.
+The public landing page download links point to stable `releases/latest/download`
+asset URLs, so publishing a release updates their download targets immediately.
+The displayed website version is embedded in the deployed frontend image; it
+changes only when the separate VPS deployment workflow publishes that image.
 
 See the [deployment workflow](.github/workflows/deploy-vps.yml),
 [release security policy](.github/RELEASE_SECURITY.md),

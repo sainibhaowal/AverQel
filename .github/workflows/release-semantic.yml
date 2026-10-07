@@ -35,12 +35,40 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       sha: ${{ steps.version.outputs.sha }}
+      neosis_sha: ${{ steps.neosis.outputs.sha }}
+      neosis_version: ${{ steps.neosis.outputs.version }}
     steps:
       - name: Checkout the selected main commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+
+      - name: Checkout NeoSIS main to resolve the release source
+        uses: actions/checkout@v4
+        with:
+          repository: sainibhaowal/AverQel_NeoSIS
+          ref: main
+          path: neosis
+          persist-credentials: false
+
+      - name: Setup Node for release metadata
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Record the NeoSIS release source
+        id: neosis
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="$(git -C neosis rev-parse HEAD)"
+          VERSION="$(node -p 'require("./neosis/package.json").version')"
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ -n "$VERSION" ]]
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "NeoSIS $VERSION ($SHA) will be bundled in this release."
 
       - name: Calculate next version
         id: version
@@ -98,13 +126,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, windows-latest, macos-latest]
+        platform: [ubuntu-22.04, windows-latest]
     steps:
       - name: Checkout the exact release commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ needs.prepare-release.outputs.sha }}
+
+      - name: Checkout the pinned NeoSIS release source
+        uses: actions/checkout@v4
+        with:
+          repository: sainibhaowal/AverQel_NeoSIS
+          ref: ${{ needs.prepare-release.outputs.neosis_sha }}
+          path: neosis
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -119,6 +155,7 @@ jobs:
           cache-dependency-path: |
             frontend/pnpm-lock.yaml
             applications/desktop/pnpm-lock.yaml
+            neosis/pnpm-lock.yaml
 
       - name: Restore desktop build caches
         uses: actions/cache@v4
@@ -138,12 +175,6 @@ jobs:
       - name: Install Electron dependencies
         run: pnpm --dir applications/desktop install --frozen-lockfile
 
-      - name: Install Linux packaging dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y rpm
-
       - name: Build the production frontend for Electron
         env:
           BUILD_TARGET: desktop
@@ -151,6 +182,14 @@ jobs:
           NEXT_PUBLIC_GIT_SHA: ${{ needs.prepare-release.outputs.sha }}
           NEXT_PUBLIC_DESKTOP_DOWNLOAD_BASE_URL: https://github.com/sainibhaowal/AverQel/releases/latest/download
         run: pnpm --dir frontend build
+
+      - name: Setup NeoSIS pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+
+      - name: Install NeoSIS dependencies
+        run: pnpm --dir neosis install --frozen-lockfile
 
       - name: Stamp the semantic release version into the desktop app
         shell: bash
@@ -167,10 +206,6 @@ jobs:
       - name: Build Windows desktop package
         if: matrix.platform == 'windows-latest'
         run: pnpm --dir applications/desktop build:windows
-
-      - name: Build macOS desktop package
-        if: startsWith(matrix.platform, 'macos-')
-        run: pnpm --dir applications/desktop build:mac
 
       - name: Normalize desktop package names
         shell: bash
@@ -189,20 +224,13 @@ jobs:
           case "$RUNNER_OS" in
             Linux)
               DEB_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.deb' -print -quit)"
-              RPM_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.rpm' -print -quit)"
-              test -n "$DEB_PATH" && test -n "$RPM_PATH"
+              test -n "$DEB_PATH"
               rename_if_needed "$DEB_PATH" "$(dirname "$DEB_PATH")/AverQel_${VERSION}_amd64.deb"
-              rename_if_needed "$RPM_PATH" "$(dirname "$RPM_PATH")/AverQel_${VERSION}_x86_64.rpm"
               ;;
             Windows)
               EXE_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.exe' -print -quit)"
               test -n "$EXE_PATH"
               rename_if_needed "$EXE_PATH" "$(dirname "$EXE_PATH")/AverQel_${VERSION}_x64-setup.exe"
-              ;;
-            macOS)
-              DMG_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.dmg' -print -quit)"
-              test -n "$DMG_PATH"
-              rename_if_needed "$DMG_PATH" "$(dirname "$DMG_PATH")/AverQel_${VERSION}_universal.dmg"
               ;;
             *)
               echo "Unsupported runner OS: $RUNNER_OS" >&2
@@ -210,15 +238,36 @@ jobs:
               ;;
           esac
 
+      - name: Enforce the desktop installer size budget
+        shell: bash
+        env:
+          MAX_PACKAGE_BYTES: "167772160"
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS" in
+            Linux) PACKAGE_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.deb' -print -quit)" ;;
+            Windows) PACKAGE_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.exe' -print -quit)" ;;
+            *) echo "Unsupported runner OS: $RUNNER_OS" >&2; exit 1 ;;
+          esac
+          test -n "$PACKAGE_PATH"
+          node -e '
+            const { statSync } = require("node:fs");
+            const size = statSync(process.argv[1]).size;
+            const maximum = Number(process.env.MAX_PACKAGE_BYTES);
+            if (size > maximum) {
+              console.error("Desktop package is " + (size / 1024 / 1024).toFixed(1) + " MiB; the release limit is " + (maximum / 1024 / 1024).toFixed(0) + " MiB.");
+              process.exit(1);
+            }
+            console.log(process.argv[1] + ": " + (size / 1024 / 1024).toFixed(1) + " MiB (within the 160 MiB release limit)");
+          ' "$PACKAGE_PATH"
+
       - name: Upload desktop packages
         uses: actions/upload-artifact@v4
         with:
           name: averqel-desktop-${{ matrix.platform }}-${{ needs.prepare-release.outputs.version }}
           path: |
             applications/desktop/release/*.deb
-            applications/desktop/release/*.rpm
             applications/desktop/release/*.exe
-            applications/desktop/release/*.dmg
 
   publish-release:
     name: Publish GitHub Release
@@ -267,11 +316,13 @@ jobs:
         env:
           RELEASE_VERSION: ${{ needs.prepare-release.outputs.version }}
           RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
+          NEOSIS_VERSION: ${{ needs.prepare-release.outputs.neosis_version }}
+          NEOSIS_SHA: ${{ needs.prepare-release.outputs.neosis_sha }}
         run: |
           set -euo pipefail
           rm -rf release-assets
           mkdir -p release-assets
-          find desktop-release-artifacts -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.exe' -o -name '*.dmg' \) -print0 \
+          find desktop-release-artifacts -type f \( -name '*.deb' -o -name '*.exe' \) -print0 \
             | while IFS= read -r -d '' asset; do
                 target="release-assets/$(basename "$asset")"
                 test ! -e "$target" || { echo "Duplicate release asset filename: $target"; exit 1; }
@@ -279,16 +330,19 @@ jobs:
               done
 
           VERSION="${RELEASE_VERSION#v}"
-          mv "$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_amd64.deb" -print -quit)" release-assets/AverQel-linux-amd64.deb
-          mv "$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_x86_64.rpm" -print -quit)" release-assets/AverQel-linux-x86_64.rpm
-          mv "$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_x64-setup.exe" -print -quit)" release-assets/AverQel-windows-x64.exe
-          mv "$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_universal.dmg" -print -quit)" release-assets/AverQel-macos-universal.dmg
-          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 4
+          DEB_PATH="$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_amd64.deb" -print -quit)"
+          EXE_PATH="$(find release-assets -maxdepth 1 -type f -name "*_${VERSION}_x64-setup.exe" -print -quit)"
+          test -n "$DEB_PATH" && test -n "$EXE_PATH"
+          mv -- "$DEB_PATH" release-assets/AverQel-linux-amd64.deb
+          mv -- "$EXE_PATH" release-assets/AverQel-windows-x64.exe
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 2
 
           (cd release-assets && sha256sum -- *) > SHA256SUMS.txt
           python3 .github/scripts/create-release-manifest.py \
             --version "$RELEASE_VERSION" \
             --git-sha "$RELEASE_SHA" \
+            --neosis-version "$NEOSIS_VERSION" \
+            --neosis-git-sha "$NEOSIS_SHA" \
             --asset-dir release-assets \
             --output release-manifest.json \
             --base-url "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download"
@@ -316,7 +370,9 @@ jobs:
 
             The generated changelog below is based on the merged pull requests and conventional commits included in this release.
 
-            Desktop packages: `.deb`, `.rpm`, `.exe`, and universal macOS `.dmg`.
+            Desktop packages: Linux `.deb` and Windows `.exe`.
+
+            This release bundles NeoSIS `${{ needs.prepare-release.outputs.neosis_version }}` from commit `${{ needs.prepare-release.outputs.neosis_sha }}`.
 
             Public downloads are provided directly by this GitHub release. The AverQel website uses
             direct asset URLs and does not copy desktop packages to the VPS.

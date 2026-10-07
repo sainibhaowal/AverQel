@@ -11,6 +11,10 @@ declare global {
         hide: () => Promise<void>;
       };
       openExternal: (url: string) => Promise<boolean>;
+      workspace: {
+        openNeosis: () => Promise<{ ok: boolean; error?: string }>;
+        openAverQel: () => Promise<{ ok: boolean; error?: string }>;
+      };
     };
   }
 }

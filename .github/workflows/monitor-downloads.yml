@@ -39,15 +39,23 @@ jobs:
               raise SystemExit("manifest product is not AverQel")
           if not re.fullmatch(r"v\d+\.\d+\.\d+", data.get("version", "")):
               raise SystemExit("manifest version is not canonical SemVer")
-          expected = {
+          expected_current = {
               "AverQel-linux-amd64.deb",
-              "AverQel-linux-x86_64.rpm",
               "AverQel-windows-x64.exe",
+          }
+          expected_legacy = expected_current | {
+              "AverQel-linux-x86_64.rpm",
               "AverQel-macos-universal.dmg",
           }
           assets = data.get("assets", {})
-          if set(assets) != expected:
+          if set(assets) not in (expected_current, expected_legacy):
               raise SystemExit(f"manifest assets mismatch: {sorted(assets)}")
+          if set(assets) == expected_current:
+              neosis = data.get("components", {}).get("neosis", {})
+              if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", neosis.get("version", "")):
+                  raise SystemExit("manifest NeoSIS version is invalid")
+              if not re.fullmatch(r"[0-9a-f]{40}", neosis.get("git_sha", "")):
+                  raise SystemExit("manifest NeoSIS git SHA is invalid")
           for name, asset in assets.items():
               if not re.fullmatch(r"[0-9a-f]{64}", asset.get("sha256", "")):
                   raise SystemExit(f"invalid SHA-256 for {name}")
@@ -56,13 +64,12 @@ jobs:
           PY
 
       - name: Verify every direct GitHub asset responds successfully
+        shell: bash
+        env:
+          MANIFEST_PATH: ${{ runner.temp }}/averqel-release/release-manifest.json
         run: |
           set -euo pipefail
-          for name in \
-            AverQel-linux-amd64.deb \
-            AverQel-linux-x86_64.rpm \
-            AverQel-windows-x64.exe \
-            AverQel-macos-universal.dmg; do
+          while IFS= read -r name; do
             status="$(curl --fail --location --silent --show-error --retry 5 --retry-delay 3 \
               -o /dev/null -w '%{http_code}' -I \
               "$RELEASE_BASE_URL/$name")"
@@ -71,4 +78,4 @@ jobs:
               exit 1
             }
             echo "$name: HTTP $status"
-          done
+          done < <(python3 -c 'import json, os; print(chr(10).join(sorted(json.load(open(os.environ["MANIFEST_PATH"], encoding="utf-8"))["assets"])))')
