@@ -1,7 +1,7 @@
 {
   "name": "averqel-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.6",
   "description": "AverQel — Agentic OS for documents, connectors, and autonomous work",
   "homepage": "https://averqel.com",
   "desktopName": "AverQel",
@@ -18,13 +18,15 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "electron .",
-    "build": "electron-builder --publish never",
-    "build:linux": "electron-builder --publish never --linux deb rpm",
-    "build:windows": "electron-builder --publish never --win nsis",
+    "test": "node --test tests/*.test.cjs",
+    "prepare:neosis-runtime": "node scripts/prepare-neosis-runtime.mjs",
+    "build": "pnpm run prepare:neosis-runtime && electron-builder --publish never",
+    "build:linux": "pnpm run prepare:neosis-runtime && electron-builder --publish never --linux deb",
+    "build:windows": "pnpm run prepare:neosis-runtime && electron-builder --publish never --win nsis",
     "build:mac": "electron-builder --publish never --mac dmg --universal"
   },
   "devDependencies": {
-    "electron": "^41.0.0",
+    "electron": "44.0.0",
     "electron-builder": "^26.0.12"
   },
   "build": {
@@ -40,6 +42,17 @@
       {
         "from": "../../frontend/out",
         "to": "frontend"
+      },
+      {
+        "from": ".neosis-runtime/neosis",
+        "to": "neosis",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "assets/neosis-local-profile.patch.yml",
+        "to": "neosis/averqel-local-profile.patch.yml"
       }
     ],
     "directories": {
@@ -51,8 +64,7 @@
       "icon": "assets/icon.png",
       "syncDesktopName": true,
       "target": [
-        "deb",
-        "rpm"
+        "deb"
       ]
     },
     "win": {

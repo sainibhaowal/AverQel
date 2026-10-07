@@ -28,11 +28,10 @@ import AverQelLogo from "../ui/AverQelLogo";
 import {
   APP_VERSION,
   DESKTOP_LINUX_DOWNLOAD_URL,
-  DESKTOP_MACOS_DOWNLOAD_URL,
   DESKTOP_WINDOWS_DOWNLOAD_URL,
 } from "@/lib/release";
 
-type DesktopPlatform = "linux" | "windows" | "macos" | "other";
+type DesktopPlatform = "linux" | "windows" | "other";
 
 function detectDesktopPlatform(): DesktopPlatform {
   if (typeof navigator === "undefined") return "other";
@@ -40,7 +39,6 @@ function detectDesktopPlatform(): DesktopPlatform {
   const userAgent = navigator.userAgent.toLowerCase();
   if (userAgent.includes("android") || userAgent.includes("iphone")) return "other";
   if (userAgent.includes("windows")) return "windows";
-  if (userAgent.includes("macintosh") || userAgent.includes("mac os")) return "macos";
   if (userAgent.includes("linux")) return "linux";
   return "other";
 }
@@ -111,10 +109,9 @@ export default function HeroSection() {
   const recommendedDownload = {
     linux: { href: DESKTOP_LINUX_DOWNLOAD_URL, label: "Download for Linux (.deb)" },
     windows: { href: DESKTOP_WINDOWS_DOWNLOAD_URL, label: "Download for Windows (.exe)" },
-    macos: { href: DESKTOP_MACOS_DOWNLOAD_URL, label: "Download for macOS (.dmg)" },
     other: {
       href: "https://github.com/sainibhaowal/AverQel/releases/latest",
-      label: "Choose a desktop build",
+      label: "View Linux and Windows builds",
     },
   }[desktopPlatform];
 
