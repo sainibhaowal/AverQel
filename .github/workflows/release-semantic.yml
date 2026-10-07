@@ -147,15 +147,13 @@ jobs:
         with:
           version: 10.28.2
 
-      - name: Setup Node 22 with pnpm cache
+      # The job installs two pnpm majors. setup-node's automatic pnpm cache
+      # resolves a store path that may not exist at post-job save time; cache
+      # Electron and Next build outputs separately below instead.
+      - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: pnpm
-          cache-dependency-path: |
-            frontend/pnpm-lock.yaml
-            applications/desktop/pnpm-lock.yaml
-            neosis/pnpm-lock.yaml
 
       - name: Restore desktop build caches
         uses: actions/cache@v4
