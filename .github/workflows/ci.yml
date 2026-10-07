@@ -245,11 +245,29 @@ jobs:
             exit 1
           fi
 
+  workflow-lint:
+    name: GitHub Actions workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test isolated pre-push gate
+        run: bash .github/scripts/tests/test-pre-push-checks.sh
+
+      - name: Validate all GitHub Actions workflows with Actionlint
+        run: >-
+          docker run --rm
+          --volume "$GITHUB_WORKSPACE:/repo:ro"
+          --workdir /repo
+          rhysd/actionlint:1.7.12
+          -color
+
   # This is the only required check configured for protected main.
   ci-passed:
     name: CI Passed
     runs-on: ubuntu-latest
-    needs: [changes, backend-quality, frontend-quality]
+    needs: [changes, backend-quality, frontend-quality, workflow-lint]
     if: always()
     steps:
       - name: Check applicable gates
@@ -257,6 +275,7 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           BACKEND_RESULT: ${{ needs.backend-quality.result }}
           FRONTEND_RESULT: ${{ needs.frontend-quality.result }}
+          WORKFLOW_LINT_RESULT: ${{ needs.workflow-lint.result }}
           RUN_BACKEND: ${{ needs.changes.outputs.run_backend }}
           RUN_FRONTEND: ${{ needs.changes.outputs.run_frontend }}
           DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
@@ -265,6 +284,11 @@ jobs:
 
           if [[ "$CHANGES_RESULT" != "success" ]]; then
             echo "::error::Change classification failed"
+            exit 1
+          fi
+
+          if [[ "$WORKFLOW_LINT_RESULT" != "success" ]]; then
+            echo "::error::GitHub Actions workflow lint failed"
             exit 1
           fi
 

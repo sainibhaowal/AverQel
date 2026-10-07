@@ -4,6 +4,12 @@ Thank you for improving AverQel. Contributions must preserve tenant isolation,
 credential privacy, reliable document processing, and the protected production
 delivery path.
 
+Agent-assisted work follows the repository's
+[`AGENTS.md`](AGENTS.md) and detailed
+[`AGENT_ENGINEERING_STANDARD.md`](AGENT_ENGINEERING_STANDARD.md). The standard
+defines plan-first implementation, critical review, required tests,
+documentation review, safe test isolation, and pre-push checks.
+
 ## Before changing code
 
 1. Create a branch from the latest `main`:
@@ -20,6 +26,24 @@ delivery path.
    change.
 4. Never commit `.env*` files, tokens, private keys, model files, build
    outputs, `node_modules`, `.venv`, or `__pycache__` files.
+
+## Plan, tests, and documentation
+
+- Before implementation, inspect the existing behavior and working tree, then
+  write a plan that names the goal, current state, affected files and
+  interfaces, risks, non-break requirements, tests, and documentation. For
+  routine changes, proceed after presenting the plan; it is not an approval
+  gate.
+- Add behavior-focused tests for new or changed logic and regression coverage
+  for bug fixes. Choose unit, component, API/integration, migration, browser,
+  or packaging tests according to the behavior being changed.
+- Review documentation impact on every change. Update user help, API,
+  configuration, security, testing, operator, or release docs in the same
+  change when those details change. If no documentation edit is needed, record
+  the reason in the completion report.
+- Never use active databases or services for tests. Follow
+  [`backend/docs/platform/03-testing.md`](backend/docs/platform/03-testing.md)
+  and [`backend/docs/security/isolated-test-runs.md`](backend/docs/security/isolated-test-runs.md).
 
 ## Contribution terms
 
@@ -73,6 +97,29 @@ pytest -q -m unit_no_db --dist=loadgroup
   the change.
 - Resolve all review conversations and wait for the required `CI Passed`
   check.
+
+Install `pre-commit` and both repository Git hooks once after cloning:
+
+```bash
+python -m pip install pre-commit
+pre-commit install
+bash .github/scripts/install-pre-push-hook.sh
+```
+
+The pre-push hook requires `pre-commit` plus either Docker or a local
+Actionlint installation. Docker runs the pinned Actionlint image when no local
+binary is available.
+
+The hook checks each pushed commit in a temporary detached worktree. It runs
+the complete pre-commit suite and Actionlint against every workflow file. The
+configured Ruff, Black, whitespace, and EOF formatters can modify files, so the
+isolated hook keeps those edits out of the active checkout and blocks the push
+if corrections need to be committed. Run applicable tests and quality gates
+after fixes, inspect the complete diff and staged file list, and do not bypass
+the hook. CI also runs Actionlint for every pull request, and the workflow lint
+job is included in the required `CI Passed` result. After a push, inspect the
+Actions results for that exact commit and resolve required failures before
+merge.
 
 Only reviewed pull requests may enter protected `main`. Release and VPS
 deployment workflows are intentionally manual and are not triggered by an

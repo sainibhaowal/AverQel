@@ -1,15 +1,13 @@
 import time
 import uuid
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from tests.conftest import SeededUser
+from tests.support.datasets import DATASET_DIR as DATASET_ROOT
 from tests.support.datasets import ensure_test_datasets
-
-DATASET_ROOT = Path(__file__).parent.parent.parent.parent / "Docs" / "Datasets"
 
 
 def _login(client: TestClient, seeded: SeededUser) -> str:

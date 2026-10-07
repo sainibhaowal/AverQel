@@ -6,7 +6,6 @@ import logging
 import os
 import re
 import secrets
-import socket
 import subprocess
 import sys
 import time
@@ -14,12 +13,12 @@ from collections.abc import Callable, Iterator
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import SplitResult, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
 # Local test workers do not run the Docker-only OTEL collector. Disable export
 # before application modules construct Settings so traces remain test-local.
-os.environ.setdefault("AKS_OTEL_ENABLED", "false")
+os.environ["AKS_OTEL_ENABLED"] = "false"
 
 import pytest
 import urllib3
@@ -34,242 +33,64 @@ from app.auth.roles import canonicalize_role_name
 ALEMBIC_COMMAND = [sys.executable, "-m", "alembic"]
 
 
-def _is_tcp_reachable(host: str, port: int, timeout: float = 0.5) -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
-
-
-def _docker_container_ip(container_name: str) -> str | None:
-    try:
-        result = subprocess.run(
-            [
-                "docker",
-                "inspect",
-                container_name,
-                "--format",
-                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return None
-
-    ip_address = result.stdout.strip()
-    return ip_address or None
-
-
-def _docker_container_env(container_name: str) -> dict[str, str]:
-    try:
-        result = subprocess.run(
-            [
-                "docker",
-                "inspect",
-                container_name,
-                "--format",
-                "{{range .Config.Env}}{{println .}}{{end}}",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return {}
-
-    values: dict[str, str] = {}
-    for line in result.stdout.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        values[key] = value
-    return values
-
-
-def _docker_container_cmd(container_name: str) -> list[str]:
-    try:
-        result = subprocess.run(
-            [
-                "docker",
-                "inspect",
-                container_name,
-                "--format",
-                "{{json .Config.Cmd}}",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError):
-        return []
-
-    try:
-        parsed = json.loads(result.stdout.strip() or "[]")
-    except json.JSONDecodeError:
-        return []
-    return parsed if isinstance(parsed, list) else []
-
-
-def _resolve_sqlalchemy_url(url: str, *, container_name: str, container_port: int) -> str:
-    parsed = make_url(url)
-    container_env = _docker_container_env(container_name)
-    username = container_env.get("POSTGRES_USER") or parsed.username
-    password = container_env.get("POSTGRES_PASSWORD") or parsed.password
-    database = parsed.database
-    if database and database.endswith("_test"):
-        database_name = database
-    else:
-        database_name = container_env.get("POSTGRES_DB") or database
-    host = parsed.host or "localhost"
-    port = int(parsed.port or 0)
-    if port and _is_tcp_reachable(host, port):
-        return parsed.set(
-            username=username,
-            password=password,
-            database=database_name,
-        ).render_as_string(hide_password=False)
-
-    container_ip = _docker_container_ip(container_name)
-    if not container_ip or not _is_tcp_reachable(container_ip, container_port):
-        return parsed.set(
-            username=username,
-            password=password,
-            database=database_name,
-        ).render_as_string(hide_password=False)
-
-    return parsed.set(
-        username=username,
-        password=password,
-        database=database_name,
-        host=container_ip,
-        port=container_port,
-    ).render_as_string(hide_password=False)
-
-
-def _replace_netloc(split_result: SplitResult, *, host: str, port: int) -> SplitResult:
-    credentials = ""
-    if split_result.username is not None:
-        credentials = split_result.username
-        if split_result.password is not None:
-            credentials = f"{credentials}:{split_result.password}"
-        credentials = f"{credentials}@"
-    return split_result._replace(netloc=f"{credentials}{host}:{port}")
-
-
-def _resolve_url(url: str, *, container_name: str, container_port: int) -> str:
-    parsed = urlsplit(url)
-    host = parsed.hostname or "localhost"
-    port = parsed.port or 0
-    if port and _is_tcp_reachable(host, port):
-        return url
-
-    container_ip = _docker_container_ip(container_name)
-    if not container_ip or not _is_tcp_reachable(container_ip, container_port):
-        return url
-
-    return urlunsplit(_replace_netloc(parsed, host=container_ip, port=container_port))
-
-
-def _resolve_redis_url(url: str) -> str:
-    command = _docker_container_cmd("averqel-redis")
-    container_ip = _docker_container_ip("averqel-redis")
-    password: str | None = None
-    for index, part in enumerate(command):
-        if part == "--requirepass" and index + 1 < len(command):
-            password = command[index + 1]
-            break
-
-    if container_ip and _is_tcp_reachable(container_ip, 6379):
-        parsed = urlsplit(url)
-        username = parsed.username or ""
-        if password:
-            credentials = f":{password}@" if not username else f"{username}:{password}@"
-        elif parsed.password:
-            credentials = (
-                f":{parsed.password}@" if not username else f"{username}:{parsed.password}@"
-            )
-        else:
-            credentials = f"{username}@" if username else ""
-        netloc = f"{credentials}{container_ip}:6379"
-        return urlunsplit(parsed._replace(netloc=netloc))
-
-    resolved_url = _resolve_url(url, container_name="averqel-redis", container_port=6379)
-    parsed = urlsplit(resolved_url)
-    if parsed.password or not password:
-        return resolved_url
-
-    username = parsed.username or ""
-    credentials = f":{password}@" if not username else f"{username}:{password}@"
-    netloc = f"{credentials}{parsed.hostname}:{parsed.port}"
-    return urlunsplit(parsed._replace(netloc=netloc))
-
-
 def _redis_url_with_db(url: str, db_index: int) -> str:
     parsed = urlsplit(url)
     path = f"/{db_index}"
     return urlunsplit(parsed._replace(path=path))
 
 
-os.environ.setdefault("AKS_ENV", "test")
-os.environ.setdefault(
-    "AKS_DATABASE_URL",
-    "postgresql+psycopg://postgres:postgres@localhost:1005/knowledge_test",
+_ISOLATED_COMPOSE_RUN = os.environ.get("AVERQEL_TEST_ISOLATED_RUN") == "compose"
+os.environ["AKS_ENV"] = "test"
+if _ISOLATED_COMPOSE_RUN:
+    _required_isolated_env = (
+        "AKS_DATABASE_URL",
+        "AKS_REDIS_URL",
+        "AKS_MINIO_ENDPOINT",
+        "AKS_MINIO_ACCESS_KEY",
+        "AKS_MINIO_SECRET_KEY",
+    )
+    _missing_isolated_env = [name for name in _required_isolated_env if not os.environ.get(name)]
+    if _missing_isolated_env:
+        raise RuntimeError(
+            "isolated test runner is missing required settings: " + ", ".join(_missing_isolated_env)
+        )
+else:
+    # Even a misclassified unit test cannot accidentally inherit reachable
+    # development services or credentials from the shell environment.
+    os.environ["AKS_DATABASE_URL"] = (
+        "postgresql+psycopg://test:test@database-tests-disabled.invalid:5432/knowledge_test"
+    )
+    os.environ["AKS_REDIS_URL"] = "redis://test:test@redis-tests-disabled.invalid:6379/0"
+    os.environ["AKS_MINIO_ENDPOINT"] = "storage-tests-disabled.invalid:9000"
+
+os.environ["AKS_JWT_SECRET"] = "test-jwt-secret-with-minimum-32-chars-123456"
+os.environ["AKS_REFRESH_TOKEN_HASH_SECRET"] = (
+    "test-refresh-hash-secret-with-minimum-32-chars-123456"
 )
-os.environ.setdefault("AKS_REDIS_URL", "redis://:averqel-redis-secret@localhost:1010/0")
-os.environ.setdefault("AKS_JWT_SECRET", "test-jwt-secret-with-minimum-32-chars-123456")
-os.environ.setdefault(
-    "AKS_REFRESH_TOKEN_HASH_SECRET",
-    "test-refresh-hash-secret-with-minimum-32-chars-123456",
-)
-os.environ.setdefault("AKS_REFRESH_COOKIE_SECURE", "false")
-os.environ.setdefault("AKS_CELERY_TASK_ALWAYS_EAGER", "true")
-os.environ["AKS_MINIO_ENDPOINT"] = "localhost:1015"
+os.environ["AKS_REFRESH_COOKIE_SECURE"] = "false"
+os.environ["AKS_CELERY_TASK_ALWAYS_EAGER"] = "true"
 os.environ["AKS_MINIO_SECURE"] = "false"
 os.environ["AKS_MINIO_VERIFY_SSL"] = "false"
-os.environ.setdefault("AKS_AI_INTEGRATION_SCOPE", "embeddings_only")
-os.environ.setdefault("AKS_EMBEDDING_PROVIDER", "local-deterministic")
-os.environ.setdefault("AKS_EMBEDDING_MODEL", "hash-v1")
-os.environ.setdefault("AKS_EMBEDDING_DIMENSION", "384")
-os.environ.setdefault("AKS_LLM_PROVIDER", "disabled")
+os.environ["AKS_AI_INTEGRATION_SCOPE"] = "embeddings_only"
+os.environ["AKS_EMBEDDING_PROVIDER"] = "local-deterministic"
+os.environ["AKS_EMBEDDING_MODEL"] = "hash-v1"
+os.environ["AKS_EMBEDDING_DIMENSION"] = "384"
+os.environ["AKS_LLM_PROVIDER"] = "disabled"
 os.environ["AKS_LLM_MAX_REQUESTS_PER_MINUTE"] = "10000"
 os.environ["AKS_LLM_MONTHLY_BUDGET_USD"] = "10000.0"
-_minio_env = _docker_container_env("averqel-minio")
-os.environ["AKS_DATABASE_URL"] = _resolve_sqlalchemy_url(
-    os.environ["AKS_DATABASE_URL"],
-    container_name="averqel-postgres",
-    container_port=5432,
-)
-os.environ["AKS_REDIS_URL"] = _resolve_redis_url(os.environ["AKS_REDIS_URL"])
-os.environ["AKS_MINIO_ENDPOINT"] = _resolve_url(
-    f"http://{os.environ['AKS_MINIO_ENDPOINT']}",
-    container_name="averqel-minio",
-    container_port=9000,
-).removeprefix("http://")
-if _minio_env.get("MINIO_ROOT_USER"):
-    os.environ.setdefault("AKS_MINIO_ACCESS_KEY", _minio_env["MINIO_ROOT_USER"])
-if _minio_env.get("MINIO_ROOT_PASSWORD"):
-    os.environ.setdefault("AKS_MINIO_SECRET_KEY", _minio_env["MINIO_ROOT_PASSWORD"])
+os.environ["AKS_MINIO_ACCESS_KEY"] = "isolated-minio-user"
+os.environ["AKS_MINIO_SECRET_KEY"] = "isolated-minio-secret-change-me"
 logger = logging.getLogger(__name__)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 _TEST_PROVIDER_SECRET_KEY = base64.urlsafe_b64encode(b"0" * 32).decode("utf-8")
-os.environ.setdefault("AKS_PROVIDER_SECRET_ACTIVE_KID", "test-kid")
-os.environ.setdefault(
-    "AKS_PROVIDER_SECRET_KEYRING_JSON",
-    json.dumps({"test-kid": _TEST_PROVIDER_SECRET_KEY}),
-)
-os.environ.setdefault("AKS_TOTP_SECRET_ACTIVE_KID", "test-kid")
-os.environ.setdefault(
-    "AKS_TOTP_SECRET_KEYRING_JSON",
-    json.dumps({"test-kid": _TEST_PROVIDER_SECRET_KEY}),
-)
+os.environ["AKS_PROVIDER_SECRET_ACTIVE_KID"] = "test-kid"
+os.environ["AKS_PROVIDER_SECRET_KEYRING_JSON"] = json.dumps({"test-kid": _TEST_PROVIDER_SECRET_KEY})
+os.environ["AKS_TOTP_SECRET_ACTIVE_KID"] = "test-kid"
+os.environ["AKS_TOTP_SECRET_KEYRING_JSON"] = json.dumps({"test-kid": _TEST_PROVIDER_SECRET_KEY})
 _TEST_CHAT_SECRET_KEY = base64.urlsafe_b64encode(b"2" * 32).decode("utf-8")
-os.environ.setdefault("AKS_COLLECTION_CHAT_ACTIVE_KID", "test-chat-kid")
-os.environ.setdefault(
-    "AKS_COLLECTION_CHAT_KEYRING_JSON",
-    json.dumps({"test-chat-kid": _TEST_CHAT_SECRET_KEY}),
+os.environ["AKS_COLLECTION_CHAT_ACTIVE_KID"] = "test-chat-kid"
+os.environ["AKS_COLLECTION_CHAT_KEYRING_JSON"] = json.dumps(
+    {"test-chat-kid": _TEST_CHAT_SECRET_KEY}
 )
 
 # ---------------------------------------------------------------------------
@@ -316,10 +137,10 @@ from app.system.services.rate_limit_service import (  # noqa: E402
 )
 
 TEST_DATABASE_NAME = make_url(os.environ["AKS_DATABASE_URL"]).database or "knowledge_test"
-SOURCE_DATABASE_NAME = (
+BASE_DATABASE_NAME = (
     TEST_DATABASE_NAME[: -len("_test")] if TEST_DATABASE_NAME.endswith("_test") else "knowledge"
 )
-TEST_TEMPLATE_DATABASE_NAME = f"{SOURCE_DATABASE_NAME}_test_template"
+TEST_TEMPLATE_DATABASE_NAME = f"{BASE_DATABASE_NAME}_test_template"
 RUNTIME_CACHE_DIR = Path(os.environ.get("AVERQEL_RUNTIME_CACHE_DIR", "/tmp/averqel/backend/cache"))
 _DATABASE_TEST_FIXTURE_NAMES = {"client", "db_session", "seed_user"}
 _DATABASE_SOURCE_TOKENS = (
@@ -351,15 +172,11 @@ class TestDatabaseBootstrapUnavailableError(RuntimeError):
 
 
 def _assert_test_database_is_not_source() -> None:
-    """Refuse to run when the reset target could be the source database.
+    """Require a dedicated test DB name before any destructive database setup.
 
-    The bootstrap drops and recreates the configured database from the
-    source template. AKS_DATABASE_URL must target a dedicated "*_test"
-    database. When it points at the source database itself (for example the
-    production "knowledge" database instead of "knowledge_test"), the reset
-    would destroy the source's data. xdist workers append "_gw<N>" to the
-    configured database, so the base name (with any "_gw<N>" suffix stripped)
-    must still be a "*_test" database.
+    The bootstrap drops and recreates this database from a migration-built
+    template. xdist workers append "_gw<N>", so stripping that suffix must
+    still leave a dedicated "*_test" database name.
     """
     base_name = re.sub(r"_gw\d+$", "", TEST_DATABASE_NAME)
     if not base_name.endswith("_test"):
@@ -368,11 +185,39 @@ def _assert_test_database_is_not_source() -> None:
             f"{base_name!r} is not a dedicated '*_test' database; "
             "tests must target a separate '*_test' database"
         )
-    if TEST_DATABASE_NAME == SOURCE_DATABASE_NAME:
+    if TEST_DATABASE_NAME == BASE_DATABASE_NAME:
         raise TestDatabaseBootstrapUnavailableError(
             "refusing to run tests: AKS_DATABASE_URL database "
-            f"{TEST_DATABASE_NAME!r} is the schema source database; "
+            f"{TEST_DATABASE_NAME!r} is the base application database; "
             "tests must target a separate '*_test' database"
+        )
+
+
+def _assert_isolated_test_services() -> None:
+    """Require services supplied by the disposable, network-disabled Compose run."""
+    if os.environ.get("AVERQEL_TEST_ISOLATED_RUN") != "compose":
+        raise TestDatabaseBootstrapUnavailableError(
+            "database-backed tests are disabled in a normal shell because their fixtures reset "
+            "databases and flush Redis. Run them with ./backend/scripts/test-isolated.sh; that "
+            "command starts disposable, private test services and removes them afterward."
+        )
+
+    database_url = make_url(os.environ["AKS_DATABASE_URL"])
+    redis_url = urlsplit(os.environ["AKS_REDIS_URL"])
+    minio_endpoint = urlsplit(f"//{os.environ['AKS_MINIO_ENDPOINT']}")
+    database_name = re.sub(r"_gw\d+$", "", database_url.database or "")
+    if (
+        database_url.host != "127.0.0.1"
+        or database_url.port != 5432
+        or not database_name.endswith("_test")
+        or redis_url.hostname != "127.0.0.1"
+        or redis_url.port != 6379
+        or minio_endpoint.hostname != "127.0.0.1"
+        or minio_endpoint.port != 9000
+    ):
+        raise TestDatabaseBootstrapUnavailableError(
+            "refusing database-backed tests: isolated runs must use private loopback services "
+            "on ports 5432, 6379, and 9000, with a '*_test' database"
         )
 
 
@@ -480,12 +325,22 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(pytest.mark.xdist_group("e2e_serial"))
 
 
+def pytest_collection_finish(session: pytest.Session) -> None:
+    if not session.items or _all_selected_tests_use_no_db_bootstrap(session):
+        return
+    try:
+        _assert_isolated_test_services()
+    except TestDatabaseBootstrapUnavailableError as exc:
+        raise pytest.UsageError(str(exc)) from exc
+
+
 @pytest.fixture(scope="session", autouse=True)
 def migrate_database(request: pytest.FixtureRequest) -> Iterator[None]:
     if _all_selected_tests_use_no_db_bootstrap(request.session):
         yield
         return
 
+    _assert_isolated_test_services()
     get_settings.cache_clear()
     reset_db_state()
     try:
@@ -734,13 +589,8 @@ def _grant_database_access(test_url, database_name: str) -> None:
 
 
 def _reset_test_database_from_template() -> None:
-    """Create the worker database from one migrated template.
-
-    The template is rebuilt when the source migration head changes.
-    Worker databases are then created with PostgreSQL's native TEMPLATE
-    operation, avoiding a pg_dump/restore and Alembic run for every xdist
-    worker.
-    """
+    """Clone each worker DB from migrations in this run's private Postgres."""
+    _assert_isolated_test_services()
     _assert_test_database_is_not_source()
     RUNTIME_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     lock_path = RUNTIME_CACHE_DIR / "pytest-postgres-clone.lock"
@@ -881,42 +731,9 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
             text(f"CREATE DATABASE {_database_identifier(TEST_TEMPLATE_DATABASE_NAME)}")
         )
 
-    schema_dump = subprocess.run(
-        [
-            "docker",
-            "exec",
-            "averqel-postgres",
-            "pg_dump",
-            "-U",
-            "postgres",
-            "--schema-only",
-            "--no-owner",
-            SOURCE_DATABASE_NAME,
-        ],
-        check=True,
-        capture_output=True,
-        timeout=120,
-    ).stdout
-    _restore_dump_into_database(TEST_TEMPLATE_DATABASE_NAME, schema_dump)
-    seed_dump = subprocess.run(
-        [
-            "docker",
-            "exec",
-            "averqel-postgres",
-            "pg_dump",
-            "-U",
-            "postgres",
-            "--data-only",
-            "--column-inserts",
-            "--table=roles",
-            "--table=alembic_version",
-            SOURCE_DATABASE_NAME,
-        ],
-        check=True,
-        capture_output=True,
-        timeout=120,
-    ).stdout
-    _restore_dump_into_database(TEST_TEMPLATE_DATABASE_NAME, seed_dump)
+    # The previous bootstrap copied schema and role data from the active
+    # averqel-postgres container. Build the template from this checkout's
+    # migrations instead, so tests never inspect or depend on development data.
     template_env = os.environ.copy()
     template_env["AKS_DATABASE_URL"] = test_url.set(
         database=TEST_TEMPLATE_DATABASE_NAME
@@ -941,73 +758,30 @@ def _ensure_test_database_template(admin_engine, test_url) -> None:
 def _wait_for_database(
     database_name: str, *, attempts: int = 10, delay_seconds: float = 0.5
 ) -> None:
-    last_error: subprocess.CalledProcessError | None = None
+    admin_url = make_url(os.environ["AKS_DATABASE_URL"]).set(database="postgres")
+    admin_engine = create_engine(
+        admin_url.render_as_string(hide_password=False),
+        pool_pre_ping=True,
+    )
+    last_error: OperationalError | None = None
     for _ in range(attempts):
         try:
-            result = subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "averqel-postgres",
-                    "psql",
-                    "-U",
-                    "postgres",
-                    "-d",
-                    "postgres",
-                    "-tAc",
-                    f"SELECT 1 FROM pg_database WHERE datname = '{database_name}'",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            if result.stdout.strip() == "1":
+            with admin_engine.connect() as connection:
+                exists = connection.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                    {"name": database_name},
+                ).scalar()
+            if exists:
+                admin_engine.dispose()
                 return
-        except subprocess.CalledProcessError as exc:
+        except OperationalError as exc:
             last_error = exc
         time.sleep(delay_seconds)
+    admin_engine.dispose()
 
     if last_error is not None:
         raise last_error
     raise RuntimeError(f"database {database_name} did not become ready")
-
-
-def _restore_dump_into_database(
-    database_name: str,
-    dump_bytes: bytes,
-    *,
-    attempts: int = 5,
-    delay_seconds: float = 0.75,
-) -> None:
-    last_error: subprocess.CalledProcessError | None = None
-    for _ in range(attempts):
-        _wait_for_database(database_name)
-        try:
-            subprocess.run(
-                [
-                    "docker",
-                    "exec",
-                    "-i",
-                    "averqel-postgres",
-                    "psql",
-                    "-U",
-                    "postgres",
-                    "-d",
-                    database_name,
-                ],
-                input=dump_bytes,
-                check=True,
-                timeout=120,
-            )
-            return
-        except subprocess.CalledProcessError as exc:
-            last_error = exc
-            time.sleep(delay_seconds)
-
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError(f"failed to restore database dump into {database_name}")
 
 
 def _reset_in_memory_and_redis_state() -> None:
