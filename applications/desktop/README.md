@@ -39,6 +39,12 @@ The release workflow builds Linux `.deb` and Windows `.exe` packages. Both
 include the NeoSIS desktop runtime from the NeoSIS repository's pinned `main`
 commit recorded in the GitHub release manifest.
 
+Each release runner creates the matching ignored NeoSIS `.env` file from the
+pinned checkout's template for `--prepare-only` runtime staging. It includes
+only the application ID and test policy settings required by that validation;
+the reserved `test.example.com` origin is not used for network requests or
+copied into the AverQel package. Signing credentials are not included.
+
 The desktop pnpm policy allows the `electron-winstaller` install script only.
 That reviewed script copies its bundled 7-Zip binaries to the names required by
 Windows installer packaging; keep this allowlist narrow rather than enabling

@@ -150,6 +150,14 @@ def test_release_workflow_pins_neosis_and_limits_artifacts_to_linux_and_windows(
     assert "outputs.neosis_sha" in workflow
     assert "outputs.neosis_version" in workflow
     assert "platform: [ubuntu-22.04, windows-latest]" in workflow
+    prepare_environment = "node applications/desktop/scripts/prepare-neosis-package-env.mjs neosis"
+    assert prepare_environment in workflow
+    assert workflow.index(prepare_environment) < workflow.index(
+        "- name: Build Linux desktop package"
+    )
+    assert workflow.index(prepare_environment) < workflow.index(
+        "- name: Build Windows desktop package"
+    )
     assert "macos-latest" not in workflow
     assert "AverQel-linux-amd64.deb" in workflow
     assert "AverQel-windows-x64.exe" in workflow
