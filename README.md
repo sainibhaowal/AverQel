@@ -211,6 +211,13 @@ protected `main`:
    Windows `.exe` desktop packages, creates checksums and a release manifest,
    and publishes a GitHub release. NeoSIS source is not added to the AverQel
    repository or its source archives.
+   The default version follows Conventional Commits since the latest published
+   release: breaking changes increment the major number, `feat:` increments
+   minor, and `fix:`, `perf:`, or `revert:` increment patch. The highest level
+   across those commits wins. Other commit types do not trigger an automatic
+   release; provide an explicit version only when an intentional release is
+   needed without a release-worthy commit. Published version tags are never
+   rewritten.
 2. **Deploy - Manual Docker Build and VPS** uses the exact release commit to
    build and test API, worker, and frontend images, scan them, create SBOMs,
    sign and publish the immutable images, and deploy them to the configured
