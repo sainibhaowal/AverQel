@@ -14,9 +14,7 @@ from app.platform.database.base import Base
 class UserNotification(Base):
     __tablename__ = "user_notifications"
     __table_args__ = (
-        Index(
-            "ix_user_notifications_recipient_created", "recipient_user_id", text("created_at DESC")
-        ),
+        Index("ix_user_notifications_recipient_created", "recipient_user_id", "created_at"),
         Index(
             "ix_user_notifications_dismissed_retention",
             "dismissed_at",

@@ -374,7 +374,10 @@ export default function OrganizationPageClient({ kind }: { kind: PageKind }) {
         ...current,
         [id]: append ? [...(current[id] ?? []), ...payload] : payload,
       }));
-      setDeliveryCursors((current) => ({ ...current, [id]: response.headers.get("x-next-cursor") }));
+      setDeliveryCursors((current) => ({
+        ...current,
+        [id]: response.headers.get("x-next-cursor"),
+      }));
     }
   };
 
@@ -386,11 +389,18 @@ export default function OrganizationPageClient({ kind }: { kind: PageKind }) {
     if (!nextEndpoint?.trim()) return;
     const eventTypes = await averqelPrompt(
       "Event types (comma separated)",
-      Array.isArray(item.event_types) ? (item.event_types as string[]).join(", ") : webhookEventTypes.join(", "),
+      Array.isArray(item.event_types)
+        ? (item.event_types as string[]).join(", ")
+        : webhookEventTypes.join(", "),
     );
     if (!eventTypes?.trim()) return;
-    const selectedEventTypes = eventTypes.split(",").map((value) => value.trim()).filter(Boolean);
-    if (selectedEventTypes.some((value) => !webhookEventOptions.some(([option]) => option === value))) {
+    const selectedEventTypes = eventTypes
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (
+      selectedEventTypes.some((value) => !webhookEventOptions.some(([option]) => option === value))
+    ) {
       toast.error("Choose only supported webhook event types.");
       return;
     }
@@ -766,7 +776,9 @@ export default function OrganizationPageClient({ kind }: { kind: PageKind }) {
                           {deliveryCursors[item.id] ? (
                             <button
                               type="button"
-                              onClick={() => void loadDeliveries(item.id, deliveryCursors[item.id], true)}
+                              onClick={() =>
+                                void loadDeliveries(item.id, deliveryCursors[item.id], true)
+                              }
                               className="text-primary text-[10px] font-bold uppercase"
                             >
                               Load more history

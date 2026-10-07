@@ -24,8 +24,8 @@ export default function ProfileDocsPage() {
         </p>
         <p>
           You can revoke another active session if you no longer recognize or use it. That session’s
-          refresh tokens and access tokens are rejected. End the current session through Log out,
-          or use Sign out everywhere to end all of your sessions. Old revoked session records are
+          refresh tokens and access tokens are rejected. End the current session through Log out, or
+          use Sign out everywhere to end all of your sessions. Old revoked session records are
           removed according to the deployment’s retention setting.
         </p>
       </DocsSection>

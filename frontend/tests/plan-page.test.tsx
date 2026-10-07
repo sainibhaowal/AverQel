@@ -93,9 +93,7 @@ describe("plan page", () => {
     });
     render(<PlanPage />);
 
-    await waitFor(() =>
-      expect(screen.getByText(/assigned to Editor/i)).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText(/assigned to Editor/i)).toBeInTheDocument());
   });
 
   it("hides the beta grant notice when the API disables it", async () => {

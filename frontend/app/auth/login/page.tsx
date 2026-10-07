@@ -67,9 +67,11 @@ export default function LoginPage() {
         });
         if (!response.ok) throw new Error("Device details could not be prepared for sign-in.");
       }
-      window.location.assign(
+      const oauthUrl = new URL(
         `${getApiBaseUrl()}/auth/oauth/${provider}/start?return_to=%2Fauth%2Flogin`,
+        window.location.origin,
       );
+      window.location.assign(oauthUrl.toString());
     })().catch((err: unknown) => {
       setOauthProvider(null);
       setError(err instanceof Error ? err.message : "Social sign-in could not be started.");

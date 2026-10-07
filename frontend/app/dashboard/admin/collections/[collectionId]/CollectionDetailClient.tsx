@@ -1033,7 +1033,9 @@ export default function AdminCollectionDetailPage({
       toast.error("No messages to back up.");
       return;
     }
-    const password = await averqelPrompt("Enter a strong security password to encrypt your chat backup:");
+    const password = await averqelPrompt(
+      "Enter a strong security password to encrypt your chat backup:",
+    );
     if (!password) return;
 
     setIsExportingBackup(true);
@@ -1116,7 +1118,8 @@ export default function AdminCollectionDetailPage({
   // This owner-only action remains available to the parent collection control surface.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteCollection = async () => {
-    if (!(await averqelConfirm("Are you sure you want to delete this collection for all members?"))) return;
+    if (!(await averqelConfirm("Are you sure you want to delete this collection for all members?")))
+      return;
     setDeletingCollection(true);
     try {
       const res = await fetchWithAuth(`/collections/${collectionId}`, {
@@ -2339,9 +2342,9 @@ export default function AdminCollectionDetailPage({
                   <div className="flex items-start gap-2.5">
                     <span className="mt-0.5 text-xs text-emerald-500">🔑</span>
                     <p>
-                      <strong className="text-foreground">Local key derivation:</strong> The
-                      current browser client derives a shared chat key from the collection ID and
-                      connection code.
+                      <strong className="text-foreground">Local key derivation:</strong> The current
+                      browser client derives a shared chat key from the collection ID and connection
+                      code.
                     </p>
                   </div>
                   <div className="flex items-start gap-2.5">
@@ -2376,7 +2379,7 @@ export default function AdminCollectionDetailPage({
                   )}
                 </div>
 
-                <div className="w-full rounded-2xl border border-foreground/5 bg-foreground/[0.02] p-4 text-left dark:border-white/5">
+                <div className="border-foreground/5 bg-foreground/[0.02] w-full rounded-2xl border p-4 text-left dark:border-white/5">
                   <p className="text-foreground text-[11px] font-bold">Browser notifications</p>
                   <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
                     Receive collection activity when this browser is offline. Delivery uses your

@@ -1663,10 +1663,18 @@ html:not(.dark) .deepspace-composer-control {
   color: #087f5b;
   background: transparent;
   will-change: transform;
-  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms cubic-bezier(.2,.8,.2,1);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.deepspace-attachment-action > svg { display: block; flex: none; }
+.deepspace-attachment-action > svg {
+  display: block;
+  flex: none;
+}
 
 .deepspace-attachment-action:hover:not(:disabled),
 .deepspace-attachment-action:focus-visible {
@@ -1682,21 +1690,36 @@ html:not(.dark) .deepspace-composer-control {
   transform: translateY(0) scale(0.93);
   transition-duration: 70ms;
 }
-.deepspace-attachment-action:disabled { cursor: not-allowed; opacity: 0.42; }
+.deepspace-attachment-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
 
 @media (prefers-reduced-motion: no-preference) {
-  .deepspace-attachment-actions { transition: border-color 180ms ease, box-shadow 180ms ease; }
+  .deepspace-attachment-actions {
+    transition:
+      border-color 180ms ease,
+      box-shadow 180ms ease;
+  }
   .deepspace-attachment-actions:focus-within {
     border-color: rgba(5, 150, 105, 0.42);
-    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.10);
+    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.1);
   }
-  .deepspace-attachment-action:hover:not(:disabled) > svg { animation: deepspace-attachment-icon-settle 220ms cubic-bezier(.2,.8,.2,1); }
+  .deepspace-attachment-action:hover:not(:disabled) > svg {
+    animation: deepspace-attachment-icon-settle 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
 }
 
 @keyframes deepspace-attachment-icon-settle {
-  0% { transform: scale(0.90); }
-  65% { transform: scale(1.08); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(0.9);
+  }
+  65% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .dark .deepspace-attachment-actions {
@@ -1704,7 +1727,9 @@ html:not(.dark) .deepspace-composer-control {
   background: rgba(6, 43, 32, 0.78);
 }
 
-.dark .deepspace-attachment-action { color: #6ee7b7; }
+.dark .deepspace-attachment-action {
+  color: #6ee7b7;
+}
 .dark .deepspace-attachment-action:hover:not(:disabled),
 .dark .deepspace-attachment-action:focus-visible {
   color: #d1fae5;
@@ -1715,7 +1740,9 @@ html:not(.dark) .deepspace-composer-control {
 
 @media (prefers-reduced-motion: reduce) {
   .deepspace-attachment-action,
-  .deepspace-attachment-actions { transition: none; }
+  .deepspace-attachment-actions {
+    transition: none;
+  }
 }
 
 html:not(.dark) .deepspace-composer-stop {
@@ -2986,11 +3013,7 @@ html:not(.dark) .mcp-marketplace-actions button {
 }
 
 html:not(.dark) .mcp-marketplace-actions button[class*="bg-white/15"] {
-  background: linear-gradient(
-    135deg,
-    rgba(20, 184, 166, 0.18),
-    rgba(8, 145, 178, 0.12)
-  ) !important;
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.18), rgba(8, 145, 178, 0.12)) !important;
   color: #0f766e !important;
 }
 
@@ -3354,7 +3377,7 @@ html:not(.dark) .documents-theme-scope .theme-panel,
 html:not(.dark) .documents-theme-scope .glass-card {
   border-color: rgba(13, 148, 136, 0.2) !important;
   background:
-    radial-gradient(circle at 88% 0%, rgba(52, 211, 153, 0.10), transparent 30%),
+    radial-gradient(circle at 88% 0%, rgba(52, 211, 153, 0.1), transparent 30%),
     linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(240, 253, 250, 0.9)) !important;
   box-shadow:
     0 16px 38px rgba(15, 118, 110, 0.08),
@@ -3404,13 +3427,34 @@ html:not(.dark) .documents-ingest-action {
   background-color: #059669 !important;
   border-color: #047857 !important;
 }
-html:not(.dark) .documents-ingest-action:hover:not(:disabled) { background-color: #047857 !important; }
-html:not(.dark) .documents-ingest-action:disabled { color: #64748b !important; background-color: #dbe7e2 !important; border-color: #b5ccc2 !important; }
-html:not(.dark) .documents-cancel-action { color: #065f46 !important; background-color: #f0fdf4 !important; }
-html:not(.dark) .documents-view-mode-active { color: #ffffff !important; background-color: #0f9f9a !important; }
-.dark .documents-ingest-action { color: #ecfdf5 !important; background-color: #047857 !important; border-color: #34d399 !important; }
-.dark .documents-cancel-action { color: #a7f3d0 !important; }
-.dark .documents-view-mode-active { color: #ecfdf5 !important; background-color: #0f766e !important; }
+html:not(.dark) .documents-ingest-action:hover:not(:disabled) {
+  background-color: #047857 !important;
+}
+html:not(.dark) .documents-ingest-action:disabled {
+  color: #64748b !important;
+  background-color: #dbe7e2 !important;
+  border-color: #b5ccc2 !important;
+}
+html:not(.dark) .documents-cancel-action {
+  color: #065f46 !important;
+  background-color: #f0fdf4 !important;
+}
+html:not(.dark) .documents-view-mode-active {
+  color: #ffffff !important;
+  background-color: #0f9f9a !important;
+}
+.dark .documents-ingest-action {
+  color: #ecfdf5 !important;
+  background-color: #047857 !important;
+  border-color: #34d399 !important;
+}
+.dark .documents-cancel-action {
+  color: #a7f3d0 !important;
+}
+.dark .documents-view-mode-active {
+  color: #ecfdf5 !important;
+  background-color: #0f766e !important;
+}
 
 /* Query light mode: keep the workspace legible and turn dark-only controls
  * into frosted white panels with restrained cyan, teal, and violet accents. */

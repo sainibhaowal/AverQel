@@ -125,10 +125,6 @@ interface CollectionScopeItem {
   name: string;
 }
 
-interface CollectionDocumentItem {
-  document_id: string;
-}
-
 export default function QueryPageClient() {
   const [state, dispatch] = useReducer(queryThreadReducer, initialQueryThreadState);
   const [query, setQuery] = useState("");
@@ -564,8 +560,7 @@ export default function QueryPageClient() {
     const embeddingRuntime = runtimes.find((r) => r.feature_scope === "embeddings");
     const chatRuntime = runtimes.find((r) => r.feature_scope === "chat");
     const measuredLatencyValue = embeddingRuntime?.latency_ms ?? chatRuntime?.latency_ms;
-    const measuredLatency =
-      typeof measuredLatencyValue === "number" ? measuredLatencyValue : null;
+    const measuredLatency = typeof measuredLatencyValue === "number" ? measuredLatencyValue : null;
 
     return {
       totalDocuments: stats.total_documents || 0,
@@ -653,7 +648,6 @@ export default function QueryPageClient() {
     [
       query,
       searchMode,
-      scopedDocumentIds,
       collectionQueryFilters,
       state.currentConversationId,
       state.isStreaming,

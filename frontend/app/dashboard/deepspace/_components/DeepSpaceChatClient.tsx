@@ -246,21 +246,18 @@ export default function DeepSpaceChatClient({
     };
   }, []);
 
-  useRealtimeEvents(
-    () => {
-      void fetchWithAuth("/deepspace/chats/operational-summary")
-        .then(async (response) => {
-          if (!response.ok) return;
-          const summary = (await response.json()) as OperationalSummary;
-          setOperationalSummary(summary);
-        })
-        .catch(() => {
-          // The last known operational snapshot remains visible during a
-          // transient gateway or API reconnect.
-        });
-    },
-    ["deepspace", "queues"],
-  );
+  useRealtimeEvents(() => {
+    void fetchWithAuth("/deepspace/chats/operational-summary")
+      .then(async (response) => {
+        if (!response.ok) return;
+        const summary = (await response.json()) as OperationalSummary;
+        setOperationalSummary(summary);
+      })
+      .catch(() => {
+        // The last known operational snapshot remains visible during a
+        // transient gateway or API reconnect.
+      });
+  }, ["deepspace", "queues"]);
 
   const [availableModels, setAvailableModels] = useState<
     Array<{
@@ -906,7 +903,11 @@ export default function DeepSpaceChatClient({
   }, [activeConversationId, state.currentConversationId]);
 
   const enqueueTurn = useCallback(
-    async (nextQuery: string, steer = false, attachmentFileIds: string[] = []): Promise<boolean> => {
+    async (
+      nextQuery: string,
+      steer = false,
+      attachmentFileIds: string[] = [],
+    ): Promise<boolean> => {
       const prompt = nextQuery.trim();
       const conversationId = state.currentConversationId ?? activeConversationId;
       if ((!prompt && !attachmentFileIds.length) || !conversationId) return false;
@@ -1070,10 +1071,9 @@ export default function DeepSpaceChatClient({
     const conversationId = state.currentConversationId ?? activeConversationId;
     if (!conversationId) return;
     try {
-      const response = (await fetchWithAuth(
-        `/deepspace/chats/${conversationId}/queue/clear`,
-        { method: "POST" },
-      )) as Response;
+      const response = (await fetchWithAuth(`/deepspace/chats/${conversationId}/queue/clear`, {
+        method: "POST",
+      })) as Response;
       if (!response.ok) throw new Error("Unable to clear queue");
       setQueuedTurns([]);
       await loadQueueState(conversationId);
@@ -1342,7 +1342,12 @@ export default function DeepSpaceChatClient({
       attachmentFileIds: string[] = [],
     ) => {
       const effectiveQuery = (nextQuery ?? query).trim();
-      if ((!effectiveQuery && !attachmentFileIds.length) || creatingNewChat || submissionInFlightRef.current) return;
+      if (
+        (!effectiveQuery && !attachmentFileIds.length) ||
+        creatingNewChat ||
+        submissionInFlightRef.current
+      )
+        return;
 
       // A composer message is always a new turn.  In particular, it must
       // never be guessed to be the answer to an older ask_user card: that
@@ -2040,7 +2045,9 @@ export default function DeepSpaceChatClient({
               isStreaming={state.isStreaming && !pendingUserQuestion}
               modelName={effectiveModelName}
               onQueryChange={setQuery}
-              onSubmit={(attachmentFileIds) => void submitQuery(undefined, undefined, attachmentFileIds)}
+              onSubmit={(attachmentFileIds) =>
+                void submitQuery(undefined, undefined, attachmentFileIds)
+              }
               onStop={stopStreaming}
               onSteer={() => void enqueueTurn(query, true)}
               queuedTurns={queuedTurns}

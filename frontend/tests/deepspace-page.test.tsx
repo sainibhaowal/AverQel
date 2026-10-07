@@ -204,9 +204,7 @@ describe("deepspace page", () => {
     expect(screen.getByRole("separator", { name: /resize deepspace panels/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /split view/i }));
-    await waitFor(() =>
-      expect(screen.queryByText(/mock deepspace chat/i)).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText(/mock deepspace chat/i)).not.toBeInTheDocument());
     expect(screen.getByLabelText(/writing canvas editor/i)).toBeInTheDocument();
   });
 

@@ -127,7 +127,10 @@ export default function NotificationCenter() {
           ...current,
           application: Math.max(current.application, 50),
         }));
-        setOlderAvailable((current) => ({ ...current, application: applicationResult.value?.headers.get("X-Has-More") === "true" }));
+        setOlderAvailable((current) => ({
+          ...current,
+          application: applicationResult.value?.headers.get("X-Has-More") === "true",
+        }));
         loaded.push(
           ...records.map((item) => ({
             ...item,
@@ -213,7 +216,10 @@ export default function NotificationCenter() {
           ...current,
           application: current.application + 50,
         }));
-        setOlderAvailable((current) => ({ ...current, application: applicationResult.value?.headers.get("X-Has-More") === "true" }));
+        setOlderAvailable((current) => ({
+          ...current,
+          application: applicationResult.value?.headers.get("X-Has-More") === "true",
+        }));
       } else if (olderAvailable.application) {
         partialFailure = true;
       }
@@ -526,8 +532,24 @@ export default function NotificationCenter() {
             </div>
             <div className="border-glass-border border-t px-6 py-4">
               <div className="flex items-center justify-between">
-                <button type="button" onClick={() => void loadNotifications()} disabled={loading} className="text-foreground/45 hover:text-foreground inline-flex items-center gap-1.5 text-[9px] font-black tracking-widest uppercase disabled:opacity-40">Refresh</button>
-                <button type="button" onClick={() => { setOpen(false); router.push("/dashboard/notifications"); }} className="text-primary inline-flex items-center gap-1.5 text-[9px] font-black tracking-widest uppercase">View all notifications <ChevronRight size={12} /></button>
+                <button
+                  type="button"
+                  onClick={() => void loadNotifications()}
+                  disabled={loading}
+                  className="text-foreground/45 hover:text-foreground inline-flex items-center gap-1.5 text-[9px] font-black tracking-widest uppercase disabled:opacity-40"
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    router.push("/dashboard/notifications");
+                  }}
+                  className="text-primary inline-flex items-center gap-1.5 text-[9px] font-black tracking-widest uppercase"
+                >
+                  View all notifications <ChevronRight size={12} />
+                </button>
               </div>
             </div>
           </motion.div>

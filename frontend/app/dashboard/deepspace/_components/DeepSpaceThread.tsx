@@ -428,17 +428,29 @@ const MessageBubble = memo(
                   message.content
                 )}
                 {message.attachments?.length ? (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Attachments sent with this message">
+                  <div
+                    className="mt-3 grid gap-2 sm:grid-cols-2"
+                    aria-label="Attachments sent with this message"
+                  >
                     {message.attachments.map((attachment) => (
                       <button
                         key={attachment.id}
                         type="button"
-                        onClick={() => window.dispatchEvent(new CustomEvent("deepspace-library-open", { detail: { fileId: attachment.id } }))}
+                        onClick={() =>
+                          window.dispatchEvent(
+                            new CustomEvent("deepspace-library-open", {
+                              detail: { fileId: attachment.id },
+                            }),
+                          )
+                        }
                         className="flex min-w-0 items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-50/70 px-2 py-2 text-left text-xs hover:bg-emerald-100 dark:bg-emerald-950/30"
                         title="Open this secure file in Library"
                       >
                         <FileText size={15} className="shrink-0 text-emerald-600" />
-                        <span className="min-w-0"><span className="block truncate font-semibold">{attachment.name}</span><span className="text-[10px] text-emerald-800/70">Saved in Library</span></span>
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold">{attachment.name}</span>
+                          <span className="text-[10px] text-emerald-800/70">Saved in Library</span>
+                        </span>
                       </button>
                     ))}
                   </div>

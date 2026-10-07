@@ -229,8 +229,8 @@ export default function CapabilityDirectory() {
           </h2>
           <p className={landingSectionLeadClass}>
             Start with knowledge, move into AI-assisted work, then manage the account and support
-            around it. Some capabilities require a compatible provider or deployment
-            configuration; each card links to its setup and limits.
+            around it. Some capabilities require a compatible provider or deployment configuration;
+            each card links to its setup and limits.
           </p>
         </div>
 
@@ -274,7 +274,9 @@ export default function CapabilityDirectory() {
                               {capability.status}
                             </span>
                           </div>
-                          <h4 className="mt-4 text-base font-bold text-white">{capability.title}</h4>
+                          <h4 className="mt-4 text-base font-bold text-white">
+                            {capability.title}
+                          </h4>
                           <p className="mt-2 text-sm leading-6 text-slate-400">
                             {capability.description}
                           </p>

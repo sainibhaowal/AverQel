@@ -223,7 +223,7 @@ export default function DeepSpaceLibraryFileWorkspace({
                 closeBrackets: true,
               }}
               theme="dark"
-              className="library-file-editor [&_.cm-activeLineGutter]:!bg-[var(--surface-2)] [&_.cm-editor]:!bg-[var(--surface-0)] [&_.cm-editor]:h-full [&_.cm-editor]:outline-none [&_.cm-gutters]:!border-r-[var(--glass-border)] [&_.cm-gutters]:!bg-[var(--surface-1)] [&_.cm-gutters]:!text-[var(--text-muted)] h-full text-xs"
+              className="library-file-editor h-full text-xs [&_.cm-activeLineGutter]:!bg-[var(--surface-2)] [&_.cm-editor]:h-full [&_.cm-editor]:!bg-[var(--surface-0)] [&_.cm-editor]:outline-none [&_.cm-gutters]:!border-r-[var(--glass-border)] [&_.cm-gutters]:!bg-[var(--surface-1)] [&_.cm-gutters]:!text-[var(--text-muted)]"
             />
           </div>
         ) : null}

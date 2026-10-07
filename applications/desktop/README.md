@@ -29,5 +29,22 @@ BUILD_TARGET=desktop pnpm --dir frontend build
 pnpm --dir applications/desktop build:linux
 ```
 
-The release workflow builds Linux `.deb`/`.rpm`, Windows `.exe`, and macOS
-`.dmg` packages.
+The release workflow builds Linux `.deb` and Windows `.exe` packages. Both
+include the NeoSIS desktop runtime from the NeoSIS repository's pinned `main`
+commit recorded in the GitHub release manifest.
+
+## NeoSIS Local workspace
+
+The desktop build contains one Electron shell. Signed-in AverQel users can open
+the NeoSIS Local workspace from the desktop title bar. NeoSIS starts as a private
+loopback service with an authenticated launch URL; it does not receive AverQel
+cookies, API tokens, tenant data, or server credentials. The local profile opts
+the sidebar Browser into NeoSIS, since the standard Web profile keeps it off by
+default. Open NeoSIS's right sidebar to use Browser.
+
+For Linux builds, `pnpm --dir applications/desktop build:linux` prepares the
+production NeoSIS runtime from `neosis/` in the AverQel workspace, or from the
+adjacent `AverQel Neosis/` checkout when present. Set `NEOSIS_SOURCE_DIR` to use
+another local clone path. The separate NeoSIS Electron application is not
+included. The packaged NeoSIS runtime uses the same Electron executable as
+AverQel.

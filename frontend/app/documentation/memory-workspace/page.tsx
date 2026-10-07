@@ -70,9 +70,9 @@ export default function MemoryWorkspaceDocsPage() {
       <DocsSection title="Privacy and reliability">
         <p>
           The sensitive-content check is limited and may not detect every sensitive detail. Avoid
-          asking the system to save credentials or highly sensitive personal data.
-          Account export, retention, and deletion behavior is described separately under Trust &amp;
-          Privacy and depends on the current deployment policy.
+          asking the system to save credentials or highly sensitive personal data. Account export,
+          retention, and deletion behavior is described separately under Trust &amp; Privacy and
+          depends on the current deployment policy.
         </p>
       </DocsSection>
     </DocsShell>

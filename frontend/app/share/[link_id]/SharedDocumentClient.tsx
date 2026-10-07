@@ -53,7 +53,9 @@ export default function SharedDocumentClient() {
       queueMicrotask(() => setError("This share link is incomplete."));
       return;
     }
-    fetch(`${getApiBaseUrl()}/documents/share-links/${encodeURIComponent(params.link_id)}/resolve?token=${encodeURIComponent(token)}`)
+    fetch(
+      `${getApiBaseUrl()}/documents/share-links/${encodeURIComponent(params.link_id)}/resolve?token=${encodeURIComponent(token)}`,
+    )
       .then(async (response) => {
         if (!response.ok) throw new Error("This share link is invalid or expired.");
         return response.json() as Promise<SharedDocument>;
@@ -62,7 +64,9 @@ export default function SharedDocumentClient() {
         setSharedDocument(document);
         await loadPreviewPage(1, params.link_id, token);
       })
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Unable to open shared document."));
+      .catch((reason: unknown) =>
+        setError(reason instanceof Error ? reason.message : "Unable to open shared document."),
+      );
     return () => {
       setPreviewUrl((previous) => {
         if (previous) URL.revokeObjectURL(previous);
@@ -77,7 +81,7 @@ export default function SharedDocumentClient() {
     : null;
 
   return (
-    <main className="min-h-screen bg-background p-6 text-foreground sm:p-12">
+    <main className="bg-background text-foreground min-h-screen p-6 sm:p-12">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="glass-card flex items-center gap-3 p-5">
           <FileText className="text-primary" />
@@ -85,10 +89,10 @@ export default function SharedDocumentClient() {
             <h1 className="font-black">Shared document</h1>
             <p className="text-foreground/50 text-xs">Read-only secure link</p>
           </div>
-          <ShieldCheck className="text-emerald-500 ml-auto" size={18} />
+          <ShieldCheck className="ml-auto text-emerald-500" size={18} />
         </div>
         {error ? (
-          <div className="glass-card p-8 text-center text-sm text-danger">{error}</div>
+          <div className="glass-card text-danger p-8 text-center text-sm">{error}</div>
         ) : sharedDocument ? (
           <article className="glass-card space-y-5 p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -127,11 +131,13 @@ export default function SharedDocumentClient() {
                   Extracted text
                 </button>
               </div>
-              {previewUrl ? <span className="text-foreground/50 text-xs">Page {previewPage}</span> : null}
+              {previewUrl ? (
+                <span className="text-foreground/50 text-xs">Page {previewPage}</span>
+              ) : null}
             </div>
             {showText || !previewUrl ? (
               <div className="border-glass-border/60 max-h-[70vh] overflow-auto border-t pt-6">
-                <pre className="whitespace-pre-wrap text-sm leading-7">
+                <pre className="text-sm leading-7 whitespace-pre-wrap">
                   {sharedDocument.content ||
                     "No text could be extracted. Use Download source to open the original file."}
                 </pre>
@@ -145,7 +151,7 @@ export default function SharedDocumentClient() {
                     onClick={() => {
                       if (token) void loadPreviewPage(previewPage - 1, params.link_id, token);
                     }}
-                    className="rounded-lg bg-foreground/5 px-3 py-2 text-xs font-bold disabled:opacity-40"
+                    className="bg-foreground/5 rounded-lg px-3 py-2 text-xs font-bold disabled:opacity-40"
                   >
                     Previous
                   </button>
@@ -155,7 +161,7 @@ export default function SharedDocumentClient() {
                     onClick={() => {
                       if (token) void loadPreviewPage(previewPage + 1, params.link_id, token);
                     }}
-                    className="rounded-lg bg-foreground/5 px-3 py-2 text-xs font-bold disabled:opacity-40"
+                    className="bg-foreground/5 rounded-lg px-3 py-2 text-xs font-bold disabled:opacity-40"
                   >
                     {previewLoading ? "Loading…" : "Next"}
                   </button>

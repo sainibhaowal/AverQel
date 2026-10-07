@@ -245,7 +245,8 @@ export default function DeepSpaceLibraryDrawer({
 
   useEffect(() => {
     const onLibraryUpdated = (event: Event) => {
-      const updatedConversationId = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
+      const updatedConversationId = (event as CustomEvent<{ conversationId?: string }>).detail
+        ?.conversationId;
       if (updatedConversationId === conversationId) void refresh();
     };
     window.addEventListener("deepspace-library-updated", onLibraryUpdated);
@@ -1668,11 +1669,17 @@ export default function DeepSpaceLibraryDrawer({
                 }
                 readOnly={Boolean(
                   selected.content_truncated ||
-                    (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
+                  (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
                 )}
                 contentTruncated={Boolean(selected.content_truncated)}
                 sizeBytes={selected.size_bytes}
-                csvPageUrl={selected.content_type === "text/csv" || selected.content_type === "text/x-csv" || selected.content_type === "text/tab-separated-values" ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page` : null}
+                csvPageUrl={
+                  selected.content_type === "text/csv" ||
+                  selected.content_type === "text/x-csv" ||
+                  selected.content_type === "text/tab-separated-values"
+                    ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page`
+                    : null
+                }
               />
             ) : (
               <div className="border-glass-border bg-surface-1/40 text-foreground/45 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed px-6 text-center text-xs">
@@ -1704,11 +1711,17 @@ export default function DeepSpaceLibraryDrawer({
             }
             readOnly={Boolean(
               selected.content_truncated ||
-                (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
+              (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
             )}
             contentTruncated={Boolean(selected.content_truncated)}
             sizeBytes={selected.size_bytes}
-            csvPageUrl={selected.content_type === "text/csv" || selected.content_type === "text/x-csv" || selected.content_type === "text/tab-separated-values" ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page` : null}
+            csvPageUrl={
+              selected.content_type === "text/csv" ||
+              selected.content_type === "text/x-csv" ||
+              selected.content_type === "text/tab-separated-values"
+                ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page`
+                : null
+            }
           />
         </section>
       ) : (

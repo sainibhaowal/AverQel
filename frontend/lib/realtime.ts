@@ -82,7 +82,8 @@ export function useRealtimeEvents(
           if (
             envelope.event === "realtime" &&
             envelope.payload &&
-            (!resourcesRef.current.length || resourcesRef.current.includes(envelope.payload.resource))
+            (!resourcesRef.current.length ||
+              resourcesRef.current.includes(envelope.payload.resource))
           ) {
             callbackRef.current(envelope.payload);
           }

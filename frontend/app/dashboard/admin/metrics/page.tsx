@@ -90,12 +90,9 @@ export default function MetricsPage() {
     queueMicrotask(() => void fetchMetrics());
   }, [fetchMetrics]);
 
-  useRealtimeEvents(
-    () => {
-      void fetchMetrics();
-    },
-    ["metrics", "deepspace", "documents", "queues", "mcp"],
-  );
+  useRealtimeEvents(() => {
+    void fetchMetrics();
+  }, ["metrics", "deepspace", "documents", "queues", "mcp"]);
 
   return (
     <div className="space-y-8 pb-10">
@@ -197,38 +194,44 @@ export default function MetricsPage() {
           <p className="text-foreground font-mono text-4xl font-black">
             {summary ? summary.worker_dead_letters_total.toLocaleString() : "--"}
           </p>
-      </div>
-
-      <section className="glass-card space-y-4 p-6">
-        <div>
-          <h2 className="text-lg font-bold">DeepSpace Runtime Monitoring</h2>
-          <p className="text-muted-foreground text-xs">
-            Live process counters from provider cache telemetry, context safety, and MCP result storage.
-          </p>
         </div>
-        <div className="runtime-monitoring-grid">
-          {[
-            ["Cache reads", summary?.deepspace_cache_reads_total],
-            ["Cache writes", summary?.deepspace_cache_writes_total],
-            ["Compactions", summary?.deepspace_context_compactions_total],
-            ["Overflow prevented", summary?.deepspace_overflow_prevented_total],
-            ["MCP references", summary?.deepspace_mcp_result_references_total],
-            ["Budget allocations", summary?.deepspace_budget_allocations_total],
-            ["Result references", summary?.deepspace_result_reference_events_total],
-            ["Execution batches", summary?.deepspace_execution_batches_total],
-            ["Canary mismatches", summary?.deepspace_canary_mismatches_total],
-          ].map(([label, value]) => (
-            <div key={String(label)} className="runtime-monitoring-card min-w-0 overflow-hidden rounded-2xl border border-white/5 bg-white/5 p-3 sm:p-4">
-              <p className="runtime-monitoring-label text-muted-foreground font-bold tracking-[0.12em] uppercase">{label}</p>
-              <p className="runtime-monitoring-value text-foreground mt-2 font-mono font-black">
-                {typeof value === "number" ? value.toLocaleString() : "--"}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
 
-      <div className="glass-card from-primary/5 flex flex-col gap-8 bg-gradient-to-br to-purple-500/5 p-6 sm:p-8 md:col-span-3 md:flex-row md:items-center">
+        <section className="glass-card space-y-4 p-6">
+          <div>
+            <h2 className="text-lg font-bold">DeepSpace Runtime Monitoring</h2>
+            <p className="text-muted-foreground text-xs">
+              Live process counters from provider cache telemetry, context safety, and MCP result
+              storage.
+            </p>
+          </div>
+          <div className="runtime-monitoring-grid">
+            {[
+              ["Cache reads", summary?.deepspace_cache_reads_total],
+              ["Cache writes", summary?.deepspace_cache_writes_total],
+              ["Compactions", summary?.deepspace_context_compactions_total],
+              ["Overflow prevented", summary?.deepspace_overflow_prevented_total],
+              ["MCP references", summary?.deepspace_mcp_result_references_total],
+              ["Budget allocations", summary?.deepspace_budget_allocations_total],
+              ["Result references", summary?.deepspace_result_reference_events_total],
+              ["Execution batches", summary?.deepspace_execution_batches_total],
+              ["Canary mismatches", summary?.deepspace_canary_mismatches_total],
+            ].map(([label, value]) => (
+              <div
+                key={String(label)}
+                className="runtime-monitoring-card min-w-0 overflow-hidden rounded-2xl border border-white/5 bg-white/5 p-3 sm:p-4"
+              >
+                <p className="runtime-monitoring-label text-muted-foreground font-bold tracking-[0.12em] uppercase">
+                  {label}
+                </p>
+                <p className="runtime-monitoring-value text-foreground mt-2 font-mono font-black">
+                  {typeof value === "number" ? value.toLocaleString() : "--"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="glass-card from-primary/5 flex flex-col gap-8 bg-gradient-to-br to-purple-500/5 p-6 sm:p-8 md:col-span-3 md:flex-row md:items-center">
           <div className="min-w-0 flex-1 space-y-4">
             <h2 className="flex min-w-0 items-center gap-2 text-xl font-bold">
               <Cpu className="text-primary" size={24} />

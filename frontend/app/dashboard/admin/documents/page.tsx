@@ -72,7 +72,9 @@ export default function AdminDocumentsPage() {
       }
       const data = (await res.json()) as SummaryResponse;
       setItems(Array.isArray(data.items) ? data.items : []);
-      const recoveryRes = (await fetchWithAuth("/admin/documents/recovery-history?limit=50")) as Response;
+      const recoveryRes = (await fetchWithAuth(
+        "/admin/documents/recovery-history?limit=50",
+      )) as Response;
       if (recoveryRes.ok) {
         const recoveryData = (await recoveryRes.json()) as { items?: RecoveryItem[] };
         setRecovery(Array.isArray(recoveryData.items) ? recoveryData.items : []);
@@ -190,10 +192,52 @@ export default function AdminDocumentsPage() {
 
       <section className="theme-panel rounded-[1.5rem] p-5">
         <div className="mb-4 flex items-center justify-between">
-          <div><h2 className="text-foreground text-sm font-bold tracking-[0.18em] uppercase">Recovery history</h2><p className="text-muted-foreground mt-1 text-xs">Checkpoint-based resumptions and failure context, scoped to the current admin tenant.</p></div>
+          <div>
+            <h2 className="text-foreground text-sm font-bold tracking-[0.18em] uppercase">
+              Recovery history
+            </h2>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Checkpoint-based resumptions and failure context, scoped to the current admin tenant.
+            </p>
+          </div>
           <span className="text-muted-foreground text-xs">{recovery.length} records</span>
         </div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="text-muted-foreground border-glass-border border-b text-xs uppercase"><tr><th className="py-3 pr-4">Document</th><th className="py-3 pr-4">Stage</th><th className="py-3 pr-4">Status</th><th className="py-3 pr-4">Resumes</th><th className="py-3 pr-4">Reason</th></tr></thead><tbody>{recovery.map((item) => <tr key={item.job_id} className="border-glass-border border-b last:border-b-0"><td className="text-foreground py-3 pr-4 font-mono text-xs">{item.document_id}</td><td className="py-3 pr-4">{item.checkpoint_stage ?? "—"}{item.checkpoint_cursor != null ? ` @ ${item.checkpoint_cursor}` : ""}</td><td className="py-3 pr-4">{item.status}</td><td className="py-3 pr-4">{item.resume_count}</td><td className="text-muted-foreground max-w-[320px] truncate py-3 pr-4">{item.pause_reason || item.last_error_message || "—"}</td></tr>)}</tbody></table>{!recovery.length ? <p className="text-muted-foreground py-6 text-center text-sm">No recovery events recorded.</p> : null}</div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="text-muted-foreground border-glass-border border-b text-xs uppercase">
+              <tr>
+                <th className="py-3 pr-4">Document</th>
+                <th className="py-3 pr-4">Stage</th>
+                <th className="py-3 pr-4">Status</th>
+                <th className="py-3 pr-4">Resumes</th>
+                <th className="py-3 pr-4">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recovery.map((item) => (
+                <tr key={item.job_id} className="border-glass-border border-b last:border-b-0">
+                  <td className="text-foreground py-3 pr-4 font-mono text-xs">
+                    {item.document_id}
+                  </td>
+                  <td className="py-3 pr-4">
+                    {item.checkpoint_stage ?? "—"}
+                    {item.checkpoint_cursor != null ? ` @ ${item.checkpoint_cursor}` : ""}
+                  </td>
+                  <td className="py-3 pr-4">{item.status}</td>
+                  <td className="py-3 pr-4">{item.resume_count}</td>
+                  <td className="text-muted-foreground max-w-[320px] truncate py-3 pr-4">
+                    {item.pause_reason || item.last_error_message || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!recovery.length ? (
+            <p className="text-muted-foreground py-6 text-center text-sm">
+              No recovery events recorded.
+            </p>
+          ) : null}
+        </div>
       </section>
     </div>
   );

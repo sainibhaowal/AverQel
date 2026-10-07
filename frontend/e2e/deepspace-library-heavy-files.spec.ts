@@ -1,12 +1,6 @@
 import { expect, test } from "./fixtures";
 
-const configured =
-  process.env.DEEPSPACE_E2E_ENABLED === "1" &&
-  Boolean(process.env.DEEPSPACE_E2E_STORAGE_STATE || process.env.DEEPSPACE_E2E_AUTH_TOKEN);
-
 test.describe("DeepSpace heavy Library authenticated matrix", () => {
-  test.skip(!configured, "Set DEEPSPACE_E2E_ENABLED=1 with staging auth to run this matrix.");
-
   for (const viewport of ["desktop", "tablet"] as const) {
     test(`${viewport} keeps Library and artifact surfaces reachable`, async ({
       authenticatedPage,

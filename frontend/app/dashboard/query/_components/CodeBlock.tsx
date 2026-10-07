@@ -557,8 +557,7 @@ function getShellClasses(variant: CodeBlockVariant) {
         label: "text-primary text-[10px] font-semibold tracking-[0.24em] uppercase",
         button:
           "inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-[11px] font-medium text-primary transition hover:border-primary/50 hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-40",
-        codeSurface:
-          "overflow-auto bg-muted/20 px-4 py-4 text-sm leading-7",
+        codeSurface: "overflow-auto bg-muted/20 px-4 py-4 text-sm leading-7",
       };
     case "preview":
       return {
@@ -2521,7 +2520,7 @@ export default function CodeBlock({
                 <ChevronDown size={13} />
               </button>
               {exportMenuOpen ? (
-                <div className="theme-panel-strong absolute top-9 right-0 z-50 grid min-w-36 gap-1 rounded-lg border border-border bg-card p-1 text-foreground shadow-xl">
+                <div className="theme-panel-strong border-border bg-card text-foreground absolute top-9 right-0 z-50 grid min-w-36 gap-1 rounded-lg border p-1 shadow-xl">
                   <button
                     type="button"
                     onClick={handleSave}

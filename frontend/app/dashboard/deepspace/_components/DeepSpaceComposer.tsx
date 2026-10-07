@@ -220,55 +220,133 @@ export default function DeepSpaceComposer({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadControllersRef = useRef<Record<string, AbortController>>({});
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
-  const [libraryFiles, setLibraryFiles] = useState<Array<{ id: string; name: string; content_type: string; size_bytes: number }>>([]);
+  const [libraryFiles, setLibraryFiles] = useState<
+    Array<{ id: string; name: string; content_type: string; size_bytes: number }>
+  >([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
-
 
   const importAttachments = async (input: FileList | File[]) => {
     if (!conversationId) return;
     const allFiles = Array.from(input);
-    const invalid = allFiles.filter((file) => !file.name || file.size <= 0 || file.size > 25 * 1024 * 1024);
-    if (invalid.length) setAttachmentError("Files must have content and be 25 MB or smaller. Unsupported types are safely rejected by Library.");
-    const files = allFiles.filter((file) => file.name && file.size > 0 && file.size <= 25 * 1024 * 1024).slice(0, Math.max(0, 10 - attachments.length));
+    const invalid = allFiles.filter(
+      (file) => !file.name || file.size <= 0 || file.size > 25 * 1024 * 1024,
+    );
+    if (invalid.length)
+      setAttachmentError(
+        "Files must have content and be 25 MB or smaller. Unsupported types are safely rejected by Library.",
+      );
+    const files = allFiles
+      .filter((file) => file.name && file.size > 0 && file.size <= 25 * 1024 * 1024)
+      .slice(0, Math.max(0, 10 - attachments.length));
     for (const file of files) {
       const localId = crypto.randomUUID();
       const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
       const controller = new AbortController();
       uploadControllersRef.current[localId] = controller;
-      setAttachments((current) => [...current, { id: localId, name: file.name, type: file.type, size: file.size, previewUrl, status: "uploading", loaded: 0, file }]);
+      setAttachments((current) => [
+        ...current,
+        {
+          id: localId,
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          previewUrl,
+          status: "uploading",
+          loaded: 0,
+          file,
+        },
+      ]);
       try {
-        const created = await fetchWithAuth(`/deepspace/library/${conversationId}/uploads`, {
+        const created = (await fetchWithAuth(`/deepspace/library/${conversationId}/uploads`, {
           method: "POST",
-          body: JSON.stringify({ name: file.name, size_bytes: file.size, content_type: file.type || "application/octet-stream" }),
+          body: JSON.stringify({
+            name: file.name,
+            size_bytes: file.size,
+            content_type: file.type || "application/octet-stream",
+          }),
           timeoutMs: 15_000,
-        }) as Response;
+        })) as Response;
         if (!created.ok) throw new Error("Library could not accept this file.");
-        let upload = await created.json() as { id: string; chunk_size: number; total_chunks: number; received_chunks: number[]; status: string; file_id?: string | null; error?: string | null };
+        let upload = (await created.json()) as {
+          id: string;
+          chunk_size: number;
+          total_chunks: number;
+          received_chunks: number[];
+          status: string;
+          file_id?: string | null;
+          error?: string | null;
+        };
         for (let index = 0; index < upload.total_chunks; index += 1) {
           if (upload.received_chunks.includes(index)) continue;
-          const chunk = file.slice(index * upload.chunk_size, Math.min(file.size, (index + 1) * upload.chunk_size));
-          const response = await fetchWithAuth(`/deepspace/library/${conversationId}/uploads/${upload.id}/chunks/${index}`, { method: "PUT", body: chunk, signal: controller.signal, timeoutMs: 120_000 }) as Response;
+          const chunk = file.slice(
+            index * upload.chunk_size,
+            Math.min(file.size, (index + 1) * upload.chunk_size),
+          );
+          const response = (await fetchWithAuth(
+            `/deepspace/library/${conversationId}/uploads/${upload.id}/chunks/${index}`,
+            { method: "PUT", body: chunk, signal: controller.signal, timeoutMs: 120_000 },
+          )) as Response;
           if (!response.ok) throw new Error("A secure upload chunk was rejected.");
           upload = await response.json();
-          setAttachments((current) => current.map((item) => item.id === localId ? { ...item, uploadId: upload.id, loaded: Math.min(file.size, (index + 1) * upload.chunk_size) } : item));
+          setAttachments((current) =>
+            current.map((item) =>
+              item.id === localId
+                ? {
+                    ...item,
+                    uploadId: upload.id,
+                    loaded: Math.min(file.size, (index + 1) * upload.chunk_size),
+                  }
+                : item,
+            ),
+          );
         }
-        const complete = await fetchWithAuth(`/deepspace/library/${conversationId}/uploads/${upload.id}/complete`, { method: "POST", timeoutMs: 15_000 }) as Response;
+        const complete = (await fetchWithAuth(
+          `/deepspace/library/${conversationId}/uploads/${upload.id}/complete`,
+          { method: "POST", timeoutMs: 15_000 },
+        )) as Response;
         if (!complete.ok) throw new Error("Library could not process this file.");
         upload = await complete.json();
-        setAttachments((current) => current.map((item) => item.id === localId ? { ...item, status: "processing" } : item));
+        setAttachments((current) =>
+          current.map((item) => (item.id === localId ? { ...item, status: "processing" } : item)),
+        );
         for (let attempt = 0; attempt < 180 && upload.status !== "completed"; attempt += 1) {
-          if (upload.status === "failed" || upload.status === "cancelled") throw new Error(upload.error || "Library processing failed.");
+          if (upload.status === "failed" || upload.status === "cancelled")
+            throw new Error(upload.error || "Library processing failed.");
           await new Promise((resolve) => window.setTimeout(resolve, 1000));
-          const status = await fetchWithAuth(`/deepspace/library/${conversationId}/uploads/${upload.id}`, { timeoutMs: 8_000 }) as Response;
+          const status = (await fetchWithAuth(
+            `/deepspace/library/${conversationId}/uploads/${upload.id}`,
+            { timeoutMs: 8_000 },
+          )) as Response;
           if (!status.ok) throw new Error("Library upload status is unavailable.");
           upload = await status.json();
         }
-        if (upload.status !== "completed" || !upload.file_id) throw new Error("The file is still processing. Please try again shortly.");
-        setAttachments((current) => current.map((item) => item.id === localId ? { ...item, id: upload.file_id!, status: "ready" } : item));
-        window.dispatchEvent(new CustomEvent("deepspace-library-updated", { detail: { conversationId } }));
+        if (upload.status !== "completed" || !upload.file_id)
+          throw new Error("The file is still processing. Please try again shortly.");
+        setAttachments((current) =>
+          current.map((item) =>
+            item.id === localId ? { ...item, id: upload.file_id!, status: "ready" } : item,
+          ),
+        );
+        window.dispatchEvent(
+          new CustomEvent("deepspace-library-updated", { detail: { conversationId } }),
+        );
       } catch (error) {
         const cancelled = controller.signal.aborted;
-        setAttachments((current) => current.map((item) => item.id === localId ? { ...item, status: "error", error: cancelled ? "Upload cancelled." : error instanceof Error ? error.message : "Upload failed." } : item));
+        setAttachments((current) =>
+          current.map((item) =>
+            item.id === localId
+              ? {
+                  ...item,
+                  status: "error",
+                  error: cancelled
+                    ? "Upload cancelled."
+                    : error instanceof Error
+                      ? error.message
+                      : "Upload failed.",
+                }
+              : item,
+          ),
+        );
       } finally {
         delete uploadControllersRef.current[localId];
       }
@@ -276,7 +354,11 @@ export default function DeepSpaceComposer({
   };
   const cancelAttachment = async (item: ComposerAttachment) => {
     uploadControllersRef.current[item.id]?.abort();
-    if (item.uploadId && conversationId) await fetchWithAuth(`/deepspace/library/${conversationId}/uploads/${item.uploadId}/cancel`, { method: "POST", timeoutMs: 15_000 });
+    if (item.uploadId && conversationId)
+      await fetchWithAuth(`/deepspace/library/${conversationId}/uploads/${item.uploadId}/cancel`, {
+        method: "POST",
+        timeoutMs: 15_000,
+      });
   };
   const retryAttachment = (item: ComposerAttachment) => {
     removeAttachment(item.id);
@@ -284,22 +366,39 @@ export default function DeepSpaceComposer({
   };
   const openLibraryPicker = async () => {
     if (!conversationId) return;
-    const response = await fetchWithAuth(`/deepspace/library/${conversationId}/entries`, { timeoutMs: 8_000 }) as Response;
-    if (response.ok) setLibraryFiles(((await response.json()) as { files: typeof libraryFiles }).files ?? []);
+    const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/entries`, {
+      timeoutMs: 8_000,
+    })) as Response;
+    if (response.ok)
+      setLibraryFiles(((await response.json()) as { files: typeof libraryFiles }).files ?? []);
     setLibraryPickerOpen(true);
   };
-  const attachLibraryFile = (file: { id: string; name: string; content_type: string; size_bytes: number }) => {
-    setAttachments((current) => current.some((item) => item.id === file.id) || current.length >= 10 ? current : [...current, { ...file, type: file.content_type, size: file.size_bytes, status: "ready" }]);
+  const attachLibraryFile = (file: {
+    id: string;
+    name: string;
+    content_type: string;
+    size_bytes: number;
+  }) => {
+    setAttachments((current) =>
+      current.some((item) => item.id === file.id) || current.length >= 10
+        ? current
+        : [
+            ...current,
+            { ...file, type: file.content_type, size: file.size_bytes, status: "ready" },
+          ],
+    );
     setLibraryPickerOpen(false);
   };
-  const removeAttachment = (id: string) => setAttachments((current) => {
-    const removed = current.find((item) => item.id === id);
-    if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
-    return current.filter((item) => item.id !== id);
-  });
+  const removeAttachment = (id: string) =>
+    setAttachments((current) => {
+      const removed = current.find((item) => item.id === id);
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((item) => item.id !== id);
+    });
   const submitWithAttachments = () => {
     const ready = attachments.filter((item) => item.status === "ready");
-    if (attachments.some((item) => item.status === "uploading" || item.status === "processing")) return;
+    if (attachments.some((item) => item.status === "uploading" || item.status === "processing"))
+      return;
     onSubmit(ready.map((item) => item.id));
     setAttachments([]);
   };
@@ -443,7 +542,13 @@ export default function DeepSpaceComposer({
             <div className="mb-2 overflow-hidden rounded-t-xl border border-slate-300/80 bg-white/95 shadow-sm dark:border-cyan-300/20 dark:bg-cyan-950/40">
               {queuePaused || queuedTurns.length ? (
                 <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 text-[11px] dark:border-cyan-300/15">
-                  <span className={queuePaused ? "font-semibold text-amber-700 dark:text-amber-200" : "font-semibold text-slate-700 dark:text-cyan-100/75"}>
+                  <span
+                    className={
+                      queuePaused
+                        ? "font-semibold text-amber-700 dark:text-amber-200"
+                        : "font-semibold text-slate-700 dark:text-cyan-100/75"
+                    }
+                  >
                     {queuePaused ? "Queue paused" : "Queue active"}
                   </span>
                   {queuePaused && queuePauseReason ? (
@@ -564,7 +669,10 @@ export default function DeepSpaceComposer({
                         </button>
                       ) : null}
                       {turn.status === "failed" && turn.error ? (
-                        <span className="max-w-[42%] truncate text-red-700/80 dark:text-red-200/70" title={turn.error}>
+                        <span
+                          className="max-w-[42%] truncate text-red-700/80 dark:text-red-200/70"
+                          title={turn.error}
+                        >
                           {turn.error}
                         </span>
                       ) : null}
@@ -584,44 +692,166 @@ export default function DeepSpaceComposer({
             </div>
           ) : null}
 
-          <input ref={fileInputRef} type="file" multiple className="sr-only" onChange={(event) => { if (event.target.files) void importAttachments(event.target.files); event.target.value = ""; }} />
-          <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(event) => { if (event.target.files) void importAttachments(event.target.files); event.target.value = ""; }} />
-          {attachmentError ? <p className="mb-2 rounded-lg border border-amber-400/40 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">{attachmentError}<button type="button" className="ml-2 underline" onClick={() => setAttachmentError(null)}>Dismiss</button></p> : null}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              if (event.target.files) void importAttachments(event.target.files);
+              event.target.value = "";
+            }}
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={(event) => {
+              if (event.target.files) void importAttachments(event.target.files);
+              event.target.value = "";
+            }}
+          />
+          {attachmentError ? (
+            <p className="mb-2 rounded-lg border border-amber-400/40 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+              {attachmentError}
+              <button
+                type="button"
+                className="ml-2 underline"
+                onClick={() => setAttachmentError(null)}
+              >
+                Dismiss
+              </button>
+            </p>
+          ) : null}
           {attachments.length ? (
-            <div className="mb-2 flex max-h-28 flex-wrap gap-2 overflow-y-auto px-1" aria-label="Files shared with this message">
+            <div
+              className="mb-2 flex max-h-28 flex-wrap gap-2 overflow-y-auto px-1"
+              aria-label="Files shared with this message"
+            >
               {attachments.map((item) => (
-                <div key={item.id} className="group flex w-36 items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-50/80 p-2 text-left text-[10px] text-emerald-950 shadow-sm dark:bg-emerald-950/30 dark:text-emerald-100">
-                  <button type="button" onClick={() => setAttachmentPreview(item)} className="flex min-w-0 flex-1 items-center gap-2" title={`Preview ${item.name}`}>
-                    {item.previewUrl ? <img src={item.previewUrl} alt="" className="h-9 w-9 rounded object-cover" /> : <FileText className="h-5 w-5 shrink-0 text-emerald-600" />}
-                    <span className="min-w-0"><span className="block truncate font-semibold">{item.name}</span><span className="block text-emerald-700/70">{item.status === "ready" ? "Saved to Library" : item.status === "error" ? item.error : item.status === "processing" ? "Scanning…" : `Uploading ${Math.round(((item.loaded ?? 0) / Math.max(1, item.size)) * 100)}%`}</span></span>
+                <div
+                  key={item.id}
+                  className="group flex w-36 items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-50/80 p-2 text-left text-[10px] text-emerald-950 shadow-sm dark:bg-emerald-950/30 dark:text-emerald-100"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setAttachmentPreview(item)}
+                    className="flex min-w-0 flex-1 items-center gap-2"
+                    title={`Preview ${item.name}`}
+                  >
+                    {item.previewUrl ? (
+                      <img src={item.previewUrl} alt="" className="h-9 w-9 rounded object-cover" />
+                    ) : (
+                      <FileText className="h-5 w-5 shrink-0 text-emerald-600" />
+                    )}
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">{item.name}</span>
+                      <span className="block text-emerald-700/70">
+                        {item.status === "ready"
+                          ? "Saved to Library"
+                          : item.status === "error"
+                            ? item.error
+                            : item.status === "processing"
+                              ? "Scanning…"
+                              : `Uploading ${Math.round(((item.loaded ?? 0) / Math.max(1, item.size)) * 100)}%`}
+                      </span>
+                    </span>
                   </button>
-                  {item.status === "error" && item.file ? <button type="button" onClick={() => retryAttachment(item)} className="shrink-0 text-emerald-700 hover:text-emerald-900" aria-label={`Retry ${item.name}`}><RotateCw size={13} /></button> : null}
-                  {item.status === "uploading" || item.status === "processing" ? <button type="button" onClick={() => void cancelAttachment(item)} className="shrink-0 text-amber-700 hover:text-rose-600" aria-label={`Cancel ${item.name}`}><X size={13} /></button> : <button type="button" onClick={() => removeAttachment(item.id)} className="shrink-0 text-emerald-700 hover:text-rose-600" aria-label={`Remove ${item.name}`}><X size={13} /></button>}
+                  {item.status === "error" && item.file ? (
+                    <button
+                      type="button"
+                      onClick={() => retryAttachment(item)}
+                      className="shrink-0 text-emerald-700 hover:text-emerald-900"
+                      aria-label={`Retry ${item.name}`}
+                    >
+                      <RotateCw size={13} />
+                    </button>
+                  ) : null}
+                  {item.status === "uploading" || item.status === "processing" ? (
+                    <button
+                      type="button"
+                      onClick={() => void cancelAttachment(item)}
+                      className="shrink-0 text-amber-700 hover:text-rose-600"
+                      aria-label={`Cancel ${item.name}`}
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(item.id)}
+                      className="shrink-0 text-emerald-700 hover:text-rose-600"
+                      aria-label={`Remove ${item.name}`}
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
           ) : null}
           <div className="flex items-start gap-2">
-          <div className="deepspace-attachment-actions flex shrink-0 gap-1.5">
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!conversationId} className="deepspace-attachment-action ui-tooltip ui-tooltip-top" data-tooltip="Attach files or paste a screenshot" aria-label="Attach files from your device"><Paperclip size={16} /></button>
-          <button type="button" onClick={() => cameraInputRef.current?.click()} disabled={!conversationId} className="deepspace-attachment-action ui-tooltip ui-tooltip-top" data-tooltip="Take a photo" aria-label="Take a photo"><Camera size={16} /></button>
-          <button type="button" onClick={() => void openLibraryPicker()} disabled={!conversationId} className="deepspace-attachment-action ui-tooltip ui-tooltip-top" data-tooltip="Attach from Library" aria-label="Attach an existing Library file"><FolderOpen size={16} /></button>
-          </div>
-          <textarea
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value.slice(0, 4000))}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                submitWithAttachments();
-              }
-            }}
-            placeholder="Message DeepSpace..."
-            onPaste={(event) => { const files = Array.from(event.clipboardData.files); if (files.length) { event.preventDefault(); void importAttachments(files); } }}
-            onDrop={(event) => { const files = Array.from(event.dataTransfer.files); if (files.length) { event.preventDefault(); void importAttachments(files); } }}
-            onDragOver={(event) => event.preventDefault()}
-            className={`text-foreground placeholder:text-foreground/30 w-full resize-none border-none bg-transparent outline-none ${textareaClass}`}
-          />
+            <div className="deepspace-attachment-actions flex shrink-0 gap-1.5">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!conversationId}
+                className="deepspace-attachment-action ui-tooltip ui-tooltip-top"
+                data-tooltip="Attach files or paste a screenshot"
+                aria-label="Attach files from your device"
+              >
+                <Paperclip size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                disabled={!conversationId}
+                className="deepspace-attachment-action ui-tooltip ui-tooltip-top"
+                data-tooltip="Take a photo"
+                aria-label="Take a photo"
+              >
+                <Camera size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void openLibraryPicker()}
+                disabled={!conversationId}
+                className="deepspace-attachment-action ui-tooltip ui-tooltip-top"
+                data-tooltip="Attach from Library"
+                aria-label="Attach an existing Library file"
+              >
+                <FolderOpen size={16} />
+              </button>
+            </div>
+            <textarea
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value.slice(0, 4000))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  submitWithAttachments();
+                }
+              }}
+              placeholder="Message DeepSpace..."
+              onPaste={(event) => {
+                const files = Array.from(event.clipboardData.files);
+                if (files.length) {
+                  event.preventDefault();
+                  void importAttachments(files);
+                }
+              }}
+              onDrop={(event) => {
+                const files = Array.from(event.dataTransfer.files);
+                if (files.length) {
+                  event.preventDefault();
+                  void importAttachments(files);
+                }
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              className={`text-foreground placeholder:text-foreground/30 w-full resize-none border-none bg-transparent outline-none ${textareaClass}`}
+            />
           </div>
 
           <div className="text-muted-foreground relative mt-1 px-2 text-[9px] dark:text-white/40">
@@ -1067,7 +1297,7 @@ export default function DeepSpaceComposer({
                     transition={{ duration: 0.14, ease: "easeOut" }}
                     role="dialog"
                     aria-label="DeepSpace status legend"
-                    className="border-slate-200 bg-white/95 text-slate-600 absolute right-0 bottom-full isolate z-[70] mb-2 w-[min(19rem,calc(100vw-2rem))] rounded-xl border p-3 text-[10px] leading-4 shadow-2xl ring-1 ring-slate-900/10 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1411]/95 dark:text-white/65 dark:ring-black/50"
+                    className="absolute right-0 bottom-full isolate z-[70] mb-2 w-[min(19rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white/95 p-3 text-[10px] leading-4 text-slate-600 shadow-2xl ring-1 ring-slate-900/10 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b1411]/95 dark:text-white/65 dark:ring-black/50"
                   >
                     <div className="mb-2 flex items-center justify-between gap-3 text-[11px] font-semibold tracking-wide text-slate-900 dark:text-white/90">
                       <span>DeepSpace status</span>
@@ -1136,7 +1366,12 @@ export default function DeepSpaceComposer({
               <motion.button
                 type="button"
                 onClick={submitWithAttachments}
-                disabled={(!query.trim() && !attachments.some((item) => item.status === "ready")) || attachments.some((item) => item.status === "uploading" || item.status === "processing")}
+                disabled={
+                  (!query.trim() && !attachments.some((item) => item.status === "ready")) ||
+                  attachments.some(
+                    (item) => item.status === "uploading" || item.status === "processing",
+                  )
+                }
                 aria-label={isStreaming ? "Queue message" : "Send message"}
                 title={isStreaming ? "Queue message" : "Send message"}
                 className="deepspace-composer-control deepspace-composer-send border-primary/45 from-primary/95 to-primary text-primary-foreground hover:border-primary/70 disabled:border-border-subtle disabled:bg-surface-2 disabled:text-muted-foreground relative flex h-10 w-10 items-center justify-center rounded-xl border bg-gradient-to-br shadow-[0_8px_20px_rgba(var(--primary),0.25)] transition-[border-color,background-color,box-shadow,filter] hover:brightness-110 active:brightness-95 disabled:cursor-not-allowed disabled:shadow-none"
@@ -1161,14 +1396,101 @@ export default function DeepSpaceComposer({
         </div>
       </div>
       {attachmentPreview ? (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-label={`Preview ${attachmentPreview.name}`} onClick={() => setAttachmentPreview(null)}>
-          <div className="w-full max-w-2xl rounded-2xl border border-emerald-300/40 bg-white p-4 shadow-2xl dark:bg-slate-950" onClick={(event) => event.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between gap-3"><div className="min-w-0"><p className="truncate font-semibold">{attachmentPreview.name}</p><p className="text-xs text-emerald-700">Shared from this composer · {attachmentPreview.status === "ready" ? "saved to Library" : attachmentPreview.status}</p></div><button type="button" onClick={() => setAttachmentPreview(null)} aria-label="Close preview"><X size={18} /></button></div>
-            {attachmentPreview.previewUrl ? <img src={attachmentPreview.previewUrl} alt={attachmentPreview.name} className="max-h-[65vh] w-full rounded-xl object-contain" /> : <div className="flex h-48 flex-col items-center justify-center rounded-xl bg-emerald-50 text-emerald-900"><FileText size={34} /><span className="mt-2 text-sm">Secure Library file preview</span><button type="button" onClick={() => { window.dispatchEvent(new CustomEvent("deepspace-library-open", { detail: { fileId: attachmentPreview.id } })); setAttachmentPreview(null); }} className="mt-3 rounded-lg border border-emerald-500/40 px-3 py-1 text-xs font-semibold">Open in Library</button></div>}
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Preview ${attachmentPreview.name}`}
+          onClick={() => setAttachmentPreview(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-2xl border border-emerald-300/40 bg-white p-4 shadow-2xl dark:bg-slate-950"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate font-semibold">{attachmentPreview.name}</p>
+                <p className="text-xs text-emerald-700">
+                  Shared from this composer ·{" "}
+                  {attachmentPreview.status === "ready"
+                    ? "saved to Library"
+                    : attachmentPreview.status}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAttachmentPreview(null)}
+                aria-label="Close preview"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            {attachmentPreview.previewUrl ? (
+              <img
+                src={attachmentPreview.previewUrl}
+                alt={attachmentPreview.name}
+                className="max-h-[65vh] w-full rounded-xl object-contain"
+              />
+            ) : (
+              <div className="flex h-48 flex-col items-center justify-center rounded-xl bg-emerald-50 text-emerald-900">
+                <FileText size={34} />
+                <span className="mt-2 text-sm">Secure Library file preview</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent("deepspace-library-open", {
+                        detail: { fileId: attachmentPreview.id },
+                      }),
+                    );
+                    setAttachmentPreview(null);
+                  }}
+                  className="mt-3 rounded-lg border border-emerald-500/40 px-3 py-1 text-xs font-semibold"
+                >
+                  Open in Library
+                </button>
+              </div>
+            )}
           </div>
         </div>
       ) : null}
-      {libraryPickerOpen ? <div className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md" onClick={() => setLibraryPickerOpen(false)}><div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-2xl dark:bg-slate-950" onClick={(event) => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Attach from Library</h2><button type="button" onClick={() => setLibraryPickerOpen(false)}><X size={18} /></button></div><div className="max-h-80 space-y-1 overflow-auto">{libraryFiles.length ? libraryFiles.map((file) => <button key={file.id} type="button" onClick={() => attachLibraryFile(file)} className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm hover:bg-emerald-50 dark:hover:bg-emerald-950/30"><FileText size={16} className="text-emerald-600" /><span className="truncate">{file.name}</span></button>) : <p className="p-3 text-sm text-muted-foreground">No files in this Library folder yet.</p>}</div></div></div> : null}
+      {libraryPickerOpen ? (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md"
+          onClick={() => setLibraryPickerOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl bg-white p-4 shadow-2xl dark:bg-slate-950"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-semibold">Attach from Library</h2>
+              <button type="button" onClick={() => setLibraryPickerOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="max-h-80 space-y-1 overflow-auto">
+              {libraryFiles.length ? (
+                libraryFiles.map((file) => (
+                  <button
+                    key={file.id}
+                    type="button"
+                    onClick={() => attachLibraryFile(file)}
+                    className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  >
+                    <FileText size={16} className="text-emerald-600" />
+                    <span className="truncate">{file.name}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="text-muted-foreground p-3 text-sm">
+                  No files in this Library folder yet.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

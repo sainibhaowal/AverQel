@@ -53,7 +53,7 @@ export default function MCPToolPermissionTable({
       ) : (
         <div className="mcp-tool-permissions-list mt-4 max-h-[min(38rem,65vh)] overflow-auto overscroll-contain pr-2 [scrollbar-width:thin]">
           <table className="w-full min-w-[620px] text-left text-sm">
-            <thead className="sticky top-0 z-10 bg-surface-1 text-xs tracking-wide text-white/40 uppercase">
+            <thead className="bg-surface-1 sticky top-0 z-10 text-xs tracking-wide text-white/40 uppercase">
               <tr>
                 <th className="pr-4 pb-3">Tool</th>
                 <th className="pr-4 pb-3">Category</th>

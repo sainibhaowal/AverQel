@@ -9,7 +9,11 @@ function decodeVapidKey(value: string): ArrayBuffer {
 }
 
 export async function enableCollectionPush(deviceId: string): Promise<"enabled" | "unavailable"> {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+  if (
+    !("serviceWorker" in navigator) ||
+    !("PushManager" in window) ||
+    !("Notification" in window)
+  ) {
     return "unavailable";
   }
   const configResponse = await fetchWithAuth("/collections/security/push-config");

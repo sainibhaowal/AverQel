@@ -317,9 +317,10 @@ export default function DocumentInspector({
                       <div className="bg-warning/5 border-warning/10 mt-4 flex items-start gap-3 rounded-xl border p-4">
                         <AlertTriangle size={16} className="text-warning mt-0.5 shrink-0" />
                         <p className="text-warning text-[11px] leading-relaxed font-medium">
-                          <strong className="text-warning uppercase">Partial Capture.</strong>{" "}
-                          The measured extraction-and-embedding yield is {Math.round(yieldValue ?? 0)}%.
-                          Review the recorded extraction warnings below before relying on omitted content.
+                          <strong className="text-warning uppercase">Partial Capture.</strong> The
+                          measured extraction-and-embedding yield is {Math.round(yieldValue ?? 0)}%.
+                          Review the recorded extraction warnings below before relying on omitted
+                          content.
                         </p>
                       </div>
                     )}
@@ -434,16 +435,33 @@ export default function DocumentInspector({
                         ["Language", labelFor(data.language)],
                         ["Revision", `v${data.version}`],
                       ].map(([label, value]) => (
-                        <div key={label} className="bg-foreground/[0.025] min-w-0 rounded-xl border border-black/[0.05] p-3 dark:border-white/[0.07]">
-                          <p className="text-foreground/45 text-[8px] font-black tracking-[0.18em] uppercase">{label}</p>
-                          <p className="text-foreground mt-1 truncate text-[11px] font-bold" title={value}>{value}</p>
+                        <div
+                          key={label}
+                          className="bg-foreground/[0.025] min-w-0 rounded-xl border border-black/[0.05] p-3 dark:border-white/[0.07]"
+                        >
+                          <p className="text-foreground/45 text-[8px] font-black tracking-[0.18em] uppercase">
+                            {label}
+                          </p>
+                          <p
+                            className="text-foreground mt-1 truncate text-[11px] font-bold"
+                            title={value}
+                          >
+                            {value}
+                          </p>
                         </div>
                       ))}
                     </div>
                     <div className="border-glass-border mt-3 flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2">
                       <Fingerprint size={13} className="text-primary shrink-0" />
-                      <span className="text-foreground/45 shrink-0 text-[9px] font-black tracking-[0.16em] uppercase">SHA-256</span>
-                      <code className="text-foreground/75 min-w-0 truncate text-[10px] font-semibold" title={data.sha256_hash}>{data.sha256_hash}</code>
+                      <span className="text-foreground/45 shrink-0 text-[9px] font-black tracking-[0.16em] uppercase">
+                        SHA-256
+                      </span>
+                      <code
+                        className="text-foreground/75 min-w-0 truncate text-[10px] font-semibold"
+                        title={data.sha256_hash}
+                      >
+                        {data.sha256_hash}
+                      </code>
                     </div>
                   </div>
 
@@ -453,10 +471,14 @@ export default function DocumentInspector({
                         <Layers3 size={12} className="text-primary/60" /> Chunk coverage
                       </p>
                       <p className="text-foreground text-[13px] font-black tabular-nums">
-                        {data.total_chunk_count === 0 ? "No extracted chunks" : `${data.embedded_chunk_count} of ${data.total_chunk_count} embedded`}
+                        {data.total_chunk_count === 0
+                          ? "No extracted chunks"
+                          : `${data.embedded_chunk_count} of ${data.total_chunk_count} embedded`}
                       </p>
                       <p className="text-foreground/50 mt-1 text-[10px] font-medium">
-                        {embeddingCoverage === null ? "Available after chunking." : `${embeddingCoverage}% of extracted chunks have stored vectors.`}
+                        {embeddingCoverage === null
+                          ? "Available after chunking."
+                          : `${embeddingCoverage}% of extracted chunks have stored vectors.`}
                       </p>
                     </div>
                     <div className="border-glass-border dark:bg-surface-1/80 rounded-[1.35rem] border bg-white p-4 shadow-[0_12px_28px_-26px_rgba(15,23,42,0.14)]">
@@ -464,10 +486,14 @@ export default function DocumentInspector({
                         <RotateCcw size={12} className="text-primary/60" /> Processing attempts
                       </p>
                       <p className="text-foreground text-[13px] font-black tabular-nums">
-                        {data.attempt_count === null || data.max_attempts === null ? "No job record" : `${data.attempt_count} of ${data.max_attempts}`}
+                        {data.attempt_count === null || data.max_attempts === null
+                          ? "No job record"
+                          : `${data.attempt_count} of ${data.max_attempts}`}
                       </p>
                       <p className="text-foreground/50 mt-1 text-[10px] font-medium">
-                        {data.average_chunk_quality === null ? "Chunk quality not recorded." : `Average chunk quality: ${Math.round(data.average_chunk_quality * 100)}%.`}
+                        {data.average_chunk_quality === null
+                          ? "Chunk quality not recorded."
+                          : `Average chunk quality: ${Math.round(data.average_chunk_quality * 100)}%.`}
                       </p>
                     </div>
                   </div>
@@ -476,7 +502,8 @@ export default function DocumentInspector({
                   <div className="group border-glass-border border-l-primary dark:bg-surface-1/80 rounded-[1.45rem] border border-l-4 bg-white p-6 shadow-[0_14px_36px_-28px_rgba(15,23,42,0.18)]">
                     <div className="mb-4 flex items-center justify-between">
                       <span className="text-foreground/60 flex items-center gap-2 text-[10px] font-black tracking-[0.3em] uppercase">
-                        <RefreshCcw size={14} className="animate-spin-slow text-primary" /> Ingestion status
+                        <RefreshCcw size={14} className="animate-spin-slow text-primary" />{" "}
+                        Ingestion status
                       </span>
                       <span
                         className={`theme-pill !text-[10px] ${
@@ -498,9 +525,7 @@ export default function DocumentInspector({
                     </div>
                     <div className="text-foreground/80 mt-4 flex items-center justify-between text-[10px] font-black tracking-widest uppercase">
                       <span className="text-foreground/90 max-w-[200px] truncate font-black">
-                        {data.active_stage ||
-                          data.ingestion_status ||
-                          "No active job record"}
+                        {data.active_stage || data.ingestion_status || "No active job record"}
                       </span>
                       <span className="text-primary text-sm font-black tabular-nums">
                         {progressValue}%

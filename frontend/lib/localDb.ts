@@ -72,7 +72,10 @@ export async function listPendingChatMessages(collectionId: string): Promise<Pen
   const db = await initDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction("pending_chat_messages", "readonly");
-    const request = tx.objectStore("pending_chat_messages").index("collection_id").getAll(collectionId);
+    const request = tx
+      .objectStore("pending_chat_messages")
+      .index("collection_id")
+      .getAll(collectionId);
     request.onsuccess = () => resolve((request.result || []) as PendingChatMessage[]);
     request.onerror = () => reject(request.error);
   });

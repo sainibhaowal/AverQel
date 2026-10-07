@@ -405,14 +405,9 @@ function CsvPreviewTable({
     [pageUrl, value, localOffset],
   );
   const activePage = page ?? localPage;
-  const displayedRows = activePage
-    ? [activePage.columns, ...activePage.rows]
-    : preview.rows;
+  const displayedRows = activePage ? [activePage.columns, ...activePage.rows] : preview.rows;
   const limited = Boolean(
-    contentTruncated ||
-      activePage?.has_more ||
-      (activePage?.offset ?? 0) > 0 ||
-      preview.truncated,
+    contentTruncated || activePage?.has_more || (activePage?.offset ?? 0) > 0 || preview.truncated,
   );
   const goToPage = (offset: number) => {
     if (pageUrl) void loadPage(offset);
@@ -443,7 +438,9 @@ function CsvPreviewTable({
             <ChevronLeft size={13} /> Previous
           </button>
           <span className="text-foreground/55">
-            {loadingPage ? "Loading rows…" : `Rows ${(activePage?.offset ?? 0) + 1}–${(activePage?.offset ?? 0) + (activePage?.rows.length ?? 0)}`}
+            {loadingPage
+              ? "Loading rows…"
+              : `Rows ${(activePage?.offset ?? 0) + 1}–${(activePage?.offset ?? 0) + (activePage?.rows.length ?? 0)}`}
           </span>
           <button
             type="button"

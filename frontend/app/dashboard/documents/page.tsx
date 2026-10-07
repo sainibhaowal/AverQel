@@ -150,7 +150,11 @@ function RoundedTagFilter({
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -197,42 +201,48 @@ function RoundedTagFilter({
       </button>
       {open && !disabled && menuPosition && typeof document !== "undefined"
         ? createPortal(
-        <div
-          ref={menuRef}
-          role="listbox"
-          style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, width: menuPosition.width }}
-          className="bg-background border-primary/25 z-[1000] max-h-72 overflow-y-auto overscroll-contain rounded-xl border p-1 shadow-xl"
-        >
-          <button
-            type="button"
-            role="option"
-            aria-selected={!value}
-            onClick={() => {
-              onChange("");
-              setOpen(false);
-            }}
-            className={`w-full rounded-lg px-3 py-2 text-left text-xs ${!value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-primary/5"}`}
-          >
-            All tags
-          </button>
-          {options.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              role="option"
-              aria-selected={option.id === value}
-              onClick={() => {
-                onChange(option.id);
-                setOpen(false);
+            <div
+              ref={menuRef}
+              role="listbox"
+              style={{
+                position: "fixed",
+                top: menuPosition.top,
+                left: menuPosition.left,
+                width: menuPosition.width,
               }}
-              className={`w-full rounded-lg px-3 py-2 text-left text-xs ${option.id === value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-primary/5"}`}
+              className="bg-background border-primary/25 z-[1000] max-h-72 overflow-y-auto overscroll-contain rounded-xl border p-1 shadow-xl"
             >
-              {option.name}
-            </button>
-          ))}
-        </div>,
-        document.body,
-      ) : null}
+              <button
+                type="button"
+                role="option"
+                aria-selected={!value}
+                onClick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+                className={`w-full rounded-lg px-3 py-2 text-left text-xs ${!value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-primary/5"}`}
+              >
+                All tags
+              </button>
+              {options.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="option"
+                  aria-selected={option.id === value}
+                  onClick={() => {
+                    onChange(option.id);
+                    setOpen(false);
+                  }}
+                  className={`w-full rounded-lg px-3 py-2 text-left text-xs ${option.id === value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-primary/5"}`}
+                >
+                  {option.name}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

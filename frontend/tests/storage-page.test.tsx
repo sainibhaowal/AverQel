@@ -46,9 +46,10 @@ describe("storage details page", () => {
   beforeEach(() => {
     fetchWithAuthMock.mockImplementation(async (endpoint: string) => ({
       ok: true,
-      json: async () => endpoint === "/storage/retention"
-        ? { mode: "off", days: 0, policy_version: 1, automatic_purge_enabled: false }
-        : response,
+      json: async () =>
+        endpoint === "/storage/retention"
+          ? { mode: "off", days: 0, policy_version: 1, automatic_purge_enabled: false }
+          : response,
     }));
   });
 
@@ -59,7 +60,9 @@ describe("storage details page", () => {
     expect(screen.getByText("Visual storage overview")).toBeInTheDocument();
     expect(screen.getByText("Live meter")).toBeInTheDocument();
     expect(screen.getByText("Metered category distribution")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /percent of storage allocation used/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /percent of storage allocation used/i }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Uploaded documents").length).toBeGreaterThanOrEqual(1);
     const categoryButton = screen.getByRole("button", { name: /uploaded documents/i });
     expect(categoryButton).toHaveAttribute("aria-expanded", "false");
