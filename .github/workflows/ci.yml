@@ -258,6 +258,9 @@ jobs:
       - name: Test isolated pre-push gate
         run: bash .github/scripts/tests/test-pre-push-checks.sh
 
+      - name: Test semantic release version calculation
+        run: bash .github/scripts/tests/test-next-semver.sh
+
       - name: Validate all GitHub Actions workflows with Actionlint
         run: >-
           docker run --rm
