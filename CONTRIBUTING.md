@@ -138,3 +138,12 @@ chore(scope): maintain tooling without product behavior changes
 
 Breaking changes must be documented in the commit body with `BREAKING CHANGE:`
 so semantic release calculation can identify them.
+
+Pull request titles are also required to use Conventional Commit format because
+the automatic release calculation reads commit subjects. With squash merging,
+GitHub uses the pull request title as the resulting commit subject. Use `feat:`
+for a backward-compatible feature, `fix:` for a bug fix, and the appropriate
+other conventional type for maintenance work. Mark a breaking change with `!`
+in the title, for example `feat(api)!: remove the legacy endpoint`; this keeps
+the breaking-change signal in the squash commit subject. An unrecognized or
+maintenance-only type does not cause an automatic release by itself.
