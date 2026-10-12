@@ -42,6 +42,7 @@ describe("fetchWithAuth", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     resetAuthSessionState();
     localStorage.clear();
     vi.unstubAllGlobals();
@@ -96,5 +97,65 @@ describe("fetchWithAuth", () => {
       name: "ApiRequestTimeoutError",
       endpoint: "/dashboard/overview",
     });
+  });
+
+  it("retries a bounded SERVICE_OVERLOAD response for safe reads", async () => {
+    localStorage.setItem("averqel_token", createJwt(300));
+    vi.useFakeTimers();
+    const busyResponse = () =>
+      new Response(JSON.stringify({ error: { code: "SERVICE_OVERLOAD", message: "busy" } }), {
+        status: 503,
+        headers: { "Content-Type": "application/json", "Retry-After": "1" },
+      });
+    fetchMock
+      .mockResolvedValueOnce(busyResponse())
+      .mockResolvedValueOnce(busyResponse())
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+
+    const request = fetchWithAuth("/providers");
+    await vi.advanceTimersByTimeAsync(2_100);
+    const response = await request;
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+
+  it("never retries a write after SERVICE_OVERLOAD", async () => {
+    localStorage.setItem("averqel_token", createJwt(300));
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: "SERVICE_OVERLOAD", message: "busy" } }), {
+        status: 503,
+        headers: { "Content-Type": "application/json", "Retry-After": "1" },
+      }),
+    );
+
+    const response = await fetchWithAuth("/deepspace/chats", {
+      method: "POST",
+      body: JSON.stringify({ prompt: "must not be replayed" }),
+    });
+
+    expect(response.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not hide a network error from a retried safe read", async () => {
+    localStorage.setItem("averqel_token", createJwt(300));
+    vi.useFakeTimers();
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { code: "SERVICE_OVERLOAD", message: "busy" } }), {
+          status: 503,
+          headers: { "Content-Type": "application/json", "Retry-After": "1" },
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError("network unavailable"));
+
+    const request = fetchWithAuth("/providers");
+    const rejected = expect(request).rejects.toThrow("network unavailable");
+    await vi.advanceTimersByTimeAsync(1_100);
+
+    await rejected;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

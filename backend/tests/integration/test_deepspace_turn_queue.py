@@ -7,9 +7,12 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from starlette.requests import Request
 
 from app.deepspace.models.agent_runtime import DeepSpaceAgentRun
+from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.queue_control import DeepSpaceQueueControl
 from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
 from app.deepspace.repositories.chat import DeepSpaceChatRepository
@@ -327,6 +330,97 @@ def test_legacy_failure_pause_recovers_but_manual_pause_remains(db_session, seed
         )
         is None
     )
+
+
+def test_resume_after_failure_does_not_lock_conversation_without_legacy_pause(
+    db_session, seed_user, monkeypatch
+):
+    seeded = seed_user("QueueReadTenant", "queue-read@example.com", "StrongPass!1234", ("user",))
+    conversation_id = _conversation(db_session, seeded)
+    queue = DeepSpaceTurnQueueStore(db_session)
+
+    def unexpected_conversation_lock(**_kwargs):
+        raise AssertionError("ordinary queue reads must not lock the conversation")
+
+    monkeypatch.setattr(queue, "_conversation_for_update", unexpected_conversation_lock)
+
+    assert not queue.resume_after_failure(
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        conversation_id=conversation_id,
+    )
+
+
+def test_queue_reads_do_not_wait_on_active_conversation_lock(client, db_session, seed_user):
+    from app.auth.dependencies import create_access_token
+    from app.core.config import get_settings
+
+    seeded = seed_user("QueueLockTenant", "queue-lock@example.com", "StrongPass!1234", ("user",))
+    conversation_id = _conversation(db_session, seeded)
+    db_session.commit()
+    db_session.execute(
+        select(Conversation).where(Conversation.id == conversation_id).with_for_update()
+    ).scalar_one()
+
+    token = create_access_token(
+        user_id=seeded.user_id,
+        tenant_id=seeded.tenant_id,
+        roles={"user"},
+        settings=get_settings(),
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-Id": str(seeded.tenant_id),
+    }
+
+    queue_response = client.get(f"/api/v1/deepspace/chats/{conversation_id}/queue", headers=headers)
+    state_response = client.get(
+        f"/api/v1/deepspace/chats/{conversation_id}/queue/state", headers=headers
+    )
+
+    assert queue_response.status_code == 200
+    assert state_response.status_code == 200
+    db_session.rollback()
+
+
+@pytest.mark.parametrize("queue_path", ["queue", "queue/state"])
+def test_queue_read_returns_retryable_response_for_transient_lock_timeout(
+    queue_path, client, db_session, seed_user, monkeypatch
+):
+    from app.auth.dependencies import create_access_token
+    from app.core.config import get_settings
+
+    seeded = seed_user("QueueBusyTenant", "queue-busy@example.com", "StrongPass!1234", ("user",))
+    conversation_id = _conversation(db_session, seeded)
+    db_session.commit()
+
+    class PostgresLockTimeoutError(Exception):
+        sqlstate = "55P03"
+
+    def raise_lock_timeout(self, **_kwargs):
+        raise OperationalError(
+            "SELECT ... FOR UPDATE", {}, PostgresLockTimeoutError("lock timeout")
+        )
+
+    monkeypatch.setattr(DeepSpaceTurnQueueStore, "resume_after_failure", raise_lock_timeout)
+    token = create_access_token(
+        user_id=seeded.user_id,
+        tenant_id=seeded.tenant_id,
+        roles={"user"},
+        settings=get_settings(),
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-Id": str(seeded.tenant_id),
+    }
+
+    response = client.get(
+        f"/api/v1/deepspace/chats/{conversation_id}/{queue_path}", headers=headers
+    )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "1"
+    assert response.json()["error"]["code"] == "SERVICE_OVERLOAD"
 
 
 def test_retry_is_idempotent_and_a_failed_attempt_can_be_retried_again(

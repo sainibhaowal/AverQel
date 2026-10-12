@@ -107,8 +107,12 @@ maintenance heartbeat also recovers claims older than ten minutes: it
 re-queues a claim with no runtime worker, or preserves a completed/cancelled
 worker result; if the matching worker failed, it marks that turn failed and
 continues with the next queued prompt unless the user has explicitly paused
-the queue. Queue state/history reads and the maintenance heartbeat both clear
-legacy automatic failure pauses and redispatch recovered work.
+the queue. Queue state/history reads clear a legacy automatic failure pause
+only when its persisted control row has that failure state; ordinary reads do
+not lock the conversation. The maintenance heartbeat also clears legacy pauses
+and redispatches recovered work. A recognized transient database lock conflict
+returns a retryable 503, and the browser retries safe reads twice without
+replaying chat submissions or queue actions.
 
 When maintenance expires a worker lease, it also changes a still-streaming
 assistant message to a recoverable failure and appends a terminal event to the

@@ -21,9 +21,19 @@ Available environment settings:
 - `AKS_DATABASE_POOL_TIMEOUT_SECONDS`: maximum wait for a database connection.
   Defaults to 4 seconds, so pool exhaustion returns a traceable 503 rather
   than becoming the browser's 30-second timeout.
+- Recognized PostgreSQL transaction conflicts (`lock_timeout`, deadlocks, and
+  serialization failures) return the same retryable `SERVICE_OVERLOAD` 503
+  with `Retry-After`. Other database errors remain server errors and are not
+  treated as transient.
 - `AKS_DATABASE_STATEMENT_TIMEOUT_SECONDS` / `AKS_DATABASE_LOCK_TIMEOUT_SECONDS`:
   per-request PostgreSQL limits (15 and 3 seconds by default). They prevent a
   blocked statement or row lock from monopolising request workers.
+
+The browser retries `SERVICE_OVERLOAD` at most twice for `GET` and `HEAD`
+requests, following a short `Retry-After`. It never automatically replays a
+write. Keep read endpoints free of unconditional row locks and recovery writes;
+queue recovery checks first for the exact persisted failure state before
+locking a conversation.
 
 `QueryService.execute` is synchronous because it uses the synchronous database
 session and retrieval pipeline. The HTTP endpoint dispatches that work to the

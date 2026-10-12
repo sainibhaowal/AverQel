@@ -351,6 +351,23 @@ class DeepSpaceTurnQueueStore:
         self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
     ) -> bool:
         """Clear a legacy automatic failure pause while preserving the failed turn."""
+        # Queue state and queue history are fetched frequently while a chat is
+        # active. Check the exact repair condition without taking a row lock so
+        # ordinary reads do not contend with the active turn's conversation
+        # update. Recheck it under the normal conversation/control lock order
+        # below before changing anything.
+        recovery_candidate = self.db.execute(
+            select(DeepSpaceQueueControl.conversation_id).where(
+                DeepSpaceQueueControl.tenant_id == tenant_id,
+                DeepSpaceQueueControl.user_id == user_id,
+                DeepSpaceQueueControl.conversation_id == conversation_id,
+                DeepSpaceQueueControl.paused.is_(True),
+                DeepSpaceQueueControl.failed_request_id.is_not(None),
+            )
+        ).scalar_one_or_none()
+        if recovery_candidate is None:
+            return False
+
         self._conversation_for_update(
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
         )
