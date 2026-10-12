@@ -11,7 +11,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.providers.services.reasoning_capabilities import normalize_reasoning_effort_value
 
 
 class MessageVersionSchema(BaseModel):
@@ -137,16 +139,27 @@ class MessageEditRequest(BaseModel):
 class RegenerateRequest(BaseModel):
     client_request_id: str | None = Field(default=None, max_length=255)
     thinking_enabled: bool = False
-    reasoning_effort: Literal["low", "medium", "high", "very_high", "extreme_high"] | None = None
+    reasoning_effort: str | None = Field(default=None, max_length=20)
 
     model_config = ConfigDict(extra="forbid")
 
+    @field_validator("reasoning_effort")
+    @classmethod
+    def validate_reasoning_effort(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_reasoning_effort_value(value)
+        if normalized is None:
+            raise ValueError("reasoning_effort must be a safe model-advertised option")
+        return normalized
+
 
 class QueueTurnRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=4000)
+    message: str = Field(default="", max_length=4000)
     client_request_id: str | None = Field(default=None, max_length=255)
+    regenerate_message_id: uuid.UUID | None = None
     thinking_enabled: bool = False
-    reasoning_effort: Literal["low", "medium", "high", "very_high", "extreme_high"] | None = None
+    reasoning_effort: str | None = Field(default=None, max_length=20)
     steer: bool = False
     attachment_file_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
 
@@ -157,10 +170,45 @@ class QueueTurnRequest(BaseModel):
     def normalize_message(cls, value: Any) -> str:
         return str(value or "").strip()
 
+    @model_validator(mode="after")
+    def require_prompt_for_new_turn(self) -> QueueTurnRequest:
+        if self.regenerate_message_id is None and not self.message:
+            raise ValueError("message cannot be empty unless a response is being regenerated")
+        return self
+
+    @field_validator("reasoning_effort")
+    @classmethod
+    def validate_reasoning_effort(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = normalize_reasoning_effort_value(value)
+        if normalized is None:
+            raise ValueError("reasoning_effort must be a safe model-advertised option")
+        return normalized
+
+
+class QueueTurnEditRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    expected_prompt: str = Field(min_length=1, max_length=4000)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("message", "expected_prompt", mode="before")
+    @classmethod
+    def normalize_prompt(cls, value: Any) -> str:
+        return str(value or "").strip()
+
+
+class RetryFailedTurnRequest(BaseModel):
+    client_request_id: str | None = Field(default=None, max_length=255)
+
+    model_config = ConfigDict(extra="forbid")
+
 
 class QueuedTurnSchema(BaseModel):
     id: uuid.UUID
     client_request_id: str
+    regenerate_message_id: uuid.UUID | None = None
     prompt: str
     priority: int
     sequence: int
@@ -177,8 +225,8 @@ class QueueStateSchema(BaseModel):
     paused: bool = False
     reason: str | None = None
     failed_request_id: str | None = None
-    # Returned by resume when it creates a retry attempt. The browser uses it
-    # to reconnect to that durable SSE stream without requiring a page reload.
+    # Returned by resume for the next queued turn so the browser can attach to
+    # its durable SSE stream without requiring a page reload.
     active_request_id: str | None = None
     paused_at: datetime | None = None
 

@@ -141,6 +141,8 @@ function IconTooltipButton({
     >
       {icon}
       <span
+        role="tooltip"
+        aria-hidden={!open}
         className={`workspace-icon-tooltip pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-full border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
           open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
         }`}

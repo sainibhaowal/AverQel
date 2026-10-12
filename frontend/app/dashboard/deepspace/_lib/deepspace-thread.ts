@@ -1321,17 +1321,33 @@ function mapEventToTimelineStep(event: DeepSpaceStreamEvent): TimelineStep | nul
         toolId: String(data.tool_id ?? ""),
       };
     case "error":
-      const providerUnavailable =
-        data.error_category === "provider" ||
-        data.code === "OPENCODE_FREE_TIER_CLIENT_ONLY" ||
-        data.code === "LLM_REQUEST_FAILED";
+      const errorCode = String(data.code ?? "");
+      const errorCategory = String(data.error_category ?? "");
+      const errorTitle =
+        errorCode === "LLM_REQUEST_REJECTED" || errorCategory === "request"
+          ? "Request rejected"
+          : errorCode === "LLM_RATE_LIMITED"
+            ? "Provider rate limit"
+            : errorCode === "LLM_PROVIDER_AUTH_REJECTED"
+              ? "Provider credentials rejected"
+              : errorCode === "LLM_PROVIDER_ACCESS_DENIED"
+                ? "Provider access denied"
+                : errorCode === "LLM_MODEL_OR_ENDPOINT_NOT_FOUND"
+                  ? "Model or endpoint not found"
+                  : errorCode === "LLM_PROVIDER_UNAVAILABLE"
+                    ? "Provider unavailable"
+                    : errorCategory === "provider" ||
+                        errorCode === "OPENCODE_FREE_TIER_CLIENT_ONLY" ||
+                        errorCode === "LLM_REQUEST_FAILED"
+                      ? "Provider error"
+                      : "DeepSpace error";
       return {
         id: `error_${stepId}`,
         stepId,
         turnIndex,
         phase: "exploring",
         type: "error",
-        title: providerUnavailable ? "Provider unavailable" : "DeepSpace error",
+        title: errorTitle,
         status: "failed",
         startedAt: timestamp,
         completedAt: timestamp,
@@ -2148,7 +2164,7 @@ export interface DeepSpaceThreadState {
   streamError: {
     code: string;
     message: string;
-    category?: "provider" | "tool" | "runtime" | "ui";
+    category?: "provider" | "request" | "tool" | "runtime" | "ui";
   } | null;
   lastModelName: string | null;
   lastProviderType: string | null;
@@ -2159,7 +2175,7 @@ export interface DeepSpaceThreadState {
 export type DeepSpaceThreadAction =
   | { type: "load_history"; conversationId: string; messages: DeepSpaceHistoryMessage[] }
   | { type: "reset_thread" }
-  | { type: "submit_query"; query: string }
+  | { type: "submit_query"; query: string; clientRequestId?: string }
   | { type: "stream_interrupted" }
   | { type: "stream_finished" }
   | {
@@ -2167,7 +2183,7 @@ export type DeepSpaceThreadAction =
       error: {
         code: string;
         message: string;
-        category?: "provider" | "tool" | "runtime" | "ui";
+        category?: "provider" | "request" | "tool" | "runtime" | "ui";
       };
     }
   | { type: "stream_event"; event: DeepSpaceStreamEvent }
@@ -2226,11 +2242,8 @@ function rehydrateMetricsFromHistory(
   metadata: Record<string, unknown>,
   createdAt: string,
 ): MessageMetrics | undefined {
-  // The backend persists `latency_timeline` (list of {label, atMs, detail?})
-  // and `started_at` alongside the message. We re-derive the metric chips
-  // the UI shows at the end of every assistant message so the bar remains
-  // visible after a history reload (or refresh), matching what was seen
-  // during streaming.
+  // Restore persisted timing and provider-reported usage so response metrics
+  // remain accurate after a history reload.
   const rawTimeline = metadata.latency_timeline;
   const timeline: MessageMetrics["latencyTimeline"] = (
     Array.isArray(rawTimeline) ? rawTimeline : []
@@ -2288,11 +2301,36 @@ function rehydrateMetricsFromHistory(
   const cachedInputTokens = readNullableNumber("cached_input_tokens");
   const uncachedInputTokens = readNullableNumber("uncached_input_tokens");
   const reservedOutputTokens = readNumber("reserved_output_tokens");
+  const providerOutputTokens = readNullableNumber("provider_output_tokens");
+  const providerGenerationDurationMs = readNullableNumber("provider_generation_duration_ms");
+  const tokensPerSecond = readNullableNumber("tokens_per_second");
+  const tokensPerSecondUnavailableReason =
+    metadata.tokens_per_second_unavailable_reason === null
+      ? null
+      : typeof metadata.tokens_per_second_unavailable_reason === "string"
+        ? metadata.tokens_per_second_unavailable_reason
+        : undefined;
+  const timeToFirstTokenMs = readNullableNumber("time_to_first_token_ms");
+  const providerTimeToFirstOutputMs = readNullableNumber("provider_time_to_first_output_ms");
+  const requestLatencyMs = readNullableNumber("request_latency_ms");
+  const providerUsageRaw = metadata.provider_usage;
+  const providerUsage =
+    providerUsageRaw && typeof providerUsageRaw === "object" && !Array.isArray(providerUsageRaw)
+      ? (providerUsageRaw as MessageMetrics["providerUsage"])
+      : undefined;
   const hasContextMetrics =
     contextUsedTokens !== undefined ||
     sessionTotalTokens !== undefined ||
     contextLimit !== undefined;
-  if (timeline.length === 0 && !hasContextMetrics) {
+  const hasResponseMetrics =
+    providerOutputTokens !== undefined ||
+    providerGenerationDurationMs !== undefined ||
+    tokensPerSecond !== undefined ||
+    tokensPerSecondUnavailableReason !== undefined ||
+    timeToFirstTokenMs !== undefined ||
+    providerTimeToFirstOutputMs !== undefined ||
+    requestLatencyMs !== undefined;
+  if (timeline.length === 0 && !hasContextMetrics && !hasResponseMetrics) {
     return undefined;
   }
 
@@ -2309,19 +2347,20 @@ function rehydrateMetricsFromHistory(
   const firstActivity = timeline.find((entry) => entry.label !== "turn_started");
   const lastEntry = timeline[timeline.length - 1];
   const phase = firstActivity?.label ?? lastEntry?.label;
-  const ttftEntry = timeline.find((entry) => entry.label === "first_activity");
-  const ttftMs = ttftEntry?.atMs;
-
-  // Tokens are not persisted server-side; we only rehydrate timing.
-  // The streaming view already shows the live values, and on history
-  // reload we surface a stable timing chip set rather than 0s.
   return {
     modelName,
     providerType,
     contextLimit,
     phase,
     ...(timeline.length > 0 ? { latencyTimeline: timeline } : {}),
-    ...(typeof ttftMs === "number" ? { ttftMs } : {}),
+    ...(providerUsage ? { providerUsage } : {}),
+    ...(providerOutputTokens !== undefined ? { providerOutputTokens } : {}),
+    ...(providerGenerationDurationMs !== undefined ? { providerGenerationDurationMs } : {}),
+    ...(tokensPerSecond !== undefined ? { tokensPerSecond } : {}),
+    ...(tokensPerSecondUnavailableReason !== undefined ? { tokensPerSecondUnavailableReason } : {}),
+    ...(timeToFirstTokenMs !== undefined ? { timeToFirstTokenMs } : {}),
+    ...(providerTimeToFirstOutputMs !== undefined ? { providerTimeToFirstOutputMs } : {}),
+    ...(requestLatencyMs !== undefined ? { requestLatencyMs } : {}),
     ...(contextUsedTokens !== undefined ? { contextUsedTokens } : {}),
     ...(contextRemainingTokens !== undefined ? { contextRemainingTokens } : {}),
     ...(contextUsage !== undefined ? { contextUsage } : {}),
@@ -2382,9 +2421,12 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
     persistedStatus === "error"
       ? {
           code: String(metadata.error_code ?? "STREAM_INCOMPLETE"),
-          message: content.trim()
-            ? content
-            : "This DeepSpace response ended before a usable answer was saved.",
+          message:
+            typeof metadata.error_message === "string" && metadata.error_message.trim()
+              ? metadata.error_message
+              : content.trim()
+                ? content
+                : "This DeepSpace response ended before a usable answer was saved.",
         }
       : null;
   const metrics = rehydrateMetricsFromHistory(metadata, message.created_at);
@@ -2660,6 +2702,9 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
 
   return {
     id: message.id,
+    ...(typeof metadata.client_request_id === "string"
+      ? { clientRequestId: metadata.client_request_id }
+      : {}),
     role: message.role,
     content,
     rawContent: message.content,
@@ -2865,6 +2910,7 @@ function reduceDeepSpaceThread(
           },
           {
             id: tempAssistantId,
+            ...(action.clientRequestId ? { clientRequestId: action.clientRequestId } : {}),
             role: "assistant",
             content: "",
             rawContent: "",
@@ -3129,10 +3175,27 @@ function reduceDeepSpaceThread(
         const existingIndex = nextMessages.findIndex((message) => message.id === messageId);
         if (existingIndex !== -1) {
           const existing = nextMessages[existingIndex]!;
+          const regenerating = event.data.regenerating === true;
           nextMessages[existingIndex] = {
             ...existing,
             status: "streaming",
             error: null,
+            ...(regenerating
+              ? {
+                  content: "",
+                  rawContent: "",
+                  blocks: [],
+                  structured: null,
+                  thinkingContent: "",
+                  metrics: undefined,
+                  agentSteps: [],
+                  timeline: [],
+                  mission: null,
+                  compaction: null,
+                  artifacts: [],
+                  mediaStatus: undefined,
+                }
+              : {}),
           };
           return {
             ...state,
@@ -3207,29 +3270,10 @@ function reduceDeepSpaceThread(
           combinedRawContent,
           current.userQuestionPrompt ?? "",
         );
-        const chunk = rawContent.slice((current.rawContent ?? "").length);
-
-        // Metrics calculation
-        const now = Date.now();
         const metrics = { ...(current.metrics || {}) };
-
-        if (!metrics.firstTokenAt && chunk.trim()) {
-          metrics.firstTokenAt = new Date(now).toISOString();
-          if (current.createdAt) {
-            metrics.ttftMs = now - new Date(current.createdAt).getTime();
-          }
-        }
-
         const totalTokens =
           estimateTokens(rawContent) + estimateTokens(current.thinkingContent ?? "");
         metrics.totalTokens = totalTokens;
-
-        if (metrics.firstTokenAt) {
-          const durationSec = (now - new Date(metrics.firstTokenAt).getTime()) / 1000;
-          if (durationSec > 0.1) {
-            metrics.tokensPerSec = Math.round((totalTokens / durationSec) * 10) / 10;
-          }
-        }
 
         const extracted = extractThinking(rawContent);
 
@@ -3398,28 +3442,11 @@ function reduceDeepSpaceThread(
           });
         }
 
-        // Metrics calculation
-        const now = Date.now();
         const metrics = { ...(current.metrics || {}) };
-
-        if (!metrics.firstTokenAt && chunk.trim()) {
-          metrics.firstTokenAt = new Date(now).toISOString();
-          if (current.createdAt) {
-            metrics.ttftMs = now - new Date(current.createdAt).getTime();
-          }
-        }
-
         const nextThinkingContent = appendStreamingText(current.thinkingContent, chunk);
         const totalTokens =
           estimateTokens(current.rawContent ?? "") + estimateTokens(nextThinkingContent);
         metrics.totalTokens = totalTokens;
-
-        if (metrics.firstTokenAt) {
-          const durationSec = (now - new Date(metrics.firstTokenAt).getTime()) / 1000;
-          if (durationSec > 0.1) {
-            metrics.tokensPerSec = Math.round((totalTokens / durationSec) * 10) / 10;
-          }
-        }
 
         nextMessages[index] = {
           ...current,
@@ -3448,10 +3475,15 @@ function reduceDeepSpaceThread(
           error: {
             code: String(event.data.code ?? "STREAM_ERROR"),
             message: String(event.data.message ?? "The assistant failed to answer."),
-            category: ["provider", "tool", "runtime", "ui"].includes(
+            category: ["provider", "request", "tool", "runtime", "ui"].includes(
               String(event.data.error_category),
             )
-              ? (String(event.data.error_category) as "provider" | "tool" | "runtime" | "ui")
+              ? (String(event.data.error_category) as
+                  | "provider"
+                  | "request"
+                  | "tool"
+                  | "runtime"
+                  | "ui")
               : "runtime",
           },
           agentSteps: nextSteps,
@@ -3467,10 +3499,15 @@ function reduceDeepSpaceThread(
           streamError: {
             code: String(event.data.code ?? "STREAM_ERROR"),
             message: String(event.data.message ?? "The assistant failed to answer."),
-            category: ["provider", "tool", "runtime", "ui"].includes(
+            category: ["provider", "request", "tool", "runtime", "ui"].includes(
               String(event.data.error_category),
             )
-              ? (String(event.data.error_category) as "provider" | "tool" | "runtime" | "ui")
+              ? (String(event.data.error_category) as
+                  | "provider"
+                  | "request"
+                  | "tool"
+                  | "runtime"
+                  | "ui")
               : "runtime",
           },
         };

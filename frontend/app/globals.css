@@ -114,6 +114,10 @@ button {
   --accent-pill-text: #0f766e;
   --btn-primary-bg: linear-gradient(135deg, #0d9488 0%, #0891b2 55%, #059669 100%);
   --bg-grid-dot: rgba(5, 150, 105, 0.28);
+  --tooltip-bg: #f4fbf7;
+  --tooltip-fg: #123a32;
+  --tooltip-border: rgba(15, 118, 110, 0.3);
+  --tooltip-shadow: 0 14px 34px rgba(15, 23, 42, 0.2);
 }
 
 .dark {
@@ -185,6 +189,10 @@ button {
   --accent-pill-text: #dbead5;
   --btn-primary-bg: linear-gradient(180deg, hsl(180, 60%, 40%), hsl(180, 60%, 30%));
   --bg-grid-dot: rgba(154, 170, 144, 0.12);
+  --tooltip-bg: #101612;
+  --tooltip-fg: #ecfdf5;
+  --tooltip-border: rgba(127, 213, 189, 0.26);
+  --tooltip-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
 }
 
 .landing-cyber {
@@ -891,6 +899,194 @@ html:not(.dark) .library-preview-canvas {
   }
 }
 
+.deepspace-welcome-title-accent {
+  display: inline-block;
+  width: fit-content;
+  color: #0f766e;
+  background-image: linear-gradient(
+    90deg,
+    #0f766e 0%,
+    #2563eb 16.6667%,
+    #7c3aed 33.3333%,
+    #0f766e 50%,
+    #2563eb 66.6667%,
+    #7c3aed 83.3333%,
+    #0f766e 100%
+  );
+  background-position: 0% 50%;
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: deepspace-welcome-title-flow 5s linear infinite;
+}
+
+.dark .deepspace-welcome-title-accent {
+  color: #5eead4;
+  background-image: linear-gradient(
+    90deg,
+    #5eead4 0%,
+    #60a5fa 16.6667%,
+    #c4b5fd 33.3333%,
+    #5eead4 50%,
+    #60a5fa 66.6667%,
+    #c4b5fd 83.3333%,
+    #5eead4 100%
+  );
+}
+
+.deepspace-welcome-status {
+  display: flex;
+  min-height: 1.5rem;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.deepspace-welcome-status-orbit {
+  position: relative;
+  width: 1.5rem;
+  height: 1.25rem;
+  flex: none;
+  perspective: 3.5rem;
+  transform-style: preserve-3d;
+}
+
+.deepspace-welcome-status-orbit::before {
+  position: absolute;
+  inset: 0.2rem 0.05rem;
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 40%, transparent);
+  border-radius: 50%;
+  content: "";
+  transform: rotateX(64deg);
+}
+
+.deepspace-welcome-status-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.27rem;
+  height: 0.27rem;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 0.55rem color-mix(in srgb, var(--accent-cyan) 82%, transparent);
+  transform-style: preserve-3d;
+  animation: deepspace-welcome-dot-orbit 3.2s ease-in-out infinite;
+}
+
+.deepspace-welcome-status-dot--secondary {
+  width: 0.2rem;
+  height: 0.2rem;
+  background: #60a5fa;
+  box-shadow: 0 0 0.5rem rgba(96, 165, 250, 0.85);
+  animation-delay: -1.6s;
+}
+
+.deepspace-welcome-status-label {
+  display: inline-block;
+  color: var(--text-muted);
+  background-image: linear-gradient(
+    105deg,
+    var(--text-muted) 0%,
+    var(--text-muted) 40%,
+    color-mix(in srgb, var(--accent-cyan) 58%, white) 50%,
+    var(--text-muted) 60%,
+    var(--text-muted) 100%
+  );
+  background-position: 120% 50%;
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  animation: deepspace-welcome-status-sweep 3.4s ease-in-out infinite;
+}
+
+@keyframes deepspace-welcome-dot-orbit {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translate3d(-0.45rem, 0, -0.15rem) scale(0.72);
+    opacity: 0.62;
+  }
+
+  25% {
+    transform: translate(-50%, -50%) translate3d(0, -0.22rem, 0.18rem) scale(0.92);
+    opacity: 0.92;
+  }
+
+  50% {
+    transform: translate(-50%, -50%) translate3d(0.45rem, 0, -0.15rem) scale(1.1);
+    opacity: 1;
+  }
+
+  75% {
+    transform: translate(-50%, -50%) translate3d(0, 0.22rem, 0.18rem) scale(0.88);
+    opacity: 0.86;
+  }
+}
+
+@keyframes deepspace-welcome-status-sweep {
+  from {
+    background-position: 120% 50%;
+  }
+
+  to {
+    background-position: -120% 50%;
+  }
+}
+
+@keyframes deepspace-welcome-title-flow {
+  from {
+    background-position: 0% 50%;
+  }
+
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deepspace-welcome-title-accent {
+    animation: none;
+    background-position: 50% 50%;
+  }
+
+  .deepspace-welcome-status-dot,
+  .deepspace-welcome-status-label {
+    animation: none;
+  }
+
+  .deepspace-welcome-status-label {
+    background: none;
+    color: var(--text-muted);
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+@media (forced-colors: active) {
+  .deepspace-welcome-title-accent {
+    color: CanvasText;
+    background: none;
+    -webkit-text-fill-color: CanvasText;
+    animation: none;
+  }
+
+  .deepspace-welcome-status-label {
+    color: CanvasText;
+    background: none;
+    -webkit-text-fill-color: CanvasText;
+    animation: none;
+  }
+
+  .deepspace-welcome-status-dot {
+    box-shadow: none;
+    animation: none;
+  }
+}
+
 @keyframes dash-flow {
   to {
     stroke-dashoffset: -20;
@@ -1416,6 +1612,11 @@ html:not(.dark) .library-preview-canvas {
   will-change: opacity, transform;
 }
 
+.dark .providers-inventory-panel,
+.dark .providers-setup-panel {
+  border-color: color-mix(in srgb, var(--accent-cyan) 32%, transparent);
+}
+
 .providers-page-section.is-entered {
   opacity: 1;
   transform: translateY(0);
@@ -1611,19 +1812,81 @@ html:not(.dark) .text-white {
   color: var(--text-strong) !important;
 }
 
-/* ConfirmationModal intentionally uses a dark danger surface in both themes.
-   Keep the global light-theme text normalization from turning its labels navy
-   on black, which makes the warning and actions unreadable. */
-html:not(.dark) .confirmation-modal [class~="text-white"] {
-  color: #f8fafc !important;
+/* Keep confirmation-dialog colors explicit so theme-wide utility overrides
+   cannot make its text blend into the surface. */
+.confirmation-modal-title {
+  color: #f8fafc;
 }
 
-html:not(.dark) .confirmation-modal [class~="text-slate-400"] {
-  color: #cbd5e1 !important;
+.confirmation-modal-message {
+  color: #cbd5e1;
 }
 
-html:not(.dark) .confirmation-modal [class~="text-slate-500"] {
-  color: #94a3b8 !important;
+.confirmation-modal-cancel {
+  color: #f8fafc;
+}
+
+.confirmation-modal-close {
+  color: #94a3b8;
+}
+
+.confirmation-modal-close:hover {
+  color: #ffffff;
+}
+
+html:not(.dark) .confirmation-modal {
+  border-color: rgba(15, 23, 42, 0.14) !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.24) !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-icon {
+  border: 1px solid rgba(220, 38, 38, 0.16);
+  background-color: rgba(220, 38, 38, 0.08) !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-icon.text-danger {
+  color: #b91c1c !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-title {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-message {
+  color: #475569 !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-cancel {
+  border-color: #cbd5e1 !important;
+  background-color: #f8fafc !important;
+  color: #334155 !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-cancel:hover:not(:disabled) {
+  background-color: #e2e8f0 !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-close {
+  color: #475569 !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-close:hover {
+  color: #0f172a !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-confirm.text-white {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-confirm.bg-danger {
+  background-color: #b91c1c !important;
+}
+
+html:not(.dark) .confirmation-modal .confirmation-modal-confirm.bg-danger:hover {
+  background-color: #991b1b !important;
 }
 
 /* The DeepSpace composer is translucent in the light theme. Its icon buttons
@@ -1937,9 +2200,9 @@ html:not(.dark) .text-white\/40 {
   transform: translateX(-50%);
   padding: 8px 10px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border-strong));
-  background: color-mix(in srgb, var(--surface-0) 96%, var(--primary) 4%);
-  color: var(--text-strong);
+  border: 1px solid var(--tooltip-border);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-fg);
   font-size: 11px;
   font-weight: 650;
   line-height: 1.35;
@@ -1947,7 +2210,7 @@ html:not(.dark) .text-white\/40 {
   white-space: normal;
   width: max-content;
   max-width: min(28rem, calc(100vw - 24px));
-  box-shadow: 0 14px 34px color-mix(in srgb, #000 28%, transparent);
+  box-shadow: var(--tooltip-shadow);
   pointer-events: none;
   opacity: 0;
   transition:
@@ -1975,10 +2238,16 @@ html:not(.dark) .text-white\/40 {
   text-align: left;
 }
 
-.dark .ui-tooltip[data-tooltip]:not([data-tooltip=""])::before {
-  border-color: color-mix(in srgb, var(--primary) 38%, rgba(255, 255, 255, 0.14));
-  background: color-mix(in srgb, #08110e 94%, var(--primary) 6%);
-  color: #ecfdf5;
+.averqel-tooltip-surface,
+[role="tooltip"],
+.workspace-icon-tooltip,
+.deepspace-message-tooltip {
+  border: 1px solid var(--tooltip-border) !important;
+  border-radius: 12px !important;
+  background: var(--tooltip-bg) !important;
+  color: var(--tooltip-fg) !important;
+  box-shadow: var(--tooltip-shadow) !important;
+  overflow-wrap: anywhere;
 }
 
 .ui-tooltip[data-tooltip]:not([data-tooltip=""]):hover::before,
@@ -3006,6 +3275,86 @@ html:not(.dark) .mcp-theme-scope input::placeholder {
   color: #64748b !important;
 }
 
+/* The marketplace search is one control: its wrapper owns the border and the
+   nested input stays transparent so global input styles cannot draw a second
+   rounded rectangle inside it. */
+.mcp-theme-scope .mcp-marketplace-search {
+  display: flex;
+  min-width: 0;
+  min-height: 2.5rem;
+  flex: 1 1 15rem;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 24%, var(--border-strong));
+  border-radius: 10px;
+  background: var(--surface-1);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.mcp-theme-scope .mcp-marketplace-search:focus-within {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+}
+
+.mcp-theme-scope .mcp-marketplace-search-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: none;
+  color: var(--text-muted);
+  transition: color 160ms ease;
+}
+
+.mcp-theme-scope .mcp-marketplace-search:focus-within .mcp-marketplace-search-icon {
+  color: var(--accent-cyan);
+}
+
+.mcp-theme-scope .mcp-marketplace-search-input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  outline: none;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  color: var(--text-strong) !important;
+  font-size: 0.875rem;
+}
+
+.mcp-theme-scope .mcp-marketplace-search-input:focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.mcp-theme-scope .mcp-marketplace-search-input::placeholder {
+  color: var(--text-muted) !important;
+  opacity: 1;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-marketplace-search {
+  border-color: rgba(15, 118, 110, 0.24);
+  background: #ffffff;
+}
+
+html:not(.dark)
+  .mcp-theme-scope
+  .mcp-marketplace-search-input:not([type="checkbox"]):not([type="radio"]) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-strong) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-marketplace-search-input::placeholder {
+  color: #64748b !important;
+}
+
 html:not(.dark) .mcp-marketplace-actions button {
   border-color: rgba(13, 148, 136, 0.22) !important;
   color: #334155 !important;
@@ -3045,6 +3394,19 @@ html:not(.dark) .mcp-logo {
   border-color: rgba(13, 148, 136, 0.22) !important;
   background: linear-gradient(145deg, #ecfdf5, #dcfce7) !important;
   box-shadow: 0 8px 18px rgba(15, 118, 110, 0.14);
+}
+
+.dark .mcp-theme-scope .mcp-logo {
+  border-color: rgba(127, 213, 189, 0.42) !important;
+  background: linear-gradient(145deg, #18251e, #111a15) !important;
+  box-shadow:
+    0 0 0 1px rgba(127, 213, 189, 0.08),
+    0 8px 18px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.dark .mcp-theme-scope .mcp-logo[data-logo="github"] .mcp-logo-image {
+  filter: brightness(0) invert(1);
 }
 
 html:not(.dark) .mcp-theme-scope .mcp-logo [class*="text-white"] {
@@ -3600,17 +3962,23 @@ html:not(.dark) .dashboard-history-scope [class*="border-white/"] {
   border-color: rgba(100, 116, 139, 0.22) !important;
 }
 
-/* Header icon tooltips are dark in the dark theme and use the same frosted
- * white language as the rest of the light workspace. */
+html:not(.dark) .dashboard-history-scope .history-bulk-delete-button {
+  border-color: #991b1b !important;
+  background-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+html:not(.dark) .dashboard-history-scope .history-bulk-delete-button:hover {
+  background-color: #991b1b !important;
+}
+
+/* Keep custom hover callouts on the same theme-aware tooltip surface. */
 html:not(.dark) .workspace-icon-tooltip {
-  border-color: rgba(13, 148, 136, 0.24) !important;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.14), transparent 42%),
-    rgba(255, 255, 255, 0.96) !important;
-  color: #0f172a !important;
-  box-shadow:
-    0 10px 24px rgba(15, 23, 42, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.94) !important;
+  border-color: var(--tooltip-border) !important;
+  border-radius: 12px !important;
+  background: var(--tooltip-bg) !important;
+  color: var(--tooltip-fg) !important;
+  box-shadow: var(--tooltip-shadow) !important;
 }
 
 /* Global light-mode hierarchy. These rules give every dashboard surface the
@@ -3780,26 +4148,17 @@ html:not(.dark) .deepspace-theme-scope .deepspace-message-marker-assistant-activ
 }
 
 html:not(.dark) .deepspace-theme-scope .deepspace-message-tooltip {
-  border-color: rgba(14, 116, 144, 0.24) !important;
-  background: rgba(255, 255, 255, 0.96) !important;
-  color: var(--text-strong) !important;
+  border-color: var(--tooltip-border) !important;
+  border-radius: 12px !important;
+  background: var(--tooltip-bg) !important;
+  color: var(--tooltip-fg) !important;
+  box-shadow: var(--tooltip-shadow) !important;
 }
 
 html:not(.dark) .deepspace-theme-scope .deepspace-message-insert {
   border-color: rgba(14, 116, 144, 0.34) !important;
   background: rgba(255, 255, 255, 0.9) !important;
   color: #0e7490 !important;
-}
-
-html:not(.dark) .deepspace-theme-scope .deepspace-empty-accent {
-  border-color: rgba(8, 145, 178, 0.3) !important;
-  background: linear-gradient(
-    145deg,
-    rgba(236, 253, 245, 0.95),
-    rgba(220, 252, 231, 0.72)
-  ) !important;
-  color: #0e7490 !important;
-  box-shadow: 0 12px 26px rgba(8, 145, 178, 0.14) !important;
 }
 
 html:not(.dark) .deepspace-theme-scope .deepspace-empty-prompt {
@@ -3886,6 +4245,18 @@ html:not(.dark) .deepspace-theme-scope .deepspace-execution-error-code {
   color: #b91c1c !important;
 }
 
+html:not(.dark) .deepspace-theme-scope .deepspace-execution-error-retry {
+  border-color: rgba(185, 28, 28, 0.2) !important;
+  background: rgba(185, 28, 28, 0.06) !important;
+  color: #b91c1c !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-execution-error-retry:hover {
+  border-color: rgba(185, 28, 28, 0.32) !important;
+  background: rgba(185, 28, 28, 0.1) !important;
+  color: #991b1b !important;
+}
+
 /* Markdown chat output uses prose-invert for dark mode. Reset its typography
  * variables in light mode so table headers, list markers, and inline labels do
  * not inherit near-white dark-theme colors. */
@@ -3946,29 +4317,24 @@ html:not(.dark) .prose-invert [class~="marker:text-cyan-300"]::marker {
   color: #0d9488 !important;
 }
 
-/* The question card has a dark presentation by default, but it is also used
- * inside the light DeepSpace workspace. Give that state an explicit palette;
- * otherwise the global light-theme text normalization puts dark ink on the
- * card's dark gradient. */
+/* Keep the ask-user card restrained and readable in the light DeepSpace theme. */
 html:not(.dark) .deepspace-question-card {
-  border-color: rgba(14, 116, 144, 0.24) !important;
-  background:
-    radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.12), transparent 34%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(224, 245, 245, 0.96)) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  background: #ffffff !important;
   box-shadow:
-    0 18px 42px -28px rgba(14, 116, 144, 0.42),
-    inset 0 1px 0 rgba(255, 255, 255, 0.94) !important;
+    0 8px 24px -18px rgba(15, 23, 42, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-title,
 html:not(.dark) .deepspace-question-card .deepspace-question-recommended {
-  color: #0e7490 !important;
+  color: #155e75 !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-status {
-  border-color: rgba(14, 116, 144, 0.2) !important;
-  background: rgba(14, 116, 144, 0.1) !important;
-  color: #155e75 !important;
+  border-color: rgba(15, 94, 89, 0.3) !important;
+  background: rgba(15, 118, 110, 0.12) !important;
+  color: #115e59 !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-prompt {
@@ -3977,18 +4343,22 @@ html:not(.dark) .deepspace-question-card .deepspace-question-prompt {
 
 html:not(.dark) .deepspace-question-card .deepspace-question-hint,
 html:not(.dark) .deepspace-question-card .deepspace-question-sending {
-  color: #476779 !important;
+  color: #475569 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-options {
+  border-color: rgba(15, 23, 42, 0.17) !important;
+  background: #ffffff !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-option {
-  border-color: rgba(14, 116, 144, 0.2) !important;
-  background: rgba(255, 255, 255, 0.7) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  background: transparent !important;
   color: var(--text-body) !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-option:hover {
-  border-color: rgba(14, 116, 144, 0.42) !important;
-  background: rgba(236, 254, 255, 0.92) !important;
+  background: #eef6f4 !important;
   color: var(--text-strong) !important;
 }
 
@@ -3997,15 +4367,30 @@ html:not(.dark) .deepspace-question-card .deepspace-question-option-text {
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-option-arrow {
-  color: #0e7490 !important;
+  color: #155e75 !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-other {
-  color: #475569 !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  background: transparent !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-other:hover {
-  color: #0e7490 !important;
+  background: #eef6f4 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-other-label {
+  color: #334155 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-other-copy,
+html:not(.dark) .deepspace-question-card .deepspace-question-custom-label {
+  color: #475569 !important;
+}
+
+html:not(.dark) .deepspace-question-card .deepspace-question-other-icon,
+html:not(.dark) .deepspace-question-card .deepspace-question-other-chevron {
+  color: #155e75 !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-input {
@@ -4015,22 +4400,22 @@ html:not(.dark) .deepspace-question-card .deepspace-question-input {
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-input::placeholder {
-  color: #7890a0 !important;
+  color: #526b78 !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-input:focus {
-  border-color: rgba(14, 116, 144, 0.48) !important;
+  border-color: rgba(14, 116, 144, 0.42) !important;
   background: #ffffff !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-submit {
-  border-color: rgba(14, 116, 144, 0.3) !important;
-  background: rgba(14, 116, 144, 0.14) !important;
-  color: #0e7490 !important;
+  border-color: rgba(15, 94, 89, 0.3) !important;
+  background: rgba(15, 118, 110, 0.12) !important;
+  color: #115e59 !important;
 }
 
 html:not(.dark) .deepspace-question-card .deepspace-question-submit:hover {
-  background: rgba(14, 116, 144, 0.24) !important;
+  background: rgba(15, 118, 110, 0.2) !important;
 }
 
 /* Request diagnostics uses dense information by design. Keep every value,
@@ -4177,30 +4562,29 @@ html:not(.dark) .deepspace-diagnostics-card .text-muted-foreground {
   color: #64748b !important;
 }
 
-/* The model menu uses a dark high-contrast surface in dark mode and a clear
- * frosted surface in light mode. The search field is a text field, not a
- * select, so it must never receive the global dropdown-chevron treatment. */
+/* The model menu follows DeepSpace's green/teal surface colors in both themes.
+ * Keep the search field a text field, not a select, so it never receives the
+ * global dropdown-chevron treatment. */
 .deepspace-model-menu {
-  border-color: rgba(129, 140, 248, 0.34);
-  background:
-    radial-gradient(circle at 100% 0%, rgba(139, 92, 246, 0.2), transparent 34%),
-    linear-gradient(145deg, #151b2e, #0a111f 72%);
-  color: #f8fafc;
+  border-color: color-mix(in srgb, var(--accent-cyan) 28%, var(--border-strong));
+  background: var(--surface-1);
+  color: var(--text-body);
   box-shadow:
     0 22px 54px rgba(2, 6, 23, 0.52),
-    0 0 0 1px rgba(15, 23, 42, 0.78);
+    0 0 0 1px color-mix(in srgb, var(--surface-0) 70%, transparent);
 }
 
 .deepspace-model-menu-search-shell {
-  border-bottom: 1px solid rgba(165, 180, 252, 0.2);
-  background: rgba(10, 17, 31, 0.88);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-cyan) 16%, var(--border-subtle));
+  background: var(--surface-1);
 }
 
 .deepspace-model-menu-search {
-  border-color: rgba(165, 180, 252, 0.34);
-  background: rgba(30, 41, 59, 0.92);
-  color: #f8fafc;
-  caret-color: #c4b5fd;
+  border-color: color-mix(in srgb, var(--accent-cyan) 30%, var(--border-strong));
+  border-radius: 0.375rem !important;
+  background: var(--surface-0);
+  color: var(--text-strong);
+  caret-color: var(--accent-cyan);
   appearance: none;
   background-image: none !important;
   background-repeat: no-repeat !important;
@@ -4212,26 +4596,26 @@ html:not(.dark) .deepspace-diagnostics-card .text-muted-foreground {
 }
 
 .deepspace-model-menu-search::placeholder {
-  color: #a5b4cf;
+  color: var(--text-muted);
 }
 
 .deepspace-model-menu-search:focus {
-  border-color: #a78bfa;
-  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-cyan) 20%, transparent);
 }
 
 .deepspace-model-menu-list {
-  scrollbar-color: rgba(129, 140, 248, 0.72) transparent;
+  scrollbar-color: color-mix(in srgb, var(--accent-cyan) 62%, transparent) transparent;
 }
 
 .deepspace-model-menu-option {
-  color: #e5e7eb;
+  color: var(--text-body);
 }
 
 .deepspace-model-menu-option:hover,
 .deepspace-model-menu-option:focus-visible {
-  background: rgba(129, 140, 248, 0.18);
-  color: #ffffff;
+  background: color-mix(in srgb, var(--accent-cyan) 10%, var(--surface-2));
+  color: var(--text-strong);
   outline: none;
 }
 
@@ -4246,21 +4630,20 @@ html:not(.dark) .deepspace-diagnostics-card .text-muted-foreground {
 }
 
 .deepspace-model-menu-quantization {
-  color: #c4b5fd;
+  color: var(--accent-cyan);
 }
 
 .deepspace-model-menu-check {
-  color: #5eead4;
+  color: var(--accent-cyan);
 }
 
 .deepspace-model-menu-empty {
-  color: #a5b4cf;
+  color: var(--text-muted);
 }
 
 html:not(.dark) .deepspace-model-menu {
   border-color: rgba(14, 116, 144, 0.28) !important;
-  background: rgba(255, 255, 255, 0.9) !important;
-  backdrop-filter: blur(18px) saturate(125%);
+  background: var(--surface-0) !important;
   color: #0f172a !important;
   box-shadow:
     0 20px 48px rgba(15, 23, 42, 0.16),
@@ -4269,12 +4652,13 @@ html:not(.dark) .deepspace-model-menu {
 
 html:not(.dark) .deepspace-model-menu .deepspace-model-menu-search-shell {
   border-bottom-color: rgba(14, 116, 144, 0.16) !important;
-  background: rgba(255, 255, 255, 0.78) !important;
+  background: var(--surface-1) !important;
 }
 
 html:not(.dark) .deepspace-model-menu .deepspace-model-menu-search {
   border-color: rgba(14, 116, 144, 0.3) !important;
-  background: rgba(255, 255, 255, 0.88) !important;
+  border-radius: 0.375rem !important;
+  background: var(--surface-0) !important;
   color: #0f172a !important;
   caret-color: #0f766e;
   -webkit-text-fill-color: #0f172a !important;
@@ -4311,15 +4695,80 @@ html:not(.dark) .deepspace-model-menu .deepspace-model-menu-option--selected {
 }
 
 html:not(.dark) .deepspace-model-menu .deepspace-model-menu-quantization {
-  color: #c4b5fd !important;
+  color: #0f766e !important;
 }
 
 html:not(.dark) .deepspace-model-menu .deepspace-model-menu-check {
-  color: #5eead4 !important;
+  color: #0f766e !important;
 }
 
 html:not(.dark) .deepspace-model-menu .deepspace-model-menu-empty {
-  color: #a5b4cf !important;
+  color: #64748b !important;
+}
+
+.deepspace-model-provider-group + .deepspace-model-provider-group {
+  border-top: 1px solid color-mix(in srgb, var(--accent-cyan) 14%, transparent);
+}
+
+.deepspace-model-provider-heading {
+  color: var(--text-body);
+}
+
+.deepspace-model-provider-heading:hover,
+.deepspace-model-provider-heading:focus-visible {
+  background: color-mix(in srgb, var(--accent-cyan) 8%, var(--surface-2));
+  outline: none;
+}
+
+.deepspace-model-provider-mark {
+  border-color: color-mix(in srgb, var(--accent-cyan) 24%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent-cyan) 10%, var(--surface-2));
+  color: var(--accent-cyan);
+}
+
+.deepspace-model-provider-name {
+  color: var(--text-strong);
+}
+
+.deepspace-model-provider-type {
+  color: var(--text-muted);
+}
+
+.deepspace-model-provider-count {
+  color: var(--text-muted);
+}
+
+.deepspace-model-provider-chevron {
+  color: var(--text-muted);
+}
+
+html:not(.dark) .deepspace-model-provider-group + .deepspace-model-provider-group {
+  border-top-color: rgba(14, 116, 144, 0.12);
+}
+
+html:not(.dark) .deepspace-model-provider-heading {
+  color: #334155;
+}
+
+html:not(.dark) .deepspace-model-provider-heading:hover,
+html:not(.dark) .deepspace-model-provider-heading:focus-visible {
+  background: rgba(13, 148, 136, 0.08);
+}
+
+html:not(.dark) .deepspace-model-provider-mark {
+  border-color: rgba(14, 116, 144, 0.18);
+  background: rgba(13, 148, 136, 0.08);
+  color: #0f766e;
+}
+
+html:not(.dark) .deepspace-model-provider-name {
+  color: #0f172a;
+}
+
+html:not(.dark) .deepspace-model-provider-type,
+html:not(.dark) .deepspace-model-provider-count,
+html:not(.dark) .deepspace-model-provider-chevron {
+  color: #64748b;
 }
 
 /* Give the account initial a deliberate identity treatment instead of the

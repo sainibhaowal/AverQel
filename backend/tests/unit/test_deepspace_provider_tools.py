@@ -53,6 +53,15 @@ def test_google_builds_native_function_declarations() -> None:
     assert payload["systemInstruction"]["parts"][0]["text"] == "Use tools when needed."
 
 
+@pytest.mark.unit_no_db
+def test_google_converts_attached_image_to_mime_aware_inline_data() -> None:
+    payload = GoogleProvider._build_payload(_request(images=["data:image/png;base64,iVBORw0KGgo="]))
+
+    assert payload["contents"][-1]["parts"][-1] == {
+        "inlineData": {"mimeType": "image/png", "data": "iVBORw0KGgo="}
+    }
+
+
 def test_google_strips_openai_only_schema_keywords_recursively() -> None:
     request = _request(
         tools=[
@@ -211,6 +220,23 @@ def test_anthropic_translates_tools_and_tool_history() -> None:
     assert messages[2]["content"][0]["type"] == "tool_result"
     assert messages[2]["content"][0]["tool_use_id"] == "toolu-1"
     assert AnthropicProvider._tools_payload(request)[0]["input_schema"]["required"] == ["query"]
+
+
+@pytest.mark.unit_no_db
+def test_anthropic_converts_attached_image_to_native_base64_block() -> None:
+    _system, messages = AnthropicProvider._system_and_messages(
+        _request().messages,
+        ["data:image/webp;base64,UklGRg=="],
+    )
+
+    assert messages[-1]["content"][-1] == {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/webp",
+            "data": "UklGRg==",
+        },
+    }
 
 
 def test_anthropic_extracts_tool_use_response() -> None:

@@ -98,3 +98,13 @@ class DashboardOverviewResponse(BaseModel):
     provider_trend: list[DashboardProviderTrendPointResponse]
 
     model_config = ConfigDict(extra="forbid")
+
+
+class DashboardQueryStatsResponse(BaseModel):
+    """Small status snapshot used by the grounded-query workspace."""
+
+    stats: DashboardStatsResponse
+    document_breakdown: DashboardDocumentBreakdownResponse
+    provider_runtimes: list[DashboardProviderRuntimeResponse]
+
+    model_config = ConfigDict(extra="forbid")

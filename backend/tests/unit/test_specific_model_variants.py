@@ -32,8 +32,8 @@ class TestSpecificModelVariants:
             # Should detect reasoning for Gemma 4 models
             assert result, f"{model} should support reasoning as Gemma 4 variant"
 
-    def test_qwen_variants_from_image(self):
-        """Test Qwen variants from the image."""
+    def test_qwen_generic_compatible_endpoint_requires_explicit_reasoning_config(self):
+        """A Qwen model name does not define an arbitrary endpoint's dialect."""
         qwen_variants = [
             "qwen3.6 27b",
             "qwen3.6 35b a3b",
@@ -42,11 +42,10 @@ class TestSpecificModelVariants:
         for model in qwen_variants:
             result = model_supports_reasoning("openai-compatible", model)
             print(f"Model: {model}, Supports Reasoning: {result}")
-            # Should detect reasoning for Qwen models
-            assert result, f"{model} should support reasoning as Qwen variant"
+            assert not result, f"{model} must require explicit endpoint reasoning settings"
 
-    def test_nemotron_variant_from_image(self):
-        """Test Nemotron variant from the image."""
+    def test_nemotron_generic_compatible_endpoint_requires_explicit_reasoning_config(self):
+        """A Nemotron model name does not define an arbitrary endpoint's dialect."""
         nemotron_models = [
             "nemotron 3 nano 4b",
         ]
@@ -54,8 +53,7 @@ class TestSpecificModelVariants:
         for model in nemotron_models:
             result = model_supports_reasoning("openai-compatible", model)
             print(f"Model: {model}, Supports Reasoning: {result}")
-            # Should detect reasoning for Nemotron models
-            assert result, f"{model} should support reasoning as Nemotron variant"
+            assert not result, f"{model} must require explicit endpoint reasoning settings"
 
     def test_pattern_matching_coverage(self):
         """Test that pattern matching catches various naming conventions."""

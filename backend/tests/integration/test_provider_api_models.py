@@ -105,8 +105,8 @@ def test_provider_models_refresh_and_list(
         f"/api/v1/providers/{provider_id}/models/refresh", headers=headers
     )
     assert refresh_response.status_code == 200
-    assert len(refresh_response.json()["items"]) == 2
     items = refresh_response.json()["items"]
+    assert len(items) == 2
     chat_row = next(item for item in items if item["model_kind"] == "chat")
     embed_row = next(item for item in items if item["model_kind"] == "embedding")
     assert chat_row["capabilities_json"]["runtime"] == "lmstudio"

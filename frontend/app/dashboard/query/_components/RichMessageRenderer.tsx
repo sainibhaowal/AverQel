@@ -19,7 +19,14 @@ interface RichMessageRendererProps {
   mode?: "query" | "deepspace";
   message: QueryThreadMessage;
   isStreaming: boolean;
-  onPreviewDocument: (payload: { id: string; name: string; page?: number }) => void;
+  onPreviewDocument: (payload: {
+    id: string;
+    name: string;
+    page?: number;
+    sourceType?: string;
+    rowNumbers?: number[];
+    matchedRowCount?: number;
+  }) => void;
   onFollowupSelect: (query: string) => void;
 }
 
@@ -74,12 +81,18 @@ function RichMessageRenderer({
               document_id: citation.document_id,
               filename: citation.filename,
               page_number: citation.page_number ?? undefined,
+              source_type: citation.source_type,
+              source_row_numbers: citation.source_row_numbers,
+              matched_row_count: citation.matched_row_count,
             }))}
             onTileClick={(citation) =>
               onPreviewDocument({
                 id: citation.document_id,
                 name: citation.filename || "Document",
                 page: citation.page_number,
+                sourceType: citation.source_type,
+                rowNumbers: citation.source_row_numbers,
+                matchedRowCount: citation.matched_row_count ?? undefined,
               })
             }
           />

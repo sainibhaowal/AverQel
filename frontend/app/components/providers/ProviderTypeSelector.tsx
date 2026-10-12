@@ -1,6 +1,7 @@
 "use client";
 
 import { Cable } from "lucide-react";
+import ProviderLogo from "@/app/components/providers/ProviderLogo";
 import type { ProviderCatalogEntry } from "@/lib/providers-api";
 
 interface ProviderTypeSelectorProps {
@@ -34,7 +35,7 @@ export default function ProviderTypeSelector({
           id="p-type"
           value={selectedType}
           onChange={(e) => onChange(e.target.value)}
-          className="text-foreground w-full appearance-none rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3.5 pr-10 text-sm font-medium transition-all outline-none hover:bg-white/[0.06] focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-500/10"
+          className="text-foreground w-full appearance-none rounded-xl border border-white/8 bg-white/[0.03] py-3.5 pr-10 pl-12 text-sm font-medium transition-all outline-none hover:bg-white/[0.06] focus:border-cyan-400/50 focus:ring-2 focus:ring-cyan-500/10"
         >
           <option value="">Choose a family...</option>
           {catalog.map((entry) => (
@@ -43,6 +44,11 @@ export default function ProviderTypeSelector({
             </option>
           ))}
         </select>
+        {selectedType ? (
+          <div className="text-foreground/80 pointer-events-none absolute top-1/2 left-4 -translate-y-1/2">
+            <ProviderLogo providerType={selectedType} size={18} />
+          </div>
+        ) : null}
         <div className="text-foreground/40 pointer-events-none absolute top-1/2 right-4 -translate-y-1/2">
           <Cable size={16} />
         </div>
@@ -62,7 +68,10 @@ export default function ProviderTypeSelector({
                   : "text-foreground/40 hover:text-foreground/60 bg-white/5 hover:bg-white/10"
               }`}
             >
-              {entry.display_name}
+              <span className="flex items-center gap-1.5">
+                <ProviderLogo providerType={entry.provider_type} size={14} />
+                {entry.display_name}
+              </span>
             </button>
           );
         })}

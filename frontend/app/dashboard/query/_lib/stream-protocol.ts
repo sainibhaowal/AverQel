@@ -44,6 +44,8 @@ export interface CitationItem {
   source_type?: string;
   section_header?: string | null;
   page_number?: number | null;
+  source_row_numbers?: number[];
+  matched_row_count?: number | null;
 }
 
 export interface StructuredAnswerShape {

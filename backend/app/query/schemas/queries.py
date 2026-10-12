@@ -13,6 +13,7 @@ class QueryFilters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     document_ids: list[UUID] | None = Field(default=None, max_length=50)
+    attached_document_ids: list[UUID] | None = Field(default=None, max_length=10)
     collection_id: UUID | None = None
     created_at_from: datetime | None = None
     created_at_to: datetime | None = None
@@ -68,6 +69,8 @@ class QueryCitationResponse(BaseModel):
     source_type: str = "text"
     section_header: str | None = None
     page_number: int | None = None
+    source_row_numbers: list[int] = Field(default_factory=list, max_length=20)
+    matched_row_count: int | None = Field(default=None, ge=0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -117,5 +120,81 @@ class ChatCapabilitiesResponse(BaseModel):
     request_controls_on: list[str] = Field(default_factory=list)
     request_controls_off: list[str] = Field(default_factory=list)
     supported_reasoning_efforts: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetAttachmentResolveRequest(BaseModel):
+    sha256: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetAttachmentResolveResponse(BaseModel):
+    found: bool
+    document_id: UUID | None = None
+    filename: str | None = None
+    size_bytes: int | None = Field(default=None, ge=0)
+    document_status: str | None = None
+    content_type: str | None = None
+    tabular: bool = False
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class QueryAttachmentItem(BaseModel):
+    document_id: UUID
+    filename: str
+    size_bytes: int = Field(ge=0)
+    content_type: str
+    status: str
+    tabular: bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class QueryAttachmentListResponse(BaseModel):
+    items: list[QueryAttachmentItem]
+    total: int = Field(ge=0)
+    skip: int = Field(ge=0)
+    limit: int = Field(ge=1, le=100)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetIndexResponse(BaseModel):
+    document_id: UUID
+    filename: str
+    supported: bool
+    status: str
+    stage: str
+    progress: int = Field(ge=0, le=100)
+    row_count: int | None = Field(default=None, ge=0)
+    column_count: int | None = Field(default=None, ge=0)
+    columns: list[dict[str, str]] = Field(default_factory=list)
+    error_code: str | None = None
+    error_message: str | None = None
+    max_file_size_bytes: int
+    max_data_rows: int
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetIndexRequest(BaseModel):
+    retry: bool = False
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DatasetRowWindowResponse(BaseModel):
+    filename: str
+    columns: list[str]
+    omitted_column_count: int = Field(ge=0)
+    rows: list[dict[str, Any]]
+    truncated_cells: int = Field(ge=0)
+    start_row: int = Field(ge=1)
+    limit: int = Field(ge=1, le=200)
+    has_more: bool
+    row_count: int = Field(ge=0)
 
     model_config = ConfigDict(extra="forbid")

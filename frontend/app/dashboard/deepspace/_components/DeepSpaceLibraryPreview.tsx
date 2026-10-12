@@ -65,7 +65,10 @@ export const CSV_PREVIEW_MAX_ROWS = 200;
 export const CSV_PREVIEW_MAX_COLUMNS = 50;
 export const CSV_PREVIEW_MAX_CHARS = 512 * 1024;
 
-export function parseCsvPreview(value: string): { rows: string[][]; truncated: boolean } {
+export function parseCsvPreview(
+  value: string,
+  delimiter = ",",
+): { rows: string[][]; truncated: boolean } {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -78,7 +81,7 @@ export function parseCsvPreview(value: string): { rows: string[][]; truncated: b
       cell += '"';
       index += 1;
     } else if (character === '"') quoted = !quoted;
-    else if (character === "," && !quoted) {
+    else if (character === delimiter && !quoted) {
       row.push(cell);
       cell = "";
     } else if ((character === "\n" || character === "\r") && !quoted) {
@@ -108,7 +111,7 @@ type CsvPage = {
 };
 
 /** Parse only one visible page while retaining the complete CSV in memory. */
-function parseCsvPage(value: string, offset: number, limit: number): CsvPage {
+function parseCsvPage(value: string, offset: number, limit: number, delimiter = ","): CsvPage {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -136,7 +139,7 @@ function parseCsvPage(value: string, offset: number, limit: number): CsvPage {
       cell += '"';
       index += 1;
     } else if (character === '"') quoted = !quoted;
-    else if (character === "," && !quoted) {
+    else if (character === delimiter && !quoted) {
       row.push(cell);
       cell = "";
     } else if ((character === "\n" || character === "\r") && !quoted) {
@@ -368,13 +371,15 @@ function CsvPreviewTable({
   contentTruncated,
   sizeBytes,
   pageUrl,
+  delimiter,
 }: {
   value: string;
   contentTruncated: boolean;
   sizeBytes?: number;
   pageUrl?: string | null;
+  delimiter: string;
 }) {
-  const preview = useMemo(() => parseCsvPreview(value), [value]);
+  const preview = useMemo(() => parseCsvPreview(value, delimiter), [delimiter, value]);
   const [localOffset, setLocalOffset] = useState(0);
   const [page, setPage] = useState<{
     columns: string[];
@@ -383,16 +388,24 @@ function CsvPreviewTable({
     limit: number;
     has_more: boolean;
   } | null>(null);
-  const [loadingPage, setLoadingPage] = useState(false);
+  const [loadingPage, setLoadingPage] = useState(Boolean(pageUrl));
+  const [pageError, setPageError] = useState<string | null>(null);
   const loadPage = async (offset: number) => {
     if (!pageUrl) return;
     setLoadingPage(true);
+    setPageError(null);
     try {
       const response = (await fetchWithAuth(
         `${pageUrl}?offset=${offset}&limit=${CSV_PREVIEW_MAX_ROWS}`,
-        { timeoutMs: 30_000 },
+        { timeoutMs: 30_000, silentTimeout: true },
       )) as Response;
-      if (response.ok) setPage((await response.json()) as typeof page);
+      if (!response.ok) {
+        setPageError("Could not load these rows. Retry the preview.");
+        return;
+      }
+      setPage((await response.json()) as typeof page);
+    } catch {
+      setPageError("Could not load these rows. Check the connection and retry the preview.");
     } finally {
       setLoadingPage(false);
     }
@@ -401,8 +414,8 @@ function CsvPreviewTable({
     if (pageUrl) queueMicrotask(() => void loadPage(0));
   }, [pageUrl]); // eslint-disable-line react-hooks/exhaustive-deps
   const localPage = useMemo(
-    () => (pageUrl ? null : parseCsvPage(value, localOffset, CSV_PREVIEW_MAX_ROWS)),
-    [pageUrl, value, localOffset],
+    () => (pageUrl ? null : parseCsvPage(value, localOffset, CSV_PREVIEW_MAX_ROWS, delimiter)),
+    [delimiter, pageUrl, value, localOffset],
   );
   const activePage = page ?? localPage;
   const displayedRows = activePage ? [activePage.columns, ...activePage.rows] : preview.rows;
@@ -416,16 +429,38 @@ function CsvPreviewTable({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1">
-        <VirtualizedTable
-          rows={displayedRows}
-          notice={
-            limited
-              ? `Showing rows ${(activePage?.offset ?? 0) + 1}–${(activePage?.offset ?? 0) + (activePage?.rows.length ?? preview.rows.length)} / ${CSV_PREVIEW_MAX_COLUMNS} columns. Use Next to view more rows; the original ${
-                  sizeBytes ? `${Math.ceil(sizeBytes / 1024 / 1024)} MB ` : ""
-                }file stays private and can be downloaded or analyzed in the sandbox.`
-              : null
-          }
-        />
+        {loadingPage && !activePage ? (
+          <div
+            role="status"
+            className="text-muted-foreground flex h-full items-center justify-center gap-2 text-xs"
+          >
+            <span className="border-primary/30 border-t-primary h-4 w-4 animate-spin rounded-full border-2" />
+            Loading secure rows…
+          </div>
+        ) : pageError && !activePage ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+            <p className="text-muted-foreground text-xs">{pageError}</p>
+            <button
+              type="button"
+              onClick={() => void loadPage(0)}
+              disabled={loadingPage}
+              className="text-primary text-xs font-semibold underline underline-offset-2 disabled:opacity-50"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <VirtualizedTable
+            rows={displayedRows}
+            notice={
+              limited && (activePage?.rows.length ?? preview.rows.length) > 0
+                ? `Showing rows ${(activePage?.offset ?? 0) + 1}–${(activePage?.offset ?? 0) + (activePage?.rows.length ?? preview.rows.length)} and up to ${CSV_PREVIEW_MAX_COLUMNS} columns. Use Next to view more rows; the original ${
+                    sizeBytes ? `${Math.ceil(sizeBytes / 1024 / 1024)} MB ` : ""
+                  }file stays private and can be downloaded or analyzed in the sandbox.`
+                : null
+            }
+          />
+        )}
       </div>
       {pageUrl ? (
         <div className="border-glass-border flex shrink-0 items-center justify-between border-t px-3 py-2 text-[11px]">
@@ -437,11 +472,24 @@ function CsvPreviewTable({
           >
             <ChevronLeft size={13} /> Previous
           </button>
-          <span className="text-foreground/55">
+          <span className={pageError ? "text-danger" : "text-foreground/55"} role="status">
             {loadingPage
               ? "Loading rows…"
-              : `Rows ${(activePage?.offset ?? 0) + 1}–${(activePage?.offset ?? 0) + (activePage?.rows.length ?? 0)}`}
+              : pageError ||
+                (activePage
+                  ? `Rows ${(activePage.offset ?? 0) + 1}–${(activePage.offset ?? 0) + activePage.rows.length}`
+                  : "No rows loaded")}
           </span>
+          {pageError && activePage ? (
+            <button
+              type="button"
+              onClick={() => void loadPage(activePage.offset)}
+              disabled={loadingPage}
+              className="text-primary font-semibold disabled:opacity-50"
+            >
+              Retry
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={loadingPage || !activePage?.has_more}
@@ -703,6 +751,9 @@ export function LibraryPreview({
         contentTruncated={contentTruncated}
         sizeBytes={sizeBytes}
         pageUrl={csvPageUrl}
+        delimiter={
+          contentType.toLowerCase().split(";", 1)[0] === "text/tab-separated-values" ? "\t" : ","
+        }
       />
     );
   if (kind === "spreadsheet") return <SpreadsheetTable value={value} previewUrl={previewUrl} />;

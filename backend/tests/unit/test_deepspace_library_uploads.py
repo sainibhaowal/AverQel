@@ -17,6 +17,7 @@ from app.deepspace.api.library import (
 )
 from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.services import library_uploads as uploads_module
+from app.deepspace.services.library_storage import safe_extraction_status
 from app.deepspace.services.library_uploads import finalize_upload
 
 
@@ -84,6 +85,42 @@ def test_upload_schema_reports_durable_byte_progress() -> None:
     assert result.status == "uploading"
 
 
+def test_safe_extraction_status_reports_ocr_without_storing_extracted_text() -> None:
+    status = safe_extraction_status(
+        {
+            "text": "Scanned invoice total: 42",
+            "extraction_method": "pdf_native+pdf_ocr",
+            "coverage_score": 0.91,
+            "ocr_used": True,
+            "vision_used": False,
+        }
+    )
+
+    assert status == {
+        "state": "extracted",
+        "text_available": True,
+        "extraction_method": "pdf_native+pdf_ocr",
+        "ocr_used": True,
+        "vision_used": False,
+        "coverage_score": 0.91,
+        "error_code": None,
+    }
+    assert "Scanned invoice" not in str(status)
+
+
+def test_safe_extraction_status_distinguishes_no_text_and_unavailable() -> None:
+    no_text = safe_extraction_status({"text": "  ", "ocr_used": True})
+    unavailable = safe_extraction_status(
+        {"text": None, "extraction_error": "OCR_ENGINE_UNAVAILABLE", "warnings": ["private"]}
+    )
+
+    assert no_text["state"] == "no_text"
+    assert no_text["ocr_used"] is True
+    assert unavailable["state"] == "unavailable"
+    assert unavailable["error_code"] == "OCR_ENGINE_UNAVAILABLE"
+    assert "private" not in str(unavailable)
+
+
 def test_export_request_accepts_a_file_selection() -> None:
     selected = uuid.uuid4()
     request = LibraryExportRequest(file_ids=[selected])
@@ -129,7 +166,12 @@ def test_finalize_upload_creates_text_file_and_version(
             self.storage = SimpleNamespace()
 
         def extract(self, **kwargs: object) -> dict[str, object]:
-            return {"text": "extracted"}
+            return {
+                "text": "extracted",
+                "extraction_method": "native_text",
+                "ocr_used": False,
+                "coverage_score": 0.9,
+            }
 
     monkeypatch.setattr(uploads_module, "LibraryStorageService", _Storage)
     upload = _upload()
@@ -145,7 +187,51 @@ def test_finalize_upload_creates_text_file_and_version(
     assert record.content == "hello"
     assert record.is_binary is False
     assert record.extracted_text == "extracted"
+    assert record.metadata_json["extraction_status"]["state"] == "extracted"
+    assert record.metadata_json["extraction_status"]["ocr_used"] is False
+    assert upload.metadata_json["extraction_status"]["text_available"] is True
+    assert _serialize_upload(upload).extraction_status.ocr_used is False
     assert len(db.rows) == 2
+
+
+def test_finalize_image_upload_persists_upload_time_ocr_for_chat_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stored = SimpleNamespace(bucket="library", object_key="scan.png")
+    extracted_payloads: list[bytes] = []
+
+    class _Storage:
+        def __init__(self, settings: object) -> None:
+            self.storage = SimpleNamespace(delete_object=lambda **kwargs: None)
+
+        def extract(self, **kwargs: object) -> dict[str, object]:
+            extracted_payloads.append(kwargs["payload"])
+            return {
+                "text": "Invoice total: 42",
+                "extraction_method": "image_ocr",
+                "coverage_score": 0.95,
+                "ocr_used": True,
+            }
+
+        def store(self, **kwargs: object) -> object:
+            return stored
+
+    monkeypatch.setattr(uploads_module, "LibraryStorageService", _Storage)
+    upload = _upload(content_type="image/png")
+    upload.filename = "scan.png"
+    db = _Db()
+
+    record = finalize_upload(
+        db,
+        settings=SimpleNamespace(upload_max_bytes=100),
+        upload=upload,
+        payload=b"image",
+    )
+
+    assert extracted_payloads == [b"image"]
+    assert record.extracted_text == "Invoice total: 42"
+    assert record.metadata_json["extraction_status"]["ocr_used"] is True
+    assert _serialize_upload(upload).extraction_status.state == "extracted"
 
 
 def test_finalize_upload_rejects_size_mismatch() -> None:

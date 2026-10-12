@@ -21,9 +21,19 @@ Available environment settings:
 - `AKS_DATABASE_POOL_TIMEOUT_SECONDS`: maximum wait for a database connection.
   Defaults to 4 seconds, so pool exhaustion returns a traceable 503 rather
   than becoming the browser's 30-second timeout.
+- Recognized PostgreSQL transaction conflicts (`lock_timeout`, deadlocks, and
+  serialization failures) return the same retryable `SERVICE_OVERLOAD` 503
+  with `Retry-After`. Other database errors remain server errors and are not
+  treated as transient.
 - `AKS_DATABASE_STATEMENT_TIMEOUT_SECONDS` / `AKS_DATABASE_LOCK_TIMEOUT_SECONDS`:
   per-request PostgreSQL limits (15 and 3 seconds by default). They prevent a
   blocked statement or row lock from monopolising request workers.
+
+The browser retries `SERVICE_OVERLOAD` at most twice for `GET` and `HEAD`
+requests, following a short `Retry-After`. It never automatically replays a
+write. Keep read endpoints free of unconditional row locks and recovery writes;
+queue recovery checks first for the exact persisted failure state before
+locking a conversation.
 
 `QueryService.execute` is synchronous because it uses the synchronous database
 session and retrieval pipeline. The HTTP endpoint dispatches that work to the
@@ -31,11 +41,16 @@ framework worker pool so provider/database latency cannot block the async event
 loop. Provider model refresh is also guarded per process and fails fast with a
 cached-model fallback when another refresh is active.
 
-Ordinary provider selection and dashboard capability reads are side-effect free:
-they use configured and cached metadata and never refresh provider models or
-write the model cache. Only the explicit `POST /providers/{provider_id}/models/refresh`
-route contacts the provider and updates that cache. This prevents page loads
-from creating row-lock contention.
+The dashboard's full overview and the query workspace's
+`GET /api/v1/dashboard/query-stats` snapshot resolve provider metadata in
+read-only audit mode. The query snapshot includes only workspace totals,
+document status counts, and the chat/embedding runtime indicators; it skips
+recent documents, collections, activity, and trend aggregation. Both dashboard
+reads use cached provider metadata and do not refresh provider models or write
+selection audit events. Provider selection for actual model requests retains
+its audit events. Only the explicit
+`POST /providers/{provider_id}/models/refresh` route contacts a provider and
+updates its model cache.
 
 The notification bell uses the composite
 `collection_notifications(recipient_user_id, created_at DESC, id DESC)` index.

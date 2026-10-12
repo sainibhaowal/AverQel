@@ -77,17 +77,20 @@ export default function ConfirmationModal({
           >
             <div className="flex flex-col items-center text-center">
               <div
-                className={`mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5 ${getIconColor()}`}
+                className={`confirmation-modal-icon mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5 ${getIconColor()}`}
               >
                 <AlertTriangle size={32} />
               </div>
 
-              <h3 id="confirmation-modal-title" className="mb-2 text-xl font-bold text-white">
+              <h3
+                id="confirmation-modal-title"
+                className="confirmation-modal-title mb-2 text-xl font-bold"
+              >
                 {title}
               </h3>
               <p
                 id="confirmation-modal-message"
-                className="mb-8 text-sm leading-relaxed text-slate-400"
+                className="confirmation-modal-message mb-8 text-sm leading-relaxed"
               >
                 {message}
               </p>
@@ -96,14 +99,14 @@ export default function ConfirmationModal({
                 <button
                   onClick={onClose}
                   disabled={loading}
-                  className="flex-1 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-50"
+                  className="confirmation-modal-cancel flex-1 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold transition hover:bg-white/10 disabled:opacity-50"
                 >
                   {cancelLabel}
                 </button>
                 <button
                   onClick={() => void onConfirm()}
                   disabled={loading}
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition disabled:opacity-50 ${getVariantStyles()}`}
+                  className={`confirmation-modal-confirm flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition disabled:opacity-50 ${getVariantStyles()}`}
                 >
                   {loading && <Loader2 className="animate-spin" size={16} />}
                   {confirmLabel}
@@ -113,7 +116,7 @@ export default function ConfirmationModal({
 
             <button
               onClick={onClose}
-              className="absolute top-6 right-6 text-slate-500 transition hover:text-white"
+              className="confirmation-modal-close absolute top-6 right-6 transition"
             >
               <X size={20} />
             </button>

@@ -12,9 +12,11 @@ from app.providers.services.context_window import (
     extract_max_output_tokens,
     resolve_verified_context_window,
 )
+from app.providers.services.image_inputs import parse_image_input
 from app.providers.services.reasoning_capabilities import (
     model_supports_reasoning,
     reasoning_capabilities,
+    request_supports_reasoning,
 )
 from app.providers.services.types import (
     ChatGenerateRequest,
@@ -212,7 +214,7 @@ class GoogleProvider:
 
     @classmethod
     def _build_contents(
-        cls, messages: list[dict[str, Any]]
+        cls, messages: list[dict[str, Any]], images: list[str] | None = None
     ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
         system_parts: list[dict[str, str]] = []
         contents: list[dict[str, Any]] = []
@@ -286,12 +288,33 @@ class GoogleProvider:
                 contents.append(
                     {"role": "model" if role == "assistant" else "user", "parts": parts}
                 )
+        image_parts: list[dict[str, Any]] = []
+        for image in (images or [])[:10]:
+            try:
+                mime_type, encoded = parse_image_input(image)
+            except ValueError as exc:
+                raise ProviderCapabilityError(str(exc)) from exc
+            image_parts.append({"inlineData": {"mimeType": mime_type, "data": encoded}})
+        if image_parts:
+            target = next(
+                (
+                    content
+                    for content in reversed(contents)
+                    if content.get("role") == "user"
+                    and any("text" in part for part in content.get("parts", []))
+                ),
+                None,
+            )
+            if target is None:
+                contents.append({"role": "user", "parts": image_parts})
+            else:
+                target["parts"].extend(image_parts)
         system = {"parts": system_parts} if system_parts else None
         return system, contents
 
     @classmethod
     def _build_payload(cls, request: ChatGenerateRequest) -> dict[str, Any]:
-        system, contents = cls._build_contents(request.messages)
+        system, contents = cls._build_contents(request.messages, request.images)
         payload: dict[str, Any] = {
             "contents": contents or [{"role": "user", "parts": [{"text": ""}]}],
             "generationConfig": cls._build_generation_config(request),
@@ -352,13 +375,22 @@ class GoogleProvider:
         }
         if request.max_tokens is not None:
             generation_config["maxOutputTokens"] = request.max_tokens
+        capabilities = request.metadata.get("model_reasoning_capabilities")
+        capabilities = capabilities if isinstance(capabilities, dict) else {}
+        supports_reasoning = request_supports_reasoning(
+            request.metadata,
+            inferred_support=cls.model_supports_reasoning(request.model),
+        )
         if (
-            cls.model_supports_reasoning(request.model)
+            supports_reasoning
             and request.metadata.get("reasoning_mode") != "auto"
             and request.tool_choice != "required"
         ):
             if request.reasoning_enabled:
                 effort = request.reasoning_effort or "medium"
+                native_efforts = capabilities.get("reasoning_effort_values")
+                if isinstance(native_efforts, dict):
+                    effort = str(native_efforts.get(effort) or effort)
                 if "gemini-3" in request.model.lower():
                     generation_config["thinkingConfig"] = {
                         "includeThoughts": True,
@@ -370,7 +402,9 @@ class GoogleProvider:
                         "includeThoughts": True,
                         "thinkingBudget": budgets.get(effort, 8_192),
                     }
-            else:
+            elif capabilities.get(
+                "supports_thinking_toggle"
+            ) is True or cls.model_supports_reasoning(request.model):
                 generation_config["thinkingConfig"] = {
                     "includeThoughts": False,
                     "thinkingBudget": 0,

@@ -7,7 +7,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 from tenacity import (
@@ -82,6 +82,7 @@ class EmbeddingService:
         tenant_id: uuid.UUID | None = None,
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
+        input_type: Literal["query", "passage"] = "passage",
     ) -> list[list[float]]:
         self._last_run_metadata = None
         self._last_failure_context = None
@@ -93,10 +94,12 @@ class EmbeddingService:
                     tenant_id=tenant_id,
                     workspace_id=workspace_id,
                     actor_user_id=actor_user_id,
+                    input_type=input_type,
                 )
             except TypeError as exc:
                 if not any(
-                    token in str(exc) for token in ("tenant_id", "workspace_id", "actor_user_id")
+                    token in str(exc)
+                    for token in ("tenant_id", "workspace_id", "actor_user_id", "input_type")
                 ):
                     raise
                 # Preserve compatibility with older test doubles patched against
@@ -199,6 +202,7 @@ class EmbeddingService:
         tenant_id: uuid.UUID | None = None,
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
+        input_type: Literal["query", "passage"] = "passage",
     ) -> EmbeddingRunResult:
         try:
             vectors = self.embed_many(
@@ -206,12 +210,14 @@ class EmbeddingService:
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 actor_user_id=actor_user_id,
+                input_type=input_type,
             )
         except TypeError as exc:
             # Preserve compatibility with legacy/local embedding adapters and
             # test doubles that predate tenant-aware keyword arguments.
             if not any(
-                token in str(exc) for token in ("tenant_id", "workspace_id", "actor_user_id")
+                token in str(exc)
+                for token in ("tenant_id", "workspace_id", "actor_user_id", "input_type")
             ):
                 raise
             vectors = self.embed_many(texts)
@@ -229,6 +235,7 @@ class EmbeddingService:
         tenant_id: uuid.UUID | None = None,
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
+        input_type: Literal["query", "passage"] = "passage",
     ) -> list[list[float]]:
         retryer = Retrying(
             retry=retry_if_exception_type(RetryableEmbeddingError),
@@ -243,6 +250,7 @@ class EmbeddingService:
                     tenant_id=tenant_id,
                     workspace_id=workspace_id,
                     actor_user_id=actor_user_id,
+                    input_type=input_type,
                 )
         raise ApiError(
             code="EMBEDDING_PROVIDER_UNAVAILABLE",
@@ -277,6 +285,7 @@ class EmbeddingService:
         tenant_id: uuid.UUID | None = None,
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
+        input_type: Literal["query", "passage"] = "passage",
     ) -> list[list[float]]:
         start = time.monotonic()
         for text in texts:
@@ -317,6 +326,7 @@ class EmbeddingService:
                             dimension=self.settings.embedding_dimension,
                             timeout_seconds=self.settings.embedding_timeout_seconds,
                             provider_name=candidate.provider_type,
+                            input_type=input_type,
                             metadata={
                                 "base_url": candidate.base_url,
                                 "api_key": candidate.api_key,
@@ -375,6 +385,7 @@ class EmbeddingService:
                         dimension=self.settings.embedding_dimension,
                         timeout_seconds=self.settings.embedding_timeout_seconds,
                         provider_name=self.settings.embedding_provider,
+                        input_type=input_type,
                         metadata={},
                     )
                 )
@@ -432,6 +443,7 @@ class EmbeddingService:
                     dimension=self.settings.embedding_dimension,
                     timeout_seconds=self.settings.embedding_timeout_seconds,
                     provider_name=self.settings.embedding_provider,
+                    input_type=input_type,
                     metadata={
                         "base_url": self.settings.llm_api_base_url,
                         "api_key": self.settings.llm_api_key,

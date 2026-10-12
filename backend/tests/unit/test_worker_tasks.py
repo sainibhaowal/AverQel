@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.deepspace.workers import tasks as tasks_deepspace
 from app.ingestion.services.ingestion_service import RetryableIngestionError
 from app.ingestion.workers import tasks as tasks_ingestion
 from app.integrations.workers import tasks_connectors
@@ -613,6 +614,54 @@ def test_run_connector_sync_task_prefers_retry_after_at_from_checkpoint(
 
 def test_maintenance_heartbeat() -> None:
     assert tasks_maintenance.maintenance_heartbeat() == "ok"
+
+
+@pytest.mark.unit_no_db
+def test_duplicate_deepspace_worker_does_not_finalize_the_original_queue_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _RedisLock:
+        def set(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            return False
+
+        def get(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            return None
+
+        def close(self) -> None:
+            return None
+
+    session = _FakeSession()
+    finished_turns: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        tasks_deepspace,
+        "get_settings",
+        lambda: SimpleNamespace(redis_url="redis://isolated-test"),
+    )
+    monkeypatch.setattr(tasks_deepspace, "get_session_factory", lambda: lambda: session)
+    monkeypatch.setattr(
+        tasks_deepspace.redis.Redis,
+        "from_url",
+        lambda *_args, **_kwargs: _RedisLock(),
+    )
+    monkeypatch.setattr(
+        tasks_deepspace.DeepSpaceTurnQueueStore,
+        "finish",
+        lambda _self, **kwargs: finished_turns.append(kwargs),
+    )
+
+    result = tasks_deepspace.run_deepspace_task.run(
+        tenant_id=str(uuid.uuid4()),
+        user_id=str(uuid.uuid4()),
+        roles=["user"],
+        permissions=["queries:run"],
+        conversation_id=str(uuid.uuid4()),
+        prompt="A turn already owned by another worker",
+        client_request_id="same-request-key",
+        thinking_enabled=False,
+    )
+
+    assert result == "already-running"
+    assert finished_turns == []
 
 
 def test_retention_cleanup_success_and_error(monkeypatch: pytest.MonkeyPatch) -> None:

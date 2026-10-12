@@ -98,6 +98,7 @@ export type PreviewProviderModelsInput = {
   supports_reranking?: boolean;
   supports_web_search?: boolean;
   supports_model_listing?: boolean;
+  metadata_json?: Record<string, unknown>;
   api_key?: string | null;
 };
 
@@ -137,7 +138,6 @@ export type UpdateProviderInput = Partial<
   Omit<
     CreateProviderInput,
     | "provider_type"
-    | "auth_mode"
     | "is_local"
     | "supports_chat"
     | "supports_embeddings"

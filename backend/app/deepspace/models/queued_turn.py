@@ -38,6 +38,9 @@ class DeepSpaceQueuedTurn(Base):
         index=True,
     )
     client_request_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    regenerate_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=True
+    )
     resume_from_request_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, index=True
     )

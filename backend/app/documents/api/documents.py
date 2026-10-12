@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import csv
 import difflib
 import hashlib
 import io
@@ -32,6 +33,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.auth.dependencies import (
     AuthContext,
@@ -71,6 +73,7 @@ from app.documents.schemas.documents import (
     DocumentCommentCreate,
     DocumentCommentResponse,
     DocumentCommentUpdate,
+    DocumentCsvPageResponse,
     DocumentListResponse,
     DocumentMetadataResponse,
     DocumentObservabilityResponse,
@@ -106,6 +109,8 @@ from app.integrations.services.connector_secret_crypto import (
 )
 from app.platform.database.session import get_db, set_db_tenant_context
 from app.query.models.comment import Comment
+from app.query.services.dataset_indexing import QueryDatasetIndexService
+from app.realtime.event_bus import publish_event
 from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.services.audit_service import AuditService
 from app.system.services.rate_limit_service import RateLimitService
@@ -243,6 +248,64 @@ def _delete_document_object_or_queue(
                 object_key=document.storage_object_key,
             )
         )
+
+
+def _delete_grounded_query_derivatives(
+    *,
+    db: Session,
+    settings: Settings,
+    documents: list[Document],
+) -> None:
+    """Delete table-index metadata and queue derivative blobs for safe cleanup."""
+    if not documents:
+        return
+    tenant_id = documents[0].tenant_id
+    service = QueryDatasetIndexService(db=db, settings=settings)
+    objects = service.delete_indexes_for_documents(
+        tenant_id=tenant_id,
+        document_ids=[document.id for document in documents],
+    )
+    db.commit()
+    owners = {document.id: document.uploaded_by_user_id for document in documents}
+    storage = StorageService(settings)
+    for bucket, object_key in objects:
+        # Keys are generated under <tenant>/<document>/ by StorageService.
+        try:
+            document_id = (
+                uuid.UUID(object_key.split("/", 2)[1])
+                if object_key.startswith(f"{tenant_id}/")
+                else None
+            )
+        except (IndexError, ValueError):
+            document_id = None
+        owner_id = owners.get(document_id) if document_id is not None else None
+        if owner_id is None:
+            logger.error(
+                "Refusing to delete a Grounded Query derivative with an unexpected object key."
+            )
+            continue
+        try:
+            storage.delete_tenant_object(
+                tenant_id=tenant_id,
+                bucket=bucket,
+                object_key=object_key,
+                raise_on_error=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Grounded Query derivative cleanup deferred.",
+                extra={"tenant_id": str(tenant_id), "object_key": object_key},
+                exc_info=exc,
+            )
+            db.add(
+                StorageCleanupJob(
+                    tenant_id=tenant_id,
+                    owner_user_id=owner_id,
+                    bucket=bucket,
+                    object_key=object_key,
+                )
+            )
+    db.commit()
 
 
 def _document_metadata_response(doc: Document) -> DocumentMetadataResponse:
@@ -477,6 +540,94 @@ def get_document_full_text(
         actor_user_id=auth.user_id,
     )
     return {"content": full_text, "filename": doc.filename}
+
+
+@router.get(
+    "/{document_id}/csv-page",
+    response_model=DocumentCsvPageResponse,
+    dependencies=[Depends(require_permissions("documents:read"))],
+)
+def get_document_csv_page(
+    document_id: uuid.UUID,
+    response: Response,
+    offset: int = Query(default=0, ge=0, le=10_000_000),
+    limit: int = Query(default=200, ge=1, le=500),
+    request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DocumentCsvPageResponse:
+    """Return one bounded row page for an accessible stored CSV or TSV document."""
+    response.headers["Cache-Control"] = "private, no-store"
+    _enforce_tenant_scope(request_tenant_id, auth)
+
+    service = IngestionService(db=db, settings=settings)
+    document = service.documents.get_accessible_by_id(
+        tenant_id=auth.tenant_id,
+        document_id=document_id,
+        user_id=auth.user_id,
+    )
+    if document is None:
+        raise ApiError(code="DOCUMENT_NOT_FOUND", message="Document not found", status_code=404)
+    extension = Path(document.filename).suffix.lower()
+    content_type = (document.content_type or "").lower().split(";", 1)[0]
+    is_tsv = extension == ".tsv" or content_type == "text/tab-separated-values"
+    is_csv = extension == ".csv" or content_type in {"text/csv", "text/x-csv"}
+    if not (is_csv or is_tsv):
+        raise ApiError(
+            code="INVALID_DOCUMENT_FORMAT",
+            message="A row preview is available only for CSV or TSV documents.",
+            status_code=422,
+        )
+    if not document.storage_bucket or not document.storage_object_key:
+        raise ApiError(
+            code="STORAGE_MISSING",
+            message="This document does not have a stored source file.",
+            status_code=404,
+        )
+
+    payload = service.storage.get_bytes(
+        bucket=document.storage_bucket,
+        object_key=document.storage_object_key,
+    )
+    try:
+        with io.TextIOWrapper(
+            io.BytesIO(payload),
+            encoding="utf-8-sig",
+            errors="replace",
+            newline="",
+        ) as text_file:
+            reader = csv.reader(text_file, delimiter="\t" if is_tsv else ",")
+            columns = next(reader, [])
+            for _ in range(offset):
+                if next(reader, None) is None:
+                    return DocumentCsvPageResponse(
+                        columns=columns[:50], rows=[], offset=offset, limit=limit, has_more=False
+                    )
+
+            rows: list[list[str]] = []
+            for _ in range(limit):
+                row = next(reader, None)
+                if row is None:
+                    return DocumentCsvPageResponse(
+                        columns=columns[:50],
+                        rows=rows,
+                        offset=offset,
+                        limit=limit,
+                        has_more=False,
+                    )
+                rows.append(row[:50])
+            has_more = next(reader, None) is not None
+    except csv.Error as exc:
+        raise ApiError(
+            code="CSV_PREVIEW_FAILED",
+            message="The CSV or TSV file could not be read for preview.",
+            status_code=422,
+        ) from exc
+
+    return DocumentCsvPageResponse(
+        columns=columns[:50], rows=rows, offset=offset, limit=limit, has_more=has_more
+    )
 
 
 def get_storage_service(settings: Settings = Depends(get_settings)) -> StorageService:
@@ -1422,7 +1573,8 @@ async def upload_document(
             status_code=400,
         )
 
-    RateLimitService(settings).enforce_upload_user_limit(
+    await run_in_threadpool(
+        RateLimitService(settings).enforce_upload_user_limit,
         request=request,
         user_id=str(auth.user_id),
     )
@@ -1431,9 +1583,7 @@ async def upload_document(
     from app.deepspace.integrations.client_proxy import client_proxy_registry
 
     if client_proxy_registry.is_client_connected(str(auth.tenant_id), str(auth.user_id)):
-        import base64
-
-        payload_b64 = base64.b64encode(payload).decode("utf-8")
+        payload_b64 = await run_in_threadpool(lambda: base64.b64encode(payload).decode("utf-8"))
         result_data = await client_proxy_registry.db_proxy_call(
             str(auth.tenant_id),
             str(auth.user_id),
@@ -1445,7 +1595,7 @@ async def upload_document(
                 "payload_b64": payload_b64,
             },
         )
-        return DocumentUploadResponse(
+        response = DocumentUploadResponse(
             document_id=uuid.UUID(result_data["document_id"]),
             status=result_data.get("status", "completed"),
             ingestion_job_id=(
@@ -1454,31 +1604,55 @@ async def upload_document(
                 else None
             ),
         )
+    else:
 
-    service = IngestionService(db=db, settings=settings)
-    result = service.upload_document(
-        auth=auth,
-        idempotency_key=cleaned_key,
-        filename=file.filename or "",
-        content_type=file.content_type or "application/octet-stream",
-        payload=payload,
-    )
+        def persist_upload() -> DocumentUploadResponse:
+            service = IngestionService(db=db, settings=settings)
+            result = service.upload_document(
+                auth=auth,
+                idempotency_key=cleaned_key,
+                filename=file.filename or "",
+                content_type=file.content_type or "application/octet-stream",
+                payload=payload,
+            )
+            _safe_audit_commit(
+                db=db,
+                tenant_id=auth.tenant_id,
+                action="documents.upload",
+                resource_type="document",
+                resource_id=str(result.document_id),
+                actor_user_id=auth.user_id,
+                details={"filename": file.filename or ""},
+            )
+            return DocumentUploadResponse(
+                document_id=result.document_id,
+                status=result.status,
+                ingestion_job_id=result.ingestion_job_id,
+            )
 
-    _safe_audit_commit(
-        db=db,
-        tenant_id=auth.tenant_id,
-        action="documents.upload",
-        resource_type="document",
-        resource_id=str(result.document_id),
-        actor_user_id=auth.user_id,
-        details={"filename": file.filename or ""},
-    )
+        response = await run_in_threadpool(persist_upload)
 
-    return DocumentUploadResponse(
-        document_id=result.document_id,
-        status=result.status,
-        ingestion_job_id=result.ingestion_job_id,
-    )
+    try:
+        await publish_event(
+            settings,
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            event_type="document.uploaded",
+            resource="documents",
+            data={"document_id": str(response.document_id), "status": response.status},
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "Could not publish the document upload notification.",
+            extra={
+                "tenant_id": str(auth.tenant_id),
+                "user_id": str(auth.user_id),
+                "document_id": str(response.document_id),
+            },
+            exc_info=True,
+        )
+
+    return response
 
 
 @router.get(
@@ -1663,9 +1837,13 @@ def render_document_page(
             code="INVALID_PAGE_NUMBER", message="Page number must be positive.", status_code=422
         )
     service = IngestionService(db=db, settings=settings)
-    document = service.get_document(
-        tenant_id=auth.tenant_id, document_id=document_id, user_id=auth.user_id
+    document = service.documents.get_accessible_by_id(
+        tenant_id=auth.tenant_id,
+        document_id=document_id,
+        user_id=auth.user_id,
     )
+    if document is None:
+        raise ApiError(code="DOCUMENT_NOT_FOUND", message="Document not found", status_code=404)
     payload = service.storage.get_bytes(
         bucket=document.storage_bucket, object_key=document.storage_object_key
     )
@@ -3067,6 +3245,7 @@ def delete_document(
     service.documents.soft_delete_batch(tenant_id=auth.tenant_id, document_ids=[document_id])
     service.chunks.delete_by_document_ids(tenant_id=auth.tenant_id, document_ids=[document_id])
     db.commit()
+    _delete_grounded_query_derivatives(db=db, settings=settings, documents=[doc])
     _delete_document_object_or_queue(db=db, settings=settings, document=doc)
     db.commit()
 
@@ -3118,6 +3297,11 @@ def batch_delete_documents(
     service.documents.soft_delete_batch(tenant_id=auth.tenant_id, document_ids=to_delete)
     service.chunks.delete_by_document_ids(tenant_id=auth.tenant_id, document_ids=to_delete)
     db.commit()
+    _delete_grounded_query_derivatives(
+        db=db,
+        settings=settings,
+        documents=documents_to_delete,
+    )
     for document in documents_to_delete:
         _delete_document_object_or_queue(db=db, settings=settings, document=document)
     db.commit()

@@ -209,6 +209,8 @@ class AnswerCitation:
     source_type: str = "text"
     section_header: str | None = None
     page_number: int | None = None
+    source_row_numbers: list[int] = field(default_factory=list)
+    matched_row_count: int | None = None
 
 
 @dataclass(slots=True)
@@ -1665,6 +1667,8 @@ class AnswerService:
                     source_type=item.source_type,
                     section_header=item.section_header,
                     page_number=item.page_number,
+                    source_row_numbers=list(item.source_row_numbers or []),
+                    matched_row_count=item.matched_row_count,
                 )
             )
         return citations

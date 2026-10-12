@@ -16,10 +16,127 @@ Native provider events are forwarded as DeepSpace SSE events, including
 `thinking`, `delta`, `tool_delta`, `tool_start`, `tool_result`, `tool_error`,
 `observing`, `ask_user_question`, and `agent_status`.
 
+Completed reply metrics separate two first-output measurements. End-to-end
+TTFT runs from DeepSpace beginning to handle the request to the first visible
+answer text, so it includes routing, context preparation, provider wait, and
+reasoning or tool work before the answer. Provider first-output time runs from
+the first provider/connector request to the first output event received by the
+server. It includes network and connector overhead and, for Codex Desktop, the
+local desktop relay; it is not the model vendor's internal compute latency.
+
+Output tokens per second uses the provider's exact completion-token usage over
+the summed interval between the first and last output events received in each
+generation round. Provider completion-token counts may include hidden
+reasoning or tool-call tokens; the metric never exposes their content. Speed
+is explicitly unavailable if exact usage is missing for any output round, a
+provider only returns a single output event, the stream is buffered, or the
+measured interval is too short. It is not estimated from visible text. Chat
+Completions requests ask for `stream_options.include_usage` for providers with
+documented support (OpenAI, DeepSeek, NVIDIA NIM, Mistral, OpenRouter, LM
+Studio, and vLLM); older endpoints that explicitly reject this optional field
+are retried once without it. Other providers still contribute usage if they
+return it natively. A custom OpenAI-compatible endpoint can opt in through
+`metadata_json.openai_compatible.stream_usage: "enabled"` after confirming
+that endpoint supports the standard field. Responses API providers, including
+Codex, use their native completion usage event. Estimated local context tokens
+and provider-reported usage remain separate values. The measurements and any
+unavailable reason are stored in assistant message metadata so chat history
+can restore them without a schema migration.
+
+### OpenAI Codex Desktop provider
+
+The OpenAI provider can use an API key or the desktop-only `codex_desktop`
+authentication mode. In Electron, users can reuse a local Codex CLI ChatGPT
+login or sign in through OpenAI in the system browser. The CLI path uses the
+Codex app-server's native provider route under AverQel's restricted permission
+profile; it does not read the CLI credential file or copy its tokens. The
+browser path validates the OpenAI identity token and encrypts account tokens
+with Electron `safeStorage` in the user's desktop profile. The backend receives
+only the opaque account ID and selected account model catalog; OAuth tokens
+remain on the desktop.
+
+DeepSpace dispatches this mode to `OpenAICodexProvider`, which sends a bounded
+inference request to the Electron runtime over the authenticated
+`/deepspace/codex-runtime/ws` relay. The browser OAuth path uses the Responses
+API; the local CLI path uses Codex app-server with the selected model and
+reasoning effort. A short-lived one-use ticket authenticates
+the WebSocket; the account owner and `queries:run` permission are checked
+before the runtime is registered. Redis carries transient request/response
+frames between API workers and that user's desktop connection. The desktop
+streams the OpenAI response back to DeepSpace, and cancellation is relayed to
+the local request. If the desktop disconnects, the turn fails with a runtime
+unavailable error; this mode does not perform an automatic API-key fallback.
+Queued relay requests are discarded when runtime ownership ends, so an old
+prompt cannot start later after the desktop reconnects.
+
+The Responses request sets `store: false` and streams output. Both paths support
+the DeepSpace text, attached-image, and function-tool inputs; the integration
+does not expose embeddings or arbitrary OpenAI hosted tools. For local CLI
+accounts, DeepSpace reads each model's advertised effort list and preserves the
+model's native value when sending the request. This includes Codex `minimal` and
+`ultra`, the existing Low, Medium, High, Very High, and Extreme High choices,
+and other safe values advertised by a model. Only values listed for the selected
+model are selectable. The browser account's `/models` catalog may omit
+per-model effort metadata; DeepSpace uses that metadata when present and
+otherwise retains the existing OpenAI reasoning profile. It does not claim
+that the browser account's profile is an exact account-specific capability list.
+OpenAI model availability, plan eligibility, and supported reasoning levels
+remain account- and model-dependent. The Electron bridge keeps OAuth tokens off
+the server, but DeepSpace prompts and
+conversation history still pass through and are stored by the existing AverQel
+backend retention path. ChatGPT plan usage-limit errors are surfaced with
+OpenAI's error code and request ID where available. Those quota failures are
+not retried automatically and do not trip the provider circuit breaker; the
+user can retry after OpenAI allows another request.
+
+For other providers, the DeepSpace Think menu uses verified model profiles or
+effort levels advertised by the provider's model catalog. The selected model's
+cached descriptor is rendered first; if its capability metadata is missing or
+stale, the browser refreshes that provider's catalog asynchronously and merges
+the refreshed descriptor into the model list. LM Studio's `/api/v1/models`
+reasoning options are used when the server returns them, and the selected
+option is sent using its native value. Ollama discovery reads each installed
+model's `/api/show` thinking descriptor. Named values are shown as model
+options; boolean-only descriptors show On/Off, and `[false]` shows no thinking
+control. Ollama discovery uses bounded parallel requests; a missing or
+unsupported `/api/show` response leaves that model on its provider default.
+
+NVIDIA NIM Nemotron 3 Ultra supports Off, Medium, and High; Nemotron 3 Super
+supports Off, Low, and High. These choices are translated to the model's
+documented `reasoning_effort` request values. Nemotron 3 Nano exposes an On/Off
+thinking toggle without effort levels. Existing cache rows and the active chat
+assignment are overlaid with verified profiles in provider model responses, so
+a known assigned model works before its first catalog cache entry and no
+migration or manual cache reset is needed. If a model has no reliable reasoning
+capability metadata, DeepSpace leaves its provider default in place and does not
+invent effort choices.
+
 Model narration emitted before a tool call or `ask_user` pause is persisted as
 an ordered activity step. A paused, resumed, cancelled, or reloaded turn keeps
 that narration beside the tool and question events instead of rebuilding the
 turn from only its final answer.
+
+### Provider continuation and task resume
+
+Some providers, including DeepSeek when thinking is enabled with tools, require
+the exact `reasoning_content` returned with an assistant tool call to be sent
+back with the matching tool result. DeepSpace captures that protocol field
+separately from the redacted thinking shown in activity. It encrypts the
+continuation with the configured provider-secret crypto backend and binds it
+to the tenant, user, conversation, assistant message, and model turn. History
+and activity API responses remove the private continuation field. If encryption
+is unavailable, DeepSpace stops before executing the tool and reports a
+continuation persistence error rather than saving the value as plaintext.
+
+Tool, clarification, approval, and failed-run resumes rebuild the matching
+assistant tool call and restore its continuation for the selected DeepSeek
+provider. A failed-turn retry is anchored to the original saved user prompt;
+clarification and approval resumes include that prompt even if it is older than
+the normal 20-message history window. Context compaction protects the original
+task and the current clarification answer. Checkpoints created before exact
+continuations were saved may not contain enough data to reconstruct a provider
+request; in that case the provider's rejection is shown as a request error and
+the saved prompt can be used to start a fresh attempt.
 
 ## Productivity tools
 
@@ -37,6 +154,49 @@ database. URL and image tools use server-side HTTP with timeouts, redirect
 limits, DNS/IP private-network blocking, domain allowlists, response-size
 limits, and provider/user rate limiting. The model never receives shell,
 terminal, arbitrary cURL, filesystem, or file-explorer access.
+
+### Current-turn Library attachments
+
+Before a chat request uses an attachment, DeepSpace verifies that the file
+belongs to the authenticated tenant, user, and conversation. The model receives
+the authorized file names and IDs plus a small set of file-reading tools, even
+when the prompt is brief (for example, “Summarize this”). It chooses whether to
+read extracted text, search a longer document, compare attached files, or use
+the sandbox for calculations and tabular work. Attachment context alone does
+not grant Library write or delete tools; those still require the matching user
+request and existing tool policy.
+
+Attached images are sent as visual inputs only when the selected model advertises
+or is known to support image input. DeepSpace verifies the image signature and
+limits direct visual input to 10 images and 12 MiB total. If image bytes are
+unavailable, exceed the limit, or the model has no image capability, DeepSpace
+uses text extracted during upload where available and tells the model when OCR
+found no readable text. If a provider rejects an attached image with a specific
+image-modality error before it returns output, DeepSpace retries that request
+once without image bytes and with the saved OCR text. It does not use this
+fallback for authentication, rate-limit, network, or unrelated request errors.
+OCR text is treated as untrusted file content. A file’s name alone is never
+treated as its contents.
+
+The Library stores an extraction status with the file and completed upload:
+whether text was extracted, no readable text was found, extraction was
+unavailable, and whether OCR or layout vision ran. The composer shows only this
+summary; the completed-upload status response does not include extracted text.
+
+For documents, `document_read` returns saved extraction/OCR text directly and
+is preferred for a concise whole-file read. `document_query` performs bounded
+hybrid RAG for targeted evidence searches or large documents. It reports
+whether embeddings and reranking actually ran; a direct read is not described
+as RAG. Supported raster images embedded in Office files are OCR'd directly
+within bounded image-count and byte limits, so scanned inserts can supplement
+substantial native text. The existing LibreOffice-to-PDF OCR fallback remains
+available for sparse Office files and embedded formats the direct image path
+cannot read.
+
+`document_query` uses the configured hybrid retrieval path and reports whether
+embeddings and reranking actually ran; they are not implied by a direct read or
+comparison. The tool result’s retrieval metadata remains the source of truth
+when describing those steps.
 
 ## MCP-connected productivity tools
 
@@ -146,17 +306,52 @@ browser tab remaining open. Each record stores the submitting tenant, user,
 conversation, request id, and an authorization snapshot. Queue reads, removal,
 and dispatch are all scoped to that same tenant/user/conversation boundary.
 
+A failed turn is terminal but does not pause the conversation queue. Its error
+and prompt stay visible while the dispatcher advances to the next queued item,
+ordered by priority and then FIFO sequence. Users can retry a failed prompt as
+a separate attempt. The retry continues from retained runtime checkpoints when
+available; if that runtime data has expired, it restarts from the saved prompt
+and the original Library attachment references, and clearly warns that
+completed external actions could run again. The retry is a new linked queue
+record; the failed attempt remains in history. **Resume queue** only clears a
+user pause and starts the next queued item; it never silently retries a failed
+prompt. Legacy automatic failure pauses are cleared by queue recovery, while an
+explicit user pause is always preserved.
+
 The queue API is:
 
 - `GET /api/v1/deepspace/chats/{conversation_id}/queue`
 - `POST /api/v1/deepspace/chats/{conversation_id}/queue`
+- `PATCH /api/v1/deepspace/chats/{conversation_id}/queue/{client_request_id}`
 - `POST /api/v1/deepspace/chats/queued/{client_request_id}/cancel`
+
+The PATCH route edits only a turn that is still `queued`. It uses the same
+tenant, user, conversation, and `queries:run` boundaries as queue submission;
+`expected_prompt` prevents a stale editor from overwriting a newer change. The
+turn keeps its request id, sequence, priority, authorization snapshot, runtime
+settings, and Library attachment references, so its FIFO or steered position
+does not change. A turn claimed by a worker, a terminal failed attempt, or a
+prompt changed in another editor returns `409`; the client keeps the user's
+edited text in the composer for recovery. Existing queue attachments are
+preserved and are not editable from this prompt editor.
 
 The initial normal stream is also first persisted as a queue turn. A browser
 refresh reconnects to the durable event stream, while the queue continues in
 the worker. Approval and clarification resumes deliberately reuse the original
 request id, preserving their queue slot rather than leaving a paused turn that
 could block later messages.
+
+Regeneration uses the same durable queue and event stream. The queue record
+retains the target assistant message id, the source prompt, and its Library
+attachment references. The worker creates a new answer version only when the
+regeneration starts, so the existing answer remains visible while it waits.
+Users can queue a regeneration while another reply is running; it starts in
+conversation order without detaching the current browser stream. Regenerating
+an older reply anchors the model context at that reply's source prompt, so
+later turns are not included. Repeated delivery of one queue request id
+replays its saved events and does not create another generation. Queued
+regenerations can be canceled or retried, but their source prompt cannot be
+edited.
 
 ### Clarification ownership and fresh requests
 
@@ -195,6 +390,7 @@ Database migrations include:
 - `alembic/versions/20260926_0001_storage_reservations_archive_reconciliation.py`
 - `alembic/versions/20260927_0001_retention_checkpoints.py`
 - `alembic/versions/20260928_0001_retention_protections_and_run_links.py`
+- `alembic/versions/20261012_0016_deepspace_queued_regenerations.py`
 
 The queue, metrics, cascade, context, storage, retention, and protection
 changes described here were present in the locally verified snapshot recorded

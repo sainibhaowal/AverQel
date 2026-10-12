@@ -30,7 +30,14 @@ interface MessageThreadProps {
   onSaveEdit: (messageId: string, value: string) => void;
   onActivateVersion: (messageId: string, versionId: string) => void;
   onDeleteAssistant: (messageId: string) => void;
-  onPreviewDocument: (payload: { id: string; name: string; page?: number }) => void;
+  onPreviewDocument: (payload: {
+    id: string;
+    name: string;
+    page?: number;
+    sourceType?: string;
+    rowNumbers?: number[];
+    matchedRowCount?: number;
+  }) => void;
   onFollowupSelect: (query: string) => void;
   realTimeStats?: {
     totalDocuments: number;

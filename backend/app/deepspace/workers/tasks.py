@@ -15,6 +15,7 @@ from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
 from app.deepspace.models.agent_runtime import DeepSpaceRunEvent
 from app.deepspace.models.artifact_job import DeepSpaceArtifactJob
+from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
 from app.deepspace.models.schedule_run import DeepSpaceScheduleRun
 from app.deepspace.services.chat_service import DeepSpaceChatService, sse
 from app.deepspace.services.run_events import append_event, cancellation_key
@@ -87,6 +88,11 @@ def dispatch_deepspace_turn_queue(*, tenant_id: str, user_id: str, conversation_
                     "conversation_id": str(claimed.conversation_id),
                     "prompt": claimed.prompt,
                     "client_request_id": claimed.client_request_id,
+                    "regenerate_message_id": (
+                        str(claimed.regenerate_message_id)
+                        if claimed.regenerate_message_id
+                        else None
+                    ),
                     "resume_from_request_id": claimed.resume_from_request_id,
                     "thinking_enabled": claimed.thinking_enabled,
                     "reasoning_effort": claimed.reasoning_effort,
@@ -150,6 +156,7 @@ def run_deepspace_task(
     client_request_id: str,
     thinking_enabled: bool,
     reasoning_effort: str | None = None,
+    regenerate_message_id: str | None = None,
     resume_approval_id: str | None = None,
     resume_user_question_id: str | None = None,
     resume_from_request_id: str | None = None,
@@ -160,6 +167,9 @@ def run_deepspace_task(
     parsed_tenant_id = uuid.UUID(tenant_id)
     parsed_user_id = uuid.UUID(user_id)
     parsed_conversation_id = uuid.UUID(conversation_id) if conversation_id else None
+    parsed_regenerate_message_id = (
+        uuid.UUID(regenerate_message_id) if regenerate_message_id else None
+    )
     request_id = str(client_request_id).strip()
     session = get_session_factory()()
     lock = redis.Redis.from_url(settings.redis_url, decode_responses=True)
@@ -168,6 +178,7 @@ def run_deepspace_task(
     # owner token so this worker can release only its own lock on completion.
     lock_token = str(getattr(self.request, "id", "") or uuid.uuid4())
     lock_acquired = False
+    finalize_queue = False
     resolved_conversation_id = parsed_conversation_id
     terminal_status = "completed"
     terminal_error: str | None = None
@@ -199,6 +210,23 @@ def run_deepspace_task(
             return "already-running"
         session.execute(text("SET ROLE aks_app"))
         set_db_tenant_context(session, parsed_tenant_id)
+        queued_turn = None
+        if parsed_conversation_id is not None:
+            queued_turn = session.execute(
+                select(DeepSpaceQueuedTurn).where(
+                    DeepSpaceQueuedTurn.tenant_id == parsed_tenant_id,
+                    DeepSpaceQueuedTurn.user_id == parsed_user_id,
+                    DeepSpaceQueuedTurn.conversation_id == parsed_conversation_id,
+                    DeepSpaceQueuedTurn.client_request_id == request_id,
+                )
+            ).scalar_one_or_none()
+        if queued_turn is not None and queued_turn.status not in {"running", "cancelling"}:
+            # Celery can redeliver after a run has already reached a terminal
+            # state. The durable event log is the replay source; never execute
+            # the provider again or overwrite that queue result.
+            terminal_status = queued_turn.status
+            return f"already-{queued_turn.status}"
+        finalize_queue = True
         update_schedule_run("running")
         if lock.get(cancellation_key(parsed_tenant_id, parsed_user_id, request_id)):
             terminal_status = "cancelled"
@@ -256,6 +284,7 @@ def run_deepspace_task(
                 conversation_id=parsed_conversation_id,
                 prompt=prompt,
                 client_request_id=request_id,
+                existing_assistant_message_id=parsed_regenerate_message_id,
                 thinking_enabled=thinking_enabled,
                 reasoning_effort=reasoning_effort,
                 request=None,
@@ -378,7 +407,7 @@ def run_deepspace_task(
             logger.exception("Failed to persist detached DeepSpace failure")
         raise
     finally:
-        if resolved_conversation_id is not None:
+        if lock_acquired and finalize_queue and resolved_conversation_id is not None:
             try:
                 queue_store = DeepSpaceTurnQueueStore(session)
                 queue_store.finish(
@@ -390,7 +419,7 @@ def run_deepspace_task(
                     error=terminal_error,
                 )
                 if (
-                    terminal_status not in {"failed", "blocked"}
+                    terminal_status not in {"awaiting_user", "awaiting_approval"}
                     and not queue_store.state(
                         tenant_id=parsed_tenant_id,
                         user_id=parsed_user_id,

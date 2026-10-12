@@ -10,7 +10,11 @@ from urllib.parse import urlparse
 from app.providers.services.base import ProviderCapabilityError, ProviderRequestError
 from app.providers.services.context_window import extract_context_window
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
-from app.providers.services.reasoning_capabilities import reasoning_capabilities
+from app.providers.services.reasoning_capabilities import (
+    merge_reasoning_capabilities,
+    normalize_reasoning_effort_value,
+    reasoning_capabilities,
+)
 from app.providers.services.types import (
     ChatGenerateRequest,
     ChatGenerateResponse,
@@ -223,7 +227,17 @@ class LMStudioProvider(OpenAICompatibleProvider):
             "selection_only": True,
         }
         if supports_chat:
-            metadata.update(reasoning_capabilities("lmstudio", name, base_url=self.base_url))
+            advertised_reasoning = self._advertised_reasoning_capabilities(item)
+            metadata.update(
+                merge_reasoning_capabilities(
+                    "lmstudio",
+                    name,
+                    base_url=self.base_url,
+                    advertised=advertised_reasoning,
+                )
+                if advertised_reasoning is not None
+                else reasoning_capabilities("lmstudio", name, base_url=self.base_url)
+            )
         quantization = item.get("quantization")
         quantization_name: str | None = None
         quantization_bits: int | float | None = None
@@ -250,6 +264,41 @@ class LMStudioProvider(OpenAICompatibleProvider):
             display_name=self._extract_display_name(item, name),
             capabilities=metadata,
         )
+
+    @staticmethod
+    def _advertised_reasoning_capabilities(item: dict[str, Any]) -> dict[str, Any] | None:
+        capabilities = item.get("capabilities")
+        reasoning = capabilities.get("reasoning") if isinstance(capabilities, dict) else None
+        options = reasoning.get("allowed_options") if isinstance(reasoning, dict) else None
+        if not isinstance(options, list):
+            return None
+
+        efforts: list[str] = []
+        native_values: dict[str, str] = {}
+        off_value: str | None = None
+        for option in options:
+            if not isinstance(option, str):
+                continue
+            normalized = normalize_reasoning_effort_value(option)
+            if normalized is None:
+                continue
+            if normalized in {"off", "none"}:
+                off_value = option.strip()
+                continue
+            if normalized not in efforts:
+                efforts.append(normalized)
+                native_values[normalized] = option.strip()
+        if off_value:
+            native_values["off"] = off_value
+        return {
+            "reasoning_capabilities_known": True,
+            "supports_reasoning": bool(efforts),
+            "supports_thinking_toggle": bool(off_value),
+            "supported_reasoning_efforts": efforts,
+            "request_controls_on": ["reasoning_effort"] if efforts else [],
+            "request_controls_off": ["reasoning_effort_none"] if off_value else [],
+            "reasoning_effort_values": native_values,
+        }
 
     @staticmethod
     def _chunk_fallback_content(text: str) -> Sequence[str]:
@@ -294,12 +343,33 @@ class LMStudioProvider(OpenAICompatibleProvider):
 
     async def stream_generate_events(self, request: ChatGenerateRequest):
         normalized_request = self._normalized_request(request)
+        emitted_output = False
+        pending_usage: dict[str, Any] | None = None
         try:
             async for event in super().stream_generate_events(normalized_request):
+                if isinstance(event, dict) and event.get("type") == "usage":
+                    raw_usage = event.get("usage")
+                    if isinstance(raw_usage, dict):
+                        pending_usage = raw_usage
+                    continue
+                if isinstance(event, dict) and (
+                    event.get("type") in {"delta", "thinking", "tool_calls_delta"}
+                    and (event.get("text") or event.get("tool_calls"))
+                ):
+                    emitted_output = True
                 yield event
+            if pending_usage is not None:
+                yield {"type": "usage", "usage": pending_usage}
             return
         except Exception:
+            if emitted_output:
+                # A one-shot retry after visible output would duplicate the
+                # answer and make both latency and throughput misleading.
+                raise
             response = self.generate(normalized_request)
+            yield {"type": "stream_timing", "mode": "buffered"}
+            if response.usage:
+                yield {"type": "usage", "usage": response.usage}
             if response.thinking_content:
                 for chunk in self._chunk_fallback_content(response.thinking_content):
                     yield {"type": "thinking", "text": chunk}

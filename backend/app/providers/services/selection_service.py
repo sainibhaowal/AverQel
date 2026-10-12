@@ -29,6 +29,13 @@ from app.system.services.audit_service import AuditService
 
 DEFAULT_PROVIDER_BASE_URLS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
+    "mistral": "https://api.mistral.ai/v1",
+    "meta": "https://api.meta.ai/v1",
+    "cline": "https://api.cline.bot/api/v1",
+    "moonshot": "https://api.moonshot.ai/v1",
+    "zai": "https://api.z.ai/api/paas/v4",
+    "nvidia-nim": "https://integrate.api.nvidia.com/v1",
+    "manus": "https://api.manus.ai",
     "deepseek": "https://api.deepseek.com",
     "anthropic": "https://api.anthropic.com/v1",
     "cohere": "https://api.cohere.com/v2",
@@ -67,6 +74,7 @@ class ProviderSelectionService:
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
         allow_live_model_discovery: bool = False,
+        record_audit: bool = True,
     ) -> ProviderSelectionResult:
         return self._resolve(
             tenant_id=tenant_id,
@@ -75,6 +83,7 @@ class ProviderSelectionService:
             feature_scope="chat",
             fallback_scope="fallback_chat",
             allow_live_model_discovery=allow_live_model_discovery,
+            record_audit=record_audit,
         )
 
     def resolve_embeddings(
@@ -83,6 +92,7 @@ class ProviderSelectionService:
         tenant_id: uuid.UUID,
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
+        record_audit: bool = True,
     ) -> ProviderSelectionResult:
         return self._resolve(
             tenant_id=tenant_id,
@@ -90,6 +100,7 @@ class ProviderSelectionService:
             actor_user_id=actor_user_id,
             feature_scope="embeddings",
             fallback_scope="fallback_embeddings",
+            record_audit=record_audit,
         )
 
     def resolve_reranking(
@@ -98,6 +109,7 @@ class ProviderSelectionService:
         tenant_id: uuid.UUID,
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
+        record_audit: bool = True,
     ) -> ProviderSelectionResult:
         return self._resolve(
             tenant_id=tenant_id,
@@ -105,6 +117,7 @@ class ProviderSelectionService:
             actor_user_id=actor_user_id,
             feature_scope="reranking",
             fallback_scope="fallback_reranking",
+            record_audit=record_audit,
         )
 
     def resolve_web_search(
@@ -112,6 +125,7 @@ class ProviderSelectionService:
         tenant_id: uuid.UUID,
         workspace_id: uuid.UUID | None = None,
         actor_user_id: uuid.UUID | None = None,
+        record_audit: bool = True,
     ) -> ProviderSelectionResult:
         return self._resolve(
             tenant_id=tenant_id,
@@ -119,6 +133,7 @@ class ProviderSelectionService:
             actor_user_id=actor_user_id,
             feature_scope="web_search",
             fallback_scope="fallback_web_search",
+            record_audit=record_audit,
         )
 
     def _resolve(
@@ -130,6 +145,7 @@ class ProviderSelectionService:
         feature_scope: str,
         fallback_scope: str,
         allow_live_model_discovery: bool = False,
+        record_audit: bool = True,
     ) -> ProviderSelectionResult:
         notes: list[str] = []
         ordered_assignments: list[
@@ -204,6 +220,7 @@ class ProviderSelectionService:
                 assignment=assignment,
                 notes=notes,
                 allow_live_model_discovery=allow_live_model_discovery,
+                record_audit=record_audit,
             )
             if candidate is None:
                 continue
@@ -256,20 +273,23 @@ class ProviderSelectionService:
                 candidates=candidates,
             )
 
-        self.audit.write_event(
-            tenant_id=tenant_id,
-            actor_user_id=actor_user_id,
-            action="provider.selection.resolve",
-            resource_type="provider_selection",
-            resource_id=str(candidates[0].provider_config_id if candidates else "none"),
-            details={
-                "feature_scope": feature_scope,
-                "workspace_id": str(workspace_id) if workspace_id else "",
-                "selected_source": candidates[0].source if candidates else "none",
-                "selected_provider_type": (candidates[0].provider_type if candidates else "none"),
-                "selected_model_name": candidates[0].model_name if candidates else "",
-            },
-        )
+        if record_audit:
+            self.audit.write_event(
+                tenant_id=tenant_id,
+                actor_user_id=actor_user_id,
+                action="provider.selection.resolve",
+                resource_type="provider_selection",
+                resource_id=str(candidates[0].provider_config_id if candidates else "none"),
+                details={
+                    "feature_scope": feature_scope,
+                    "workspace_id": str(workspace_id) if workspace_id else "",
+                    "selected_source": candidates[0].source if candidates else "none",
+                    "selected_provider_type": (
+                        candidates[0].provider_type if candidates else "none"
+                    ),
+                    "selected_model_name": candidates[0].model_name if candidates else "",
+                },
+            )
         return ProviderSelectionResult(
             feature_scope=feature_scope,
             candidates=candidates,
@@ -363,6 +383,7 @@ class ProviderSelectionService:
                     priority=provider.priority,
                     health_status=(latest_health.status if latest_health is not None else None),
                     metadata={
+                        **dict(provider.metadata_json or {}),
                         "display_name": provider.display_name,
                         "auto_selected": True,
                         "is_local": bool(provider.is_local),
@@ -706,6 +727,7 @@ class ProviderSelectionService:
             priority=provider.priority,
             health_status=latest_health.status if latest_health is not None else None,
             metadata={
+                **dict(provider.metadata_json or {}),
                 "display_name": provider.display_name,
                 "auto_selected": True,
                 "is_local": bool(provider.is_local),
@@ -743,6 +765,7 @@ class ProviderSelectionService:
         assignment: ProviderAssignment,
         notes: list[str],
         allow_live_model_discovery: bool = False,
+        record_audit: bool = True,
     ) -> ProviderSelectionCandidate | None:
         config = (
             self.configs.get_accessible_by_id(
@@ -784,18 +807,19 @@ class ProviderSelectionService:
         )
         if latest_health is not None and latest_health.status == "unhealthy":
             notes.append(f"{source}:health-reject:{config.id}")
-            self.audit.write_event(
-                tenant_id=tenant_id,
-                actor_user_id=None,
-                action="provider.selection.health_reject",
-                resource_type="provider_config",
-                resource_id=str(config.id),
-                details={
-                    "feature_scope": feature_scope,
-                    "status": latest_health.status,
-                    "workspace_id": str(workspace_id) if workspace_id else "",
-                },
-            )
+            if record_audit:
+                self.audit.write_event(
+                    tenant_id=tenant_id,
+                    actor_user_id=None,
+                    action="provider.selection.health_reject",
+                    resource_type="provider_config",
+                    resource_id=str(config.id),
+                    details={
+                        "feature_scope": feature_scope,
+                        "status": latest_health.status,
+                        "workspace_id": str(workspace_id) if workspace_id else "",
+                    },
+                )
             return None
 
         model_name = assignment.model_name or (

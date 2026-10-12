@@ -11,9 +11,11 @@ from app.providers.services.context_window import (
     extract_max_output_tokens,
     resolve_verified_context_window,
 )
+from app.providers.services.image_inputs import parse_image_input
 from app.providers.services.reasoning_capabilities import (
     model_supports_reasoning,
     reasoning_capabilities,
+    request_supports_reasoning,
 )
 from app.providers.services.types import (
     ChatGenerateRequest,
@@ -45,7 +47,7 @@ class AnthropicProvider:
 
     @staticmethod
     def _system_and_messages(
-        messages: list[dict[str, Any]],
+        messages: list[dict[str, Any]], images: list[str] | None = None
     ) -> tuple[str | None, list[dict[str, Any]]]:
         system_parts: list[str] = []
         normalized: list[dict[str, Any]] = []
@@ -113,6 +115,42 @@ class AnthropicProvider:
                     "content": (content if isinstance(content, str | list) else str(content)),
                 }
             )
+        image_blocks: list[dict[str, Any]] = []
+        for image in (images or [])[:10]:
+            try:
+                mime_type, encoded = parse_image_input(image)
+            except ValueError as exc:
+                raise ProviderCapabilityError(str(exc)) from exc
+            image_blocks.append(
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": mime_type, "data": encoded},
+                }
+            )
+        if image_blocks:
+            target = next(
+                (
+                    message
+                    for message in reversed(normalized)
+                    if message.get("role") == "user"
+                    and (
+                        isinstance(message.get("content"), str)
+                        or any(
+                            isinstance(block, dict) and block.get("type") == "text"
+                            for block in message.get("content", [])
+                        )
+                    )
+                ),
+                None,
+            )
+            if target is None:
+                normalized.append({"role": "user", "content": image_blocks})
+            else:
+                content = target.get("content")
+                if isinstance(content, str):
+                    content = [{"type": "text", "text": content}]
+                    target["content"] = content
+                content.extend(image_blocks)
         return ("\n\n".join(system_parts) or None), normalized
 
     @staticmethod
@@ -156,7 +194,13 @@ class AnthropicProvider:
 
     @staticmethod
     def _build_thinking_payload(max_tokens: int, effort: str | None = None) -> dict[str, Any]:
-        ratios = {"low": 0.20, "medium": 0.50, "high": 0.80}
+        ratios = {
+            "low": 0.20,
+            "medium": 0.50,
+            "high": 0.80,
+            "very_high": 0.90,
+            "extreme_high": 0.98,
+        }
         budget_tokens = max(
             1024, min(int(max_tokens * ratios.get(effort or "medium", 0.50)), 16_384)
         )
@@ -227,7 +271,7 @@ class AnthropicProvider:
 
     def generate(self, request: ChatGenerateRequest) -> ChatGenerateResponse:
         httpx_module = self._httpx()
-        system, messages = self._system_and_messages(request.messages)
+        system, messages = self._system_and_messages(request.messages, request.images)
         headers = {
             "Content-Type": "application/json",
             "x-api-key": request.api_key or "",
@@ -267,7 +311,10 @@ class AnthropicProvider:
         if (
             request.reasoning_enabled
             and request.tool_choice != "required"
-            and self.model_supports_reasoning(request.model)
+            and request_supports_reasoning(
+                request.metadata,
+                inferred_support=self.model_supports_reasoning(request.model),
+            )
         ):
             payload["thinking"] = self._build_thinking_payload(
                 anthropic_max_tokens, request.reasoning_effort
@@ -306,7 +353,7 @@ class AnthropicProvider:
         self, request: ChatGenerateRequest
     ) -> AsyncIterator[dict[str, Any]]:
         httpx_module = self._httpx()
-        system, messages = self._system_and_messages(request.messages)
+        system, messages = self._system_and_messages(request.messages, request.images)
         headers = {
             "Content-Type": "application/json",
             "x-api-key": request.api_key or "",
@@ -345,9 +392,15 @@ class AnthropicProvider:
         if (
             request.reasoning_enabled
             and request.tool_choice != "required"
-            and self.model_supports_reasoning(request.model)
+            and request_supports_reasoning(
+                request.metadata,
+                inferred_support=self.model_supports_reasoning(request.model),
+            )
         ):
-            payload["thinking"] = self._build_thinking_payload(anthropic_max_tokens)
+            payload["thinking"] = self._build_thinking_payload(
+                anthropic_max_tokens,
+                request.reasoning_effort,
+            )
         async with httpx_module.AsyncClient(
             timeout=float(request.metadata.get("timeout_seconds", 8.0))
         ) as client:

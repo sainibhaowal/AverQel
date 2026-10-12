@@ -14,6 +14,65 @@ export type LibraryFileKind =
   | "archive"
   | "text";
 
+function extensionFor(name: string) {
+  return name.split(".").pop()?.toLowerCase() ?? "";
+}
+
+const LIBREOFFICE_PAGE_EXTENSIONS = new Set([
+  "doc",
+  "docx",
+  "docm",
+  "dot",
+  "dotx",
+  "dotm",
+  "odt",
+  "ott",
+  "odm",
+  "oth",
+  "rtf",
+  "ppt",
+  "pptx",
+  "pptm",
+  "pot",
+  "potx",
+  "potm",
+  "pps",
+  "ppsx",
+  "ppsm",
+  "odp",
+  "otp",
+  "xls",
+  "xlsx",
+  "xlsm",
+  "xlt",
+  "xltx",
+  "xltm",
+  "xlm",
+  "xla",
+  "xlw",
+  "xlsb",
+  "ods",
+  "ots",
+  "odg",
+  "otg",
+  "odc",
+  "otc",
+  "odf",
+  "otf",
+  "odi",
+  "oti",
+]);
+
+export function libraryFileSupportsServerPagePreview(name: string, contentType: string) {
+  const extension = extensionFor(name);
+  const normalized = contentType.toLowerCase().split(";", 1)[0];
+  return (
+    extension === "pdf" ||
+    normalized === "application/pdf" ||
+    LIBREOFFICE_PAGE_EXTENSIONS.has(extension)
+  );
+}
+
 const CODE_EXTENSIONS = new Set([
   "py",
   "ts",
@@ -49,30 +108,53 @@ const CODE_EXTENSIONS = new Set([
   "svelte",
 ]);
 
-function extensionFor(name: string) {
-  return name.split(".").pop()?.toLowerCase() ?? "";
-}
-
 export function libraryFileKind(name: string, contentType: string): LibraryFileKind {
   const extension = extensionFor(name);
   const normalized = contentType.toLowerCase().split(";", 1)[0];
   if (normalized === "text/markdown" || ["md", "mdx"].includes(extension)) return "markdown";
   if (extension === "diff" || extension === "patch" || normalized === "text/x-diff") return "diff";
-  if (extension === "csv" || normalized === "text/csv") return "csv";
-  if (["xlsx", "xls", "ods"].includes(extension) || normalized.includes("spreadsheet")) {
+  if (
+    ["csv", "tsv"].includes(extension) ||
+    ["text/csv", "text/x-csv", "text/tab-separated-values"].includes(normalized)
+  ) {
+    return "csv";
+  }
+  if (
+    [
+      "xlsx",
+      "xls",
+      "xlsm",
+      "xlt",
+      "xltx",
+      "xltm",
+      "xlm",
+      "xla",
+      "xlw",
+      "xlsb",
+      "ods",
+      "ots",
+    ].includes(extension) ||
+    normalized.includes("spreadsheet") ||
+    normalized === "application/vnd.ms-excel"
+  ) {
     return "spreadsheet";
   }
   if (extension === "pdf" || normalized === "application/pdf") return "pdf";
   if (
-    ["doc", "docx", "odt", "rtf"].includes(extension) ||
+    ["doc", "docx", "docm", "dot", "dotx", "dotm", "odt", "ott", "odm", "oth", "rtf"].includes(
+      extension,
+    ) ||
     normalized.includes("wordprocessingml") ||
     normalized === "application/msword" ||
+    normalized === "application/vnd.oasis.opendocument.text" ||
     normalized === "application/rtf" ||
     normalized === "text/rtf"
   )
     return "docx";
   if (
-    ["ppt", "pptx", "odp"].includes(extension) ||
+    ["ppt", "pptx", "pptm", "pot", "potx", "potm", "pps", "ppsx", "ppsm", "odp", "otp"].includes(
+      extension,
+    ) ||
     normalized.includes("presentationml") ||
     normalized.includes("powerpoint")
   )

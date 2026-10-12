@@ -27,10 +27,10 @@ from app.providers.services.base import (
     ProviderCapabilityError,
     ProviderRequestError,
 )
+from app.providers.services.openai_compatible_config import provider_model_listing_enabled
 from app.providers.services.provider_secret_service import ProviderSecretService
 from app.providers.services.reasoning_capabilities import (
-    model_supports_reasoning,
-    reasoning_capabilities,
+    merge_reasoning_capabilities,
 )
 from app.providers.services.registry import ProviderRegistry
 from app.providers.services.sentence_transformers_provider import (
@@ -166,12 +166,26 @@ class ProviderModelsService:
             actor_user_id=actor_user_id,
             require_enabled=True,
         )
-        api_key = self._resolve_api_key(tenant_id=tenant_id, provider=provider)
+        api_key = (
+            None
+            if provider.provider_type == "cline"
+            else self._resolve_api_key(tenant_id=tenant_id, provider=provider)
+        )
         acquire_model_discovery_slot("refresh")
         try:
             discovery = self.registry.get_model_discovery_provider_from_config(
                 provider, api_key=api_key
             )
+            if not provider_model_listing_enabled(
+                provider.provider_type,
+                provider.supports_model_listing,
+            ) or not getattr(discovery, "supports_model_listing", True):
+                return list(
+                    self.cache.list_models(
+                        tenant_id=tenant_id,
+                        provider_config_id=provider_config_id,
+                    )
+                )
             chat_models = list(discovery.list_models()) if provider.supports_chat else []
             embedding_models = []
             reranker_models = []
@@ -246,18 +260,16 @@ class ProviderModelsService:
                     model_name=model.name,
                 )
             if kind == "chat":
-                capabilities.setdefault(
-                    "supports_reasoning",
-                    model_supports_reasoning(provider.provider_type, model.name),
-                )
                 if isinstance(model.max_output_tokens, int) and model.max_output_tokens > 0:
                     capabilities.setdefault("max_output_tokens", model.max_output_tokens)
-                for key, value in reasoning_capabilities(
-                    provider.provider_type,
-                    model.name,
-                    base_url=provider.api_base_url,
-                ).items():
-                    capabilities.setdefault(key, value)
+                capabilities.update(
+                    merge_reasoning_capabilities(
+                        provider.provider_type,
+                        model.name,
+                        base_url=provider.api_base_url,
+                        advertised=capabilities,
+                    )
+                )
             row = ProviderModelCache(
                 tenant_id=tenant_id,
                 provider_config_id=provider.id,
@@ -360,7 +372,11 @@ class ProviderModelsService:
             actor_user_id=actor_user_id,
             require_enabled=True,
         )
-        api_key = self._resolve_api_key(tenant_id=tenant_id, provider=provider)
+        api_key = (
+            None
+            if provider.provider_type == "cline"
+            else self._resolve_api_key(tenant_id=tenant_id, provider=provider)
+        )
         try:
             runtime: ModelDiscoveryProvider | ChatProvider | EmbeddingProvider
             if provider.provider_type in {"tavily", "searxng"}:

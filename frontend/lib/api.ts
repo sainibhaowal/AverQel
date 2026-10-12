@@ -413,12 +413,20 @@ export async function fetchWithAuth(
   options: RequestInit & {
     _isRetry?: boolean;
     _skipAuthRefresh?: boolean;
+    _serviceBusyRetryCount?: number;
     timeoutMs?: number;
     silentTimeout?: boolean;
   } = {},
 ) {
   const endpointPath = normalizeEndpointPath(endpoint);
-  const { _isRetry, _skipAuthRefresh, timeoutMs, silentTimeout, ...requestInit } = options;
+  const {
+    _isRetry,
+    _skipAuthRefresh,
+    _serviceBusyRetryCount = 0,
+    timeoutMs,
+    silentTimeout,
+    ...requestInit
+  } = options;
   let token = localStorage.getItem("averqel_token");
   let tenantId = getRequestTenantId(token);
 
@@ -497,6 +505,48 @@ export async function fetchWithAuth(
       window.location.replace("/auth/login");
     }
     return response; // Return early for unhandled 401s that bypassed redirect
+  }
+
+  const method = (requestInit.method ?? "GET").toUpperCase();
+  if (
+    response.status === 503 &&
+    (method === "GET" || method === "HEAD") &&
+    _serviceBusyRetryCount < 2
+  ) {
+    let isServiceOverload = false;
+    try {
+      const errorData = await response.clone().json();
+      isServiceOverload = errorData?.error?.code === "SERVICE_OVERLOAD";
+    } catch {
+      // The normal error interceptor below reports malformed responses.
+    }
+
+    if (isServiceOverload) {
+      const retryAfter = response.headers.get("Retry-After");
+      // Retry only for a short server-specified wait. A longer wait is
+      // surfaced normally instead of retrying early or holding the screen.
+      let delayMs = 300 * (_serviceBusyRetryCount + 1);
+      if (retryAfter) {
+        const retryAfterSeconds = Number(retryAfter);
+        if (Number.isFinite(retryAfterSeconds)) {
+          delayMs = Math.max(0, retryAfterSeconds * 1000);
+        } else {
+          const retryAtMs = Date.parse(retryAfter);
+          if (Number.isFinite(retryAtMs)) delayMs = Math.max(0, retryAtMs - Date.now());
+        }
+      }
+      if (delayMs <= 3_000) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return fetchWithAuth(endpoint, {
+          ...requestInit,
+          _isRetry,
+          _skipAuthRefresh,
+          _serviceBusyRetryCount: _serviceBusyRetryCount + 1,
+          timeoutMs,
+          silentTimeout,
+        });
+      }
+    }
   }
 
   // Global Error Interceptor for 4xx and 5xx

@@ -23,7 +23,7 @@ Feedback campaigns are platform-wide prompts created by authorized platform supp
 
 The Admin Feedback queue refreshes every 30 seconds while visible and supports manual refresh. Queue access failures are shown as errors instead of an empty queue; the conversation opens in a viewport-level overlay outside the dashboard's clipped content area, with loading/error states and a scrollable message history. User replies use a multiline input.
 
-The authenticated notification feed is `/api/v1/notifications`: list (maximum 100 per page, with an offset), mark one/all read, and dismiss one/all. The collection notification list accepts an offset as well; its existing routes and push-delivery workflow remain intact. The dashboard notification drawer merges both feeds, polls every 15 seconds while visible, and can load older pages.
+The authenticated notification feed is `/api/v1/notifications`: list (maximum 100 per page, with an offset), mark one/all read, and dismiss one/all. The collection notification list accepts an offset as well; its existing routes and push-delivery workflow remain intact. The dashboard notification drawer merges both feeds, polls every 15 seconds while visible, and can load older pages. If a feed fails, the drawer keeps its last loaded items, identifies which feed could not refresh, and retries with a bounded delay that grows to two minutes until both feeds recover.
 
 ## Security and persistence
 

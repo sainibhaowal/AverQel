@@ -7,6 +7,7 @@ import ToastProvider from "@/app/components/layout/ToastProvider";
 import CursorSweepProvider from "@/app/components/layout/CursorSweepProvider";
 import { BRAND_NAME } from "@/lib/brand";
 import AverQelDialogHost from "@/app/components/ui/AverQelDialogHost";
+import AppTooltipLayer from "@/app/components/ui/AppTooltipLayer";
 
 export const metadata: Metadata = {
   title: BRAND_NAME,
@@ -55,6 +56,7 @@ export default function RootLayout({
           <CursorSweepProvider />
           <ToastProvider>
             <AverQelDialogHost />
+            <AppTooltipLayer />
             <AuthProvider>
               <div className="flex min-h-[100svh] flex-col">
                 <main className="flex-1">{children}</main>

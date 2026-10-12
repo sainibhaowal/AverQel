@@ -30,8 +30,12 @@ class OpenRouterProvider(OpenAICompatibleProvider):
 
     @staticmethod
     def _build_headers(
-        api_key: str | None, extra_headers: dict[str, str] | None = None
+        api_key: str | None,
+        extra_headers: dict[str, str] | None = None,
+        *,
+        settings: Any | None = None,
     ) -> dict[str, str]:
+        del settings
         headers = {
             "Content-Type": "application/json",
             "HTTP-Referer": "https://averqel.ai",

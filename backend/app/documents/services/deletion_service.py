@@ -23,12 +23,14 @@ from app.documents.repositories.data_deletions import DataDeletionsRepository
 from app.ingestion.models.ingestion_job import IngestionJob
 from app.query.models.comment import Comment
 from app.query.models.conversation import Conversation
+from app.query.models.dataset_index import QueryDatasetIndex
 from app.query.models.message import Message
 from app.query.models.message_version import MessageVersion
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
 from app.query.models.query_citation import QueryCitation
 from app.system.models.idempotency_key import IdempotencyKey
+from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.services.audit_service import AuditService
 from app.system.services.metrics_service import observe_db_query
 from app.system.services.storage_service import StorageService
@@ -160,6 +162,22 @@ class DeletionService:
                 ).all()
             )
 
+        with observe_db_query("deletion.fetch_grounded_dataset_objects"):
+            dataset_objects = list(
+                self.db.execute(
+                    select(
+                        QueryDatasetIndex.derivative_bucket,
+                        QueryDatasetIndex.derivative_object_key,
+                        Document.uploaded_by_user_id,
+                    )
+                    .join(Document, Document.id == QueryDatasetIndex.document_id)
+                    .where(
+                        QueryDatasetIndex.tenant_id == tenant_id,
+                        Document.tenant_id == tenant_id,
+                    )
+                ).all()
+            )
+
         for bucket, object_key in objects:
             try:
                 self.storage.delete_object(bucket=str(bucket), object_key=str(object_key))
@@ -172,6 +190,31 @@ class DeletionService:
                         "object_key": str(object_key),
                     },
                     exc_info=True,
+                )
+
+        for bucket, object_key, owner_user_id in dataset_objects:
+            if not bucket or not object_key:
+                continue
+            try:
+                self.storage.delete_tenant_object(
+                    tenant_id=tenant_id,
+                    bucket=str(bucket),
+                    object_key=str(object_key),
+                    raise_on_error=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Tenant purge could not remove a Grounded Query derivative; queuing cleanup.",
+                    extra={"tenant_id": str(tenant_id), "object_key": str(object_key)},
+                    exc_info=exc,
+                )
+                self.db.add(
+                    StorageCleanupJob(
+                        tenant_id=tenant_id,
+                        owner_user_id=owner_user_id,
+                        bucket=str(bucket),
+                        object_key=str(object_key),
+                    )
                 )
 
         counts: dict[str, int] = {}
@@ -288,6 +331,12 @@ class DeletionService:
                 delete(IngestionJob).where(IngestionJob.tenant_id == tenant_id)
             )
             counts["ingestion_jobs"] = int(ingestion_jobs_deleted.rowcount or 0)  # type: ignore[attr-defined]
+
+        with observe_db_query("deletion.delete_query_dataset_indexes"):
+            dataset_indexes_deleted = self.db.execute(
+                delete(QueryDatasetIndex).where(QueryDatasetIndex.tenant_id == tenant_id)
+            )
+            counts["query_dataset_indexes"] = int(dataset_indexes_deleted.rowcount or 0)  # type: ignore[attr-defined]
 
         with observe_db_query("deletion.delete_documents"):
             documents_deleted = self.db.execute(

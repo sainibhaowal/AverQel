@@ -7,10 +7,38 @@ import type { DeepSpaceStreamEvent } from "../app/dashboard/deepspace/_lib/deeps
 import { expect, test, describe } from "vitest";
 
 describe("TimelineStep Model", () => {
+  test("labels a model request rejection accurately instead of as provider downtime", () => {
+    let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "submit_query",
+      query: "Continue the saved task",
+    });
+    const assistantId = state.activeAssistantId;
+    if (!assistantId) throw new Error("No active assistant");
+
+    state = deepSpaceThreadReducer(state, {
+      type: "stream_event",
+      event: {
+        event: "error",
+        data: {
+          code: "LLM_REQUEST_REJECTED",
+          message: "The provider rejected the request.",
+          error_category: "request",
+        },
+      },
+    });
+
+    const message = state.messages.find((item) => item.id === assistantId);
+    expect(message?.error?.category).toBe("request");
+    expect(message?.timeline).toEqual([
+      expect.objectContaining({ type: "error", title: "Request rejected" }),
+    ]);
+  });
+
   test("should normalize cumulative assistant deltas without duplicate words", () => {
     let state = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "submit_query",
       query: "Explain",
+      clientRequestId: "request-for-failed-turn",
     });
 
     const assistantId = state.activeAssistantId;
@@ -28,6 +56,7 @@ describe("TimelineStep Model", () => {
     );
 
     const message = state.messages.find((m) => m.id === assistantId);
+    expect(message?.clientRequestId).toBe("request-for-failed-turn");
     expect(message?.rawContent).toBe("The user wants");
     expect(message?.content).toBe("The user wants");
     expect(message?.thinkingContent).toBeFalsy();

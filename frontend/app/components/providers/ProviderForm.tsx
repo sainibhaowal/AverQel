@@ -15,6 +15,13 @@ import {
 
 import ProviderAuthFields from "./ProviderAuthFields";
 import ProviderModelPicker from "./ProviderModelPicker";
+import OpenAICompatibleSettingsPanel, {
+  buildOpenAICompatibleMetadata,
+  DEFAULT_OPENAI_COMPATIBLE_SETTINGS,
+  readOpenAICompatibleSettings,
+  type OpenAICompatibleFormSettings,
+} from "./OpenAICompatibleSettingsPanel";
+import OpenAICodexLoginPanel from "./OpenAICodexLoginPanel";
 
 interface ProviderFormProps {
   catalogEntry: ProviderCatalogEntry | null;
@@ -44,6 +51,12 @@ const PROVIDER_BASE_URL_PRESETS: Record<string, string> = {
   google: "https://generativelanguage.googleapis.com/v1beta",
   groq: "https://api.groq.com/openai/v1",
   mistral: "https://api.mistral.ai/v1",
+  meta: "https://api.meta.ai/v1",
+  cline: "https://api.cline.bot/api/v1",
+  moonshot: "https://api.moonshot.ai/v1",
+  zai: "https://api.z.ai/api/paas/v4",
+  "nvidia-nim": "https://integrate.api.nvidia.com/v1",
+  manus: "https://api.manus.ai",
   lmstudio: "http://localhost:1234/v1",
   together: "https://api.together.xyz/v1",
   fireworks: "https://api.fireworks.ai/inference/v1",
@@ -86,7 +99,12 @@ export default function ProviderForm({
   onReconnect,
 }: ProviderFormProps) {
   const activeProviderType = provider?.provider_type || catalogEntry?.provider_type || "";
+  const isOpenAIProvider = activeProviderType === "openai";
+  const isCustomCompatible = activeProviderType === "custom";
+  const supportsManualChatModel =
+    isCustomCompatible || ["cline", "zai"].includes(activeProviderType);
   const catalogFamilyRef = useRef(activeProviderType);
+  const [electronAvailable, setElectronAvailable] = useState(false);
 
   const [apiBaseUrl, setApiBaseUrl] = useState(
     provider?.api_base_url || PROVIDER_BASE_URL_PRESETS[activeProviderType] || "",
@@ -94,6 +112,35 @@ export default function ProviderForm({
   const [authMode, setAuthMode] = useState(
     provider?.auth_mode || catalogEntry?.auth_modes[0] || "api_key",
   );
+  const [codexAccountId, setCodexAccountId] = useState<string | null>(() => {
+    const codex = provider?.metadata_json?.codex_desktop;
+    return codex &&
+      typeof codex === "object" &&
+      "account_id" in codex &&
+      typeof codex.account_id === "string"
+      ? codex.account_id
+      : null;
+  });
+  const [codexModels, setCodexModels] = useState<ElectronCodexModel[]>(() => {
+    const codex = provider?.metadata_json?.codex_desktop;
+    if (
+      !codex ||
+      typeof codex !== "object" ||
+      !("models" in codex) ||
+      !Array.isArray(codex.models)
+    ) {
+      return [];
+    }
+    return codex.models.filter(
+      (model): model is ElectronCodexModel =>
+        Boolean(model) &&
+        typeof model === "object" &&
+        "id" in model &&
+        typeof model.id === "string" &&
+        "name" in model &&
+        typeof model.name === "string",
+    );
+  });
   const [secretValue, setSecretValue] = useState("");
   const [searchLanguage, setSearchLanguage] = useState(
     typeof provider?.metadata_json?.language === "string"
@@ -118,10 +165,22 @@ export default function ProviderForm({
   const [defaultRerankerModel, setDefaultRerankerModel] = useState(
     provider?.default_reranker_model || "",
   );
+  const [compatibleSettings, setCompatibleSettings] = useState<OpenAICompatibleFormSettings>(() =>
+    readOpenAICompatibleSettings(provider?.metadata_json),
+  );
 
   const [previewModels, setPreviewModels] = useState<ProviderModel[]>(provider ? models : []);
   const [discoveringModels, setDiscoveringModels] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setElectronAvailable(Boolean(window.electron?.isElectron && window.electron.codex));
+    });
+  }, []);
+
+  const isCodexLogin = isOpenAIProvider && authMode === "codex_desktop";
+  const showOpenAIAuthToggle = isOpenAIProvider && electronAvailable;
 
   // Sync when switching to an existing provider
   useEffect(() => {
@@ -129,9 +188,32 @@ export default function ProviderForm({
       queueMicrotask(() => {
         setApiBaseUrl(provider.api_base_url || "");
         setAuthMode(provider.auth_mode || "none");
+        const codex = provider.metadata_json?.codex_desktop;
+        setCodexAccountId(
+          codex &&
+            typeof codex === "object" &&
+            "account_id" in codex &&
+            typeof codex.account_id === "string"
+            ? codex.account_id
+            : null,
+        );
+        setCodexModels(
+          codex && typeof codex === "object" && "models" in codex && Array.isArray(codex.models)
+            ? codex.models.filter(
+                (model): model is ElectronCodexModel =>
+                  Boolean(model) &&
+                  typeof model === "object" &&
+                  "id" in model &&
+                  typeof model.id === "string" &&
+                  "name" in model &&
+                  typeof model.name === "string",
+              )
+            : [],
+        );
         setDefaultChatModel(provider.default_chat_model || "");
         setDefaultEmbeddingModel(provider.default_embedding_model || "");
         setDefaultRerankerModel(provider.default_reranker_model || "");
+        setCompatibleSettings(readOpenAICompatibleSettings(provider.metadata_json));
         setPreviewModels(models);
         setSecretValue("");
         setSearchLanguage(
@@ -167,10 +249,16 @@ export default function ProviderForm({
       const providerType = catalogEntry.provider_type;
       setApiBaseUrl(PROVIDER_BASE_URL_PRESETS[providerType] || "");
       setAuthMode(catalogEntry.auth_modes[0] || "api_key");
+      setCodexAccountId(null);
+      setCodexModels([]);
       setSecretValue("");
       setDefaultChatModel("");
       setDefaultEmbeddingModel("");
       setDefaultRerankerModel("");
+      setCompatibleSettings({
+        ...DEFAULT_OPENAI_COMPATIBLE_SETTINGS,
+        reasoning: { ...DEFAULT_OPENAI_COMPATIBLE_SETTINGS.reasoning },
+      });
       setPreviewModels([]);
       setDiscoveringModels(false);
       setDiscoverError(null);
@@ -214,14 +302,63 @@ export default function ProviderForm({
   };
 
   const supportsModelListing = Boolean(
-    catalogEntry?.supports_model_listing ?? provider?.supports_model_listing,
+    activeProviderType === "cline" ||
+    (isCustomCompatible
+      ? compatibleSettings.models_path.trim()
+      : (catalogEntry?.supports_model_listing ?? provider?.supports_model_listing)),
+  );
+  const compatibleMetadata = useMemo(
+    () =>
+      isCustomCompatible
+        ? buildOpenAICompatibleMetadata(provider?.metadata_json, compatibleSettings)
+        : undefined,
+    [compatibleSettings, isCustomCompatible, provider?.metadata_json],
+  );
+
+  const handleCodexAccountChange = useCallback(
+    (accountId: string | null, accountModels: ElectronCodexModel[]) => {
+      setCodexAccountId(accountId);
+      setCodexModels(accountModels);
+      const providerModels: ProviderModel[] = accountModels.map((model) => ({
+        id: null,
+        provider_config_id: provider?.id || null,
+        model_name: model.id,
+        model_kind: "chat",
+        display_name: model.name,
+        context_window: null,
+        capabilities_json: {
+          ...(model.supportedReasoningEfforts
+            ? {
+                supported_reasoning_efforts: model.supportedReasoningEfforts,
+                supports_reasoning: model.supportedReasoningEfforts.length > 0,
+                reasoning_effort_values: model.reasoningEffortValues,
+              }
+            : {}),
+        },
+        is_available: true,
+        last_seen_at: null,
+      }));
+      setPreviewModels(providerModels);
+      if (defaultChatModel && !accountModels.some((model) => model.id === defaultChatModel)) {
+        setDefaultChatModel("");
+      }
+    },
+    [defaultChatModel, provider?.id],
   );
 
   // Model discovery
   useEffect(() => {
     if (!activeProviderType || !supportsModelListing) return;
-    // For api_key auth, need a secret before calling (unless editing existing provider)
-    if (authMode === "api_key" && !normalizedSecretValue && !provider) return;
+    if (isCodexLogin) return;
+    // Cline's public catalog can be previewed before the API key is entered.
+    if (
+      authMode === "api_key" &&
+      !normalizedSecretValue &&
+      !provider &&
+      activeProviderType !== "cline"
+    ) {
+      return;
+    }
     // For editing existing provider with no new secret, skip (models already loaded)
     if (authMode === "api_key" && !normalizedSecretValue && provider) return;
     if (!authMode) return;
@@ -257,7 +394,8 @@ export default function ProviderForm({
             catalogEntry?.supports_embeddings ?? provider?.supports_embeddings ?? false,
           supports_reranking:
             catalogEntry?.supports_reranking ?? provider?.supports_reranking ?? false,
-          supports_model_listing: true,
+          supports_model_listing: supportsModelListing,
+          ...(compatibleMetadata ? { metadata_json: compatibleMetadata } : {}),
         });
         if (!cancelled) {
           setPreviewModels(items);
@@ -279,9 +417,11 @@ export default function ProviderForm({
   }, [
     activeProviderType,
     authMode,
+    isCodexLogin,
     normalizedPreviewUrl,
     normalizedSecretValue,
     supportsModelListing,
+    compatibleMetadata,
     catalogEntry?.supports_chat,
     catalogEntry?.supports_embeddings,
     catalogEntry?.supports_reranking,
@@ -289,6 +429,35 @@ export default function ProviderForm({
   ]);
 
   const handleLocalSubmit = async () => {
+    if (isCodexLogin) {
+      if (!codexAccountId || codexModels.length === 0) {
+        setDiscoverError("Sign in with ChatGPT and load this account's models first.");
+        return;
+      }
+      if (!defaultChatModel || !codexModels.some((model) => model.id === defaultChatModel)) {
+        setDiscoverError("Choose a model from the connected ChatGPT account.");
+        return;
+      }
+    }
+    if (
+      isOpenAIProvider &&
+      authMode === "api_key" &&
+      provider?.auth_mode !== "api_key" &&
+      !normalizedSecretValue
+    ) {
+      setDiscoverError("Enter an OpenAI API key before switching this connection to OpenAI API.");
+      return;
+    }
+    if (
+      activeProviderType === "cline" &&
+      authMode === "api_key" &&
+      !normalizedSecretValue &&
+      !provider
+    ) {
+      setDiscoverError("Enter a Cline API key before linking this provider.");
+      return;
+    }
+
     const searchMetadata =
       activeProviderType === "searxng"
         ? {
@@ -305,24 +474,62 @@ export default function ProviderForm({
               .slice(0, 50),
           }
         : undefined;
+    const codexMetadata = isCodexLogin
+      ? {
+          codex_desktop: {
+            account_id: codexAccountId,
+            models: codexModels.map((model) => ({
+              id: model.id,
+              name: model.name,
+              ...(model.supportedReasoningEfforts
+                ? {
+                    supported_reasoning_efforts: model.supportedReasoningEfforts,
+                    reasoning_effort_values: model.reasoningEffortValues,
+                  }
+                : {}),
+            })),
+          },
+        }
+      : undefined;
+    const switchingAwayFromCodex = provider?.auth_mode === "codex_desktop" && !isCodexLogin;
     const basePayload: CreateProviderInput = {
-      display_name: provider?.display_name || catalogEntry?.display_name || "",
+      display_name: isCodexLogin
+        ? provider?.display_name === "OpenAI API"
+          ? "OpenAI Codex"
+          : provider?.display_name || "OpenAI Codex"
+        : provider?.display_name || catalogEntry?.display_name || "",
       provider_type: activeProviderType,
-      api_base_url: normalizeApiBaseUrl(apiBaseUrl) || null,
+      api_base_url: isCodexLogin ? null : normalizeApiBaseUrl(apiBaseUrl) || null,
       auth_mode: authMode,
       enabled: provider?.enabled ?? true,
-      supports_chat: catalogEntry?.supports_chat ?? provider?.supports_chat ?? false,
-      supports_embeddings:
-        catalogEntry?.supports_embeddings ?? provider?.supports_embeddings ?? false,
-      supports_reranking: catalogEntry?.supports_reranking ?? provider?.supports_reranking ?? false,
+      supports_chat: isCodexLogin
+        ? true
+        : (catalogEntry?.supports_chat ?? provider?.supports_chat ?? false),
+      supports_embeddings: isCodexLogin
+        ? false
+        : (catalogEntry?.supports_embeddings ?? provider?.supports_embeddings ?? false),
+      supports_reranking: isCodexLogin
+        ? false
+        : (catalogEntry?.supports_reranking ?? provider?.supports_reranking ?? false),
       supports_web_search:
         catalogEntry?.supports_web_search ?? provider?.supports_web_search ?? false,
-      supports_model_listing:
-        catalogEntry?.supports_model_listing ?? provider?.supports_model_listing ?? false,
-      supports_model_install:
-        catalogEntry?.supports_model_install ?? provider?.supports_model_install ?? false,
-      is_local: catalogEntry?.is_local ?? provider?.is_local ?? false,
-      ...(searchMetadata ? { metadata_json: searchMetadata } : {}),
+      supports_model_listing: isCodexLogin
+        ? true
+        : activeProviderType === "cline" ||
+          (catalogEntry?.supports_model_listing ?? provider?.supports_model_listing ?? false),
+      supports_model_install: isCodexLogin
+        ? false
+        : (catalogEntry?.supports_model_install ?? provider?.supports_model_install ?? false),
+      is_local: isCodexLogin ? false : (catalogEntry?.is_local ?? provider?.is_local ?? false),
+      ...(codexMetadata
+        ? { metadata_json: codexMetadata }
+        : switchingAwayFromCodex
+          ? { metadata_json: {} }
+          : compatibleMetadata
+            ? { metadata_json: compatibleMetadata }
+            : searchMetadata
+              ? { metadata_json: searchMetadata }
+              : {}),
     };
 
     if (normalizedSecretValue) basePayload.api_key = normalizedSecretValue;
@@ -337,11 +544,12 @@ export default function ProviderForm({
       const updatePayload: UpdateProviderInput = {
         display_name: basePayload.display_name,
         api_base_url: basePayload.api_base_url,
+        auth_mode: basePayload.auth_mode,
         enabled: basePayload.enabled,
         default_chat_model: basePayload.default_chat_model,
         default_embedding_model: basePayload.default_embedding_model,
         default_reranker_model: basePayload.default_reranker_model,
-        ...(searchMetadata ? { metadata_json: searchMetadata } : {}),
+        ...(basePayload.metadata_json ? { metadata_json: basePayload.metadata_json } : {}),
       };
       if (basePayload.api_key) updatePayload.api_key = basePayload.api_key;
       await onSubmit(updatePayload);
@@ -372,9 +580,36 @@ export default function ProviderForm({
     });
   }, [kind, models, previewModels, provider]);
 
+  const providerAuthCatalogEntry = catalogEntry
+    ? {
+        ...catalogEntry,
+        auth_modes: isOpenAIProvider
+          ? ["api_key"]
+          : catalogEntry.auth_modes.filter((mode) => electronAvailable || mode !== "codex_desktop"),
+      }
+    : undefined;
+
+  const handleOpenAIModeChange = (mode: string) => {
+    setAuthMode(mode);
+    setSecretValue("");
+    setDiscoverError(null);
+    if (mode === "api_key" && !apiBaseUrl) {
+      setApiBaseUrl(PROVIDER_BASE_URL_PRESETS.openai);
+    }
+    if (mode === "codex_desktop") setDiscoveringModels(false);
+  };
+
   const isHealthy = provider?.latest_health?.status === "healthy";
+  const healthStatus = provider?.latest_health?.status;
   const requiresApiKey = authMode === "api_key";
-  const waitingForToken = requiresApiKey && !secretValue && !provider;
+  const waitingForToken =
+    requiresApiKey && !normalizedSecretValue && (!provider || provider.auth_mode !== "api_key");
+  const waitingForCodex =
+    isCodexLogin &&
+    (!codexAccountId ||
+      codexModels.length === 0 ||
+      !defaultChatModel ||
+      !codexModels.some((model) => model.id === defaultChatModel));
 
   return (
     <motion.div
@@ -390,28 +625,76 @@ export default function ProviderForm({
             {kind.toUpperCase()} Setup
           </p>
           <h2 className="text-foreground mt-1 text-3xl font-black tracking-tight">
-            {provider?.display_name || catalogEntry?.display_name || "New Connection"}
+            {isCodexLogin && provider?.display_name === "OpenAI API"
+              ? "OpenAI Codex"
+              : provider?.display_name || catalogEntry?.display_name || "New Connection"}
           </h2>
           <p className="text-muted-foreground mt-1.5 max-w-xl text-sm">
-            Connect this {kind === "all" ? "provider" : kind} provider, enter the API key, then link
-            it.
+            {isCodexLogin
+              ? "Connect a ChatGPT account and choose one of its available models for DeepSpace."
+              : `Connect this ${kind === "all" ? "provider" : kind} provider, enter the API key, then link it.`}
           </p>
           <div className="settings-divider mt-3" style={{ maxWidth: "50%" }} />
         </div>
 
         {/* Fields */}
         <div className="space-y-6">
-          <ProviderAuthFields
-            providerType={activeProviderType}
-            catalogEntry={catalogEntry || undefined}
-            authMode={authMode}
-            onAuthModeChange={setAuthMode}
-            apiBaseUrl={apiBaseUrl}
-            onApiBaseUrlChange={handleApiBaseUrlChange}
-            secretValue={secretValue}
-            onSecretValueChange={setSecretValue}
-            maskedSummary={provider?.secrets?.[0]?.masked_value || null}
-          />
+          {showOpenAIAuthToggle ? (
+            <div
+              aria-label="OpenAI connection type"
+              className="inline-flex rounded-xl border border-white/10 bg-black/20 p-1"
+              role="tablist"
+            >
+              {(
+                [
+                  ["api_key", "OpenAI API"],
+                  ["codex_desktop", "Codex Login"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={authMode === mode}
+                  onClick={() => handleOpenAIModeChange(mode)}
+                  className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
+                    authMode === mode
+                      ? "bg-teal-300/15 text-teal-100 ring-1 ring-teal-200/20"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {isCodexLogin ? (
+            <OpenAICodexLoginPanel
+              key={provider?.id || "new-openai-codex"}
+              initialAccountId={codexAccountId}
+              onChange={handleCodexAccountChange}
+            />
+          ) : (
+            <ProviderAuthFields
+              providerType={activeProviderType}
+              catalogEntry={providerAuthCatalogEntry}
+              authMode={authMode}
+              onAuthModeChange={showOpenAIAuthToggle ? handleOpenAIModeChange : setAuthMode}
+              apiBaseUrl={apiBaseUrl}
+              onApiBaseUrlChange={handleApiBaseUrlChange}
+              secretValue={secretValue}
+              onSecretValueChange={setSecretValue}
+              maskedSummary={provider?.secrets?.[0]?.masked_value || null}
+            />
+          )}
+
+          {isCustomCompatible ? (
+            <OpenAICompatibleSettingsPanel
+              value={compatibleSettings}
+              onChange={setCompatibleSettings}
+            />
+          ) : null}
 
           {activeProviderType === "searxng" && (
             <div className="theme-panel-muted grid gap-4 rounded-2xl p-5 ring-1 ring-white/5 md:grid-cols-3">
@@ -456,18 +739,57 @@ export default function ProviderForm({
               <label className="text-muted-foreground/60 px-1 font-mono text-[10px] font-bold tracking-[0.2em] uppercase">
                 {kind.toUpperCase()} Model
               </label>
-              <ProviderModelPicker
-                label=""
-                value={activeModelName}
-                models={filteredModels}
-                onChange={(v) => {
-                  if (kind === "chat" || kind === "all") setDefaultChatModel(v);
-                  if (kind === "embedding" || kind === "all") setDefaultEmbeddingModel(v);
-                  if (kind === "reranker" || kind === "all") setDefaultRerankerModel(v);
-                }}
-                kinds={kind === "all" ? ["chat", "embedding", "reranker"] : [kind]}
-                allowClear
-              />
+              {supportsManualChatModel ? (
+                <div className={isCustomCompatible ? "grid gap-3 md:grid-cols-2" : "grid gap-3"}>
+                  {(kind === "chat" || kind === "all") && (
+                    <ProviderModelPicker
+                      label="Chat model ID"
+                      value={defaultChatModel}
+                      models={filteredModels}
+                      onChange={setDefaultChatModel}
+                      kinds={["chat", "other"]}
+                      allowClear
+                      clearLabel="No chat model selected"
+                      allowCustomValue
+                      placeholder="Search or enter chat model ID"
+                      helperText={
+                        activeProviderType === "cline"
+                          ? "Search Cline's model catalog by name or ID. Exact provider/model IDs can also be entered manually."
+                          : activeProviderType === "zai"
+                            ? "Enter the GLM model ID. Z.AI's API reference does not publish a model-list route."
+                            : "Search discovered names, IDs, context, or capabilities, or enter an exact model ID."
+                      }
+                    />
+                  )}
+                  {isCustomCompatible && (kind === "embedding" || kind === "all") && (
+                    <ProviderModelPicker
+                      label="Embedding model ID"
+                      value={defaultEmbeddingModel}
+                      models={filteredModels}
+                      onChange={setDefaultEmbeddingModel}
+                      kinds={["embedding"]}
+                      allowClear
+                      clearLabel="No embedding model selected"
+                      allowCustomValue
+                      placeholder="Search or enter embedding model ID"
+                      helperText="Search discovered entries or enter an exact embedding model ID."
+                    />
+                  )}
+                </div>
+              ) : (
+                <ProviderModelPicker
+                  label=""
+                  value={activeModelName}
+                  models={filteredModels}
+                  onChange={(v) => {
+                    if (kind === "chat" || kind === "all") setDefaultChatModel(v);
+                    if (kind === "embedding" || kind === "all") setDefaultEmbeddingModel(v);
+                    if (kind === "reranker" || kind === "all") setDefaultRerankerModel(v);
+                  }}
+                  kinds={kind === "all" ? ["chat", "embedding", "reranker"] : [kind]}
+                  allowClear
+                />
+              )}
             </div>
           ) : null}
         </div>
@@ -482,6 +804,10 @@ export default function ProviderForm({
               {waitingForToken ? (
                 <span className="animate-pulse rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-amber-700 uppercase dark:text-amber-400">
                   ⊙ Waiting for token
+                </span>
+              ) : waitingForCodex ? (
+                <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-amber-700 uppercase dark:text-amber-400">
+                  Connect account and choose model
                 </span>
               ) : discoveringModels ? (
                 <span className="border-primary/20 bg-primary/10 text-primary rounded-full border px-3 py-1 font-mono text-[9px] font-bold tracking-widest uppercase">
@@ -499,11 +825,26 @@ export default function ProviderForm({
                   {discoverError || "Enter a valid http(s) runtime URL to preview models."}
                 </p>
               ) : discoveringModels ? (
-                <p>Inspecting endpoint and validating credentials...</p>
+                <p>
+                  {activeProviderType === "cline"
+                    ? "Loading Cline's model catalog. This does not test chat access."
+                    : "Inspecting endpoint and validating credentials..."}
+                </p>
+              ) : isCodexLogin ? (
+                <p>
+                  Models come from the signed-in ChatGPT account. DeepSpace uses the selected model
+                  through the connected AverQel Desktop runtime.
+                </p>
               ) : (
                 <p>
-                  When you enter the token, supported {kind === "all" ? "provider" : kind} models
-                  are fetched automatically for this provider.
+                  {activeProviderType === "cline" ? (
+                    "Cline's public model catalog loads automatically. Enter an API key to link the provider; model access is checked only by a chat request."
+                  ) : (
+                    <>
+                      When you enter the token, supported {kind === "all" ? "provider" : kind}{" "}
+                      models are fetched automatically for this provider.
+                    </>
+                  )}
                 </p>
               )}
             </div>
@@ -521,12 +862,29 @@ export default function ProviderForm({
             }
             subtext={`${(catalogEntry?.is_local ?? provider?.is_local) ? "Managed" : "Hosted"} ${kind} runtime`}
           />
-          <StatusPanel label="Runtime URL" value={apiBaseUrl || "Not set"} />
+          <StatusPanel
+            label="Runtime URL"
+            value={isCodexLogin ? "AverQel Desktop bridge" : apiBaseUrl || "Not set"}
+          />
           <StatusPanel
             label="Status"
-            value={provider ? (isHealthy ? "Healthy" : "Unknown") : "Not connected"}
+            value={
+              provider
+                ? isHealthy
+                  ? "Healthy"
+                  : healthStatus === "degraded"
+                    ? "Degraded"
+                    : "Unknown"
+                : "Not connected"
+            }
             indicator={provider ? (isHealthy ? "success" : "warning") : undefined}
-            subtext={provider ? "Last runtime check." : "No runtime check yet."}
+            subtext={
+              !provider
+                ? "No runtime check yet."
+                : activeProviderType === "cline" && healthStatus === "degraded"
+                  ? "Catalog reachable; chat access not verified."
+                  : "Last runtime check."
+            }
           />
         </div>
       </div>
@@ -559,7 +917,7 @@ export default function ProviderForm({
 
         <button
           onClick={handleLocalSubmit}
-          disabled={saving}
+          disabled={saving || waitingForToken || waitingForCodex}
           className="to-primary/80 flex items-center gap-3 rounded-xl bg-gradient-to-r from-teal-500/80 px-8 py-3.5 text-sm font-bold text-white shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
         >
           <Link2 size={16} />

@@ -141,7 +141,7 @@ export default function AverQelTooltip({
                 initial={{ opacity: 0, y: position.above ? 10 : -10, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: position.above ? 10 : -10, scale: 0.98 }}
-                className={`rounded-[1.4rem] border border-white/10 bg-[rgba(10,14,11,0.98)] p-4 shadow-[0_28px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl ${position.above ? "-translate-x-1/2 -translate-y-full" : "-translate-x-1/2"} ${panelClassName ?? ""}`}
+                className={`averqel-tooltip-surface rounded-xl border p-4 backdrop-blur-xl ${position.above ? "-translate-x-1/2 -translate-y-full" : "-translate-x-1/2"} ${panelClassName ?? ""}`}
               >
                 <p className="text-foreground text-[10px] font-black tracking-[0.24em] uppercase">
                   {title}

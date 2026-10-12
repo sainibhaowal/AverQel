@@ -82,8 +82,8 @@ class TestEnhancedReasoningCapabilities:
                 model, _ENABLE_THINKING_HINTS
             ), f"{model} should match thinking hints"
 
-    def test_deepseek_models(self):
-        """Test DeepSeek models are detected."""
+    def test_generic_compatible_endpoint_does_not_guess_deepseek_reasoning(self):
+        """A model name does not establish a custom endpoint's request dialect."""
         deepseek_models = [
             "deepseek-r1",
             "deepseek-r",
@@ -92,12 +92,11 @@ class TestEnhancedReasoningCapabilities:
             "deepseek-v2.5",
         ]
         for model in deepseek_models:
-            assert model_supports_reasoning(
+            assert not model_supports_reasoning(
                 "openai-compatible", model
-            ), f"{model} should support reasoning"
+            ), f"{model} must require explicit endpoint reasoning settings"
 
-    def test_qwen_models(self):
-        """Test Qwen models are detected."""
+    def test_generic_compatible_endpoint_does_not_guess_qwen_reasoning(self):
         qwen_models = [
             "qwen",
             "qwen2",
@@ -106,21 +105,20 @@ class TestEnhancedReasoningCapabilities:
             "qwq",
         ]
         for model in qwen_models:
-            assert model_supports_reasoning(
+            assert not model_supports_reasoning(
                 "openai-compatible", model
-            ), f"{model} should support reasoning"
+            ), f"{model} must require explicit endpoint reasoning settings"
 
-    def test_nemotron_models(self):
-        """Test Nemotron models are detected."""
+    def test_generic_compatible_endpoint_does_not_guess_nemotron_reasoning(self):
         nemotron_models = [
             "nemotron",
             "nemotron-4",
             "nemotron-340b",
         ]
         for model in nemotron_models:
-            assert model_supports_reasoning(
+            assert not model_supports_reasoning(
                 "openai-compatible", model
-            ), f"{model} should support reasoning"
+            ), f"{model} must require explicit endpoint reasoning settings"
 
     def test_llama_models(self):
         """Test LLaMA models are detected."""

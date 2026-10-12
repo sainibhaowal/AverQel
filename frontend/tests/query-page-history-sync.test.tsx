@@ -16,6 +16,18 @@ vi.mock("@/lib/api", () => ({
   fetchWithAuth: (...args: unknown[]) => fetchWithAuthMock(...args),
 }));
 
+vi.mock("@/app/context/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "user-1", tenant_id: "tenant-1" } }),
+}));
+
+vi.mock("@/lib/providers-api", () => ({
+  listProviders: vi.fn(async () => []),
+  listProviderModels: vi.fn(async () => []),
+  listAssignments: vi.fn(async () => []),
+  createAssignment: vi.fn(),
+  updateAssignment: vi.fn(),
+}));
+
 vi.mock("../app/dashboard/query/_hooks/useQueryStream", () => ({
   useQueryStream: (options: {
     onEvent: (event: Record<string, unknown>) => void;
@@ -32,13 +44,13 @@ vi.mock("../app/dashboard/query/_components/QueryComposer", () => ({
     onSubmit,
   }: {
     onQueryChange: (value: string) => void;
-    onSubmit: () => void;
+    onSubmit: (attachments: Array<{ id: string; status: string }>) => void;
   }) => (
     <div>
       <button type="button" onClick={() => onQueryChange("why is query blank")}>
         Set Query
       </button>
-      <button type="button" onClick={onSubmit}>
+      <button type="button" onClick={() => onSubmit([])}>
         Submit Query
       </button>
     </div>

@@ -28,11 +28,20 @@ second storage path or exposing private uploads to browsers or providers.
 
 ## Operational behavior
 
-Sending is disabled while an item uploads or is scanned. A completed item is
-marked “Saved to Library”; the Library drawer receives a browser update event
-and refreshes. Attachment-only messages use a safe default review request.
+Sending is disabled while an item uploads or is scanned. A completed item shows
+whether text was extracted, OCR was used, no readable text was found, or
+extraction was unavailable; older items without a recorded status keep the
+“Saved to Library” label. The Library drawer receives a browser update event and
+refreshes. Attachment-only messages use a safe default review request.
 Unsupported or oversized files continue to be rejected by the existing secure
 Library policy. Verify migration `20260930_0001_deepspace_turn_attachments`
 before enabling the release. The Documents Hub attachment and preview
 contracts are documented in
 [`../library/07-documents-hub-workflows.md`](../library/07-documents-hub-workflows.md).
+
+Image bytes go to the selected model only when its image-input capability is
+known. DeepSpace keeps OCR text from upload and uses it when visual input is
+unavailable. If the provider explicitly rejects the image before returning
+output, DeepSpace makes one retry without the image using saved OCR text. If
+OCR found no readable text, the user sees a clear limitation instead of an
+unsupported guess. Other provider failures are not retried as OCR fallbacks.

@@ -1,6 +1,9 @@
 import { expect, test } from "./fixtures";
 
 test.describe("DeepSpace adaptive budget visibility", () => {
+  // A fresh isolated Next server needs extra time to compile this route.
+  test.describe.configure({ timeout: 60_000 });
+
   test("renders budget metrics received from the stream", async ({ authenticatedPage }) => {
     await authenticatedPage.route("**/api/v1/deepspace/chats/stream", async (route) => {
       await route.fulfill({
@@ -16,8 +19,16 @@ test.describe("DeepSpace adaptive budget visibility", () => {
     });
 
     await authenticatedPage.goto("/dashboard/deepspace");
-    await authenticatedPage.getByPlaceholder("Message DeepSpace...").fill("Show budget metrics");
-    await authenticatedPage.getByRole("button", { name: "Send message" }).click();
+    const composer = authenticatedPage.getByPlaceholder("Message DeepSpace...");
+    await expect(composer.locator("xpath=ancestor::*[@aria-busy][1]")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
+    await composer.fill("Show budget metrics");
+    const sendButton = authenticatedPage.getByRole("button", { name: "Send message" });
+    await expect(composer).toHaveValue("Show budget metrics");
+    await expect(sendButton).toBeEnabled();
+    await sendButton.click();
     await authenticatedPage.getByRole("button", { name: "Show context usage details" }).click();
     // The diagnostics surface remains available even when the mocked stream
     // completes before provider accounting is attached to the persisted turn.

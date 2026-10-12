@@ -15,6 +15,7 @@ from app.analytics.schemas.dashboard import (
     DashboardOverviewResponse,
     DashboardProviderRuntimeResponse,
     DashboardProviderTrendPointResponse,
+    DashboardQueryStatsResponse,
     DashboardRecentDocumentResponse,
     DashboardStatsResponse,
     DashboardTrendPointResponse,
@@ -104,6 +105,17 @@ class DashboardService:
             recent_activity=self._get_recent_activity(tenant_id=tenant_id),
             activity_trend=self._get_activity_trend(tenant_id=tenant_id),
             provider_trend=self._get_provider_trend(tenant_id=tenant_id),
+        )
+
+    def get_query_stats(self, *, tenant_id: uuid.UUID) -> DashboardQueryStatsResponse:
+        """Build the smaller status snapshot polled by the query workspace."""
+        return DashboardQueryStatsResponse(
+            stats=self.get_stats(tenant_id=tenant_id),
+            document_breakdown=self._get_document_breakdown(tenant_id=tenant_id),
+            provider_runtimes=self._get_provider_runtimes(
+                tenant_id=tenant_id,
+                scopes=("chat", "embeddings"),
+            ),
         )
 
     @staticmethod
@@ -249,11 +261,14 @@ class DashboardService:
         )
 
     def _get_provider_runtimes(
-        self, *, tenant_id: uuid.UUID
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        scopes: tuple[str, ...] = ("chat", "embeddings", "reranking", "web_search"),
     ) -> list[DashboardProviderRuntimeResponse]:
         runtimes: list[DashboardProviderRuntimeResponse] = []
 
-        for scope in ("chat", "embeddings", "reranking", "web_search"):
+        for scope in scopes:
             if scope == "chat":
                 # Dashboard rendering must use cached provider metadata only.
                 # Live discovery can make this read-only request wait on an
@@ -261,13 +276,23 @@ class DashboardService:
                 selection = self.provider_selection.resolve_chat(
                     tenant_id=tenant_id,
                     allow_live_model_discovery=False,
+                    record_audit=False,
                 )
             elif scope == "embeddings":
-                selection = self.provider_selection.resolve_embeddings(tenant_id=tenant_id)
+                selection = self.provider_selection.resolve_embeddings(
+                    tenant_id=tenant_id,
+                    record_audit=False,
+                )
             elif scope == "reranking":
-                selection = self.provider_selection.resolve_reranking(tenant_id=tenant_id)
+                selection = self.provider_selection.resolve_reranking(
+                    tenant_id=tenant_id,
+                    record_audit=False,
+                )
             else:
-                selection = self.provider_selection.resolve_web_search(tenant_id=tenant_id)
+                selection = self.provider_selection.resolve_web_search(
+                    tenant_id=tenant_id,
+                    record_audit=False,
+                )
 
             candidate = selection.candidates[0] if selection.candidates else None
             if candidate is None:

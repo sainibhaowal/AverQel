@@ -540,7 +540,7 @@ export default function ChatSidebar({
         <div className="mt-4 border-t border-white/10 pt-4">
           <button
             onClick={handleBulkDelete}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 py-3 text-sm font-bold text-red-400 transition hover:bg-red-500/20"
+            className="history-bulk-delete-button flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 py-3 text-sm font-bold text-red-400 transition hover:bg-red-500/20"
           >
             <Trash2 size={16} />
             Delete Selected ({selectedIds.size})

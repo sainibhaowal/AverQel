@@ -20,6 +20,7 @@ _DATA_URL = re.compile(r"^data:(?P<type>[^;,]+)(?:;[^,]*)?,(?P<data>.*)$", re.DO
 _MAX_ARCHIVE_ENTRIES = 10_000
 _MAX_ARCHIVE_ENTRY_BYTES = 25 * 1024 * 1024
 _MAX_ARCHIVE_TOTAL_BYTES = 250 * 1024 * 1024
+_SAFE_EXTRACTION_ERROR = re.compile(r"^[A-Z0-9_]{1,64}$")
 
 
 @dataclass(slots=True)
@@ -174,6 +175,8 @@ class LibraryStorageService:
                 "page_count": result.page_count,
                 "extraction_method": result.extraction_method,
                 "coverage_score": result.coverage_score,
+                "ocr_used": result.ocr_used,
+                "vision_used": result.vision_used,
                 "warnings": result.warnings,
             }
         except ApiError as exc:
@@ -187,3 +190,69 @@ class LibraryStorageService:
     @staticmethod
     def checksum(payload: bytes) -> str:
         return hashlib.sha256(payload).hexdigest()
+
+
+def safe_extraction_status(extraction: dict[str, Any], *, attempted: bool = True) -> dict[str, Any]:
+    """Return bounded, non-sensitive extraction metadata for API and storage."""
+    stored_state = extraction.get("state")
+    if isinstance(stored_state, str) and stored_state in {
+        "extracted",
+        "no_text",
+        "unavailable",
+        "not_attempted",
+    }:
+        stored_coverage = extraction.get("coverage_score")
+        try:
+            coverage_score = (
+                max(0.0, min(1.0, float(stored_coverage))) if stored_coverage is not None else None
+            )
+        except (TypeError, ValueError):
+            coverage_score = None
+        return {
+            "state": stored_state,
+            "text_available": bool(extraction.get("text_available")),
+            "extraction_method": (
+                str(extraction["extraction_method"])[:80]
+                if isinstance(extraction.get("extraction_method"), str)
+                and extraction["extraction_method"].strip()
+                else None
+            ),
+            "ocr_used": bool(extraction.get("ocr_used")),
+            "vision_used": bool(extraction.get("vision_used")),
+            "coverage_score": coverage_score,
+            "error_code": (
+                str(extraction["error_code"])[:64]
+                if isinstance(extraction.get("error_code"), str)
+                and _SAFE_EXTRACTION_ERROR.fullmatch(extraction["error_code"])
+                else None
+            ),
+        }
+    text = extraction.get("text")
+    text_available = isinstance(text, str) and bool(text.strip())
+    error_code = extraction.get("extraction_error")
+    safe_error_code = (
+        str(error_code)[:64]
+        if isinstance(error_code, str) and _SAFE_EXTRACTION_ERROR.fullmatch(error_code)
+        else None
+    )
+    method = extraction.get("extraction_method")
+    safe_method = str(method)[:80] if isinstance(method, str) and method.strip() else None
+    coverage = extraction.get("coverage_score")
+    try:
+        coverage_score = max(0.0, min(1.0, float(coverage))) if coverage is not None else None
+    except (TypeError, ValueError):
+        coverage_score = None
+    state = (
+        "not_attempted"
+        if not attempted
+        else "unavailable" if safe_error_code else "extracted" if text_available else "no_text"
+    )
+    return {
+        "state": state,
+        "text_available": text_available,
+        "extraction_method": safe_method,
+        "ocr_used": bool(extraction.get("ocr_used")),
+        "vision_used": bool(extraction.get("vision_used")),
+        "coverage_score": coverage_score,
+        "error_code": safe_error_code,
+    }

@@ -1,8 +1,11 @@
 "use client";
 
-import { Minus, Zap, Cpu } from "lucide-react";
+import { Minus } from "lucide-react";
+import { createPortal } from "react-dom";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ProviderConfig } from "@/lib/providers-api";
 import ProviderHealthBadge from "@/app/components/providers/ProviderHealthBadge";
+import ProviderLogo from "@/app/components/providers/ProviderLogo";
 import { providerMatchesInventoryTab } from "@/app/components/providers/provider-visibility";
 
 interface ProviderListTableProps {
@@ -41,7 +44,7 @@ export default function ProviderListTable({
         </div>
       </div>
 
-      <div className="scrollbar-thin min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+      <div className="scrollbar-thin min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto pr-1">
         {filtered.length === 0 ? (
           <div className="text-muted-foreground border-glass-border rounded-2xl border border-dashed p-8 text-center text-xs italic">
             No active connections.
@@ -65,7 +68,7 @@ export default function ProviderListTable({
                   onClick={() => onSelect(entry.id)}
                   className="relative z-10 flex w-full flex-col space-y-3 rounded-[1.25rem] p-4 text-left"
                 >
-                  <div className="flex items-start justify-between gap-3 pr-10">
+                  <div className="flex h-10 items-center justify-between gap-3 pr-10">
                     <div
                       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
                         selected
@@ -73,13 +76,9 @@ export default function ProviderListTable({
                           : "border-glass-border bg-surface-2 text-muted-foreground"
                       }`}
                     >
-                      {Boolean(entry.supports_chat) || Boolean(entry.supports_web_search) ? (
-                        <Zap size={16} />
-                      ) : (
-                        <Cpu size={16} />
-                      )}
+                      <ProviderLogo providerType={entry.provider_type} size={20} />
                     </div>
-                    <div className="flex flex-col items-end gap-1.5">
+                    <div className="flex flex-row items-center gap-2">
                       <span
                         className={`rounded-full border px-2 py-0.5 text-[8px] font-bold tracking-wider uppercase ${
                           isLocal
@@ -112,18 +111,10 @@ export default function ProviderListTable({
                 </button>
 
                 {onDelete ? (
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDelete(entry);
-                    }}
-                    aria-label={`Remove ${entry.display_name}`}
-                    data-tooltip="Remove connection"
-                    className="ui-tooltip ui-tooltip-top ui-tooltip-end border-glass-border bg-surface-1 text-muted-foreground absolute top-3 right-3 z-20 flex h-7 w-7 items-center justify-center rounded-full border transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300"
-                  >
-                    <Minus size={14} />
-                  </button>
+                  <RemoveProviderButton
+                    providerName={entry.display_name}
+                    onRemove={() => onDelete(entry)}
+                  />
                 ) : null}
               </div>
             );
@@ -131,6 +122,100 @@ export default function ProviderListTable({
         )}
       </div>
     </div>
+  );
+}
+
+interface RemoveProviderButtonProps {
+  providerName: string;
+  onRemove: () => void;
+}
+
+interface TooltipPosition {
+  top: number;
+  left: number;
+  above: boolean;
+}
+
+function RemoveProviderButton({ providerName, onRemove }: RemoveProviderButtonProps) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState<TooltipPosition | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const tooltipId = useId();
+
+  useEffect(() => {
+    if (!tooltipOpen) return;
+
+    const updatePosition = () => {
+      const button = buttonRef.current;
+      if (!button) return;
+
+      const rect = button.getBoundingClientRect();
+      const tooltipWidth = Math.min(160, window.innerWidth - 16);
+      const halfWidth = tooltipWidth / 2;
+      const left = Math.max(
+        halfWidth + 8,
+        Math.min(window.innerWidth - halfWidth - 8, rect.left + rect.width / 2),
+      );
+      const above = rect.top > 52;
+
+      setTooltipPosition({
+        top: above ? rect.top - 8 : rect.bottom + 8,
+        left,
+        above,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [tooltipOpen]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setTooltipOpen(false);
+          onRemove();
+        }}
+        onPointerEnter={(event) => {
+          if (event.pointerType === "mouse") setTooltipOpen(true);
+        }}
+        onPointerLeave={() => setTooltipOpen(false)}
+        onFocus={() => setTooltipOpen(true)}
+        onBlur={() => setTooltipOpen(false)}
+        aria-label={`Remove ${providerName}`}
+        aria-describedby={tooltipOpen ? tooltipId : undefined}
+        className="border-glass-border bg-surface-2 text-foreground/80 absolute top-5 right-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border transition-colors hover:border-red-500/45 hover:bg-red-500/12 hover:text-red-300 focus-visible:ring-2 focus-visible:ring-red-500/45 focus-visible:outline-none"
+      >
+        <Minus size={16} strokeWidth={2.5} aria-hidden="true" />
+      </button>
+      {tooltipOpen && tooltipPosition && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              id={tooltipId}
+              role="tooltip"
+              className="border-glass-border text-foreground pointer-events-none fixed z-[10000] w-max max-w-[calc(100vw-1rem)] rounded-lg border px-2.5 py-1.5 text-[11px] leading-tight font-semibold shadow-[0_12px_32px_rgba(0,0,0,0.45)]"
+              style={{
+                top: tooltipPosition.top,
+                left: tooltipPosition.left,
+                transform: `translate(-50%, ${tooltipPosition.above ? "-100%" : "0"})`,
+                backgroundColor: "var(--background)",
+              }}
+            >
+              Remove connection
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 

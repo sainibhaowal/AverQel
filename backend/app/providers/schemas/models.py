@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.providers.services.openai_compatible_config import openai_compatible_settings
+
 
 class ProviderModelResponse(BaseModel):
     id: UUID | None = None
@@ -36,6 +38,7 @@ class ProviderModelPreviewRequest(BaseModel):
     supports_embeddings: bool = False
     supports_reranking: bool = False
     supports_model_listing: bool = False
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
     api_key: str | None = None
 
     model_config = ConfigDict(extra="forbid")
@@ -77,12 +80,13 @@ class ProviderModelPreviewRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_auth_secret_requirements(self) -> ProviderModelPreviewRequest:
-        if not self.supports_model_listing:
-            raise ValueError("supports_model_listing must be true for model preview")
-        if self.auth_mode == "api_key" and not self.api_key:
+        public_cline_catalog = self.provider_type.strip().lower() == "cline"
+        if self.auth_mode == "api_key" and not self.api_key and not public_cline_catalog:
             raise ValueError("api_key is required when auth_mode=api_key")
         if self.auth_mode in {"local_no_key", "none"} and self.api_key:
             raise ValueError("api_key is not allowed for the selected auth_mode")
+        if self.provider_type == "custom":
+            openai_compatible_settings(self.metadata_json)
         return self
 
 

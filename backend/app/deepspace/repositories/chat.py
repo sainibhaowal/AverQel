@@ -626,16 +626,16 @@ class DeepSpaceChatRepository:
                     Conversation.tenant_id == tenant_id,
                     Conversation.user_id == user_id,
                     Conversation.kind == kind,
-                    Message.role == "user",
+                    Message.role.in_({"user", "assistant"}),
                     Message.metadata_json["client_request_id"].astext == normalized_request_id,
                 )
                 .options(selectinload(Message.versions), selectinload(Message.active_version))
                 .order_by(Message.created_at.desc(), Message.id.desc())
             )
-            user_message = self.db.execute(stmt).scalars().first()
-            if user_message is None:
+            request_message = self.db.execute(stmt).scalars().first()
+            if request_message is None:
                 return None
-            conversation_id = user_message.conversation_id
+            conversation_id = request_message.conversation_id
             messages = list(
                 self.get_messages(
                     tenant_id=tenant_id,
@@ -657,10 +657,14 @@ class DeepSpaceChatRepository:
             if message.role != "user":
                 continue
             metadata = message.metadata_json if isinstance(message.metadata_json, dict) else {}
-            if str(metadata.get("client_request_id") or "").strip() != normalized_request_id:
-                continue
             assistant = messages[index + 1]
-            if assistant.role == "assistant":
+            assistant_metadata = (
+                assistant.metadata_json if isinstance(assistant.metadata_json, dict) else {}
+            )
+            if assistant.role == "assistant" and normalized_request_id in {
+                str(metadata.get("client_request_id") or "").strip(),
+                str(assistant_metadata.get("client_request_id") or "").strip(),
+            }:
                 return message, assistant
         return None
 

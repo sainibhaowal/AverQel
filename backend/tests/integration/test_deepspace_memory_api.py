@@ -643,7 +643,7 @@ def test_deepspace_memory_search_collapses_duplicate_rows(
     monkeypatch.setattr(
         MemoryService,
         "_embed_text",
-        lambda self, text, *, tenant_id, user_id: (
+        lambda self, text, *, tenant_id, user_id, input_type="passage": (
             [0.11] * dimension,
             {
                 "provider": "test",

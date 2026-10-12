@@ -26,6 +26,7 @@ import ProviderDisableDialog from "@/app/components/providers/ProviderDisableDia
 import ProviderForm from "@/app/components/providers/ProviderForm";
 import ProviderListTable from "@/app/components/providers/ProviderListTable";
 import ProviderHealthBadge from "@/app/components/providers/ProviderHealthBadge";
+import ProviderLogo from "@/app/components/providers/ProviderLogo";
 import {
   providerHasConfiguredRuntime,
   providerMatchesInventoryTab,
@@ -78,7 +79,7 @@ export default function ProvidersSettingsPage() {
   const [showCreateFlow, setShowCreateFlow] = useState(false);
   const [selectedCatalogType, setSelectedCatalogType] = useState<string | null>(null);
   const [browsingCatalog, setBrowsingCatalog] = useState(false);
-  const [viewportWidth, setViewportWidth] = useState(0);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
 
   // Accordion state for mobile
   const [isInventoryExpanded, setIsInventoryExpanded] = useState(true);
@@ -124,19 +125,18 @@ export default function ProvidersSettingsPage() {
 
   useEffect(() => {
     const updateViewport = () => {
-      setViewportWidth(window.visualViewport?.width || window.innerWidth || 0);
+      const nextIsNarrowViewport = window.innerWidth < 1024;
+      setIsNarrowViewport((current) =>
+        current === nextIsNarrowViewport ? current : nextIsNarrowViewport,
+      );
     };
 
     updateViewport();
     window.addEventListener("resize", updateViewport);
-    window.visualViewport?.addEventListener("resize", updateViewport);
     return () => {
       window.removeEventListener("resize", updateViewport);
-      window.visualViewport?.removeEventListener("resize", updateViewport);
     };
   }, []);
-
-  const isNarrowViewport = viewportWidth > 0 && viewportWidth < 1024;
 
   useEffect(() => {
     if (loading || activeTab === "runtime" || showCreateFlow || browsingCatalog) return;
@@ -198,11 +198,10 @@ export default function ProvidersSettingsPage() {
   useEffect(() => {
     if (selectedProviderId) {
       queueMicrotask(() => void loadModels(selectedProviderId));
-      if (isNarrowViewport) queueMicrotask(() => setIsInventoryExpanded(false)); // Auto-collapse on mobile when selected
     } else {
       queueMicrotask(() => setProviderModels([]));
     }
-  }, [loadModels, selectedProviderId, isNarrowViewport]);
+  }, [loadModels, selectedProviderId]);
 
   async function handleRefreshModels() {
     if (!selectedProvider) return;
@@ -424,7 +423,7 @@ export default function ProvidersSettingsPage() {
 
   return (
     <div
-      className={`providers-page-enter text-foreground flex h-full w-full flex-col gap-6 ${
+      className={`providers-page-enter text-foreground flex h-full min-h-0 w-full flex-col gap-6 ${
         entered ? "is-entered" : ""
       }`}
     >
@@ -482,8 +481,8 @@ export default function ProvidersSettingsPage() {
         <div
           className={`${
             isNarrowViewport
-              ? "custom-scrollbar flex flex-col space-y-6 overflow-y-auto px-4 pb-24"
-              : "grid h-full w-full grid-cols-12 gap-5 overflow-hidden lg:gap-8 xl:gap-12"
+              ? "custom-scrollbar flex min-h-0 w-full flex-1 flex-col space-y-6 overflow-x-hidden overflow-y-auto px-4 pb-24"
+              : "grid h-full w-full grid-cols-12 grid-rows-[minmax(0,1fr)] gap-5 overflow-hidden lg:gap-8 xl:gap-12"
           }`}
         >
           {activeTab === "runtime" ? (
@@ -518,10 +517,10 @@ export default function ProvidersSettingsPage() {
             <>
               {/* Sidebar Navigator / Inventory Section */}
               <aside
-                className={`theme-panel-muted mt-1 flex flex-col rounded-2xl p-4 sm:p-5 ${
+                className={`theme-panel-muted providers-inventory-panel mt-1 flex flex-col rounded-2xl p-4 sm:p-5 ${
                   isNarrowViewport
-                    ? "w-full shrink-0 border border-white/5"
-                    : "col-span-12 min-h-0 lg:col-span-3"
+                    ? "h-[min(46rem,calc(100dvh-8rem))] w-full shrink-0 overflow-hidden border"
+                    : "col-span-12 min-h-0 overflow-hidden lg:col-span-3"
                 }`}
               >
                 <div className="mb-4 flex shrink-0 items-center justify-between px-1">
@@ -531,6 +530,12 @@ export default function ProvidersSettingsPage() {
                     </h3>
                     {isNarrowViewport && (
                       <button
+                        aria-expanded={isInventoryExpanded}
+                        aria-label={
+                          isInventoryExpanded
+                            ? "Collapse inventory contents"
+                            : "Expand inventory contents"
+                        }
                         onClick={() => setIsInventoryExpanded(!isInventoryExpanded)}
                         className="text-zinc-500 transition-colors hover:text-white"
                       >
@@ -539,6 +544,7 @@ export default function ProvidersSettingsPage() {
                     )}
                   </div>
                   <button
+                    aria-label={browsingCatalog ? "Back to inventory" : "Browse provider families"}
                     onClick={() => {
                       setBrowsingCatalog(!browsingCatalog);
                       if (isNarrowViewport) setIsInventoryExpanded(true);
@@ -559,10 +565,14 @@ export default function ProvidersSettingsPage() {
                       initial={isNarrowViewport ? { height: 0, opacity: 0 } : false}
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      className={`relative w-full overflow-hidden ${isNarrowViewport ? "" : "flex-1"}`}
+                      className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
                     >
                       <div
-                        className={`w-full ${isNarrowViewport ? "max-h-[300px] overflow-y-auto pb-4" : "custom-scrollbar h-full overflow-y-auto"}`}
+                        role="region"
+                        aria-label={
+                          browsingCatalog ? "Provider families" : "Connected provider inventory"
+                        }
+                        className="custom-scrollbar min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto pb-4"
                       >
                         <AnimatePresence mode="wait">
                           {browsingCatalog ? (
@@ -601,7 +611,6 @@ export default function ProvidersSettingsPage() {
                                       setSelectedProviderId(null);
                                       setSelectedCatalogType(entry.provider_type);
                                       setShowCreateFlow(true);
-                                      if (isNarrowViewport) setIsInventoryExpanded(false);
                                     }}
                                     className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
                                       selectedCatalogType === entry.provider_type
@@ -610,7 +619,7 @@ export default function ProvidersSettingsPage() {
                                     }`}
                                   >
                                     <div className="theme-panel-muted text-primary flex h-8 w-8 items-center justify-center rounded-lg">
-                                      <Zap size={16} />
+                                      <ProviderLogo providerType={entry.provider_type} size={20} />
                                     </div>
                                     <div>
                                       <p className="text-foreground text-xs leading-none font-bold">
@@ -639,7 +648,6 @@ export default function ProvidersSettingsPage() {
                                   setSelectedProviderId(id);
                                   setShowCreateFlow(false);
                                   setBrowsingCatalog(false);
-                                  if (isNarrowViewport) setIsInventoryExpanded(false);
                                 }}
                                 onDelete={(provider) => setDeleteTarget(provider)}
                                 countLabel={activeTab.toUpperCase()}
@@ -669,7 +677,7 @@ export default function ProvidersSettingsPage() {
                 )}
 
                 <div
-                  className={`theme-panel-strong flex flex-col rounded-2xl border border-white/5 bg-white/[0.02] ${isNarrowViewport ? "min-h-0" : "h-full overflow-hidden"}`}
+                  className={`theme-panel-strong providers-setup-panel flex flex-col rounded-2xl border bg-white/[0.02] ${isNarrowViewport ? "min-h-0" : "h-full overflow-hidden"}`}
                 >
                   <div
                     className={`flex-1 ${isNarrowViewport ? "" : "custom-scrollbar overflow-y-auto"} p-4 sm:p-8`}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -12,7 +13,10 @@ from sqlalchemy.engine import CursorResult
 
 from app.auth.models.tenant import Tenant
 from app.core.config import get_settings
+from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceRunEvent
+from app.deepspace.models.message import Message
 from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
+from app.deepspace.services.run_events import append_event
 from app.deepspace.services.turn_queue import DeepSpaceTurnQueueStore
 from app.deepspace.workers.tasks import dispatch_deepspace_turn_queue
 from app.documents.models.collection import CollectionChatMedia
@@ -76,23 +80,109 @@ def maintenance_heartbeat() -> str:
                 text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
                 {"tenant_id": str(tenant_id)},
             )
-            result = session.execute(
-                text("""
-                    UPDATE deepspace_agent_runs
-                    SET status = CASE WHEN cancel_requested THEN 'cancelled' ELSE 'failed' END,
-                        last_error = CASE
-                            WHEN cancel_requested THEN 'cancelled_after_worker_lease_expired'
-                            ELSE 'worker_lease_expired'
-                        END,
-                        updated_at = CURRENT_TIMESTAMP,
-                        heartbeat_at = NULL
-                    WHERE tenant_id = :tenant_id
-                      AND status IN ('running', 'cancelling')
-                      AND (heartbeat_at IS NULL OR heartbeat_at < :cutoff)
-                """),
-                {"tenant_id": str(tenant_id), "cutoff": cutoff},
+            stale_runs = list(
+                session.execute(
+                    select(DeepSpaceAgentRun)
+                    .where(
+                        DeepSpaceAgentRun.tenant_id == tenant_id,
+                        DeepSpaceAgentRun.status.in_({"running", "cancelling"}),
+                        (DeepSpaceAgentRun.heartbeat_at.is_(None))
+                        | (DeepSpaceAgentRun.heartbeat_at < cutoff),
+                    )
+                    .with_for_update(skip_locked=True)
+                )
+                .scalars()
+                .all()
             )
-            stale_total += int(result.rowcount or 0)
+            for run in stale_runs:
+                run_id = run.id
+                run_user_id = run.user_id
+                run_conversation_id = run.conversation_id
+                assistant_message_id = run.assistant_message_id
+                cancelled = bool(run.cancel_requested)
+                stale_error = (
+                    "cancelled_after_worker_lease_expired" if cancelled else "worker_lease_expired"
+                )
+                request_id = ""
+                checkpoint = run.checkpoint if isinstance(run.checkpoint, dict) else {}
+                request_id = str(checkpoint.get("client_request_id") or "").strip()
+                assistant = (
+                    session.execute(
+                        select(Message).where(
+                            Message.id == assistant_message_id,
+                            Message.conversation_id == run_conversation_id,
+                            Message.role == "assistant",
+                        )
+                    ).scalar_one_or_none()
+                    if assistant_message_id is not None
+                    else None
+                )
+                if assistant is not None:
+                    metadata = dict(assistant.metadata_json or {})
+                    request_id = request_id or str(metadata.get("client_request_id") or "").strip()
+                    if metadata.get("status") == "streaming":
+                        metadata["status"] = "ready" if cancelled else "error"
+                        metadata["runtime_active"] = False
+                        if not cancelled:
+                            metadata["error_code"] = "DEEPSPACE_WORKER_LEASE_EXPIRED"
+                            metadata["error_message"] = (
+                                "The DeepSpace worker stopped before this response finished. The saved prompt is available to retry."
+                            )
+                        assistant.metadata_json = metadata
+                run.status = "cancelled" if cancelled else "failed"
+                run.last_error = stale_error
+                run.updated_at = datetime.now(UTC)
+                run.heartbeat_at = None
+                session.commit()
+                stale_total += 1
+
+                if request_id:
+                    terminal_exists = session.execute(
+                        select(DeepSpaceRunEvent.id)
+                        .where(
+                            DeepSpaceRunEvent.tenant_id == tenant_id,
+                            DeepSpaceRunEvent.user_id == run_user_id,
+                            DeepSpaceRunEvent.conversation_id == run_conversation_id,
+                            DeepSpaceRunEvent.client_request_id == request_id,
+                            DeepSpaceRunEvent.event_name.in_({"done", "error"}),
+                        )
+                        .limit(1)
+                    ).scalar_one_or_none()
+                    if terminal_exists is None:
+                        event_name = "done" if cancelled else "error"
+                        event_data = (
+                            {
+                                "conversation_id": str(run_conversation_id),
+                                "status": "cancelled",
+                            }
+                            if cancelled
+                            else {
+                                "code": "DEEPSPACE_WORKER_LEASE_EXPIRED",
+                                "message": "The DeepSpace worker stopped before this response finished. The saved prompt is available to retry.",
+                                "error_category": "runtime",
+                            }
+                        )
+                        frame = (
+                            f"event: {event_name}\n"
+                            f"data: {json.dumps(event_data, separators=(',', ':'))}\n\n"
+                        )
+                        try:
+                            append_event(
+                                session,
+                                settings=get_settings(),
+                                tenant_id=tenant_id,
+                                user_id=run_user_id,
+                                conversation_id=run_conversation_id,
+                                client_request_id=request_id,
+                                frame=frame,
+                                run_id=run_id,
+                            )
+                        except Exception:  # noqa: BLE001
+                            session.rollback()
+                            logger.exception(
+                                "Failed to publish terminal event for an expired DeepSpace run",
+                                extra={"conversation_id": str(run_conversation_id)},
+                            )
             queue_cutoff = datetime.now(tz=UTC) - timedelta(
                 minutes=DEEPSPACE_QUEUE_CLAIM_STALE_MINUTES
             )
@@ -153,6 +243,11 @@ def maintenance_heartbeat() -> str:
             ).all()
             for queue_user_id, queue_conversation_id in queued_pairs:
                 queue_store = DeepSpaceTurnQueueStore(session)
+                queue_store.resume_after_failure(
+                    tenant_id=tenant_id,
+                    user_id=queue_user_id,
+                    conversation_id=queue_conversation_id,
+                )
                 if queue_store.state(
                     tenant_id=tenant_id,
                     user_id=queue_user_id,
@@ -164,9 +259,8 @@ def maintenance_heartbeat() -> str:
                 ):
                     continue
                 try:
-                    # This is also the retry path if a previous worker
-                    # finished a turn but broker submission of the next one
-                    # failed after the queue row was already completed.
+                    # This also recovers a legacy failure pause and retries
+                    # dispatch if broker submission failed after a turn ended.
                     dispatch_deepspace_turn_queue.apply_async(
                         kwargs={
                             "tenant_id": str(tenant_id),

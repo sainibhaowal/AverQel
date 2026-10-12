@@ -7,6 +7,7 @@ from typing import Any, Final
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 
 from app.core.context import get_tenant_id, get_trace_id, get_user_id
@@ -16,6 +17,13 @@ from app.system.services.storage_quota import StorageQuotaExceededError
 
 logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
+RETRYABLE_DATABASE_SQLSTATES: Final[frozenset[str]] = frozenset(
+    {
+        "40001",  # serialization_failure: PostgreSQL aborted the transaction
+        "40P01",  # deadlock_detected: PostgreSQL aborted the transaction
+        "55P03",  # lock_not_available: includes a configured lock_timeout
+    }
+)
 
 HTTP_ERROR_CODE_MAP: Final[dict[int, str]] = {
     400: "BAD_REQUEST",
@@ -201,6 +209,13 @@ def _map_http_exception_code(status_code: int) -> str:
     return "HTTP_ERROR"
 
 
+def _database_sqlstate(exc: OperationalError) -> str | None:
+    """Return the PostgreSQL SQLSTATE without depending on psycopg internals."""
+    original = exc.orig
+    value = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+    return value if isinstance(value, str) else None
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register all application exception handlers."""
 
@@ -211,7 +226,25 @@ def register_exception_handlers(app: FastAPI) -> None:
         logger.warning("Database connection pool wait exceeded its budget.", exc_info=exc)
         return build_error_response(
             code="SERVICE_OVERLOAD",
-            message="The database is briefly busy. Your request was not changed; retry now.",
+            message="A temporary database issue interrupted this request. Please retry.",
+            status_code=503,
+            details={"retry_after_seconds": 1},
+        )
+
+    @app.exception_handler(OperationalError)
+    async def database_operational_error_handler(_: Request, exc: OperationalError) -> JSONResponse:
+        sqlstate = _database_sqlstate(exc)
+        if sqlstate not in RETRYABLE_DATABASE_SQLSTATES:
+            # Preserve the normal unhandled-error path for unrelated database
+            # failures; only known transaction-aborted contention is retryable.
+            raise exc
+        logger.warning(
+            "Transient database contention returned a retryable response.",
+            extra={"database_sqlstate": sqlstate},
+        )
+        return build_error_response(
+            code="SERVICE_OVERLOAD",
+            message="A temporary database issue interrupted this request. Please retry.",
             status_code=503,
             details={"retry_after_seconds": 1},
         )

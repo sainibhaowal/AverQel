@@ -587,12 +587,14 @@ const TimelineEntry = memo(function TimelineEntry({
 export default function DeepSpaceThinkingPanel({
   content = "",
   isStreaming,
+  isQueued = false,
   agentSteps = [],
   timeline = [],
   startedAt,
 }: {
   content?: string;
   isStreaming: boolean;
+  isQueued?: boolean;
   agentSteps?: AgentStep[];
   timeline?: TimelineStep[];
   startedAt?: string;
@@ -615,10 +617,10 @@ export default function DeepSpaceThinkingPanel({
   }, [isStreaming]);
 
   useEffect(() => {
-    if (!isStreaming) return;
+    if (!isStreaming || isQueued) return;
     const timer = window.setInterval(() => setClock(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [isStreaming]);
+  }, [isQueued, isStreaming]);
 
   // Providers may emit argument fragments before the function name. The
   // backend labels that transient fragment `pending_tool`; it is not a
@@ -685,8 +687,14 @@ export default function DeepSpaceThinkingPanel({
         className="text-foreground/50 hover:text-foreground/80 flex w-full cursor-pointer items-center gap-2 border-b border-white/8 py-2 text-left text-[11px] font-bold tracking-wider uppercase transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-cyan-300/40 focus-visible:outline-none"
       >
         <BrainCircuit size={13} className="text-primary/60" />
-        <span>{isStreaming ? "Thinking & activity…" : "Thinking & activity"}</span>
-        {durationLabel ? (
+        <span>
+          {isQueued ? "Queued" : isStreaming ? "Thinking & activity…" : "Thinking & activity"}
+        </span>
+        {isQueued ? (
+          <span className="text-foreground/35 ml-auto tracking-normal normal-case">
+            Waiting for your turn to start
+          </span>
+        ) : durationLabel ? (
           <span className="text-foreground/35 ml-auto tracking-normal normal-case">
             {isStreaming ? `Working for ${durationLabel}` : `Worked for ${durationLabel}`}
           </span>
@@ -737,7 +745,14 @@ export default function DeepSpaceThinkingPanel({
                 ))}
               </div>
             ) : null}
+            {isQueued &&
+            !content.trim() &&
+            activitySteps.length === 0 &&
+            !orderedTimeline.length ? (
+              <div className="text-foreground/45">Your message is saved and waiting to start.</div>
+            ) : null}
             {isStreaming &&
+            !isQueued &&
             !content.trim() &&
             activitySteps.length === 0 &&
             orderedTimeline.length === 0 ? (

@@ -21,7 +21,7 @@ class ChatGenerateRequest:
     reasoning_enabled: bool = False
     reasoning_effort: str | None = None
     reasoning_visibility: str | None = None
-    images: list[str] | None = None  # Base64 encoded images
+    images: list[str] | None = None  # Bare JPEG base64 or MIME-qualified image data URLs
     tools: list[dict[str, Any]] | None = None
     tool_choice: str | dict[str, Any] | None = None
     # Provider-native context transport is opt-in and capability-gated by the
@@ -52,6 +52,7 @@ class EmbeddingRequest:
     timeout_seconds: int
     provider_name: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    input_type: Literal["query", "passage"] = "passage"
 
 
 @dataclass(slots=True, frozen=True)

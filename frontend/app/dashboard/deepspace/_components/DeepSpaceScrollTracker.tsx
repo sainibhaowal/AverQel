@@ -13,6 +13,7 @@ interface DeepSpaceScrollTrackerProps {
   messages: DeepSpaceMessage[];
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   onInsertActiveAnswer?: (content: string) => void;
+  disabled?: boolean;
 }
 
 function getVersionContent(version: DeepSpaceHistoryVersion | null | undefined): string {
@@ -89,6 +90,7 @@ export default function DeepSpaceScrollTracker({
   messages,
   scrollContainerRef,
   onInsertActiveAnswer,
+  disabled = false,
 }: DeepSpaceScrollTrackerProps) {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [tooltipMessageId, setTooltipMessageId] = useState<string | null>(null);
@@ -190,7 +192,11 @@ export default function DeepSpaceScrollTracker({
   };
 
   return (
-    <div className="deepspace-scroll-tracker pointer-events-auto absolute top-20 right-0 bottom-48 z-20 flex min-h-0 flex-col items-center gap-3 p-0">
+    <div
+      aria-hidden={disabled}
+      inert={disabled}
+      className={`deepspace-scroll-tracker absolute top-20 right-0 bottom-48 z-20 flex min-h-0 flex-col items-center gap-3 p-0 transition-opacity duration-200 ${disabled ? "pointer-events-none opacity-45" : "pointer-events-auto opacity-100"}`}
+    >
       <div
         aria-label="DeepSpace message navigation"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 pl-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"

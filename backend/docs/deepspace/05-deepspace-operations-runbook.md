@@ -13,12 +13,31 @@ DeepSpace never changes a selected model automatically. Repeated failures open a
 short Redis circuit only for that tenant/provider/model. The UI reports the
 condition; the user may retry later or select another model explicitly.
 
+Provider HTTP failures are classified by what the response means. HTTP 400 and
+422 are shown as **Request rejected** and do not count as provider outages or
+open the circuit. HTTP 401/403 identify rejected credentials or access, 404
+identifies a missing model or endpoint, and 429 is shown as a rate limit. A
+timeout (408) or server failure (5xx) is treated as an availability failure
+and contributes to the circuit breaker. The UI retains the provider's bounded
+error message so operators can distinguish a bad request from a provider
+outage.
+
 ## DeepSpace private dashboard
 
 The existing DeepSpace screen displays a private provider-health summary sourced
 from the authenticated `GET /deepspace/chats/operational-summary` endpoint. It
-shows only the current user's tenant-scoped recent sample size, failure rate,
-and p50/p95 latency. It must never display prompts, responses, API keys, raw
+keeps the current user's tenant-scoped summary compact by default. Expand it to
+see the provider/model breakdown, sample count, failure rate, and p50/p95
+latency. When the endpoint has no samples, the UI says **No recent usage yet**
+instead of implying a 0% failure rate. P50 is the median latency; p95 is the
+slower end of recent requests. These are usage metrics, not active provider
+health probes.
+
+The expanded details also show the selected conversation's existing
+**Conversation ID**, with a copy action for support diagnostics. This is the
+same ID used by the chat API; the UI does not generate a separate Chat ID or
+DeepSpace ID. The endpoint reads up to 1,000 recent metrics for the authenticated
+user and tenant. It must never display prompts, responses, API keys, raw
 provider errors, or another tenant's measurements.
 
 The activity timeline receives only truthful server lifecycle events:
@@ -49,40 +68,59 @@ triggers.
 
 ## Queue failure and recovery behavior
 
-DeepSpace queue execution is fail-stop. If a real agent/tool execution returns
-an error, the current queued turn is saved as `failed`, its tool/error frames
-remain in the durable event history, and the conversation queue is paused. No
-later queued turn is dispatched automatically. The composer shows the failure
-reason and provides **Resume queue** after the user has reviewed or fixed the
-problem. A user may also send a separate normal run-now message while the
-queue is paused; that message does not consume or reorder the saved queue.
+DeepSpace queue failures are terminal for the failed turn, not for the queue.
+The worker persists the failure and its durable event history, then dispatches
+the next queued item by priority and FIFO sequence. The failed prompt remains
+visible for review and retry. A missing runtime checkpoint falls back to the
+saved prompt in a fresh attempt; the UI warns that actions completed in the
+failed attempt could repeat. Retrying is explicit and never blocks later work.
 
-For an automatic failure pause, **Retry checkpoint** or **Retry failed &
-resume** creates a new durable attempt linked to the failed request. The
-original failed row and error remain visible. The retry reuses the same
-assistant turn's last successful runtime tool results and asks the agent to
-continue from that checkpoint, so completed side effects are not blindly
-repeated. A user can instead steer another still-queued item while paused;
-that promoted item runs without retrying the failed checkpoint.
+**Resume queue** only clears a user pause and starts the next pending prompt; it
+does not retry a failed turn. The server also clears old automatic failure
+pauses created by earlier releases. This recovery is identified by the legacy
+`failed_request_id` marker, so a deliberate user pause is left untouched.
 
 The user may pause a queue at any time. Pausing requests cancellation of the
 currently running queued turn and prevents later turns from starting. Resume
 dispatches the highest-priority queued item, with steered items ahead of normal
-FIFO items. Steering a queued item also resumes an automatically paused queue
-after the active turn has been stopped.
+FIFO items. Steering a queued item also resumes the queue after the active turn
+has been stopped.
 
 Once the queue is resumed and work is active, every new composer message is
 saved as another queue item. It is never sent as an independent run while the
 queue is active. Independent run-now messages are available only while the
 queue is paused and no queued turn is still stopping.
 
+A still-pending `queued` prompt can be edited from its queue row. Saving updates
+the same durable request and preserves its priority and sequence, so the prompt
+stays in the same place in line. A worker claim and edit are serialized by the
+conversation lock: if work starts first, the edit returns `409` and the browser
+keeps the edited text as a composer draft. Failed attempts and turns already
+running or awaiting user/approval input are immutable; edit a pending follow-up
+or explicitly retry a failure instead. The edit route also checks the prompt
+version submitted by the browser to prevent stale tabs from overwriting newer
+edits.
+
 If a dispatcher claims a turn and dies before submitting the worker, the claim
 is released immediately when broker submission reports an error. A periodic
 maintenance heartbeat also recovers claims older than ten minutes: it
 re-queues a claim with no runtime worker, or preserves a completed/cancelled
 worker result; if the matching worker failed, it marks that turn failed and
-pauses the queue. Returning to DeepSpace also runs this recovery check before
-redispatching recovered work.
+continues with the next queued prompt unless the user has explicitly paused
+the queue. Queue state/history reads clear a legacy automatic failure pause
+only when its persisted control row has that failure state; ordinary reads do
+not lock the conversation. The maintenance heartbeat also clears legacy pauses
+and redispatches recovered work. A recognized transient database lock conflict
+returns a retryable 503, and the browser retries safe reads twice without
+replaying chat submissions or queue actions.
+
+When maintenance expires a worker lease, it also changes a still-streaming
+assistant message to a recoverable failure and appends a terminal event to the
+same request stream. The open browser reader can then close and show the retry
+action; a reopened chat reads the saved failure and partial answer. Duplicate
+Celery deliveries that did not acquire the request lock must not finalize the
+queue row. A delivery arriving after a terminal queue state must replay the
+stored result without calling the provider again.
 
 ## Failed file ingestion
 
@@ -122,6 +160,7 @@ applied revision history:
 - `20260926_0001_storage_reservations_archive_reconciliation`
 - `20260927_0001_retention_checkpoints`
 - `20260928_0001_retention_protections_and_run_links`
+- `20261012_0016_deepspace_queued_regenerations`
 
 Restart API and workers together after a migration that changes queue,
 runtime, provider, or event behavior. If a migration fails, stop the rollout,

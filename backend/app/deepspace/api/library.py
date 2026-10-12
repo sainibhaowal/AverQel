@@ -39,6 +39,7 @@ from app.deepspace.services.library_storage import (
     decode_library_payload,
     read_archive_entry,
     safe_archive_entries,
+    safe_extraction_status,
 )
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore
 from app.deepspace.workers.library_uploads import finalize_library_upload, profile_library_dataset
@@ -289,6 +290,18 @@ def _content_disposition(*, disposition: str, filename: str) -> str:
     )
 
 
+class ExtractionStatusSchema(BaseModel):
+    state: Literal["extracted", "no_text", "unavailable", "not_attempted"]
+    text_available: bool
+    extraction_method: str | None = None
+    ocr_used: bool = False
+    vision_used: bool = False
+    coverage_score: float | None = None
+    error_code: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class WorkspaceFileSchema(BaseModel):
     id: str
     name: str
@@ -307,6 +320,7 @@ class WorkspaceFileSchema(BaseModel):
     download_url: str | None = None
     archive_entries: list[dict[str, object]] | None = None
     dataset_profile: dict[str, object] | None = None
+    extraction_status: ExtractionStatusSchema | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -475,6 +489,7 @@ class LibraryUploadSchema(BaseModel):
     progress_percent: int
     status: str
     file_id: str | None = None
+    extraction_status: ExtractionStatusSchema | None = None
     error: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -618,7 +633,23 @@ def _serialize_file(
             if isinstance(metadata, dict) and isinstance(metadata.get("dataset_profile"), dict)
             else None
         ),
+        extraction_status=(
+            safe_extraction_status(cast(dict[str, Any], metadata["extraction_status"]))
+            if isinstance(metadata, dict) and isinstance(metadata.get("extraction_status"), dict)
+            else None
+        ),
     )
+
+
+def _file_metadata_with_extraction_status(
+    existing: dict[str, Any] | None,
+    extraction: dict[str, Any],
+    *,
+    attempted: bool,
+) -> dict[str, Any]:
+    metadata = dict(existing or {})
+    metadata["extraction_status"] = safe_extraction_status(extraction, attempted=attempted)
+    return metadata
 
 
 def _folder_schema(folder: DeepSpaceWorkspaceFolder) -> WorkspaceFolderSchema:
@@ -728,7 +759,15 @@ def _add_version(db: Session, file: DeepSpaceWorkspaceFile) -> None:
             storage_key=file.storage_key,
             checksum_sha256=file.checksum_sha256 or hashlib.sha256(b"").hexdigest(),
             size_bytes=file.size_bytes,
-            metadata_json={"is_binary": file.is_binary},
+            metadata_json={
+                "is_binary": file.is_binary,
+                **(
+                    {"extraction_status": file.metadata_json["extraction_status"]}
+                    if isinstance(file.metadata_json, dict)
+                    and isinstance(file.metadata_json.get("extraction_status"), dict)
+                    else {}
+                ),
+            },
         )
     )
     StorageLifecycleService(db).touch_source(
@@ -759,6 +798,12 @@ def _serialize_upload(upload: DeepSpaceLibraryUpload) -> LibraryUploadSchema:
         ),
         status=upload.status,
         file_id=str(upload.file_id) if upload.file_id else None,
+        extraction_status=(
+            safe_extraction_status(cast(dict[str, Any], upload.metadata_json["extraction_status"]))
+            if isinstance(upload.metadata_json, dict)
+            and isinstance(upload.metadata_json.get("extraction_status"), dict)
+            else None
+        ),
         error=upload.error_message,
         created_at=upload.created_at,
         updated_at=upload.updated_at,
@@ -1472,7 +1517,12 @@ async def get_workspace_file(
                 )
                 if extraction.get("text"):
                     file.extracted_text = str(extraction["text"])
-                    db.commit()
+                file.metadata_json = _file_metadata_with_extraction_status(
+                    file.metadata_json,
+                    extraction,
+                    attempted=True,
+                )
+                db.commit()
             if file.content_type == "application/zip":
                 if payload is None:
                     payload = storage.get_bytes(
@@ -1602,6 +1652,7 @@ async def create_workspace_file(
     is_binary = decoded.is_binary or not decoded.content_type.startswith(
         ("text/", "application/json", "application/xml", "application/yaml")
     )
+    extraction_attempted = decoded.content_type in _EXTRACTABLE_LIBRARY_TYPES
     extraction = (
         LibraryStorageService(settings).extract(
             filename=payload.name,
@@ -1626,10 +1677,14 @@ async def create_workspace_file(
         checksum_sha256=LibraryStorageService.checksum(decoded.payload),
         extracted_text=extraction.get("text"),
         is_binary=is_binary,
-        metadata_json=(
-            {"dataset_profile": {"status": "queued"}}
-            if DatasetDerivativeService.supports(decoded.content_type)
-            else {}
+        metadata_json=_file_metadata_with_extraction_status(
+            (
+                {"dataset_profile": {"status": "queued"}}
+                if DatasetDerivativeService.supports(decoded.content_type)
+                else {}
+            ),
+            extraction,
+            attempted=extraction_attempted,
         ),
     )
     stored = None
@@ -1830,6 +1885,7 @@ async def upload_workspace_file(
     is_binary = not content_type.startswith(
         ("text/", "application/json", "application/xml", "application/yaml")
     )
+    extraction_attempted = content_type in _EXTRACTABLE_LIBRARY_TYPES
     extraction = (
         LibraryStorageService(settings).extract(
             filename=name,
@@ -1854,6 +1910,9 @@ async def upload_workspace_file(
         checksum_sha256=LibraryStorageService.checksum(payload),
         extracted_text=extraction.get("text"),
         is_binary=is_binary,
+        metadata_json=_file_metadata_with_extraction_status(
+            {}, extraction, attempted=extraction_attempted
+        ),
     )
     stored = None
     if is_binary:
