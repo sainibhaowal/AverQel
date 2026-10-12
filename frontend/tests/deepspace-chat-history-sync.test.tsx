@@ -272,6 +272,15 @@ describe("DeepSpaceChatClient history sync", () => {
     expect(screen.getByTestId("active-response-controls")).toHaveTextContent("false");
   });
 
+  it("does not render a decorative logo in an empty chat", async () => {
+    renderChat();
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole("img", { name: "DeepSpace logo" })).not.toBeInTheDocument();
+  });
+
   it("reloads the saved assistant reply after a blank stream finishes", async () => {
     let queuedRequestId: string | null = null;
     let streamFinished = false;

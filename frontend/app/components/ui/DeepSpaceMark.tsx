@@ -10,7 +10,7 @@ type DeepSpaceMarkProps = {
 export default function DeepSpaceMark({ size = 24, className }: DeepSpaceMarkProps) {
   return (
     <Image
-      src="/brand/deepspace-orbital-vortex.svg"
+      src="/brand/deepspace-orbital-vortex-logo-only.webp"
       alt=""
       aria-hidden="true"
       className={className}

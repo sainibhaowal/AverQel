@@ -30,7 +30,6 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { memo, useCallback, useId, useMemo, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import Image from "next/image";
 
 import { fetchWithAuth } from "@/lib/api";
 import { exportToDocx, exportToMarkdown, exportToPDF } from "@/lib/exportUtils";
@@ -1541,17 +1540,6 @@ export default function DeepSpaceThread({
   if (messages.length === 0) {
     return (
       <div className="relative isolate flex h-full min-h-0 flex-col px-2 py-4">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-          <Image
-            src="/brand/deepspace-orbital-vortex.svg"
-            alt=""
-            aria-hidden="true"
-            width={478}
-            height={327}
-            unoptimized
-            className="absolute top-[62%] left-1/2 h-auto w-[min(58vw,28rem)] -translate-x-1/2 -translate-y-1/2 opacity-[0.05] grayscale select-none"
-          />
-        </div>
         <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
