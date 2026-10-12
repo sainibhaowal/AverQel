@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.analytics.schemas.dashboard import (
     DashboardOverviewResponse,
+    DashboardQueryStatsResponse,
     DashboardStatsResponse,
 )
 from app.analytics.services.dashboard_service import DashboardService
@@ -32,3 +33,12 @@ def get_dashboard_overview(
 ) -> DashboardOverviewResponse:
     service = DashboardService(db)
     return service.get_overview(tenant_id=tenant_context.tenant_id, user_id=auth.user_id)
+
+
+@router.get("/query-stats", response_model=DashboardQueryStatsResponse)
+def get_dashboard_query_stats(
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> DashboardQueryStatsResponse:
+    """Return only the live status data used by the grounded-query workspace."""
+    return DashboardService(db).get_query_stats(tenant_id=tenant_context.tenant_id)

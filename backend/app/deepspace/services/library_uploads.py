@@ -13,7 +13,10 @@ from app.deepspace.models.library_upload import DeepSpaceLibraryUpload
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_file_version import DeepSpaceWorkspaceFileVersion
 from app.deepspace.services.dataset_derivatives import DatasetDerivativeService
-from app.deepspace.services.library_storage import LibraryStorageService
+from app.deepspace.services.library_storage import (
+    LibraryStorageService,
+    safe_extraction_status,
+)
 
 # Database-backed editing is appropriate for notes and small source files, but
 # it is the wrong storage model for analytical data sets.  Store larger text
@@ -67,6 +70,38 @@ def finalize_upload(
     if len(payload) > _MAX_INLINE_TEXT_BYTES:
         is_binary = True
     storage_service = LibraryStorageService(settings)
+    extraction_attempted = content_type in {
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.oasis.opendocument.text",
+        "application/vnd.oasis.opendocument.presentation",
+        "application/vnd.oasis.opendocument.spreadsheet",
+        "application/msword",
+        "application/vnd.ms-word",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.ms-excel",
+        "text/csv",
+        "text/tab-separated-values",
+        "text/plain",
+        "text/markdown",
+        "text/x-markdown",
+        "application/json",
+        "application/x-ipynb+json",
+        "application/xml",
+        "application/yaml",
+        "application/x-yaml",
+        "application/rtf",
+        "text/rtf",
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/tiff",
+        "image/webp",
+        "image/bmp",
+        "image/gif",
+    }
     extraction = (
         storage_service.extract(
             filename=upload.filename,
@@ -74,41 +109,19 @@ def finalize_upload(
             payload=_bounded_extraction_payload(payload, content_type),
             tenant_id=upload.tenant_id,
         )
-        if content_type
-        in {
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.oasis.opendocument.text",
-            "application/vnd.oasis.opendocument.presentation",
-            "application/vnd.oasis.opendocument.spreadsheet",
-            "application/msword",
-            "application/vnd.ms-word",
-            "application/vnd.ms-powerpoint",
-            "application/vnd.ms-excel",
-            "text/csv",
-            "text/tab-separated-values",
-            "text/plain",
-            "text/markdown",
-            "text/x-markdown",
-            "application/json",
-            "application/x-ipynb+json",
-            "application/xml",
-            "application/yaml",
-            "application/x-yaml",
-            "application/rtf",
-            "text/rtf",
-            "image/png",
-            "image/jpeg",
-            "image/jpg",
-            "image/tiff",
-            "image/webp",
-            "image/bmp",
-            "image/gif",
-        }
+        if extraction_attempted
         else {"text": None}
     )
+    extraction_status = safe_extraction_status(extraction, attempted=extraction_attempted)
+    upload_metadata = dict(upload.metadata_json or {})
+    upload_metadata["extraction_status"] = extraction_status
+    upload.metadata_json = upload_metadata
+    file_metadata = (
+        {"dataset_profile": {"status": "queued"}}
+        if DatasetDerivativeService.supports(content_type)
+        else {}
+    )
+    file_metadata["extraction_status"] = extraction_status
     file_id = uuid.uuid4()
     record = DeepSpaceWorkspaceFile(
         id=file_id,
@@ -124,11 +137,7 @@ def finalize_upload(
         checksum_sha256=hashlib.sha256(payload).hexdigest(),
         extracted_text=extraction.get("text"),
         is_binary=is_binary,
-        metadata_json=(
-            {"dataset_profile": {"status": "queued"}}
-            if DatasetDerivativeService.supports(content_type)
-            else {}
-        ),
+        metadata_json=file_metadata,
     )
     stored = None
     if is_binary:
@@ -158,7 +167,10 @@ def finalize_upload(
                 storage_key=record.storage_key,
                 checksum_sha256=record.checksum_sha256 or hashlib.sha256(b"").hexdigest(),
                 size_bytes=record.size_bytes,
-                metadata_json={"is_binary": record.is_binary},
+                metadata_json={
+                    "is_binary": record.is_binary,
+                    "extraction_status": extraction_status,
+                },
             )
         )
         db.flush()

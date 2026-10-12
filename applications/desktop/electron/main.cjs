@@ -5,6 +5,7 @@ const {
   Tray,
   ipcMain,
   nativeImage,
+  safeStorage,
   shell,
 } = require("electron");
 const path = require("node:path");
@@ -12,6 +13,8 @@ const { existsSync } = require("node:fs");
 const { spawn } = require("node:child_process");
 const { resolveNeosisSourceRoot } = require("./neosis-source.cjs");
 const { createNeosisEnvironment } = require("./neosis-environment.cjs");
+const { CodexDesktopRuntime } = require("./codex-runtime.cjs");
+const { registerCodexIpcHandlers } = require("./codex-ipc.cjs");
 
 let mainWindow;
 let tray;
@@ -20,6 +23,7 @@ let neosisProcess;
 let neosisStart;
 let neosisUrl;
 let neosisOrigin;
+let codexRuntime;
 
 const trustedHosts = new Set([
   "averqel.com",
@@ -68,6 +72,11 @@ function isNeosisRenderer(rawUrl) {
 function isWorkspaceSender(event) {
   return event.sender === mainWindow?.webContents
     && (isAverQelRenderer(event.senderFrame?.url ?? "") || isNeosisRenderer(event.senderFrame?.url ?? ""));
+}
+
+function isAverQelSender(event) {
+  return event.sender === mainWindow?.webContents
+    && isAverQelRenderer(event.senderFrame?.url ?? "");
 }
 
 function launchPackagedNeosis() {
@@ -310,10 +319,26 @@ ipcMain.handle("workspace:open-averqel", async (event) => {
   }
 });
 
+registerCodexIpcHandlers({
+  ipcMain,
+  getRuntime: () => codexRuntime,
+  isAverQelSender,
+});
+
 app.whenReady().then(() => {
   // AverQel uses its own in-app controls and tray menu; do not show Electron's
   // default File/Edit/View/Window menu bar in the desktop window.
   Menu.setApplicationMenu(null);
+  codexRuntime = new CodexDesktopRuntime({
+    app,
+    safeStorage,
+    shell,
+    emit: (streamId, frame) => {
+      if (!mainWindow?.isDestroyed()) {
+        mainWindow.webContents.send("codex:stream-event", { streamId, ...frame });
+      }
+    },
+  });
   createWindow();
   createTray();
   app.on("activate", showWindow);
@@ -321,6 +346,7 @@ app.whenReady().then(() => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  codexRuntime?.cancelAllStreams?.();
   stopNeosis();
 });
 

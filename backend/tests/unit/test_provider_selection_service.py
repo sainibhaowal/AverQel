@@ -457,6 +457,15 @@ def test_chat_auto_selects_enabled_provider_when_assignment_points_to_disabled_p
         groq.api_base_url = "https://api.groq.com/openai/v1"
         groq.default_chat_model = "llama-3.3-70b-versatile"
         groq.priority = 100
+        groq.metadata_json = {
+            "supported_reasoning_efforts": ["low", "high"],
+            "openai_compatible": {
+                "reasoning": {
+                    "supported_efforts": ["low", "high"],
+                    "effort_parameter": "reasoning.effort",
+                }
+            },
+        }
         assignments.upsert_assignment(
             ProviderAssignment(
                 tenant_id=tenant.id,
@@ -492,6 +501,10 @@ def test_chat_auto_selects_enabled_provider_when_assignment_points_to_disabled_p
         assert selection.candidates[0].provider_type == "custom"
         assert selection.candidates[0].model_name == "llama-3.3-70b-versatile"
         assert selection.candidates[0].source == "env_fallback"
+        assert (
+            selection.candidates[0].metadata["openai_compatible"]
+            == groq.metadata_json["openai_compatible"]
+        )
         assert any("disabled-config" in note for note in selection.selection_notes)
         assert any(note.startswith("auto-chat:") for note in selection.selection_notes)
     finally:

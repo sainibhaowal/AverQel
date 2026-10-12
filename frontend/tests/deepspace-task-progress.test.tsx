@@ -4,6 +4,22 @@ import { describe, expect, it } from "vitest";
 import DeepSpaceThinkingPanel from "../app/dashboard/deepspace/_components/DeepSpaceThinkingPanel";
 
 describe("DeepSpace verified task progress", () => {
+  it("shows a queued turn as waiting until the worker starts it", () => {
+    const { rerender } = render(<DeepSpaceThinkingPanel content="" isStreaming isQueued />);
+
+    expect(screen.getByText("Queued")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for your turn to start")).toBeInTheDocument();
+    expect(screen.getByText("Your message is saved and waiting to start.")).toBeInTheDocument();
+    expect(screen.queryByText(/Working for/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Waiting for the model and tools…")).not.toBeInTheDocument();
+
+    rerender(<DeepSpaceThinkingPanel content="" isStreaming />);
+
+    expect(screen.getByText("Thinking & activity…")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for the model and tools…")).toBeInTheDocument();
+    expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+  });
+
   it("keeps persisted model thinking visible when tool steps are restored", () => {
     render(
       <DeepSpaceThinkingPanel

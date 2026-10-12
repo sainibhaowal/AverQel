@@ -192,7 +192,12 @@ class ConversationRetrievalService:
         try:
             query_embedding = (
                 EmbeddingService(self.settings, self.db)
-                .embed_many_with_metadata([query], tenant_id=tenant_id, actor_user_id=user_id)
+                .embed_many_with_metadata(
+                    [query],
+                    tenant_id=tenant_id,
+                    actor_user_id=user_id,
+                    input_type="query",
+                )
                 .vectors[0]
             )
         except Exception:

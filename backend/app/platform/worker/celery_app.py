@@ -26,6 +26,7 @@ celery_app = Celery(
         "app.deepspace.workers.tasks",
         "app.deepspace.workers.library_uploads",
         "app.deepspace.workers.schedules",
+        "app.query.workers.dataset_indexing",
     ],
 )
 
@@ -66,6 +67,7 @@ celery_app.conf.update(
         "deepspace.dispatch_schedules": {"queue": "deepspace"},
         "deepspace.artifact_create": {"queue": "deepspace"},
         "deepspace.index_conversation": {"queue": "dataset_indexing"},
+        "queries.index_dataset": {"queue": "grounded_query_datasets"},
     },
     beat_schedule={
         "maintenance-heartbeat": {

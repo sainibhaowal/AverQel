@@ -103,6 +103,7 @@ from app.providers.models.provider_model_cache import ProviderModelCache
 from app.providers.models.provider_secret import ProviderSecret
 from app.providers.models.provider_usage_record import ProviderUsageRecord
 from app.query.models.comment import Comment
+from app.query.models.dataset_index import QueryDatasetIndex  # noqa: F401
 from app.query.models.feedback import Feedback
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query

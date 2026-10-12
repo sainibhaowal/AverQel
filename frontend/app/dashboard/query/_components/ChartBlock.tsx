@@ -147,7 +147,8 @@ const ChartBlock = memo(function ChartBlock({ block }: ChartBlockProps) {
             initial={{ opacity: 0, scale: 0.95, y: 5 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 5 }}
-            className="pointer-events-none absolute z-50 flex min-w-[140px] flex-col rounded-lg border border-white/10 bg-[#09090b]/95 p-3 shadow-2xl ring-1 ring-white/5 backdrop-blur-xl"
+            role="tooltip"
+            className="averqel-tooltip-surface pointer-events-none absolute z-50 flex min-w-[140px] flex-col rounded-xl border p-3"
             style={{
               left: activePoint.x,
               top: activePoint.y - 10, // Closer to the point
@@ -155,31 +156,31 @@ const ChartBlock = memo(function ChartBlock({ block }: ChartBlockProps) {
             }}
           >
             {/* Header: Label */}
-            <p className="mb-2 border-b border-white/5 pb-1 text-[10px] font-bold tracking-[0.15em] text-white/40 uppercase">
+            <p className="text-foreground/60 border-glass-border mb-2 border-b pb-1 text-[10px] font-bold tracking-[0.15em] uppercase">
               {activePoint.label}
             </p>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-8">
-                <span className="flex items-center gap-1.5 font-mono text-[10px] text-white/60">
+                <span className="text-foreground/70 flex items-center gap-1.5 font-mono text-[10px]">
                   <div
                     className="h-1.5 w-1.5 rounded-full"
                     style={{ backgroundColor: activePoint.color }}
                   />
                   Value:
                 </span>
-                <span className="font-mono text-sm font-bold text-[#00e5ff]">
+                <span className="text-primary font-mono text-sm font-bold">
                   {formatNumber(activePoint.value)}
                 </span>
               </div>
 
               {/* Optional: Magnitude/Z-Axis data */}
               {activePoint.z !== undefined && (
-                <div className="mt-1.5 flex items-center justify-between border-t border-white/5 pt-1.5">
-                  <span className="font-mono text-[9px] tracking-tighter text-white/30 uppercase">
+                <div className="border-glass-border mt-1.5 flex items-center justify-between border-t pt-1.5">
+                  <span className="text-foreground/60 font-mono text-[9px] tracking-tighter uppercase">
                     Magnitude (Z):
                   </span>
-                  <span className="font-mono text-xs text-white/60">{activePoint.z}</span>
+                  <span className="text-foreground/70 font-mono text-xs">{activePoint.z}</span>
                 </div>
               )}
             </div>

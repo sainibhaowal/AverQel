@@ -132,4 +132,5 @@ def test_dashboard_provider_runtime_uses_cached_chat_metadata(db_session, seed_u
     assert selection.chat_options == {
         "tenant_id": seeded.tenant_id,
         "allow_live_model_discovery": False,
+        "record_audit": False,
     }

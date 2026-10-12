@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, KeyRound, Info } from "lucide-react";
+import { Globe, Info } from "lucide-react";
 import React from "react";
 
 import ProviderDropdown from "./ProviderDropdown";
@@ -34,7 +34,8 @@ export default function ProviderAuthFields({
 }: ProviderAuthFieldsProps) {
   const authModes = catalogEntry?.auth_modes || ["api_key", "none"];
   // Only hide URL for fully built-in providers (auth_mode "none") — local runtimes like LM Studio still need their URL
-  const requiresBaseUrl = authMode !== "none" || providerType === "searxng";
+  const requiresBaseUrl =
+    authMode !== "none" || providerType === "searxng" || providerType === "custom";
 
   const authOptions = authModes.map((m) => ({
     value: m,
@@ -69,7 +70,7 @@ export default function ProviderAuthFields({
                 value={apiBaseUrl}
                 onChange={(e) => onApiBaseUrlChange(e.target.value)}
                 placeholder="https://api.provider.ai/v1"
-                className="border-glass-border bg-surface-1 text-foreground placeholder:text-muted-foreground/30 focus:border-primary/40 focus:ring-primary/5 h-10 w-full rounded-xl border px-4 text-xs ring-1 ring-transparent transition-all outline-none"
+                className="border-glass-border bg-surface-1 text-foreground placeholder:text-muted-foreground/30 focus:border-primary/40 focus:ring-primary/5 h-10 w-full rounded-lg border px-4 pr-10 text-xs ring-1 ring-transparent transition-all outline-none"
               />
               <Globe className="text-muted-foreground/40 group-focus-within:text-primary/50 pointer-events-none absolute top-[11px] right-4 h-3.5 w-3.5 transition-colors" />
             </div>
@@ -87,15 +88,12 @@ export default function ProviderAuthFields({
           <label className="text-muted-foreground/60 block px-0.5 font-mono text-[9px] tracking-[0.2em] uppercase">
             Security Token / Secret
           </label>
-          <div className="group relative">
-            <ProviderSecretField
-              value={secretValue}
-              onChange={onSecretValueChange}
-              maskedSummary={maskedSummary}
-              className="bg-surface-1 border-glass-border h-10"
-            />
-            <KeyRound className="text-muted-foreground/40 group-focus-within:text-primary/50 pointer-events-none absolute top-[11px] right-4 h-3.5 w-3.5 transition-colors" />
-          </div>
+          <ProviderSecretField
+            value={secretValue}
+            onChange={onSecretValueChange}
+            maskedSummary={maskedSummary}
+            className="bg-surface-1 border-glass-border h-10"
+          />
         </div>
       )}
     </div>

@@ -62,6 +62,13 @@ next-env.d.ts
 # User excluded directories
 /.vscode/
 /assets/
+!/assets/
+/assets/*
+!/assets/brand/
+/assets/brand/*
+!/assets/brand/deepspace-logo.svg
+!/assets/brand/deepspace-logo.png
+!/assets/brand/deepspace-agentic.svg
 /ZevaConnector/
 /scratch/
 /applications/*

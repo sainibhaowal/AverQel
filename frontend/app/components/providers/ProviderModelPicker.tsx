@@ -6,6 +6,23 @@ import ProviderDropdown from "@/app/components/providers/ProviderDropdown";
 
 type ProviderModelKind = "chat" | "embedding" | "reranker" | "other";
 
+function flattenSearchMetadata(value: unknown, depth = 0): string[] {
+  if (depth > 6 || value === null || value === undefined) return [];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return [String(value)];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => flattenSearchMetadata(item, depth + 1));
+  }
+  if (typeof value === "object") {
+    return Object.entries(value).flatMap(([key, item]) => [
+      key,
+      ...flattenSearchMetadata(item, depth + 1),
+    ]);
+  }
+  return [];
+}
+
 interface ProviderModelPickerProps {
   label: string;
   value: string;
@@ -14,8 +31,10 @@ interface ProviderModelPickerProps {
   kinds?: ("chat" | "embedding" | "reranker" | "other")[];
   allowClear?: boolean;
   clearLabel?: string;
+  placeholder?: string;
   disabled?: boolean;
   helperText?: string;
+  allowCustomValue?: boolean;
 }
 
 /**
@@ -30,8 +49,10 @@ export default function ProviderModelPicker({
   kinds = [],
   allowClear = false,
   clearLabel = "Not Assigned",
+  placeholder,
   disabled = false,
   helperText,
+  allowCustomValue = false,
 }: ProviderModelPickerProps) {
   const inputId = useId();
 
@@ -81,9 +102,10 @@ export default function ProviderModelPicker({
         label={label}
         value={value}
         onChange={onChange}
-        placeholder={getPlaceholder()}
+        placeholder={placeholder || getPlaceholder()}
         name={inputId}
         disabled={disabled}
+        allowCustomValue={allowCustomValue}
         options={[
           ...(allowClear
             ? [
@@ -98,8 +120,11 @@ export default function ProviderModelPicker({
             value: m.model_name,
             label: m.display_name || m.model_name,
             hint: formatHint(m),
+            searchText: flattenSearchMetadata(m).join(" ").slice(0, 4096),
           })),
         ]}
+        searchable
+        searchPlaceholder="Search by model name, ID, context, or capability"
       />
       {helperText && (
         <p className="text-foreground/35 px-1 text-[10px] leading-relaxed font-medium italic">

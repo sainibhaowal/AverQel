@@ -351,6 +351,16 @@ services:
     mem_limit: 1024m
     cpus: 1.0
 
+  grounded-query-dataset-worker:
+    extends:
+      service: worker
+    container_name: averqel-grounded-query-dataset-worker
+    environment:
+      AKS_WORKER_QUEUES: grounded_query_datasets
+      AKS_WORKER_CONCURRENCY: ${AKS_GROUNDED_QUERY_DATASET_WORKER_CONCURRENCY:-1}
+    mem_limit: 1024m
+    cpus: 1.0
+
   scheduler:
     container_name: averqel-scheduler
     image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}

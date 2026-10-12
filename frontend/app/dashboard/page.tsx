@@ -14,29 +14,27 @@ import {
   History,
   Layers3,
   RefreshCcw,
-  Search,
   ShieldAlert,
   Upload,
   Zap,
   Activity,
   ShieldCheck,
   Settings2,
-  Sparkles,
   BrainCircuit,
   Globe2,
   Radio,
   ServerCog,
   Mic2,
-  PanelsLeftBottom,
   UserRound,
 } from "lucide-react";
 
 import Link from "next/link";
 import type { ComponentType } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import UploadModal from "@/app/components/dashboard/documents/UploadModal";
 import ParticleAccelerator from "@/app/components/dashboard/ParticleAccelerator";
+import DeepSpaceMark from "@/app/components/ui/DeepSpaceMark";
 import { hasAdminRole, hasProviderAccess } from "@/lib/roles";
 import { fetchWithAuth } from "../../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -206,8 +204,11 @@ export default function DashboardPage() {
   const [planSummary, setPlanSummary] = useState<DashboardPlanSummary | null>(null);
 
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const overviewRequestInFlight = useRef(false);
 
   const fetchDashboardData = useCallback(async () => {
+    if (overviewRequestInFlight.current) return;
+    overviewRequestInFlight.current = true;
     setLoadError(null);
     try {
       const overviewRes = (await fetchWithAuth("/dashboard/overview")) as Response;
@@ -221,6 +222,7 @@ export default function DashboardPage() {
       console.error("Failed to fetch dashboard overview", error);
       setLoadError("Live dashboard data could not be loaded. Retry to reconnect.");
     } finally {
+      overviewRequestInFlight.current = false;
       setLoading(false);
     }
   }, []);
@@ -291,7 +293,7 @@ export default function DashboardPage() {
         label: "Queries run",
         value: stats.total_queries,
         detail: "Grounded conversations",
-        icon: Search,
+        icon: FileSearch,
       },
       {
         label: "Storage",
@@ -389,7 +391,7 @@ export default function DashboardPage() {
     {
       title: "Ask a grounded query",
       body: "Search, summarize, compare, and inspect evidence from the current document set.",
-      icon: Search,
+      icon: FileSearch,
       href: "/dashboard/query",
     },
   ];
@@ -482,7 +484,7 @@ export default function DashboardPage() {
                     : "border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
                 }`}
               >
-                <Search size={14} className="stroke-[3]" />
+                <FileSearch size={14} className="stroke-[3]" />
                 Ask Query
               </Link>
             </div>
@@ -599,7 +601,7 @@ export default function DashboardPage() {
               detail: "Get answers grounded in your documents",
               count: loading ? "…" : `${stats.total_queries} queries`,
               href: "/dashboard/query",
-              icon: Search,
+              icon: FileSearch,
               accent:
                 "border-emerald-500/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300",
             },
@@ -608,7 +610,7 @@ export default function DashboardPage() {
               detail: "Work with an agent, tools, and memory",
               count: services.agent === "ready" ? "Ready to work" : "Status unavailable",
               href: "/dashboard/deepspace",
-              icon: PanelsLeftBottom,
+              icon: DeepSpaceMark,
               accent: "border-indigo-500/20 bg-indigo-500/10 text-indigo-800 dark:text-indigo-300",
             },
           ].map((destination) => {
@@ -1839,7 +1841,7 @@ function getActivityConfig(event: DashboardActivityItem) {
 
   if (a.includes("agent") || a.includes("autonomous") || a.includes("deepspace")) {
     return {
-      icon: Sparkles,
+      icon: DeepSpaceMark,
       label: "Autonomous Action",
       color: "text-primary",
       detail: "DeepSpace Intelligence",
@@ -1876,7 +1878,7 @@ function getActivityConfig(event: DashboardActivityItem) {
   }
   if (a.includes("query")) {
     return {
-      icon: Search,
+      icon: FileSearch,
       label: "Intelligence Query",
       color: "text-primary",
       detail: "Context Retrieval",

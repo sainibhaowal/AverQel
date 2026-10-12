@@ -39,6 +39,37 @@ The release workflow builds Linux `.deb` and Windows `.exe` packages. Both
 include the NeoSIS desktop runtime from the NeoSIS repository's pinned `main`
 commit recorded in the GitHub release manifest.
 
+The Electron main process owns the OpenAI Codex runtime used by the OpenAI
+provider's desktop-only Codex Login tab. It checks for a signed-in ChatGPT
+account in the local Codex CLI and, when found, uses the CLI's app-server over
+stdio for account/model discovery and inference. AverQel does not read the CLI
+credential file or copy its tokens. If no usable ChatGPT CLI login is available,
+the user can sign in through OpenAI in the system browser; those OAuth tokens are
+encrypted with Electron `safeStorage` in the current operating-system profile.
+API-key CLI sessions are not treated as ChatGPT plan access. Provider settings
+store an opaque local-account identifier and discovered model metadata; raw
+account email and CLI credentials stay on the desktop. The backend relays
+inference over a one-use WebSocket ticket and transient request/response frames.
+Each Codex model's advertised reasoning efforts, including `minimal`, `ultra`,
+and other safe catalog values, stay attached to that model and are sent using
+their native Codex values. Browser OAuth uses per-model effort metadata only if
+the account's model catalog returns it; otherwise DeepSpace uses its existing
+OpenAI model profile.
+Codex subprocesses start outside the project in the OS temporary directory, and
+each inference uses a private temporary workspace. Inference requires an
+app-server permission profile that denies filesystem access except minimal
+runtime paths; shell, MCP, hooks, apps, plugins, subagents, web search, and local
+Codex history are disabled. CLI versions that cannot enforce this profile are
+not used for inference. API keys and other token-like environment variables
+are removed from the Codex child-process environment.
+Linux OAuth sign-in requires an encrypted GNOME Keyring or KWallet backend;
+Electron's `basic_text` fallback is rejected. The Codex app-server RPC surface
+can change between CLI releases, so older or incompatible versions fall back to
+browser sign-in. The macOS `.dmg` is built with
+`pnpm --dir applications/desktop build:mac`. OpenAI's current Sign in with
+ChatGPT guidance requires paid or remotely hosted apps to complete its
+eligibility process.
+
 Linux packaging builds NeoSIS's static Landlock launcher with `musl-gcc`. The
 release workflow installs Ubuntu's `musl-tools` package on the Linux runner;
 local Ubuntu builds need the same package:

@@ -28,25 +28,28 @@ export default function ProviderSecretField({
         {label}
       </label>
       <div className="relative">
+        <KeyRound
+          aria-hidden="true"
+          className="text-muted-foreground/65 pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2"
+        />
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
           type={showSecret ? "text" : "password"}
           placeholder={maskedSummary || "Enter secret value"}
           disabled={disabled}
-          className={`border-glass-border bg-muted text-foreground w-full rounded-xl border px-4 py-3 pr-12 text-sm transition-colors outline-none focus:border-blue-500/50 disabled:opacity-60 ${className || ""}`}
+          className={`border-glass-border bg-muted text-foreground focus:border-primary/50 w-full rounded-lg border py-0 pr-12 pl-10 text-sm transition-colors outline-none disabled:opacity-60 ${className || ""}`}
         />
         <button
           type="button"
           onClick={() => setShowSecret((current) => !current)}
-          className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
+          className="text-muted-foreground hover:text-foreground focus-visible:ring-primary/50 absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:outline-none dark:hover:bg-white/5"
           aria-label="Toggle secret visibility"
         >
           {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       </div>
       <div className="text-muted-foreground flex items-center gap-2 text-xs">
-        <KeyRound size={12} />
         <span>
           {maskedSummary
             ? `Saved secret: ${maskedSummary}`

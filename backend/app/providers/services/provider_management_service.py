@@ -23,6 +23,7 @@ from app.providers.repositories.provider_health_checks import (
     ProviderHealthChecksRepository,
 )
 from app.providers.repositories.provider_model_cache import ProviderModelCacheRepository
+from app.providers.services.openai_codex_config import validate_codex_desktop_settings
 from app.providers.services.provider_secret_crypto import ProviderSecretCryptoError
 from app.providers.services.provider_secret_service import (
     MaskedProviderSecret,
@@ -42,7 +43,7 @@ from app.system.services.audit_service import AuditService
 SUPPORTED_PROVIDER_CATALOG: dict[str, dict[str, object]] = {
     "openai": {
         "display_name": "OpenAI API",
-        "auth_modes": ["api_key"],
+        "auth_modes": ["api_key", "codex_desktop"],
         "supports_chat": True,
         "supports_embeddings": True,
         "supports_reranking": False,
@@ -81,6 +82,90 @@ SUPPORTED_PROVIDER_CATALOG: dict[str, dict[str, object]] = {
         "auth_modes": ["api_key"],
         "supports_chat": True,
         "supports_embeddings": True,
+        "supports_reranking": False,
+        "supports_web_search": False,
+        "supports_model_listing": True,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": False,
+    },
+    "mistral": {
+        "display_name": "Mistral AI",
+        "auth_modes": ["api_key"],
+        "supports_chat": True,
+        "supports_embeddings": True,
+        "supports_reranking": False,
+        "supports_web_search": False,
+        "supports_model_listing": True,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": False,
+    },
+    "meta": {
+        "display_name": "Meta AI",
+        "auth_modes": ["api_key"],
+        "supports_chat": True,
+        "supports_embeddings": False,
+        "supports_reranking": False,
+        "supports_web_search": False,
+        "supports_model_listing": True,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": False,
+    },
+    "cline": {
+        "display_name": "Cline API",
+        "auth_modes": ["api_key"],
+        "supports_chat": True,
+        "supports_embeddings": False,
+        "supports_reranking": False,
+        "supports_web_search": False,
+        "supports_model_listing": True,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": False,
+    },
+    "moonshot": {
+        "display_name": "Moonshot AI (Kimi)",
+        "auth_modes": ["api_key"],
+        "supports_chat": True,
+        "supports_embeddings": False,
+        "supports_reranking": False,
+        "supports_web_search": False,
+        "supports_model_listing": True,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": False,
+    },
+    "zai": {
+        "display_name": "Z.AI (GLM)",
+        "auth_modes": ["api_key"],
+        "supports_chat": True,
+        "supports_embeddings": False,
+        "supports_reranking": False,
+        "supports_web_search": False,
+        "supports_model_listing": False,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": False,
+    },
+    "nvidia-nim": {
+        "display_name": "NVIDIA NIM",
+        "auth_modes": ["api_key"],
+        "supports_chat": True,
+        "supports_embeddings": True,
+        "supports_reranking": False,
+        "supports_web_search": False,
+        "supports_model_listing": True,
+        "supports_model_install": False,
+        "supports_account_linking": False,
+        "is_local": False,
+    },
+    "manus": {
+        "display_name": "Manus Agent API",
+        "auth_modes": ["api_key"],
+        "supports_chat": True,
+        "supports_embeddings": False,
         "supports_reranking": False,
         "supports_web_search": False,
         "supports_model_listing": True,
@@ -370,6 +455,19 @@ class ProviderManagementService:
             if supports_reranking is None
             else supports_reranking
         )
+        if auth_mode == "codex_desktop":
+            self._validate_codex_runtime_config(
+                provider_type=provider_type,
+                metadata_json=metadata_json,
+                default_chat_model=default_chat_model,
+                api_key=api_key,
+                supports_chat=supports_chat,
+                supports_embeddings=supports_embeddings,
+                supports_reranking=effective_supports_reranking,
+                supports_model_listing=supports_model_listing,
+                supports_model_install=supports_model_install,
+                is_local=is_local,
+            )
         self._validate_provider_definition(
             provider_type=provider_type,
             api_base_url=api_base_url,
@@ -393,6 +491,7 @@ class ProviderManagementService:
                 )
                 if candidate.visibility_scope != "system"
                 and candidate.provider_type == provider_type
+                and candidate.auth_mode == auth_mode
                 and (candidate.api_base_url or "").strip().rstrip("/").casefold()
                 == normalized_endpoint
             ),
@@ -537,6 +636,50 @@ class ProviderManagementService:
             else provider.provider_type
         )
         merged_enabled = bool(update_values.get("enabled", provider.enabled))
+        if "auth_mode" in update_values and merged_provider_type == "openai":
+            codex_mode = merged_auth_mode == "codex_desktop"
+            update_values.update(
+                {
+                    "supports_chat": True,
+                    "supports_embeddings": not codex_mode,
+                    "supports_reranking": False,
+                    "supports_model_listing": True,
+                    "supports_model_install": False,
+                    "is_local": False,
+                }
+            )
+            if codex_mode:
+                update_values["default_embedding_model"] = None
+                update_values["default_reranker_model"] = None
+        merged_metadata = dict(provider.metadata_json or {})
+        updated_metadata = update_values.get("metadata_json")
+        if isinstance(updated_metadata, dict):
+            merged_metadata = dict(updated_metadata)
+        if merged_auth_mode == "codex_desktop":
+            selected_model = update_values.get("default_chat_model", provider.default_chat_model)
+            self._validate_codex_runtime_config(
+                provider_type=merged_provider_type,
+                metadata_json=merged_metadata,
+                default_chat_model=(str(selected_model) if selected_model else None),
+                api_key=api_key,
+                supports_chat=bool(update_values.get("supports_chat", provider.supports_chat)),
+                supports_embeddings=bool(
+                    update_values.get("supports_embeddings", provider.supports_embeddings)
+                ),
+                supports_reranking=bool(
+                    update_values.get("supports_reranking", provider.supports_reranking)
+                ),
+                supports_model_listing=bool(
+                    update_values.get("supports_model_listing", provider.supports_model_listing)
+                ),
+                supports_model_install=bool(
+                    update_values.get("supports_model_install", provider.supports_model_install)
+                ),
+                is_local=bool(update_values.get("is_local", provider.is_local)),
+            )
+        elif provider.auth_mode == "codex_desktop" and "metadata_json" not in update_values:
+            merged_metadata.pop("codex_desktop", None)
+            update_values["metadata_json"] = merged_metadata
         managed_embeddings_enabled = self._managed_server_embeddings_enabled(
             tenant_id=tenant_id,
             workspace_id=provider.workspace_id,
@@ -553,7 +696,7 @@ class ProviderManagementService:
         # For capability fields not being explicitly updated, use the catalog value
         # as fallback rather than the DB value. This prevents stale DB data from
         # blocking updates to unrelated fields (e.g. changing default_chat_model).
-        _catalog_caps = SUPPORTED_PROVIDER_CATALOG.get(merged_provider_type, {})
+        _catalog_caps = self._expected_catalog_capabilities(merged_provider_type, merged_auth_mode)
         self._validate_provider_definition(
             provider_type=merged_provider_type,
             api_base_url=merged_api_base_url,
@@ -599,6 +742,13 @@ class ProviderManagementService:
                 tenant_id=tenant_id,
                 provider_config_id=provider_config_id,
                 values=update_values,
+            )
+        if provider.auth_mode == "api_key" and merged_auth_mode != "api_key":
+            self.secrets.revoke_secret(
+                tenant_id=tenant_id,
+                provider_config_id=provider_config_id,
+                secret_type="api_key",
+                actor_user_id=actor_user_id,
             )
         if api_key:
             try:
@@ -1553,6 +1703,63 @@ class ProviderManagementService:
             provider_config_id=provider_config_id,
         )
 
+    @staticmethod
+    def _expected_catalog_capabilities(provider_type: str, auth_mode: str) -> dict[str, object]:
+        capabilities = dict(SUPPORTED_PROVIDER_CATALOG.get(provider_type, {}))
+        if provider_type == "openai" and auth_mode == "codex_desktop":
+            capabilities.update(
+                {
+                    "supports_chat": True,
+                    "supports_embeddings": False,
+                    "supports_reranking": False,
+                    "supports_model_listing": True,
+                    "supports_model_install": False,
+                    "is_local": False,
+                }
+            )
+        return capabilities
+
+    @staticmethod
+    def _validate_codex_runtime_config(
+        *,
+        provider_type: str,
+        metadata_json: dict[str, object],
+        default_chat_model: str | None,
+        api_key: str | None,
+        supports_chat: bool,
+        supports_embeddings: bool,
+        supports_reranking: bool,
+        supports_model_listing: bool,
+        supports_model_install: bool,
+        is_local: bool,
+    ) -> None:
+        if (
+            provider_type != "openai"
+            or not supports_chat
+            or supports_embeddings
+            or supports_reranking
+            or not supports_model_listing
+            or supports_model_install
+            or is_local
+            or api_key
+        ):
+            raise ApiError(
+                code="PROVIDER_AUTH_MODE_NOT_ALLOWED",
+                message="Codex desktop login is an OpenAI chat-only connection and cannot use an API key.",
+                status_code=400,
+            )
+        try:
+            validate_codex_desktop_settings(
+                metadata_json,
+                default_chat_model=default_chat_model,
+            )
+        except ValueError as exc:
+            raise ApiError(
+                code="PROVIDER_ASSIGNMENT_INVALID",
+                message=str(exc),
+                status_code=400,
+            ) from exc
+
     def _validate_provider_definition(
         self,
         *,
@@ -1629,6 +1836,7 @@ class ProviderManagementService:
                 message="Local providers must use a supported local authentication mode.",
                 status_code=400,
             )
+        expected_capabilities = self._expected_catalog_capabilities(provider_type, auth_mode)
         if provider_type == MANAGED_SENTENCE_TRANSFORMERS_PROVIDER_TYPE:
             if supports_chat:
                 raise ApiError(
@@ -1647,7 +1855,7 @@ class ProviderManagementService:
                 "supports_model_install": supports_model_install,
                 "is_local": is_local,
             }.items():
-                if bool(catalog[field_name]) != value:
+                if bool(expected_capabilities[field_name]) != value:
                     raise ApiError(
                         code="PROVIDER_UNSUPPORTED_TYPE",
                         message=f"Provider capability mismatch for {field_name}.",
@@ -1662,7 +1870,7 @@ class ProviderManagementService:
             "supports_model_install": supports_model_install,
             "is_local": is_local,
         }.items():
-            if bool(catalog[field_name]) != value:
+            if bool(expected_capabilities[field_name]) != value:
                 raise ApiError(
                     code="PROVIDER_UNSUPPORTED_TYPE",
                     message=f"Provider capability mismatch for {field_name}.",

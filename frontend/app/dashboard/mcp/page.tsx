@@ -185,10 +185,11 @@ export default function MCPDashboard() {
         {tab === "marketplace" && (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-3">
-              <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-black/10 px-3 py-2">
-                <Search className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+              <label className="mcp-marketplace-search">
+                <Search className="mcp-marketplace-search-icon" aria-hidden="true" />
                 <input
-                  className="w-full bg-transparent text-sm text-slate-200 outline-none placeholder:text-slate-500"
+                  className="mcp-marketplace-search-input"
+                  aria-label="Search providers and tools"
                   placeholder="Search providers and tools"
                   value={q}
                   onChange={(event) => {

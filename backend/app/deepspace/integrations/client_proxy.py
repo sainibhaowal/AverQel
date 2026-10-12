@@ -69,6 +69,11 @@ class ClientProxyRegistry:
         key = self._key(tenant_id, user_id, channel)
         return key in self._clients
 
+    def get_client_connection(
+        self, tenant_id: str, user_id: str, *, channel: str = "storage"
+    ) -> WebSocket | None:
+        return self._clients.get(self._key(tenant_id, user_id, channel))
+
     def is_storage_connected(self, tenant_id: str, user_id: str) -> bool:
         key = self._key(tenant_id, user_id, "storage")
         return key in self._clients

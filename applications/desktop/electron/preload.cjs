@@ -287,4 +287,18 @@ contextBridge.exposeInMainWorld("electron", {
     openNeosis: () => ipcRenderer.invoke("workspace:open-neosis"),
     openAverQel: () => ipcRenderer.invoke("workspace:open-averqel"),
   },
+  codex: {
+    status: () => ipcRenderer.invoke("codex:status"),
+    connect: (accountId, source) => ipcRenderer.invoke("codex:connect", accountId, source),
+    models: (accountId) => ipcRenderer.invoke("codex:models", accountId),
+    disconnect: (accountId) => ipcRenderer.invoke("codex:disconnect", accountId),
+    startStream: (input) => ipcRenderer.invoke("codex:stream-start", input),
+    cancelStream: (streamId) => ipcRenderer.invoke("codex:stream-cancel", streamId),
+    onStreamEvent: (callback) => {
+      if (typeof callback !== "function") return () => undefined;
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("codex:stream-event", listener);
+      return () => ipcRenderer.removeListener("codex:stream-event", listener);
+    },
+  },
 });

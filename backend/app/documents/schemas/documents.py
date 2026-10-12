@@ -271,6 +271,16 @@ class DocumentChunksResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DocumentCsvPageResponse(BaseModel):
+    columns: list[str]
+    rows: list[list[str]]
+    offset: int
+    limit: int
+    has_more: bool
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DeleteBatchRequest(BaseModel):
     document_ids: list[UUID]
 

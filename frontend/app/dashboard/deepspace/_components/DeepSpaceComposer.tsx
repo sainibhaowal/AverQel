@@ -3,7 +3,8 @@
 /* Local object URLs are short-lived, private composer previews; Next image optimization cannot fetch them. */
 /* eslint-disable @next/next/no-img-element */
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { createPortal } from "react-dom";
 import {
   Bot,
   ChevronDown,
@@ -21,24 +22,33 @@ import {
   Camera,
   RotateCw,
   FolderOpen,
+  Pencil,
   Volume2,
   VolumeX,
 } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { fetchWithAuth } from "@/lib/api";
+import ProviderLogo from "@/app/components/providers/ProviderLogo";
+import { formatReasoningEffortLabel, isValidReasoningEffort } from "../_lib/reasoning-options";
 
-type ReasoningEffort = "low" | "medium" | "high" | "very_high" | "extreme_high";
+type ReasoningEffort = string;
 
 interface DeepSpaceComposerProps {
   conversationId?: string | null;
   query: string;
   isStreaming: boolean;
+  showActiveResponseControls?: boolean;
   onQueryChange: (value: string) => void;
   onSubmit: (attachmentFileIds?: string[]) => void;
+  editingQueuedTurnId?: string | null;
+  onEditQueuedTurn?: (clientRequestId: string) => void;
+  onCancelQueueEdit?: () => void;
+  onSaveQueueEdit?: (clientRequestId: string, message: string) => Promise<boolean>;
   onStop: () => void;
   onSteer?: () => void;
   queuedTurns?: Array<{
     clientRequestId: string;
+    regenerateMessageId?: string | null;
     prompt: string;
     status: string;
     error?: string | null;
@@ -46,6 +56,7 @@ interface DeepSpaceComposerProps {
   queuePaused?: boolean;
   queuePauseReason?: string | null;
   queueFailedRequestId?: string | null;
+  queueAction?: string | null;
   onPauseQueue?: () => void;
   onResumeQueue?: () => void;
   onClearQueue?: () => void;
@@ -54,16 +65,22 @@ interface DeepSpaceComposerProps {
   onSteerQueuedTurn?: (clientRequestId: string) => void;
   changedFiles?: Array<{ path: string; additions: number; deletions: number }>;
   modelName?: string | null;
+  selectedProviderId?: string | null;
   reasoningEffort?: ReasoningEffort | null;
   onReasoningEffortChange?: (value: ReasoningEffort | null) => void;
   availableModels?: Array<{
     providerId: string;
+    providerName?: string;
+    providerType?: string;
     modelName: string;
     displayName: string;
     quantization?: string | null;
     contextWindow?: number | null;
     contextWindowSource?: string | null;
     supportedReasoningEfforts?: string[];
+    reasoningCapabilitiesKnown?: boolean;
+    reasoningToggleOnly?: boolean;
+    reasoningAlwaysOn?: boolean;
   }>;
   onModelSelect?: (providerId: string, modelName: string) => void;
   voiceState?: "idle" | "listening" | "thinking" | "speaking";
@@ -114,6 +131,11 @@ interface DeepSpaceComposerProps {
   hasRuntimeError?: boolean;
 }
 
+type ComposerExtractionStatus = {
+  state: "extracted" | "no_text" | "unavailable" | "not_attempted";
+  ocr_used: boolean;
+};
+
 type ComposerAttachment = {
   id: string;
   name: string;
@@ -125,6 +147,28 @@ type ComposerAttachment = {
   loaded?: number;
   file?: File;
   uploadId?: string;
+  extractionStatus?: ComposerExtractionStatus | null;
+};
+
+function attachmentExtractionLabel(
+  status: ComposerExtractionStatus | null | undefined,
+): string | null {
+  if (!status || status.state === "not_attempted") return null;
+  if (status.state === "extracted")
+    return status.ocr_used ? "Text extracted · OCR used" : "Text extracted";
+  if (status.state === "no_text") return "No readable text found";
+  return "Text extraction unavailable";
+}
+
+type AttachmentTooltipKind = "files" | "camera" | "library";
+
+type ActiveAttachmentTooltip = {
+  kind: AttachmentTooltipKind;
+  id: string;
+  label: string;
+  anchor: HTMLButtonElement;
+  left: number;
+  top: number;
 };
 
 export type DeepSpaceRuntimePhase =
@@ -137,8 +181,36 @@ export type DeepSpaceRuntimePhase =
   | "completed"
   | "error";
 
+const attachmentTooltipClassName =
+  "averqel-tooltip-surface pointer-events-none fixed z-[10000] max-w-[min(18rem,calc(100vw-1.5rem))] -translate-y-full rounded-xl border px-3 py-2 text-left text-[11px] leading-4 font-semibold whitespace-normal shadow-xl";
+
+function getAttachmentTooltipPosition(anchor: HTMLButtonElement) {
+  const bounds = anchor.getBoundingClientRect();
+  const maxWidth = Math.min(288, Math.max(0, window.innerWidth - 24));
+  const maxLeft = Math.max(12, window.innerWidth - maxWidth - 12);
+
+  return {
+    left: Math.min(Math.max(bounds.left, 12), maxLeft),
+    top: Math.max(12, bounds.top - 8),
+  };
+}
+
 function SendIcon() {
   return <Play className="h-[18px] w-[18px] translate-x-px fill-current" strokeWidth={2.5} />;
+}
+
+function resizeComposerTextarea(textarea: HTMLTextAreaElement) {
+  const computedStyle = window.getComputedStyle(textarea);
+  const px = (value: string) => Number.parseFloat(value) || 0;
+  const lineHeight = px(computedStyle.lineHeight) || 24;
+  const verticalPadding = px(computedStyle.paddingTop) + px(computedStyle.paddingBottom);
+  const verticalBorder = px(computedStyle.borderTopWidth) + px(computedStyle.borderBottomWidth);
+  const maxHeight = lineHeight * 5 + verticalPadding + verticalBorder;
+
+  textarea.style.height = "auto";
+  const contentHeight = textarea.scrollHeight + verticalBorder;
+  textarea.style.height = `${Math.min(contentHeight, maxHeight)}px`;
+  textarea.style.overflowY = contentHeight > maxHeight ? "auto" : "hidden";
 }
 
 function StopIcon() {
@@ -149,14 +221,20 @@ export default function DeepSpaceComposer({
   conversationId,
   query,
   isStreaming,
+  showActiveResponseControls,
   onQueryChange,
   onSubmit,
+  editingQueuedTurnId = null,
+  onEditQueuedTurn,
+  onCancelQueueEdit,
+  onSaveQueueEdit,
   onStop,
   onSteer,
   queuedTurns = [],
   queuePaused = false,
   queuePauseReason = null,
   queueFailedRequestId = null,
+  queueAction = null,
   onPauseQueue,
   onResumeQueue,
   onClearQueue,
@@ -165,6 +243,7 @@ export default function DeepSpaceComposer({
   onSteerQueuedTurn,
   changedFiles = [],
   modelName,
+  selectedProviderId = null,
   reasoningEffort = null,
   onReasoningEffortChange,
   availableModels = [],
@@ -208,25 +287,103 @@ export default function DeepSpaceComposer({
   activeToolName = null,
   hasRuntimeError = false,
 }: DeepSpaceComposerProps) {
+  const shouldShowActiveResponseControls = showActiveResponseControls ?? isStreaming;
+  const reduceMotion = useReducedMotion();
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
+  const [modelGroupExpansion, setModelGroupExpansion] = useState<{
+    search: string;
+    providerId: string | null;
+  } | null>(null);
   const [reasoningDropdownOpen, setReasoningDropdownOpen] = useState(false);
   const [runtimeLegendOpen, setRuntimeLegendOpen] = useState(false);
   const [contextDialogOpen, setContextDialogOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [activeAttachmentTooltip, setActiveAttachmentTooltip] =
+    useState<ActiveAttachmentTooltip | null>(null);
+  const priorQueueEditAttachmentsRef = useRef<ComposerAttachment[] | null>(null);
+  const previousEditingQueueTurnRef = useRef<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [attachmentPreview, setAttachmentPreview] = useState<ComposerAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadControllersRef = useRef<Record<string, AbortController>>({});
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [libraryFiles, setLibraryFiles] = useState<
-    Array<{ id: string; name: string; content_type: string; size_bytes: number }>
+    Array<{
+      id: string;
+      name: string;
+      content_type: string;
+      size_bytes: number;
+      extraction_status?: ComposerExtractionStatus | null;
+    }>
   >([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
+  const showAttachmentTooltip = (
+    kind: AttachmentTooltipKind,
+    id: string,
+    label: string,
+    anchor: HTMLButtonElement,
+  ) => {
+    setActiveAttachmentTooltip({
+      kind,
+      id,
+      label,
+      anchor,
+      ...getAttachmentTooltipPosition(anchor),
+    });
+  };
+
+  useEffect(() => {
+    const anchor = activeAttachmentTooltip?.anchor;
+    if (!anchor) return;
+
+    const reposition = () => {
+      setActiveAttachmentTooltip((current) =>
+        current?.anchor === anchor
+          ? { ...current, ...getAttachmentTooltipPosition(anchor) }
+          : current,
+      );
+    };
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [activeAttachmentTooltip?.anchor]);
+
+  useEffect(() => {
+    const previousId = previousEditingQueueTurnRef.current;
+    if (editingQueuedTurnId && !previousId) {
+      // Preserve any unrelated composer attachments while the queued prompt
+      // is in the editor. Attachments already on the queued turn stay in place.
+      priorQueueEditAttachmentsRef.current = attachments;
+      setAttachments([]);
+    } else if (!editingQueuedTurnId && previousId) {
+      setAttachments(priorQueueEditAttachmentsRef.current ?? []);
+      priorQueueEditAttachmentsRef.current = null;
+    }
+    previousEditingQueueTurnRef.current = editingQueuedTurnId ?? null;
+  }, [attachments, editingQueuedTurnId]);
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) resizeComposerTextarea(textarea);
+  }, [query]);
+
+  useEffect(() => {
+    if (!editingQueuedTurnId) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }, [editingQueuedTurnId]);
+
   const importAttachments = async (input: FileList | File[]) => {
-    if (!conversationId) return;
+    if (!conversationId || editingQueuedTurnId) return;
     const allFiles = Array.from(input);
     const invalid = allFiles.filter(
       (file) => !file.name || file.size <= 0 || file.size > 25 * 1024 * 1024,
@@ -274,6 +431,7 @@ export default function DeepSpaceComposer({
           received_chunks: number[];
           status: string;
           file_id?: string | null;
+          extraction_status?: ComposerExtractionStatus | null;
           error?: string | null;
         };
         for (let index = 0; index < upload.total_chunks; index += 1) {
@@ -324,7 +482,14 @@ export default function DeepSpaceComposer({
           throw new Error("The file is still processing. Please try again shortly.");
         setAttachments((current) =>
           current.map((item) =>
-            item.id === localId ? { ...item, id: upload.file_id!, status: "ready" } : item,
+            item.id === localId
+              ? {
+                  ...item,
+                  id: upload.file_id!,
+                  status: "ready",
+                  extractionStatus: upload.extraction_status ?? null,
+                }
+              : item,
           ),
         );
         window.dispatchEvent(
@@ -365,7 +530,7 @@ export default function DeepSpaceComposer({
     if (item.file) void importAttachments([item.file]);
   };
   const openLibraryPicker = async () => {
-    if (!conversationId) return;
+    if (!conversationId || editingQueuedTurnId) return;
     const response = (await fetchWithAuth(`/deepspace/library/${conversationId}/entries`, {
       timeoutMs: 8_000,
     })) as Response;
@@ -378,13 +543,20 @@ export default function DeepSpaceComposer({
     name: string;
     content_type: string;
     size_bytes: number;
+    extraction_status?: ComposerExtractionStatus | null;
   }) => {
     setAttachments((current) =>
       current.some((item) => item.id === file.id) || current.length >= 10
         ? current
         : [
             ...current,
-            { ...file, type: file.content_type, size: file.size_bytes, status: "ready" },
+            {
+              ...file,
+              type: file.content_type,
+              size: file.size_bytes,
+              status: "ready",
+              extractionStatus: file.extraction_status ?? null,
+            },
           ],
     );
     setLibraryPickerOpen(false);
@@ -395,10 +567,14 @@ export default function DeepSpaceComposer({
       if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
       return current.filter((item) => item.id !== id);
     });
-  const submitWithAttachments = () => {
+  const submitWithAttachments = async () => {
     const ready = attachments.filter((item) => item.status === "ready");
     if (attachments.some((item) => item.status === "uploading" || item.status === "processing"))
       return;
+    if (editingQueuedTurnId) {
+      await onSaveQueueEdit?.(editingQueuedTurnId, query);
+      return;
+    }
     onSubmit(ready.map((item) => item.id));
     setAttachments([]);
   };
@@ -455,21 +631,88 @@ export default function DeepSpaceComposer({
     "min-h-[52px] rounded-[1rem] bg-transparent px-3 py-2 text-[14px] leading-6";
   const pillClass =
     "theme-pill !rounded-[0.5rem] h-8 border-primary/15 bg-primary/5 px-2.5 text-[10px] font-semibold tracking-wide";
-  const selectedModelMetadata = availableModels.find((model) => model.modelName === modelName);
   const normalizedModelSearch = modelSearch.trim().toLocaleLowerCase();
-  const filteredModels = availableModels.filter((model) => {
-    if (!normalizedModelSearch) return true;
-    return [model.displayName, model.modelName, model.providerId, model.quantization]
-      .filter(Boolean)
-      .some((value) => String(value).toLocaleLowerCase().includes(normalizedModelSearch));
-  });
-  const advertisedEfforts = (selectedModelMetadata?.supportedReasoningEfforts ?? []).filter(
-    (item): item is ReasoningEffort =>
-      ["low", "medium", "high", "very_high", "extreme_high"].includes(item),
+  const selectedModelMetadata = selectedProviderId
+    ? availableModels.find(
+        (model) => model.modelName === modelName && model.providerId === selectedProviderId,
+      )
+    : availableModels.find((model) => model.modelName === modelName);
+  const filteredModels = useMemo(
+    () =>
+      availableModels.filter((model) => {
+        if (!normalizedModelSearch) return true;
+        return [
+          model.displayName,
+          model.modelName,
+          model.providerName,
+          model.providerType,
+          model.providerId,
+          model.quantization,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLocaleLowerCase().includes(normalizedModelSearch));
+      }),
+    [availableModels, normalizedModelSearch],
   );
-  const reasoningOptions: Array<ReasoningEffort | null> = advertisedEfforts.length
-    ? [null, ...advertisedEfforts]
-    : [null, "low", "medium", "high"];
+  const providerGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        providerId: string;
+        providerName: string;
+        providerType?: string;
+        models: typeof filteredModels;
+      }
+    >();
+
+    for (const model of filteredModels) {
+      const group = groups.get(model.providerId);
+      if (group) {
+        group.models.push(model);
+      } else {
+        groups.set(model.providerId, {
+          providerId: model.providerId,
+          providerName:
+            model.providerName?.trim() || model.providerType?.trim() || model.providerId,
+          providerType: model.providerType,
+          models: [model],
+        });
+      }
+    }
+
+    const collator = new Intl.Collator("en", { sensitivity: "base", numeric: true });
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        models: [...group.models].sort(
+          (left, right) =>
+            collator.compare(left.displayName, right.displayName) ||
+            collator.compare(left.modelName, right.modelName),
+        ),
+      }))
+      .sort(
+        (left, right) =>
+          collator.compare(left.providerName, right.providerName) ||
+          collator.compare(left.providerId, right.providerId),
+      );
+  }, [filteredModels]);
+  const defaultExpandedProviderId = providerGroups[0]?.providerId ?? null;
+  const expandedProviderId =
+    modelGroupExpansion?.search === normalizedModelSearch &&
+    (modelGroupExpansion.providerId === null ||
+      providerGroups.some((group) => group.providerId === modelGroupExpansion.providerId))
+      ? modelGroupExpansion.providerId
+      : defaultExpandedProviderId;
+  const advertisedEfforts = (selectedModelMetadata?.supportedReasoningEfforts ?? []).filter(
+    isValidReasoningEffort,
+  );
+  const reasoningOptions: Array<ReasoningEffort | null> = selectedModelMetadata?.reasoningToggleOnly
+    ? [null, "medium"]
+    : selectedModelMetadata?.reasoningCapabilitiesKnown
+      ? [...(selectedModelMetadata.reasoningAlwaysOn ? [] : [null]), ...advertisedEfforts]
+      : [null];
+  if (reasoningOptions.length === 0) reasoningOptions.push(null);
+  const formatReasoningEffort = formatReasoningEffortLabel;
   const effortColor = (effort: ReasoningEffort | null) =>
     effort === "low"
       ? "bg-emerald-400"
@@ -533,7 +776,7 @@ export default function DeepSpaceComposer({
           className={`relative rounded-[1.2rem] shadow-xl ${
             runtimeLegendOpen
               ? "z-[110]"
-              : modelDropdownOpen || contextDialogOpen
+              : modelDropdownOpen || contextDialogOpen || reasoningDropdownOpen
                 ? "z-[80]"
                 : "z-10"
           } ${composerShell} ${shellPadding}`}
@@ -565,14 +808,20 @@ export default function DeepSpaceComposer({
                     <button
                       type="button"
                       onClick={onResumeQueue}
-                      className="shrink-0 rounded-md border border-emerald-600/40 bg-emerald-50 px-2 py-1 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-300/25 dark:bg-transparent dark:text-emerald-200/85 dark:hover:bg-emerald-300/10"
+                      disabled={queueAction !== null}
+                      className="shrink-0 rounded-md border border-emerald-600/40 bg-emerald-50 px-2 py-1 text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-300/25 dark:bg-transparent dark:text-emerald-200/85 dark:hover:bg-emerald-300/10"
                     >
-                      {queueFailedRequestId ? "Retry failed & resume" : "Resume queue"}
+                      {queueAction === "resume"
+                        ? "Resuming…"
+                        : queueFailedRequestId
+                          ? "Continue queued prompts"
+                          : "Resume queue"}
                     </button>
                   ) : (
                     <button
                       type="button"
                       onClick={onPauseQueue}
+                      disabled={queueAction !== null}
                       className="shrink-0 rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-slate-700 hover:bg-slate-100 dark:border-cyan-300/20 dark:bg-transparent dark:text-cyan-100/70 dark:hover:bg-cyan-300/10"
                     >
                       Pause queue
@@ -582,6 +831,7 @@ export default function DeepSpaceComposer({
                     <button
                       type="button"
                       onClick={onClearQueue}
+                      disabled={queueAction !== null}
                       aria-label="Clear pending queue"
                       title="Clear pending queue (chat history is kept)"
                       className="shrink-0 rounded-md border border-red-300/70 bg-red-50 px-2 py-1 text-red-700 hover:bg-red-100 dark:border-red-300/20 dark:bg-transparent dark:text-red-200/85 dark:hover:bg-red-300/10"
@@ -627,66 +877,129 @@ export default function DeepSpaceComposer({
                 <div
                   className="border-t border-slate-200 px-2 py-1.5 dark:border-cyan-300/15"
                   aria-label="Queued messages"
+                  aria-live="polite"
                 >
-                  {queuedTurns.map((turn, index) => (
-                    <div
-                      key={turn.clientRequestId}
-                      className="flex max-w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 dark:text-cyan-100/80 dark:hover:bg-cyan-300/[0.06]"
-                    >
-                      <span className="text-slate-400 dark:text-cyan-200/60">↳</span>
-                      <span className="min-w-0 flex-1 truncate">{turn.prompt}</span>
-                      <span className="shrink-0 text-[9px] font-semibold tracking-wide text-slate-500 uppercase dark:text-cyan-200/55">
-                        {turn.status === "queued"
-                          ? "Queued"
-                          : turn.status === "running"
-                            ? "Running"
-                            : turn.status === "awaiting_user"
-                              ? "Waiting for answer"
-                              : turn.status === "awaiting_approval"
-                                ? "Waiting for approval"
-                                : turn.status === "failed"
-                                  ? "Failed"
-                                  : "Stopping"}
+                  {editingQueuedTurnId ? (
+                    <div className="flex items-center gap-2 rounded-md border border-cyan-300/20 bg-cyan-300/[0.06] px-2 py-2 text-[11px] text-cyan-100/80">
+                      <span className="min-w-0 flex-1">
+                        Editing a queued prompt. Saving keeps its current place in line; its
+                        existing attachments stay attached.
                       </span>
-                      {turn.status === "queued" ? (
-                        <button
-                          type="button"
-                          onClick={() => onSteerQueuedTurn?.(turn.clientRequestId)}
-                          className="text-slate-600 hover:text-slate-900 dark:text-cyan-100/65 dark:hover:text-cyan-100"
-                        >
-                          ↳ Steer
-                        </button>
-                      ) : null}
-                      {turn.status !== "failed" ? (
-                        <button
-                          type="button"
-                          onClick={() => onCancelQueuedTurn?.(turn.clientRequestId)}
-                          className="text-slate-400 hover:text-red-600 dark:text-cyan-100/45 dark:hover:text-red-200"
-                          aria-label={`Remove queued message ${index + 1}`}
-                          title="Remove from queue"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      ) : null}
-                      {turn.status === "failed" && turn.error ? (
-                        <span
-                          className="max-w-[42%] truncate text-red-700/80 dark:text-red-200/70"
-                          title={turn.error}
-                        >
-                          {turn.error}
-                        </span>
-                      ) : null}
-                      {turn.status === "failed" ? (
-                        <button
-                          type="button"
-                          onClick={() => onRetryFailedTurn?.(turn.clientRequestId)}
-                          className="shrink-0 text-amber-700 hover:text-amber-900 dark:text-amber-200/80 dark:hover:text-amber-100"
-                        >
-                          Retry checkpoint
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={onCancelQueueEdit}
+                        disabled={queueAction !== null}
+                        className="shrink-0 rounded-md px-2 py-1 font-medium text-cyan-100 transition hover:bg-cyan-200/10 disabled:opacity-50"
+                      >
+                        Cancel edit
+                      </button>
                     </div>
-                  ))}
+                  ) : null}
+                  <AnimatePresence initial={false}>
+                    {queuedTurns.map((turn, index) => (
+                      <motion.div
+                        key={turn.clientRequestId}
+                        data-queue-turn-id={turn.clientRequestId}
+                        layout
+                        initial={reduceMotion ? false : { opacity: 0, y: 7, scale: 0.985 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={
+                          reduceMotion
+                            ? { opacity: 0 }
+                            : { opacity: 0, x: -12, height: 0, marginTop: 0, marginBottom: 0 }
+                        }
+                        transition={
+                          reduceMotion
+                            ? { duration: 0.01 }
+                            : {
+                                layout: { type: "spring", stiffness: 480, damping: 38 },
+                                default: { duration: 0.18, ease: "easeOut" },
+                              }
+                        }
+                        className="flex max-w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] text-slate-700 hover:bg-slate-50 dark:text-cyan-100/80 dark:hover:bg-cyan-300/[0.06]"
+                      >
+                        <span className="text-slate-400 dark:text-cyan-200/60">↳</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {turn.regenerateMessageId ? "Regenerate reply: " : ""}
+                          {turn.prompt}
+                        </span>
+                        <span className="shrink-0 text-[9px] font-semibold tracking-wide text-slate-500 uppercase dark:text-cyan-200/55">
+                          {turn.status === "queued"
+                            ? "Queued"
+                            : turn.status === "running"
+                              ? "Running"
+                              : turn.status === "awaiting_user"
+                                ? "Waiting for answer"
+                                : turn.status === "awaiting_approval"
+                                  ? "Waiting for approval"
+                                  : turn.status === "failed"
+                                    ? "Failed"
+                                    : "Stopping"}
+                        </span>
+                        {turn.status === "queued" &&
+                        !editingQueuedTurnId &&
+                        !turn.regenerateMessageId ? (
+                          <button
+                            type="button"
+                            onClick={() => onEditQueuedTurn?.(turn.clientRequestId)}
+                            disabled={
+                              queueAction !== null ||
+                              attachments.some(
+                                (item) =>
+                                  item.status === "uploading" || item.status === "processing",
+                              )
+                            }
+                            aria-label={`Edit queued message ${index + 1}`}
+                            title="Edit this pending prompt without changing its queue position"
+                            className="flex shrink-0 items-center gap-1 text-cyan-700 transition hover:text-cyan-900 disabled:cursor-wait disabled:opacity-50 dark:text-cyan-100/75 dark:hover:text-white"
+                          >
+                            <Pencil size={11} aria-hidden="true" /> Edit
+                          </button>
+                        ) : null}
+                        {turn.status === "queued" && !editingQueuedTurnId ? (
+                          <button
+                            type="button"
+                            onClick={() => onSteerQueuedTurn?.(turn.clientRequestId)}
+                            disabled={queueAction !== null}
+                            title="Move this prompt ahead of ordinary FIFO items"
+                            className="text-slate-600 transition hover:text-slate-900 disabled:opacity-50 dark:text-cyan-100/65 dark:hover:text-cyan-100"
+                          >
+                            ↳ Steer
+                          </button>
+                        ) : null}
+                        {turn.status !== "failed" ? (
+                          <button
+                            type="button"
+                            onClick={() => onCancelQueuedTurn?.(turn.clientRequestId)}
+                            className="text-slate-400 hover:text-red-600 dark:text-cyan-100/45 dark:hover:text-red-200"
+                            aria-label={`Remove queued message ${index + 1}`}
+                            title="Remove from queue"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        ) : null}
+                        {turn.status === "failed" && turn.error ? (
+                          <span
+                            className="max-w-[42%] truncate text-red-700/80 dark:text-red-200/70"
+                            title={turn.error}
+                          >
+                            {turn.error}
+                          </span>
+                        ) : null}
+                        {turn.status === "failed" ? (
+                          <button
+                            type="button"
+                            onClick={() => onRetryFailedTurn?.(turn.clientRequestId)}
+                            disabled={queueAction !== null}
+                            title="Retry from the saved checkpoint when available. If it expired, restart this prompt from the beginning; completed actions may repeat."
+                            className="shrink-0 text-cyan-800 transition hover:text-cyan-950 disabled:cursor-wait disabled:opacity-50 dark:text-cyan-200 dark:hover:text-cyan-100"
+                          >
+                            {queueAction === turn.clientRequestId ? "Retrying…" : "Retry prompt"}
+                          </button>
+                        ) : null}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </div>
               ) : null}
             </div>
@@ -697,6 +1010,7 @@ export default function DeepSpaceComposer({
             type="file"
             multiple
             className="sr-only"
+            disabled={editingQueuedTurnId !== null}
             onChange={(event) => {
               if (event.target.files) void importAttachments(event.target.files);
               event.target.value = "";
@@ -708,6 +1022,7 @@ export default function DeepSpaceComposer({
             accept="image/*"
             capture="environment"
             className="sr-only"
+            disabled={editingQueuedTurnId !== null}
             onChange={(event) => {
               if (event.target.files) void importAttachments(event.target.files);
               event.target.value = "";
@@ -750,7 +1065,7 @@ export default function DeepSpaceComposer({
                       <span className="block truncate font-semibold">{item.name}</span>
                       <span className="block text-emerald-700/70">
                         {item.status === "ready"
-                          ? "Saved to Library"
+                          ? (attachmentExtractionLabel(item.extractionStatus) ?? "Saved to Library")
                           : item.status === "error"
                             ? item.error
                             : item.status === "processing"
@@ -797,35 +1112,103 @@ export default function DeepSpaceComposer({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={!conversationId}
-                className="deepspace-attachment-action ui-tooltip ui-tooltip-top"
-                data-tooltip="Attach files or paste a screenshot"
+                onMouseEnter={(event) =>
+                  showAttachmentTooltip(
+                    "files",
+                    "deepspace-attach-files-tooltip",
+                    "Attach files or paste a screenshot",
+                    event.currentTarget,
+                  )
+                }
+                onMouseLeave={() => setActiveAttachmentTooltip(null)}
+                onFocus={(event) =>
+                  showAttachmentTooltip(
+                    "files",
+                    "deepspace-attach-files-tooltip",
+                    "Attach files or paste a screenshot",
+                    event.currentTarget,
+                  )
+                }
+                onBlur={() => setActiveAttachmentTooltip(null)}
+                disabled={!conversationId || editingQueuedTurnId !== null}
+                className="deepspace-attachment-action"
                 aria-label="Attach files from your device"
+                aria-describedby={
+                  activeAttachmentTooltip?.kind === "files"
+                    ? "deepspace-attach-files-tooltip"
+                    : undefined
+                }
               >
                 <Paperclip size={16} />
               </button>
               <button
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
-                disabled={!conversationId}
-                className="deepspace-attachment-action ui-tooltip ui-tooltip-top"
-                data-tooltip="Take a photo"
+                onMouseEnter={(event) =>
+                  showAttachmentTooltip(
+                    "camera",
+                    "deepspace-take-photo-tooltip",
+                    "Take a photo",
+                    event.currentTarget,
+                  )
+                }
+                onMouseLeave={() => setActiveAttachmentTooltip(null)}
+                onFocus={(event) =>
+                  showAttachmentTooltip(
+                    "camera",
+                    "deepspace-take-photo-tooltip",
+                    "Take a photo",
+                    event.currentTarget,
+                  )
+                }
+                onBlur={() => setActiveAttachmentTooltip(null)}
+                disabled={!conversationId || editingQueuedTurnId !== null}
+                className="deepspace-attachment-action"
                 aria-label="Take a photo"
+                aria-describedby={
+                  activeAttachmentTooltip?.kind === "camera"
+                    ? "deepspace-take-photo-tooltip"
+                    : undefined
+                }
               >
                 <Camera size={16} />
               </button>
               <button
                 type="button"
                 onClick={() => void openLibraryPicker()}
-                disabled={!conversationId}
-                className="deepspace-attachment-action ui-tooltip ui-tooltip-top"
-                data-tooltip="Attach from Library"
+                onMouseEnter={(event) =>
+                  showAttachmentTooltip(
+                    "library",
+                    "deepspace-attach-library-tooltip",
+                    "Attach from Library",
+                    event.currentTarget,
+                  )
+                }
+                onMouseLeave={() => setActiveAttachmentTooltip(null)}
+                onFocus={(event) =>
+                  showAttachmentTooltip(
+                    "library",
+                    "deepspace-attach-library-tooltip",
+                    "Attach from Library",
+                    event.currentTarget,
+                  )
+                }
+                onBlur={() => setActiveAttachmentTooltip(null)}
+                disabled={!conversationId || editingQueuedTurnId !== null}
+                className="deepspace-attachment-action"
                 aria-label="Attach an existing Library file"
+                aria-describedby={
+                  activeAttachmentTooltip?.kind === "library"
+                    ? "deepspace-attach-library-tooltip"
+                    : undefined
+                }
               >
                 <FolderOpen size={16} />
               </button>
             </div>
             <textarea
+              ref={textareaRef}
+              rows={2}
               value={query}
               onChange={(event) => onQueryChange(event.target.value.slice(0, 4000))}
               onKeyDown={(event) => {
@@ -834,23 +1217,23 @@ export default function DeepSpaceComposer({
                   submitWithAttachments();
                 }
               }}
-              placeholder="Message DeepSpace..."
+              placeholder={editingQueuedTurnId ? "Edit queued prompt…" : "Message DeepSpace..."}
               onPaste={(event) => {
                 const files = Array.from(event.clipboardData.files);
                 if (files.length) {
                   event.preventDefault();
-                  void importAttachments(files);
+                  if (!editingQueuedTurnId) void importAttachments(files);
                 }
               }}
               onDrop={(event) => {
                 const files = Array.from(event.dataTransfer.files);
                 if (files.length) {
                   event.preventDefault();
-                  void importAttachments(files);
+                  if (!editingQueuedTurnId) void importAttachments(files);
                 }
               }}
               onDragOver={(event) => event.preventDefault()}
-              className={`text-foreground placeholder:text-foreground/30 w-full resize-none border-none bg-transparent outline-none ${textareaClass}`}
+              className={`text-foreground placeholder:text-foreground/30 max-h-[8.5rem] w-full resize-none overflow-y-hidden border-none bg-transparent outline-none ${textareaClass}`}
             />
           </div>
 
@@ -1094,7 +1477,7 @@ export default function DeepSpaceComposer({
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 6, scale: 0.98 }}
                       transition={{ duration: 0.16, ease: "easeOut" }}
-                      className="deepspace-model-menu absolute bottom-full left-0 z-[100] mb-2 flex max-h-[22rem] min-w-[min(19rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border p-1"
+                      className="deepspace-model-menu absolute bottom-full left-0 z-[100] mb-2 flex h-[min(22rem,calc(100dvh-2rem))] w-[min(31rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border p-1"
                     >
                       <div className="deepspace-model-menu-search-shell sticky top-0 z-10 p-1">
                         <input
@@ -1110,45 +1493,109 @@ export default function DeepSpaceComposer({
                           autoFocus
                           placeholder="Search models..."
                           aria-label="Search models"
-                          className="deepspace-model-menu-search h-8 w-full rounded-lg border px-2.5 text-xs outline-none"
+                          className="deepspace-model-menu-search h-8 w-full rounded-md border px-2.5 text-xs outline-none"
                         />
                       </div>
-                      {filteredModels.length > 0 ? (
-                        <div className="deepspace-model-menu-list min-h-0 overflow-y-auto p-1">
-                          {filteredModels.map((m) => {
-                            const selected = m.modelName === modelName;
+                      {providerGroups.length > 0 ? (
+                        <div className="deepspace-model-menu-list min-h-0 flex-1 overflow-y-auto p-1">
+                          {providerGroups.map((group) => {
+                            const expanded = expandedProviderId === group.providerId;
+                            const groupId = `deepspace-model-group-${group.providerId}`;
                             return (
-                              <button
-                                key={`${m.providerId}-${m.modelName}`}
-                                type="button"
-                                onClick={() => {
-                                  onModelSelect?.(m.providerId, m.modelName);
-                                  setModelDropdownOpen(false);
-                                  setModelSearch("");
-                                }}
-                                className={`deepspace-model-menu-option flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-all ${
-                                  selected
-                                    ? "deepspace-model-menu-option--selected font-medium"
-                                    : ""
-                                }`}
+                              <section
+                                key={group.providerId}
+                                className="deepspace-model-provider-group"
                               >
-                                <span className="flex min-w-0 items-center gap-1.5 truncate">
-                                  <span className="deepspace-model-menu-name truncate">
-                                    {m.displayName}
+                                <button
+                                  type="button"
+                                  aria-expanded={expanded}
+                                  aria-controls={groupId}
+                                  onClick={() =>
+                                    setModelGroupExpansion({
+                                      search: normalizedModelSearch,
+                                      providerId: expanded ? null : group.providerId,
+                                    })
+                                  }
+                                  className="deepspace-model-provider-heading flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors"
+                                >
+                                  <span
+                                    aria-hidden="true"
+                                    className="deepspace-model-provider-mark flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border"
+                                  >
+                                    <ProviderLogo providerType={group.providerType} size={18} />
                                   </span>
-                                  {m.quantization && (
-                                    <span className="deepspace-model-menu-quantization shrink-0 text-[9px] font-semibold tracking-wide uppercase">
-                                      {m.quantization}
+                                  <span className="flex min-w-0 flex-1 flex-col">
+                                    <span
+                                      role="heading"
+                                      aria-level={3}
+                                      className="deepspace-model-provider-name truncate text-xs font-semibold"
+                                    >
+                                      {group.providerName}
                                     </span>
-                                  )}
-                                </span>
-                                {selected && (
-                                  <Check
-                                    size={11}
-                                    className="deepspace-model-menu-check ml-2 flex-shrink-0"
+                                    {group.providerType && (
+                                      <span className="deepspace-model-provider-type truncate text-[9px] tracking-wide uppercase">
+                                        {group.providerType.replaceAll("_", " ")}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="deepspace-model-provider-count shrink-0 text-[10px] tabular-nums">
+                                    {group.models.length}
+                                  </span>
+                                  <ChevronDown
+                                    size={12}
+                                    aria-hidden="true"
+                                    className={`deepspace-model-provider-chevron shrink-0 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
                                   />
+                                </button>
+                                {expanded && (
+                                  <div
+                                    id={groupId}
+                                    role="group"
+                                    aria-label={`${group.providerName} models`}
+                                    className="deepspace-model-provider-models space-y-0.5 pb-1 pl-2"
+                                  >
+                                    {group.models.map((m) => {
+                                      const selected =
+                                        m.modelName === modelName &&
+                                        (!selectedProviderId ||
+                                          m.providerId === selectedProviderId);
+                                      return (
+                                        <button
+                                          key={`${m.providerId}-${m.modelName}`}
+                                          type="button"
+                                          onClick={() => {
+                                            onModelSelect?.(m.providerId, m.modelName);
+                                            setModelDropdownOpen(false);
+                                            setModelSearch("");
+                                          }}
+                                          className={`deepspace-model-menu-option flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition-all ${
+                                            selected
+                                              ? "deepspace-model-menu-option--selected font-medium"
+                                              : ""
+                                          }`}
+                                        >
+                                          <span className="flex min-w-0 items-center gap-1.5 truncate">
+                                            <span className="deepspace-model-menu-name truncate">
+                                              {m.displayName}
+                                            </span>
+                                            {m.quantization && (
+                                              <span className="deepspace-model-menu-quantization shrink-0 text-[9px] font-semibold tracking-wide uppercase">
+                                                {m.quantization}
+                                              </span>
+                                            )}
+                                          </span>
+                                          {selected && (
+                                            <Check
+                                              size={11}
+                                              className="deepspace-model-menu-check ml-2 flex-shrink-0"
+                                            />
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 )}
-                              </button>
+                              </section>
                             );
                           })}
                         </div>
@@ -1175,9 +1622,15 @@ export default function DeepSpaceComposer({
                     className={`h-1.5 w-1.5 rounded-full ${effortColor(reasoningEffort ?? null)}`}
                   />
                   Think{" "}
-                  {reasoningEffort
-                    ? reasoningEffort[0].toUpperCase() + reasoningEffort.slice(1)
-                    : "Off"}
+                  {!selectedModelMetadata?.reasoningCapabilitiesKnown
+                    ? "Auto"
+                    : selectedModelMetadata.reasoningAlwaysOn && advertisedEfforts.length === 0
+                      ? "On"
+                      : reasoningEffort
+                        ? selectedModelMetadata.reasoningToggleOnly
+                          ? "On"
+                          : formatReasoningEffort(reasoningEffort)
+                        : "Off"}
                   <ChevronDown size={11} className={reasoningDropdownOpen ? "rotate-180" : ""} />
                 </button>
                 <AnimatePresence>
@@ -1186,7 +1639,7 @@ export default function DeepSpaceComposer({
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 4 }}
-                      className="border-glass-border bg-surface-1 absolute bottom-full left-0 z-[70] mb-2 min-w-[150px] rounded-xl border p-1 shadow-[0_16px_40px_rgba(0,0,0,0.45)]"
+                      className="deepspace-reasoning-menu border-glass-border text-foreground absolute bottom-full left-0 isolate z-[70] mb-2 min-w-[150px] rounded-xl border bg-[#f4fbf7] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.45)] dark:bg-[#101612]"
                     >
                       {reasoningOptions.map((effort) => (
                         <button
@@ -1199,7 +1652,16 @@ export default function DeepSpaceComposer({
                           className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs ${reasoningEffort === effort ? "bg-cyan-400/15 text-cyan-200" : "text-foreground/75 hover:bg-foreground/[0.05]"}`}
                         >
                           <span className={`h-2 w-2 rounded-full ${effortColor(effort)}`} />
-                          {effort ? effort[0].toUpperCase() + effort.slice(1) : "Off"}
+                          {!selectedModelMetadata?.reasoningCapabilitiesKnown
+                            ? "Provider default"
+                            : selectedModelMetadata.reasoningAlwaysOn &&
+                                advertisedEfforts.length === 0
+                              ? "On"
+                              : effort
+                                ? selectedModelMetadata.reasoningToggleOnly
+                                  ? "On"
+                                  : formatReasoningEffort(effort)
+                                : "Off"}
                         </button>
                       ))}
                     </motion.div>
@@ -1340,7 +1802,7 @@ export default function DeepSpaceComposer({
             </div>
 
             <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
-              {isStreaming ? (
+              {isStreaming && shouldShowActiveResponseControls && !editingQueuedTurnId ? (
                 <>
                   <button
                     type="button"
@@ -1368,26 +1830,44 @@ export default function DeepSpaceComposer({
                 onClick={submitWithAttachments}
                 disabled={
                   (!query.trim() && !attachments.some((item) => item.status === "ready")) ||
+                  (editingQueuedTurnId !== null && !query.trim()) ||
+                  (editingQueuedTurnId !== null && queueAction !== null) ||
                   attachments.some(
                     (item) => item.status === "uploading" || item.status === "processing",
                   )
                 }
-                aria-label={isStreaming ? "Queue message" : "Send message"}
-                title={isStreaming ? "Queue message" : "Send message"}
+                aria-label={
+                  editingQueuedTurnId
+                    ? "Save queued prompt"
+                    : isStreaming
+                      ? "Queue message"
+                      : "Send message"
+                }
+                title={
+                  editingQueuedTurnId
+                    ? "Save this prompt and keep its queue position"
+                    : isStreaming
+                      ? "Queue message"
+                      : "Send message"
+                }
                 className="deepspace-composer-control deepspace-composer-send border-primary/45 from-primary/95 to-primary text-primary-foreground hover:border-primary/70 disabled:border-border-subtle disabled:bg-surface-2 disabled:text-muted-foreground relative flex h-10 w-10 items-center justify-center rounded-xl border bg-gradient-to-br shadow-[0_8px_20px_rgba(var(--primary),0.25)] transition-[border-color,background-color,box-shadow,filter] hover:brightness-110 active:brightness-95 disabled:cursor-not-allowed disabled:shadow-none"
                 whileHover={{ scale: 1.06 }}
                 whileTap={{ scale: 0.94 }}
               >
                 <AnimatePresence initial={false} mode="wait">
                   <motion.span
-                    key={isStreaming ? "queue" : "send"}
+                    key={editingQueuedTurnId ? "save-queue-edit" : isStreaming ? "queue" : "send"}
                     initial={{ opacity: 0, scale: 0.65, rotate: 18 }}
                     animate={{ opacity: 1, scale: 1, rotate: 0 }}
                     exit={{ opacity: 0, scale: 0.65, rotate: -18 }}
                     transition={{ duration: 0.16, ease: "easeOut" }}
                     className="relative z-10 flex items-center justify-center"
                   >
-                    <SendIcon />
+                    {editingQueuedTurnId ? (
+                      <Check className="h-[18px] w-[18px]" strokeWidth={2.5} />
+                    ) : (
+                      <SendIcon />
+                    )}
                   </motion.span>
                 </AnimatePresence>
               </motion.button>
@@ -1395,6 +1875,19 @@ export default function DeepSpaceComposer({
           </div>
         </div>
       </div>
+      {activeAttachmentTooltip
+        ? createPortal(
+            <span
+              id={activeAttachmentTooltip.id}
+              role="tooltip"
+              className={attachmentTooltipClassName}
+              style={{ left: activeAttachmentTooltip.left, top: activeAttachmentTooltip.top }}
+            >
+              {activeAttachmentTooltip.label}
+            </span>,
+            document.body,
+          )
+        : null}
       {attachmentPreview ? (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-md"

@@ -14,13 +14,12 @@ import {
   LogOut,
   Menu,
   Database,
-  Search as SearchIcon,
+  FileSearch,
   Sun,
   Moon,
   User,
   Activity,
   FolderKanban,
-  PanelsLeftBottom,
   LifeBuoy,
   Sparkles,
   Trash2,
@@ -35,12 +34,14 @@ import { useTheme } from "../context/ThemeContext";
 import AuthGuard from "@/app/components/layout/AuthGuard";
 import NotificationCenter from "@/app/components/layout/NotificationCenter";
 import AverQelLogo from "@/app/components/ui/AverQelLogo";
+import DeepSpaceMark from "@/app/components/ui/DeepSpaceMark";
 import { APP_VERSION } from "@/lib/release";
 import Breadcrumbs from "@/app/components/ui/Breadcrumbs";
 import SystemStatus from "@/app/components/dashboard/SystemStatus";
 import BetaNoticeBanner from "@/app/components/dashboard/BetaNoticeBanner";
 import { getRoleLabel, hasAdminRole } from "@/lib/roles";
 import DisabledOverlay from "@/app/components/auth/DisabledOverlay";
+import CodexRuntimeBridge from "@/app/components/providers/CodexRuntimeBridge";
 
 type NavLeaf = {
   name: string;
@@ -62,10 +63,10 @@ type NavItem = NavLeaf | NavHeader;
 const BASE_NAV_ITEMS: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: <LayoutDashboard size={18} />, exact: true },
   { name: "Documents Hub", href: "/dashboard/documents", icon: <FileText size={18} /> },
-  { name: "Query", href: "/dashboard/query", icon: <SearchIcon size={18} /> },
+  { name: "Query", href: "/dashboard/query", icon: <FileSearch size={18} /> },
   { name: "Collections", href: "/dashboard/collections", icon: <FolderKanban size={18} /> },
   { name: "MCP Servers", href: "/dashboard/mcp", icon: <Cable size={18} /> },
-  { name: "DeepSpace", href: "/dashboard/deepspace", icon: <PanelsLeftBottom size={18} /> },
+  { name: "DeepSpace", href: "/dashboard/deepspace", icon: <DeepSpaceMark size={18} /> },
 
   {
     name: "Admin",
@@ -138,6 +139,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isCollectionsRoute =
     pathname === "/dashboard/collections" || pathname.startsWith("/dashboard/collections/");
   const isFullHeightRoute = isQueryRoute || isDeepSpaceRoute || isCollectionsRoute;
+  const isProvidersSettingsRoute = pathname === "/dashboard/settings/providers";
+  const fillsAvailableHeight = isFullHeightRoute || isProvidersSettingsRoute;
   const hasAdminAccess = user ? hasAdminRole(user.roles) : false;
 
   const navItems = useMemo(() => {
@@ -370,6 +373,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <AuthGuard>
+      <CodexRuntimeBridge />
       <div className="app-shell-grid text-foreground flex h-[100svh] overflow-hidden font-sans">
         {!isMobile && (
           <motion.aside
@@ -493,22 +497,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <main
             ref={mainContentRef}
             className={`dashboard-main-surface flex-1 overflow-x-hidden ${
-              isFullHeightRoute && !isMobile ? "overflow-y-hidden" : "overflow-y-auto"
+              fillsAvailableHeight && !isMobile ? "overflow-y-hidden" : "overflow-y-auto"
             } ${
               isQueryRoute || isDeepSpaceRoute
                 ? "px-0 pt-3 pb-0 sm:pt-4"
                 : "px-3 pt-3 pb-4 sm:px-6 sm:pt-4"
             }`}
           >
-            <div className={isFullHeightRoute ? "flex h-full min-h-0 w-full flex-col" : "w-full"}>
+            <div
+              className={fillsAvailableHeight ? "flex h-full min-h-0 w-full flex-col" : "w-full"}
+            >
               {!isFullHeightRoute && <BetaNoticeBanner />}
-              {isAdminRoute && !hasAdminAccess
-                ? renderRestrictedContent({
-                    title: "Admin Console Restricted",
-                    body: "This area is reserved for admins. Normal users can continue using documents, query, collections, profile, and trust/privacy settings.",
-                    chip: "Admin Only",
-                  })
-                : children}
+              {isAdminRoute && !hasAdminAccess ? (
+                renderRestrictedContent({
+                  title: "Admin Console Restricted",
+                  body: "This area is reserved for admins. Normal users can continue using documents, query, collections, profile, and trust/privacy settings.",
+                  chip: "Admin Only",
+                })
+              ) : isProvidersSettingsRoute ? (
+                <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+              ) : (
+                children
+              )}
             </div>
           </main>
         </div>

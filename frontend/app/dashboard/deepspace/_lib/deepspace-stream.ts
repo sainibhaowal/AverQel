@@ -11,13 +11,17 @@ export interface MessageMetrics {
     cache_write_input_tokens?: number | null;
     usage_source?: string;
   } | null;
-  tokensPerSec?: number;
+  providerOutputTokens?: number | null;
+  providerGenerationDurationMs?: number | null;
+  tokensPerSecond?: number | null;
+  tokensPerSecondUnavailableReason?: string | null;
+  timeToFirstTokenMs?: number | null;
+  providerTimeToFirstOutputMs?: number | null;
+  requestLatencyMs?: number | null;
   totalTokens?: number;
-  ttftMs?: number;
   modelName?: string;
   providerType?: string;
   startedAt?: string;
-  firstTokenAt?: string;
   contextLimit?: number;
   contextLimitSource?: string | null;
   contextUsedTokens?: number;
@@ -429,6 +433,7 @@ export interface TimelineStep {
 
 export interface DeepSpaceMessage {
   id: string;
+  clientRequestId?: string;
   role: "user" | "assistant";
   content: string;
   rawContent: string;
@@ -440,7 +445,7 @@ export interface DeepSpaceMessage {
   error?: {
     code: string;
     message: string;
-    category?: "provider" | "tool" | "runtime" | "ui";
+    category?: "provider" | "request" | "tool" | "runtime" | "ui";
   } | null;
 
   // Versioning & Editing

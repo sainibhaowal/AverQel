@@ -13,6 +13,11 @@ export default function NotificationsDocsPage() {
           items may be loaded in pages. Realtime events can update the interface, while durable
           notifications are stored through the notification service.
         </p>
+        <p>
+          If a notification feed is temporarily unavailable, the centre keeps previously loaded
+          items visible, identifies the feed that needs refreshing, and retries automatically. Use
+          Refresh to retry immediately.
+        </p>
       </DocsSection>
       <DocsSection title="Preferences">
         <p>

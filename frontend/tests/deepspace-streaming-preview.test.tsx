@@ -83,6 +83,53 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(markdownRendererMock).toHaveBeenCalledTimes(1);
   });
 
+  it("activates the saved response selected by the previous-version control", () => {
+    const onActivateVersion = vi.fn();
+    const createdAt = new Date().toISOString();
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_versioned_1",
+            role: "assistant",
+            content: "Second saved answer",
+            rawContent: "Second saved answer",
+            createdAt,
+            status: "ready",
+            activeVersionId: "version-2",
+            activeVersionIndex: 2,
+            versionCount: 2,
+            versions: [
+              {
+                id: "version-1",
+                version_index: 1,
+                content: "First saved answer",
+                source_type: "assistant",
+                created_at: createdAt,
+              },
+              {
+                id: "version-2",
+                version_index: 2,
+                content: "Second saved answer",
+                source_type: "assistant",
+                created_at: createdAt,
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+        onActivateVersion={onActivateVersion}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show previous response version" }));
+
+    expect(onActivateVersion).toHaveBeenCalledWith("assistant_versioned_1", "version-1");
+    expect(screen.getByRole("button", { name: "Show next response version" })).toBeInTheDocument();
+  });
+
   it("shows tool activity in the same thinking panel even without model-thinking text", () => {
     render(
       <DeepSpaceThread
@@ -540,10 +587,178 @@ describe("DeepSpaceThread streaming preview", () => {
 
     expect(screen.getByLabelText("DeepSpace question")).toBeInTheDocument();
     expect(screen.getAllByText("Which format should I use?").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Your input is needed")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for you")).toBeInTheDocument();
     expect(screen.getByText("Recommended")).toBeInTheDocument();
-    expect(screen.getByText("Other / write my own answer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Write a different answer" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: /Recommended Markdown/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Recommended: Markdown/i }));
     await waitFor(() => expect(onSubmitUserQuestion).toHaveBeenCalledWith("Markdown"));
+  });
+
+  it("opens and submits a custom answer from the question card", async () => {
+    const onSubmitUserQuestion = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_question_custom",
+            role: "assistant",
+            content: "Which format should I use?",
+            rawContent: "Which format should I use?",
+            createdAt: new Date().toISOString(),
+            status: "ready",
+            agentSteps: [
+              {
+                id: "question_step_custom",
+                type: "ask_user_question",
+                toolName: "ask_user",
+                toolId: "question-call-custom",
+                status: "awaiting_approval",
+                startedAt: new Date().toISOString(),
+                data: {
+                  question_id: "question-custom",
+                  message: "Which format should I use?",
+                  options: ["Markdown", "Plain text"],
+                },
+              },
+            ],
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+        onSubmitUserQuestion={onSubmitUserQuestion}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Write a different answer" }));
+    const customAnswer = screen.getByRole("textbox", { name: "Write your answer" });
+    expect(screen.getByRole("button", { name: "Hide custom answer" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    fireEvent.change(customAnswer, { target: { value: "Use Markdown with a short summary." } });
+    fireEvent.click(screen.getByRole("button", { name: "Send answer" }));
+
+    await waitFor(() =>
+      expect(onSubmitUserQuestion).toHaveBeenCalledWith("Use Markdown with a short summary."),
+    );
+  });
+
+  it("shows retry on a system fault only when its failed queue turn is confirmed", () => {
+    const onRetryFailedTurn = vi.fn();
+    const failedMessage = {
+      id: "assistant-failed-1",
+      clientRequestId: "failed-turn-1",
+      role: "assistant" as const,
+      content: "",
+      rawContent: "",
+      createdAt: new Date().toISOString(),
+      status: "error" as const,
+      error: {
+        code: "LLM_REQUEST_FAILED",
+        message: "Rate limit exceeded. Try again later.",
+        category: "provider" as const,
+      },
+    };
+    const defaultProps = {
+      messages: [failedMessage],
+      emptyPrompts: [],
+      onPromptSelect: () => {},
+      onInsertLatestAnswer: () => {},
+      onRetryFailedTurn,
+    };
+    const { rerender } = render(
+      <DeepSpaceThread {...defaultProps} retryableRequestIds={new Set<string>()} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Retry failed prompt" })).not.toBeInTheDocument();
+
+    rerender(
+      <DeepSpaceThread {...defaultProps} retryableRequestIds={new Set(["failed-turn-1"])} />,
+    );
+    const retryButton = screen.getByRole("button", { name: "Retry failed prompt" });
+    expect(retryButton.closest(".deepspace-execution-error")).toBeInTheDocument();
+    fireEvent.click(retryButton);
+    expect(onRetryFailedTurn).toHaveBeenCalledWith("failed-turn-1");
+
+    rerender(
+      <DeepSpaceThread
+        {...defaultProps}
+        retryableRequestIds={new Set(["failed-turn-1"])}
+        retryingRequestId="failed-turn-1"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Retrying failed prompt" })).toBeDisabled();
+  });
+
+  it("renders export formats in a body overlay without expanding the action capsule", async () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant_export_overlay_1",
+            role: "assistant",
+            content: "Exportable response text",
+            rawContent: "Exportable response text",
+            createdAt: new Date().toISOString(),
+            status: "ready",
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    const exportButton = screen.getByRole("button", { name: "Export response" });
+    const actionCapsule = exportButton.parentElement?.parentElement;
+    fireEvent.click(exportButton);
+
+    const exportMenu = await screen.findByRole("group", { name: "Export format" });
+    await waitFor(() => expect(exportMenu).toHaveStyle({ visibility: "visible" }));
+    expect(exportMenu.parentElement).toBe(document.body);
+    expect(exportMenu).toHaveClass("deepspace-export-menu", "fixed");
+    expect(exportMenu).not.toHaveClass("theme-panel-strong");
+    expect(actionCapsule).not.toContainElement(exportMenu);
+    expect(screen.getByRole("button", { name: "Export response" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Export format" })).toBeNull());
+  });
+
+  it("shows a request rejection as a request error, not provider downtime", () => {
+    render(
+      <DeepSpaceThread
+        messages={[
+          {
+            id: "assistant-rejected-1",
+            role: "assistant",
+            content: "",
+            rawContent: "",
+            createdAt: new Date().toISOString(),
+            status: "error",
+            error: {
+              code: "LLM_REQUEST_REJECTED",
+              message: "The provider rejected the request parameters.",
+              category: "request",
+            },
+          },
+        ]}
+        emptyPrompts={[]}
+        onPromptSelect={() => {}}
+        onInsertLatestAnswer={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Request rejected")).toBeInTheDocument();
+    expect(screen.queryByText("Provider unavailable")).not.toBeInTheDocument();
   });
 });

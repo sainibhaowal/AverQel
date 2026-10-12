@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -15,6 +16,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.platform.database.session import get_db, managed_db_session
 from app.providers.models.provider_config import ProviderConfig
+from app.providers.repositories.provider_assignments import ProviderAssignmentsRepository
 from app.providers.schemas import (
     MaskedProviderSecretResponse,
     ProviderAssignmentCreateRequest,
@@ -50,11 +52,16 @@ from app.providers.services import (
 )
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.context_window import resolve_verified_context_window
+from app.providers.services.openai_compatible_config import (
+    openai_compatible_settings,
+    provider_model_listing_enabled,
+)
 from app.providers.services.provider_models_service import (
     acquire_model_discovery_slot,
     provider_request_error_to_api_error,
     release_model_discovery_slot,
 )
+from app.providers.services.reasoning_capabilities import merge_reasoning_capabilities
 from app.providers.services.registry import ProviderRegistry
 from app.system.services.user_notifications import add_user_notification, notify_platform_admins
 
@@ -65,6 +72,16 @@ OPTIONAL_WORKSPACE_QUERY = Query(default=None)
 OPTIONAL_CODE_QUERY = Query(default=None)
 OPTIONAL_STATE_QUERY = Query(default=None)
 OPTIONAL_TENANT_QUERY = Query(default=None)
+
+
+@dataclass(frozen=True, slots=True)
+class _ProviderModelContext:
+    id: uuid.UUID
+    provider_type: str
+    api_base_url: str | None
+    metadata_json: dict[str, Any]
+    supports_chat: bool
+    default_chat_model: str | None
 
 
 def _is_database_lock_timeout(exc: OperationalError) -> bool:
@@ -177,8 +194,64 @@ def _assignment_response(row: Any) -> ProviderAssignmentResponse:
     )
 
 
-def _model_response(row: Any, *, provider_type: str | None = None) -> ProviderModelResponse:
-    capabilities = dict(row.capabilities_json or {})
+def _custom_reasoning_capabilities(
+    provider: ProviderConfig | _ProviderModelContext | None,
+) -> dict[str, Any] | None:
+    if provider is None or provider.provider_type != "custom":
+        return None
+    configured = openai_compatible_settings(provider.metadata_json).reasoning
+    efforts = (
+        [effort for effort in configured.supported_efforts if effort in configured.effort_values]
+        if configured.effort_parameter
+        else []
+    )
+    return {
+        "supports_reasoning": bool(efforts or configured.toggle_parameter),
+        "reasoning_capabilities_known": True,
+        "reasoning_visibility": "provider_exposed" if efforts else "hidden",
+        "supports_thinking_summary_stream": bool(efforts) and configured.expose_response_reasoning,
+        "supported_reasoning_efforts": efforts,
+        "supports_thinking_toggle": bool(
+            configured.toggle_parameter or configured.effort_off_value is not None
+        ),
+        "request_controls_on": (
+            [configured.effort_parameter] if configured.effort_parameter else []
+        )
+        + ([configured.toggle_parameter] if configured.toggle_parameter else []),
+        "request_controls_off": (
+            [configured.toggle_parameter] if configured.toggle_parameter else []
+        )
+        + (
+            [configured.effort_parameter]
+            if configured.effort_off_value is not None and configured.effort_parameter
+            else []
+        ),
+        "reasoning_effort_values": {effort: configured.effort_values[effort] for effort in efforts},
+    }
+
+
+def _model_response(
+    row: Any,
+    *,
+    provider_type: str | None = None,
+    base_url: str | None = None,
+    custom_reasoning: dict[str, Any] | None = None,
+) -> ProviderModelResponse:
+    advertised_capabilities = dict(row.capabilities_json or {})
+    capabilities = dict(advertised_capabilities)
+    # Older cache rows can predate reasoning profiles. Resolve those profiles
+    # in the response without rewriting persisted user/provider metadata; a
+    # successful model refresh stores the merged result for subsequent reads.
+    capabilities.update(
+        merge_reasoning_capabilities(
+            provider_type,
+            row.model_name,
+            base_url=base_url,
+            advertised=capabilities,
+        )
+    )
+    if custom_reasoning and advertised_capabilities.get("reasoning_capabilities_known") is not True:
+        capabilities.update(custom_reasoning)
     context_window = row.context_window
     context_source = capabilities.get("context_window_source")
     if not isinstance(context_window, int) or context_window <= 0:
@@ -201,6 +274,91 @@ def _model_response(row: Any, *, provider_type: str | None = None) -> ProviderMo
         is_available=row.is_available,
         last_seen_at=row.last_seen_at,
     )
+
+
+def _provider_model_responses(
+    rows: list[Any],
+    *,
+    provider: ProviderConfig | _ProviderModelContext | None,
+    assigned_chat_model: str | None = None,
+) -> list[ProviderModelResponse]:
+    provider_type = provider.provider_type if provider is not None else None
+    custom_reasoning = _custom_reasoning_capabilities(provider)
+    responses = [
+        _model_response(
+            row,
+            provider_type=provider_type,
+            base_url=provider.api_base_url if provider is not None else None,
+            custom_reasoning=custom_reasoning,
+        )
+        for row in rows
+    ]
+    default_model = (
+        provider.default_chat_model.strip()
+        if provider is not None and provider.supports_chat and provider.default_chat_model
+        else ""
+    )
+    candidate_models = list(
+        dict.fromkeys(model for model in (default_model, assigned_chat_model) if model)
+    )
+    for model_name in candidate_models:
+        if any(
+            response.model_kind == "chat" and response.model_name == model_name
+            for response in responses
+        ):
+            continue
+
+        # A default or assigned model can be valid before its first successful
+        # catalog refresh (including when model listing is disabled). Return its
+        # verified profile so DeepSpace can render controls on first use.
+        verified = resolve_verified_context_window(
+            model_name,
+            provider_type=provider_type,
+        )
+        capabilities = merge_reasoning_capabilities(
+            provider_type,
+            model_name,
+            base_url=provider.api_base_url if provider is not None else None,
+        )
+        if custom_reasoning is not None:
+            capabilities = custom_reasoning
+        responses.append(
+            ProviderModelResponse(
+                id=None,
+                provider_config_id=provider.id if provider is not None else None,
+                model_name=model_name,
+                model_kind="chat",
+                display_name=model_name,
+                context_window=verified.context_window,
+                capabilities_json={
+                    **capabilities,
+                    **({"context_window_source": verified.source} if verified.source else {}),
+                },
+                is_available=True,
+                last_seen_at=None,
+            )
+        )
+    return responses
+
+
+def _active_chat_model_for_provider(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    provider_config_id: uuid.UUID,
+) -> str | None:
+    """Return this user's active chat model for the provider, within tenant scope."""
+    assignment = ProviderAssignmentsRepository(db).get_active_assignment(
+        tenant_id=tenant_id,
+        workspace_id=None,
+        feature_scope="chat",
+        owner_user_id=user_id,
+    )
+    if assignment is None or assignment.provider_config_id != provider_config_id:
+        return None
+    model_name = assignment.model_name
+    return model_name.strip() or None if isinstance(model_name, str) else None
 
 
 def _commit_or_rollback(
@@ -402,22 +560,32 @@ def preview_models(
         default_reranker_model=None,
         timeout_seconds=30,
         priority=100,
-        metadata_json={},
+        metadata_json=dict(payload.metadata_json or {}),
     )
     registry = ProviderRegistry(settings)
     acquire_model_discovery_slot("preview")
     try:
+        discovery_api_key = (
+            None if payload.provider_type.strip().lower() == "cline" else payload.api_key
+        )
         discovery = registry.get_model_discovery_provider_from_config(
-            provider, api_key=payload.api_key
+            provider, api_key=discovery_api_key
         )
         logger.info(
             f"Model discovery for {payload.provider_type}: base_url={getattr(discovery, 'base_url', 'N/A')}"
         )
-        infos = list(discovery.list_models()) if payload.supports_chat else []
+        listing_available = bool(
+            provider_model_listing_enabled(
+                payload.provider_type,
+                payload.supports_model_listing,
+            )
+            and getattr(discovery, "supports_model_listing", True)
+        )
+        infos = list(discovery.list_models()) if listing_available and payload.supports_chat else []
         logger.info(f"Found {len(infos)} chat models, supports_chat={payload.supports_chat}")
-        if payload.supports_embeddings:
+        if listing_available and payload.supports_embeddings:
             infos.extend(list(discovery.list_embedding_models()))
-        if payload.supports_reranking:
+        if listing_available and payload.supports_reranking:
             infos.extend(list(discovery.list_reranker_models()))
     except ProviderRequestError as exc:
         logger.error(f"ProviderRequestError: {exc}")
@@ -449,6 +617,14 @@ def preview_models(
             context_window = verified.context_window
             context_source = context_source or verified.source
         capabilities = dict(info.capabilities)
+        capabilities.update(
+            merge_reasoning_capabilities(
+                payload.provider_type,
+                info.name,
+                base_url=payload.api_base_url,
+                advertised=capabilities,
+            )
+        )
         if context_source:
             capabilities["context_window_source"] = context_source
         items.append(
@@ -771,18 +947,32 @@ def refresh_provider_models(
     settings: Settings = Depends(get_settings),
 ) -> ProviderModelListResponse:
     _enforce_tenant_scope(request_tenant_id, auth)
-    # Read the provider metadata while the request tenant context is active.
-    # ``_commit_or_rollback`` commits the transaction, which intentionally
-    # clears the transaction-local RLS setting.  Looking the provider up only
-    # after that commit can make PostgreSQL evaluate the RLS UUID cast against
-    # an empty setting and fail with ``invalid input syntax for type uuid``.
-    provider = db.get(ProviderConfig, provider_id)
-    provider_type = provider.provider_type if provider is not None else None
+    # Keep the provider row loaded before refresh. Its defaults can change while
+    # the catalog is refreshed, so snapshot it after refresh but before commit.
+    provider_row = db.get(ProviderConfig, provider_id)
+    assigned_chat_model = _active_chat_model_for_provider(
+        db,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        provider_config_id=provider_id,
+    )
     models_service = ProviderModelsService(db, ProviderRegistry(settings))
     rows = models_service.refresh_models(
         tenant_id=auth.tenant_id,
         provider_config_id=provider_id,
         actor_user_id=auth.user_id,
+    )
+    provider = (
+        _ProviderModelContext(
+            id=provider_row.id,
+            provider_type=provider_row.provider_type,
+            api_base_url=provider_row.api_base_url,
+            metadata_json=dict(provider_row.metadata_json or {}),
+            supports_chat=provider_row.supports_chat,
+            default_chat_model=provider_row.default_chat_model,
+        )
+        if provider_row is not None
+        else None
     )
     _commit_or_rollback(
         db=db,
@@ -790,7 +980,11 @@ def refresh_provider_models(
         context={"tenant_id": str(auth.tenant_id), "provider_id": str(provider_id)},
     )
     return ProviderModelListResponse(
-        items=[_model_response(row, provider_type=provider_type) for row in rows]
+        items=_provider_model_responses(
+            rows,
+            provider=provider,
+            assigned_chat_model=assigned_chat_model,
+        )
     )
 
 
@@ -814,9 +1008,18 @@ def list_provider_models(
         actor_user_id=auth.user_id,
     )
     provider = db.get(ProviderConfig, provider_id)
-    provider_type = provider.provider_type if provider is not None else None
+    assigned_chat_model = _active_chat_model_for_provider(
+        db,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        provider_config_id=provider_id,
+    )
     return ProviderModelListResponse(
-        items=[_model_response(row, provider_type=provider_type) for row in rows]
+        items=_provider_model_responses(
+            rows,
+            provider=provider,
+            assigned_chat_model=assigned_chat_model,
+        )
     )
 
 

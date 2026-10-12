@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from app.providers.services.base import ProviderCapabilityError
 from app.providers.services.context_window import extract_context_window
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
+from app.providers.services.reasoning_capabilities import normalize_reasoning_effort_value
 from app.providers.services.types import HealthCheckResult, ProviderModelInfo
 from app.providers.services.url_resolution import resolve_provider_base_url
 
@@ -32,6 +34,27 @@ class OllamaProvider(OpenAICompatibleProvider):
             raise RuntimeError(f"ollama status {response.status_code}")
         payload: dict[str, Any] = response.json()
         models = payload.get("models", [])
+        model_names = [
+            item["name"]
+            for item in models
+            if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"]
+        ]
+        if model_names:
+            with ThreadPoolExecutor(max_workers=min(8, len(model_names))) as executor:
+                thinking_metadata = dict(
+                    zip(
+                        model_names,
+                        executor.map(
+                            lambda model_name: self._fetch_thinking_capabilities(
+                                httpx_module, model_name
+                            ),
+                            model_names,
+                        ),
+                        strict=True,
+                    )
+                )
+        else:
+            thinking_metadata = {}
         infos: list[ProviderModelInfo] = []
         for item in models:
             if not isinstance(item, dict):
@@ -60,6 +83,7 @@ class OllamaProvider(OpenAICompatibleProvider):
                         metadata["parameter_size"] = parameter_size
                     if isinstance(quantization, str) and quantization:
                         metadata["quantization_level"] = quantization
+                metadata.update(thinking_metadata.get(name) or {})
                 infos.append(
                     ProviderModelInfo(
                         name=name,
@@ -70,6 +94,67 @@ class OllamaProvider(OpenAICompatibleProvider):
                     )
                 )
         return infos
+
+    def _fetch_thinking_capabilities(
+        self, httpx_module: Any, model_name: str
+    ) -> dict[str, Any] | None:
+        if not self.base_url:
+            return None
+        try:
+            response = httpx_module.post(
+                f"{self.base_url}/api/show",
+                json={"model": model_name},
+                timeout=3.0,
+            )
+            if response.status_code >= 400:
+                return None
+            payload = response.json()
+        except Exception:
+            # Model discovery remains usable when a server version or model
+            # does not provide thinking metadata.
+            return None
+        thinking = payload.get("thinking") if isinstance(payload, dict) else None
+        values = thinking.get("values") if isinstance(thinking, dict) else None
+        if not isinstance(values, list):
+            return None
+
+        efforts: list[str] = []
+        native_values: dict[str, str] = {}
+        has_off = False
+        for value in values:
+            if value is False:
+                has_off = True
+                continue
+            if value is True:
+                # Ollama's OpenAI-compatible route translates `reasoning_effort`
+                # to its native boolean `think` value for boolean-only models.
+                canonical, native = "on", "high"
+            elif isinstance(value, str):
+                normalized = normalize_reasoning_effort_value(value)
+                if normalized in {"off", "none"}:
+                    has_off = True
+                    native_values["off"] = value.strip()
+                    continue
+                if normalized is None:
+                    continue
+                canonical, native = normalized, value.strip()
+            else:
+                continue
+            if canonical not in efforts and len(efforts) < 32:
+                efforts.append(canonical)
+                native_values[canonical] = native
+
+        supports_reasoning = bool(efforts)
+        supports_toggle = supports_reasoning and has_off
+        return {
+            "reasoning_capabilities_known": True,
+            "supports_reasoning": supports_reasoning,
+            "supports_thinking_toggle": supports_toggle,
+            "supported_reasoning_efforts": efforts,
+            "request_controls_on": ["reasoning_effort"] if supports_reasoning else [],
+            "request_controls_off": ["reasoning_effort_none"] if supports_toggle else [],
+            "reasoning_effort_values": native_values,
+        }
 
     def list_embedding_models(self) -> Sequence[ProviderModelInfo]:
         embedding_models: list[ProviderModelInfo] = []

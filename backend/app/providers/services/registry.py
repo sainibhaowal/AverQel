@@ -19,7 +19,9 @@ from app.providers.services.lmstudio_provider import LMStudioProvider
 from app.providers.services.local_deterministic_provider import (
     LocalDeterministicEmbeddingProvider,
 )
+from app.providers.services.manus_agent_provider import ManusAgentProvider
 from app.providers.services.ollama_provider import OllamaProvider
+from app.providers.services.openai_codex_provider import OpenAICodexProvider
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.providers.services.opencode_zen_provider import OpenCodeZenProvider
 from app.providers.services.openrouter_provider import OpenRouterProvider
@@ -37,11 +39,30 @@ OPENAI_COMPATIBLE_PROVIDER_TYPES = {
     "groq",
     "groq-openai-compatible",
     "mistral",
+    "meta",
+    "cline",
+    "moonshot",
+    "zai",
+    "nvidia-nim",
     "together",
     "fireworks",
     "perplexity",
     "vllm",
     "custom",
+}
+
+OPENAI_COMPATIBLE_EMBEDDING_PROVIDER_TYPES = OPENAI_COMPATIBLE_PROVIDER_TYPES - {
+    "meta",
+    "cline",
+    "moonshot",
+    "zai",
+}
+
+PROVIDER_DEFAULT_BASE_URLS = {
+    "moonshot": "https://api.moonshot.ai/v1",
+    "zai": "https://api.z.ai/api/paas/v4",
+    "nvidia-nim": "https://integrate.api.nvidia.com/v1",
+    "manus": "https://api.manus.ai",
 }
 
 
@@ -55,7 +76,15 @@ class ProviderRegistry:
         *,
         base_url: str | None,
         api_key: str | None,
+        metadata: dict[str, object] | None = None,
     ) -> ChatProvider:
+        if provider == "manus":
+            return ManusAgentProvider(
+                base_url=resolve_provider_base_url(
+                    base_url or PROVIDER_DEFAULT_BASE_URLS[provider], provider_type=provider
+                ),
+                api_key=api_key,
+            )
         if provider == "opencode-zen":
             return OpenCodeZenProvider().bind(base_url or "", api_key)
         if provider == "openrouter":
@@ -65,9 +94,13 @@ class ProviderRegistry:
             )
         if provider in OPENAI_COMPATIBLE_PROVIDER_TYPES:
             return OpenAICompatibleProvider(
-                base_url=resolve_provider_base_url(base_url, provider_type=provider),
+                base_url=resolve_provider_base_url(
+                    base_url or PROVIDER_DEFAULT_BASE_URLS.get(provider),
+                    provider_type=provider,
+                ),
                 api_key=api_key,
                 provider_name=provider,
+                provider_metadata=metadata,
             )
         if provider == "ollama":
             return OllamaProvider().bind(base_url or "")
@@ -85,6 +118,7 @@ class ProviderRegistry:
         *,
         base_url: str | None,
         api_key: str | None,
+        metadata: dict[str, object] | None = None,
     ) -> EmbeddingProvider:
         if provider == "local-deterministic":
             return LocalDeterministicEmbeddingProvider()
@@ -102,12 +136,16 @@ class ProviderRegistry:
             return OllamaProvider().bind(base_url or "")
         if provider == "lmstudio":
             return LMStudioProvider().bind(base_url or "", api_key)
-        if provider in OPENAI_COMPATIBLE_PROVIDER_TYPES:
+        if provider in OPENAI_COMPATIBLE_EMBEDDING_PROVIDER_TYPES:
             return OpenAICompatibleProvider(
                 supports_embeddings=True,
-                base_url=resolve_provider_base_url(base_url, provider_type=provider),
+                base_url=resolve_provider_base_url(
+                    base_url or PROVIDER_DEFAULT_BASE_URLS.get(provider),
+                    provider_type=provider,
+                ),
                 api_key=api_key,
                 provider_name=provider,
+                provider_metadata=metadata,
             )
         raise ValueError(f"Unsupported embedding provider: {provider}")
 
@@ -115,7 +153,7 @@ class ProviderRegistry:
         resolved = provider_type or self.settings.llm_provider
         return self._bind_chat_provider(
             resolved,
-            base_url=self.settings.llm_api_base_url,
+            base_url=self.settings.llm_api_base_url or PROVIDER_DEFAULT_BASE_URLS.get(resolved),
             api_key=self.settings.llm_api_key,
         )
 
@@ -143,10 +181,16 @@ class ProviderRegistry:
     def get_chat_provider_from_selection(
         self, selection: ProviderSelectionCandidate
     ) -> ChatProvider:
+        if selection.provider_type == "openai" and selection.auth_mode == "codex_desktop":
+            return OpenAICodexProvider(
+                metadata=dict(selection.metadata),
+                tenant_id=str(selection.tenant_id) if selection.tenant_id else None,
+            )
         return self._bind_chat_provider(
             selection.provider_type,
             base_url=selection.base_url,
             api_key=selection.api_key,
+            metadata=selection.metadata,
         )
 
     def get_embedding_provider_from_selection(
@@ -157,6 +201,7 @@ class ProviderRegistry:
             selection.provider_type,
             base_url=selection.base_url,
             api_key=selection.api_key,
+            metadata=selection.metadata,
         )
 
     def get_reranker_provider_from_selection(
@@ -216,6 +261,14 @@ class ProviderRegistry:
         )
 
     def get_model_discovery_provider(self, provider_type: str) -> ModelDiscoveryProvider:
+        if provider_type == "manus":
+            return ManusAgentProvider(
+                base_url=resolve_provider_base_url(
+                    self.settings.llm_api_base_url or PROVIDER_DEFAULT_BASE_URLS[provider_type],
+                    provider_type=provider_type,
+                ),
+                api_key=self.settings.llm_api_key,
+            )
         if provider_type == "sentence-transformers":
             return SentenceTransformersEmbeddingProvider(
                 base_url=self.settings.local_inference_base_url
@@ -241,8 +294,10 @@ class ProviderRegistry:
             )
         if provider_type in OPENAI_COMPATIBLE_PROVIDER_TYPES:
             return OpenAICompatibleProvider(
-                supports_embeddings=True,
-                base_url=self.settings.llm_api_base_url,
+                supports_embeddings=(provider_type in OPENAI_COMPATIBLE_EMBEDDING_PROVIDER_TYPES),
+                base_url=(
+                    self.settings.llm_api_base_url or PROVIDER_DEFAULT_BASE_URLS.get(provider_type)
+                ),
                 api_key=self.settings.llm_api_key,
                 provider_name=provider_type,
             )
@@ -259,6 +314,25 @@ class ProviderRegistry:
         *,
         api_key: str | None = None,
     ) -> ModelDiscoveryProvider:
+        if provider_config.provider_type == "manus":
+            return ManusAgentProvider(
+                base_url=resolve_provider_base_url(
+                    provider_config.api_base_url or PROVIDER_DEFAULT_BASE_URLS["manus"],
+                    provider_type="manus",
+                ),
+                api_key=api_key,
+            )
+        if (
+            provider_config.provider_type == "openai"
+            and provider_config.auth_mode == "codex_desktop"
+        ):
+            return OpenAICodexProvider(
+                metadata=dict(provider_config.metadata_json or {}),
+                tenant_id=str(provider_config.tenant_id),
+                owner_user_id=(
+                    str(provider_config.owner_user_id) if provider_config.owner_user_id else None
+                ),
+            )
         if provider_config.provider_type == "sentence-transformers":
             return SentenceTransformersEmbeddingProvider(
                 base_url=self.settings.local_inference_base_url
@@ -286,9 +360,14 @@ class ProviderRegistry:
         if provider_config.provider_type in OPENAI_COMPATIBLE_PROVIDER_TYPES:
             return OpenAICompatibleProvider(
                 supports_embeddings=provider_config.supports_embeddings,
-                base_url=provider_config.api_base_url or self.settings.llm_api_base_url,
+                base_url=(
+                    provider_config.api_base_url
+                    or self.settings.llm_api_base_url
+                    or PROVIDER_DEFAULT_BASE_URLS.get(provider_config.provider_type)
+                ),
                 api_key=api_key,
                 provider_name=provider_config.provider_type,
+                provider_metadata=dict(provider_config.metadata_json or {}),
             )
         if provider_config.provider_type == "anthropic":
             return AnthropicProvider().bind(

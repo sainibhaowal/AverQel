@@ -333,6 +333,17 @@ services:
     mem_limit: 1024m
     cpus: 1.0
 
+  grounded-query-dataset-worker:
+    extends:
+      service: worker
+    container_name: averqel-grounded-query-dataset-worker
+    environment:
+      AKS_WORKER_QUEUES: grounded_query_datasets
+      AKS_WORKER_CONCURRENCY: ${AKS_GROUNDED_QUERY_DATASET_WORKER_CONCURRENCY:-1}
+    # Grounded Query table indexes stay isolated from Library profiling and chat workers.
+    mem_limit: 1024m
+    cpus: 1.0
+
   scheduler:
     container_name: averqel-scheduler
     build:

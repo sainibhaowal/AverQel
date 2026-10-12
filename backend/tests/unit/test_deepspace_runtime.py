@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 
-from app.deepspace.services.chat_service import PRODUCTIVITY_TOOLS, DeepSpaceChatService
+from app.deepspace.services.chat_service import (
+    PRODUCTIVITY_TOOLS,
+    DeepSpaceChatService,
+    _TimedProviderItem,
+)
 from app.deepspace.services.runtime_policy import DeepSpaceToolPolicy
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.url_reader import validate_public_url
@@ -140,6 +146,60 @@ def test_runtime_store_bounds_retained_step_payload() -> None:
     assert len(str(result["preview"])) <= 19_500
 
 
+def test_history_steps_include_multiple_runtime_attempts_for_one_assistant_message() -> None:
+    first_run_id = uuid.uuid4()
+    retry_run_id = uuid.uuid4()
+    created_at = datetime(2026, 10, 10, tzinfo=UTC)
+    steps = [
+        SimpleNamespace(
+            run_id=first_run_id,
+            sequence=1,
+            step_type="model_message",
+            status="completed",
+            result_json={"text": "First attempt"},
+            input_json={},
+            created_at=created_at,
+            completed_at=created_at,
+            tool_name=None,
+            tool_call_id=None,
+        ),
+        SimpleNamespace(
+            run_id=retry_run_id,
+            sequence=1,
+            step_type="model_message",
+            status="completed",
+            result_json={"text": "Retry attempt"},
+            input_json={},
+            created_at=created_at,
+            completed_at=created_at,
+            tool_name=None,
+            tool_call_id=None,
+        ),
+    ]
+
+    class FakeResult:
+        def scalars(self) -> FakeResult:
+            return self
+
+        def all(self) -> list[SimpleNamespace]:
+            return steps
+
+    class FakeSession:
+        def execute(self, _statement: object) -> FakeResult:
+            return FakeResult()
+
+    result = DeepSpaceRuntimeStore(FakeSession()).history_steps_for_message(
+        tenant_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        assistant_message_id=uuid.uuid4(),
+    )
+
+    assert [item["output"] for item in result] == ["First attempt", "Retry attempt"]
+    assert result[0]["step_id"] == f"runtime_{first_run_id}_1"
+    assert result[1]["step_id"] == f"runtime_{retry_run_id}_1"
+
+
 @pytest.mark.asyncio
 async def test_provider_retry_retries_pre_output_failures(
     monkeypatch: pytest.MonkeyPatch,
@@ -158,6 +218,7 @@ async def test_provider_retry_retries_pre_output_failures(
         return None
 
     monkeypatch.setattr("app.deepspace.services.chat_service.asyncio.sleep", no_sleep)
+    stream_started = time.monotonic()
     frames = [
         item
         async for item in service._provider_stream_with_retry(
@@ -167,9 +228,13 @@ async def test_provider_retry_retries_pre_output_failures(
             provider_type="lmstudio",
         )
     ]
+    stream_finished = time.monotonic()
 
     assert attempts == 2
-    assert frames == [{"type": "delta", "text": "ok"}]
+    assert len(frames) == 1
+    assert isinstance(frames[0], _TimedProviderItem)
+    assert frames[0].value == {"type": "delta", "text": "ok"}
+    assert stream_started <= frames[0].received_monotonic <= stream_finished
 
 
 @pytest.mark.asyncio

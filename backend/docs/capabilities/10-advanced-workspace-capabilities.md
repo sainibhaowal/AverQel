@@ -85,15 +85,19 @@ available, what is gated, and which security boundary protects each feature.
 
 ## 5. DeepSpace reasoning effort
 
-1. The DeepSpace composer exposes a dedicated Thinking selector with Off, Low,
-   Medium, High, and—when a model advertises them—Very High and Extreme High.
-   The selected value is sent with direct, queued, regenerate, and
-   edit-and-regenerate requests.
+1. The DeepSpace composer exposes the Thinking selector from the selected
+   model's advertised reasoning options. Standard labels include Off, Low,
+   Medium, High, Very High, and Extreme High; safe model-specific names are
+   preserved and displayed as readable labels. The selected value is sent with
+   direct, queued, regenerate, and edit-and-regenerate requests.
 2. Provider model metadata remains authoritative. DeepSpace resolves
    capabilities from live provider discovery, persisted model metadata, and a
-   verified family registry, in that order. A narrower native capability is
-   mapped to the nearest supported normalized level; unsupported models do not
-   receive a forced reasoning payload.
+   verified family registry, in that order. Native values are mapped to safe
+   UI identifiers and sent back using the provider's exact advertised value;
+   unsupported models do not receive a forced reasoning payload. Unknown
+   model-specific names are accepted only when the selected model advertises
+   them. Queued option identifiers remain bounded to the existing 20-character
+   storage field.
 3. Provider adapters continue to translate the normalized effort into their
    native controls. Existing boolean `thinking_enabled` clients remain
    compatible.
@@ -104,8 +108,9 @@ available, what is gated, and which security boundary protects each feature.
    models use `reasoning_effort`; DeepSeek uses its `thinking` plus mapped
    effort values; Gemini uses `thinkingLevel` for Gemini 3 and
    `thinkingBudget` for Gemini 2.5; Anthropic uses effort-scaled thinking
-   budgets for legacy extended-thinking models; LM Studio uses its native
-   `reasoning` setting while retaining local-model compatibility controls.
+   budgets for legacy extended-thinking models; LM Studio uses advertised
+   `allowed_options` when its model catalog supplies them; Ollama uses its
+   per-model `/api/show` thinking values through the compatible request route.
    Unknown/future model metadata is never assumed to support a level.
 
 ## 6. Context budget meter

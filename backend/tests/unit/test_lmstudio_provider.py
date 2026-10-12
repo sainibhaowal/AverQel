@@ -4,9 +4,13 @@ import asyncio
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 from app.providers.services.lmstudio_provider import LMStudioProvider
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.providers.services.types import ChatGenerateRequest, ChatGenerateResponse
+
+pytestmark = pytest.mark.unit_no_db
 
 
 class _FakeResponse:
@@ -119,6 +123,92 @@ def test_lmstudio_provider_prefers_native_models_metadata_for_context_window(
     assert models[0].capabilities["runtime"] == "lmstudio"
 
 
+def test_lmstudio_provider_uses_advertised_reasoning_options_and_native_values() -> None:
+    provider = LMStudioProvider().bind("http://localhost:1234/v1")
+    model = provider._build_model_info(
+        item={
+            "key": "vendor/model-v2",
+            "capabilities": {
+                "reasoning": {
+                    "allowed_options": ["off", "low", "ultra", "tier-5"],
+                    "default": "low",
+                }
+            },
+        },
+        name="vendor/model-v2",
+        kind="chat",
+    )
+
+    capabilities = model.capabilities
+    assert capabilities["reasoning_capabilities_known"] is True
+    assert capabilities["supported_reasoning_efforts"] == ["low", "ultra", "tier_5"]
+    assert capabilities["supports_thinking_toggle"] is True
+    assert capabilities["reasoning_effort_values"] == {
+        "low": "low",
+        "ultra": "ultra",
+        "tier_5": "tier-5",
+        "off": "off",
+    }
+
+    adapter = OpenAICompatibleProvider(provider_name="lmstudio")
+    on_payload: dict[str, object] = {}
+    on_request = ChatGenerateRequest(
+        model=model.name,
+        messages=[{"role": "user", "content": "Explain this."}],
+        temperature=0,
+        max_tokens=64,
+        base_url="http://localhost:1234/v1",
+        reasoning_enabled=True,
+        reasoning_effort="ultra",
+        metadata={
+            "provider_type": "lmstudio",
+            "reasoning_mode": "explicit",
+            "model_reasoning_capabilities": capabilities,
+        },
+    )
+    adapter._apply_discovered_reasoning_settings(on_payload, on_request, reasoning_enabled=True)
+
+    off_payload: dict[str, object] = {}
+    adapter._apply_discovered_reasoning_settings(
+        off_payload,
+        on_request,
+        reasoning_enabled=False,
+    )
+    assert on_payload["reasoning_effort"] == "ultra"
+    assert off_payload["reasoning_effort"] == "off"
+
+    custom_payload: dict[str, object] = {}
+    custom_request = ChatGenerateRequest(
+        model=model.name,
+        messages=[{"role": "user", "content": "Explain this."}],
+        temperature=0,
+        max_tokens=64,
+        base_url="http://localhost:1234/v1",
+        reasoning_enabled=True,
+        reasoning_effort="tier_5",
+        metadata={
+            "provider_type": "lmstudio",
+            "reasoning_mode": "explicit",
+            "model_reasoning_capabilities": capabilities,
+        },
+    )
+    adapter._apply_discovered_reasoning_settings(
+        custom_payload, custom_request, reasoning_enabled=True
+    )
+    assert custom_payload["reasoning_effort"] == "tier-5"
+
+
+def test_lmstudio_unknown_model_without_advertised_options_keeps_provider_default() -> None:
+    model = LMStudioProvider()._build_model_info(
+        item={"key": "vendor/unknown-model"},
+        name="vendor/unknown-model",
+        kind="chat",
+    )
+
+    assert model.capabilities["reasoning_capabilities_known"] is False
+    assert model.capabilities["supported_reasoning_efforts"] == []
+
+
 def test_lmstudio_provider_checks_chat_model_usability(monkeypatch) -> None:
     provider = LMStudioProvider().bind("http://localhost:1234/v1")
 
@@ -205,6 +295,7 @@ def test_lmstudio_provider_falls_back_to_buffered_events_when_async_streaming_fa
         lambda self, request: ChatGenerateResponse(
             content="Visible fallback answer.",
             thinking_content="Visible reasoning summary.",
+            usage={"prompt_tokens": 4, "completion_tokens": 5, "total_tokens": 9},
         ),
     )
 
@@ -216,13 +307,53 @@ def test_lmstudio_provider_falls_back_to_buffered_events_when_async_streaming_fa
 
     events = asyncio.run(collect())
 
-    assert events[0]["type"] == "thinking"
+    assert events[0] == {"type": "stream_timing", "mode": "buffered"}
+    assert {
+        "type": "usage",
+        "usage": {"prompt_tokens": 4, "completion_tokens": 5, "total_tokens": 9},
+    } in events
     assert "".join(event["text"] for event in events if event["type"] == "thinking") == (
         "Visible reasoning summary."
     )
     assert "".join(event["text"] for event in events if event["type"] == "delta") == (
         "Visible fallback answer."
     )
+
+
+@pytest.mark.unit_no_db
+def test_lmstudio_does_not_restart_with_buffered_output_after_partial_stream(monkeypatch) -> None:
+    provider = LMStudioProvider().bind("http://localhost:1234/v1")
+    request = ChatGenerateRequest(
+        model="qwen3",
+        messages=[{"role": "user", "content": "Hello"}],
+        temperature=0.0,
+        max_tokens=64,
+        base_url="http://localhost:1234/v1",
+    )
+    fallback_calls = 0
+
+    async def partial_then_fail(self, candidate):
+        yield {"type": "delta", "text": "Already visible."}
+        raise RuntimeError("provider stream closed")
+
+    def unexpected_fallback(self, candidate):
+        nonlocal fallback_calls
+        fallback_calls += 1
+        return ChatGenerateResponse(content="This must not be duplicated.")
+
+    monkeypatch.setattr(OpenAICompatibleProvider, "stream_generate_events", partial_then_fail)
+    monkeypatch.setattr(LMStudioProvider, "generate", unexpected_fallback)
+
+    async def collect() -> list[dict[str, str]]:
+        events: list[dict[str, str]] = []
+        async for event in provider.stream_generate_events(request):
+            events.append(event)
+        return events
+
+    with pytest.raises(RuntimeError, match="provider stream closed"):
+        asyncio.run(collect())
+
+    assert fallback_calls == 0
 
 
 def test_lmstudio_normalizes_stream_event_request_base_url(monkeypatch) -> None:

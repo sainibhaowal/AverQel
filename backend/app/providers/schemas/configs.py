@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.providers.schemas.common import ProviderSummaryMixin
 from app.providers.schemas.health import ProviderHealthResponse
 from app.providers.schemas.secrets import MaskedProviderSecretResponse
+from app.providers.services.openai_codex_config import validate_codex_desktop_settings
+from app.providers.services.openai_compatible_config import openai_compatible_settings
 
 
 class ProviderConfigCreateRequest(BaseModel):
@@ -94,12 +96,33 @@ class ProviderConfigCreateRequest(BaseModel):
             raise ValueError("api_key is required when auth_mode=api_key")
         if self.auth_mode in {"local_no_key", "none"} and self.api_key:
             raise ValueError("api_key is not allowed for the selected auth_mode")
+        if self.auth_mode == "codex_desktop":
+            if self.provider_type != "openai":
+                raise ValueError("Codex desktop login is available only for OpenAI.")
+            if (
+                not self.supports_chat
+                or self.supports_embeddings
+                or self.supports_reranking
+                or self.supports_web_search
+                or not self.supports_model_listing
+                or self.api_key
+            ):
+                raise ValueError(
+                    "Codex login supports chat models only and does not accept API keys."
+                )
+            validate_codex_desktop_settings(
+                self.metadata_json,
+                default_chat_model=self.default_chat_model,
+            )
+        if self.provider_type == "custom":
+            openai_compatible_settings(self.metadata_json)
         return self
 
 
 class ProviderConfigUpdateRequest(BaseModel):
     display_name: str | None = None
     api_base_url: str | None = None
+    auth_mode: str | None = None
     enabled: bool | None = None
     default_chat_model: str | None = None
     default_embedding_model: str | None = None
@@ -114,6 +137,7 @@ class ProviderConfigUpdateRequest(BaseModel):
     @field_validator(
         "display_name",
         "api_base_url",
+        "auth_mode",
         "default_chat_model",
         "default_embedding_model",
         "default_reranker_model",
@@ -157,6 +181,17 @@ class ProviderConfigUpdateRequest(BaseModel):
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("api_base_url must be a valid http/https URL")
         return value.rstrip("/")
+
+    @field_validator("metadata_json")
+    @classmethod
+    def validate_openai_compatible_metadata(
+        cls, value: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if value is not None and "openai_compatible" in value:
+            openai_compatible_settings(value)
+        if value is not None and "codex_desktop" in value:
+            validate_codex_desktop_settings(value)
+        return value
 
 
 class ProviderConfigResponse(ProviderSummaryMixin):

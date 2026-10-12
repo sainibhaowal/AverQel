@@ -11,7 +11,7 @@ from app.core.logging import configure_logging
 from app.core.middleware import RequestContextMiddleware
 from app.deepspace.api import artifacts as deepspace_artifacts
 from app.deepspace.api import chats as deepspace_chats
-from app.deepspace.api import client_storage
+from app.deepspace.api import client_storage, codex_runtime
 from app.deepspace.api import documents as deepspace_documents
 from app.deepspace.api import export as deepspace_export
 from app.deepspace.api import library as deepspace_library
@@ -116,6 +116,7 @@ def create_app() -> FastAPI:
     app.include_router(collection_security.router, prefix=settings.api_prefix)
     app.include_router(organization.router, prefix=settings.api_prefix)
     app.include_router(client_storage.router, prefix=settings.api_prefix)
+    app.include_router(codex_runtime.router, prefix=settings.api_prefix)
     app.include_router(queries.router, prefix=settings.api_prefix)
     app.include_router(intelligence.router, prefix=settings.api_prefix)
     app.include_router(analytics.router, prefix=settings.api_prefix)

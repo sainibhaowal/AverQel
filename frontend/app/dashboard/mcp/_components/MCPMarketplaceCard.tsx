@@ -49,10 +49,18 @@ export function MCPLogo({ entry, size = 48 }: { entry: MCPMarketplaceEntry; size
   return (
     <div
       className="mcp-logo flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-slate-900"
+      data-logo={logoPath === TRUSTED_LOGOS.github ? "github" : undefined}
       style={{ height: size, width: size }}
     >
       {logoPath ? (
-        <Image src={logoPath} alt="" width={size - 12} height={size - 12} priority={size > 40} />
+        <Image
+          className="mcp-logo-image"
+          src={logoPath}
+          alt=""
+          width={size - 12}
+          height={size - 12}
+          priority={size > 40}
+        />
       ) : communityLogo ? (
         <img
           src={communityLogo}

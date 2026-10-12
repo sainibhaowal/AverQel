@@ -37,6 +37,8 @@ class RetrievedChunk:
     source_type: str = "text"
     section_header: str | None = None
     page_number: int | None = None
+    source_row_numbers: list[int] | None = None
+    matched_row_count: int | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -421,7 +423,9 @@ class RetrievalService:
         if normalized_search_mode in {"semantic", "hybrid"}:
             embed_start = time.perf_counter()
             try:
-                query_embedding = self.embeddings.embed_many([query], tenant_id=tenant_id)[0]
+                query_embedding = self.embeddings.embed_many(
+                    [query], tenant_id=tenant_id, input_type="query"
+                )[0]
             except TypeError as exc:
                 if "tenant_id" not in str(exc):
                     raise

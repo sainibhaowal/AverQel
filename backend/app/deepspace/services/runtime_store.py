@@ -162,6 +162,26 @@ class DeepSpaceRuntimeStore:
             .limit(1)
         ).scalar_one_or_none()
 
+    def active_request_id(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> str | None:
+        """Return the request key for an active run, including first-turn runs."""
+        return self.db.execute(
+            select(Message.metadata_json["client_request_id"].astext)
+            .select_from(DeepSpaceAgentRun)
+            .join(Message, Message.id == DeepSpaceAgentRun.assistant_message_id)
+            .where(
+                DeepSpaceAgentRun.tenant_id == tenant_id,
+                DeepSpaceAgentRun.user_id == user_id,
+                DeepSpaceAgentRun.conversation_id == conversation_id,
+                DeepSpaceAgentRun.status.in_(ACTIVE_RUN_STATUSES),
+                Message.conversation_id == conversation_id,
+                Message.metadata_json["client_request_id"].astext.is_not(None),
+            )
+            .order_by(DeepSpaceAgentRun.updated_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
     def record_step(
         self,
         *,
@@ -261,22 +281,26 @@ class DeepSpaceRuntimeStore:
         conversation_id: uuid.UUID,
         assistant_message_id: uuid.UUID,
     ) -> list[dict[str, object]]:
-        """Return the durable, UI-safe activity trajectory for one assistant turn."""
-        run = self.db.execute(
-            select(DeepSpaceAgentRun).where(
-                DeepSpaceAgentRun.tenant_id == tenant_id,
-                DeepSpaceAgentRun.user_id == user_id,
-                DeepSpaceAgentRun.conversation_id == conversation_id,
-                DeepSpaceAgentRun.assistant_message_id == assistant_message_id,
-            )
-        ).scalar_one_or_none()
-        if run is None:
-            return []
+        """Return UI-safe durable activity from every attempt for an assistant turn."""
         steps = (
             self.db.execute(
                 select(DeepSpaceAgentStep)
-                .where(DeepSpaceAgentStep.run_id == run.id)
-                .order_by(DeepSpaceAgentStep.sequence.asc())
+                .join(DeepSpaceAgentRun, DeepSpaceAgentRun.id == DeepSpaceAgentStep.run_id)
+                .where(
+                    DeepSpaceAgentRun.tenant_id == tenant_id,
+                    DeepSpaceAgentRun.user_id == user_id,
+                    DeepSpaceAgentRun.conversation_id == conversation_id,
+                    DeepSpaceAgentRun.assistant_message_id == assistant_message_id,
+                    DeepSpaceAgentStep.tenant_id == tenant_id,
+                    DeepSpaceAgentStep.user_id == user_id,
+                    DeepSpaceAgentStep.conversation_id == conversation_id,
+                )
+                .order_by(
+                    DeepSpaceAgentRun.created_at.asc(),
+                    DeepSpaceAgentRun.id.asc(),
+                    DeepSpaceAgentStep.sequence.asc(),
+                    DeepSpaceAgentStep.created_at.asc(),
+                )
             )
             .scalars()
             .all()
@@ -288,7 +312,7 @@ class DeepSpaceRuntimeStore:
                 result.append(
                     {
                         "type": "model_message",
-                        "step_id": f"runtime_{step.sequence}",
+                        "step_id": f"runtime_{step.run_id}_{step.sequence}",
                         "tool_id": None,
                         "tool_name": None,
                         "tool_input": {},
@@ -323,7 +347,7 @@ class DeepSpaceRuntimeStore:
                         if step.step_type == "tool_start"
                         else ("tool_result" if success else "tool_error")
                     ),
-                    "step_id": f"runtime_{step.sequence}",
+                    "step_id": f"runtime_{step.run_id}_{step.sequence}",
                     "tool_id": step.tool_call_id,
                     "tool_name": step.tool_name,
                     "tool_input": dict(step.input_json or {}),
@@ -363,6 +387,11 @@ class DeepSpaceRuntimeStore:
                     "tool_call_id": step.tool_call_id,
                     "arguments": dict(step.input_json or {}),
                     "output": output,
+                    **(
+                        {"turn_index": payload["turn_index"]}
+                        if isinstance(payload.get("turn_index"), int)
+                        else {}
+                    ),
                 }
             )
         return replay

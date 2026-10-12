@@ -4,6 +4,8 @@ import * as React from "react";
 import { ArrowRightLeft, BrainCircuit, Globe2, Layers3, SearchCheck, Sparkles } from "lucide-react";
 
 import ProviderDropdown from "@/app/components/providers/ProviderDropdown";
+import ProviderLogo from "@/app/components/providers/ProviderLogo";
+import ProviderModelPicker from "@/app/components/providers/ProviderModelPicker";
 import type { ProviderAssignment, ProviderConfig, ProviderModel } from "@/lib/providers-api";
 
 const FEATURE_SCOPES = [
@@ -212,21 +214,18 @@ function AssignmentRow({
             value: provider.id,
             label: provider.display_name,
             hint: provider.provider_type,
+            icon: <ProviderLogo providerType={provider.provider_type} size={18} />,
           })),
         ]}
       />
 
-      <ProviderDropdown
+      <ProviderModelPicker
         label="Model override"
         value={selectedModel}
         onChange={setSelectedModel}
-        placeholder="Provider default"
-        name={`model-${scope}`}
-        options={models.map((model) => ({
-          value: model.model_name,
-          label: model.display_name || model.model_name,
-          hint: model.model_kind,
-        }))}
+        models={models}
+        allowClear
+        clearLabel="Provider default"
       />
 
       <button

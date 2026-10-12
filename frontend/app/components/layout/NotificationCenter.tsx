@@ -26,7 +26,7 @@ import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterv
 
 type NotificationItem = {
   id: string;
-  source: "collection" | "application";
+  source: NotificationSource;
   collection_id: string | null;
   collection_name: string;
   href?: string | null;
@@ -37,7 +37,30 @@ type NotificationItem = {
   read_at: string | null;
 };
 
+type NotificationSource = "collection" | "application";
+type NotificationFeedFailure = {
+  source: NotificationSource;
+  reason: string;
+};
+
 const POLL_INTERVAL_MS = 15_000;
+const MAX_POLL_INTERVAL_MS = 120_000;
+
+function describeFeedFailure(
+  source: NotificationSource,
+  result: PromiseSettledResult<Response>,
+): NotificationFeedFailure {
+  if (result.status === "fulfilled") {
+    return { source, reason: `HTTP ${result.value.status}` };
+  }
+  return {
+    source,
+    reason:
+      result.reason instanceof Error && result.reason.name === "ApiRequestTimeoutError"
+        ? "timed out"
+        : "request failed",
+  };
+}
 
 function formatWhen(value: string, now: number | null) {
   const date = new Date(value);
@@ -77,20 +100,27 @@ export default function NotificationCenter() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [olderAvailable, setOlderAvailable] = useState({ collection: false, application: false });
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [failedFeeds, setFailedFeeds] = useState<NotificationFeedFailure[]>([]);
+  const [pollIntervalMs, setPollIntervalMs] = useState(POLL_INTERVAL_MS);
   const [offsets, setOffsets] = useState({ collection: 0, application: 0 });
   const [now, setNow] = useState<number | null>(null);
   const notificationsRequestInFlight = useRef(false);
+  const failureStreakRef = useRef(0);
   const dismissedKeysRef = useRef(new Set<string>());
 
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.read_at === null).length,
     [notifications],
   );
+  const failedFeedLabels = failedFeeds.map(
+    ({ source, reason }) =>
+      `${source === "collection" ? "collection updates" : "workspace updates"} (${reason})`,
+  );
 
   const loadNotifications = async (options?: { silent?: boolean }) => {
     if (notificationsRequestInFlight.current) return;
     notificationsRequestInFlight.current = true;
-    if (!options?.silent) setLoading(true);
+    if (!options?.silent && notifications.length === 0) setLoading(true);
     try {
       const [collectionResult, applicationResult] = await Promise.allSettled([
         fetchWithAuth("/collections/notifications?offset=0", {
@@ -101,47 +131,80 @@ export default function NotificationCenter() {
         }) as Promise<Response>,
       ]);
       const loaded: NotificationItem[] = [];
-      let succeeded = false;
+      const failures: NotificationFeedFailure[] = [];
       if (collectionResult.status === "fulfilled" && collectionResult.value.ok) {
-        const records = (await collectionResult.value.json()) as Omit<NotificationItem, "source">[];
-        loaded.push(...records.map((item) => ({ ...item, source: "collection" as const })));
-        setOffsets((current) => ({
-          ...current,
-          collection: Math.max(current.collection, records.length),
-        }));
-        setOlderAvailable((current) => ({ ...current, collection: records.length === 30 }));
-        succeeded = true;
+        try {
+          const records = (await collectionResult.value.json()) as Omit<
+            NotificationItem,
+            "source"
+          >[];
+          if (!Array.isArray(records)) throw new TypeError("Invalid collection feed response");
+          loaded.push(...records.map((item) => ({ ...item, source: "collection" as const })));
+          setOffsets((current) => ({
+            ...current,
+            collection: Math.max(current.collection, records.length),
+          }));
+          setOlderAvailable((current) => ({ ...current, collection: records.length === 30 }));
+        } catch {
+          failures.push({ source: "collection", reason: "invalid response" });
+        }
+      } else {
+        failures.push(describeFeedFailure("collection", collectionResult));
       }
       if (applicationResult.status === "fulfilled" && applicationResult.value.ok) {
-        const records = (await applicationResult.value.json()) as Array<{
-          id: string;
-          event_domain: string;
-          event_type: string;
-          title: string;
-          message: string;
-          href: string;
-          created_at: string;
-          read_at: string | null;
-        }>;
-        setOffsets((current) => ({
-          ...current,
-          application: Math.max(current.application, 50),
-        }));
-        setOlderAvailable((current) => ({
-          ...current,
-          application: applicationResult.value?.headers.get("X-Has-More") === "true",
-        }));
-        loaded.push(
-          ...records.map((item) => ({
-            ...item,
-            source: "application" as const,
-            collection_id: null,
-            collection_name: item.title,
-          })),
-        );
-        succeeded = true;
+        try {
+          const records = (await applicationResult.value.json()) as Array<{
+            id: string;
+            event_domain: string;
+            event_type: string;
+            title: string;
+            message: string;
+            href: string;
+            created_at: string;
+            read_at: string | null;
+          }>;
+          if (!Array.isArray(records)) throw new TypeError("Invalid application feed response");
+          setOffsets((current) => ({
+            ...current,
+            application: Math.max(current.application, records.length),
+          }));
+          setOlderAvailable((current) => ({
+            ...current,
+            application: applicationResult.value.headers.get("X-Has-More") === "true",
+          }));
+          loaded.push(
+            ...records.map((item) => ({
+              ...item,
+              source: "application" as const,
+              collection_id: null,
+              collection_name: item.title,
+            })),
+          );
+        } catch {
+          failures.push({ source: "application", reason: "invalid response" });
+        }
+      } else {
+        failures.push(describeFeedFailure("application", applicationResult));
       }
-      if (!succeeded) throw new Error("Both notification feeds failed to load");
+      setFailedFeeds(failures);
+      if (failures.length > 0) {
+        failureStreakRef.current += 1;
+        setPollIntervalMs(
+          Math.min(
+            POLL_INTERVAL_MS * 2 ** Math.min(failureStreakRef.current, 3),
+            MAX_POLL_INTERVAL_MS,
+          ),
+        );
+        if (!options?.silent) {
+          console.warn("Notification feeds could not all be refreshed.", {
+            failedFeeds: failures,
+          });
+          toast.error("Some notifications could not be refreshed. Try again shortly.");
+        }
+      } else {
+        failureStreakRef.current = 0;
+        setPollIntervalMs(POLL_INTERVAL_MS);
+      }
       loaded.sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
       const firstPageKeys = new Set(loaded.map((item) => `${item.source}:${item.id}`));
       setNotifications((current) => {
@@ -159,13 +222,33 @@ export default function NotificationCenter() {
         return unique;
       });
     } catch (error) {
-      console.error(error);
-      if (!options?.silent) toast.error("Failed to load notifications.");
+      setFailedFeeds([
+        { source: "collection", reason: "request failed" },
+        { source: "application", reason: "request failed" },
+      ]);
+      failureStreakRef.current += 1;
+      setPollIntervalMs(
+        Math.min(
+          POLL_INTERVAL_MS * 2 ** Math.min(failureStreakRef.current, 3),
+          MAX_POLL_INTERVAL_MS,
+        ),
+      );
+      if (!options?.silent) {
+        console.warn("Notification refresh failed unexpectedly.", {
+          errorType: error instanceof Error ? error.name : "unknown",
+        });
+        toast.error("Notifications could not be refreshed. Try again shortly.");
+      }
     } finally {
       if (!options?.silent) setLoading(false);
       notificationsRequestInFlight.current = false;
     }
   };
+
+  const loadNotificationsRef = useRef(loadNotifications);
+  useEffect(() => {
+    loadNotificationsRef.current = loadNotifications;
+  });
 
   const loadOlderNotifications = async () => {
     if (loadingOlder || (!olderAvailable.collection && !olderAvailable.application)) return;
@@ -246,11 +329,11 @@ export default function NotificationCenter() {
     queueMicrotask(() => {
       setMounted(true);
       setNow(Date.now());
-      void loadNotifications();
+      void loadNotificationsRef.current();
     });
   }, []);
 
-  useVisibilityAwareInterval(() => void loadNotifications({ silent: true }), POLL_INTERVAL_MS);
+  useVisibilityAwareInterval(() => void loadNotifications({ silent: true }), pollIntervalMs);
 
   useEffect(() => {
     queueMicrotask(() => setOpen(false));
@@ -415,6 +498,18 @@ export default function NotificationCenter() {
               </button>
             </div>
             <div className="custom-scrollbar flex-1 overflow-y-auto p-6">
+              {failedFeeds.length > 0 ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="border-warning/30 bg-warning/5 text-foreground/75 mb-4 rounded-xl border px-3 py-2 text-xs"
+                >
+                  Couldn&apos;t refresh {failedFeedLabels.join(" and ")}.{" "}
+                  {notifications.length > 0
+                    ? "Previously loaded notifications are still shown."
+                    : "Try Refresh to check again."}
+                </div>
+              ) : null}
               <div className="mb-4 flex items-center justify-between">
                 <p className="text-muted-foreground text-xs font-bold">
                   {unreadCount > 0
@@ -448,7 +543,9 @@ export default function NotificationCenter() {
                 </div>
               ) : notifications.length === 0 ? (
                 <div className="theme-panel-muted text-muted-foreground rounded-2xl border border-white/5 bg-white/[0.01] px-4 py-16 text-center text-sm">
-                  No notifications yet.
+                  {failedFeeds.length > 0
+                    ? "Notifications are temporarily unavailable."
+                    : "No notifications yet."}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -536,6 +633,9 @@ export default function NotificationCenter() {
                   type="button"
                   onClick={() => void loadNotifications()}
                   disabled={loading}
+                  aria-label={
+                    failedFeeds.length > 0 ? "Retry notification refresh" : "Refresh notifications"
+                  }
                   className="text-foreground/45 hover:text-foreground inline-flex items-center gap-1.5 text-[9px] font-black tracking-widest uppercase disabled:opacity-40"
                 >
                   Refresh
@@ -564,7 +664,9 @@ export default function NotificationCenter() {
         type="button"
         onClick={() => setOpen((current) => !current)}
         data-tooltip="Notifications"
-        aria-label="Notifications"
+        aria-label={
+          failedFeeds.length > 0 ? "Notifications temporarily unavailable" : "Notifications"
+        }
         className={`ui-tooltip bg-muted border-glass-border text-muted-foreground hover:text-foreground relative inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-all hover:-translate-y-0.5 hover:shadow-md ${open ? "border-primary/35 text-primary" : ""}`}
       >
         {unreadCount > 0 ? <BellRing size={16} /> : <Bell size={16} />}

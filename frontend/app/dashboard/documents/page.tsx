@@ -39,7 +39,12 @@ import { normalizeRole } from "@/lib/roles";
 import DocumentOrganizationPanel from "./DocumentOrganizationPanel";
 import { averqelPrompt } from "@/app/components/ui/AverQelDialogHost";
 import { LibraryPreview } from "../deepspace/_components/DeepSpaceLibraryPreview";
-import { libraryFileKind } from "../deepspace/_components/DeepSpaceLibraryFormats";
+import {
+  libraryFileKind,
+  libraryFileSupportsServerPagePreview,
+} from "../deepspace/_components/DeepSpaceLibraryFormats";
+import { clearQueryDraftFiles } from "../query/_lib/query-uploads";
+import QueryUploadActivity from "./_components/QueryUploadActivity";
 
 interface Document {
   document_id: string;
@@ -316,6 +321,7 @@ export default function DocumentsPage() {
   const [documentActionBusy, setDocumentActionBusy] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
+  const uploadOwnerId = user ? `${user.tenant_id}:${user.id}` : null;
   const normalizedRoles = user?.roles.map(normalizeRole) ?? [];
   const canManageDocuments = normalizedRoles.some((role) =>
     ["admin", "editor", "user"].includes(role),
@@ -324,6 +330,10 @@ export default function DocumentsPage() {
   useEffect(() => {
     queueMicrotask(() => setMounted(true));
   }, []);
+
+  useEffect(() => {
+    if (!uploadOwnerId) clearQueryDraftFiles();
+  }, [uploadOwnerId]);
 
   const fetchDocuments = useCallback(
     async (showLoading = true, search = searchQuery) => {
@@ -533,50 +543,7 @@ export default function DocumentsPage() {
       // Use the authenticated server renderer for PDF and LibreOffice-backed
       // formats in the eye drawer. This keeps the original private and makes
       // the outside preview match the document detail page.
-      const extension = name.split(".").pop()?.toLowerCase() ?? "";
-      const visualExtensions = new Set([
-        "pdf",
-        "doc",
-        "docx",
-        "docm",
-        "dot",
-        "dotx",
-        "dotm",
-        "odt",
-        "ott",
-        "odm",
-        "oth",
-        "rtf",
-        "ppt",
-        "pptx",
-        "pptm",
-        "pot",
-        "potx",
-        "potm",
-        "pps",
-        "ppsx",
-        "ppsm",
-        "odp",
-        "otp",
-        "xls",
-        "xlsx",
-        "xlsm",
-        "xlt",
-        "xltx",
-        "xltm",
-        "xlsb",
-        "ods",
-        "ots",
-        "odg",
-        "otg",
-        "odc",
-        "otc",
-        "odf",
-        "otf",
-        "odi",
-        "oti",
-      ]);
-      if (visualExtensions.has(extension)) {
+      if (libraryFileSupportsServerPagePreview(name, sourceContentType)) {
         const pageResponse = (await fetchWithAuth(`/documents/${id}/pages/1`)) as Response;
         if (pageResponse.ok && pageResponse.headers.get("content-type")?.startsWith("image/")) {
           const pageBlob = await pageResponse.blob();
@@ -878,7 +845,6 @@ export default function DocumentsPage() {
     failed: "!text-danger !bg-danger/5 !border-danger/20",
     dead_lettered: "!text-foreground/40 !bg-foreground/5 !border-foreground/10",
   };
-
   return (
     <div className="documents-theme-scope space-y-10">
       <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
@@ -915,6 +881,12 @@ export default function DocumentsPage() {
           }
         />
       </motion.div>
+
+      <QueryUploadActivity
+        ownerId={uploadOwnerId}
+        documentIds={new Set(documents.map((item) => item.document_id))}
+        formatBytes={formatBytes}
+      />
 
       <div className="theme-panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
         {savedViewId ? (

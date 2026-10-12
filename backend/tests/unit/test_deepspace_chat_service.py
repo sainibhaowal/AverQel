@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
+from app.core.config import Settings
+from app.deepspace.api.chats import _safe_history_metadata
 from app.deepspace.services import chat_service as chat_service_module
 from app.deepspace.services.chat_service import (
     DEEPSPACE_AGENT_POLICY,
     DeepSpaceChatService,
+    _normalize_reasoning_effort,
 )
 from app.deepspace.services.reasoning_privacy import redact_reasoning_text
 from app.deepspace.services.url_reader import URLReadResult
@@ -65,6 +70,146 @@ def test_reasoning_history_restores_deepseek_field_only_for_deepseek():
     assert "__deepspace_reasoning_content" not in other_provider[0]
 
 
+@pytest.mark.asyncio
+async def test_provider_continuation_is_encrypted_and_restored_for_deepseek_only():
+    tenant_id = uuid4()
+    user_id = uuid4()
+    conversation_id = uuid4()
+    assistant_message = SimpleNamespace(id=uuid4(), metadata_json={"status": "streaming"})
+    auth = SimpleNamespace(tenant_id=tenant_id, user_id=user_id)
+    settings = Settings(
+        _env_file=None,
+        provider_secret_active_kid="test-kid",
+        provider_secret_keyring_json=json.dumps(
+            {"test-kid": base64.urlsafe_b64encode(b"k" * 32).decode("ascii")}
+        ),
+    )
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = settings
+    service._provider_secret_crypto = None
+    service.db = SimpleNamespace(commit=lambda: None)
+    exact_continuation = "Exact provider continuation with sensitive private details."
+
+    await service._persist_provider_continuation(
+        reasoning_content=exact_continuation,
+        auth=auth,
+        conversation_id=conversation_id,
+        assistant_message=assistant_message,
+        turn_index=3,
+    )
+
+    assert exact_continuation not in json.dumps(assistant_message.metadata_json)
+    pending_tool_call = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [],
+        "__deepspace_provider_continuation_turn_index": 3,
+    }
+    deepseek = await service._restore_provider_continuations(
+        [pending_tool_call],
+        provider_type="deepseek",
+        auth=auth,
+        conversation_id=conversation_id,
+        assistant_message=assistant_message,
+    )
+    other_provider = await service._restore_provider_continuations(
+        [pending_tool_call],
+        provider_type="openai",
+        auth=auth,
+        conversation_id=conversation_id,
+        assistant_message=assistant_message,
+    )
+
+    assert deepseek[0]["reasoning_content"] == exact_continuation
+    assert "reasoning_content" not in other_provider[0]
+    assert "__deepspace_provider_continuation_turn_index" not in deepseek[0]
+
+
+def test_resumed_context_keeps_original_prompt_even_when_conversation_continues():
+    conversation_id = uuid4()
+    original_prompt = SimpleNamespace(
+        id=uuid4(), role="user", content="Original task", active_version=None
+    )
+    history = [original_prompt]
+    for index in range(45):
+        history.append(
+            SimpleNamespace(
+                id=uuid4(),
+                role="assistant" if index % 2 == 0 else "user",
+                content=f"Later message {index}",
+                active_version=None,
+            )
+        )
+    service = object.__new__(DeepSpaceChatService)
+    service.chat = SimpleNamespace(get_messages=lambda **_kwargs: history)
+    auth = SimpleNamespace(
+        tenant_id=uuid4(), user_id=uuid4(), roles=frozenset(), permissions=frozenset()
+    )
+
+    messages = service._messages(
+        auth=auth,
+        conversation_id=conversation_id,
+        through_user_message_id=original_prompt.id,
+    )
+
+    assert messages == [
+        {
+            "role": "user",
+            "content": "Original task",
+            "__deepspace_original_task": True,
+        }
+    ]
+
+
+def test_history_metadata_never_returns_encrypted_provider_continuations():
+    sanitized = _safe_history_metadata(
+        {
+            "status": "ready",
+            "_deepspace_provider_continuations": {"2": {"ciphertext": "opaque"}},
+            "thinking": {"content": "Visible redacted summary."},
+            "thinking_redaction_version": chat_service_module.REASONING_REDACTION_VERSION,
+        }
+    )
+
+    assert "_deepspace_provider_continuations" not in sanitized
+    assert sanitized["thinking"]["content"] == "Visible redacted summary."
+
+
+def test_original_task_survives_context_compaction():
+    messages = [
+        {"role": "system", "content": "P" * 6_000},
+        {"role": "user", "content": "Original task", "__deepspace_original_task": True},
+        {"role": "user", "content": "Clarification answer"},
+    ]
+
+    fitted, _ = DeepSpaceChatService._fit_history_to_context(
+        messages,
+        context_window=1_024,
+        max_output_tokens=512,
+        history_budget_tokens=0,
+    )
+
+    assert any(message.get("content") == "Original task" for message in fitted)
+    assert any(message.get("content") == "Clarification answer" for message in fitted)
+    assert any(message.get("__deepspace_original_task") for message in fitted)
+    provider_messages = DeepSpaceChatService._strip_provider_internal_fields(fitted)
+    assert all("__deepspace_original_task" not in message for message in provider_messages)
+
+
+def test_provider_request_rejection_is_not_reported_as_an_outage():
+    rejected = ProviderRequestError(
+        "deepseek", 400, "The reasoning_content in thinking mode must be passed back."
+    )
+    unavailable = ProviderRequestError("deepseek", 503, "Service temporarily unavailable.")
+
+    assert DeepSpaceChatService._provider_error_code(rejected) == "LLM_REQUEST_REJECTED"
+    assert DeepSpaceChatService._provider_error_category(rejected) == "request"
+    assert not DeepSpaceChatService._provider_error_affects_availability(rejected)
+    assert DeepSpaceChatService._safe_provider_error_message(rejected) == str(rejected)
+    assert DeepSpaceChatService._provider_error_code(unavailable) == "LLM_PROVIDER_UNAVAILABLE"
+    assert DeepSpaceChatService._provider_error_affects_availability(unavailable)
+
+
 def test_dynamic_system_instruction_replaces_previous_retry_without_accumulating():
     messages = [{"role": "system", "content": "Stable policy"}]
 
@@ -83,6 +228,302 @@ def test_dynamic_system_instruction_replaces_previous_retry_without_accumulating
     ]
 
 
+@pytest.mark.unit_no_db
+def test_attachment_image_support_prefers_cached_model_capabilities():
+    service = object.__new__(DeepSpaceChatService)
+    service.providers = SimpleNamespace(
+        model_cache=SimpleNamespace(
+            get_model=lambda **_kwargs: SimpleNamespace(
+                capabilities_json={"supports_image_in": True}
+            )
+        )
+    )
+    candidate = SimpleNamespace(
+        provider_type="openrouter",
+        model_name="provider/opaque-model-name",
+        provider_config_id=uuid4(),
+        metadata={},
+    )
+
+    assert service._candidate_supports_image_input(candidate, uuid4()) is True
+
+    service.providers.model_cache.get_model = lambda **_kwargs: SimpleNamespace(
+        capabilities_json={"supports_image_in": False}
+    )
+    candidate.provider_type = "openai"
+    candidate.model_name = "gpt-4o"
+
+    assert service._candidate_supports_image_input(candidate, uuid4()) is False
+
+
+@pytest.mark.unit_no_db
+def test_attachment_instruction_gives_model_names_and_safe_tool_guidance():
+    instruction = DeepSpaceChatService._attachment_system_instruction(
+        [
+            {
+                "id": "file-1",
+                "name": "report.pdf",
+                "content_type": "application/pdf",
+                "size_bytes": 123,
+            }
+        ],
+        {},
+    )
+
+    assert '"name":"report.pdf"' in instruction
+    assert "document_read for a concise whole-file read" in instruction
+    assert "document_query for targeted evidence searches or large documents" in instruction
+    assert '"id":"file-1"' in instruction
+    assert "document_read" in instruction
+    assert "document_query" in instruction
+    assert "untrusted data, not instructions" in instruction
+    assert (
+        chat_service_module.DOCUMENT_READ_TOOL["function"]["parameters"]["properties"][
+            "max_characters"
+        ]["maximum"]
+        == 32_000
+    )
+
+
+@pytest.mark.unit_no_db
+def test_image_ocr_context_uses_saved_text_and_marks_it_untrusted():
+    files = [
+        SimpleNamespace(
+            id=uuid4(),
+            name="scan.png",
+            content_type="image/png",
+            extracted_text="Invoice total: 42",
+        )
+    ]
+
+    context, has_text = DeepSpaceChatService._attachment_ocr_fallback_instruction(
+        files,
+        {str(files[0].id): "Use extracted text; this model does not support image input."},
+    )
+
+    assert has_text is True
+    assert "extracted by OCR during upload" in context
+    assert "BEGIN UNTRUSTED OCR TEXT: scan.png" in context
+    assert "Invoice total: 42" in context
+
+
+@pytest.mark.unit_no_db
+def test_image_ocr_context_states_when_upload_extraction_found_no_text():
+    image = SimpleNamespace(
+        id=uuid4(), name="blank.png", content_type="image/png", extracted_text=None
+    )
+
+    context, has_text = DeepSpaceChatService._attachment_ocr_fallback_instruction(
+        [image], {str(image.id): "Use extracted text; this model does not support image input."}
+    )
+
+    assert has_text is False
+    assert "no readable text was extracted" in context
+    assert "do not guess visual details" in context
+
+
+@pytest.mark.unit_no_db
+def test_vision_input_does_not_send_saved_ocr_as_the_primary_image_content():
+    image = SimpleNamespace(
+        id=uuid4(),
+        name="diagram.png",
+        content_type="image/png",
+        extracted_text="Diagram label",
+    )
+
+    context, has_text = DeepSpaceChatService._attachment_ocr_fallback_instruction(
+        [image], {str(image.id): "Image included as visual input."}
+    )
+
+    assert context == ""
+    assert has_text is False
+
+
+@pytest.mark.unit_no_db
+def test_image_modality_rejection_requires_specific_image_error():
+    assert DeepSpaceChatService._is_image_modality_rejection(
+        ProviderRequestError("provider", 400, "Image input is not supported by this model")
+    )
+    assert DeepSpaceChatService._is_image_modality_rejection(
+        ProviderRequestError("provider", 422, "This model is not a vision model")
+    )
+    assert not DeepSpaceChatService._is_image_modality_rejection(
+        ProviderRequestError("provider", 400, "Invalid request body")
+    )
+    assert not DeepSpaceChatService._is_image_modality_rejection(
+        ProviderRequestError("provider", 401, "Image input is not supported")
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_provider_stream_retries_explicit_image_rejection_once_with_saved_ocr():
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = SimpleNamespace(deepspace_provider_read_timeout_seconds=30)
+
+    async def cancellable(iterable, *, run_id, deadline):
+        _ = (run_id, deadline)
+        async for item in iterable:
+            yield item
+
+    service._cancellable_provider_stream = cancellable
+    calls = {"image": 0, "ocr": 0}
+
+    async def image_stream():
+        calls["image"] += 1
+        raise ProviderRequestError("provider", 400, "Image input is not supported")
+        yield "unreachable"
+
+    async def ocr_stream():
+        calls["ocr"] += 1
+        yield {"type": "delta", "text": "Read from OCR."}
+
+    output = [
+        item
+        async for item in service._provider_stream_with_retry(
+            image_stream,
+            run_id=None,
+            deadline=chat_service_module.time.monotonic() + 5,
+            provider_type="openai-compatible",
+            image_fallback_stream_factory=ocr_stream,
+        )
+    ]
+
+    assert calls == {"image": 1, "ocr": 1}
+    assert output == [{"type": "delta", "text": "Read from OCR."}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_provider_image_rejection_without_ocr_returns_clear_user_message():
+    service = object.__new__(DeepSpaceChatService)
+
+    async def cancellable(iterable, *, run_id, deadline):
+        _ = (run_id, deadline)
+        async for item in iterable:
+            yield item
+
+    service._cancellable_provider_stream = cancellable
+
+    async def image_stream():
+        raise ProviderRequestError("provider", 400, "Image input is not supported")
+        yield "unreachable"
+
+    with pytest.raises(ProviderRequestError, match="OCR found no readable text") as error:
+        async for _item in service._provider_stream_with_retry(
+            image_stream,
+            run_id=None,
+            deadline=chat_service_module.time.monotonic() + 5,
+            image_fallback_no_text_message=(
+                "The selected model rejected the image, and upload-time OCR found no readable text."
+            ),
+        ):
+            pass
+
+    assert error.value.no_retry is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_attachment_image_loader_tenant_reads_and_preserves_mime(monkeypatch):
+    tenant_id = uuid4()
+    file_id = uuid4()
+    png_payload = b"\x89PNG\r\n\x1a\nvalid-test-payload"
+    observed = {}
+
+    class _FakeStorage:
+        def __init__(self, _settings):
+            pass
+
+        def get_tenant_bytes(self, *, tenant_id, bucket, object_key):
+            observed.update(tenant_id=tenant_id, bucket=bucket, object_key=object_key)
+            return png_payload
+
+    monkeypatch.setattr(chat_service_module, "StorageService", _FakeStorage)
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = object()
+    file = SimpleNamespace(
+        id=file_id,
+        content_type="image/png",
+        size_bytes=len(png_payload),
+        is_binary=True,
+        storage_bucket="private-library",
+        storage_key=f"{tenant_id}/{file_id}/diagram.png",
+        content="",
+    )
+
+    images, statuses = await service._load_attachment_vision_inputs([file], tenant_id=tenant_id)
+
+    assert images == ["data:image/png;base64," + base64.b64encode(png_payload).decode("ascii")]
+    assert statuses[str(file_id)] == "Image included as visual input."
+    assert observed == {
+        "tenant_id": tenant_id,
+        "bucket": "private-library",
+        "object_key": f"{tenant_id}/{file_id}/diagram.png",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_attachment_image_loader_rejects_unverified_bytes(monkeypatch):
+    class _FakeStorage:
+        def __init__(self, _settings):
+            pass
+
+        def get_tenant_bytes(self, **_kwargs):
+            return b"not a PNG"
+
+    monkeypatch.setattr(chat_service_module, "StorageService", _FakeStorage)
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = object()
+    file_id = uuid4()
+    file = SimpleNamespace(
+        id=file_id,
+        content_type="image/png",
+        size_bytes=9,
+        is_binary=True,
+        storage_bucket="private-library",
+        storage_key=f"{uuid4()}/{file_id}/diagram.png",
+        content="",
+    )
+
+    images, statuses = await service._load_attachment_vision_inputs([file], tenant_id=uuid4())
+
+    assert images == []
+    assert "format could not be verified" in statuses[str(file_id)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_attachment_image_loader_skips_images_over_aggregate_limit(monkeypatch):
+    class _FakeStorage:
+        def __init__(self, _settings):
+            pass
+
+        def get_tenant_bytes(self, **_kwargs):
+            raise AssertionError("Oversized images must be skipped before storage reads.")
+
+    monkeypatch.setattr(chat_service_module, "StorageService", _FakeStorage)
+    monkeypatch.setattr(chat_service_module, "MAX_ATTACHMENT_VISION_BYTES", 1)
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = object()
+    file_id = uuid4()
+    file = SimpleNamespace(
+        id=file_id,
+        content_type="image/png",
+        size_bytes=2,
+        is_binary=True,
+        storage_bucket="private-library",
+        storage_key=f"{uuid4()}/{file_id}/diagram.png",
+        content="",
+    )
+
+    images, statuses = await service._load_attachment_vision_inputs([file], tenant_id=uuid4())
+
+    assert images == []
+    assert "size limit" in statuses[str(file_id)]
+
+
 class _EmptyProvider:
     calls = 0
 
@@ -98,6 +539,34 @@ class _ReasoningOnlyProvider:
     async def stream_generate_events(self, request):
         self.calls += 1
         yield {"type": "thinking", "text": "I should answer the user."}
+
+
+@pytest.mark.asyncio
+async def test_manus_task_stream_uses_task_timeout_instead_of_generic_read_timeout() -> None:
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = SimpleNamespace(deepspace_provider_read_timeout_seconds=300)
+    observed_timeouts: list[float] = []
+
+    async def capture_deadline(iterable, *, run_id, deadline):
+        del run_id
+        observed_timeouts.append(deadline - chat_service_module.time.monotonic())
+        async for item in iterable:
+            yield item
+
+    service._cancellable_provider_stream = capture_deadline
+
+    async def provider_stream():
+        yield {"type": "delta", "text": "Done."}
+
+    async for _event in service._provider_stream_with_retry(
+        provider_stream,
+        run_id=None,
+        deadline=chat_service_module.time.monotonic() + 2_000,
+        provider_type="manus",
+    ):
+        pass
+
+    assert observed_timeouts and 1_799 <= observed_timeouts[0] <= 1_800
 
 
 class _FakeRepository:
@@ -185,6 +654,8 @@ class _FakeSelectionService:
                     provider_type="opencode-zen",
                     base_url="https://opencode.ai/zen/v1",
                     api_key="test-key",
+                    auth_mode="api_key",
+                    provider_config_id=None,
                     context_window=131072,
                     context_window_source="live_model",
                 )
@@ -248,6 +719,8 @@ class _ToolProviderSelection(_FakeSelectionService):
                     provider_type="opencode-zen",
                     base_url="https://opencode.ai/zen/v1",
                     api_key="test-key",
+                    auth_mode="api_key",
+                    provider_config_id=None,
                     context_window=131072,
                     context_window_source="live_model",
                     metadata={},
@@ -519,6 +992,8 @@ class _GoogleSelectionService(_FakeSelectionService):
                     provider_type="google",
                     base_url="https://generativelanguage.googleapis.com/v1beta",
                     api_key="test-key",
+                    auth_mode="api_key",
+                    provider_config_id=None,
                     context_window=1_000_000,
                     context_window_source="live_model",
                     metadata={},
@@ -576,6 +1051,432 @@ async def test_deepspace_forwards_provider_thinking_events(monkeypatch):
     assert _FakeRepository.completed_metadata["context_limit_source"] == "live_model"
     assert _FakeRepository.completed_metadata["thinking"]["content"] == "Plan first. Then answer."
     assert _FakeRepository.completed_metadata["client_request_id"] == "request-history-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_regeneration_uses_saved_prompt_without_idempotency_self_collision(monkeypatch):
+    conversation_id = uuid4()
+    assistant_message = SimpleNamespace(
+        id=uuid4(),
+        role="assistant",
+        content="Previous answer",
+        active_version=None,
+        metadata_json={"status": "completed"},
+        created_at="2026-01-01T00:00:00Z",
+    )
+    source_user_message = SimpleNamespace(
+        id=uuid4(),
+        role="user",
+        content="A later edit to the original prompt",
+        active_version=None,
+        metadata_json={},
+    )
+    later_user_message = SimpleNamespace(
+        id=uuid4(), role="user", content="A later unrelated prompt", active_version=None
+    )
+    captured_history: list[dict[str, object]] = []
+
+    class _RegenerationRepository(_FakeRepository):
+        def __init__(self, db):
+            self.conversation_id = conversation_id
+            self.assistant_id = assistant_message.id
+
+        def get_messages(self, **kwargs):
+            return [source_user_message, assistant_message, later_user_message]
+
+        def get_message_by_conversation(self, **kwargs):
+            return assistant_message
+
+        def create_message_version(self, **kwargs):
+            assistant_message.active_version = SimpleNamespace(content="")
+            assistant_message.content = ""
+            assistant_message.metadata_json = kwargs["metadata_json"]
+            return assistant_message
+
+        def find_turn_by_request_id(self, **kwargs):
+            raise AssertionError("regenerate must not match its own assistant idempotency key")
+
+    class _RegenerationProvider(_FakeProvider):
+        async def stream_generate_events(self, request):
+            captured_history.extend(request.messages)
+            async for event in super().stream_generate_events(request):
+                yield event
+
+    class _RegenerationRegistry(_FakeRegistry):
+        def get_chat_provider_from_selection(self, candidate):
+            return _RegenerationProvider()
+
+    class _RegenerationRuntime:
+        def create_run(self, **kwargs):
+            return SimpleNamespace(id=uuid4())
+
+        def __getattr__(self, _name):
+            return lambda **_kwargs: None
+
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _RegenerationRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _RegenerationRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    service.runtime = _RegenerationRuntime()
+    service.provider_circuit = SimpleNamespace(
+        is_open=lambda **_kwargs: False,
+        record_success=lambda **_kwargs: None,
+        record_failure=lambda **_kwargs: None,
+    )
+    service._invalidate_context_cache = lambda **kwargs: None
+    service._record_request_metric = lambda **kwargs: None
+
+    from app.platform.worker.celery_app import celery_app
+
+    monkeypatch.setattr(celery_app, "send_task", lambda *_args, **_kwargs: None)
+
+    class _RegenerationMemory:
+        async def get_preferences(self, **_kwargs):
+            return {}
+
+        def _candidates_from_prompt(self, _prompt):
+            return []
+
+    monkeypatch.setattr(
+        chat_service_module,
+        "MemoryService",
+        lambda *_args, **_kwargs: _RegenerationMemory(),
+    )
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+            conversation_id=conversation_id,
+            prompt="Saved prompt snapshot from when Regenerate was clicked",
+            client_request_id="regenerate-attempt-1",
+            existing_assistant_message_id=assistant_message.id,
+        )
+    ]
+
+    user_prompts = [item["content"] for item in captured_history if item.get("role") == "user"]
+    assert user_prompts
+    assert set(user_prompts) == {"Saved prompt snapshot from when Regenerate was clicked"}
+    start_frame = next(frame for frame in frames if frame.startswith("event: start"))
+    assert json.loads(start_frame.split("data: ", 1)[1])["regenerating"] is True
+    assert not any("DUPLICATE_REQUEST_IN_PROGRESS" in frame for frame in frames)
+    assert any(frame.startswith("event: done") for frame in frames)
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+@pytest.mark.parametrize("include_usage", [True, False])
+async def test_deepspace_reports_measured_output_speed_and_ttft(monkeypatch, include_usage):
+    class _MetricsProvider:
+        async def stream_generate_events(self, request):
+            if include_usage:
+                yield {"type": "usage", "usage": {"prompt_tokens": 11, "completion_tokens": 5}}
+            await asyncio.sleep(0.015)
+            yield {"type": "delta", "text": "First chunk "}
+            await asyncio.sleep(0.02)
+            yield {"type": "delta", "text": "final chunk."}
+            await asyncio.sleep(0.04)
+
+    class _MetricsRegistry(_FakeRegistry):
+        def get_chat_provider_from_selection(self, candidate):
+            return _MetricsProvider()
+
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _MetricsRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="Explain this clearly",
+            thinking_enabled=False,
+        )
+    ]
+
+    metrics_frame = next(
+        frame
+        for frame in reversed(frames)
+        if frame.startswith("event: metrics") and "tokensPerSecond" in frame
+    )
+    metrics = json.loads(metrics_frame.split("data: ", 1)[1].strip())
+    metadata = _FakeRepository.completed_metadata
+    assert metrics["timeToFirstTokenMs"] > 0
+    assert metrics["providerTimeToFirstOutputMs"] > 0
+    assert metrics["providerTimeToFirstOutputMs"] <= metrics["timeToFirstTokenMs"]
+    assert metadata["time_to_first_token_ms"] == metrics["timeToFirstTokenMs"]
+    assert metadata["provider_time_to_first_output_ms"] == metrics["providerTimeToFirstOutputMs"]
+
+    if include_usage:
+        assert metrics["providerOutputTokens"] == 5
+        assert metrics["providerGenerationDurationMs"] >= 20
+        assert metrics["providerGenerationDurationMs"] < metrics["requestLatencyMs"]
+        assert metrics["tokensPerSecond"] == round(
+            5 / (metrics["providerGenerationDurationMs"] / 1000), 1
+        )
+        assert metadata["provider_output_tokens"] == 5
+        assert metadata["tokens_per_second"] == metrics["tokensPerSecond"]
+    else:
+        assert metrics["providerOutputTokens"] is None
+        assert metrics["tokensPerSecond"] is None
+        assert metrics["tokensPerSecondUnavailableReason"] == "exact_usage_unavailable"
+        assert metadata["provider_output_tokens"] is None
+        assert metadata["tokens_per_second"] is None
+        assert metadata["tokens_per_second_unavailable_reason"] == "exact_usage_unavailable"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_deepspace_marks_buffered_output_speed_unavailable(monkeypatch):
+    class _BufferedProvider:
+        async def stream_generate_events(self, request):
+            yield {"type": "usage", "usage": {"prompt_tokens": 4, "completion_tokens": 6}}
+            yield {"type": "stream_timing", "mode": "buffered"}
+            yield {"type": "delta", "text": "First chunk "}
+            await asyncio.sleep(0.01)
+            yield {"type": "delta", "text": "final chunk."}
+
+    class _BufferedRegistry(_FakeRegistry):
+        def get_chat_provider_from_selection(self, candidate):
+            return _BufferedProvider()
+
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _BufferedRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="Explain this clearly",
+            thinking_enabled=False,
+        )
+    ]
+    metrics_frame = next(frame for frame in reversed(frames) if frame.startswith("event: metrics"))
+    metrics = json.loads(metrics_frame.split("data: ", 1)[1].strip())
+
+    assert metrics["tokensPerSecond"] is None
+    assert metrics["tokensPerSecondUnavailableReason"] == "buffered_provider_fallback"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_deepspace_marks_single_event_speed_unavailable(monkeypatch):
+    class _SingleEventProvider:
+        async def stream_generate_events(self, request):
+            yield {"type": "usage", "usage": {"prompt_tokens": 4, "completion_tokens": 6}}
+            yield {"type": "delta", "text": "One complete provider event."}
+
+    class _SingleEventRegistry(_FakeRegistry):
+        def get_chat_provider_from_selection(self, candidate):
+            return _SingleEventProvider()
+
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _SingleEventRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=auth,
+            conversation_id=None,
+            prompt="Explain this clearly",
+            thinking_enabled=False,
+        )
+    ]
+    metrics_frame = next(frame for frame in reversed(frames) if frame.startswith("event: metrics"))
+    metrics = json.loads(metrics_frame.split("data: ", 1)[1].strip())
+
+    assert metrics["providerOutputTokens"] == 6
+    assert metrics["tokensPerSecond"] is None
+    assert metrics["tokensPerSecondUnavailableReason"] == "insufficient_stream_samples"
+
+
+@pytest.mark.asyncio
+async def test_deepspace_uses_cached_model_effort_limits_for_provider_request(monkeypatch):
+    model = SimpleNamespace(
+        model_name="deepseek-r1",
+        provider_type="deepseek",
+        base_url="https://api.deepseek.com/v1",
+        api_key="test-key",
+        auth_mode="api_key",
+        provider_config_id=uuid4(),
+        context_window=131072,
+        context_window_source="live_model",
+        metadata={},
+    )
+
+    class _CachedReasoningSelection:
+        def __init__(self, db, settings):
+            self.model_cache = SimpleNamespace(
+                get_model=lambda **kwargs: SimpleNamespace(
+                    capabilities_json={
+                        "reasoning_capabilities_known": True,
+                        "supported_reasoning_efforts": ["low", "high"],
+                    }
+                )
+            )
+
+        def resolve_chat(self, **kwargs):
+            return SimpleNamespace(candidates=[model])
+
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _FakeRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _CachedReasoningSelection)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _FakeRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+    _FakeProvider.requests = []
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+
+    async for _frame in service.stream_turn(
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=None,
+        prompt="Use the model's advertised reasoning settings.",
+        thinking_enabled=True,
+        reasoning_effort="medium",
+        client_request_id="request-reasoning-capabilities-1",
+    ):
+        pass
+
+    assert _FakeProvider.requests[0].reasoning_effort == "low"
+    assert _FakeProvider.requests[0].metadata["reasoning_mode"] == "explicit"
+    assert _FakeProvider.requests[0].metadata["model_reasoning_capabilities"][
+        "supported_reasoning_efforts"
+    ] == ["low", "high"]
+
+
+def test_deepspace_clamps_unsupported_codex_effort_to_highest_available_lower_level():
+    assert (
+        _normalize_reasoning_effort(
+            "extreme_high",
+            ("low", "very_high"),
+            capabilities_known=True,
+        )
+        == "very_high"
+    )
+    assert (
+        _normalize_reasoning_effort(
+            "extreme_high",
+            (),
+            capabilities_known=True,
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_retry_restarts_from_saved_prompt_when_runtime_checkpoint_is_gone(monkeypatch):
+    conversation_id = uuid4()
+    user_message = SimpleNamespace(
+        id=uuid4(),
+        role="user",
+        content="The saved prompt that must run again",
+        active_version=None,
+        metadata_json={"client_request_id": "original-request"},
+    )
+    assistant_message = SimpleNamespace(
+        id=uuid4(),
+        role="assistant",
+        content="Old partial answer",
+        active_version=None,
+        metadata_json={"client_request_id": "original-request"},
+    )
+
+    class _RetryRepository(_FakeRepository):
+        def __init__(self, db):
+            self.conversation_id = conversation_id
+            self.assistant_id = assistant_message.id
+
+        def get_conversation(self, **kwargs):
+            return SimpleNamespace(id=conversation_id)
+
+        def get_messages(self, **kwargs):
+            return [user_message, assistant_message]
+
+        def get_message_by_conversation(self, **kwargs):
+            return assistant_message
+
+        def find_turn_by_request_id(self, **kwargs):
+            return user_message, assistant_message
+
+    class _RetryRuntime:
+        created_run = False
+
+        def get_failed_run_for_request_id(self, **kwargs):
+            return None
+
+        def create_run(self, **kwargs):
+            self.created_run = True
+            return SimpleNamespace(id=uuid4())
+
+        def is_cancel_requested(self, **kwargs):
+            return False
+
+        def __getattr__(self, _name):
+            return lambda **_kwargs: None
+
+    monkeypatch.setattr(chat_service_module, "DeepSpaceChatRepository", _RetryRepository)
+    monkeypatch.setattr(chat_service_module, "ProviderSelectionService", _FakeSelectionService)
+    monkeypatch.setattr(chat_service_module, "ProviderRegistry", _FakeRegistry)
+    monkeypatch.setattr(chat_service_module, "DeepSpaceTaskLoopStore", _FakeTaskStore)
+    _FakeProvider.requests = []
+
+    service = DeepSpaceChatService(
+        db=SimpleNamespace(commit=lambda: None, rollback=lambda: None),
+        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+    )
+    runtime = _RetryRuntime()
+    service.runtime = runtime
+    service._invalidate_context_cache = lambda **kwargs: None
+
+    frames = [
+        frame
+        async for frame in service.stream_turn(
+            auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+            conversation_id=conversation_id,
+            prompt="The saved prompt that must run again",
+            client_request_id="new-retry-request",
+            resume_from_request_id="expired-request",
+        )
+    ]
+
+    user_prompts = [
+        message["content"]
+        for message in _FakeProvider.requests[0].messages
+        if message.get("role") == "user"
+    ]
+    assert user_prompts.count("The saved prompt that must run again") == 1
+    assert runtime.created_run is True
+    assert assistant_message.metadata_json["retry_mode"] == "from_start"
+    assert any('"phase":"retry_from_start"' in frame for frame in frames)
+    assert any(frame.startswith("event: done") for frame in frames)
 
 
 def test_clarification_detection_is_conservative():

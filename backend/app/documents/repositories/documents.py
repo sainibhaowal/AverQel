@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 
 from app.documents.models.collection import CollectionDocument, CollectionPermission
 from app.documents.models.document import Document
@@ -368,6 +368,59 @@ class DocumentsRepository(BaseRepository):
         if user_id is not None:
             query = query.where(Document.uploaded_by_user_id == user_id)
         with observe_db_query("documents.get_by_hash"):
+            return self.db.execute(query).scalar_one_or_none()
+
+    def find_accessible_by_hash(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        sha256_hash: str,
+    ) -> Document | None:
+        """Find the best non-quarantined duplicate the user can already access."""
+        self.apply_tenant_scope(tenant_id)
+        uploaded = select(Document.id.label("id")).where(
+            Document.tenant_id == tenant_id,
+            Document.uploaded_by_user_id == user_id,
+            Document.is_deleted.is_(False),
+            Document.quarantined.is_(False),
+        )
+        collected = (
+            select(CollectionDocument.document_id.label("id"))
+            .join(Document, Document.id == CollectionDocument.document_id)
+            .join(
+                CollectionPermission,
+                CollectionPermission.collection_id == CollectionDocument.collection_id,
+            )
+            .where(
+                Document.tenant_id == tenant_id,
+                CollectionPermission.user_id == user_id,
+                CollectionPermission.role.in_(["member", "owner", "shared"]),
+                Document.is_deleted.is_(False),
+                Document.quarantined.is_(False),
+            )
+        )
+        shared = select(DocumentShare.document_id.label("id")).where(
+            DocumentShare.tenant_id == tenant_id,
+            DocumentShare.user_id == user_id,
+        )
+        accessible_ids = sa.union(uploaded, collected, shared).subquery()
+        query = (
+            select(Document)
+            .join(accessible_ids, Document.id == accessible_ids.c.id)
+            .where(
+                Document.tenant_id == tenant_id,
+                Document.sha256_hash == sha256_hash,
+                Document.is_deleted.is_(False),
+                Document.quarantined.is_(False),
+            )
+            .order_by(
+                case((Document.status == "indexed", 0), else_=1),
+                Document.created_at.desc(),
+            )
+            .limit(1)
+        )
+        with observe_db_query("documents.find_accessible_by_hash"):
             return self.db.execute(query).scalar_one_or_none()
 
     def get_latest_by_filename(

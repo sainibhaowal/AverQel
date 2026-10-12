@@ -62,6 +62,15 @@ def test_provider_registry_resolves_env_backed_chat_and_embedding_providers(
     assert deepseek_provider.provider_name == "deepseek"
     assert isinstance(registry.get_model_discovery_provider("deepseek"), OpenAICompatibleProvider)
     assert isinstance(registry.get_model_discovery_provider("opencode-zen"), OpenCodeZenProvider)
+    mistral_provider = registry.get_chat_provider("mistral")
+    meta_provider = registry.get_chat_provider("meta")
+    cline_provider = registry.get_chat_provider("cline")
+    assert mistral_provider.endpoint_settings.embeddings_path == "/embeddings"
+    assert meta_provider.endpoint_settings.api_mode == "responses"
+    assert meta_provider.endpoint_settings.embeddings_path is None
+    assert cline_provider.endpoint_settings.models_path == "/models"
+    assert cline_provider.endpoint_settings.embeddings_path is None
+    assert cline_provider.supports_model_listing is True
     get_settings.cache_clear()
 
 
@@ -78,4 +87,24 @@ def test_provider_registry_supports_sentence_transformers_model_discovery(monkey
         "BAAI/bge-small-en-v1.5",
         "intfloat/multilingual-e5-small",
     ]
+    get_settings.cache_clear()
+
+
+def test_provider_registry_preset_defaults_for_meta_and_cline(monkeypatch):
+    for provider_type, expected_url in (
+        ("meta", "https://api.meta.ai/v1"),
+        ("cline", "https://api.cline.bot/api/v1"),
+    ):
+        monkeypatch.setenv("AKS_LLM_PROVIDER", provider_type)
+        monkeypatch.setenv("AKS_LLM_API_BASE_URL", "")
+        monkeypatch.setenv("AKS_LLM_MODEL", "")
+        monkeypatch.setenv("AKS_LLM_API_KEY", "provider-test-key")
+        get_settings.cache_clear()
+        registry = ProviderRegistry(get_settings())
+
+        provider = registry.get_chat_provider()
+
+        assert isinstance(provider, OpenAICompatibleProvider)
+        assert provider.provider_name == provider_type
+        assert provider.base_url == expected_url
     get_settings.cache_clear()

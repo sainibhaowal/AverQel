@@ -2,33 +2,45 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.deepspace.models.agent_runtime import DeepSpaceAgentRun
+from app.core.config import get_settings
+from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceRunEvent
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.message import Message
 from app.deepspace.models.queue_control import DeepSpaceQueueControl
 from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
+from app.deepspace.services.run_events import append_event
 from app.realtime.event_bus import publish_event_sync
 from app.system.services.cache_service import get_redis_client
 from app.system.services.storage_lifecycle import StorageLifecycleService
 from app.system.services.storage_quota import StorageQuotaService
 
 QUEUEABLE_STATUSES = {"queued", "running", "cancelling", "awaiting_user", "awaiting_approval"}
-# Failed attempts and the currently running turn remain durable runtime/history
-# state, not pending queue messages. The queue UI/API represents only work that
-# is waiting to be sent or waiting for an explicit user/approval response.
-QUEUE_VISIBLE_STATUSES = {"queued", "awaiting_user", "awaiting_approval"}
+# Failed attempts remain visible for an explicit retry, but never block later
+# queued work. Running turns are represented by the active SSE/history record.
+QUEUE_VISIBLE_STATUSES = {"queued", "awaiting_user", "awaiting_approval", "failed"}
 ACTIVE_QUEUE_STATUSES = {"running", "cancelling", "awaiting_user", "awaiting_approval"}
 TERMINAL_QUEUE_STATUSES = {"completed", "cancelled", "failed"}
 PAUSED_QUEUE_STATUSES = {"awaiting_user", "awaiting_approval"}
 MAX_TURNS_PER_CONVERSATION = 100
 STALE_DISPATCH_AFTER = timedelta(minutes=10)
+logger = logging.getLogger(__name__)
+
+
+class QueueTurnEditConflictError(ValueError):
+    """Raised when the queued prompt changed after the editor was opened."""
+
+
+class QueueTurnNotEditableError(ValueError):
+    """Raised when a worker or terminal transition already owns the turn."""
 
 
 @dataclass(frozen=True)
@@ -37,6 +49,7 @@ class ClaimedTurn:
     user_id: uuid.UUID
     conversation_id: uuid.UUID
     client_request_id: str
+    regenerate_message_id: uuid.UUID | None
     resume_from_request_id: str | None
     prompt: str
     thinking_enabled: bool
@@ -124,6 +137,84 @@ class DeepSpaceTurnQueueStore:
             activity_kind=kind,
             size_bytes=size_bytes,
         )
+
+    def _close_expired_worker_stream(
+        self, *, turn: DeepSpaceQueuedTurn, run: DeepSpaceAgentRun
+    ) -> None:
+        """Close a browser stream when maintenance expires its worker lease."""
+        if run.last_error not in {
+            "worker_lease_expired",
+            "cancelled_after_worker_lease_expired",
+        }:
+            return
+        cancelled = run.last_error == "cancelled_after_worker_lease_expired"
+        message_text = (
+            "This DeepSpace run was stopped before it finished. Its saved prompt is available to regenerate."
+            if cancelled
+            else "The DeepSpace worker stopped before this response finished. The saved prompt is available to retry."
+        )
+        terminal_exists = self.db.execute(
+            select(DeepSpaceRunEvent.id)
+            .where(
+                DeepSpaceRunEvent.tenant_id == turn.tenant_id,
+                DeepSpaceRunEvent.user_id == turn.user_id,
+                DeepSpaceRunEvent.conversation_id == turn.conversation_id,
+                DeepSpaceRunEvent.client_request_id == turn.client_request_id,
+                DeepSpaceRunEvent.event_name.in_({"done", "error"}),
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        if terminal_exists is not None:
+            return
+
+        if run.assistant_message_id is not None:
+            assistant = self.db.execute(
+                select(Message).where(
+                    Message.id == run.assistant_message_id,
+                    Message.conversation_id == turn.conversation_id,
+                    Message.role == "assistant",
+                )
+            ).scalar_one_or_none()
+            if assistant is not None:
+                metadata = dict(assistant.metadata_json or {})
+                if metadata.get("status") == "streaming":
+                    metadata["status"] = "ready" if cancelled else "error"
+                    metadata["runtime_active"] = False
+                    if not cancelled:
+                        metadata["error_code"] = "DEEPSPACE_WORKER_LEASE_EXPIRED"
+                        metadata["error_message"] = message_text
+                    assistant.metadata_json = metadata
+                    self.db.flush()
+
+        event_name = "done" if cancelled else "error"
+        event_data = (
+            {"conversation_id": str(turn.conversation_id), "status": "cancelled"}
+            if cancelled
+            else {
+                "code": "DEEPSPACE_WORKER_LEASE_EXPIRED",
+                "message": message_text,
+                "error_category": "runtime",
+            }
+        )
+        frame = f"event: {event_name}\ndata: {json.dumps(event_data, separators=(',', ':'))}\n\n"
+        try:
+            self.db.commit()
+            append_event(
+                self.db,
+                settings=get_settings(),
+                tenant_id=turn.tenant_id,
+                user_id=turn.user_id,
+                conversation_id=turn.conversation_id,
+                client_request_id=turn.client_request_id,
+                frame=frame,
+                run_id=run.id,
+            )
+        except Exception:  # noqa: BLE001
+            self.db.rollback()
+            logger.exception(
+                "Failed to close an expired DeepSpace worker event stream",
+                extra={"conversation_id": str(turn.conversation_id)},
+            )
 
     def _conversation_for_update(
         self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
@@ -256,6 +347,37 @@ class DeepSpaceTurnQueueStore:
         )
         return self.state(tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id)
 
+    def resume_after_failure(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> bool:
+        """Clear a legacy automatic failure pause while preserving the failed turn."""
+        self._conversation_for_update(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        control = self.db.execute(
+            select(DeepSpaceQueueControl)
+            .where(
+                DeepSpaceQueueControl.tenant_id == tenant_id,
+                DeepSpaceQueueControl.user_id == user_id,
+                DeepSpaceQueueControl.conversation_id == conversation_id,
+                DeepSpaceQueueControl.paused.is_(True),
+                DeepSpaceQueueControl.failed_request_id.is_not(None),
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
+        if control is None:
+            return False
+        control.paused = False
+        control.reason = None
+        control.failed_request_id = None
+        control.paused_at = None
+        control.updated_at = datetime.now(UTC)
+        self.db.commit()
+        self._publish_queue_event(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        return True
+
     def enqueue(
         self,
         *,
@@ -264,6 +386,7 @@ class DeepSpaceTurnQueueStore:
         conversation_id: uuid.UUID,
         client_request_id: str,
         prompt: str,
+        regenerate_message_id: uuid.UUID | None = None,
         thinking_enabled: bool,
         reasoning_effort: str | None = None,
         roles: list[str],
@@ -318,6 +441,7 @@ class DeepSpaceTurnQueueStore:
             user_id=user_id,
             conversation_id=conversation_id,
             client_request_id=client_request_id[:255],
+            regenerate_message_id=regenerate_message_id,
             resume_from_request_id=(
                 resume_from_request_id[:255] if resume_from_request_id else None
             ),
@@ -357,6 +481,75 @@ class DeepSpaceTurnQueueStore:
         )
         return turn
 
+    def update_queued_prompt(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        conversation_id: uuid.UUID,
+        client_request_id: str,
+        expected_prompt: str,
+        prompt: str,
+    ) -> DeepSpaceQueuedTurn | None:
+        """Edit a pending prompt in place without changing its queue position."""
+        self._conversation_for_update(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        turn = self.db.execute(
+            select(DeepSpaceQueuedTurn)
+            .where(
+                DeepSpaceQueuedTurn.tenant_id == tenant_id,
+                DeepSpaceQueuedTurn.user_id == user_id,
+                DeepSpaceQueuedTurn.conversation_id == conversation_id,
+                DeepSpaceQueuedTurn.client_request_id == client_request_id,
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
+        if turn is None:
+            return None
+        if turn.status != "queued":
+            raise QueueTurnNotEditableError(
+                "This prompt has already started or is no longer pending."
+            )
+        if turn.regenerate_message_id is not None:
+            raise QueueTurnNotEditableError(
+                "A queued regeneration can be canceled or retried, but its saved prompt cannot be edited."
+            )
+        if turn.prompt != expected_prompt:
+            raise QueueTurnEditConflictError(
+                "This prompt was changed elsewhere. Refresh the queue and try again."
+            )
+
+        prior_bytes = StorageQuotaService.estimate_bytes(
+            turn.prompt, turn.roles_json, turn.permissions_json, turn.attachment_file_ids_json
+        )
+        updated_bytes = StorageQuotaService.estimate_bytes(
+            prompt[:4000],
+            turn.roles_json,
+            turn.permissions_json,
+            turn.attachment_file_ids_json,
+        )
+        StorageQuotaService(self.db).ensure_capacity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            additional_bytes=updated_bytes,
+            replacing_bytes=prior_bytes,
+        )
+        turn.prompt = prompt[:4000]
+        self._record_activity(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            kind="queue_turn_edited",
+            size_bytes=updated_bytes,
+        )
+        self.db.commit()
+        self.db.refresh(turn)
+        self._publish_queue_event(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
+        return turn
+
     def retry_failed(
         self,
         *,
@@ -366,7 +559,7 @@ class DeepSpaceTurnQueueStore:
         failed_request_id: str,
         client_request_id: str | None = None,
     ) -> DeepSpaceQueuedTurn:
-        """Create a new durable attempt that resumes a failed run checkpoint."""
+        """Create one idempotent attempt linked to a failed turn."""
         self._conversation_for_update(
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
         )
@@ -383,6 +576,18 @@ class DeepSpaceTurnQueueStore:
         ).scalar_one_or_none()
         if failed is None:
             raise ValueError("Failed DeepSpace queue item not found")
+        request_id = str(client_request_id or uuid.uuid4())[:255]
+        existing_request = self.db.execute(
+            select(DeepSpaceQueuedTurn).where(
+                DeepSpaceQueuedTurn.tenant_id == tenant_id,
+                DeepSpaceQueuedTurn.user_id == user_id,
+                DeepSpaceQueuedTurn.conversation_id == conversation_id,
+                DeepSpaceQueuedTurn.client_request_id == request_id,
+            )
+        ).scalar_one_or_none()
+        if existing_request is not None:
+            return existing_request
+
         existing_retry = self.db.execute(
             select(DeepSpaceQueuedTurn)
             .where(
@@ -390,10 +595,10 @@ class DeepSpaceTurnQueueStore:
                 DeepSpaceQueuedTurn.user_id == user_id,
                 DeepSpaceQueuedTurn.conversation_id == conversation_id,
                 DeepSpaceQueuedTurn.resume_from_request_id == failed_request_id,
-                # Retrying the same failed checkpoint is idempotent. A later
-                # retry may target the returned failed child directly, but
-                # repeated clicks on its parent must not create duplicates.
-                DeepSpaceQueuedTurn.status.in_(QUEUEABLE_STATUSES | {"completed", "failed"}),
+                # Do not create duplicate work while a retry is pending or
+                # after it already succeeded. A failed child may be retried
+                # with a new client request ID.
+                DeepSpaceQueuedTurn.status.in_(QUEUEABLE_STATUSES | {"completed"}),
             )
             .order_by(DeepSpaceQueuedTurn.sequence.desc())
             .limit(1)
@@ -412,7 +617,6 @@ class DeepSpaceTurnQueueStore:
         ).scalar_one()
         if int(queued_count or 0) >= MAX_TURNS_PER_CONVERSATION:
             raise OverflowError("DeepSpace queue is full for this conversation")
-        request_id = str(client_request_id or uuid.uuid4())[:255]
         next_sequence = (
             int(
                 self.db.execute(
@@ -431,6 +635,7 @@ class DeepSpaceTurnQueueStore:
             user_id=user_id,
             conversation_id=conversation_id,
             client_request_id=request_id,
+            regenerate_message_id=failed.regenerate_message_id,
             resume_from_request_id=failed_request_id,
             prompt=failed.prompt,
             priority=max(1, int(failed.priority or 0) + 1),
@@ -485,23 +690,27 @@ class DeepSpaceTurnQueueStore:
                     DeepSpaceQueuedTurn.tenant_id == tenant_id,
                     DeepSpaceQueuedTurn.user_id == user_id,
                     DeepSpaceQueuedTurn.conversation_id == conversation_id,
-                    DeepSpaceQueuedTurn.status.in_(QUEUE_VISIBLE_STATUSES),
+                    DeepSpaceQueuedTurn.status.in_(QUEUE_VISIBLE_STATUSES | {"completed"}),
                 )
-                .order_by(DeepSpaceQueuedTurn.priority.desc(), DeepSpaceQueuedTurn.sequence.asc())
+                .order_by(
+                    case((DeepSpaceQueuedTurn.status == "failed", 1), else_=0),
+                    DeepSpaceQueuedTurn.priority.desc(),
+                    DeepSpaceQueuedTurn.sequence.asc(),
+                )
             )
             .scalars()
             .all()
         )
-        # A retry is a new durable attempt so the checkpoint lineage is
-        # preserved. The UI should nevertheless show one visible item per
-        # retry chain, not the original failure plus every historical child.
+        # A retry is a new durable attempt so its lineage is preserved. Show
+        # only the latest failed/active item in a retry chain, not every parent.
         retry_parent_ids = {
             str(row.resume_from_request_id) for row in rows if row.resume_from_request_id
         }
         return [
             row
             for row in rows
-            if row.status != "failed" or str(row.client_request_id) not in retry_parent_ids
+            if row.status in QUEUE_VISIBLE_STATUSES
+            and (row.status != "failed" or str(row.client_request_id) not in retry_parent_ids)
         ]
 
     def request_cancel(
@@ -792,6 +1001,7 @@ class DeepSpaceTurnQueueStore:
         if active_run is not None:
             return 0
 
+        expired_runs: list[tuple[DeepSpaceQueuedTurn, DeepSpaceAgentRun]] = []
         for turn in turns:
             # If a worker did start and completed before the process died in
             # its final queue update, preserve that durable outcome. Only a
@@ -818,21 +1028,21 @@ class DeepSpaceTurnQueueStore:
                 turn.status = "failed"
                 turn.error = (run.last_error or "DeepSpace agent run failed.")[:2000]
                 turn.completed_at = datetime.now(UTC)
-                self._set_paused_locked(
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                    conversation_id=conversation_id,
-                    paused=True,
-                    reason=turn.error,
-                    failed_request_id=turn.client_request_id,
-                )
+                expired_runs.append((turn, run))
             elif run.status in {"completed", "cancelled"}:
                 turn.status = run.status
                 turn.completed_at = datetime.now(UTC)
+                if (
+                    run.status == "cancelled"
+                    and run.last_error == "cancelled_after_worker_lease_expired"
+                ):
+                    expired_runs.append((turn, run))
             else:
                 turn.status = "queued"
                 turn.started_at = None
         self.db.commit()
+        for turn, run in expired_runs:
+            self._close_expired_worker_stream(turn=turn, run=run)
         self._publish_queue_event(
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
         )
@@ -909,6 +1119,9 @@ class DeepSpaceTurnQueueStore:
         self.recover_stale_claims(
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
         )
+        self.resume_after_failure(
+            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
+        )
         # Serialize dispatch per conversation. Without this row lock, two
         # Celery wake-ups could each observe an empty active slot and claim
         # different queued turns at the same time.
@@ -981,6 +1194,7 @@ class DeepSpaceTurnQueueStore:
             user_id=turn.user_id,
             conversation_id=turn.conversation_id,
             client_request_id=turn.client_request_id,
+            regenerate_message_id=turn.regenerate_message_id,
             resume_from_request_id=turn.resume_from_request_id,
             prompt=turn.prompt,
             thinking_enabled=turn.thinking_enabled,
@@ -1000,7 +1214,6 @@ class DeepSpaceTurnQueueStore:
         status: str,
         error: str | None = None,
     ) -> bool:
-        failed = status in {"failed", "blocked"}
         if status not in TERMINAL_QUEUE_STATUSES | PAUSED_QUEUE_STATUSES:
             status = "failed"
         turn = self.db.execute(
@@ -1018,18 +1231,24 @@ class DeepSpaceTurnQueueStore:
         turn.status = status
         turn.error = error[:2000] if error else None
         turn.completed_at = datetime.now(UTC) if status in TERMINAL_QUEUE_STATUSES else None
-        if failed:
-            self._set_paused_locked(
-                tenant_id=tenant_id,
-                user_id=user_id,
-                conversation_id=conversation_id,
-                paused=True,
-                reason=error
-                or "DeepSpace turn failed. Review the error before resuming the queue.",
-                failed_request_id=client_request_id,
-            )
         self.db.commit()
         self._publish_queue_event(
             tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
         )
         return True
+
+    def next_queued_request_id(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
+    ) -> str | None:
+        """Return the next FIFO/priority turn ID before asynchronous dispatch."""
+        return self.db.execute(
+            select(DeepSpaceQueuedTurn.client_request_id)
+            .where(
+                DeepSpaceQueuedTurn.tenant_id == tenant_id,
+                DeepSpaceQueuedTurn.user_id == user_id,
+                DeepSpaceQueuedTurn.conversation_id == conversation_id,
+                DeepSpaceQueuedTurn.status == "queued",
+            )
+            .order_by(DeepSpaceQueuedTurn.priority.desc(), DeepSpaceQueuedTurn.sequence.asc())
+            .limit(1)
+        ).scalar_one_or_none()

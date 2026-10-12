@@ -7,6 +7,7 @@ import {
   useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -30,6 +31,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import ChatSidebar from "@/app/components/dashboard/ChatSidebar";
 import PDFPreviewModal from "@/app/components/query/PDFPreviewModal";
 import ConfirmationModal from "@/app/components/ui/ConfirmationModal";
+import { useAuth } from "@/app/context/AuthContext";
 import { fetchWithAuth } from "@/lib/api";
 import {
   listProviders,
@@ -43,9 +45,26 @@ import { useQueryStream } from "../_hooks/useQueryStream";
 import { initialQueryThreadState, queryThreadReducer } from "../_lib/query-thread-reducer";
 import { resolveLatestEditableMessageId } from "../_lib/edit-target";
 import { type QueryHistoryMessage } from "../_lib/stream-protocol";
+import {
+  addExistingQueryDocument,
+  addQueryFiles,
+  clearQueryDraftFiles,
+  getQueryUploadsSnapshot,
+  QUERY_DRAFT_ID,
+  removeQueryFile,
+  retryQueryFile,
+  subscribeQueryUploads,
+} from "../_lib/query-uploads";
+import { MAX_QUERY_ATTACHMENTS } from "../_lib/query-limits";
+import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 
 import MessageThread from "./MessageThread";
-import QueryComposer from "./QueryComposer";
+import QueryDatasetPreview from "./QueryDatasetPreview";
+import QueryComposer, {
+  MAX_QUERY_QUEUE_ITEMS,
+  type QueryComposerAttachment,
+  type QueryComposerQueueItem,
+} from "./QueryComposer";
 
 const DEFAULT_QUERY_TOP_K = 5;
 
@@ -110,6 +129,8 @@ function IconTooltipButton({
     >
       {icon}
       <span
+        role="tooltip"
+        aria-hidden={!open}
         className={`workspace-icon-tooltip pointer-events-none absolute top-full left-1/2 z-40 mt-2 -translate-x-1/2 rounded-full border border-white/10 bg-black/85 px-3 py-1 text-[10px] font-semibold tracking-[0.22em] whitespace-nowrap text-white uppercase shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition ${
           open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
         }`}
@@ -125,9 +146,41 @@ interface CollectionScopeItem {
   name: string;
 }
 
+interface QueuedQuery extends QueryComposerQueueItem {
+  documentIds: string[];
+  filters: { document_ids?: string[]; collection_id?: string };
+  searchMode: "hybrid" | "semantic" | "keyword";
+  thinkingEnabled: boolean;
+}
+
 export default function QueryPageClient() {
+  const { user } = useAuth();
   const [state, dispatch] = useReducer(queryThreadReducer, initialQueryThreadState);
   const [query, setQuery] = useState("");
+  const allUploads = useSyncExternalStore(
+    subscribeQueryUploads,
+    getQueryUploadsSnapshot,
+    getQueryUploadsSnapshot,
+  );
+  const uploadOwnerId = user ? `${user.tenant_id}:${user.id}` : null;
+  useEffect(() => {
+    if (!uploadOwnerId) clearQueryDraftFiles();
+  }, [uploadOwnerId]);
+  const attachments = useMemo(
+    () =>
+      allUploads.filter(
+        (item) => item.draftId === QUERY_DRAFT_ID && item.ownerId === uploadOwnerId,
+      ),
+    [allUploads, uploadOwnerId],
+  );
+  const [queueItems, setQueueItems] = useState<QueuedQuery[]>([]);
+  const queueItemsRef = useRef<QueuedQuery[]>([]);
+  const [queuePaused, setQueuePaused] = useState(false);
+  const [queryRequestInFlight, setQueryRequestInFlight] = useState(false);
+  const queryRequestInFlightRef = useRef(false);
+  const queryRequestGenerationRef = useRef(0);
+  const queuedRunActiveRef = useRef(false);
+  const queuedRunFailedRef = useRef(false);
   const [searchMode, setSearchMode] = useState<"hybrid" | "semantic" | "keyword">("hybrid");
   const [supportsThinking, setSupportsThinking] = useState(false);
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
@@ -143,6 +196,9 @@ export default function QueryPageClient() {
     id: string;
     name: string;
     page?: number;
+    sourceType?: string;
+    rowNumbers?: number[];
+    matchedRowCount?: number;
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -172,8 +228,16 @@ export default function QueryPageClient() {
   const stream = useQueryStream(
     useMemo(
       () => ({
-        onEvent: (event) => dispatch({ type: "stream_event", event }),
-        onTransportError: (error) => dispatch({ type: "stream_failed", error }),
+        onEvent: (event) => {
+          if (queuedRunActiveRef.current && event.event === "error") {
+            queuedRunFailedRef.current = true;
+          }
+          dispatch({ type: "stream_event", event });
+        },
+        onTransportError: (error) => {
+          if (queuedRunActiveRef.current) queuedRunFailedRef.current = true;
+          dispatch({ type: "stream_failed", error });
+        },
         onUserCancel: () => dispatch({ type: "stream_interrupted" }),
         onFinally: () => dispatch({ type: "stream_finished" }),
       }),
@@ -202,6 +266,8 @@ export default function QueryPageClient() {
   const [availableModels, setAvailableModels] = useState<
     Array<{
       providerId: string;
+      providerName: string;
+      providerType: string;
       modelName: string;
       displayName: string;
       quantization?: string | null;
@@ -233,6 +299,8 @@ export default function QueryPageClient() {
         const chatProviders = providersList.filter((p) => p.enabled && p.supports_chat);
         const allChatModels: Array<{
           providerId: string;
+          providerName: string;
+          providerType: string;
           modelName: string;
           displayName: string;
           contextWindow?: number | null;
@@ -248,6 +316,8 @@ export default function QueryPageClient() {
                 allChatModels.push(
                   ...chatOnly.map((m) => ({
                     providerId: provider.id,
+                    providerName: provider.display_name,
+                    providerType: provider.provider_type,
                     modelName: m.model_name,
                     displayName: m.display_name || m.model_name,
                     quantization:
@@ -275,6 +345,8 @@ export default function QueryPageClient() {
               ? [
                   {
                     providerId: provider.id,
+                    providerName: provider.display_name,
+                    providerType: provider.provider_type,
                     modelName,
                     displayName: modelName,
                     contextWindow: null,
@@ -286,6 +358,12 @@ export default function QueryPageClient() {
           if (chatAssignment?.model_name && chatAssignment.provider_config_id) {
             fallbackModels.push({
               providerId: chatAssignment.provider_config_id,
+              providerName:
+                chatProviders.find((provider) => provider.id === chatAssignment.provider_config_id)
+                  ?.display_name ?? "Assigned provider",
+              providerType:
+                chatProviders.find((provider) => provider.id === chatAssignment.provider_config_id)
+                  ?.provider_type ?? "",
               modelName: chatAssignment.model_name,
               displayName: chatAssignment.model_name,
               contextWindow: null,
@@ -433,13 +511,27 @@ export default function QueryPageClient() {
 
   useEffect(() => {
     if (!state.isStreaming && pendingHistorySyncRef.current && state.currentConversationId) {
+      if (
+        !queuePaused &&
+        (queueItems.length > 0 || queryRequestInFlight || queryRequestInFlightRef.current)
+      ) {
+        return;
+      }
       pendingHistorySyncRef.current = false;
       if (state.streamError) {
         return;
       }
       void loadConversation(state.currentConversationId);
     }
-  }, [loadConversation, state.currentConversationId, state.isStreaming, state.streamError]);
+  }, [
+    loadConversation,
+    queueItems.length,
+    queuePaused,
+    queryRequestInFlight,
+    state.currentConversationId,
+    state.isStreaming,
+    state.streamError,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -522,27 +614,40 @@ export default function QueryPageClient() {
   }, [selectedCollectionId]);
 
   const [dashboardOverview, setDashboardOverview] = useState<DashboardOverview | null>(null);
+  const [statsPollDelay, setStatsPollDelay] = useState(20_000);
+  const statsRequestInFlight = useRef(false);
+  const statsFailureCount = useRef(0);
+
+  const loadQueryStats = useCallback(async () => {
+    if (statsRequestInFlight.current) return;
+    statsRequestInFlight.current = true;
+    try {
+      const response = (await fetchWithAuth("/dashboard/query-stats", {
+        timeoutMs: 20_000,
+      })) as Response;
+      if (!response.ok) {
+        throw new Error(`Dashboard query stats request failed (${response.status})`);
+      }
+      const data = (await response.json()) as DashboardOverview;
+      setDashboardOverview(data);
+      statsFailureCount.current = 0;
+      setStatsPollDelay(20_000);
+    } catch (error) {
+      if (statsFailureCount.current === 0) {
+        console.warn("Failed to load dashboard query stats; retrying with backoff.", error);
+      }
+      statsFailureCount.current += 1;
+      setStatsPollDelay(Math.min(20_000 * 2 ** statsFailureCount.current, 120_000));
+    } finally {
+      statsRequestInFlight.current = false;
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    const loadOverview = async () => {
-      try {
-        const response = (await fetchWithAuth("/dashboard/overview")) as Response;
-        if (response && response.ok && active) {
-          const data = (await response.json()) as DashboardOverview;
-          setDashboardOverview(data);
-        }
-      } catch (err) {
-        console.error("Failed to load dashboard overview stats", err);
-      }
-    };
-    void loadOverview();
-    const interval = setInterval(loadOverview, 20000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, []);
+    queueMicrotask(() => void loadQueryStats());
+  }, [loadQueryStats]);
+
+  useVisibilityAwareInterval(() => void loadQueryStats(), statsPollDelay);
 
   const realTimeStats = useMemo(() => {
     if (!dashboardOverview) return null;
@@ -589,6 +694,49 @@ export default function QueryPageClient() {
     return filters;
   }, [scopedDocumentIds, selectedCollectionId]);
 
+  const updateQueue = useCallback((update: (current: QueuedQuery[]) => QueuedQuery[]) => {
+    const next = update(queueItemsRef.current);
+    queueItemsRef.current = next;
+    setQueueItems(next);
+  }, []);
+
+  const handleFilesSelected = useCallback(
+    (fileList: FileList | null) => {
+      if (!fileList?.length) return;
+      const selectedFiles = Array.from(fileList);
+      if (!uploadOwnerId) {
+        toast.error("Sign in again before uploading query attachments.");
+        return;
+      }
+      const addedCount = addQueryFiles(selectedFiles, uploadOwnerId);
+      if (addedCount < selectedFiles.length) {
+        toast.error(`A query can include up to ${MAX_QUERY_ATTACHMENTS} documents.`);
+      }
+    },
+    [uploadOwnerId],
+  );
+
+  const handleExistingDocumentSelect = useCallback(
+    (document: { document_id: string; filename: string; size_bytes: number; tabular: boolean }) => {
+      if (!uploadOwnerId) {
+        toast.error("Sign in again before attaching Documents Hub files.");
+        return;
+      }
+      if (!addExistingQueryDocument(document, uploadOwnerId)) {
+        toast.error("This file is already attached or the 10 file limit has been reached.");
+      }
+    },
+    [uploadOwnerId],
+  );
+
+  const retryAttachmentStatus = useCallback((attachmentId: string) => {
+    retryQueryFile(attachmentId);
+  }, []);
+
+  const removeAttachment = useCallback((attachmentId: string) => {
+    removeQueryFile(attachmentId);
+  }, []);
+
   const emptyPrompts = useMemo(() => {
     if (selectedCollectionName) {
       return [
@@ -616,63 +764,192 @@ export default function QueryPageClient() {
     ];
   }, [docId, selectedCollectionName]);
 
-  const submitQuery = useCallback(
-    async (nextQuery?: string) => {
-      const effectiveQuery = (nextQuery ?? query).trim();
-      if (!effectiveQuery || state.isStreaming) {
-        return;
+  const runQueuedQuery = useCallback(
+    async (item: QueuedQuery) => {
+      if (queryRequestInFlightRef.current) return;
+      const requestGeneration = queryRequestGenerationRef.current;
+      queryRequestInFlightRef.current = true;
+      queuedRunActiveRef.current = true;
+      queuedRunFailedRef.current = false;
+      setQueryRequestInFlight(true);
+      try {
+        // A provider assignment is persisted asynchronously. Preserve model-switch
+        // ordering before sending either a typed or queued query.
+        await modelSwitchRef.current;
+        if (requestGeneration !== queryRequestGenerationRef.current) return;
+        autoFollowRef.current = true;
+        dispatch({ type: "submit_query", query: item.query });
+        pendingHistorySyncRef.current = true;
+        await stream.start({
+          endpoint: streamEndpoint,
+          body: {
+            query: item.query,
+            top_k: DEFAULT_QUERY_TOP_K,
+            conversation_id: state.currentConversationId,
+            conversation_kind: conversationKind,
+            search_mode: item.searchMode,
+            thinking_enabled: supportsThinking && item.thinkingEnabled,
+            filters: {
+              ...item.filters,
+              ...(item.documentIds.length ? { attached_document_ids: item.documentIds } : {}),
+            },
+          },
+        });
+        if (queuedRunFailedRef.current && requestGeneration === queryRequestGenerationRef.current) {
+          updateQueue((current) => [
+            { ...item, status: "failed" },
+            ...current.filter((queued) => queued.id !== item.id),
+          ]);
+          setQueuePaused(true);
+        }
+      } finally {
+        queuedRunActiveRef.current = false;
+        queryRequestInFlightRef.current = false;
+        setQueryRequestInFlight(false);
       }
-
-      // A provider assignment is persisted asynchronously. Queue the request
-      // behind the latest model switch so the next turn cannot use the old model.
-      await modelSwitchRef.current;
-
-      setQuery("");
-      autoFollowRef.current = true;
-      dispatch({ type: "submit_query", query: effectiveQuery });
-      pendingHistorySyncRef.current = true;
-
-      await stream.start({
-        endpoint: streamEndpoint,
-        body: {
-          query: effectiveQuery,
-          top_k: DEFAULT_QUERY_TOP_K,
-          conversation_id: state.currentConversationId,
-          conversation_kind: conversationKind,
-          search_mode: searchMode,
-          thinking_enabled: supportsThinking && thinkingEnabled,
-          filters: collectionQueryFilters,
-        },
-      });
     },
     [
-      query,
-      searchMode,
-      collectionQueryFilters,
+      conversationKind,
       state.currentConversationId,
-      state.isStreaming,
       stream,
       streamEndpoint,
       supportsThinking,
-      thinkingEnabled,
-      conversationKind,
+      updateQueue,
     ],
   );
 
+  const submitQuery = useCallback(
+    (nextQuery?: string, selectedAttachments: QueryComposerAttachment[] = []) => {
+      const effectiveQuery = (nextQuery ?? query).trim();
+      if (!effectiveQuery) return;
+
+      const readyAttachments = selectedAttachments.filter(
+        (attachment) => attachment.status === "ready" && attachment.documentId,
+      );
+      if (readyAttachments.length !== selectedAttachments.length) {
+        toast.error("Wait until each attached document is indexed before sending.");
+        return;
+      }
+
+      const item: QueuedQuery = {
+        id: crypto.randomUUID(),
+        query: effectiveQuery,
+        attachments: readyAttachments.map((attachment) => ({
+          id: attachment.id,
+          name: attachment.name,
+        })),
+        documentIds: readyAttachments.map((attachment) => attachment.documentId!),
+        filters: { ...collectionQueryFilters },
+        searchMode,
+        thinkingEnabled: supportsThinking && thinkingEnabled,
+      };
+
+      const shouldQueue =
+        state.isStreaming ||
+        queryRequestInFlightRef.current ||
+        queueItemsRef.current.length > 0 ||
+        queuePaused;
+      if (shouldQueue && queueItemsRef.current.length >= MAX_QUERY_QUEUE_ITEMS) {
+        toast.error("The query queue is full. Remove or send an item before adding another.");
+        return;
+      }
+
+      setQuery("");
+      clearQueryDraftFiles();
+
+      if (shouldQueue) {
+        updateQueue((current) => [...current, item]);
+        return;
+      }
+      void runQueuedQuery(item);
+    },
+    [
+      collectionQueryFilters,
+      query,
+      queuePaused,
+      runQueuedQuery,
+      searchMode,
+      state.isStreaming,
+      supportsThinking,
+      thinkingEnabled,
+      updateQueue,
+    ],
+  );
+
+  useEffect(() => {
+    if (
+      state.isStreaming ||
+      queryRequestInFlight ||
+      queryRequestInFlightRef.current ||
+      queuePaused ||
+      queueItems.length === 0
+    ) {
+      return;
+    }
+    const next = queueItemsRef.current[0];
+    if (!next) return;
+    if (next.status === "failed") {
+      setQueuePaused(true);
+      return;
+    }
+    updateQueue((current) => current.filter((item) => item.id !== next.id));
+    void runQueuedQuery(next);
+  }, [
+    queueItems,
+    queuePaused,
+    queryRequestInFlight,
+    runQueuedQuery,
+    state.isStreaming,
+    updateQueue,
+  ]);
+
+  const removeQueuedQuery = useCallback(
+    (id: string) => {
+      updateQueue((current) => current.filter((item) => item.id !== id));
+      if (queueItemsRef.current.length <= 1) setQueuePaused(false);
+    },
+    [updateQueue],
+  );
+  const retryQueuedQuery = useCallback(
+    (id: string) => {
+      updateQueue((current) =>
+        current.map((item) => (item.id === id ? { ...item, status: "queued" } : item)),
+      );
+      setQueuePaused(false);
+    },
+    [updateQueue],
+  );
+  const clearQueuedQueries = useCallback(() => {
+    updateQueue(() => []);
+    setQueuePaused(false);
+  }, [updateQueue]);
+
   const startNewChat = useCallback(() => {
+    queryRequestGenerationRef.current += 1;
     stream.cancel();
+    pendingHistorySyncRef.current = false;
     setQuery("");
+    clearQueuedQueries();
+    setQueuePaused(false);
+    clearQueryDraftFiles();
     autoFollowRef.current = true;
     dispatch({ type: "reset_thread" });
-  }, [stream]);
+  }, [clearQueuedQueries, stream]);
 
   const stopStreaming = useCallback(() => {
+    queryRequestGenerationRef.current += 1;
+    if (queueItemsRef.current.length > 0) setQueuePaused(true);
     stream.cancel();
   }, [stream]);
 
   const regenerateMessage = useCallback(
     async (assistantMessageId: string) => {
-      if (!state.currentConversationId || state.isStreaming) {
+      if (
+        !state.currentConversationId ||
+        state.isStreaming ||
+        queryRequestInFlightRef.current ||
+        queueItemsRef.current.length > 0
+      ) {
         return;
       }
       autoFollowRef.current = true;
@@ -705,7 +982,12 @@ export default function QueryPageClient() {
 
   const saveEditedMessage = useCallback(
     async (messageId: string, content: string) => {
-      if (!state.currentConversationId || state.isStreaming) {
+      if (
+        !state.currentConversationId ||
+        state.isStreaming ||
+        queryRequestInFlightRef.current ||
+        queueItemsRef.current.length > 0
+      ) {
         return;
       }
       const trimmed = content.trim();
@@ -898,7 +1180,7 @@ export default function QueryPageClient() {
               onPreviewDocument={setSelectedCitationDocument}
               onFollowupSelect={(suggestion) => {
                 setQuery(suggestion);
-                void submitQuery(suggestion);
+                void submitQuery(suggestion, attachments);
               }}
               realTimeStats={realTimeStats}
             />
@@ -913,6 +1195,7 @@ export default function QueryPageClient() {
               collectionOptions={collectionOptions}
               collectionScopeLoading={collectionScopeLoading}
               isStreaming={state.isStreaming}
+              requestPending={queryRequestInFlight}
               filtersOpen={filtersOpen}
               supportsThinking={supportsThinking}
               thinkingEnabled={thinkingEnabled}
@@ -921,13 +1204,25 @@ export default function QueryPageClient() {
               onCollectionChange={setSelectedCollectionId}
               onToggleFilters={() => setFiltersOpen((value) => !value)}
               onThinkingChange={setThinkingEnabled}
-              onSubmit={() => void submitQuery()}
               onStop={stopStreaming}
               modelName={effectiveModelName}
+              selectedProviderId={selectedProviderOverride ?? selectedModel?.providerId ?? null}
               availableModels={availableModels}
               onModelSelect={handleModelSelect}
               contextUsedTokens={contextUsedTokens}
               contextLimit={contextLimit}
+              attachments={attachments}
+              onFilesSelected={handleFilesSelected}
+              onExistingDocumentSelect={handleExistingDocumentSelect}
+              onRemoveAttachment={removeAttachment}
+              onRetryAttachment={retryAttachmentStatus}
+              queueItems={queueItems}
+              queuePaused={queuePaused}
+              onToggleQueuePaused={() => setQueuePaused((paused) => !paused)}
+              onRetryQueueItem={retryQueuedQuery}
+              onRemoveQueueItem={removeQueuedQuery}
+              onClearQueue={clearQueuedQueries}
+              onSubmit={(selectedAttachments) => void submitQuery(undefined, selectedAttachments)}
             />
           </div>
         </div>
@@ -1218,6 +1513,15 @@ export default function QueryPageClient() {
                 variant="floating"
                 currentConversationId={state.currentConversationId}
                 onSelectConversation={(id) => {
+                  if (queueItemsRef.current.length > 0) {
+                    clearQueuedQueries();
+                    toast("Queued queries were cleared when you switched conversations.");
+                  }
+                  setQueuePaused(false);
+                  pendingHistorySyncRef.current = false;
+                  queryRequestGenerationRef.current += 1;
+                  if (queryRequestInFlightRef.current) stream.cancel();
+                  clearQueryDraftFiles();
                   void loadConversation(id);
                   setHistoryOpen(false);
                 }}
@@ -1243,8 +1547,19 @@ export default function QueryPageClient() {
         confirmLabel="Delete Output"
         loading={deleteAssistantBusy}
       />
-      {selectedCitationDocument ? (
+      {selectedCitationDocument?.sourceType === "dataset" ? (
+        <QueryDatasetPreview
+          key={`${selectedCitationDocument.id}:${selectedCitationDocument.rowNumbers?.[0] ?? 2}`}
+          documentId={selectedCitationDocument.id}
+          documentName={selectedCitationDocument.name}
+          initialRow={selectedCitationDocument.rowNumbers?.[0]}
+          matchedRowCount={selectedCitationDocument.matchedRowCount}
+          onClose={() => setSelectedCitationDocument(null)}
+        />
+      ) : null}
+      {selectedCitationDocument && selectedCitationDocument.sourceType !== "dataset" ? (
         <PDFPreviewModal
+          key={`${selectedCitationDocument.id}:${selectedCitationDocument.page ?? 1}`}
           isOpen={Boolean(selectedCitationDocument)}
           documentId={selectedCitationDocument.id}
           documentName={selectedCitationDocument.name}

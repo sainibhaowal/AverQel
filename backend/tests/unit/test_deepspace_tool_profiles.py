@@ -1,4 +1,8 @@
+import pytest
+
 from app.deepspace.services.chat_service import PRODUCTIVITY_TOOLS, DeepSpaceChatService
+
+pytestmark = pytest.mark.unit_no_db
 
 
 def _names(tools: list[dict]) -> set[str]:
@@ -41,6 +45,25 @@ def test_ordinary_request_uses_direct_profile_without_unrelated_native_tools() -
 
     assert profile == "direct"
     assert _names(tools) == {"ask_user"}
+
+
+def test_vague_request_with_attachment_exposes_only_relevant_read_tools() -> None:
+    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
+        "Summarize this",
+        PRODUCTIVITY_TOOLS,
+        attachments=[{"id": "file-1", "name": "report.pdf"}],
+    )
+
+    assert profile == "attachments"
+    assert {
+        "document_read",
+        "document_query",
+        "document_compare",
+        "sandbox_execute",
+        "analyze",
+        "ask_user",
+    } <= _names(tools)
+    assert not {"write", "edit", "delete", "find", "read", "todo_write"} & _names(tools)
 
 
 def test_retrospective_request_receives_only_read_only_context_tools() -> None:

@@ -4,7 +4,7 @@ import logging
 import uuid
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from app.auth.rbac import require_permissions
 from app.auth.tenancy import require_request_tenant_id
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
+from app.documents.repositories.documents import DocumentsRepository
 from app.platform.database.session import get_db, managed_db_session, set_db_tenant_context
 from app.providers.services.reasoning_capabilities import reasoning_capabilities
 from app.providers.services.selection_service import ProviderSelectionService
@@ -22,11 +23,25 @@ from app.query.schemas.queries import (
     ChatCapabilitiesResponse,
     CitationFeedbackRequest,
     CitationFeedbackResponse,
+    DatasetAttachmentResolveRequest,
+    DatasetAttachmentResolveResponse,
+    DatasetIndexRequest,
+    DatasetIndexResponse,
+    DatasetRowWindowResponse,
+    QueryAttachmentItem,
+    QueryAttachmentListResponse,
     QueryCitationResponse,
     QueryRequest,
     QueryResponse,
 )
+from app.query.services.dataset_indexing import (
+    QueryDatasetIndexService,
+    is_tabular_document,
+    read_dataset_rows,
+    serialize_dataset_index,
+)
 from app.query.services.query_service import QueryService
+from app.query.workers.dataset_indexing import index_grounded_query_dataset
 from app.system.services.audit_service import AuditService
 from app.system.services.quality_service import QualityService
 from app.system.services.rate_limit_service import RateLimitService
@@ -44,6 +59,7 @@ SSE_HEADERS = {
 
 _ALLOWED_FILTER_FIELDS = {
     "document_ids",
+    "attached_document_ids",
     "collection_id",
     "created_at_from",
     "created_at_to",
@@ -147,9 +163,41 @@ def _map_citations(items: list[dict[str, Any]]) -> list[QueryCitationResponse]:
             snippet=str(item["snippet"]),
             similarity_score=float(item["similarity_score"]),
             source_type=str(item.get("source_type", "text")),
+            source_row_numbers=[int(value) for value in item.get("source_row_numbers", [])[:20]],
+            matched_row_count=(
+                int(item["matched_row_count"])
+                if item.get("matched_row_count") is not None
+                else None
+            ),
         )
         for item in items
     ]
+
+
+def _get_accessible_dataset_document(
+    *, db: Session, auth: AuthContext, document_id: uuid.UUID
+) -> Any:
+    document = DocumentsRepository(db).get_accessible_by_id(
+        tenant_id=auth.tenant_id,
+        document_id=document_id,
+        user_id=auth.user_id,
+        include_quarantined=False,
+    )
+    if document is None:
+        raise ApiError(code="DOCUMENT_NOT_FOUND", message="Document not found.", status_code=404)
+    if document.quarantined or document.security_scan_result != "passed":
+        raise ApiError(
+            code="DOCUMENT_NOT_AVAILABLE",
+            message="Documents Hub has not approved this file for use.",
+            status_code=409,
+        )
+    if document.status != "indexed":
+        raise ApiError(
+            code="DOCUMENT_NOT_INDEXED",
+            message="The file must finish Documents Hub indexing first.",
+            status_code=409,
+        )
+    return document
 
 
 def _validate_top_k_bounds(*, top_k: int, settings: Settings) -> None:
@@ -221,6 +269,178 @@ def _record_query_failure(*, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
 
 
 @router.post(
+    "/attachments/resolve",
+    response_model=DatasetAttachmentResolveResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def resolve_query_attachment(
+    payload: DatasetAttachmentResolveRequest,
+    request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> DatasetAttachmentResolveResponse:
+    """Reuse an accessible Documents Hub file before transferring upload bytes."""
+    _enforce_tenant_scope(request_tenant_id, auth)
+    document = DocumentsRepository(db).find_accessible_by_hash(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        sha256_hash=payload.sha256.lower(),
+    )
+    if document is None:
+        return DatasetAttachmentResolveResponse(found=False)
+    return DatasetAttachmentResolveResponse(
+        found=True,
+        document_id=document.id,
+        filename=document.filename,
+        size_bytes=document.size_bytes,
+        document_status=document.status,
+        content_type=document.content_type,
+        tabular=is_tabular_document(document),
+    )
+
+
+@router.get(
+    "/attachments",
+    response_model=QueryAttachmentListResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def list_query_attachments(
+    q: str | None = Query(default=None, max_length=256),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
+    request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> QueryAttachmentListResponse:
+    """List searchable Documents Hub files that the current user can attach."""
+    _enforce_tenant_scope(request_tenant_id, auth)
+    documents, total = DocumentsRepository(db).search_accessible_for_user(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        query_text=q,
+        statuses=["indexed"],
+        quarantined=False,
+        skip=skip,
+        limit=limit,
+    )
+    return QueryAttachmentListResponse(
+        items=[
+            QueryAttachmentItem(
+                document_id=document.id,
+                filename=document.filename,
+                size_bytes=document.size_bytes,
+                content_type=document.content_type,
+                status=document.status,
+                tabular=is_tabular_document(document),
+            )
+            for document in documents
+        ],
+        total=total,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.post(
+    "/datasets/{document_id}/prepare",
+    response_model=DatasetIndexResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def prepare_query_dataset(
+    document_id: uuid.UUID,
+    payload: DatasetIndexRequest,
+    request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DatasetIndexResponse:
+    """Queue indexing of a scanned, stored CSV or TSV; never accepts file bytes."""
+    _enforce_tenant_scope(request_tenant_id, auth)
+    document = _get_accessible_dataset_document(db=db, auth=auth, document_id=document_id)
+    if not is_tabular_document(document):
+        raise ApiError(
+            code="UNSUPPORTED_DATASET_FORMAT",
+            message="Only CSV and TSV attachments use table indexing.",
+            status_code=422,
+        )
+    service = QueryDatasetIndexService(db=db, settings=settings)
+    row = service.request_index(tenant_id=auth.tenant_id, document=document, retry=payload.retry)
+    if row.status == "queued":
+        try:
+            index_grounded_query_dataset.delay(
+                document_id=str(document.id),
+                tenant_id=str(auth.tenant_id),
+            )
+        except Exception:  # noqa: BLE001
+            row.status = "failed"
+            row.stage = "failed"
+            row.progress = 0
+            row.error_code = "DATASET_WORKER_UNAVAILABLE"
+            row.error_message = "Table indexing could not be queued. Retry from Grounded Query."
+            db.commit()
+            logger.warning(
+                "Unable to queue Grounded Query table indexing.",
+                extra={"document_id": str(document.id)},
+                exc_info=True,
+            )
+    return DatasetIndexResponse.model_validate(serialize_dataset_index(row, document=document))
+
+
+@router.get(
+    "/datasets/{document_id}/status",
+    response_model=DatasetIndexResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def get_query_dataset_status(
+    document_id: uuid.UUID,
+    request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DatasetIndexResponse:
+    _enforce_tenant_scope(request_tenant_id, auth)
+    document = _get_accessible_dataset_document(db=db, auth=auth, document_id=document_id)
+    row = QueryDatasetIndexService(db=db, settings=settings).fail_stale_processing(
+        tenant_id=auth.tenant_id,
+        document_id=document.id,
+    )
+    return DatasetIndexResponse.model_validate(serialize_dataset_index(row, document=document))
+
+
+@router.get(
+    "/datasets/{document_id}/rows",
+    response_model=DatasetRowWindowResponse,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+def get_query_dataset_rows(
+    document_id: uuid.UUID,
+    response: Response,
+    start_row: int = Query(default=2, ge=1, le=1_000_001),
+    limit: int = Query(default=100, ge=1, le=200),
+    request_tenant_id: uuid.UUID = Depends(require_request_tenant_id),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DatasetRowWindowResponse:
+    _enforce_tenant_scope(request_tenant_id, auth)
+    response.headers["Cache-Control"] = "private, no-store"
+    document = _get_accessible_dataset_document(db=db, auth=auth, document_id=document_id)
+    service = QueryDatasetIndexService(db=db, settings=settings)
+    profile, derivative = service.derivative_profile(
+        tenant_id=auth.tenant_id,
+        document_id=document.id,
+    )
+    return DatasetRowWindowResponse.model_validate(
+        read_dataset_rows(
+            derivative_payload=derivative,
+            profile=profile,
+            start_row=start_row,
+            limit=limit,
+        )
+    )
+
+
+@router.post(
     "",
     response_model=QueryResponse,
     dependencies=[Depends(require_permissions("queries:run"))],
@@ -253,6 +473,7 @@ async def run_query(
             top_k=payload.top_k,
             filters=payload.filters.model_dump(exclude_none=True),
             document_ids=payload.filters.document_ids,
+            attached_document_ids=payload.filters.attached_document_ids,
             collection_id=payload.filters.collection_id,
             created_at_from=payload.filters.created_at_from,
             created_at_to=payload.filters.created_at_to,
@@ -307,6 +528,14 @@ async def stream_query(
     _validate_top_k_bounds(top_k=payload.top_k, settings=settings)
 
     service = QueryService(db=db, settings=settings)
+    if payload.filters.attached_document_ids:
+        # Validate attachment access/indexing before the streaming response sends
+        # headers, so clients receive the normal 404/409 API error instead of an
+        # empty or abruptly terminated SSE stream.
+        service.validate_attached_documents(
+            auth=auth,
+            attached_document_ids=payload.filters.attached_document_ids,
+        )
 
     async def event_generator() -> Any:
         try:
@@ -316,6 +545,7 @@ async def stream_query(
                 top_k=payload.top_k,
                 filters=payload.filters.model_dump(exclude_none=True),
                 document_ids=payload.filters.document_ids,
+                attached_document_ids=payload.filters.attached_document_ids,
                 collection_id=payload.filters.collection_id,
                 created_at_from=payload.filters.created_at_from,
                 created_at_to=payload.filters.created_at_to,

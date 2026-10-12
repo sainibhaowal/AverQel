@@ -5,7 +5,7 @@ import logging
 import math
 import re
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import and_, case, delete, or_, select
 from sqlalchemy.orm import Session
@@ -262,7 +262,12 @@ class MemoryService:
         return [str(memory.id) for _score, memory in ranked[:8]]
 
     def _embed_text(
-        self, text: str, *, tenant_id: str, user_id: str
+        self,
+        text: str,
+        *,
+        tenant_id: str,
+        user_id: str,
+        input_type: Literal["query", "passage"] = "passage",
     ) -> tuple[list[float], dict[str, Any]]:
         settings = self.settings or get_settings()
         service = EmbeddingService(settings, self.db)
@@ -270,6 +275,7 @@ class MemoryService:
             [text],
             tenant_id=self._uuid_or_none(tenant_id),
             actor_user_id=self._uuid_or_none(user_id),
+            input_type=input_type,
         )
         vector = result.vectors[0]
         metadata = result.metadata
@@ -1033,7 +1039,10 @@ class MemoryService:
             return []
 
         query_embedding, _metadata = self._embed_text(
-            normalized_query, tenant_id=tenant_id, user_id=user_id
+            normalized_query,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            input_type="query",
         )
         candidates_with_distance = self._search_candidates_with_pgvector(
             tenant_id=tenant_id,

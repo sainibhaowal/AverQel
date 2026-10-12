@@ -39,8 +39,7 @@ export function useDeepSpaceStream({
   onUserCancel,
 }: UseDeepSpaceStreamOptions) {
   const abortRef = useRef<AbortController | null>(null);
-  const cancelledByUserRef = useRef(false);
-  const suppressFinallyRef = useRef(false);
+  const suppressedControllersRef = useRef(new WeakSet<AbortController>());
   const onEventRef = useRef(onEvent);
   const onEventsRef = useRef(onEvents);
   const onTransportErrorRef = useRef(onTransportError);
@@ -56,32 +55,44 @@ export function useDeepSpaceStream({
   }, [onEvent, onEvents, onFinally, onTransportError, onUserCancel]);
 
   useEffect(() => {
+    const suppressedControllers = suppressedControllersRef.current;
     return () => {
       // Unmounting the chat view is not a server-side cancellation. Stop only
       // this browser reader so a later visit can reconnect to the durable run
       // without an old component delivering events into stale state.
       if (!abortRef.current) return;
-      cancelledByUserRef.current = true;
-      suppressFinallyRef.current = true;
-      abortRef.current.abort();
+      const controller = abortRef.current;
+      suppressedControllers.add(controller);
+      controller.abort();
       abortRef.current = null;
     };
   }, []);
 
   const cancel = useCallback(() => {
-    if (!abortRef.current) return;
-    cancelledByUserRef.current = true;
-    suppressFinallyRef.current = true;
-    abortRef.current.abort();
+    const controller = abortRef.current;
+    if (!controller) return;
+    suppressedControllersRef.current.add(controller);
+    controller.abort();
     abortRef.current = null;
     onUserCancelRef.current?.();
   }, []);
 
+  const detach = useCallback(() => {
+    const controller = abortRef.current;
+    if (!controller) return;
+    // Detaching only closes this browser reader. The server run remains
+    // durable and can be reattached when its conversation is selected again.
+    suppressedControllersRef.current.add(controller);
+    controller.abort();
+    abortRef.current = null;
+  }, []);
+
   const start = useCallback(
     async ({ endpoint = "/deepspace/chats/stream", body }: StartStreamArgs) => {
-      cancel();
-      cancelledByUserRef.current = false;
-      suppressFinallyRef.current = false;
+      // Replacing a browser reader is not the same as cancelling its durable
+      // server run. Navigation and reconnects detach the old reader; only the
+      // explicit Stop action uses cancel() and reports a user cancellation.
+      detach();
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -222,13 +233,11 @@ export function useDeepSpaceStream({
         }
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
-        if (!suppressFinallyRef.current) onFinallyRef.current?.();
-        suppressFinallyRef.current = false;
-        cancelledByUserRef.current = false;
+        if (!suppressedControllersRef.current.has(controller)) onFinallyRef.current?.();
       }
     },
-    [cancel],
+    [detach],
   );
 
-  return { start, cancel };
+  return { start, cancel, detach };
 }

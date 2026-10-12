@@ -31,11 +31,16 @@ framework worker pool so provider/database latency cannot block the async event
 loop. Provider model refresh is also guarded per process and fails fast with a
 cached-model fallback when another refresh is active.
 
-Ordinary provider selection and dashboard capability reads are side-effect free:
-they use configured and cached metadata and never refresh provider models or
-write the model cache. Only the explicit `POST /providers/{provider_id}/models/refresh`
-route contacts the provider and updates that cache. This prevents page loads
-from creating row-lock contention.
+The dashboard's full overview and the query workspace's
+`GET /api/v1/dashboard/query-stats` snapshot resolve provider metadata in
+read-only audit mode. The query snapshot includes only workspace totals,
+document status counts, and the chat/embedding runtime indicators; it skips
+recent documents, collections, activity, and trend aggregation. Both dashboard
+reads use cached provider metadata and do not refresh provider models or write
+selection audit events. Provider selection for actual model requests retains
+its audit events. Only the explicit
+`POST /providers/{provider_id}/models/refresh` route contacts a provider and
+updates its model cache.
 
 The notification bell uses the composite
 `collection_notifications(recipient_user_id, created_at DESC, id DESC)` index.

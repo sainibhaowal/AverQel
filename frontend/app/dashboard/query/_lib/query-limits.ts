@@ -1,0 +1,2 @@
+export const MAX_QUERY_ATTACHMENTS = 10;
+export const MAX_CONCURRENT_QUERY_UPLOADS = 3;

@@ -1,6 +1,9 @@
 import { expect, test } from "./fixtures";
 
 test.describe("DeepSpace durable runtime", () => {
+  // A fresh isolated Next server needs extra time to compile this route.
+  test.describe.configure({ timeout: 60_000 });
+
   test("rehydrates the durable runtime surface after a reconnect", async ({
     authenticatedPage,
   }) => {
