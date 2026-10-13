@@ -217,6 +217,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install desktop test dependencies
+        run: pnpm --dir ../applications/desktop install --frozen-lockfile --ignore-scripts
+
       - name: Run desktop source-resolution tests
         run: pnpm --dir ../applications/desktop test
 

@@ -245,6 +245,24 @@ jobs:
               ;;
           esac
 
+      - name: Verify NeoSIS runtime in the Linux installer
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGE_PATH="$(find applications/desktop/release -maxdepth 1 -type f -name '*.deb' -print -quit)"
+          test -n "$PACKAGE_PATH"
+          EXTRACT_DIR="$(mktemp -d "${RUNNER_TEMP}/averqel-neosis-deb.XXXXXX")"
+          trap 'rm -rf -- "$EXTRACT_DIR"' EXIT
+          dpkg-deb --extract "$PACKAGE_PATH" "$EXTRACT_DIR"
+          mapfile -t DESCRIPTORS < <(find "$EXTRACT_DIR" -type f -path '*/resources/neosis/desktop-runtime.json' -print)
+          test "${#DESCRIPTORS[@]}" -eq 1 || {
+            echo "Expected one NeoSIS runtime manifest in the Linux installer; found ${#DESCRIPTORS[@]}" >&2
+            exit 1
+          }
+          RUNTIME_PATH="$(dirname "${DESCRIPTORS[0]}")"
+          node applications/desktop/scripts/verify-neosis-runtime.cjs "$RUNTIME_PATH" linux x64
+
       - name: Enforce the desktop installer size budget
         shell: bash
         env:

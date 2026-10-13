@@ -209,8 +209,10 @@ protected `main`:
 1. **Release - Manual SemVer and Desktop** calculates the next version, checks
    out NeoSIS separately at a recorded commit, builds the Linux `.deb` and
    Windows `.exe` desktop packages, creates checksums and a release manifest,
-   and publishes a GitHub release. NeoSIS source is not added to the AverQel
-   repository or its source archives.
+   and publishes a GitHub release. Both platform payloads are checked against
+   the NeoSIS runtime manifest, and the final Linux `.deb` is checked again
+   before upload. NeoSIS source is not added to the AverQel repository or its
+   source archives.
    The default version follows Conventional Commits since the latest published
    release: breaking changes increment the major number, `feat:` increments
    minor, and `fix:`, `perf:`, or `revert:` increment patch. The highest level

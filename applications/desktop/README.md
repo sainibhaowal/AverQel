@@ -39,6 +39,14 @@ The release workflow builds Linux `.deb` and Windows `.exe` packages. Both
 include the NeoSIS desktop runtime from the NeoSIS repository's pinned `main`
 commit recorded in the GitHub release manifest.
 
+The Linux and Windows build commands verify the generated desktop resource
+tree against NeoSIS's runtime manifest before they succeed. The check confirms
+the runtime entry point, the AverQel profile, every listed file's size and
+SHA-256 checksum, and the target platform and architecture. The Linux release
+workflow also extracts the final `.deb` and repeats this verification on the
+installer contents before upload. A missing or changed runtime therefore fails
+the release job instead of producing a successful release with NeoSIS absent.
+
 The Electron main process owns the OpenAI Codex runtime used by the OpenAI
 provider's desktop-only Codex Login tab. It checks for a signed-in ChatGPT
 account in the local Codex CLI and, when found, uses the CLI's app-server over
