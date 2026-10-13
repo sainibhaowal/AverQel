@@ -8,7 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update \
+ARG APT_REFRESH_ID=local
+RUN printf 'Refreshing OS package indexes for build %s\n' "$APT_REFRESH_ID" \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc curl libmagic1 poppler-utils libgl1 libglib2.0-0 \
         libreoffice-writer libreoffice-calc libreoffice-impress \

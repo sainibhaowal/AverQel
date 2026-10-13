@@ -96,6 +96,8 @@ jobs:
           tags: |
             backend-api-base:latest
             backend-worker-base:latest
+          build-args: |
+            APT_REFRESH_ID=${{ github.run_id }}
           cache-from: type=gha,scope=averqel-backend-base
           cache-to: type=gha,mode=max,scope=averqel-backend-base
 
@@ -143,13 +145,17 @@ jobs:
           docker image inspect "$API_IMAGE" "$WORKER_IMAGE" "$FRONTEND_IMAGE" >/dev/null
           docker run --rm --entrypoint sh "$API_IMAGE" -c 'test -x /app/scripts/start_api.sh && test -d /app/app'
           docker run --rm --entrypoint sh "$WORKER_IMAGE" -c 'test -x /app/scripts/start_worker.sh && test -d /app/app'
+          for image in "$API_IMAGE" "$WORKER_IMAGE"; do
+            livekit_version="$(docker run --rm --entrypoint /app/ops/livekit/livekit-server "$image" --version)"
+            test "$livekit_version" = "livekit-server version 1.13.9"
+          done
           docker run --rm --entrypoint node "$FRONTEND_IMAGE" --version
-          echo "Image smoke tests passed for $VERSION ($SHA)"
+          echo "Image smoke tests passed for $VERSION ($SHA) with LiveKit 1.13.9"
 
       - name: Install Trivy once
         uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241 # pinned installer commit
         with:
-          version: v0.70.0
+          version: v0.75.0
           cache: true
 
       - name: Restore Trivy vulnerability database cache
