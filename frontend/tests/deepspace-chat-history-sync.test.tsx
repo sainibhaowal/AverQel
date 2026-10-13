@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthProvider } from "../app/context/AuthContext";
 import DeepSpaceChatClient from "../app/dashboard/deepspace/_components/DeepSpaceChatClient";
@@ -215,6 +215,10 @@ vi.mock("../app/dashboard/query/_components/DeepSpaceScrollTracker", () => ({
 }));
 
 describe("DeepSpaceChatClient history sync", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     fetchWithAuthMock.mockReset();
     startMock.mockReset();
@@ -261,6 +265,28 @@ describe("DeepSpaceChatClient history sync", () => {
         options.onFinally?.();
       },
     );
+  });
+
+  it("clears the completion pulse timer when the chat unmounts", async () => {
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+    const view = renderChat({ activeConversationId: "conv-1" });
+
+    await waitForSelectedConversationReady();
+    fireEvent.click(screen.getByRole("button", { name: "Set Query" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit Query" }));
+    await waitFor(() => expect(startMock).toHaveBeenCalled());
+
+    const completionPulseTimeoutIndex = setTimeoutSpy.mock.calls.findIndex(
+      ([, delay]) => delay === 950,
+    );
+    expect(completionPulseTimeoutIndex).toBeGreaterThanOrEqual(0);
+    const completionPulseTimeout = setTimeoutSpy.mock.results[completionPulseTimeoutIndex]?.value;
+    expect(completionPulseTimeout).toBeDefined();
+
+    view.unmount();
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(completionPulseTimeout);
   });
 
   it("keeps active-response controls hidden in a new empty chat", async () => {
