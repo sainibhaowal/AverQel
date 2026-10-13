@@ -20,6 +20,7 @@ const targetByPlatform = {
 };
 const target = process.arch === "x64" ? targetByPlatform[process.platform] : undefined;
 const output = path.join(desktopRoot, ".neosis-runtime");
+const profilePatch = path.join(desktopRoot, "assets", "neosis-local-profile.patch.yml");
 
 if (target === undefined) {
   throw new Error(`NeoSIS runtime preparation supports Linux x64 and Windows x64 builds; received ${process.platform}-${process.arch}.`);
@@ -49,3 +50,14 @@ if (!existsSync(runtime)) {
 
 rmSync(output, { recursive: true, force: true });
 cpSync(runtime, path.join(output, "neosis"), { recursive: true, dereference: true });
+
+const stagedRuntime = path.join(output, "neosis");
+const requiredRuntimeFiles = [
+  path.join(stagedRuntime, "desktop-runtime.json"),
+  path.join(stagedRuntime, "node_modules", "@averqel", "neosis", "lib", "bin.js"),
+  profilePatch,
+];
+const missingRuntimeFile = requiredRuntimeFiles.find((file) => !existsSync(file));
+if (missingRuntimeFile !== undefined) {
+  throw new Error(`NeoSIS preparation did not produce a required package file: ${missingRuntimeFile}`);
+}
