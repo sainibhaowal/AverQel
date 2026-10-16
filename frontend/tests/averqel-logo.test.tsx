@@ -16,6 +16,11 @@ it("keeps the nav icon and wordmark as a close, vertically aligned lockup", () =
   expect(lockup).toHaveClass("averqel-logo", "averqel-logo--nav");
   expect(lockup).toHaveStyle({ columnGap: "0rem" });
   expect(lockup.querySelector(".averqel-logo__wordmark")).toBeInTheDocument();
+  expect(lockup.querySelector(".averqel-logo__wordmark > div")).toHaveClass(
+    "flex",
+    "items-center",
+    "leading-none",
+  );
   expect(lockup.querySelector('img[src="/brand/AverQel_Icon.svg"]')).toBeInTheDocument();
   expect(lockup.querySelector('img[src="/brand/AverQel_Icon.svg"]')).toHaveAttribute("width", "92");
   expect(lockup.querySelector('img[src="/brand/AverQel_Icon.svg"]')).toHaveAttribute(
@@ -35,17 +40,22 @@ it("uses the same tight canvas overlap for the compact footer lockup", () => {
   expect(lockup).toHaveClass("averqel-logo", "averqel-logo--footer");
   expect(lockup).toHaveStyle({ columnGap: "0rem" });
   expect(lockup.querySelector(".averqel-logo__wordmark")).toBeInTheDocument();
+  expect(lockup.querySelector(".averqel-logo__wordmark > div")).toHaveClass(
+    "flex",
+    "items-center",
+    "leading-none",
+  );
 });
 
-it("keeps the wordmark optically centered without size-specific downward offsets", () => {
-  expect(globalStyles).toContain("transform: translateY(1px);");
-  expect(globalStyles).not.toMatch(
-    /\.averqel-wordmark--nav\s+\.averqel-wordmark__svg\s*\{[^}]*transform:/,
+it("uses the correct optical centering for the footer wordmark canvas", () => {
+  expect(globalStyles).toMatch(/\.averqel-wordmark__svg\s*\{[^}]*transform:\s*translateY\(1px\);/s);
+  expect(globalStyles).toMatch(
+    /\.averqel-wordmark--footer\s+\.averqel-wordmark__svg\s*\{[^}]*transform:\s*translateY\(0\.5px\);/s,
   );
-  expect(globalStyles).not.toMatch(
-    /\.landing-trace-frame\s+\.averqel-wordmark--nav\s+\.averqel-wordmark__svg\s*\{[^}]*transform:/,
-  );
-  expect(globalStyles).not.toMatch(
-    /\.averqel-wordmark--footer\s+\.averqel-wordmark__svg\s*\{[^}]*transform:/,
-  );
+
+  const reducedMotionWordmarkRule = globalStyles.match(
+    /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.averqel-wordmark__svg\s*\{([^}]*)\}/,
+  )?.[1];
+  expect(reducedMotionWordmarkRule).toBeDefined();
+  expect(reducedMotionWordmarkRule).not.toContain("transform:");
 });

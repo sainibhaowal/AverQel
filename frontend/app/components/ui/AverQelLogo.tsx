@@ -118,6 +118,7 @@ export default function AverQelLogo({
           aria-hidden={!isWordmarkVisible}
         >
           <motion.div
+            className="flex items-center leading-none"
             initial={playIntro ? { opacity: 0, x: -12 } : false}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.4, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}

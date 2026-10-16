@@ -34,5 +34,22 @@ test("homepage renders the visual workspace hero without hydration failures", as
     expect(wordmarkBox.x - (markBox.x + markBox.width)).toBeLessThanOrEqual(-12);
   }
 
+  const footerLockup = page.locator("[data-brand-lockup].averqel-logo--footer:visible").first();
+  await expect(footerLockup).toBeVisible();
+  await footerLockup.scrollIntoViewIfNeeded();
+  const footerMark = footerLockup.locator('img[src="/brand/AverQel_Icon.svg"]');
+  const footerWordmark = footerLockup.locator(".averqel-wordmark__svg");
+  const [footerMarkBox, footerWordmarkBox] = await Promise.all([
+    footerMark.boundingBox(),
+    footerWordmark.boundingBox(),
+  ]);
+  expect(footerMarkBox).not.toBeNull();
+  expect(footerWordmarkBox).not.toBeNull();
+  if (footerMarkBox && footerWordmarkBox) {
+    const footerMarkCenter = footerMarkBox.y + footerMarkBox.height / 2;
+    const footerWordmarkCenter = footerWordmarkBox.y + footerWordmarkBox.height / 2;
+    expect(Math.abs(footerMarkCenter - footerWordmarkCenter)).toBeLessThan(1);
+  }
+
   await expect.poll(() => hydrationErrors).toEqual([]);
 });
