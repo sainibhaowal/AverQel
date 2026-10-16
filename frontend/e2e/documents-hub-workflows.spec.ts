@@ -250,7 +250,7 @@ test.describe("Documents Hub production workflows", () => {
       timeout: 10_000,
     });
     await adminPage.getByRole("button", { name: "Refresh delivery history" }).click();
-    await expect(adminPage.getByText("document.indexed")).toBeVisible();
+    await expect(adminPage.getByText("document.indexed", { exact: true })).toBeVisible();
     await expect(adminPage.getByText(/delivered · 1 attempts/)).toBeVisible();
   });
 

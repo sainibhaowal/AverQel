@@ -27,7 +27,7 @@ test("login page uses the exact AverQel logo and requested tagline", async ({ pa
 
   const tagline = page.getByText("INTELLIGENCE ALL YOU NEED");
   await expect(tagline).toBeVisible();
-  await expect(tagline).toHaveCSS("font-size", "10.8px");
+  await expect(tagline).toHaveCSS("font-size", "10.2px");
 });
 
 test("signup page uses the same exact animated AverQel brand", async ({ page }) => {

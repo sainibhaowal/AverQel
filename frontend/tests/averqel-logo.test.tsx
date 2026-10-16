@@ -40,12 +40,12 @@ it("uses the same tight canvas overlap for the compact footer lockup", () => {
 it("keeps the wordmark optically centered without size-specific downward offsets", () => {
   expect(globalStyles).toContain("transform: translateY(1px);");
   expect(globalStyles).not.toMatch(
-    /\.averqel-wordmark--nav\s+\.averqel-wordmark__svg\s*\{[^}]*transform:/s,
+    /\.averqel-wordmark--nav\s+\.averqel-wordmark__svg\s*\{[^}]*transform:/,
   );
   expect(globalStyles).not.toMatch(
-    /\.landing-trace-frame\s+\.averqel-wordmark--nav\s+\.averqel-wordmark__svg\s*\{[^}]*transform:/s,
+    /\.landing-trace-frame\s+\.averqel-wordmark--nav\s+\.averqel-wordmark__svg\s*\{[^}]*transform:/,
   );
   expect(globalStyles).not.toMatch(
-    /\.averqel-wordmark--footer\s+\.averqel-wordmark__svg\s*\{[^}]*transform:/s,
+    /\.averqel-wordmark--footer\s+\.averqel-wordmark__svg\s*\{[^}]*transform:/,
   );
 });

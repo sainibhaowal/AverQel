@@ -144,8 +144,13 @@ describe("query block actions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy table" }));
 
-    await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
-    expect(screen.getByRole("button", { name: "Copy table" })).toHaveAttribute("title", "Copied");
+    await waitFor(() => {
+      expect(execCommand).toHaveBeenCalledWith("copy");
+      expect(screen.getByRole("button", { name: "Copy table" })).toHaveAttribute(
+        "title",
+        "Copied",
+      );
+    });
   });
 
   it("copies complete Markdown-rendered tables", async () => {
