@@ -44,15 +44,14 @@ services:
       - no-new-privileges:true
 
   minio:
-    image: minio/minio:latest
-    command: ["server", "/data", "--console-address", ":9001"]
+    image: soldevelo/minio:2026.7.17
     environment:
       MINIO_ROOT_USER: isolated-minio-user
       MINIO_ROOT_PASSWORD: isolated-minio-secret-change-me
     tmpfs:
-      - /data:rw,noexec,nosuid,size=1g
+      - /bitnami/minio/data:rw,noexec,nosuid,size=1g
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 2s
       timeout: 3s
       retries: 30

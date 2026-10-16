@@ -35,6 +35,12 @@ fall back to the development stack. The isolated stack has no network
 interface, publishes no ports, stores data only in temporary container
 storage, and is removed when the command exits.
 
+The test stack pins [`soldevelo/minio:2026.7.17`](https://hub.docker.com/r/soldevelo/minio),
+an unofficial, community-maintained MinIO image published by SolDevelo. The
+image includes `mc`, which the health check runs as `mc ready local`. The
+isolated test runner pulls this image for tests; production Compose keeps its
+separate object-storage image setting.
+
 ## Commands
 
 Run the database-free unit selection directly from `backend`:
