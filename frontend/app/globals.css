@@ -963,7 +963,8 @@ html:not(.dark) .library-preview-canvas {
   height: auto;
   max-width: 100%;
   overflow: visible;
-  /* The supplied transparent canvas leaves the visible letters slightly high. */
+  /* The source artwork sits slightly high within its canvas; this small
+   * correction centers the visible letters with the icon at every size. */
   transform: translateY(1px);
   animation: averqel-q-color-sweep 9s linear infinite;
   will-change: filter;
@@ -980,20 +981,10 @@ html:not(.dark) .library-preview-canvas {
   min-height: 29px;
 }
 
-/* The landing nav uses the supplied canvas at a larger size; this small
- * correction centers the visible letters beside the emblem, not the canvas. */
-.averqel-wordmark--nav .averqel-wordmark__svg {
-  transform: translateY(2px);
-}
-
 .averqel-logo__mark-image--nav {
   /* The supplied icon canvas has wide transparent side margins. Pull the
    * visible mark back to the same left edge as the landing content. */
   transform: translateX(-8px);
-}
-
-.landing-trace-frame .averqel-wordmark--nav .averqel-wordmark__svg {
-  transform: translateY(4px);
 }
 
 /* Both supplied assets include transparent side padding. Overlap their
@@ -1016,10 +1007,6 @@ html:not(.dark) .library-preview-canvas {
 
 .averqel-wordmark--footer {
   min-height: 21px;
-}
-
-.averqel-wordmark--footer .averqel-wordmark__svg {
-  transform: translateY(7px);
 }
 
 /* Qel Connect's supplied telemetry mark uses a white primary parabola for
@@ -1181,11 +1168,6 @@ html:not(.dark) .library-preview-canvas {
     animation: none;
     filter: invert(1);
     transform: translateY(1px);
-  }
-
-  .averqel-wordmark--nav .averqel-wordmark__svg,
-  .dark .averqel-wordmark--nav .averqel-wordmark__svg {
-    transform: translateY(2px);
   }
 
   .login-exact-logo--animated {
