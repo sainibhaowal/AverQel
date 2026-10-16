@@ -160,11 +160,11 @@ The desktop build contains one Electron shell. In a packaged desktop build with
 the NeoSIS runtime present, signed-in AverQel users can switch to NeoSIS from the
 center of the dashboard header or the sidebar item directly below DeepSpace.
 Browser users, signed-out users, and the Electron development build do not see
-these controls. The desktop window has a controls-only top strip; NeoSIS shows
-its AverQel return control in the page below that strip. Returning restores the
-last AverQel page in the same window. NeoSIS starts as a private loopback service
-with an authenticated launch URL; it does not receive AverQel cookies, API
-tokens, tenant data, or server credentials. The local profile opts
+these dashboard controls. The desktop window has a controls-only top strip;
+NeoSIS shows its AverQel return control in the page below that strip. Returning
+restores the last AverQel page in the same window. NeoSIS starts as a private
+loopback service with an authenticated launch URL; it does not receive AverQel
+cookies, API tokens, tenant data, or server credentials. The local profile opts
 the sidebar Browser into NeoSIS, since the standard Web profile keeps it off by
 default. NeoSIS receives only the operating-system runtime variables it needs
 and its own `NEOSIS_HOME`; AverQel credentials and server configuration are not

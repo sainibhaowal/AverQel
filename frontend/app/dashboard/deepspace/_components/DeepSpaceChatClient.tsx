@@ -350,6 +350,7 @@ export default function DeepSpaceChatClient({
   const [creatingNewChat, setCreatingNewChat] = useState(false);
   const [historyLoadErrorId, setHistoryLoadErrorId] = useState<string | null>(null);
   const [completionPulse, setCompletionPulse] = useState(false);
+  const completionPulseTimeoutRef = useRef<number | null>(null);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
   const historyOpen = isHistoryOpen !== undefined ? isHistoryOpen : localHistoryOpen;
   const setHistoryOpen = onSetHistoryOpen !== undefined ? onSetHistoryOpen : setLocalHistoryOpen;
@@ -857,6 +858,10 @@ export default function DeepSpaceChatClient({
     return () => {
       if (typingIntervalRef.current) {
         clearInterval(typingIntervalRef.current);
+      }
+      if (completionPulseTimeoutRef.current !== null) {
+        window.clearTimeout(completionPulseTimeoutRef.current);
+        completionPulseTimeoutRef.current = null;
       }
     };
   }, []);
@@ -1455,7 +1460,13 @@ export default function DeepSpaceChatClient({
           setIsStopping(false);
           const streamConversationId = streamConversationIdRef.current;
           setCompletionPulse(true);
-          window.setTimeout(() => setCompletionPulse(false), 950);
+          if (completionPulseTimeoutRef.current !== null) {
+            window.clearTimeout(completionPulseTimeoutRef.current);
+          }
+          completionPulseTimeoutRef.current = window.setTimeout(() => {
+            completionPulseTimeoutRef.current = null;
+            setCompletionPulse(false);
+          }, 950);
           dispatch({ type: "stream_finished" });
           const conversationId = streamConversationId ?? getReadyConversationId();
           if (conversationId) {
@@ -2369,6 +2380,10 @@ export default function DeepSpaceChatClient({
         if (getReadyConversationId() !== conversationId) return;
 
         const requestId = crypto.randomUUID();
+        if (completionPulseTimeoutRef.current !== null) {
+          window.clearTimeout(completionPulseTimeoutRef.current);
+          completionPulseTimeoutRef.current = null;
+        }
         setCompletionPulse(false);
         setQuery("");
         autoFollowRef.current = true;
