@@ -116,4 +116,51 @@ describe("markdown streaming mode", () => {
     expect(screen.getByText("Monthly volume")).toBeInTheDocument();
     expect(screen.getByText("2 points")).toBeInTheDocument();
   });
+
+  it("promotes card and graph fences in Grounded Query", () => {
+    render(
+      <MarkdownRenderer
+        content={`\`\`\`card
+{"title":"Evidence","content":"Verified","tone":"success"}
+\`\`\`
+
+\`\`\`graph
+{"title":"Flow","nodes":[{"id":"a","label":"A"},{"id":"b","label":"B"}],"edges":[{"source":"a","target":"b"}]}
+\`\`\``}
+      />,
+    );
+
+    expect(screen.getByText("Evidence")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Flow" })).toBeInTheDocument();
+  });
+
+  it("promotes generic JSON card payloads in Grounded Query", () => {
+    const fence = String.fromCharCode(96).repeat(3);
+    render(
+      <MarkdownRenderer
+        content={`${fence}json
+{"title":"KPI card","content":"Verified","metrics":[{"label":"Confidence","value":"94%"}]}
+${fence}`}
+      />,
+    );
+
+    expect(screen.getByText("KPI card")).toBeInTheDocument();
+    expect(screen.getByText("94%")).toBeInTheDocument();
+  });
+
+  it("promotes generic JSON chart payloads and keeps their axis labels", () => {
+    const fence = String.fromCharCode(96).repeat(3);
+    render(
+      <MarkdownRenderer
+        content={`${fence}json
+{"title":"y = 2x + 1","chart_type":"line","equation":"y = 2x + 1","x_label":"x","y_label":"y","series":[{"label":"0","value":1},{"label":"1","value":3}]}
+${fence}`}
+      />,
+    );
+
+    expect(screen.getByText("y = 2x + 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit data" })).toBeInTheDocument();
+    expect(document.querySelector('[data-axis-label="x"]')).toHaveTextContent("x");
+    expect(document.querySelector('[data-axis-label="y"]')).toHaveTextContent("y");
+  });
 });

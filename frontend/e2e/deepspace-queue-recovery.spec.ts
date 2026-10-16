@@ -6,10 +6,11 @@ test.describe("DeepSpace queue recovery", () => {
   // The isolated Next server compiles this large route on first use.
   test.describe.configure({ timeout: 60_000 });
 
-  test("resumes the queue and attaches to its first pending prompt", async ({
+  test("resumes the queue and waits for a worker claim before attaching", async ({
     authenticatedPage,
   }) => {
     let paused = true;
+    let workerClaimed = false;
     let workerStarted = false;
     const streamBodies: Array<Record<string, unknown>> = [];
 
@@ -21,7 +22,7 @@ test.describe("DeepSpace queue recovery", () => {
           contentType: "application/json",
           body: JSON.stringify({
             paused,
-            active_request_id: paused ? null : "queued-next",
+            active_request_id: workerClaimed ? "queued-next" : null,
           }),
         });
       },
@@ -54,7 +55,7 @@ test.describe("DeepSpace queue recovery", () => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ paused: false, active_request_id: "queued-next" }),
+          body: JSON.stringify({ paused: false, active_request_id: null }),
         });
       },
     );
@@ -78,6 +79,8 @@ test.describe("DeepSpace queue recovery", () => {
     await expect(authenticatedPage.getByText("Run the first pending prompt")).toBeVisible();
     await resumeButton.click();
 
+    await expect.poll(() => streamBodies.length).toBe(0);
+    workerClaimed = true;
     await expect.poll(() => streamBodies.length).toBe(1);
     expect(streamBodies[0]).toMatchObject({
       conversation_id: conversationId,
@@ -91,6 +94,7 @@ test.describe("DeepSpace queue recovery", () => {
     authenticatedPage,
   }) => {
     let retryCreated = false;
+    let workerClaimed = false;
     const retryPayload: { current: Record<string, unknown> | null } = { current: null };
     const streamBodies: Array<Record<string, unknown>> = [];
 
@@ -102,7 +106,7 @@ test.describe("DeepSpace queue recovery", () => {
           contentType: "application/json",
           body: JSON.stringify({
             paused: false,
-            active_request_id: retryCreated ? "retry-attempt" : null,
+            active_request_id: retryCreated && workerClaimed ? "retry-attempt" : null,
           }),
         });
       },
@@ -175,6 +179,8 @@ test.describe("DeepSpace queue recovery", () => {
     await authenticatedPage.goto("/dashboard/deepspace");
     await authenticatedPage.getByRole("button", { name: "Retry prompt" }).click();
 
+    await expect.poll(() => streamBodies.length).toBe(0);
+    workerClaimed = true;
     await expect.poll(() => streamBodies.length).toBe(1);
     expect(retryPayload.current?.client_request_id).toEqual(expect.any(String));
     expect(streamBodies[0]).toMatchObject({
@@ -293,7 +299,7 @@ test.describe("DeepSpace queue recovery", () => {
         ],
       },
     ];
-    let queued = false;
+    let queuedAt: number | null = null;
     let requestPayload: Record<string, unknown> | null = null;
     let resolveStreamRequest: (() => void) | undefined;
     const streamRequestReceived = new Promise<void>((resolve) => {
@@ -314,10 +320,14 @@ test.describe("DeepSpace queue recovery", () => {
     await authenticatedPage.route(
       `**/api/v1/deepspace/chats/${conversationId}/queue/state`,
       async (route) => {
+        const workerClaimed = queuedAt !== null && Date.now() - queuedAt >= 500;
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ paused: false, active_request_id: queued ? "regen-run" : null }),
+          body: JSON.stringify({
+            paused: false,
+            active_request_id: workerClaimed ? "regen-run" : null,
+          }),
         });
       },
     );
@@ -329,20 +339,21 @@ test.describe("DeepSpace queue recovery", () => {
             string,
             unknown
           >;
-          queued = true;
+          queuedAt = Date.now();
         }
+        const workerClaimed = queuedAt !== null && Date.now() - queuedAt >= 500;
         const turn = {
           client_request_id: "regen-run",
           regenerate_message_id: assistantMessageId,
           prompt: "Summarize the saved report",
           priority: 0,
           sequence: 1,
-          status: "queued",
+          status: workerClaimed ? "running" : "queued",
         };
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify(route.request().method() === "POST" || queued ? [turn] : []),
+          body: JSON.stringify(route.request().method() === "POST" || queuedAt ? [turn] : []),
         });
       },
     );

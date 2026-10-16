@@ -203,7 +203,6 @@ services:
       - "1030"
 
   worker:
-    container_name: averqel-worker
     image: ghcr.io/sainibhaowal/averqel-worker:${AVERQEL_IMAGE_TAG:-latest}
     build:
       context: .
@@ -266,6 +265,16 @@ services:
     networks:
       - default
       - sandbox_internal
+
+  deepspace-control-worker:
+    extends:
+      service: worker
+    container_name: averqel-deepspace-control-worker
+    environment:
+      AKS_WORKER_QUEUES: deepspace_control
+      AKS_WORKER_CONCURRENCY: ${AKS_DEEPSPACE_CONTROL_WORKER_CONCURRENCY:-1}
+    mem_limit: 512m
+    cpus: 0.5
 
   # Optional, tenant-requested Python/SQL execution.  The service has no
   # public port, no host mounts, no capabilities, and only an internal
@@ -336,9 +345,19 @@ services:
       service: worker
     container_name: averqel-library-worker
     environment:
-      AKS_WORKER_QUEUES: library_uploads,media_derivatives
+      AKS_WORKER_QUEUES: library_uploads
       AKS_WORKER_CONCURRENCY: ${AKS_LIBRARY_WORKER_CONCURRENCY:-1}
-    mem_limit: 768m
+    mem_limit: 512m
+    cpus: 1.0
+
+  library-processing-worker:
+    extends:
+      service: worker
+    container_name: averqel-library-processing-worker
+    environment:
+      AKS_WORKER_QUEUES: library_extraction,media_derivatives
+      AKS_WORKER_CONCURRENCY: ${AKS_LIBRARY_PROCESSING_WORKER_CONCURRENCY:-1}
+    mem_limit: 1024m
     cpus: 1.0
 
   dataset-worker:

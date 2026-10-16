@@ -72,6 +72,14 @@ ALLOWED_RESPONSE_EVENTS = {
     "response.incomplete",
     "error",
 }
+LOCAL_ALLOWED_RESPONSE_EVENTS = {
+    "delta",
+    "thinking",
+    "tool_calls_delta",
+    "usage",
+    "completed",
+    "result",
+}
 
 
 @router.post(
@@ -210,10 +218,10 @@ async def codex_runtime_websocket(websocket: WebSocket) -> None:
                     request_id = packet.get("id") if isinstance(packet, dict) else None
                     if not isinstance(request_id, str) or len(request_id) > 64:
                         continue
-                    if packet.get("event") == "codex_infer":
+                    if packet.get("event") in {"codex_infer", "local_infer", "local_operation"}:
                         active_requests.add(request_id)
                         response_sizes[request_id] = 0
-                    elif packet.get("event") == "codex_cancel":
+                    elif packet.get("event") in {"codex_cancel", "local_cancel"}:
                         if request_id not in active_requests:
                             continue
                     await websocket.send_json(packet)
@@ -241,7 +249,7 @@ async def codex_runtime_websocket(websocket: WebSocket) -> None:
                     break
                 await websocket.send_json({"event": "pong"})
                 continue
-            if event != "codex_stream_frame":
+            if event not in {"codex_stream_frame", "local_stream_frame"}:
                 continue
             request_id = frame.get("id")
             kind = frame.get("kind")
@@ -251,7 +259,12 @@ async def codex_runtime_websocket(websocket: WebSocket) -> None:
                 continue
             data = frame.get("data")
             if kind == "event":
-                if not isinstance(data, dict) or data.get("type") not in ALLOWED_RESPONSE_EVENTS:
+                allowed_events = (
+                    LOCAL_ALLOWED_RESPONSE_EVENTS
+                    if event == "local_stream_frame"
+                    else ALLOWED_RESPONSE_EVENTS
+                )
+                if not isinstance(data, dict) or data.get("type") not in allowed_events:
                     continue
             elif kind == "error":
                 if not isinstance(data, dict) or not isinstance(data.get("message"), str):

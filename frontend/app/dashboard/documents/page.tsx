@@ -456,6 +456,10 @@ export default function DocumentsPage() {
 
   // Real-time updates via SSE
   useEffect(() => {
+    // The isolated browser harness supplies deterministic document fixtures and
+    // deliberately has no realtime service. Keep the optional SSE transport
+    // out of that run so expected isolation does not become console noise.
+    if (process.env.NEXT_PUBLIC_E2E_DISABLE_REALTIME === "1") return;
     let cancelled = false;
     let eventSource: EventSource | null = null;
 

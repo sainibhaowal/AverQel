@@ -213,7 +213,7 @@ export default function AdminCollectionDetailPage({
     try {
       const result = await enableCollectionPush(getCollectionDeviceId());
       setPushStatus(result);
-      if (result === "enabled") toast.success("Collection notifications enabled.");
+      if (result === "enabled") toast.success("Qel Connect notifications enabled.");
       else toast.error("Push notifications are not configured or permission was denied.");
     } catch {
       setPushStatus("unavailable");
@@ -417,9 +417,9 @@ export default function AdminCollectionDetailPage({
         `/collections/${collectionId}/ws-ticket?device_id=${encodeURIComponent(deviceId)}`,
       )
         .then(async (response) => {
-          if (!response.ok) throw new Error("Unable to authorize collection WebSocket");
+          if (!response.ok) throw new Error("Unable to authorize Qel Connect WebSocket");
           const payload = (await response.json()) as { ticket?: string };
-          if (!payload.ticket) throw new Error("Collection WebSocket ticket was empty");
+          if (!payload.ticket) throw new Error("Qel Connect WebSocket ticket was empty");
           wsTicketRef.current = payload.ticket;
           connectWebSocketRef.current?.();
         })
@@ -714,7 +714,7 @@ export default function AdminCollectionDetailPage({
           return;
         }
         throw new Error(
-          await extractApiErrorMessage(collRes, "Failed to load collection details."),
+          await extractApiErrorMessage(collRes, "Failed to load Qel Connect details."),
         );
       }
 
@@ -747,7 +747,7 @@ export default function AdminCollectionDetailPage({
       }
     } catch (error) {
       console.error(error);
-      setErrorMessage(error instanceof Error ? error.message : "Failed to load collection.");
+      setErrorMessage(error instanceof Error ? error.message : "Failed to load Qel Connect.");
     } finally {
       if (showLoadingOverlay) {
         setLoading(false);
@@ -882,14 +882,14 @@ export default function AdminCollectionDetailPage({
         }),
       });
       if (!response.ok) throw new Error("Report failed");
-      toast.success("Message reported to the collection owner.");
+      toast.success("Message reported to the Qel Connect owner.");
     } catch {
       toast.error("The message could not be reported.");
     }
   };
 
   const handleBlockMember = async (message: any) => {
-    if (!(await averqelConfirm("Block this member from sending messages in this collection?"))) {
+    if (!(await averqelConfirm("Block this member from sending messages in Qel Connect?"))) {
       return;
     }
     try {
@@ -963,7 +963,7 @@ export default function AdminCollectionDetailPage({
   };
 
   const handleRemoveDocument = async (documentId: string) => {
-    if (!(await averqelConfirm("Remove this document from the shared collection?"))) return;
+    if (!(await averqelConfirm("Remove this document from the shared Qel Connect space?"))) return;
     setSavingDocs(true);
     try {
       const res = await fetchWithAuth(`/collections/${collectionId}/documents`, {
@@ -998,7 +998,7 @@ export default function AdminCollectionDetailPage({
         throw new Error(await extractApiErrorMessage(res, "Failed to send request."));
       }
       setConnectCode("");
-      toast.success("Connection request sent.");
+      toast.success("Qel Connect request sent.");
       await loadCollectionData();
     } catch (error) {
       console.error(error);
@@ -1118,7 +1118,11 @@ export default function AdminCollectionDetailPage({
   // This owner-only action remains available to the parent collection control surface.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteCollection = async () => {
-    if (!(await averqelConfirm("Are you sure you want to delete this collection for all members?")))
+    if (
+      !(await averqelConfirm(
+        "Are you sure you want to delete this Qel Connect space for all members?",
+      ))
+    )
       return;
     setDeletingCollection(true);
     try {
@@ -1126,9 +1130,9 @@ export default function AdminCollectionDetailPage({
         method: "DELETE",
       });
       if (!res.ok) {
-        throw new Error(await extractApiErrorMessage(res, "Failed to delete collection."));
+        throw new Error(await extractApiErrorMessage(res, "Failed to delete Qel Connect."));
       }
-      toast.success("Collection successfully deleted.");
+      toast.success("Qel Connect successfully deleted.");
       if (onCollectionDeleted) {
         onCollectionDeleted();
       } else {
@@ -1136,7 +1140,7 @@ export default function AdminCollectionDetailPage({
       }
     } catch (error) {
       console.error(error);
-      const message = error instanceof Error ? error.message : "Failed to delete collection.";
+      const message = error instanceof Error ? error.message : "Failed to delete Qel Connect.";
       setErrorMessage(message);
       toast.error(message);
       setDeletingCollection(false);
@@ -1144,7 +1148,7 @@ export default function AdminCollectionDetailPage({
   };
 
   const handleLeaveCollection = async () => {
-    if (!(await averqelConfirm("Leave this collection bridge?"))) return;
+    if (!(await averqelConfirm("Leave this Qel Connect bridge?"))) return;
     setDeletingCollection(true);
     try {
       const res = await fetchWithAuth(`/collections/${collectionId}/permissions`, {
@@ -1152,9 +1156,9 @@ export default function AdminCollectionDetailPage({
         body: JSON.stringify({ user_ids: [] }),
       });
       if (!res.ok) {
-        throw new Error(await extractApiErrorMessage(res, "Failed to leave collection."));
+        throw new Error(await extractApiErrorMessage(res, "Failed to leave Qel Connect."));
       }
-      toast.success("Successfully left the collection.");
+      toast.success("Successfully left Qel Connect.");
       if (onCollectionDeleted) {
         onCollectionDeleted();
       } else {
@@ -1162,7 +1166,7 @@ export default function AdminCollectionDetailPage({
       }
     } catch (error) {
       console.error(error);
-      const message = error instanceof Error ? error.message : "Failed to leave collection.";
+      const message = error instanceof Error ? error.message : "Failed to leave Qel Connect.";
       setErrorMessage(message);
       toast.error(message);
       setDeletingCollection(false);
@@ -1177,7 +1181,7 @@ export default function AdminCollectionDetailPage({
         body: JSON.stringify({ action }),
       });
       if (!res.ok) throw new Error("Failed to respond to invitation.");
-      toast.success(action === "approve" ? "Collection bridge connected." : "Invitation denied.");
+      toast.success(action === "approve" ? "Qel Connect bridge connected." : "Invitation denied.");
       if (action === "approve") {
         await loadCollectionData();
       } else {
@@ -1197,7 +1201,7 @@ export default function AdminCollectionDetailPage({
   };
 
   const handleRemoveMember = async (userId: string, email: string | null | undefined) => {
-    if (!(await averqelConfirm(`Remove ${email || "this member"} from the collection?`))) return;
+    if (!(await averqelConfirm(`Remove ${email || "this member"} from Qel Connect?`))) return;
     setSavingPermissions(true);
     try {
       const res = await fetchWithAuth(`/collections/${collectionId}/permissions`, {
@@ -1446,18 +1450,18 @@ export default function AdminCollectionDetailPage({
               }`}
               onClick={() => setActiveDrawer("members")}
             >
-              Bridge Members
+              Qel Connect Members
             </Link>
           </div>
           {isConnectedMember && (
             <button
               type="button"
-              aria-label="Leave collection"
+              aria-label="Leave Qel Connect"
               onClick={() => void handleLeaveCollection()}
               disabled={deletingCollection}
               className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[10px] font-black tracking-wider text-red-400 uppercase transition hover:bg-red-500/10 disabled:opacity-50"
             >
-              Leave Collection
+              Leave Qel Connect
             </button>
           )}
         </div>
@@ -1595,7 +1599,7 @@ export default function AdminCollectionDetailPage({
               <span className="text-xl">📨</span>
               <div className="space-y-1">
                 <h4 className="text-foreground/80 text-xs font-black tracking-widest uppercase">
-                  Join Shared Bridge Connection?
+                  Join Shared Qel Connect?
                 </h4>
                 <p className="text-[11px] leading-relaxed text-slate-500">
                   You have been invited to connect in this bridge workspace. Approve to view shared
@@ -2055,7 +2059,7 @@ export default function AdminCollectionDetailPage({
             {/* 2. Bridge Inventory */}
             <div className="space-y-3.5">
               <h4 className="text-slate-550 px-1 text-[9px] font-bold tracking-widest uppercase dark:text-slate-500">
-                Bridge Inventory
+                Qel Connect documents
               </h4>
               <div className="space-y-2">
                 {collectionDocs.length > 0 ? (
@@ -2124,7 +2128,7 @@ export default function AdminCollectionDetailPage({
             <div className="flex items-center gap-2">
               <Users size={16} className="text-amber-500" />
               <h3 className="text-foreground/80 text-xs font-black tracking-wider uppercase">
-                Bridge Members
+                Qel Connect Members
               </h3>
             </div>
             <button
@@ -2152,7 +2156,7 @@ export default function AdminCollectionDetailPage({
                     <input
                       value={connectCode}
                       onChange={(e) => setConnectCode(e.target.value.toUpperCase())}
-                      placeholder="Connection ID"
+                      placeholder="Qel Connect ID"
                       className="bg-background border-foreground/10 text-foreground flex-1 rounded-xl border px-3 py-2.5 text-xs uppercase transition outline-none focus:border-amber-500/30 dark:border-white/5"
                     />
                     <button
@@ -2331,7 +2335,7 @@ export default function AdminCollectionDetailPage({
                 </div>
                 <div className="space-y-1.5">
                   <h3 className="text-foreground text-center text-sm font-black tracking-widest uppercase">
-                    Client-Encrypted Collection Bridge
+                    Client-Encrypted Qel Connect Bridge
                   </h3>
                   <p className="text-slate-550 text-center text-[11px] font-medium dark:text-slate-400">
                     AES-GCM client encryption is active for chat payloads
@@ -2343,8 +2347,8 @@ export default function AdminCollectionDetailPage({
                     <span className="mt-0.5 text-xs text-emerald-500">🔑</span>
                     <p>
                       <strong className="text-foreground">Local key derivation:</strong> The current
-                      browser client derives a shared chat key from the collection ID and connection
-                      code.
+                      browser client derives a shared chat key from the Qel Connect ID and
+                      connection code.
                     </p>
                   </div>
                   <div className="flex items-start gap-2.5">
@@ -2382,7 +2386,7 @@ export default function AdminCollectionDetailPage({
                 <div className="border-foreground/5 bg-foreground/[0.02] w-full rounded-2xl border p-4 text-left dark:border-white/5">
                   <p className="text-foreground text-[11px] font-bold">Browser notifications</p>
                   <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                    Receive collection activity when this browser is offline. Delivery uses your
+                    Receive Qel Connect activity when this browser is offline. Delivery uses your
                     deployment&apos;s configured VAPID push service.
                   </p>
                   <button

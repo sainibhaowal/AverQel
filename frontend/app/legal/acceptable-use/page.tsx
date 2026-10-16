@@ -10,8 +10,8 @@ export default function AcceptableUsePage() {
     >
       <PolicySection title="Allowed use">
         <p>
-          Use AverQel for lawful documents, research, analysis, drafting, private work, and
-          collection sharing where you have the necessary rights and permissions.
+          Use AverQel for lawful documents, research, analysis, drafting, private work, and Qel
+          Connect sharing where you have the necessary rights and permissions.
         </p>
       </PolicySection>
       <PolicySection title="Not allowed">

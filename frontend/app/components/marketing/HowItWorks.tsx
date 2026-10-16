@@ -72,11 +72,11 @@ const stages = [
     step: "04",
     title: "Organize and share with deliberate scope",
     description:
-      "Organize documents into collections and share them through invitation and approval workflows. You choose exactly which documents to include, and owners keep control of what is visible.",
+      "Organize documents into Qel Connect spaces and share them through invitation and approval workflows. You choose exactly which documents to include, and owners keep control of what is visible.",
     icon: Users,
     accent: "emerald",
     details: [
-      { icon: FolderLock, text: "Invite by collection code, approve or deny requests" },
+      { icon: FolderLock, text: "Invite by Qel Connect code, approve or deny requests" },
       { icon: FileText, text: "Selective document inclusion, never forced global sharing" },
       { icon: UserCheck, text: "Owner and shared roles with distinct permissions" },
     ],

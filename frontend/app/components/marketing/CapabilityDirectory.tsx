@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import type { ComponentType } from "react";
 import {
   ArrowRight,
   CalendarClock,
   Cable,
   FileStack,
-  FolderKanban,
   Globe2,
   HardDrive,
   Layers3,
@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   UserRound,
 } from "lucide-react";
+import QelConnectMark from "../ui/QelConnectMark";
 import { useLandingSectionMotion } from "./landingMotion";
 import {
   landingContentClass,
@@ -31,7 +32,7 @@ import {
 
 type Capability = {
   group: "Knowledge" | "AI and work" | "Account and support";
-  icon: typeof FileStack;
+  icon: ComponentType<{ size?: number; className?: string }>;
   title: string;
   description: string;
   href: string;
@@ -62,10 +63,10 @@ const capabilities: Capability[] = [
   },
   {
     group: "Knowledge",
-    icon: FolderKanban,
-    title: "Collections",
+    icon: QelConnectMark,
+    title: "Qel Connect",
     description:
-      "Keep project sources together and collaborate through explicit collection membership. Collections are in experimental beta.",
+      "Keep project sources together and collaborate through explicit Qel Connect membership. Qel Connect is in experimental beta.",
     href: "/documentation/collections-sharing",
     status: "Experimental beta",
     accent: "emerald",
@@ -176,7 +177,8 @@ const capabilityGroups = [
   {
     id: "knowledge",
     title: "Organize and find knowledge",
-    description: "Bring sources together, retrieve evidence, and work with scoped collections.",
+    description:
+      "Bring sources together, retrieve evidence, and work with scoped Qel Connect spaces.",
     name: "Knowledge",
   },
   {

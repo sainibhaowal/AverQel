@@ -1,0 +1,72 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="ds-pri-download" x1="15%" y1="0%" x2="85%" y2="100%">
+        <stop offset="0%" stop-color="#FFFFFF" />
+        <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.88" />
+      </linearGradient>
+      <linearGradient id="ds-sec-download" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#94A3B8" />
+        <stop offset="100%" stop-color="#1E293B" />
+      </linearGradient>
+      <linearGradient id="ds-acc-download" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FF6B1A" />
+        <stop offset="100%" stop-color="#FFB800" />
+      </linearGradient>
+      <filter id="ds-glow-download" x="-25%" y="-25%" width="150%" height="150%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#FF6B1A" flood-opacity="0.42" />
+            </filter>
+    </defs>
+
+        <g transform="rotate(28 60 60)">
+          <!-- Primary Parabolic Dish Reflector -->
+          <path
+            d="M 20 74 A 44 44 0 0 0 100 74"
+            stroke="url(#ds-pri-download)"
+            stroke-width="6.9"
+            stroke-linecap="round"
+            fill="none"
+          />
+
+          <!-- Focal Receiver Struts -->
+          <line
+            x1="34"
+            y1="84"
+            x2="60"
+            y2="48"
+            stroke="url(#ds-sec-download)"
+            stroke-width="3.9"
+            stroke-linecap="round"
+          />
+          <line
+            x1="86"
+            y1="84"
+            x2="60"
+            y2="48"
+            stroke="url(#ds-sec-download)"
+            stroke-width="3.9"
+            stroke-linecap="round"
+          />
+
+          <!-- Expanding Deep-Space Wavefront Arcs -->
+          <path
+            d="M 42 34 A 28 28 0 0 1 78 34"
+            stroke="url(#ds-acc-download)"
+            stroke-width="5.1"
+            stroke-linecap="round"
+            fill="none"
+            filter="url(#ds-glow-download)"
+          />
+          <path
+            d="M 30 22 A 44 44 0 0 1 90 22"
+            stroke="url(#ds-acc-download)"
+            stroke-width="4.2"
+            stroke-linecap="round"
+            stroke-opacity="0.7"
+            fill="none"
+          />
+
+          <!-- Focal Point Apex Node -->
+          <circle cx="60" cy="48" r="5.1" fill="url(#ds-acc-download)" filter="url(#ds-glow-download)" />
+          <circle cx="60" cy="48" r="2.1" fill="#FFFFFF" />
+        </g>
+      </svg>

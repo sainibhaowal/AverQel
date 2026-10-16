@@ -201,7 +201,7 @@ describe("collection detail page", () => {
       "href",
       "/dashboard/collections/collection-1?section=documents",
     );
-    expect(screen.getByRole("link", { name: /^bridge members$/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /^qel connect members$/i })).toHaveAttribute(
       "href",
       "/dashboard/collections/collection-1?section=access",
     );
@@ -240,7 +240,7 @@ describe("collection detail page", () => {
 
     render(<AdminCollectionDetailPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /leave collection/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /leave qel connect/i }));
 
     await waitFor(() => {
       expect(fetchWithAuthMock).toHaveBeenCalledWith("/collections/collection-1/permissions", {

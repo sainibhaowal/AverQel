@@ -42,7 +42,7 @@ describe("provider logos", () => {
 
     for (const [providerType, definition] of Object.entries(providerLogoRegistry)) {
       if (definition.kind === "asset") {
-        expect(definition.src, providerType).toMatch(/^\/(providers\/|logo_icon\.svg$)/);
+        expect(definition.src, providerType).toMatch(/^\/(providers\/|brand\/AverQel_Icon\.svg$)/);
         expect(
           existsSync(resolve(process.cwd(), "public", definition.src.slice(1))),
           providerType,

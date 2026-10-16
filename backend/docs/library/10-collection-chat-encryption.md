@@ -1,4 +1,4 @@
-# Collection chat encryption: implemented custody boundaries
+# Qel Connect chat encryption: implemented custody boundaries
 
 **Audience:** engineers, security reviewers, and deployment operators. This is
 an implementation note, not a cryptographic certification or a promise that a
@@ -6,14 +6,14 @@ hosted deployment has enabled every mode.
 
 ## Summary
 
-The current collection chat implementation has two distinct encryption
+The current Qel Connect chat implementation has two distinct encryption
 mechanisms. Neither should be marketed as zero-knowledge or as audited
 Signal/libsignal end-to-end encryption.
 
 1. The browser client uses Web Crypto AES-GCM for chat payloads and media. It
-   derives a key from the collection ID and connection code with PBKDF2-SHA256
-   (100,000 iterations). The collection API returns the connection code to
-   authorized collection clients. Therefore, the server possesses the inputs
+   derives a key from the Qel Connect ID and connection code with PBKDF2-SHA256
+   (100,000 iterations). The Qel Connect API returns the connection code to
+   authorized Qel Connect clients. Therefore, the server possesses the inputs
    needed to derive this key; the current design does not establish a
    server-blind key boundary.
 2. An optional backend sealed-chat mode stores a sealed message envelope at
@@ -30,8 +30,8 @@ shared documents.
 
 `frontend/lib/crypto.ts` implements AES-GCM message and file encryption,
 password-derived backup encryption, and a deterministic safety fingerprint.
-The collection detail client also caches chat state locally. The connection
-code is returned by the collection API, so these features must not be described
+The Qel Connect detail client also caches chat state locally. The connection
+code is returned by the Qel Connect API, so these features must not be described
 as protection from server access. A safety fingerprint is not a verified
 identity-key protocol and does not authenticate a member against active
 interception. Local cache cleanup does not revoke copies, screenshots, browser

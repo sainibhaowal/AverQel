@@ -5,29 +5,29 @@ export default function GettingStartedPage() {
   return (
     <DocsShell
       title="Getting started"
-      intro="Start with the workspace basics, then choose the product area that matches the work you want to do. Provider and optional-service setup depends on your deployment."
+      intro="New accounts can take a short welcome tour after signing in. Choose a profile name and appearance, connect a provider if you want, or skip the tour and start using the workspace."
     >
       <DocsCards
         items={[
           {
-            title: "1. Secure your account",
-            body: "Use a strong sign-in password and configure two-factor authentication if it is available to your account.",
-          },
-          {
-            title: "2. Add source documents",
+            title: "1. Add source documents",
             body: "Open Documents Hub, upload a supported file, and wait for scanning, extraction, and indexing to finish.",
           },
           {
-            title: "3. Ask a grounded question",
+            title: "2. Ask a grounded question",
             body: "Use Query for focused questions about sources you can access, then inspect the returned citations and source context.",
           },
           {
-            title: "4. Continue work in DeepSpace",
+            title: "3. Continue work in DeepSpace",
             body: "Use DeepSpace for broader research, drafting, analysis, or ongoing conversation. Its working Library is separate from Documents Hub.",
           },
           {
-            title: "5. Connect optional tools",
+            title: "4. Connect optional tools",
             body: "Set up an AI provider or supported MCP connection only when needed and when your account and deployment expose the required controls.",
+          },
+          {
+            title: "5. Personalize your profile",
+            body: "Open the account menu to update your display name and avatar, review account status and two-factor authentication, or open provider settings.",
           },
           {
             title: "6. Get help",
@@ -64,6 +64,24 @@ export default function GettingStartedPage() {
           settings. Adding a provider does not by itself guarantee that a model is reachable or
           enabled for every feature; use the available status or test controls and contact your
           administrator if setup is restricted.
+        </p>
+        <p>
+          The welcome flow can save a named provider connection after discovering and selecting a
+          chat model. Cloud provider keys are handled by the existing encrypted credential store.
+          Ollama and LM Studio must be reachable from the configured AverQel API service. For a
+          hosted AverQel web account, a URL such as localhost points to that server, not to your
+          browser computer. ChatGPT or Codex CLI sign-in is available through AverQel Desktop and
+          its provider settings.
+        </p>
+      </DocsSection>
+      <DocsSection title="Open NeoSIS from the desktop app">
+        <p>
+          The packaged Linux and Windows desktop apps show a NeoSIS switch in the center of the
+          signed-in dashboard header and directly below DeepSpace in the sidebar when the NeoSIS
+          runtime is included. Select either control to open NeoSIS in the same app window. The
+          AverQel-to-NeoSIS switches are not shown in a browser, while signed out, or in the desktop
+          development build. The window&apos;s top strip contains only minimize, maximize, and close
+          controls. Use the AverQel control in the NeoSIS page to return to the last AverQel page.
         </p>
       </DocsSection>
     </DocsShell>

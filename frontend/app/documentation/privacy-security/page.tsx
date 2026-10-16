@@ -70,15 +70,15 @@ export default function PrivacySecurityPage() {
           controls. Use a provider approved for the data you intend to process.
         </p>
       </DocsSection>
-      <DocsSection title="Collections and encryption">
+      <DocsSection title="Qel Connect and encryption">
         <p>
-          Collection chat includes client encryption helpers and an optional server-mediated sealed
-          storage mode. The collection connection code is available through the API, and the sealed
-          mode can be opened by the API for authorized members. Do not treat collection chat as
-          zero-knowledge or server-blind end-to-end encryption. Collection documents are processed
+          Qel Connect chat includes client encryption helpers and an optional server-mediated sealed
+          storage mode. The Qel Connect connection code is available through the API, and the sealed
+          mode can be opened by the API for authorized members. Do not treat Qel Connect chat as
+          zero-knowledge or server-blind end-to-end encryption. Qel Connect documents are processed
           server-side. See the{" "}
           <a className="text-primary underline" href="/documentation/collections-sharing">
-            Collections guide
+            Qel Connect guide
           </a>{" "}
           for details.
         </p>
@@ -86,7 +86,7 @@ export default function PrivacySecurityPage() {
       <DocsSection title="Admin and operational boundaries">
         <p>
           Administrative access is role- and route-specific. Some privileged workflows intentionally
-          allow authorized staff to review support tickets, feedback, collection reports, or
+          allow authorized staff to review support tickets, feedback, Qel Connect reports, or
           operational metadata. This is not a promise that administrators can never access user
           content, nor does it provide a general-purpose browser for every user&apos;s private data.
           Sensitive access and actions should follow the deployment&apos;s audit and privacy policy.

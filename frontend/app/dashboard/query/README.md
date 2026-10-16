@@ -6,8 +6,9 @@ content path.
 ## Primary surfaces
 
 - `message.content`: the canonical Markdown answer body rendered by `MarkdownRenderer`
-- `message.blocks`: fallback table/chart/diagram payloads rendered only when the same content is not
-  already present in Markdown
+- `message.blocks`: fallback table/chart/card/diagram payloads rendered only when the same content is not
+  already present in Markdown; Query keeps metadata-only legacy cards out of the answer surface and
+  promotes cards with explicit sources, actions, images, or metrics
 - `message.artifacts` and `message.files`: generated files/artifacts rendered by `ArtifactsPanel`
 - `message.statusHistory`: lifecycle entries rendered by `StatusHistoryPanel`
 - `message.trace`: analytical reasoning trace rendered by `ReasoningTrace`
@@ -16,14 +17,42 @@ content path.
 ## Integration rules
 
 - Reducer state in `_lib/query-thread-reducer.ts` is the source of truth for streamed query state.
-- Markdown owns text, headings, lists, tables, math, images, code fences, and Mermaid fences.
+- Markdown owns text, headings, lists, tables, math, images, code fences, rich `chart`, `card`,
+  `graph`, and `gallery` fences, and Mermaid fences. Structured cards render with safe Markdown,
+  source links, metrics, copy, and download actions. A `gantt` or `mmd` fence label is normalized
+  to the Mermaid renderer for diagram preview and export.
+- Charts use the shared SVG renderer for line, bar, area, scatter, and pie views. Completed charts
+  can be edited and recalculated from a safe equation language, downloaded as JSON, and saved as
+  revisioned visual-block message versions. In DeepSpace, recalculation keeps the visual selected
+  and refreshes the editable JSON source from the same current values; a failed revision save leaves
+  the chart editor open for retry. Named multi-series charts support per-series colors, visibility,
+  left/right axes, annotations, and interactive legends. A reload rehydrates the latest saved
+  revision from message metadata.
 - Structured output stays additive and must not duplicate content already rendered from Markdown.
 - Explicit `chart` fences are promoted directly by `MarkdownRenderer`; there is no second streaming
   document AST or Markdown parser.
 - Files/artifacts remain visible across streaming completion and persisted history replay.
 - Status timeline entries are timestamped phase records with stable stage codes such as
   `context`, `retrieval`, `grounding`, `trace`, `synthesis`, and `followups`.
-- `graph_json` stays on `GraphBlock`; Mermaid stays on the Mermaid renderer path.
+- `graph_json` stays on the interactive `GraphBlock` canvas. It supports node movement/resizing,
+  connectors, zoom, grouping, alignment, freehand paths, undo/redo, copy, JSON export, and
+  revisioned persistence through the DeepSpace visual-block API. Mermaid stays on the Mermaid
+  renderer path and has an in-place source editor plus structured class/UML and Gantt controls.
+  The graph canvas supports grouping/alignment and UML node resize; Gantt tasks expose date,
+  duration, and dependency controls. These are structured browser editors, not a full general
+  purpose Excalidraw-style drawing application. The graph canvas can import/export DeepSpace
+  `.draw.json` files; Mermaid source can be downloaded as `.mmd`. These source formats are usable
+  inside the chat and do not require opening another editor. `gallery` has field-level title,
+  image URL, alt-text, caption, and link editing, plus add/remove/reorder controls. In DeepSpace,
+  raster images are copied into private conversation storage for preview and export. Temporary
+  copies expire after 30 days unless the user selects **Save image to Library**; they stay hidden
+  from the regular Library listing and are removed by scheduled storage cleanup. A missing or
+  invalid source shows a fallback without failing the chat. Visual-block revisions update the
+  saved chat Markdown immediately and the active note when that origin is available. Editable
+  visual artifacts store canonical JSON source as Library file versions and can rehydrate chart,
+  card, diagram, and gallery blocks. Older generated binary/media artifacts remain immutable
+  snapshots. Visual blocks offer JSON, SVG, PNG, and PDF export. Gallery exports embed owned
+  raster images where available; unavailable or over-limit images show an explicit placeholder.
 - Retrieval depth is adaptive. The query UI no longer exposes a manual Top K slider; the
   backend chooses retrieval/rerank/answer breadth per query and reports the effective plan
   through status history and reasoning trace metadata.
@@ -38,6 +67,17 @@ load a page of rows at a time instead of transferring the complete file into the
 rendering fails, the viewer shows an error and keeps any available format preview usable.
 
 ## Backend contract
+
+## Canonical visual documents and artifacts
+
+Visual blocks carry a stable `block_id`, `schema_version`, `revision`, source
+Markdown/Mermaid, asset references, and bounded history metadata. DeepSpace note
+edits address the same block ID through the conversation visual-block endpoint.
+The Library `visual-artifacts` endpoint stores editable JSON source as a normal
+versioned file, so the existing version list, restore, and export paths apply.
+Import remote images through the authenticated Library asset-import endpoint
+before PNG or PDF export; the server validates status and MIME type and stores
+an owned copy for reliable rendering.
 
 The backend persists and/or streams:
 

@@ -7,7 +7,8 @@ is MIT licensed; its license notice is included beside these assets in
 owners and are used only to identify the corresponding integrations; AverQel
 is not endorsed by or affiliated with those providers.
 
-Groq and Tavily are shown with plain text marks because their published brand
-terms restrict logo use in application interfaces without permission. The
-OpenAI-compatible custom endpoint uses a neutral connection symbol because it
-does not have one vendor brand.
+Groq and Tavily use theme-aware CPU and search symbols with their provider names
+shown as text. Their vendor artwork is not included because the published
+brand terms restrict logo use in application interfaces without permission.
+The OpenAI-compatible custom endpoint uses a neutral connection symbol because
+it does not have one vendor brand.

@@ -53,6 +53,15 @@ def test_google_builds_native_function_declarations() -> None:
     assert payload["systemInstruction"]["parts"][0]["text"] == "Use tools when needed."
 
 
+def test_google_deduplicates_function_declarations_before_transport() -> None:
+    duplicate = {**TOOL, "function": {**TOOL["function"], "description": "duplicate"}}
+
+    payload = GoogleProvider._build_payload(_request(tools=[TOOL, duplicate]))
+
+    declarations = payload["tools"][0]["functionDeclarations"]
+    assert [item["name"] for item in declarations] == ["web_search"]
+
+
 @pytest.mark.unit_no_db
 def test_google_converts_attached_image_to_mime_aware_inline_data() -> None:
     payload = GoogleProvider._build_payload(_request(images=["data:image/png;base64,iVBORw0KGgo="]))
@@ -220,6 +229,14 @@ def test_anthropic_translates_tools_and_tool_history() -> None:
     assert messages[2]["content"][0]["type"] == "tool_result"
     assert messages[2]["content"][0]["tool_use_id"] == "toolu-1"
     assert AnthropicProvider._tools_payload(request)[0]["input_schema"]["required"] == ["query"]
+
+
+def test_anthropic_deduplicates_function_definitions_before_transport() -> None:
+    duplicate = {**TOOL, "function": {**TOOL["function"], "description": "duplicate"}}
+
+    tools = AnthropicProvider._tools_payload(_request(tools=[TOOL, duplicate]))
+
+    assert [item["name"] for item in tools] == ["web_search"]
 
 
 @pytest.mark.unit_no_db

@@ -29,9 +29,9 @@ export default function SecurityPage() {
 
       <PolicySection title="Isolation and service boundaries">
         <p>
-          Documents, chats, queries, collections, memories, and provider configurations are scoped
-          by tenant, user, workspace, ownership, and role checks. Provider secrets are encrypted and
-          masked in ordinary views.
+          Documents, chats, queries, Qel Connect spaces, memories, and provider configurations are
+          scoped by tenant, user, workspace, ownership, and role checks. Provider secrets are
+          encrypted and masked in ordinary views.
         </p>
         <p>
           AverQel is a server-side SaaS, which means the platform hosts and processes product data.

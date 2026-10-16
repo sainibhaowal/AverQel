@@ -7,6 +7,7 @@ import DeepSpaceChatClient from "../app/dashboard/deepspace/_components/DeepSpac
 
 const fetchWithAuthMock = vi.fn();
 const startMock = vi.fn();
+const cancelMock = vi.fn();
 const queueEventHandler: {
   current: ((event: { data?: Record<string, unknown> }) => void) | null;
 } = { current: null };
@@ -56,10 +57,15 @@ vi.mock("@/lib/realtime", () => ({
 vi.mock("../app/dashboard/deepspace/_hooks/useDeepSpaceStream", () => ({
   useDeepSpaceStream: (options: {
     onEvent: (event: Record<string, unknown>) => void;
+    onTransportError?: (error: { code: string; message: string }) => void;
     onFinally?: () => void;
+    onUserCancel?: () => void;
   }) => ({
     start: (...args: unknown[]) => startMock(options, ...args),
-    cancel: vi.fn(),
+    cancel: (...args: unknown[]) => {
+      cancelMock(...args);
+      options.onUserCancel?.();
+    },
     detach: vi.fn(),
     resume: vi.fn(),
   }),
@@ -68,8 +74,11 @@ vi.mock("../app/dashboard/deepspace/_hooks/useDeepSpaceStream", () => ({
 vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
   default: ({
     query,
+    isStreaming = false,
+    stopping = false,
     onQueryChange,
     onSubmit,
+    onStop,
     showActiveResponseControls = false,
     queuedTurns = [],
     editingQueuedTurnId = null,
@@ -79,10 +88,14 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
     queuePaused = false,
     onResumeQueue,
     onRetryFailedTurn,
+    onSteerQueuedTurn,
   }: {
     query: string;
+    isStreaming?: boolean;
+    stopping?: boolean;
     onQueryChange: (value: string) => void;
     onSubmit: () => void;
+    onStop: () => void;
     showActiveResponseControls?: boolean;
     queuedTurns?: Array<{ clientRequestId: string; prompt: string; status?: string }>;
     editingQueuedTurnId?: string | null;
@@ -92,6 +105,7 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
     queuePaused?: boolean;
     onResumeQueue?: () => void;
     onRetryFailedTurn?: (requestId: string) => void;
+    onSteerQueuedTurn?: (requestId: string) => void;
   }) => (
     <div>
       <button type="button" onClick={() => onQueryChange("hi")}>
@@ -105,6 +119,16 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
       <button type="button" onClick={onSubmit}>
         Submit Query
       </button>
+      {isStreaming ? (
+        <button
+          type="button"
+          onClick={onStop}
+          disabled={stopping}
+          aria-label={stopping ? "Stopping response" : "Stop response"}
+        >
+          {stopping ? "Stopping response" : "Stop response"}
+        </button>
+      ) : null}
       <span data-testid="active-response-controls">{String(showActiveResponseControls)}</span>
       {editingQueuedTurnId ? (
         <>
@@ -128,9 +152,14 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
             Retry {turn.clientRequestId}
           </button>
           {turn.status === "queued" ? (
-            <button type="button" onClick={() => onEditQueuedTurn?.(turn.clientRequestId)}>
-              Edit {turn.clientRequestId}
-            </button>
+            <>
+              <button type="button" onClick={() => onEditQueuedTurn?.(turn.clientRequestId)}>
+                Edit {turn.clientRequestId}
+              </button>
+              <button type="button" onClick={() => onSteerQueuedTurn?.(turn.clientRequestId)}>
+                Steer {turn.clientRequestId}
+              </button>
+            </>
           ) : null}
         </span>
       ))}
@@ -150,6 +179,7 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceThread", () => ({
       role: string;
       content: string;
       id: string;
+      error?: { message?: string } | null;
       activeVersionIndex?: number;
       versionCount?: number;
       versions?: Array<{ id: string; version_index: number }>;
@@ -161,6 +191,10 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceThread", () => ({
   }) => (
     <div data-testid="deepspace-thread" data-queued-assistant={queuedAssistantId ?? ""}>
       {messages.map((message) => `${message.role}:${message.content}`).join("|")}
+      {messages
+        .map((message) => message.error?.message ?? "")
+        .filter(Boolean)
+        .join("|")}
       {messages
         .filter((message) => message.role === "assistant" && (message.versionCount ?? 0) > 1)
         .map((message) => {
@@ -218,6 +252,7 @@ describe("DeepSpaceChatClient history sync", () => {
   beforeEach(() => {
     fetchWithAuthMock.mockReset();
     startMock.mockReset();
+    cancelMock.mockReset();
     queueEventHandler.current = null;
 
     fetchWithAuthMock.mockImplementation(async (url: string) => {
@@ -279,6 +314,152 @@ describe("DeepSpaceChatClient history sync", () => {
     });
 
     expect(screen.queryByRole("img", { name: "DeepSpace logo" })).not.toBeInTheDocument();
+  });
+
+  it("stops queue and history follow-up requests when the selected conversation is gone", async () => {
+    const onConversationUnavailable = vi.fn();
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url === "/deepspace/chats/missing-conversation/messages") {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      throw new Error(`Unexpected request for a missing conversation: ${url}`);
+    });
+
+    renderChat({
+      activeConversationId: "missing-conversation",
+      onConversationUnavailable,
+    });
+
+    await waitFor(() => {
+      expect(onConversationUnavailable).toHaveBeenCalledWith("missing-conversation");
+    });
+
+    expect(
+      fetchWithAuthMock.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url.includes("missing-conversation")),
+    ).toEqual(["/deepspace/chats/missing-conversation/messages"]);
+  });
+
+  it("reconciles a stopped stream if the worker never sends its terminal event", async () => {
+    let cancelAttempts = 0;
+    fetchWithAuthMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        return { ok: true, json: async () => ({ messages: [] }) };
+      }
+      if (url === "/deepspace/chats/conv-1/queue") {
+        return { ok: true, json: async () => [] };
+      }
+      if (url === "/deepspace/chats/conv-1/cancel" && init?.method === "POST") {
+        cancelAttempts += 1;
+        if (cancelAttempts === 1) {
+          return {
+            ok: false,
+            status: 503,
+            headers: { get: () => "0" },
+            json: async () => ({ error: { message: "Temporary database issue." } }),
+          };
+        }
+        return { ok: true, status: 204, headers: { get: () => null } };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    startMock.mockImplementationOnce(
+      async (options: { onEvent: (event: Record<string, unknown>) => void }) => {
+        options.onEvent({
+          event: "start",
+          data: { message_id: "assistant-live", conversation_id: "conv-1" },
+        });
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Set Query" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit Query" }));
+    await screen.findByRole("button", { name: "Stop response" });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Stop response" }));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(8_000);
+      });
+
+      expect(cancelAttempts).toBe(2);
+      expect(cancelMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not reattach in a loop after the stream endpoint returns HTTP 503", async () => {
+    let historyRequests = 0;
+    let submitted = false;
+    fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        historyRequests += 1;
+        return {
+          ok: true,
+          json: async () => ({
+            messages: submitted
+              ? [
+                  {
+                    id: "user-saved",
+                    role: "user",
+                    content: "hi",
+                    created_at: new Date().toISOString(),
+                    metadata_json: {},
+                  },
+                  {
+                    id: "assistant-active",
+                    role: "assistant",
+                    content: "",
+                    created_at: new Date().toISOString(),
+                    metadata_json: {
+                      status: "streaming",
+                      runtime_active: true,
+                      client_request_id: "saved-run-id",
+                    },
+                  },
+                ]
+              : [],
+          }),
+        };
+      }
+      return { ok: true, json: async () => [] };
+    });
+    startMock.mockImplementation(
+      async (options: {
+        onTransportError?: (error: { code: string; message: string }) => void;
+      }) => {
+        submitted = true;
+        await Promise.resolve();
+        options.onTransportError?.({
+          code: "STREAM_HTTP_ERROR",
+          message: "The service is temporarily unavailable.",
+        });
+      },
+    );
+
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    const historyRequestsBeforeSubmit = historyRequests;
+    fireEvent.click(screen.getByRole("button", { name: "Set Query" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit Query" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("deepspace-thread")).toHaveTextContent(
+        "The service is temporarily unavailable.",
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 25));
+    });
+
+    expect(startMock).toHaveBeenCalledTimes(1);
+    expect(historyRequests).toBe(historyRequestsBeforeSubmit);
+    expect(screen.queryByRole("button", { name: "Stop response" })).not.toBeInTheDocument();
   });
 
   it("reloads the saved assistant reply after a blank stream finishes", async () => {
@@ -996,8 +1177,9 @@ describe("DeepSpaceChatClient history sync", () => {
     });
   });
 
-  it("resumes the queue and reconnects to the next queued request", async () => {
+  it("waits for a worker claim before reconnecting after queue resume", async () => {
     let queueIsPaused = true;
+    let queueIsClaimed = false;
     fetchWithAuthMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/deepspace/chats/conv-1/messages") {
         return { ok: true, json: async () => ({ messages: [] }) };
@@ -1021,7 +1203,7 @@ describe("DeepSpaceChatClient history sync", () => {
           ok: true,
           json: async () => ({
             paused: queueIsPaused,
-            active_request_id: queueIsPaused ? null : "queued-next",
+            active_request_id: !queueIsPaused && queueIsClaimed ? "queued-next" : null,
           }),
         };
       }
@@ -1029,7 +1211,7 @@ describe("DeepSpaceChatClient history sync", () => {
         queueIsPaused = false;
         return {
           ok: true,
-          json: async () => ({ paused: false, active_request_id: "queued-next" }),
+          json: async () => ({ paused: false, active_request_id: null }),
         };
       }
       return { ok: true, json: async () => ({}) };
@@ -1037,6 +1219,21 @@ describe("DeepSpaceChatClient history sync", () => {
 
     renderChat({ activeConversationId: "conv-1" });
     fireEvent.click(await screen.findByRole("button", { name: "Resume queue" }));
+
+    await waitFor(() => {
+      expect(
+        fetchWithAuthMock.mock.calls.some(
+          ([url]) => url === "/deepspace/chats/conv-1/queue/resume",
+        ),
+      ).toBe(true);
+    });
+    expect(startMock).not.toHaveBeenCalled();
+
+    queueIsClaimed = true;
+    await act(async () => {
+      queueEventHandler.current?.({ data: { conversation_id: "conv-1" } });
+      await Promise.resolve();
+    });
 
     await waitFor(() => {
       expect(startMock).toHaveBeenCalledWith(
@@ -1051,6 +1248,136 @@ describe("DeepSpaceChatClient history sync", () => {
       );
     });
     expect(startMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a retry queued instead of reconnecting before a worker claims it", async () => {
+    fetchWithAuthMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        return { ok: true, json: async () => ({ messages: [] }) };
+      }
+      if (url === "/deepspace/chats/conv-1/queue" && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({ client_request_id: "retry-attempt" }),
+        };
+      }
+      if (url === "/deepspace/chats/conv-1/queue") {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              client_request_id: "failed-attempt",
+              prompt: "Original saved prompt",
+              priority: 0,
+              sequence: 1,
+              status: "failed",
+              error: "Provider temporarily unavailable",
+            },
+            {
+              client_request_id: "retry-attempt",
+              prompt: "Original saved prompt",
+              priority: 1,
+              sequence: 2,
+              status: "queued",
+            },
+          ],
+        };
+      }
+      if (url === "/deepspace/chats/conv-1/queue/state") {
+        return { ok: true, json: async () => ({ paused: false, active_request_id: null }) };
+      }
+      if (url === "/deepspace/chats/conv-1/queue/failed-attempt/retry") {
+        return {
+          ok: true,
+          json: async () => ({ client_request_id: "retry-attempt", status: "queued" }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    renderChat({ activeConversationId: "conv-1" });
+    fireEvent.click(await screen.findByRole("button", { name: "Retry failed-attempt" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("composer-queue")).toHaveTextContent("Original saved prompt");
+    });
+    expect(startMock).not.toHaveBeenCalled();
+  });
+
+  it("steers a pending turn without reconnecting until its worker claims it", async () => {
+    let activeRequestId: string | null = "active-turn";
+    let workerClaimed = false;
+    const cancellationBodies: Array<Record<string, unknown>> = [];
+    fetchWithAuthMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/deepspace/chats/conv-1/messages") {
+        return { ok: true, json: async () => ({ messages: [] }) };
+      }
+      if (url === "/deepspace/chats/conv-1/queue") {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              client_request_id: "pending-turn",
+              prompt: "Prioritize this pending prompt",
+              priority: 0,
+              sequence: 2,
+              status: "queued",
+            },
+          ],
+        };
+      }
+      if (url === "/deepspace/chats/conv-1/queue/state") {
+        return {
+          ok: true,
+          json: async () => ({
+            paused: false,
+            active_request_id: workerClaimed ? "pending-turn" : activeRequestId,
+          }),
+        };
+      }
+      if (url === "/deepspace/chats/conv-1/queue/pending-turn/steer") {
+        return {
+          ok: true,
+          json: async () => ({
+            client_request_id: "pending-turn",
+            prompt: "Prioritize this pending prompt",
+            priority: 1,
+            sequence: 2,
+            status: "queued",
+          }),
+        };
+      }
+      if (url === "/deepspace/chats/conv-1/cancel") {
+        cancellationBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        activeRequestId = null;
+        return {
+          ok: true,
+          status: 204,
+          headers: { get: () => "1" },
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    renderChat({ activeConversationId: "conv-1" });
+    await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
+    expect(startMock.mock.calls[0]?.[1]).toMatchObject({
+      body: expect.objectContaining({ client_request_id: "active-turn", reconnect: true }),
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Steer pending-turn" }));
+    await waitFor(() => expect(cancellationBodies).toEqual([{ client_request_id: "active-turn" }]));
+    expect(startMock).toHaveBeenCalledTimes(1);
+
+    workerClaimed = true;
+    await act(async () => {
+      queueEventHandler.current?.({ data: { conversation_id: "conv-1" } });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(startMock).toHaveBeenCalledTimes(2));
+    expect(startMock.mock.calls[1]?.[1]).toMatchObject({
+      body: expect.objectContaining({ client_request_id: "pending-turn", reconnect: true }),
+    });
   });
 
   it("edits a queued prompt through PATCH and keeps it in its original FIFO slot", async () => {

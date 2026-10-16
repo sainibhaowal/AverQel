@@ -538,7 +538,7 @@ export default function DeletionPage() {
               <p className="mt-2 text-sm leading-relaxed text-red-500/70 italic">
                 Executing a wipe for <span className="font-semibold not-italic">{targetLabel}</span>{" "}
                 will permanently remove documents, chunks, vector embeddings, chats, queries, and
-                collection sharing in that workspace. User accounts remain.
+                Qel Connect sharing in that workspace. User accounts remain.
               </p>
             </div>
           </div>

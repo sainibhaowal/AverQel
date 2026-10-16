@@ -8,8 +8,8 @@ export default function NotificationsDocsPage() {
     >
       <DocsSection title="In-app notification centre">
         <p>
-          The centre shows the latest available notifications from supported application and
-          collection feeds. You can review unread items, mark an item read, and dismiss items. Older
+          The centre shows the latest available notifications from supported application and Qel
+          Connect feeds. You can review unread items, mark an item read, and dismiss items. Older
           items may be loaded in pages. Realtime events can update the interface, while durable
           notifications are stored through the notification service.
         </p>
@@ -23,7 +23,7 @@ export default function NotificationsDocsPage() {
         <p>
           In Settings → Notifications, users can mute supported event categories and choose whether
           to receive email notifications and the available cadence. Muting a category affects its
-          notification delivery according to the saved preference. Collection notification settings
+          notification delivery according to the saved preference. Qel Connect notification settings
           have their own controls where applicable.
         </p>
       </DocsSection>

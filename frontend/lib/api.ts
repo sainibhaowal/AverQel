@@ -181,6 +181,25 @@ function normalizeEndpointPath(endpoint: string): string {
   return endpoint.split(/[?#]/)[0] ?? endpoint;
 }
 
+/**
+ * Build one authenticated API URL without duplicating the configured `/api/v1`
+ * prefix. Server-produced artifact URLs are already API-rooted, while most UI
+ * callers pass an endpoint relative to that root.
+ */
+export function resolveApiUrl(endpoint: string): string {
+  if (/^https?:\/\//i.test(endpoint)) return endpoint;
+
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const basePath = new URL(baseUrl, "https://averqel.invalid").pathname.replace(/\/+$/, "");
+  const relativeEndpoint =
+    basePath && basePath !== "/" &&
+    (cleanEndpoint === basePath || cleanEndpoint.startsWith(`${basePath}/`))
+      ? cleanEndpoint.slice(basePath.length) || "/"
+      : cleanEndpoint;
+  return `${baseUrl}${relativeEndpoint}`;
+}
+
 function isPublicAuthEndpoint(endpoint: string): boolean {
   return PUBLIC_AUTH_ENDPOINTS.has(normalizeEndpointPath(endpoint));
 }
@@ -462,10 +481,7 @@ export async function fetchWithAuth(
     headers.set("Content-Type", "application/json");
   }
 
-  // Normalize slashes to prevent double slashes
-  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
-  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  const fullUrl = `${baseUrl}${cleanEndpoint}`;
+  const fullUrl = resolveApiUrl(endpoint);
 
   let response: Response;
   try {
@@ -610,9 +626,7 @@ export async function uploadWithAuthProgress(
 ): Promise<Response> {
   const token = localStorage.getItem("averqel_token");
   const tenantId = getRequestTenantId(token);
-  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
-  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  const fullUrl = `${baseUrl}${cleanEndpoint}`;
+  const fullUrl = resolveApiUrl(endpoint);
 
   const attempt = (accessToken: string | null): Promise<Response> =>
     new Promise((resolve, reject) => {

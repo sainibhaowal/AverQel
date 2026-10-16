@@ -18,7 +18,7 @@ export default function AdminDocsPage() {
       <DocsSection title="Different queues have different scopes">
         <p>
           Support staff may read support tickets and feedback submissions so they can respond.
-          Tenant administrators may review collection reports scoped to their tenant. These are
+          Tenant administrators may review Qel Connect reports scoped to their tenant. These are
           purpose-specific permissions; they do not create a universal interface for browsing every
           user&apos;s content. Internal support notes are not returned to the ticket submitter.
         </p>

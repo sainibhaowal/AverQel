@@ -117,13 +117,17 @@ _SECTION_HEADING_LINE_RE = re.compile(
 )
 _TITLE_CANDIDATE_RE = re.compile(r"^[A-Z][A-Za-z0-9,:;()'\"/+& -]{12,140}$")
 _COLLECTION_ANALYSIS_QUERY_RE = re.compile(
-    r"(?i)\b(best collection|strongest collection|collection summary|summari[sz]e .*collection|"
-    r"strongest coverage|best collection for|best collection to|which collection .*coverage)\b"
+    r"(?i)\b(best collection|strongest collection|collection summary|qel connect summary|"
+    r"summari[sz]e .*(?:collection|qel connect)|strongest coverage|best collection for|"
+    r"best collection to|which collection .*coverage|qel connect .*coverage)\b"
 )
 _COLLECTION_FILTER_RE = re.compile(
     r'(?i)\b(?:in|from|inside)\s+collection\s+"([^"]+)"|'
     r"\bcollection\s+named\s+\"([^\"]+)\"|"
-    r"\bcollection\s+([a-z0-9][a-z0-9 _/\-]{1,80})"
+    r"\bcollection\s+([a-z0-9][a-z0-9 _/\-]{1,80})|"
+    r'\b(?:in|from|inside)\s+qel\s+connect\s+"([^"]+)"|'
+    r"\bqel\s+connect\s+named\s+\"([^\"]+)\"|"
+    r"\bqel\s+connect\s+([a-z0-9][a-z0-9 _/\-]{1,80})"
 )
 _EMBEDDING_MODEL_FILTER_RE = re.compile(
     r'(?i)\b(?:using|use|with)\s+(?:embedding model|embedder)\s+"([^"]+)"|'
@@ -2612,7 +2616,7 @@ class QueryService:
 
         collection_name = self._extract_collection_filter(query_text, all_records)
         if collection_name:
-            return f'No documents matched collection "{collection_name}" in the current workspace slice.'
+            return f'No documents matched Qel Connect space "{collection_name}" in the current workspace slice.'
 
         embedding_model = self._extract_embedding_model_filter(query_text)
         if embedding_model:
@@ -2864,21 +2868,21 @@ class QueryService:
                 )
             ]
             if not filtered:
-                return f'No documents were found in collection "{collection_name}".'
+                return f'No documents were found in Qel Connect space "{collection_name}".'
 
-            lines = [f'Documents in collection "{collection_name}":']
+            lines = [f'Documents in Qel Connect space "{collection_name}":']
             for record in filtered:
                 lines.append(f"- {record.document.filename} ({record.document.status})")
             return "\n".join(lines)
 
         if "which collection" in query_text or "what collection" in query_text:
-            lines = ["Collection membership by document:"]
+            lines = ["Qel Connect membership by document:"]
             for record in records:
                 doc = record.document
                 if record.collections:
                     lines.append(f"- {doc.filename}: {', '.join(record.collections)}")
                 else:
-                    lines.append(f"- {doc.filename}: no collection")
+                    lines.append(f"- {doc.filename}: no Qel Connect space")
             return "\n".join(lines)
 
         collection_index: dict[str, list[str]] = {}
@@ -2886,9 +2890,9 @@ class QueryService:
             for name in record.collections:
                 collection_index.setdefault(name, []).append(record.document.filename)
         if not collection_index:
-            return "No collection memberships were found for the current document set."
+            return "No Qel Connect memberships were found for the current document set."
 
-        lines = ["Collections in this workspace slice:"]
+        lines = ["Qel Connect spaces in this workspace slice:"]
         for name in sorted(collection_index):
             lines.append(f"- {name}: {len(collection_index[name])} documents")
         return "\n".join(lines)
@@ -2990,7 +2994,7 @@ class QueryService:
             )
             best_name, best_payload = ranked_collections[0]
             lines = [
-                f'The strongest collection for "{coverage_term}" is {best_name}.',
+                f'The strongest Qel Connect space for "{coverage_term}" is {best_name}.',
                 f"Coverage score: {best_payload['score']:.1f}",
                 f"Matching documents: {best_payload['matched_docs']}/{best_payload['document_count']}",
             ]
@@ -3369,7 +3373,7 @@ class QueryService:
         records: list[DocumentWorkspaceRecord],
     ) -> str:
         if not records:
-            return f'No documents were found in collection "{collection_name}".'
+            return f'No documents were found in Qel Connect space "{collection_name}".'
 
         total_size = sum(record.document.size_bytes for record in records)
         avg_health = sum(
@@ -3380,7 +3384,7 @@ class QueryService:
             statuses[record.document.status] = statuses.get(record.document.status, 0) + 1
 
         lines = [
-            f'Collection summary for "{collection_name}":',
+            f'Qel Connect summary for "{collection_name}":',
             f"- Documents: {len(records)}",
             f"- Total storage: {self._format_bytes(total_size)}",
             f"- Average document health: {avg_health:.1f}/100",
@@ -3488,7 +3492,9 @@ class QueryService:
             if record.embedding_model
             else "not embedded"
         )
-        collections = ", ".join(record.collections) if record.collections else "no collection"
+        collections = (
+            ", ".join(record.collections) if record.collections else "no Qel Connect space"
+        )
         quality = (
             f", avg chunk quality {record.avg_chunk_quality:.2f}"
             if record.avg_chunk_quality is not None
@@ -3496,7 +3502,7 @@ class QueryService:
         )
         return (
             f"{embedding}, chunks {record.chunk_count}, embedded {record.embedded_chunk_count}, "
-            f"collections {collections}{quality}"
+            f"Qel Connect spaces {collections}{quality}"
         )
 
     @staticmethod

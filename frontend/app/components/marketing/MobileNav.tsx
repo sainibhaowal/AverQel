@@ -5,6 +5,7 @@ import { X, Menu, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import AverQelLogo from "../ui/AverQelLogo";
+import { QEL_CONNECT_NAME } from "@/lib/brand";
 
 export default function MobileNav() {
   const [isOpen, setIsOpen] = useState(false);
@@ -51,7 +52,7 @@ export default function MobileNav() {
   const navLinks = [
     { name: "Documents Hub", href: "#documents-hub" },
     { name: "Query", href: "#query" },
-    { name: "Collections", href: "#collections" },
+    { name: QEL_CONNECT_NAME, href: "#qel-connect" },
     { name: "DeepSpace", href: "#deepspace" },
     { name: "AI Providers", href: "#providers" },
     { name: "MCP Servers", href: "#mcp" },

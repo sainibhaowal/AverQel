@@ -17,6 +17,7 @@ from app.deepspace.models.agent_runtime import DeepSpaceAgentRun, DeepSpaceRunEv
 from app.deepspace.models.message import Message
 from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
 from app.deepspace.services.run_events import append_event
+from app.deepspace.services.temporary_assets import cleanup_expired_temporary_assets
 from app.deepspace.services.turn_queue import DeepSpaceTurnQueueStore
 from app.deepspace.workers.tasks import dispatch_deepspace_turn_queue
 from app.documents.models.collection import CollectionChatMedia
@@ -482,12 +483,25 @@ def retention_cleanup() -> dict[str, int]:
 def storage_cleanup() -> dict[str, int]:
     """Retry failed object deletion without depending on the deleted user row."""
     session = get_session_factory()()
-    succeeded = failed = 0
+    succeeded = failed = temporary_assets_deleted = 0
     try:
         session.execute(text("SET ROLE aks_app"))
         # Select jobs across tenants only in the trusted maintenance worker.
         session.execute(text("SELECT set_config('app.tenant_id', 'bypass', true)"))
         now = datetime.now(tz=UTC)
+        tenant_ids = session.query(Tenant.id).all()
+        for (tenant_id,) in tenant_ids:
+            session.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": str(tenant_id)},
+            )
+            temporary_assets_deleted += cleanup_expired_temporary_assets(
+                session,
+                tenant_id=tenant_id,
+                now=now,
+            )
+        session.commit()
+        session.execute(text("SELECT set_config('app.tenant_id', 'bypass', true)"))
         jobs = list(
             session.query(StorageCleanupJob)
             .filter(
@@ -526,7 +540,11 @@ def storage_cleanup() -> dict[str, int]:
                 failed += 1
         session.commit()
         MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="storage_cleanup", status="ok").inc()
-        return {"succeeded": succeeded, "failed": failed}
+        return {
+            "succeeded": succeeded,
+            "failed": failed,
+            "temporary_assets_deleted": temporary_assets_deleted,
+        }
     except Exception:  # noqa: BLE001
         session.rollback()
         MAINTENANCE_JOB_EVENTS_TOTAL.labels(job="storage_cleanup", status="error").inc()

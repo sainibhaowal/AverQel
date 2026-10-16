@@ -43,6 +43,7 @@ test("validates account and inference arguments before calling the local runtime
   const event = { authorized: true };
 
   await assert.rejects(handlers.get("codex:connect")(event, 123), /Invalid Codex account identifier/);
+  await assert.rejects(handlers.get("codex:connect")(event, "x".repeat(65)), /Invalid Codex account identifier/);
   await assert.rejects(handlers.get("codex:connect")(event, "account", "arbitrary"), /Invalid Codex account source/);
   await assert.rejects(handlers.get("codex:models")(event, "x".repeat(65)), /Invalid Codex account identifier/);
   await assert.rejects(handlers.get("codex:disconnect")(event, null), /Invalid Codex account identifier/);
@@ -58,6 +59,10 @@ test("passes authorized requests through with the validated source and identifie
   assert.deepEqual(await handlers.get("codex:connect")(event, "account", "codex_cli"), {
     method: "connect",
     args: ["account", "codex_cli"],
+  });
+  assert.deepEqual(await handlers.get("codex:connect")(event, null, "chatgpt"), {
+    method: "connect",
+    args: [null, "chatgpt"],
   });
   assert.deepEqual(await handlers.get("codex:models")(event, "account"), {
     method: "models",
@@ -75,6 +80,7 @@ test("passes authorized requests through with the validated source and identifie
   });
   assert.deepEqual(calls.map(({ method }) => method), [
     "status",
+    "connect",
     "connect",
     "models",
     "disconnect",

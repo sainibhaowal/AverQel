@@ -62,6 +62,38 @@ describe("useDeepSpaceStream", () => {
     expect(onTransportError).not.toHaveBeenCalled();
   });
 
+  it("retries an initial 503 once with the same request ID, then reports failure", async () => {
+    fetchWithAuthMock.mockClear();
+    const errorResponse = () =>
+      new Response(JSON.stringify({ error: { message: "Temporary service interruption." } }), {
+        status: 503,
+        headers: { "Content-Type": "application/json", "Retry-After": "0" },
+      });
+    fetchWithAuthMock.mockResolvedValueOnce(errorResponse()).mockResolvedValueOnce(errorResponse());
+    const onTransportError = vi.fn();
+    const onFinally = vi.fn();
+    const body = { message: "hello", client_request_id: "stable-request-id" };
+
+    const { result } = renderHook(() =>
+      useDeepSpaceStream({ onEvent: vi.fn(), onTransportError, onFinally }),
+    );
+
+    await act(async () => {
+      await result.current.start({ body });
+    });
+
+    expect(fetchWithAuthMock).toHaveBeenCalledTimes(2);
+    expect(fetchWithAuthMock.mock.calls.map(([endpoint, init]) => [endpoint, init?.body])).toEqual([
+      ["/deepspace/chats/stream", JSON.stringify(body)],
+      ["/deepspace/chats/stream", JSON.stringify(body)],
+    ]);
+    expect(onTransportError).toHaveBeenCalledWith({
+      code: "STREAM_HTTP_ERROR",
+      message: "Temporary service interruption.",
+    });
+    expect(onFinally).toHaveBeenCalledTimes(1);
+  });
+
   it("detaches a prior reader without cancelling or finishing the durable run", async () => {
     let signal: AbortSignal | null = null;
     fetchWithAuthMock.mockImplementationOnce(async (_endpoint, options) => {

@@ -29,8 +29,8 @@ export default function DocumentOrganizationDocsPage() {
           before relying on it.
         </p>
         <p>
-          Shared collection documents remain ordinary source files processed by the Documents Hub.
-          Collection membership controls access to the shared item; it does not make the document
+          Shared Qel Connect documents remain ordinary source files processed by the Documents Hub.
+          Qel Connect membership controls access to the shared item; it does not make the document
           zero-knowledge or remove server-side processing needed for preview, OCR, and indexing.
         </p>
       </DocsSection>

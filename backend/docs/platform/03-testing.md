@@ -99,10 +99,59 @@ pnpm --dir frontend exec playwright test e2e/documents-hub-workflows.spec.ts --w
 pnpm --dir frontend exec playwright test --workers=1 --timeout=60000
 ```
 
+The browser harness also provides independent suites and diagnostics:
+
+```bash
+pnpm --dir frontend e2e:smoke
+pnpm --dir frontend e2e:deepspace
+pnpm --dir frontend e2e:documents
+pnpm --dir frontend e2e:report
+```
+
+Failed browser tests retain screenshots, video, traces, and JSON browser
+diagnostics in `frontend/test-results`. The default run is loopback-only and
+fixture-backed. External browser validation requires both
+`DEEPSPACE_E2E_ALLOW_EXTERNAL=1` and an explicitly configured disposable
+`DEEPSPACE_E2E_BASE_URL`.
+
+Provider contracts are checked without network access by the provider matrix
+tests. Real provider checks must be run separately against disposable staging
+or an installed local runtime; no API key or local model service is contacted
+by CI's default provider matrix.
+
+## Load and deployment validation
+
+Offline benchmark smoke checks run with:
+
+```bash
+cd backend
+pytest -q -m unit_no_db tests/performance
+```
+
+The authenticated durable load runner creates synthetic data and therefore
+requires an explicit acknowledgement. It refuses production-like hosts:
+
+```bash
+python scripts/staging_durable_load.py --dry-run --provider-mode mock
+python scripts/staging_durable_load.py \
+  --base-url https://disposable-staging.example \
+  --allow-staging --write-staging-data --provider-mode mock \
+  --count 100 --concurrency 25
+```
+
+Compose deployment manifests can be validated without starting or restarting
+anything:
+
+```bash
+bash backend/scripts/validate_deployment_config.sh
+```
+
 The dedicated workflow file covers quarantine review, webhook delivery
 history, expiring share links, citation page preview, and zoom. The full
-local run also covers DeepSpace runtime, budget metrics, Library layout, and
-homepage behavior. It completed with 10 passed and 0 skipped on 2026-09-27.
+local run also covers DeepSpace runtime, budget metrics, Library layout,
+authenticated route reachability, and homepage behavior. Treat the current
+Playwright output as the source of truth; the older 2026-09-27 count is kept
+only in the historical verification snapshot.
 
 The production API image intentionally excludes `backend/tests`. The isolated
 test runner builds a separate image and mounts the test checkout read-only; it

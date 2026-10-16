@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import AverQelLogo from "@/app/components/ui/AverQelLogo";
+import AverQelExactBrand from "@/app/components/ui/AverQelExactBrand";
 import { getApiBaseUrl } from "../../../lib/api";
 
 function getPasswordStrength(pw: string): {
@@ -109,8 +109,8 @@ export default function SignupPage() {
         transition={{ duration: 0.45 }}
       >
         <div className="mb-10 flex justify-center">
-          <Link href="/">
-            <AverQelLogo size="hero" />
+          <Link href="/" className="login-brand-lockup">
+            <AverQelExactBrand />
           </Link>
         </div>
 

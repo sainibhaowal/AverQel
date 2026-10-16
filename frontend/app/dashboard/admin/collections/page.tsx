@@ -11,7 +11,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Copy,
-  FolderKanban,
   Users,
   MessageSquare,
   Search,
@@ -33,6 +32,7 @@ import CollectionDetailClient from "./[collectionId]/CollectionDetailClient";
 import { getUnreadCount, incrementUnreadCount, saveLocalMessage } from "@/lib/localDb";
 import { deriveKey, decryptMessage } from "@/lib/crypto";
 import { averqelConfirm } from "@/app/components/ui/AverQelDialogHost";
+import QelConnectMark from "@/app/components/ui/QelConnectMark";
 
 interface Collection {
   id: string;
@@ -270,7 +270,7 @@ export default function AdminCollectionsPage() {
         setInvitations(pendingItems);
         if (pendingItems.length > 0 && !notifiedPendingRef.current) {
           toast(
-            `${pendingItems.length} collection invitation${pendingItems.length > 1 ? "s" : ""} waiting`,
+            `${pendingItems.length} Qel Connect invitation${pendingItems.length > 1 ? "s" : ""} waiting`,
             { icon: "📨" },
           );
           notifiedPendingRef.current = true;
@@ -280,7 +280,7 @@ export default function AdminCollectionsPage() {
       }
     } catch (error) {
       console.error(error);
-      toast.error("Failed to load collection bridge data.");
+      toast.error("Failed to load Qel Connect bridge data.");
     } finally {
       setLoading(false);
     }
@@ -297,7 +297,7 @@ export default function AdminCollectionsPage() {
   const handleCreateDirectChat = async () => {
     const targetCode = directCode.trim().toUpperCase();
     if (!targetCode) {
-      toast.error("Please enter a valid Connection ID.");
+      toast.error("Please enter a valid Qel Connect ID.");
       return;
     }
     setLoading(true);
@@ -306,7 +306,7 @@ export default function AdminCollectionsPage() {
         method: "POST",
         body: JSON.stringify({
           name: directName.trim() || "Direct Chat",
-          description: `1:1 Connection with ${targetCode}`,
+          description: `1:1 Qel Connect with ${targetCode}`,
         }),
       });
       if (!createRes.ok) throw new Error("Failed to initialize chat connection.");
@@ -462,9 +462,9 @@ export default function AdminCollectionsPage() {
   const handleCopyCollectionCode = async (connectionCode: string) => {
     try {
       await navigator.clipboard.writeText(connectionCode);
-      toast.success("Collection ID copied.");
+      toast.success("Qel Connect ID copied.");
     } catch {
-      toast.error("Failed to copy collection ID.");
+      toast.error("Failed to copy Qel Connect ID.");
     }
   };
 
@@ -476,7 +476,7 @@ export default function AdminCollectionsPage() {
         body: JSON.stringify({ action }),
       });
       if (!res.ok) throw new Error("Failed to respond to invitation.");
-      toast.success(action === "approve" ? "Collection bridge connected." : "Invitation denied.");
+      toast.success(action === "approve" ? "Qel Connect bridge connected." : "Invitation denied.");
       await fetchCollections();
       if (action === "approve") {
         handleSelectCollection(collectionId);
@@ -508,7 +508,7 @@ export default function AdminCollectionsPage() {
             body: JSON.stringify({ user_ids: [] }),
           });
       if (res.ok) {
-        toast.success(isOwner ? "Collection deleted." : "You left the collection.");
+        toast.success(isOwner ? "Qel Connect deleted." : "You left Qel Connect.");
         if (activeCollectionId === collection.id) {
           setActiveCollectionId(null);
           window.history.pushState(null, "", pathname);
@@ -517,7 +517,7 @@ export default function AdminCollectionsPage() {
       }
     } catch (error) {
       console.error(error);
-      toast.error(isOwner ? "Failed to delete collection." : "Failed to leave collection.");
+      toast.error(isOwner ? "Failed to delete Qel Connect." : "Failed to leave Qel Connect.");
     } finally {
       setMutatingId(null);
     }
@@ -591,7 +591,7 @@ export default function AdminCollectionsPage() {
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-amber-500">
-                <FolderKanban size={17} />
+                <QelConnectMark size={24} />
               </div>
             )}
           </div>
@@ -608,7 +608,7 @@ export default function AdminCollectionsPage() {
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] leading-none font-bold tracking-widest text-amber-500 uppercase">
-                      Active Bridge
+                      Active Qel Connect
                     </span>
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
                   </div>
@@ -625,10 +625,10 @@ export default function AdminCollectionsPage() {
                   transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 >
                   <span className="text-slate-550 text-[10px] leading-none font-bold tracking-widest uppercase dark:text-slate-500">
-                    AverQel Connect
+                    Qel Connect
                   </span>
                   <h1 className="text-foreground mt-0.5 text-sm leading-tight font-black tracking-tight sm:text-lg">
-                    Document Bridge Control
+                    Qel Connect Control
                   </h1>
                 </motion.div>
               )}
@@ -636,7 +636,7 @@ export default function AdminCollectionsPage() {
           </div>
         </div>
 
-        {/* Right Side: Shared Documents & Bridge Members buttons placed outside the chat area */}
+        {/* Right Side: Shared Documents and Qel Connect Members buttons placed outside the chat area */}
         <div className="flex min-h-[40px] flex-shrink-0 items-center justify-end gap-2">
           {/* Permanent Profile Settings Button */}
           <button
@@ -664,9 +664,9 @@ export default function AdminCollectionsPage() {
                 {/* New Connection Button placed on top bar */}
                 <button
                   onClick={() => setShowCreate(true)}
-                  aria-label="+ New Collection"
+                  aria-label="+ New Qel Connect"
                   className="ui-tooltip flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-600 text-white transition-all hover:bg-emerald-500 active:scale-95"
-                  data-tooltip="Start New Connection"
+                  data-tooltip="Start Qel Connect"
                 >
                   <Plus size={18} />
                 </button>
@@ -693,10 +693,10 @@ export default function AdminCollectionsPage() {
                       ? "border-amber-500 bg-amber-500 font-black text-slate-950"
                       : "border-foreground/10 bg-foreground/5 text-foreground hover:bg-foreground/10 hover:text-foreground"
                   }`}
-                  data-tooltip="Bridge Members"
+                  data-tooltip="Qel Connect Members"
                 >
                   <Users size={14} />
-                  <span className="hidden sm:inline">Bridge Members</span>
+                  <span className="hidden sm:inline">Qel Connect Members</span>
                 </button>
 
                 {/* Trash/Delete Button placed globally */}
@@ -705,14 +705,14 @@ export default function AdminCollectionsPage() {
                   disabled={mutatingId === activeCollection.id}
                   aria-label={
                     activeCollection.requester_access_role === "owner"
-                      ? "Delete Collection"
-                      : "Leave Collection"
+                      ? "Delete Qel Connect"
+                      : "Leave Qel Connect"
                   }
                   className="ui-tooltip ui-tooltip-end flex h-10 w-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-xl border border-red-500/20 bg-red-500/5 text-red-500 transition-all hover:scale-[1.02] hover:bg-red-500/10 active:scale-95"
                   data-tooltip={
                     activeCollection.requester_access_role === "owner"
-                      ? "Delete Collection"
-                      : "Leave Collection"
+                      ? "Delete Qel Connect"
+                      : "Leave Qel Connect"
                   }
                 >
                   <Trash2 size={15} />
@@ -726,9 +726,9 @@ export default function AdminCollectionsPage() {
                 exit={{ opacity: 0, scale: 0.96, x: -10 }}
                 transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 onClick={() => setShowCreate(true)}
-                aria-label="+ New Collection"
+                aria-label="+ New Qel Connect"
                 className="ui-tooltip ui-tooltip-end flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-600 text-white transition-all hover:bg-emerald-500 active:scale-95"
-                data-tooltip="Start New Connection"
+                data-tooltip="Start Qel Connect"
               >
                 <Plus size={18} />
               </motion.button>
@@ -880,7 +880,7 @@ export default function AdminCollectionsPage() {
                         onClick={(event) => event.stopPropagation()}
                         className="mt-1 inline-flex text-[9px] font-black tracking-wider text-amber-500 uppercase hover:text-amber-400"
                       >
-                        Manage Collection
+                        Manage Qel Connect
                       </Link>
                     </div>
 
@@ -906,8 +906,8 @@ export default function AdminCollectionsPage() {
                         type="button"
                         aria-label={
                           col.requester_access_role === "owner"
-                            ? "Delete Collection"
-                            : "Leave Collection"
+                            ? "Delete Qel Connect"
+                            : "Leave Qel Connect"
                         }
                         onClick={(event) => {
                           event.stopPropagation();
@@ -974,7 +974,7 @@ export default function AdminCollectionsPage() {
                   </div>
 
                   <h3 className="text-foreground/40 text-sm font-black tracking-widest uppercase">
-                    AverQel Connect
+                    Qel Connect
                   </h3>
 
                   <p className="mt-2.5 max-w-xs text-[11px] leading-relaxed text-slate-500">
@@ -988,14 +988,14 @@ export default function AdminCollectionsPage() {
         </div>
       </div>
 
-      {/* New Connection Modal Flow */}
+      {/* New Qel Connect modal flow */}
       {showCreate && (
         <div className="collections-create-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
           <div className="collections-create-modal relative w-full max-w-md space-y-4 rounded-[1.8rem] border border-white/5 bg-slate-900 p-6 shadow-none">
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-500 to-emerald-500" />
             <div className="flex items-center justify-between border-b border-white/5 pb-3">
               <h2 className="text-xs font-black tracking-widest text-slate-300 uppercase">
-                New Connection Bridge
+                New Qel Connect
               </h2>
               <button
                 onClick={() => setShowCreate(false)}
@@ -1015,7 +1015,7 @@ export default function AdminCollectionsPage() {
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
-                1:1 Connection
+                1:1 Qel Connect
               </button>
               <button
                 onClick={() => setCreateMode("group")}
@@ -1032,12 +1032,12 @@ export default function AdminCollectionsPage() {
             {createMode === "direct" ? (
               <div className="space-y-4">
                 <p className="text-[11px] leading-normal text-slate-500">
-                  Enter another user&apos;s permanent **Collection ID** below to establish a direct
+                  Enter another user&apos;s permanent **Qel Connect ID** below to establish a direct
                   1:1 chat bridge. Once they approve, the connection becomes active.
                 </p>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
-                    Connection Name (Optional)
+                    Qel Connect name (optional)
                   </label>
                   <input
                     type="text"
@@ -1049,7 +1049,7 @@ export default function AdminCollectionsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
-                    Target Connection ID
+                    Target Qel Connect ID
                   </label>
                   <input
                     type="text"
@@ -1077,8 +1077,8 @@ export default function AdminCollectionsPage() {
             ) : (
               <div className="space-y-4">
                 <p className="text-[11px] leading-normal text-slate-500">
-                  Create a shared group bridge room. Input the Group Name, details, and multiple
-                  Connection IDs to invite them together.
+                  Create a shared group bridge room. Input the Group Name, details, and multiple Qel
+                  Connect IDs to invite them together.
                 </p>
                 <div className="space-y-3">
                   <div className="space-y-1.5">
@@ -1089,7 +1089,7 @@ export default function AdminCollectionsPage() {
                       type="text"
                       value={groupName}
                       onChange={(e) => setGroupName(e.target.value)}
-                      placeholder="Collection name (e.g., Dev Team)"
+                      placeholder="Qel Connect name (e.g., Dev Team)"
                       className="w-full rounded-xl border border-white/5 bg-slate-950 px-4 py-3 text-xs text-white transition outline-none focus:border-amber-500/30"
                     />
                   </div>
@@ -1107,7 +1107,7 @@ export default function AdminCollectionsPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold tracking-widest text-slate-500 uppercase">
-                      Invite Connection IDs (Comma Separated)
+                      Invite Qel Connect IDs (comma separated)
                     </label>
                     <textarea
                       value={groupCodes}
@@ -1164,7 +1164,7 @@ export default function AdminCollectionsPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[9px] font-bold tracking-wider text-slate-500 uppercase">
-                    My Connection Code
+                    My Qel Connect Code
                   </span>
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono font-bold tracking-wider text-amber-500">

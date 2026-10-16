@@ -30,6 +30,7 @@ import {
   DESKTOP_LINUX_DOWNLOAD_URL,
   DESKTOP_WINDOWS_DOWNLOAD_URL,
 } from "@/lib/release";
+import { QEL_CONNECT_NAME } from "@/lib/brand";
 
 type DesktopPlatform = "linux" | "windows" | "other";
 
@@ -49,7 +50,7 @@ const getServerDesktopPlatform = (): DesktopPlatform => "other";
 const navLinks = [
   { label: "Documents Hub", href: "#documents-hub" },
   { label: "Query", href: "#query" },
-  { label: "Collections", href: "#collections" },
+  { label: QEL_CONNECT_NAME, href: "#qel-connect" },
   { label: "DeepSpace", href: "#deepspace" },
   { label: "Providers", href: "#providers" },
   { label: "MCP", href: "#mcp" },
@@ -62,7 +63,7 @@ const pipelineSteps = [
     icon: Globe,
     accent: "text-[#00b8ff]",
     label: "ORGANIZING",
-    title: "Documents Hub + Collections",
+    title: "Documents Hub + Qel Connect",
     detail: "upload | inspect | organize | keep the right context together",
   },
   {
@@ -89,7 +90,7 @@ const pipelineSteps = [
 ];
 
 const signalCards = [
-  { value: "Knowledge", label: "Documents · Query · Collections" },
+  { value: "Knowledge", label: "Documents · Query · Qel Connect" },
   { value: "Work", label: "DeepSpace · Providers · MCP" },
   { value: "Control", label: "Profile · Plan · Storage · Support" },
 ];
@@ -181,7 +182,7 @@ export default function HeroSection() {
               </h1>
 
               <p className="max-w-2xl text-base leading-8 text-slate-300/88 sm:text-lg sm:leading-9">
-                AverQel brings Documents Hub, Grounded Query, Collections, and DeepSpace together
+                AverQel brings Documents Hub, Grounded Query, Qel Connect, and DeepSpace together
                 with your AI providers and approved MCP apps. Manage your profile, review plan and
                 storage, control connected apps, and reach support or feedback in the same
                 workspace.

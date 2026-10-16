@@ -749,6 +749,13 @@ class DeepSpaceChatRepository:
         if activate:
             message.active_version_id = version.id
             message.content = content
+            # Keep the denormalized message row and its relationship cache in
+            # sync with the newly active immutable version. This matters for
+            # same-session API responses (for example visual-block edits),
+            # where SQLAlchemy may otherwise return the previously loaded
+            # active version metadata until the session is expired.
+            message.metadata_json = next_metadata
+            message.active_version = version
         self.db.flush()
         return message
 

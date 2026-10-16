@@ -31,6 +31,7 @@ import {
   UsersRound,
   Workflow,
 } from "lucide-react";
+import QelConnectMark from "../ui/QelConnectMark";
 
 type Accent = "cyan" | "blue" | "emerald" | "violet" | "amber";
 
@@ -38,7 +39,7 @@ type DomainCard = {
   title: string;
   description: string;
   points: string[];
-  icon: LucideIcon;
+  icon: LucideIcon | typeof QelConnectMark;
   accent: Accent;
   href: string;
   linkLabel: string;
@@ -156,7 +157,7 @@ const productDomains: ProductDomain[] = [
         description:
           "Choose relevant sources and refine retrieval without crossing the access boundary of your workspace.",
         points: [
-          "Filter by selected documents or an accessible collection",
+          "Filter by selected documents or an accessible Qel Connect space",
           "Narrow by source type, date, and extraction coverage",
           "Workspace permissions remain in force during retrieval",
         ],
@@ -198,35 +199,35 @@ const productDomains: ProductDomain[] = [
     ],
   },
   {
-    id: "collections",
-    name: "Collections",
+    id: "qel-connect",
+    name: "Qel Connect",
     eyebrow: "03 · Shared project space",
     title: "Share selected sources with people you invite.",
     description:
-      "Collections are explicit membership spaces for project documents and collaboration. They are a separate product area from Documents Hub’s document smart collections.",
+      "Qel Connect spaces are explicit membership areas for project documents and collaboration. They are separate from Documents Hub’s document smart collections.",
     cards: [
       {
         title: "Membership and source access",
         description:
-          "Keep project access scoped to the people and material approved for that collection.",
+          "Keep project access scoped to the people and material approved for that Qel Connect space.",
         points: [
-          "Collection owners manage invites and membership",
+          "Qel Connect owners manage invites and membership",
           "Join requests require owner approval",
-          "Shared sources are governed by collection and document access",
+          "Shared sources are governed by Qel Connect and document access",
         ],
         icon: UsersRound,
         accent: "emerald",
         href: "/documentation/collections-sharing",
-        linkLabel: "Collections guide",
+        linkLabel: "Qel Connect guide",
         status: "Experimental beta",
       },
       {
         title: "Project conversation and media",
         description:
-          "Keep messages and supported collection media with the project context they belong to.",
+          "Keep messages and supported Qel Connect media with the project context they belong to.",
         points: [
-          "Collection chat, reactions, and presence features",
-          "Supported attachment sharing within the collection",
+          "Qel Connect chat, reactions, and presence features",
+          "Supported attachment sharing within Qel Connect",
           "Device verification and security details are documented in the guide",
         ],
         icon: MessageSquareText,
@@ -238,31 +239,31 @@ const productDomains: ProductDomain[] = [
       {
         title: "One source, shared deliberately",
         description:
-          "Add an existing document to a collection so its members can work from the same source.",
+          "Add an existing document to Qel Connect so its members can work from the same source.",
         points: [
-          "Access is checked against collection membership",
-          "Query can use a collection only when the member has permission",
+          "Access is checked against Qel Connect membership",
+          "Query can use Qel Connect only when the member has permission",
           "Tenant and membership boundaries remain in force for shared sources",
         ],
         icon: LockKeyhole,
         accent: "violet",
         href: "/documentation/collections-sharing",
-        linkLabel: "Understand collection access",
+        linkLabel: "Understand Qel Connect access",
         status: "Experimental beta",
       },
       {
         title: "Member security and alerts",
         description:
-          "Use member-facing collection safety and device controls for collaboration where enabled.",
+          "Use member-facing Qel Connect safety and device controls for collaboration where enabled.",
         points: [
           "Manage registered devices and encryption setup",
-          "Block or report a member from a collection",
-          "Configure supported collection notification subscriptions",
+          "Block or report a member from Qel Connect",
+          "Configure supported Qel Connect notification subscriptions",
         ],
         icon: ShieldCheck,
         accent: "amber",
         href: "/documentation/collections-sharing",
-        linkLabel: "Collection security guide",
+        linkLabel: "Qel Connect security guide",
         status: "Experimental beta",
       },
     ],

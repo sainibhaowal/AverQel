@@ -24,6 +24,7 @@ from app.providers.services import (
 )
 from app.providers.services.base import ProviderRequestError
 from app.query.schemas.followups import FollowupSuggestions
+from app.query.schemas.stream_events import StreamChartPayload, StreamDiagramPayload
 from app.query.schemas.structured_response import (
     StructuredAnswerResponse,
     StructuredChartResponse,
@@ -36,6 +37,7 @@ from app.query.services.prompt_templates import PromptTemplates
 from app.query.services.query_classifier import QueryType
 from app.query.services.retrieval_service import RetrievedChunk
 from app.query.services.snippet_service import SnippetService
+from app.query.services.visual_blocks import normalize_visual_markdown
 from app.system.services.cache_service import get_redis_client
 from app.system.services.metrics_service import (
     LLM_PROVIDER_LATENCY_SECONDS,
@@ -1117,6 +1119,9 @@ class AnswerService:
             if structured is not None
             else self._strip_markdown_metadata(text)
         )
+        final_content, visual_errors = normalize_visual_markdown(final_content)
+        if visual_errors:
+            logger.warning("Demoted invalid visual Markdown fences: %s", visual_errors[:5])
 
         if emit_replace:
             yield StreamEvent(
@@ -1391,28 +1396,33 @@ class AnswerService:
 
     @staticmethod
     def _build_chart_payload(chart: Any, *, index: int) -> dict[str, Any]:
-        return {
-            "id": f"chart-{index}",
-            "title": chart.title,
-            "chart_type": chart.chart_type,
-            "series": [point.model_dump(mode="json") for point in chart.series],
-        }
+        payload = StreamChartPayload(
+            id=f"chart-{index}",
+            title=chart.title,
+            chart_type=chart.chart_type,
+            series=[point.model_dump(mode="json") for point in chart.series],
+            equation=getattr(chart, "equation", None),
+            x_label=getattr(chart, "x_label", None),
+            y_label=getattr(chart, "y_label", None),
+        )
+        return payload.model_dump(mode="json")
 
     @staticmethod
     def _build_diagram_payload(diagram: Any, *, index: int) -> dict[str, Any]:
-        return {
-            "id": f"diagram-{index}",
-            "title": diagram.title,
-            "diagram_type": diagram.diagram_type,
-            "source": diagram.source,
-            "syntax": diagram.syntax,
-            "description": diagram.description,
-            "graph": (
+        payload = StreamDiagramPayload(
+            id=f"diagram-{index}",
+            title=diagram.title,
+            diagram_type=diagram.diagram_type,
+            source=diagram.source,
+            syntax=diagram.syntax,
+            description=diagram.description,
+            graph=(
                 diagram.graph.model_dump(mode="json")
                 if getattr(diagram, "graph", None) is not None
                 else None
             ),
-        }
+        )
+        return payload.model_dump(mode="json")
 
     def _emit_progressive_rich_events(
         self,

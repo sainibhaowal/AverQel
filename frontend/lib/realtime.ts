@@ -41,6 +41,12 @@ export function useRealtimeEvents(
   const resourceKey = resources.join("|");
 
   useEffect(() => {
+    // Browser E2E uses deterministic HTTP fixtures and a closed API sink. Do
+    // not start a reconnect loop for an optional realtime transport that is
+    // intentionally absent from that isolated environment.
+    if (process.env.NEXT_PUBLIC_E2E_DISABLE_REALTIME === "1") {
+      return;
+    }
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
     let stopped = false;

@@ -6,6 +6,43 @@ import {
 } from "../app/dashboard/deepspace/_lib/deepspace-thread";
 
 describe("deepSpaceThreadReducer tool streaming", () => {
+  it("does not duplicate a persisted assistant when a stream reuses its durable ID", () => {
+    const withHistory = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
+      type: "load_history",
+      conversationId: "conv-regeneration",
+      messages: [
+        {
+          id: "assistant-1",
+          role: "assistant",
+          content: "Saved response",
+          created_at: new Date().toISOString(),
+          metadata_json: {},
+        },
+      ],
+    });
+    const submitted = deepSpaceThreadReducer(withHistory, {
+      type: "submit_query",
+      query: "Regenerate this response",
+    });
+
+    const started = deepSpaceThreadReducer(submitted, {
+      type: "stream_event",
+      event: {
+        event: "start",
+        data: { message_id: "assistant-1", started_at: new Date().toISOString() },
+      },
+    });
+
+    expect(started.messages).toHaveLength(2);
+    expect(started.messages[0]?.id).toBe("assistant-1");
+    expect(started.messages[1]?.role).toBe("user");
+    expect(new Set(started.messages.map((message) => message.id)).size).toBe(
+      started.messages.length,
+    );
+    expect(started.activeAssistantId).toBe("assistant-1");
+    expect(started.messages[0]?.status).toBe("streaming");
+  });
+
   it("keeps a durable streaming turn active while history reconnects", () => {
     const reloaded = deepSpaceThreadReducer(initialDeepSpaceThreadState, {
       type: "load_history",

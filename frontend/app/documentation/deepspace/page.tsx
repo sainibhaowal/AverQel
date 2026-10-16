@@ -41,10 +41,29 @@ export default function DeepSpaceDocsPage() {
             notes, or DeepSpace Library files when available.
           </li>
           <li>
-            <strong>Collections:</strong> collaborate with invited members around explicitly shared
+            <strong>Qel Connect:</strong> collaborate with invited members around explicitly shared
             content.
           </li>
         </ul>
+      </DocsSection>
+      <DocsSection title="Context and token diagnostics">
+        <p>
+          The composer keeps two scopes visible: the latest serialized context sent to the provider
+          and the cumulative serialized input/output estimate for the whole DeepSpace turn. Tool
+          calls and recovery rounds can make the turn total larger than the latest request. These
+          local estimates use a provider-neutral serialization because each model family has its own
+          tokenizer.
+        </p>
+        <p>
+          When an adapter returns usage, the panel shows the provider&apos;s exact input, output,
+          cache-read, and cache-write fields and labels them as the latest reported model round.
+          When every round reports a field, DeepSpace also shows the exact provider turn total;
+          otherwise it marks that field incomplete. Codex, hosted OpenAI-compatible providers,
+          Anthropic, Gemini, LM Studio, and Ollama are normalized into the same view. Local
+          providers that do not return usage remain marked as unreported; DeepSpace does not invent
+          a token count for them. Cache eligibility is also kept separate from a confirmed provider
+          cache read.
+        </p>
       </DocsSection>
       <DocsSection title="Choose a model in DeepSpace">
         <p>
@@ -95,14 +114,18 @@ export default function DeepSpaceDocsPage() {
       </DocsSection>
       <DocsSection title="Response speed and first-token time">
         <p>
-          Completed DeepSpace replies show output speed, end-to-end TTFT, and provider first-output
-          time beside the response actions. End-to-end TTFT runs from the server starting the
-          DeepSpace request to the first visible answer text. It includes routing, context
-          preparation, provider waiting, and any reasoning or tool work before the answer. Provider
-          first-output time starts when the first provider request begins and ends when the server
-          receives its first output event. It includes network and connector overhead; Codex also
-          includes the local desktop relay, so it is not the model vendor&apos;s internal compute
-          time.
+          While a reply is streaming, the composer shows a live output-token estimate and an
+          estimated tokens-per-second rate. The live estimate includes answer, reasoning, and
+          streamed function-argument chunks and refreshes as chunks arrive; it is intentionally
+          marked as an estimate because the provider tokenizer and final usage are not available
+          yet. Completed DeepSpace replies show output speed, end-to-end TTFT, and provider
+          first-output time beside the response actions. End-to-end TTFT runs from the server
+          starting the DeepSpace request to the first visible answer text. It includes routing,
+          context preparation, provider waiting, and any reasoning or tool work before the answer.
+          Provider first-output time starts when the first provider request begins and ends when the
+          server receives its first output event. It includes network and connector overhead; Codex
+          also includes the local desktop relay, so it is not the model vendor&apos;s internal
+          compute time.
         </p>
         <p>
           Output speed divides exact provider-reported completion tokens by the measured interval
@@ -130,10 +153,92 @@ export default function DeepSpaceDocsPage() {
           may be limited.
         </p>
         <p>
-          After upload, each attachment shows whether text was extracted, OCR was used, no readable
-          text was found, or extraction was unavailable. Short whole-file reads use saved text
-          directly; targeted questions and large documents can use document search.
+          An attachment becomes ready as soon as its private file is stored. Text extraction and OCR
+          then continue in the background; the composer shows “Uploaded · reading text” while that
+          work is pending. Supported images can be sent to a model with visual input before OCR
+          finishes. For other files, DeepSpace reports pending extraction instead of treating
+          missing text as proof that the file is empty. When processing finishes, the attachment
+          shows whether text was extracted, OCR was used, no readable text was found, or extraction
+          was unavailable. Short whole-file reads use saved text directly; targeted questions and
+          large documents can use document search.
         </p>
+      </DocsSection>
+      <DocsSection title="Rich answers, charts, and diagrams">
+        <p>
+          DeepSpace keeps normal Markdown as the source format and promotes supported fenced blocks
+          into interactive surfaces. A <code>chart</code> fence accepts JSON with a title, a chart
+          type (<code>line</code>, <code>bar</code>, <code>area</code>, <code>scatter</code>, or
+          <code>pie</code>), and a series of labeled values. Bar charts center each category in its
+          own slot and draw positive and negative values from zero. Completed charts support hover
+          details, value editing, named multi-series data, left/right axes, annotations, interactive
+          legends, a payload view, JSON download, and revisioned save back to the conversation. Add
+          an <code>equation</code> field when a chart needs its formula shown beside the visual.
+          Recalculating refreshes the chart JSON source from the same values and returns to the
+          visual view. If the revision cannot be saved, the editor stays open so you can retry.
+          Optional
+          <code>x_label</code> and <code>y_label</code> fields appear as axis titles.
+        </p>
+        <p>
+          Use Mermaid for flowcharts, sequence diagrams, UML, architecture, business models, and
+          schedules such as Gantt charts. Gantt source can use a <code>gantt</code> fence or a
+          <code>mermaid</code> fence beginning with <code>gantt</code>; make the{" "}
+          <code>dateFormat</code>
+          match task dates (for example, <code>YYYY-MM-DD</code> for <code>2026-01-05</code>).
+          Mermaid diagrams include copy, Save artifact, JSON and Mermaid-source downloads, plus
+          SVG/PNG/PDF exports. SVG stays vector-based; PNG and PDF use the SVG viewBox and render at
+          up to 2× resolution within browser canvas limits. Labels use native SVG text so raster
+          exports remain self-contained. UML class diagrams and Gantt schedules also expose
+          structured controls that regenerate the Mermaid source. Use a <code>card</code> fence for
+          a finding, recommendation, source, or media summary; cards can contain safe Markdown,
+          metrics, an approved image URL, a source link, copy/download controls, and explicit
+          actions. External URLs must come from an authorized search or read result. Card tones are
+          info, success, warning, error, or neutral; common model labels such as positive and
+          caution are normalized automatically. Raw HTML and scripts are not rendered.
+        </p>
+        <p>
+          A <code>graph</code> fence opens the portable canvas editor: nodes can be moved and
+          resized, connected, grouped, aligned, zoomed, or annotated with freehand paths, then
+          copied or downloaded as DeepSpace <code>.draw.json</code>; that portable JSON is not an
+          Excalidraw file. You can import the same format directly into the chat canvas. Mermaid
+          source can be downloaded as <code>.mmd</code> or edited in place, which makes UML,
+          business-model, and Gantt diagrams practical inside the chat and notes. A{" "}
+          <code>gallery</code> fence creates a safe image sequence with captions, next/previous
+          controls, source links, and downloads. DeepSpace copies usable raster images into private
+          conversation storage so previews and exports do not rely on third-party CORS. These
+          temporary copies expire after 30 days; choose <strong>Save image to Library</strong> to
+          keep a photo. Temporary copies stay out of the regular Library list and are removed by
+          scheduled storage cleanup. Visual revisions update the authenticated message and active
+          note. If a visual is saved as a Library artifact, later chat, note, or artifact edits
+          advance its version and synchronize the revision to the linked views. Delayed note
+          refreshes preserve the latest saved visual revision; conflicting edits from another
+          session are reported so the note can be reloaded. Providers may use a generic
+          <code>json</code> fence for these same payloads; DeepSpace recognizes unambiguous card,
+          chart, graph, and gallery JSON automatically. Invalid visual JSON is kept as plain code
+          instead of being executed. A missing image or non-image URL shows a recoverable fallback
+          and does not terminate the answer. JSON, SVG, PNG, and PDF exports are available for
+          visual blocks; gallery SVG/PNG exports embed owned images when available and show a
+          placeholder for a missing image. PNG/PDF export strips external SVG resources before
+          rasterization; if a browser still blocks rasterization, the error is shown inline instead
+          of escaping as an exception. Saved rich blocks in notes are restored as rendered visuals
+          when the note is reopened, so the note preview does not fall back to raw visual-fence
+          code.
+        </p>
+        <p>
+          Tables include copy and CSV/XLSX export controls. In DeepSpace, with a conversation open,
+          choose <strong>Save to Library</strong> to store a table as a private, versioned visual
+          artifact that can be reopened from the Library. If clipboard access is blocked, DeepSpace
+          tries a browser fallback and shows an error if copying still cannot complete. Export and
+          Library-save failures are also reported beside the table controls.
+        </p>
+        <pre className="overflow-x-auto rounded-xl border border-white/10 bg-black/20 p-4 text-xs leading-6">
+          <code>{`\`\`\`chart
+{"title":"Quarterly revenue","chart_type":"line","equation":"y = mx + b","series":[{"label":"Q1","value":12},{"label":"Q2","value":19}]}
+\`\`\`
+
+\`\`\`card
+{"title":"Decision brief","tone":"success","content":"**Ship** the verified workflow.","metrics":[{"label":"Confidence","value":"92%"}]}
+\`\`\``}</code>
+        </pre>
       </DocsSection>
       <DocsSection title="Prompt and queue status">
         <p>
@@ -169,7 +274,21 @@ export default function DeepSpaceDocsPage() {
         <p>
           If a prompt remains queued, the worker has not claimed it yet. Workspace administrators
           should check DeepSpace worker availability; users can keep other pending prompts in the
-          composer queue while they wait.
+          composer queue while they wait. A queued prompt is shown as active only after a worker
+          claims it, and the chat reconnects after that state change. If a worker claims a prompt
+          just before you choose <strong>Steer</strong>, the queue refresh explains that it has
+          already started; a running prompt cannot be reordered.
+        </p>
+        <p>
+          A queue submission that meets a temporary service interruption is retried once; if it
+          still cannot be saved, the draft stays in the composer and the error explains what
+          happened. An initial stream HTTP error also gets one retry, then automatic reconnect stops
+          so the activity panel does not stay live through a retry loop. This reports a connection
+          failure; it does not confirm that an already-started server worker stopped. Reopen the
+          conversation after service recovers to attach to its saved run. When you stop a running
+          response, the activity panel waits briefly for the server confirmation. If that terminal
+          event is unavailable, it stops the local timer and reloads saved history so an interrupted
+          worker cannot remain displayed as running.
         </p>
         <p>
           Use <strong>Edit</strong> beside a queued prompt to bring it back into the composer.
@@ -198,6 +317,14 @@ export default function DeepSpaceDocsPage() {
           saved task even if it is older than the normal chat context window. Some providers also
           require private continuation data after a tool call; DeepSpace stores that data encrypted
           for resuming and does not return it in chat history.
+        </p>
+        <p>
+          When a response creates a saved task plan, a collapsible task drawer appears immediately
+          above the composer. It opens as the plan is created, shows each task&apos;s live status,
+          and can be collapsed to a one-row progress summary that keeps the active task and its
+          running indicator visible. The task drawer is the single place that shows plan progress;
+          <strong>Thinking &amp; activity</strong> continues to show only the tool activity.
+          DeepSpace checks the saved task ledger before it reports the final answer.
         </p>
         <p>
           Error headings describe the failure type. <strong>Request rejected</strong> means the

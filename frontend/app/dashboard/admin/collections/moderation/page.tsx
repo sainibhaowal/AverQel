@@ -298,7 +298,7 @@ export default function CollectionModerationPage() {
                         {report.reason.replaceAll("_", " ")}
                       </h2>
                       <p className="text-muted-foreground mt-1 text-xs">
-                        Collection:{" "}
+                        Qel Connect:{" "}
                         <span className="text-foreground/80">
                           {report.collection_name || "Unavailable"}
                         </span>

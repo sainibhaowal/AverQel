@@ -39,7 +39,7 @@ describe("ProductDomains", () => {
     expect(ids).toEqual([
       "documents-hub",
       "query",
-      "collections",
+      "qel-connect",
       "deepspace",
       "providers",
       "mcp",
@@ -107,9 +107,9 @@ describe("ProductDomains", () => {
     expect(deepSpaceSection.getByText(/separately isolated sandbox/i)).toBeInTheDocument();
   });
 
-  it("separates Collections, AI Providers, MCP, and user-facing workspace controls", () => {
+  it("separates Qel Connect, AI Providers, MCP, and user-facing workspace controls", () => {
     const { container } = render(<ProductDomains />);
-    const collections = within(document.getElementById("collections") as HTMLElement);
+    const collections = within(document.getElementById("qel-connect") as HTMLElement);
     const providers = within(document.getElementById("providers") as HTMLElement);
     const mcp = within(document.getElementById("mcp") as HTMLElement);
     const controls = within(document.getElementById("workspace-controls") as HTMLElement);

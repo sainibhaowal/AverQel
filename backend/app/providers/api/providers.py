@@ -543,13 +543,15 @@ def preview_models(
     _enforce_tenant_scope(request_tenant_id, auth)
     provider = ProviderConfig(
         tenant_id=auth.tenant_id,
+        owner_user_id=auth.user_id,
         workspace_id=payload.workspace_id,
         provider_type=payload.provider_type,
         display_name=payload.provider_type,
         api_base_url=payload.api_base_url,
         auth_mode=payload.auth_mode,
         enabled=True,
-        is_local=payload.auth_mode == "local_no_key",
+        is_local=payload.auth_mode == "local_no_key"
+        or payload.provider_type in {"ollama", "lmstudio"},
         supports_chat=payload.supports_chat,
         supports_embeddings=payload.supports_embeddings,
         supports_reranking=payload.supports_reranking,

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import AverQelLogo from "../ui/AverQelLogo";
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_NAME, QEL_CONNECT_NAME } from "@/lib/brand";
 import { APP_VERSION } from "@/lib/release";
 import { useLandingSectionMotion } from "../marketing/landingMotion";
 
@@ -13,7 +13,7 @@ const links = [
     items: [
       { label: "Documents Hub", href: "#documents-hub" },
       { label: "Query", href: "#query" },
-      { label: "Collections", href: "#collections" },
+      { label: QEL_CONNECT_NAME, href: "#qel-connect" },
       { label: "DeepSpace", href: "#deepspace" },
       { label: "AI Providers", href: "#providers" },
       { label: "MCP Servers", href: "#mcp" },
@@ -68,7 +68,7 @@ export default function Footer() {
           <div className="md:col-span-1">
             <AverQelLogo size="footer" showWordmark={true} />
             <p className="text-muted-foreground mt-4 max-w-xs text-sm leading-6">
-              AverQel brings source documents, evidence-based Query, shared Collections, and
+              AverQel brings source documents, evidence-based Query, shared Qel Connect spaces, and
               DeepSpace work together, with separate provider, MCP, and workspace controls.
             </p>
           </div>

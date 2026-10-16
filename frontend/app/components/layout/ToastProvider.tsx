@@ -7,6 +7,9 @@ export default function ToastProvider({ children }: { children: React.ReactNode 
     <>
       <Toaster
         position="top-right"
+        containerStyle={{
+          top: "calc(var(--averqel-desktop-chrome-height, 0px) + 16px)",
+        }}
         toastOptions={{
           style: {
             background: "#0a0f18",

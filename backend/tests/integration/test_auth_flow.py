@@ -280,3 +280,89 @@ def test_totp_secret_is_encrypted_at_rest(
         code=pyotp.TOTP(setup.secret).now(),
     )
     assert verified.access_token
+
+
+def test_profile_updates_display_name_avatar_and_first_run_state(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    seeded = seed_user(
+        "tenant-profile-personalization",
+        "profile@tenant.example",
+        "StrongPass!1234",
+        ("editor",),
+    )
+    login = client.post(
+        "/api/v1/auth/login",
+        headers={"X-Tenant-Id": str(seeded.tenant_id)},
+        json={"email": seeded.email, "password": seeded.password},
+    )
+    assert login.status_code == 200
+    headers = {
+        "Authorization": f"Bearer {login.json()['access_token']}",
+        "X-Tenant-Id": str(seeded.tenant_id),
+    }
+
+    initial = client.get("/api/v1/auth/profile", headers=headers)
+    assert initial.status_code == 200
+    assert initial.json()["display_name"] is None
+    assert initial.json()["onboarding_completed"] is False
+
+    avatar = "data:image/jpeg;base64,aGVsbG8="
+    updated = client.put(
+        "/api/v1/auth/profile",
+        headers=headers,
+        json={
+            "display_name": "  Ravi Singh  ",
+            "avatar": avatar,
+            "onboarding_completed": True,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["display_name"] == "Ravi Singh"
+    assert updated.json()["avatar"] == avatar
+    assert updated.json()["onboarding_completed"] is True
+    assert updated.json()["email"] == seeded.email
+    assert updated.json()["roles"] == ["editor"]
+
+    persisted = client.get("/api/v1/auth/profile", headers=headers)
+    assert persisted.status_code == 200
+    assert persisted.json()["display_name"] == "Ravi Singh"
+    assert persisted.json()["avatar"] == avatar
+    assert persisted.json()["onboarding_completed"] is True
+
+
+def test_profile_rejects_invalid_display_names_and_avatar_schemes(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    seeded = seed_user(
+        "tenant-profile-validation",
+        "profile-validation@tenant.example",
+        "StrongPass!1234",
+        ("user",),
+    )
+    login = client.post(
+        "/api/v1/auth/login",
+        headers={"X-Tenant-Id": str(seeded.tenant_id)},
+        json={"email": seeded.email, "password": seeded.password},
+    )
+    assert login.status_code == 200
+    headers = {
+        "Authorization": f"Bearer {login.json()['access_token']}",
+        "X-Tenant-Id": str(seeded.tenant_id),
+    }
+
+    too_long = client.put(
+        "/api/v1/auth/profile",
+        headers=headers,
+        json={"display_name": "x" * 49},
+    )
+    assert too_long.status_code == 422
+
+    unsafe_avatar = client.put(
+        "/api/v1/auth/profile",
+        headers=headers,
+        json={"avatar": "javascript:alert(1)"},
+    )
+    assert unsafe_avatar.status_code == 422

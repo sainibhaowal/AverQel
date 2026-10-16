@@ -4,6 +4,7 @@ import Image from "next/image";
 import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { X, Minus, Square, Copy } from "lucide-react";
 import { APP_VERSION } from "@/lib/release";
+import AverQelWordmark from "@/app/components/ui/AverQelWordmark";
 
 export default function TitleBar() {
   const isElectron = useSyncExternalStore(
@@ -55,18 +56,20 @@ export default function TitleBar() {
 
       {/* App Logo & Title */}
       <div
-        className="pointer-events-none relative flex items-center gap-3 pl-4"
+        className="pointer-events-none relative flex items-center gap-2 pl-4"
         style={{ zIndex: 10 }}
       >
         <Image
-          src="/logo_icon.png"
+          src="/brand/AverQel_Icon.svg"
           alt="AverQel logo"
-          width={28}
-          height={28}
-          className="h-7 w-7 shrink-0 object-contain"
+          width={50}
+          height={26}
+          priority
+          className="h-[26px] w-[50px] shrink-0 object-contain"
         />
-        <span className="text-[11px] font-bold tracking-[0.2em] text-slate-400 uppercase">
-          AverQel {APP_VERSION}
+        <AverQelWordmark size="footer" />
+        <span className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+          {APP_VERSION}
         </span>
       </div>
 

@@ -14,9 +14,11 @@ repos:
         exclude: ^(tests|docs|examples)/
       - id: end-of-file-fixer
         exclude: ^(tests|docs|examples)/
+      # Keep the supplied full-resolution signatures intact; only these two
+      # intentionally large brand images are exempt from the generic file cap.
       - id: check-added-large-files
         args: [--maxkb=100]
-        exclude: ^(tests|docs|examples)/
+        exclude: ^(tests|docs|examples|frontend/public/DeepSpace Logo/DeepSpace_Logo_Only_NoBlack_Exact\.svg|frontend/public/brand/AverQel_Exact_Logo\.svg)$
       - id: check-ast
         exclude: ^(tests|docs|examples)/
       - id: check-builtin-literals

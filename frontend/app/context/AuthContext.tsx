@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   fetchWithAuth,
   getAccessTokenExpiry,
@@ -17,13 +17,33 @@ interface User {
   email: string;
   tenant_id: string;
   roles: string[];
+  display_name?: string | null;
+  avatar?: string | null;
+  account_status?: string;
+  totp_enabled?: boolean;
+  onboarding_completed?: boolean;
+}
+
+interface ProfileResponse {
+  user_id: string;
+  tenant_id: string;
+  email: string;
+  roles: string[];
+  display_name: string | null;
+  avatar: string | null;
+  status: string;
+  totp_enabled: boolean;
+  onboarding_completed: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  profileReady: boolean;
   userDisabled: boolean;
   login: (token: string, tenantId: string, user: User, remember?: boolean) => void;
+  updateUserProfile: (profile: Partial<User>) => void;
+  refreshProfile: () => Promise<ProfileResponse>;
   logout: () => void;
 }
 
@@ -32,7 +52,63 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoadedUserId, setProfileLoadedUserId] = useState<string | null>(null);
   const [userDisabled, setUserDisabled] = useState(false);
+  const profileReady = !user?.id || profileLoadedUserId === user.id;
+
+  const updateUserProfile = useCallback((profile: Partial<User>) => {
+    setUser((current) => (current ? { ...current, ...profile } : current));
+  }, []);
+
+  const refreshProfile = useCallback(async (): Promise<ProfileResponse> => {
+    const response = (await fetchWithAuth("/auth/profile")) as Response;
+    if (!response.ok) throw new Error("Could not load your account profile.");
+    const profile = (await response.json()) as ProfileResponse;
+    if (
+      typeof profile.user_id !== "string" ||
+      typeof profile.tenant_id !== "string" ||
+      typeof profile.email !== "string" ||
+      !Array.isArray(profile.roles)
+    ) {
+      throw new Error("The account profile response was invalid.");
+    }
+    setUser((current) =>
+      current && current.id === profile.user_id
+        ? {
+            ...current,
+            email: profile.email,
+            tenant_id: profile.tenant_id,
+            roles: profile.roles.filter((role): role is string => typeof role === "string"),
+            display_name: profile.display_name,
+            avatar: profile.avatar,
+            account_status: profile.status,
+            totp_enabled: profile.totp_enabled,
+            onboarding_completed: profile.onboarding_completed,
+          }
+        : current,
+    );
+    return profile;
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    localStorage.setItem("averqel_user", JSON.stringify(user));
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    let active = true;
+    void Promise.resolve()
+      .then(() => refreshProfile())
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setProfileLoadedUserId(user.id);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id, refreshProfile]);
 
   useEffect(() => {
     const clearClientSession = () => {
@@ -125,6 +201,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               tenant_id?: unknown;
               email?: unknown;
               roles?: unknown;
+              display_name?: unknown;
+              avatar?: unknown;
+              status?: unknown;
+              totp_enabled?: unknown;
+              onboarding_completed?: unknown;
             };
             if (
               typeof profile.user_id === "string" &&
@@ -137,6 +218,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 email: profile.email,
                 tenant_id: profile.tenant_id,
                 roles: profile.roles.filter((role): role is string => typeof role === "string"),
+                display_name:
+                  typeof profile.display_name === "string" ? profile.display_name : null,
+                avatar: typeof profile.avatar === "string" ? profile.avatar : null,
+                account_status: typeof profile.status === "string" ? profile.status : undefined,
+                totp_enabled:
+                  typeof profile.totp_enabled === "boolean" ? profile.totp_enabled : undefined,
+                onboarding_completed:
+                  typeof profile.onboarding_completed === "boolean"
+                    ? profile.onboarding_completed
+                    : undefined,
               };
               localStorage.setItem("averqel_user", JSON.stringify(restoredUser));
               localStorage.setItem("averqel_tenant_id", restoredUser.tenant_id);
@@ -205,6 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("averqel_tenant_id", tenantId);
     localStorage.setItem("averqel_user", JSON.stringify(userData));
     localStorage.setItem("averqel_remember", persistentSession ? "true" : "false");
+    setProfileLoadedUserId(null);
     setUser(userData);
     setUserDisabled(false);
   };
@@ -219,6 +311,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     invalidateAuthSession({ broadcast: false, notify: false });
+    setProfileLoadedUserId(null);
     setUser(null);
     setUserDisabled(false);
 
@@ -230,7 +323,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, userDisabled, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        profileReady,
+        userDisabled,
+        login,
+        updateUserProfile,
+        refreshProfile,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

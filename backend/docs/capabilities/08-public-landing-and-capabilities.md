@@ -13,7 +13,7 @@ directory or imply that deployment-dependent services are active.
    document organization, document-level automation, and sharing.
 2. **Query** owns retrieval-first conversations, scoped source selection, streamed answers,
    citations, and Query history.
-3. **Collections** owns explicit project membership, shared sources, and collection collaboration.
+3. **Qel Connect** owns explicit project membership, shared sources, and Qel Connect collaboration.
    The public page must retain the experimental beta status.
 4. **DeepSpace** owns agent conversations and runs, Memory, its working Library, research and
    sandbox tools, artifacts and exports, and DeepSpace schedules. The DeepSpace Library contains
@@ -37,7 +37,7 @@ Detailed behavior, permission requirements, and deployment gates belong in the l
 The API routers are registered separately in `backend/app/main.py`:
 
 - Documents Hub: source documents and document organization routers.
-- Collections: separate collection membership, collaboration, and security routers.
+- Qel Connect: separate collection membership, collaboration, and security routers.
 - Query: `/queries` and Query chat/history routes.
 - DeepSpace: `/deepspace/chats`, `/deepspace/library`, `/deepspace/artifacts`,
   `/deepspace/sandbox`, and `/deepspace/schedules`.
@@ -71,7 +71,7 @@ conversation history and DeepSpace agent runs and Library files.
    endpoint registration.
 4. DeepSpace schedules require the configured worker and scheduler services for recurring
    execution. Sandbox and voice capabilities can have separate deployment requirements.
-5. Collections retain their experimental beta label until release status changes.
+5. Qel Connect retains its experimental beta label until release status changes.
 6. Public landing content must not expose secrets, internal endpoints, private API routes, or
    administration-only interfaces.
 

@@ -152,10 +152,28 @@ function codexCliInput(items) {
 function codexCliDynamicTools(tools) {
   if (!Array.isArray(tools)) return [];
   const namespaces = [];
+  const namespaceByName = new Map();
   const usedNames = new Set();
+  const addNamespace = (name, description, functions) => {
+    if (!functions.length) return;
+    let namespace = namespaceByName.get(name);
+    if (!namespace) {
+      namespace = {
+        type: "namespace",
+        name,
+        description,
+        tools: [],
+      };
+      namespaceByName.set(name, namespace);
+      namespaces.push(namespace);
+    }
+    namespace.tools.push(...functions);
+  };
   for (const entry of tools.slice(0, 128)) {
     if (!entry || typeof entry !== "object") continue;
     if (entry.type === "namespace" && typeof entry.name === "string" && Array.isArray(entry.tools)) {
+      const namespaceName = entry.name.trim().slice(0, 64);
+      if (!/^[A-Za-z0-9_.-]{1,64}$/.test(namespaceName)) continue;
       const functions = [];
       for (const tool of entry.tools) {
         if (
@@ -172,30 +190,24 @@ function codexCliDynamicTools(tools) {
             : { type: "object", properties: {} },
         });
       }
-      if (functions.length) {
-        namespaces.push({
-          type: "namespace",
-          name: entry.name.slice(0, 64),
-          description: typeof entry.description === "string" ? entry.description.slice(0, 1_000) : "",
-          tools: functions,
-        });
-      }
+      addNamespace(
+        namespaceName,
+        typeof entry.description === "string" ? entry.description.slice(0, 1_000) : "",
+        functions,
+      );
     } else if (entry.type === "function" && typeof entry.name === "string" && !usedNames.has(entry.name)) {
       if (!/^[A-Za-z0-9_.-]{1,64}$/.test(entry.name)) continue;
       usedNames.add(entry.name);
-      namespaces.push({
-        type: "namespace",
-        name: "averqel",
-        description: "Tools available to the AverQel agent.",
-        tools: [{
+      addNamespace("averqel", "Tools available to the AverQel agent.", [
+        {
           type: "function",
           name: entry.name,
           description: typeof entry.description === "string" ? entry.description.slice(0, 1_000) : "",
           inputSchema: entry.parameters && typeof entry.parameters === "object"
             ? entry.parameters
             : { type: "object", properties: {} },
-        }],
-      });
+        },
+      ]);
     }
   }
   return namespaces;

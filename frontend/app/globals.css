@@ -451,6 +451,72 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* The welcome flow is a full-screen surface, so it must inherit the active
+ * workspace palette rather than pin itself to the dark palette. */
+.welcome-flow-backdrop {
+  background:
+    radial-gradient(
+      circle at 15% 12%,
+      color-mix(in srgb, hsl(var(--primary)) 13%, transparent),
+      transparent 34%
+    ),
+    color-mix(in srgb, var(--background) 94%, transparent);
+}
+
+.welcome-flow-dialog {
+  border: 1px solid var(--glass-border);
+  background: var(--surface-0);
+  box-shadow: var(--elevation-2);
+  color: var(--foreground);
+}
+
+.welcome-flow-dialog > header,
+.welcome-flow-dialog > footer {
+  border-color: var(--glass-border);
+}
+
+.welcome-flow-dialog input,
+.welcome-flow-dialog select {
+  border-color: var(--glass-border);
+  background: var(--surface-1);
+  color: var(--foreground);
+}
+
+.welcome-provider-trigger,
+.welcome-provider-menu {
+  border: 1px solid var(--glass-border);
+  background: var(--surface-1);
+  color: var(--foreground);
+}
+
+.welcome-provider-trigger:focus-visible,
+.welcome-provider-menu [role="option"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.welcome-provider-menu {
+  box-shadow: var(--elevation-2);
+}
+
+html:not(.dark) .welcome-flow-dialog .text-slate-100,
+html:not(.dark) .welcome-flow-dialog .text-slate-200,
+html:not(.dark) .welcome-flow-dialog .text-slate-300,
+html:not(.dark) .welcome-flow-dialog .text-slate-400,
+html:not(.dark) .welcome-flow-dialog .text-slate-500 {
+  color: var(--text-muted);
+}
+
+html:not(.dark) .welcome-flow-dialog .text-slate-100,
+html:not(.dark) .welcome-flow-dialog .text-slate-200,
+html:not(.dark) .welcome-flow-dialog .text-slate-300 {
+  color: var(--text-body);
+}
+
+html:not(.dark) .welcome-flow-dialog .bg-slate-800 {
+  background: var(--surface-2);
+}
+
 /* Premium Component Wrappers */
 .theme-panel {
   background: var(--surface-0);
@@ -882,6 +948,252 @@ html:not(.dark) .library-preview-canvas {
   will-change: background-position;
 }
 
+/* The shared text mark is sourced from AverQel_Text.svg. Neutral letters stay
+ * readable while the Q remains the visible accent in either theme. */
+.averqel-wordmark {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  line-height: 0;
+  white-space: nowrap;
+}
+
+.averqel-wordmark__svg {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  overflow: visible;
+  /* The supplied transparent canvas leaves the visible letters slightly high. */
+  transform: translateY(1px);
+  animation: averqel-q-color-sweep 9s linear infinite;
+  will-change: filter;
+}
+
+/* The landing page owns a dark surface on its main element even when the
+ * workspace theme is light, so scope the contrast treatment to any dark
+ * product surface rather than only the document root. */
+.dark .averqel-wordmark__svg {
+  animation-name: averqel-q-color-sweep-dark;
+}
+
+.averqel-wordmark--nav {
+  min-height: 29px;
+}
+
+/* The landing nav uses the supplied canvas at a larger size; this small
+ * correction centers the visible letters beside the emblem, not the canvas. */
+.averqel-wordmark--nav .averqel-wordmark__svg {
+  transform: translateY(2px);
+}
+
+.averqel-logo__mark-image--nav {
+  /* The supplied icon canvas has wide transparent side margins. Pull the
+   * visible mark back to the same left edge as the landing content. */
+  transform: translateX(-8px);
+}
+
+.landing-trace-frame .averqel-wordmark--nav .averqel-wordmark__svg {
+  transform: translateY(4px);
+}
+
+/* Both supplied assets include transparent side padding. Overlap their
+ * layout canvases so the visible emblem and letters form one lockup. */
+.averqel-logo--nav .averqel-logo__wordmark {
+  margin-left: -20px;
+}
+
+.averqel-logo--hero .averqel-logo__wordmark {
+  margin-left: -2rem;
+}
+
+.averqel-logo--footer .averqel-logo__wordmark {
+  margin-left: -0.75rem;
+}
+
+.averqel-wordmark--mobile {
+  min-height: 22px;
+}
+
+.averqel-wordmark--footer {
+  min-height: 21px;
+}
+
+.averqel-wordmark--footer .averqel-wordmark__svg {
+  transform: translateY(7px);
+}
+
+/* Qel Connect's supplied telemetry mark uses a white primary parabola for
+ * dark surfaces. Darken that vector only on light surfaces so its complete
+ * shape remains visible without changing the approved artwork. The landing
+ * page and dark workspace palette both carry a `.dark` ancestor and retain
+ * the source colors. */
+.qel-connect-mark {
+  filter: brightness(0.62) saturate(1.2) contrast(1.18);
+}
+
+.dark .qel-connect-mark {
+  filter: none;
+}
+
+/* Auth entry screens use the supplied complete logo artwork. Keep the tagline
+ * aligned with the wordmark after the asset's transparent lower canvas. */
+.login-brand-lockup {
+  display: inline-flex;
+  max-width: min(296px, 82vw);
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.login-exact-logo-wrap {
+  position: relative;
+  display: block;
+  width: min(296px, 82vw);
+  aspect-ratio: 1448 / 1086;
+  isolation: isolate;
+}
+
+.login-exact-logo {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.login-exact-logo--animated {
+  position: absolute;
+  inset: 0;
+  display: block;
+  z-index: 1;
+  pointer-events: none;
+  clip-path: polygon(0 72%, 56% 72%, 56% 93%, 0 93%);
+  background-image: linear-gradient(
+    90deg,
+    #ff1744 0%,
+    #ff8a00 16%,
+    #ffe600 30%,
+    #00f58b 46%,
+    #00c8ff 62%,
+    #574bff 78%,
+    #f000ff 92%,
+    #ff1744 100%
+  );
+  background-position: 0% 0;
+  background-size: 200% 100%;
+  background-repeat: repeat-x;
+  -webkit-mask-image: url("/brand/AverQel_Exact_Logo.svg");
+  mask-image: url("/brand/AverQel_Exact_Logo.svg");
+  -webkit-mask-mode: alpha;
+  mask-mode: alpha;
+  -webkit-mask-position: 0 0;
+  mask-position: 0 0;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  will-change: background-position;
+  animation: login-logo-rgb-gradient-sweep 5.6s linear infinite;
+}
+
+.login-exact-logo--el {
+  clip-path: polygon(70% 72%, 100% 72%, 100% 93%, 70% 93%);
+}
+
+.login-brand-tagline {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  line-height: 1.4;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The exact artwork remains underneath this full RGB plane. The clip paths
+ * stop at the Q so its original cyan and violet colors are never replaced. */
+@keyframes login-logo-rgb-gradient-sweep {
+  from {
+    background-position: 0% 0;
+  }
+
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes averqel-q-color-sweep {
+  0%,
+  100% {
+    filter: hue-rotate(-8deg) saturate(1);
+  }
+
+  20% {
+    filter: hue-rotate(18deg) saturate(1.05);
+  }
+
+  40% {
+    filter: hue-rotate(38deg) saturate(1.08);
+  }
+
+  60% {
+    filter: hue-rotate(58deg) saturate(1.04);
+  }
+
+  80% {
+    filter: hue-rotate(26deg) saturate(1.06);
+  }
+}
+
+@keyframes averqel-q-color-sweep-dark {
+  0%,
+  100% {
+    filter: invert(1) hue-rotate(-8deg) saturate(1);
+  }
+
+  20% {
+    filter: invert(1) hue-rotate(18deg) saturate(1.05);
+  }
+
+  40% {
+    filter: invert(1) hue-rotate(38deg) saturate(1.08);
+  }
+
+  60% {
+    filter: invert(1) hue-rotate(58deg) saturate(1.04);
+  }
+
+  80% {
+    filter: invert(1) hue-rotate(26deg) saturate(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .averqel-wordmark__svg {
+    animation: none;
+    filter: none;
+    transform: translateY(1px);
+  }
+
+  .dark .averqel-wordmark__svg {
+    animation: none;
+    filter: invert(1);
+    transform: translateY(1px);
+  }
+
+  .averqel-wordmark--nav .averqel-wordmark__svg,
+  .dark .averqel-wordmark--nav .averqel-wordmark__svg {
+    transform: translateY(2px);
+  }
+
+  .login-exact-logo--animated {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 @keyframes landing-gradient-travel {
   from {
     background-position: 0% 50%;
@@ -942,43 +1254,31 @@ html:not(.dark) .library-preview-canvas {
   gap: 0.65rem;
 }
 
-.deepspace-welcome-status-orbit {
+.deepspace-wormhole {
   position: relative;
-  width: 1.5rem;
-  height: 1.25rem;
+  display: inline-block;
   flex: none;
-  perspective: 3.5rem;
-  transform-style: preserve-3d;
+  overflow: visible;
+  isolation: isolate;
 }
 
-.deepspace-welcome-status-orbit::before {
+.deepspace-wormhole__asset {
   position: absolute;
-  inset: 0.2rem 0.05rem;
-  border: 1px solid color-mix(in srgb, var(--accent-cyan) 40%, transparent);
-  border-radius: 50%;
-  content: "";
-  transform: rotateX(64deg);
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  object-fit: contain;
+  transform-origin: center;
+  animation: deepspace-wormhole-rotate 2.8s linear infinite;
+  will-change: transform;
 }
 
-.deepspace-welcome-status-dot {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 0.27rem;
-  height: 0.27rem;
-  border-radius: 50%;
-  background: var(--accent-cyan);
-  box-shadow: 0 0 0.55rem color-mix(in srgb, var(--accent-cyan) 82%, transparent);
-  transform-style: preserve-3d;
-  animation: deepspace-welcome-dot-orbit 3.2s ease-in-out infinite;
-}
-
-.deepspace-welcome-status-dot--secondary {
-  width: 0.2rem;
-  height: 0.2rem;
-  background: #60a5fa;
-  box-shadow: 0 0 0.5rem rgba(96, 165, 250, 0.85);
-  animation-delay: -1.6s;
+@keyframes deepspace-wormhole-rotate {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .deepspace-welcome-status-label {
@@ -1003,29 +1303,6 @@ html:not(.dark) .library-preview-canvas {
   line-height: 1.25rem;
   white-space: nowrap;
   animation: deepspace-welcome-status-sweep 3.4s ease-in-out infinite;
-}
-
-@keyframes deepspace-welcome-dot-orbit {
-  0%,
-  100% {
-    transform: translate(-50%, -50%) translate3d(-0.45rem, 0, -0.15rem) scale(0.72);
-    opacity: 0.62;
-  }
-
-  25% {
-    transform: translate(-50%, -50%) translate3d(0, -0.22rem, 0.18rem) scale(0.92);
-    opacity: 0.92;
-  }
-
-  50% {
-    transform: translate(-50%, -50%) translate3d(0.45rem, 0, -0.15rem) scale(1.1);
-    opacity: 1;
-  }
-
-  75% {
-    transform: translate(-50%, -50%) translate3d(0, 0.22rem, 0.18rem) scale(0.88);
-    opacity: 0.86;
-  }
 }
 
 @keyframes deepspace-welcome-status-sweep {
@@ -1054,12 +1331,8 @@ html:not(.dark) .library-preview-canvas {
     background-position: 50% 50%;
   }
 
-  .deepspace-welcome-status-dot,
   .deepspace-welcome-status-label {
     animation: none;
-  }
-
-  .deepspace-welcome-status-label {
     background: none;
     color: var(--text-muted);
     -webkit-text-fill-color: currentColor;
@@ -1078,11 +1351,6 @@ html:not(.dark) .library-preview-canvas {
     color: CanvasText;
     background: none;
     -webkit-text-fill-color: CanvasText;
-    animation: none;
-  }
-
-  .deepspace-welcome-status-dot {
-    box-shadow: none;
     animation: none;
   }
 }
@@ -1577,6 +1845,79 @@ html:not(.dark) .library-preview-canvas {
   border: 1px solid var(--chip-border);
 }
 
+.visual-block-action {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--surface-1) 90%, var(--foreground) 10%);
+  border: 1px solid color-mix(in srgb, var(--foreground) 28%, transparent);
+  border-radius: 0.65rem;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.visual-export-action {
+  border-radius: 0.45rem;
+}
+
+.visual-chart-title {
+  margin-block: 0 !important;
+}
+
+.visual-block-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface-1) 78%, hsl(var(--primary)) 22%);
+  border-color: color-mix(in srgb, hsl(var(--primary)) 58%, var(--foreground) 12%);
+}
+
+.visual-block-action:focus-visible,
+.visual-block-action-segment:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+.visual-block-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.visual-block-action--active {
+  color: #fff;
+  background: #0f766e;
+  border-color: #0f766e;
+}
+
+.visual-block-action--active:hover:not(:disabled) {
+  color: #fff;
+  background: #115e59;
+  border-color: #115e59;
+}
+
+.visual-block-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--surface-1) 88%, var(--foreground) 12%);
+}
+
+.visual-block-action-segment {
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.visual-block-action-segment:hover:not(:disabled):not(.visual-block-action--active) {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--surface-1) 75%, hsl(var(--primary)) 25%);
+}
+
 .theme-accent-pill {
   background: var(--accent-pill-bg);
   border: 1px solid var(--accent-pill-border);
@@ -1610,6 +1951,34 @@ html:not(.dark) .library-preview-canvas {
     opacity 460ms ease,
     transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: opacity, transform;
+}
+
+/* Token-required states use one directional sweep instead of a breathing pulse. */
+.waiting-token-sweep {
+  background-image: linear-gradient(
+    112deg,
+    transparent 0%,
+    transparent 42%,
+    color-mix(in srgb, hsl(var(--warning)) 44%, transparent) 50%,
+    transparent 58%,
+    transparent 100%
+  );
+  background-position: -120% 0;
+  background-size: 240% 100%;
+  animation: waiting-token-sweep 2.8s linear infinite;
+}
+
+@keyframes waiting-token-sweep {
+  to {
+    background-position: 120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .waiting-token-sweep {
+    animation: none;
+    background-position: 50% 0;
+  }
 }
 
 .dark .providers-inventory-panel,
@@ -3079,55 +3448,19 @@ select:-webkit-autofill:focus {
   animation: btn-glow-pulse 3s ease-in-out infinite;
 }
 
-/* The first assistant frame can take a moment to arrive. Keep this small,
-   inline indicator local to the assistant avatar so it never covers the
-   composer or changes stream state. A short staggered wave stays smooth
-   during long provider waits without a JavaScript timer. */
-.deepspace-response-dots {
+/* The first assistant frame can take a moment to arrive. Keep this compact
+   wormhole indicator local to the assistant avatar so it never covers the
+   composer or changes stream state. */
+.deepspace-response-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
   min-height: 1.5rem;
   padding: 0.15rem 0;
-  color: color-mix(in srgb, var(--accent-cyan) 82%, white);
-}
-
-.deepspace-response-dot {
-  display: block;
-  width: 0.34rem;
-  height: 0.34rem;
-  border-radius: 9999px;
-  background: currentColor;
-  box-shadow: 0 0 0.7rem color-mix(in srgb, currentColor 48%, transparent);
-  animation: deepspace-dot-wave 1.35s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.deepspace-response-dot:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.deepspace-response-dot:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-@keyframes deepspace-dot-wave {
-  0%,
-  60%,
-  100% {
-    opacity: 0.35;
-    transform: translateY(0) scale(0.82);
-  }
-
-  30% {
-    opacity: 1;
-    transform: translateY(-0.22rem) scale(1.08);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .deepspace-response-dot {
+  .deepspace-wormhole__asset {
     animation: none !important;
-    opacity: 0.72;
   }
 }
 
@@ -4721,8 +5054,6 @@ html:not(.dark) .deepspace-model-menu .deepspace-model-menu-empty {
 }
 
 .deepspace-model-provider-mark {
-  border-color: color-mix(in srgb, var(--accent-cyan) 24%, var(--border-subtle));
-  background: color-mix(in srgb, var(--accent-cyan) 10%, var(--surface-2));
   color: var(--accent-cyan);
 }
 
@@ -4756,8 +5087,6 @@ html:not(.dark) .deepspace-model-provider-heading:focus-visible {
 }
 
 html:not(.dark) .deepspace-model-provider-mark {
-  border-color: rgba(14, 116, 144, 0.18);
-  background: rgba(13, 148, 136, 0.08);
   color: #0f766e;
 }
 

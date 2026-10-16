@@ -987,7 +987,7 @@ def test_query_advanced_document_intelligence_collections_and_failures(
             service, auth, 'Why did document named "beta-analysis" fail?'
         )
 
-    assert 'Documents in collection "Research":' in collection_answer
+    assert 'Documents in Qel Connect space "Research":' in collection_answer
     assert "alpha-report.pdf" in collection_answer
     assert "gamma-notes.pdf" in collection_answer
     assert "beta-analysis.pdf" not in collection_answer
@@ -1065,11 +1065,12 @@ def test_query_advanced_document_intelligence_comparison_and_collections(
     assert "Most at risk:" in comparison_answer
     assert "alpha-report.pdf: status indexed" in comparison_answer
     assert "gamma-notes.pdf: status indexed" in comparison_answer
-    assert 'Collection summary for "Research":' in collection_summary
+    assert 'Qel Connect summary for "Research":' in collection_summary
     assert "Average document health:" in collection_summary
     assert "alpha-report.pdf" in collection_summary
     assert "gamma-notes.pdf" in collection_summary
     assert (
-        'The strongest collection for "adaptive retrieval" is Research.' in best_collection_answer
+        'The strongest Qel Connect space for "adaptive retrieval" is Research.'
+        in best_collection_answer
     )
     assert "Runner-up: Operations" in best_collection_answer

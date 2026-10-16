@@ -58,10 +58,14 @@ celery_app.conf.update(
         "mcp.*": {"queue": "maintenance"},
         "mcp.sync_official_catalog": {"queue": "maintenance"},
         "deepspace.run": {"queue": "deepspace"},
-        "deepspace.dispatch_turn_queue": {"queue": "deepspace"},
+        # Queue dispatch is short database coordination. Keep it off the
+        # long-running model queue so active generations cannot starve it.
+        "deepspace.dispatch_turn_queue": {"queue": "deepspace_control"},
         # Large Library imports are intentionally isolated from interactive
-        # DeepSpace chat turns.  The dedicated worker has concurrency one.
+        # DeepSpace chat turns. File publication and document extraction have
+        # separate queues so slow OCR cannot block attachment availability.
         "deepspace.library_upload_finalize": {"queue": "library_uploads"},
+        "deepspace.library_file_extract": {"queue": "library_extraction"},
         "deepspace.library_dataset_profile": {"queue": "dataset_indexing"},
         "deepspace.library_media_derivative": {"queue": "media_derivatives"},
         "deepspace.dispatch_schedules": {"queue": "deepspace"},

@@ -173,6 +173,30 @@ describe("providers settings page", () => {
     });
   });
 
+  it("greys out local runtime families in the web catalog", async () => {
+    render(<ProvidersSettingsPage />);
+
+    const inventoryHeading = await screen.findByRole("heading", {
+      name: "Inventory",
+      level: 3,
+    });
+    const panel = inventoryHeading.closest("aside");
+    expect(panel).not.toBeNull();
+    fireEvent.click(within(panel!).getByRole("button", { name: "Browse provider families" }));
+
+    const familyContent = await within(panel!).findByRole("region", {
+      name: "Provider families",
+    });
+    const ollama = await within(familyContent).findByRole("button", {
+      name: /ollama desktop app only/i,
+    });
+    expect(
+      within(familyContent).getByText(/lm studio and ollama run on your computer/i),
+    ).toBeInTheDocument();
+    expect(ollama).toBeDisabled();
+    expect(ollama).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("keeps the provider panel fixed and constrains both inventory views to scrolling", async () => {
     const previousWidth = window.innerWidth;
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -350,12 +374,22 @@ describe("providers settings page", () => {
       expect(panel).not.toBeNull();
       expect(panel).toHaveClass("providers-inventory-panel");
       expect(panel).toHaveClass("min-h-0", "overflow-hidden");
+      expect(panel).toHaveClass("relative", "isolate", "z-[2]");
       expect(panel).not.toHaveClass("h-full");
       expect(panel?.parentElement?.querySelector(".providers-setup-panel")).toBeInTheDocument();
       expect(panel?.parentElement).toHaveClass(
         "h-full",
+        "relative",
+        "z-[1]",
         "grid-rows-[minmax(0,1fr)]",
         "overflow-hidden",
+        "pb-1",
+      );
+      expect(panel?.parentElement?.parentElement).toHaveClass("providers-page-content", "pb-1");
+      expect(panel?.parentElement?.querySelector(".providers-setup-panel")).toHaveClass(
+        "relative",
+        "isolate",
+        "z-[2]",
       );
       expect(panel?.closest(".providers-page-enter")).toHaveClass("h-full", "min-h-0");
 

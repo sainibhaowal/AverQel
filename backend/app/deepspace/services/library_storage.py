@@ -196,6 +196,7 @@ def safe_extraction_status(extraction: dict[str, Any], *, attempted: bool = True
     """Return bounded, non-sensitive extraction metadata for API and storage."""
     stored_state = extraction.get("state")
     if isinstance(stored_state, str) and stored_state in {
+        "processing",
         "extracted",
         "no_text",
         "unavailable",

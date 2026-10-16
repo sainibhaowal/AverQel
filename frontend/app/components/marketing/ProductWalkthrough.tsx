@@ -7,7 +7,6 @@ import {
   Cable,
   CheckCircle2,
   FileText,
-  FolderKanban,
   Gauge,
   Network,
   Search,
@@ -23,6 +22,7 @@ import {
   landingSectionTitleClass,
   landingTitleGradientBySection,
 } from "./landingType";
+import QelConnectMark from "../ui/QelConnectMark";
 
 const steps = [
   {
@@ -57,17 +57,17 @@ const steps = [
   },
   {
     title: "Keep context focused",
-    eyebrow: "03 · Collections",
-    icon: FolderKanban,
+    eyebrow: "03 · Qel Connect",
+    icon: QelConnectMark,
     color: "text-emerald-300",
     border: "border-emerald-400/25",
     bg: "bg-emerald-500/[0.08]",
-    body: "Group the documents that belong together, then share only the collection you intend to share through explicit ownership and permission controls.",
+    body: "Group the documents that belong together, then share only the Qel Connect space you intend to share through explicit ownership and permission controls.",
     outcome: "A deliberate scope for each project or team.",
     signals: [
       ["Membership", "Invite-based", "Owner and member roles remain explicit"],
       ["Conversation", "Real time", "Encrypted messages and attachments"],
-      ["Documents", "Shared by reference", "Members use only approved collection sources"],
+      ["Documents", "Shared by reference", "Members use only approved Qel Connect sources"],
     ],
   },
   {

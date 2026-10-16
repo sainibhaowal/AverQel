@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Docs/brand/averqel-readme-banner.svg" alt="AverQel - AI workspace for documents, connected tools, and work" width="100%" />
+  <img src="Docs/brand/averqel-readme-banner.svg" alt="AverQel - Intelligence All You Need" width="100%" />
 </p>
 
 <p align="center">
@@ -28,32 +28,32 @@ explains that distinction and the release path.
 | Documents Hub                 | Private document upload, malware scanning, OCR and extraction, indexing, search, previews, version history, sharing, collaboration, organization, and recovery workflows. | Requires the API, ingestion workers, private object storage, and configured malware scanner. See the [user guide](backend/docs/library/09-documents-hub-user-guide.md) and [production contract](backend/docs/library/05-documents-production.md).                                                                                   |
 | Query                         | Retrieval-first questions over documents the authenticated user is allowed to access, with source references and query history.                                           | Depends on successfully processed sources and a configured answer provider; retrieval and generated answers can be incomplete. See [Grounded Query in the in-app documentation](frontend/app/documentation/grounded-query/page.tsx).                                                                                                 |
 | DeepSpace                     | Durable AI conversations, provider selection, tool use, approvals, queued work, retries, memory, document context, research, and generated artifacts.                     | Model calls require a configured provider. Sandboxed execution, browser rendering, scheduled tasks, and voice have additional service or deployment requirements. See the [runtime guide](backend/docs/deepspace/04-deepspace-agent-runtime.md) and [operations runbook](backend/docs/deepspace/05-deepspace-operations-runbook.md). |
-| Collections and collaboration | Membership and invitations, shared documents, collection chat, notifications, blocking, user-submitted reports, and moderation history.                                   | Collection rooms are documented as experimental beta pending external staging and real-device verification. See the [collection guide](backend/docs/library/12-collection-rooms.md) and [hardening and release boundaries](backend/docs/release/collection-bridge-hardening.md).                                                     |
+| Qel Connect and collaboration | Membership and invitations, shared documents, Qel Connect chat, notifications, blocking, user-submitted reports, and moderation history.                                   | Qel Connect rooms are documented as experimental beta pending external staging and real-device verification. See the [Qel Connect guide](backend/docs/library/12-collection-rooms.md) and [hardening and release boundaries](backend/docs/release/collection-bridge-hardening.md).                                                     |
 | MCP connectors                | Reviewed remote connector catalog, OAuth or encrypted credentials, tool discovery, policy controls, and approval for configured side-effecting actions.                   | A connector must be approved, configured, and connected. See the [MCP guide](backend/docs/capabilities/06-mcp-connections.md).                                                                                                                                                                                                       |
 | Feedback and support          | Feedback submissions and campaigns, support tickets, public replies, internal notes, status and priority workflows, attachments, notifications, and admin queues.         | Email notifications require SMTP configuration, a running worker, and Celery Beat. There is no paid-subscription or payment lifecycle integration. See [feedback, support, and notifications](backend/docs/platform/05-feedback-support-notifications.md).                                                                           |
 | Identity and administration   | Tenant and role-aware workspace access, account and session controls, security settings, and authorized admin surfaces for operations and governance.                     | Optional identity providers and security factors need environment configuration. See the [OAuth guide](backend/docs/platform/02-auth-oauth-login.md).                                                                                                                                                                                |
 | Web and desktop               | Next.js browser workspace and Electron packaging for Linux, Windows, and macOS.                                                                                           | Desktop release assets are published through the manual release workflow. See the [frontend guide](frontend/README.md) and [desktop guide](applications/desktop/README.md).                                                                                                                                                          |
 | Storage lifecycle             | Tenant retention settings, previews, reversible metadata-only archive and restore paths, and recovery controls.                                                           | Automatic archive remains disabled in production/VPS until the documented external restore and staging gates pass. Permanent purge through this lifecycle feature is disabled. See the [storage production guide](backend/docs/storage/02-storage-retention-production-guide.md).                                                    |
 
-### Collection moderation and privacy
+### Qel Connect moderation and privacy
 
-The collection moderation queue is for reviewing **reports submitted by
-collection members**. Tenant admins can review and update reports belonging to
+The Qel Connect moderation queue is for reviewing **reports submitted by
+Qel Connect members**. Tenant admins can review and update reports belonging to
 their authenticated tenant; API authorization and tenant filters apply in
 addition to the admin-only dashboard route. It is not a browser for users'
-collections or private chat history. Moderators receive the report details and
+Qel Connect spaces or private chat history. Moderators receive the report details and
 append-only moderation history; chat message bodies are not exposed in the
 moderation queue. See the [moderation release contract](backend/docs/release/collection-bridge-hardening.md).
 
-Collection chat has separate encryption paths. Do not describe the optional
+Qel Connect chat has separate encryption paths. Do not describe the optional
 server-mediated sealed-chat mode as zero-knowledge or as Signal/libsignal
 end-to-end encryption: the server can open that mode's messages for authorized
 members. The exact custody boundary and configuration are in the [sealed-chat documentation](backend/docs/library/10-collection-chat-encryption.md)
 and [collection chat contract](backend/docs/library/11-collection-chat.md).
-The browser encryption helper derives its key from the collection ID and
-connection code, which the collection API returns to authorized clients; this
+The browser encryption helper derives its key from the Qel Connect ID and
+connection code, which the Qel Connect API returns to authorized clients; this
 also does not establish a server-blind key boundary. Shared source documents
-remain server-readable for normal processing. Collections remain experimental
+remain server-readable for normal processing. Qel Connect remains experimental
 beta until target-deployment release gates are recorded.
 
 ### Product-area boundaries
@@ -209,8 +209,10 @@ protected `main`:
 1. **Release - Manual SemVer and Desktop** calculates the next version, checks
    out NeoSIS separately at a recorded commit, builds the Linux `.deb` and
    Windows `.exe` desktop packages, creates checksums and a release manifest,
-   and publishes a GitHub release. NeoSIS source is not added to the AverQel
-   repository or its source archives.
+   and publishes a GitHub release. Both platform payloads are checked against
+   the NeoSIS runtime manifest, and the final Linux `.deb` is checked again
+   before upload. NeoSIS source is not added to the AverQel repository or its
+   source archives.
    The default version follows Conventional Commits since the latest published
    release: breaking changes increment the major number, `feat:` increments
    minor, and `fix:`, `perf:`, or `revert:` increment patch. The highest level
@@ -264,8 +266,8 @@ using it as evidence for a current deployment.
 - Feedback and support conversations are readable by the submitter and
   authorized support staff; they are not end-to-end encrypted. Email is
   opt-in and requires SMTP configuration, a worker, and Celery Beat.
-- Collection moderation is tenant-admin report triage. It does not grant a
-  platform-wide view of private collections or message bodies.
+- Qel Connect moderation is tenant-admin report triage. It does not grant a
+  platform-wide view of private Qel Connect spaces or message bodies.
 - Optional browser research, sandboxing, push, voice, OAuth providers, and
   outbound email each have separate network, key, credential, or service
   requirements. Enable and validate only the paths configured for the
@@ -281,12 +283,12 @@ a public issue; use a private GitHub Security Advisory.
 - [Documents Hub](frontend/app/documentation/documents-hub/page.tsx)
 - [DeepSpace and its working Library](frontend/app/documentation/deepspace/page.tsx)
 - [Grounded Query](frontend/app/documentation/grounded-query/page.tsx)
-- [Collections and encryption boundaries](frontend/app/documentation/collections-sharing/page.tsx)
+- [Qel Connect and encryption boundaries](frontend/app/documentation/collections-sharing/page.tsx)
 - [Notifications](frontend/app/documentation/notifications/page.tsx)
 - [Backend documentation index](backend/docs/README.md)
 - [Documents Hub user guide](backend/docs/library/09-documents-hub-user-guide.md)
 - [DeepSpace runtime](backend/docs/deepspace/04-deepspace-agent-runtime.md)
-- [Collection chat and rooms](backend/docs/library/11-collection-chat.md)
+- [Qel Connect chat and rooms](backend/docs/library/11-collection-chat.md)
 - [Feedback, support, and notifications](backend/docs/platform/05-feedback-support-notifications.md)
 - [MCP connections](backend/docs/capabilities/06-mcp-connections.md)
 - [Storage recovery and retention](backend/docs/storage/01-storage-backup-and-disaster-recovery.md)

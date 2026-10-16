@@ -72,6 +72,8 @@ export interface StructuredAnswerShape {
     x_key?: string;
     y_key?: string;
     z_key?: string;
+    x_label?: string;
+    y_label?: string;
   } | null;
   diagram?: Omit<StreamDiagramBlock, "id" | "type"> | null;
 }
@@ -91,12 +93,32 @@ export interface StreamChartPoint {
   [key: string]: string | number | null | undefined;
 }
 
+export interface StreamChartSeriesGroup {
+  name: string;
+  points: StreamChartPoint[];
+  axis?: "left" | "right";
+  color?: string | null;
+  visible?: boolean;
+}
+
+export interface StreamChartAnnotation {
+  label: string;
+  x: string | number;
+  y?: number | null;
+  color?: string | null;
+}
+
 export interface StreamChartBlock {
   id: string;
   type: "chart";
   title?: string | null;
   chart_type: VisualChartType;
   series: StreamChartPoint[];
+  series_groups?: StreamChartSeriesGroup[];
+  annotations?: StreamChartAnnotation[];
+  legend?: boolean;
+  secondary_y_label?: string | null;
+  revision?: number;
   raw_payload?: string | null;
   parser_source?: "json" | "pattern" | "structured";
   confidence?: number;
@@ -105,6 +127,22 @@ export interface StreamChartBlock {
   x_key?: string;
   y_key?: string;
   z_key?: string;
+  equation?: string | null;
+  x_label?: string | null;
+  y_label?: string | null;
+  block_id?: string;
+  schema_version?: number;
+  source_markdown?: string | null;
+  source_mermaid?: string | null;
+  assets?: Array<{
+    url: string;
+    owned_url?: string | null;
+    mime_type?: string | null;
+    status?: string;
+  }>;
+  history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
+  undo?: Record<string, unknown>;
+  visual_model?: Record<string, unknown>;
 }
 
 export interface StreamCardBlock {
@@ -112,8 +150,53 @@ export interface StreamCardBlock {
   type: "card";
   title: string;
   content: string;
-  tone: "info" | "success" | "warning" | "error" | "neutral";
+  tone?: "info" | "success" | "warning" | "error" | "neutral";
+  subtitle?: string | null;
+  image_url?: string | null;
+  href?: string | null;
+  metrics?: Array<{ label: string; value: string | number; detail?: string | null }>;
+  actions?: Array<{
+    label: string;
+    href?: string | null;
+    action?: "open" | "copy" | "download";
+    content?: string | null;
+  }>;
   incomplete?: boolean;
+  block_id?: string;
+  schema_version?: number;
+  revision?: number;
+  source_markdown?: string | null;
+  source_mermaid?: string | null;
+  assets?: Array<{
+    url: string;
+    owned_url?: string | null;
+    mime_type?: string | null;
+    status?: string;
+  }>;
+  history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
+  undo?: Record<string, unknown>;
+  visual_model?: Record<string, unknown>;
+}
+
+export interface StreamGalleryBlock {
+  id: string;
+  type: "gallery";
+  title?: string | null;
+  items: Array<{ src: string; alt: string; caption?: string | null; href?: string | null }>;
+  block_id?: string;
+  schema_version?: number;
+  revision?: number;
+  source_markdown?: string | null;
+  assets?: Array<{
+    url: string;
+    owned_url?: string | null;
+    mime_type?: string | null;
+    status?: string;
+    file_id?: string | null;
+    retention?: "temporary" | "library";
+  }>;
+  history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
+  undo?: Record<string, unknown>;
 }
 
 export interface StreamDiagramBlock {
@@ -147,10 +230,39 @@ export interface StreamDiagramBlock {
   description?: string;
   incomplete?: boolean;
   graph?: {
-    nodes: Array<{ id: string; label: string; category?: string | null }>;
-    edges: Array<{ source: string; target: string; label?: string | null }>;
+    nodes: Array<{
+      id: string;
+      label: string;
+      category?: string | null;
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+      group_id?: string | null;
+    }>;
+    edges: Array<{
+      source: string;
+      target: string;
+      label?: string | null;
+      style?: "solid" | "dashed" | "dotted";
+    }>;
     layout: "horizontal" | "vertical" | "radial";
+    drawings?: Array<{ d: string; color?: string; width?: number }>;
   } | null;
+  revision?: number;
+  block_id?: string;
+  schema_version?: number;
+  source_markdown?: string | null;
+  source_mermaid?: string | null;
+  assets?: Array<{
+    url: string;
+    owned_url?: string | null;
+    mime_type?: string | null;
+    status?: string;
+  }>;
+  history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
+  undo?: Record<string, unknown>;
+  visual_model?: Record<string, unknown>;
 }
 
 export interface MessageArtifact {
@@ -165,6 +277,7 @@ export type StructuredBlock =
   | StreamTableBlock
   | StreamChartBlock
   | StreamCardBlock
+  | StreamGalleryBlock
   | StreamDiagramBlock;
 
 export interface QueryStatusEntry {
@@ -441,6 +554,16 @@ function normalizeLooseStructuredChart(
     fields: ["label", "value"],
     x_key: "label",
     y_key: "value",
+    ...(typeof record.x_label === "string" && record.x_label.trim()
+      ? { x_label: record.x_label.trim() }
+      : typeof record.xLabel === "string" && record.xLabel.trim()
+        ? { x_label: record.xLabel.trim() }
+        : {}),
+    ...(typeof record.y_label === "string" && record.y_label.trim()
+      ? { y_label: record.y_label.trim() }
+      : typeof record.yLabel === "string" && record.yLabel.trim()
+        ? { y_label: record.yLabel.trim() }
+        : {}),
   };
 }
 
@@ -674,6 +797,8 @@ function normalizeStructuredChart(
       x_key: explicitChart.xKey,
       y_key: explicitChart.yKey,
       z_key: explicitChart.zKey,
+      ...(explicitChart.xLabel ? { x_label: explicitChart.xLabel } : {}),
+      ...(explicitChart.yLabel ? { y_label: explicitChart.yLabel } : {}),
     };
   }
 
@@ -723,6 +848,8 @@ function normalizeStructuredChart(
     x_key: salvagedChart.xKey,
     y_key: salvagedChart.yKey,
     z_key: salvagedChart.zKey,
+    ...(salvagedChart.xLabel ? { x_label: salvagedChart.xLabel } : {}),
+    ...(salvagedChart.yLabel ? { y_label: salvagedChart.yLabel } : {}),
   };
 }
 

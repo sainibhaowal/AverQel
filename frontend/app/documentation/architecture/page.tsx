@@ -83,7 +83,7 @@ export default function ArchitectureDocsPage() {
       <DocsSection title="Safety boundaries">
         <p>
           The backend is the authorization boundary for authenticated requests, tenant access,
-          provider credentials, collection sharing, and tool calls. Some product areas process
+          provider credentials, Qel Connect sharing, and tool calls. Some product areas process
           content server-side, and support staff can read user-submitted support or feedback threads
           when authorized. Do not infer a client-only or end-to-end encryption guarantee from tenant
           isolation or encrypted storage.

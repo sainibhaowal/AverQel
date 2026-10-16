@@ -24,6 +24,7 @@ from app.providers.services.reasoning_capabilities import (
     model_supports_reasoning,
     reasoning_capabilities,
 )
+from app.providers.services.tool_definitions import unique_tool_definitions
 from app.providers.services.types import (
     ChatGenerateRequest,
     ChatGenerateResponse,
@@ -666,8 +667,9 @@ class OpenCodeZenProvider:
             payload["max_output_tokens"] = request.max_tokens
         if instructions:
             payload["instructions"] = instructions
-        if request.tools:
-            payload["tools"] = cls._convert_tools_to_responses(request.tools)
+        tools = unique_tool_definitions(request.tools)
+        if tools:
+            payload["tools"] = cls._convert_tools_to_responses(tools)
         if request.tool_choice:
             payload["tool_choice"] = request.tool_choice
         if (

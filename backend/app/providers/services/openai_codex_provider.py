@@ -550,16 +550,17 @@ class OpenAICodexProvider(ChatProvider):
             function_value = tool.get("function")
             function = function_value if isinstance(function_value, dict) else tool
             name = function.get("name")
-            if not isinstance(name, str) or not name or len(name) > 64 or name in seen:
+            normalized_name = name.strip() if isinstance(name, str) else ""
+            if not normalized_name or len(normalized_name) > 64 or normalized_name in seen:
                 continue
-            seen.add(name)
+            seen.add(normalized_name)
             parameters = function.get("parameters")
             if not isinstance(parameters, dict):
                 parameters = {"type": "object", "properties": {}}
             result.append(
                 {
                     "type": "function",
-                    "name": name,
+                    "name": normalized_name,
                     "description": str(function.get("description") or "")[:1000],
                     "parameters": parameters,
                 }

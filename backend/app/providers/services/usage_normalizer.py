@@ -18,9 +18,27 @@ def normalize_chat_usage(usage: object) -> dict[str, int | None | str]:
     raw = usage if isinstance(usage, dict) else {}
     prompt_details = raw.get("prompt_tokens_details") or raw.get("input_token_details")
     completion_details = raw.get("completion_tokens_details") or raw.get("output_token_details")
-    prompt = _first_int(raw, "prompt_tokens", "input_tokens", "promptTokenCount", "inputTokenCount")
+    prompt = _first_int(
+        raw,
+        "prompt_tokens",
+        "input_tokens",
+        "promptTokenCount",
+        "inputTokenCount",
+        # Ollama's native generate API calls these prompt/eval counts.  The
+        # desktop adapter normally uses its OpenAI-compatible endpoint, but
+        # accepting the native names keeps diagnostics correct for local
+        # runtimes and future adapters too.
+        "prompt_eval_count",
+        "promptEvalCount",
+    )
     output = _first_int(
-        raw, "completion_tokens", "output_tokens", "candidatesTokenCount", "outputTokenCount"
+        raw,
+        "completion_tokens",
+        "output_tokens",
+        "candidatesTokenCount",
+        "outputTokenCount",
+        "eval_count",
+        "evalCount",
     )
     cached = _first_int(
         raw,

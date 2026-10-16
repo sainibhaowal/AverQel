@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { resolveApiBaseUrl } from "../lib/api";
+import { resolveApiBaseUrl, resolveApiUrl } from "../lib/api";
 
 describe("resolveApiBaseUrl", () => {
   const originalWindow = globalThis.window;
@@ -48,5 +48,21 @@ describe("resolveApiBaseUrl", () => {
         envUrl: "https://api.example.com/api/v1",
       }),
     ).toBe("/api/v1");
+  });
+
+  it("does not add the api prefix twice for a server-provided artifact URL", () => {
+    setWindow({} as Window);
+
+    expect(resolveApiUrl("/api/v1/deepspace/artifacts/artifact-1/content")).toBe(
+      "/api/v1/deepspace/artifacts/artifact-1/content",
+    );
+  });
+
+  it("keeps ordinary endpoint paths relative to the configured API root", () => {
+    setWindow({} as Window);
+
+    expect(resolveApiUrl("/deepspace/artifacts/artifact-1/content")).toBe(
+      "/api/v1/deepspace/artifacts/artifact-1/content",
+    );
   });
 });

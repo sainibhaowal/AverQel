@@ -29,17 +29,28 @@ declare global {
     requestId?: string;
   };
 
+  type ElectronLocalRuntimeStreamFrame = {
+    streamId: string;
+    kind: "event" | "error" | "closed";
+    event?: Record<string, unknown>;
+    message?: string;
+    httpStatus?: number;
+    code?: string;
+  };
+
   interface Window {
     electron?: {
       isElectron: true;
       window: {
         minimize: () => Promise<void>;
+        close: () => Promise<void>;
         toggleMaximize: () => Promise<boolean>;
         isMaximized: () => Promise<boolean>;
         hide: () => Promise<void>;
       };
       openExternal: (url: string) => Promise<boolean>;
       workspace: {
+        neosisAvailable: () => Promise<boolean>;
         openNeosis: () => Promise<{ ok: boolean; error?: string }>;
         openAverQel: () => Promise<{ ok: boolean; error?: string }>;
       };
@@ -68,6 +79,18 @@ declare global {
         }) => Promise<{ started: boolean }>;
         cancelStream: (streamId: string) => Promise<boolean>;
         onStreamEvent: (callback: (frame: ElectronCodexStreamFrame) => void) => () => void;
+      };
+      localRuntime?: {
+        status: () => Promise<{ available: boolean; providers: string[]; active_streams: number }>;
+        startStream: (input: {
+          streamId: string;
+          providerType: "lmstudio" | "ollama";
+          baseUrl: string;
+          operation?: "chat" | "health" | "models" | "embed" | "pull";
+          request?: Record<string, unknown>;
+        }) => Promise<unknown>;
+        cancelStream: (streamId: string) => Promise<boolean>;
+        onStreamEvent: (callback: (frame: ElectronLocalRuntimeStreamFrame) => void) => () => void;
       };
     };
   }

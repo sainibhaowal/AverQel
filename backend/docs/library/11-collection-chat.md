@@ -1,16 +1,16 @@
-# Collection chat contract
+# Qel Connect chat contract
 
-**Implementation note:** the repository contains collection chat, membership,
+**Implementation note:** the repository contains Qel Connect chat, membership,
 and report workflows. Hosted availability and security posture remain
-deployment-specific. Collection chat is separate from DeepSpace conversations
+deployment-specific. Qel Connect chat is separate from DeepSpace conversations
 and Query history; see the [release index](../release/03-current-worktree-change-index.md)
 for the checked source and deployment status.
 
 ## 1. Member and message lifecycle
 
-Collections provide explicit membership, shared-document references, chat,
+Qel Connect provides explicit membership, shared-document references, chat,
 supported media, presence, notifications, blocking, and member-submitted
-reports. API routes enforce collection membership and tenant access. The
+reports. API routes enforce Qel Connect membership and tenant access. The
 frontend does not grant access by itself.
 
 Chat history is paginated. Sending supports a client message identifier for
@@ -21,12 +21,12 @@ a promise that copies, recipient devices, or all backups are erased.
 ## 2. Encryption boundary
 
 The browser contains AES-GCM client encryption helpers. Their key derives from
-the collection ID and connection code, and the collection API returns that
+the Qel Connect ID and connection code, and the Qel Connect API returns that
 code to authorized clients. The backend therefore has the derivation inputs;
 do not describe the current chat as zero-knowledge or server-blind
 end-to-end encryption.
 
-Collections may also enable an optional backend sealed-chat mode. That mode
+Qel Connect may also enable an optional backend sealed-chat mode. That mode
 seals records at rest using server-held epoch keys, but the API opens messages
 for authorized members. It requires an operator-configured keyring and fails
 closed if that configuration is missing. See

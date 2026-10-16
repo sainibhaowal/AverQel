@@ -8,7 +8,6 @@ import {
   Cable,
   Database,
   FileText,
-  FolderKanban,
   MessageSquareText,
   Network,
   NotebookPen,
@@ -17,6 +16,7 @@ import {
   CheckCircle2,
   TimerReset,
 } from "lucide-react";
+import QelConnectMark from "../ui/QelConnectMark";
 import { useLandingSectionMotion } from "./landingMotion";
 import {
   landingContentClass,
@@ -57,11 +57,11 @@ const surfaces = [
   },
   {
     eyebrow: "Organization Surface",
-    title: "Collections",
-    icon: FolderKanban,
+    title: "Qel Connect",
+    icon: QelConnectMark,
     accent: "emerald",
     description:
-      "Create focused document sets for projects, teams, or topics. Collection ownership and sharing rules keep the scope deliberate rather than making all content globally visible.",
+      "Create focused document sets for projects, teams, or topics. Qel Connect ownership and sharing rules keep the scope deliberate rather than making all content globally visible.",
     bullets: [
       "Focused reusable document groups",
       "Explicit invitations and owner-controlled access",
@@ -208,8 +208,8 @@ export default function PlatformSurfaces() {
             Seven connected surfaces for document-first AI work
           </h2>
           <p className={landingSectionLeadClass}>
-            Start with documents and evidence, then move into DeepSpace for deeper work.
-            Collections, MCP connections, and provider control remain visible parts of the same
+            Start with documents and evidence, then move into DeepSpace for deeper work. Qel
+            Connect, MCP connections, and provider control remain visible parts of the same
             workspace.
           </p>
         </motion.div>

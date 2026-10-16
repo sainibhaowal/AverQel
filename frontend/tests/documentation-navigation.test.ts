@@ -15,7 +15,7 @@ describe("public documentation navigation", () => {
     expect(find("Notes & editor")?.group).toBe("DeepSpace");
     expect(find("Web research")?.group).toBe("DeepSpace");
     expect(find("Sandbox & data analysis")?.group).toBe("DeepSpace");
-    expect(find("Collections")?.group).toBe("Collections & sharing");
+    expect(find("Qel Connect")?.group).toBe("Qel Connect & sharing");
   });
 
   it("does not expose duplicate routes or a public admin handbook link", () => {

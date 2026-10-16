@@ -30,7 +30,7 @@ export default function WhatIsAverQelPage() {
         <p>
           Documents Hub is where source files are managed. Query is retrieval-first and centers its
           work on those sources. DeepSpace is a broader conversation workspace and has its own
-          Library for working attachments and outputs. Collections provide explicit sharing with
+          Library for working attachments and outputs. Qel Connect provides explicit sharing with
           invited members. Providers and MCP connections extend model and tool options when they are
           configured and authorized.
         </p>
@@ -40,8 +40,8 @@ export default function WhatIsAverQelPage() {
           AverQel processes account data through its application backend and configured services.
           Authentication, tenant boundaries, role permissions, and integration policies control
           access. Some workflows intentionally allow authorized support staff to read submitted
-          support or feedback content; collection chat encryption also has limitations documented in
-          its guide. Do not assume that all workspace content is client-only or end-to-end
+          support or feedback content; Qel Connect chat encryption also has limitations documented
+          in its guide. Do not assume that all workspace content is client-only or end-to-end
           encrypted.
         </p>
       </DocsSection>

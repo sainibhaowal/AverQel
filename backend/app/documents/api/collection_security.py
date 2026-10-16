@@ -291,7 +291,7 @@ def _collection(db: Session, collection_id: uuid.UUID, auth: AuthContext) -> Doc
     collection = repo.get_by_id_global(collection_id=collection_id)
     if collection is None:
         raise ApiError(
-            code="COLLECTION_NOT_FOUND", message="Collection not found.", status_code=404
+            code="COLLECTION_NOT_FOUND", message="Qel Connect not found.", status_code=404
         )
     _enforce_collection_access_global(repo=repo, collection_id=collection_id, user_id=auth.user_id)
     return collection
@@ -345,7 +345,7 @@ def register_collection_device(
     if payload.protocol_version not in {"legacy-shared-key", "signal-pattern-v1"}:
         raise ApiError(
             code="VALIDATION_ERROR",
-            message="Unsupported collection protocol version.",
+            message="Unsupported Qel Connect protocol version.",
             status_code=422,
         )
     if payload.protocol_version == "signal-pattern-v1":
@@ -554,7 +554,7 @@ def report_collection_member(
         if message is None:
             raise ApiError(
                 code="MESSAGE_NOT_FOUND",
-                message="Message not found in this collection.",
+                message="Message not found in this Qel Connect space.",
                 status_code=404,
             )
         if payload.reported_user_id is not None and message.user_id != payload.reported_user_id:
@@ -590,7 +590,7 @@ def report_collection_member(
         tenant_id=collection.tenant_id,
         event_domain="collection_moderation",
         event_type="report_created",
-        title="New collection report",
+        title="New Qel Connect report",
         message="A member submitted a report that needs review.",
         href=f"/dashboard/admin/collections/moderation?report={report.id}",
         resource_id=report.id,

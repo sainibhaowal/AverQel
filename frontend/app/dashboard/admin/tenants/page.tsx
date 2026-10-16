@@ -126,7 +126,7 @@ export default function AdminTenantsPage() {
                   <SummaryCell label="Workspaces" value={totals.workspaces} tone="primary" />
                   <SummaryCell label="Users" value={totals.users} tone="primary" />
                   <SummaryCell label="Documents" value={totals.documents} tone="amber" />
-                  <SummaryCell label="Collections" value={totals.collections} tone="primary" />
+                  <SummaryCell label="Qel Connect" value={totals.collections} tone="primary" />
                 </div>
               </div>
             </div>
@@ -203,7 +203,7 @@ export default function AdminTenantsPage() {
                   />
                   <MetricTile
                     icon={<Database className="text-primary" size={16} />}
-                    label="Collections"
+                    label="Qel Connect"
                     value={tenant.stats.collections_count}
                   />
                 </div>

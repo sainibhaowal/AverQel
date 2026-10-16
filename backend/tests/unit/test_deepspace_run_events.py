@@ -7,7 +7,10 @@ from sqlalchemy.orm.exc import DetachedInstanceError
 
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.services.run_events import (
+    AsyncRunEventFanout,
+    PendingRunEvent,
     append_event,
+    append_event_batch,
     decode_live_event,
     event_name_from_frame,
     frames_after,
@@ -43,6 +46,77 @@ def test_live_event_payload_preserves_sequence_and_frame() -> None:
         '{"sequence":7,"frame":"event: delta\\ndata: {\\"text\\":\\"hi\\"}\\n\\n"}'
     ) == (7, 'event: delta\ndata: {"text":"hi"}\n\n')
     assert decode_live_event("not-json") is None
+
+
+@pytest.mark.asyncio
+async def test_async_run_event_fanout_batches_durable_frames_and_preserves_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    persisted: list[PendingRunEvent] = []
+    published: list[PendingRunEvent] = []
+
+    fanout = AsyncRunEventFanout(
+        settings=SimpleNamespace(redis_url="redis://unused"),  # type: ignore[arg-type]
+        tenant_id=uuid4(),
+        user_id=uuid4(),
+        conversation_id=uuid4(),
+        client_request_id="fanout-test",
+        initial_sequence=4,
+    )
+    monkeypatch.setattr(fanout, "_persist_batch", lambda events: persisted.extend(events))
+    monkeypatch.setattr(
+        "app.deepspace.services.run_events._publish_live_event",
+        lambda _client, *, client_request_id, event: published.append(event),
+    )
+
+    await fanout.start()
+    await fanout.submit(frame='event: delta\ndata: {"text":"a"}\n\n', run_id=None)
+    await fanout.submit(frame='event: delta\ndata: {"text":"b"}\n\n', run_id=None)
+    await fanout.submit(frame="event: done\ndata: {}\n\n", run_id=None)
+    await fanout.close()
+
+    assert [event.sequence for event in persisted] == [5, 6, 7]
+    assert [event.sequence for event in published] == [5, 6, 7]
+
+
+def test_append_event_batch_persists_explicit_sequences(db_session, settings, seed_user) -> None:
+    seeded = seed_user("batch-tenant", "batch@example.com", "StrongPass!1234", ("user",))
+    conversation_id = uuid4()
+    request_id = f"batch-events-{uuid4()}"
+    db_session.add(
+        Conversation(
+            id=conversation_id,
+            tenant_id=seeded.tenant_id,
+            user_id=seeded.user_id,
+            title="Batch test",
+            kind="deepspace",
+        )
+    )
+    db_session.commit()
+
+    persisted = append_event_batch(
+        db_session,
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        conversation_id=conversation_id,
+        client_request_id=request_id,
+        events=[
+            PendingRunEvent(sequence=11, frame="event: start\ndata: {}\n\n"),
+            PendingRunEvent(sequence=12, frame="event: delta\ndata: {}\n\n"),
+        ],
+    )
+
+    assert [event.sequence for event in persisted] == [11, 12]
+    assert [
+        event.sequence
+        for event in load_events(
+            db_session,
+            tenant_id=seeded.tenant_id,
+            user_id=seeded.user_id,
+            conversation_id=conversation_id,
+            client_request_id=request_id,
+        )
+    ] == [11, 12]
 
 
 def test_only_done_and_error_close_a_detached_stream() -> None:

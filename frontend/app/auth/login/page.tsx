@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Github } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import AverQelLogo from "@/app/components/ui/AverQelLogo";
+import AverQelExactBrand from "@/app/components/ui/AverQelExactBrand";
 import { useAuth } from "../../context/AuthContext";
 import { getApiBaseUrl, isDesktopEnvironment } from "../../../lib/api";
 import { getAuthSessionDevice } from "@/lib/auth-session-device";
@@ -436,8 +436,8 @@ export default function LoginPage() {
         transition={{ duration: 0.45 }}
       >
         <div className="mb-10 flex justify-center">
-          <Link href="/">
-            <AverQelLogo size="hero" />
+          <Link href="/" className="login-brand-lockup">
+            <AverQelExactBrand />
           </Link>
         </div>
 

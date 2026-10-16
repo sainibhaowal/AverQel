@@ -14,6 +14,8 @@ export interface VisualChartContext {
   xKey: string;
   yKey: string;
   zKey?: string;
+  xLabel?: string;
+  yLabel?: string;
   metadata: {
     confidence: number;
     source: "json" | "pattern";
@@ -423,6 +425,16 @@ function normalizeModel(raw: Record<string, unknown>, hint: string): VisualChart
   const xKey = inferKey(points[0], ["label", "name", "x"], "label");
   const yKey = inferKey(points[0], ["value", "y", "val"], "value");
   const zKey = Object.prototype.hasOwnProperty.call(points[0], "z") ? "z" : undefined;
+  const xLabel =
+    readString(rootCandidate.x_label) ??
+    readString(rootCandidate.xLabel) ??
+    readString(raw.x_label) ??
+    readString(raw.xLabel);
+  const yLabel =
+    readString(rootCandidate.y_label) ??
+    readString(rootCandidate.yLabel) ??
+    readString(raw.y_label) ??
+    readString(raw.yLabel);
   const isExplicit =
     Array.isArray(rootCandidate.series) ||
     Array.isArray(rootCandidate.points) ||
@@ -437,6 +449,8 @@ function normalizeModel(raw: Record<string, unknown>, hint: string): VisualChart
     xKey,
     yKey,
     zKey,
+    ...(xLabel ? { xLabel } : {}),
+    ...(yLabel ? { yLabel } : {}),
     metadata: {
       confidence: isExplicit ? 0.96 : 0.78,
       source: "json",

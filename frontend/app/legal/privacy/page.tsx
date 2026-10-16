@@ -12,7 +12,7 @@ export default function PrivacyPage() {
         <p>
           AverQel processes account and authentication data, workspace and tenant identifiers,
           provider settings, conversations, messages, memories, uploaded documents, Library files,
-          collection membership, approvals, usage and operational records, and security events.
+          Qel Connect membership, approvals, usage and operational records, and security events.
         </p>
         <p>
           If you configure an AI provider, web-search provider, or MCP connection, the information
@@ -25,7 +25,7 @@ export default function PrivacyPage() {
       <PolicySection title="Why information is processed">
         <p>
           We process information to authenticate users, provide chat and document features, route
-          authorized provider requests, run collections and Library workflows, maintain durable
+          authorized provider requests, run Qel Connect and Library workflows, maintain durable
           conversation state, prevent abuse, operate the service, and respond to support or legal
           requests.
         </p>
@@ -35,20 +35,20 @@ export default function PrivacyPage() {
         <p>
           The current deployment uses PostgreSQL for structured records, Redis for runtime
           coordination, and MinIO-compatible object storage for documents and media. Records carry
-          tenant, user, workspace, conversation, collection, and ownership boundaries where
+          tenant, user, workspace, conversation, Qel Connect, and ownership boundaries where
           applicable. Authorization is checked before protected reads and writes.
         </p>
         <p>
           Provider and OAuth secrets are encrypted before storage and are not displayed as raw
-          values in ordinary product views. Collection messages and media may use the
-          collection&apos;s client-side encryption flow. This does not mean every AverQel record or
-          every provider request is end-to-end encrypted.
+          values in ordinary product views. Qel Connect messages and media may use the Qel Connect
+          client-side encryption flow. This does not mean every AverQel record or every provider
+          request is end-to-end encrypted.
         </p>
       </PolicySection>
 
       <PolicySection title="Your choices and rights">
         <p>
-          You can manage connected providers, memories, conversations, Library files, collections,
+          You can manage connected providers, memories, conversations, Library files, Qel Connect,
           and account settings through the product where those controls are available. Depending on
           your location, you may also have rights to access, correct, export, restrict, object to,
           or delete personal information. Contact the AverQel operator through the Support Centre

@@ -334,7 +334,7 @@ describe("deepspace page", () => {
     expect(screen.getByText("Trend summary.")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Chart Data" })).toBeInTheDocument();
     expect(screen.getByText(/3 points/i)).toBeInTheDocument();
-    expect(screen.getByText(/json/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export chart source as JSON" })).toBeInTheDocument();
     expect(screen.queryByText(/No diagram type detected/i)).not.toBeInTheDocument();
   });
 

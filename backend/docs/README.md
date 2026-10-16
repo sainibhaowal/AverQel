@@ -7,7 +7,7 @@ operated.
 
 For end-user guides, open `/documentation` in the running application; its
 source is [`frontend/app/documentation/`](../../frontend/app/documentation/).
-It is organized by Documents Hub, Query, DeepSpace, Collections, Providers and
+It is organized by Documents Hub, Query, DeepSpace, Qel Connect, Providers and
 Connections, Account and Trust, and Help. This backend index is primarily
 for developers and operators. Several entries contain commit-specific local
 verification or deployment evidence; those records are not public promises
@@ -96,8 +96,8 @@ and must be checked against their target and date before release decisions.
 - **DeepSpace** is the broader conversational work area. Its workspace Library
   contains files associated with DeepSpace work and is distinct from Documents
   Hub.
-- **Collections** share selected content with explicitly invited members; they
-  are currently experimental beta. Collection chat must not be described as
+- **Qel Connect** shares selected content with explicitly invited members; it
+  is currently experimental beta. Qel Connect chat must not be described as
   zero-knowledge or server-blind end-to-end encryption.
 - **Providers and MCP** are separate: model providers generate or embed
   content, while MCP connections expose policy-controlled remote tools.
