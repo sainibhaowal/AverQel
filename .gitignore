@@ -71,6 +71,7 @@ next-env.d.ts
 !/assets/brand/deepspace-agentic.svg
 /ZevaConnector/
 /scratch/
+/AverQel Harness/
 /applications/*
 !/applications/desktop/
 !/applications/desktop/electron/
