@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 
 import DeletionPage from "../app/dashboard/admin/deletion/page";
 
@@ -29,6 +29,10 @@ vi.mock("react-hot-toast", () => ({
 }));
 
 describe("deletion admin page", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     fetchWithAuthMock.mockReset();
     toastSuccessMock.mockReset();
@@ -45,13 +49,7 @@ describe("deletion admin page", () => {
             name: "Workspace One",
             created_at: "2026-03-31T00:00:00Z",
             updated_at: "2026-03-31T00:00:00Z",
-            stats: {
-              users_count: 3,
-              active_users_count: 2,
-              documents_count: 2,
-              queries_count: 4,
-              collections_count: 1,
-            },
+            seats_used: 3,
           },
         ],
       }),
@@ -63,11 +61,10 @@ describe("deletion admin page", () => {
           {
             deletion_id: "del-1",
             tenant_id: "tenant-1",
-            requested_by_user_id: "user-1",
             status: "completed",
             scope: "tenant_data",
-            reason: "tenant cleanup",
-            result_counts: { documents: 2 },
+            reason: "workspace_offboarding",
+            can_approve: false,
             error_code: null,
             error_message: null,
             requested_at: "2026-03-31T00:00:00Z",
@@ -90,6 +87,10 @@ describe("deletion admin page", () => {
 
     expect(await screen.findByText("del-1")).toBeInTheDocument();
     expect(screen.getByText(/status: completed/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "support" })).toHaveAttribute(
+      "href",
+      "/dashboard/support",
+    );
   });
 
   it("refreshes deletion history after creating a deletion request", async () => {
@@ -102,13 +103,7 @@ describe("deletion admin page", () => {
             name: "Workspace One",
             created_at: "2026-03-31T00:00:00Z",
             updated_at: "2026-03-31T00:00:00Z",
-            stats: {
-              users_count: 3,
-              active_users_count: 2,
-              documents_count: 2,
-              queries_count: 4,
-              collections_count: 1,
-            },
+            seats_used: 3,
           },
         ],
       }),
@@ -121,7 +116,7 @@ describe("deletion admin page", () => {
       ok: true,
       json: async () => ({
         deletion_id: "del-2",
-        status: "queued",
+        status: "awaiting_approval",
       }),
     });
     fetchWithAuthMock.mockResolvedValueOnce({
@@ -131,11 +126,10 @@ describe("deletion admin page", () => {
           {
             deletion_id: "del-2",
             tenant_id: "tenant-1",
-            requested_by_user_id: "user-1",
-            status: "queued",
+            status: "awaiting_approval",
             scope: "tenant_data",
-            reason: "offboarding",
-            result_counts: {},
+            reason: "workspace_offboarding",
+            can_approve: false,
             error_code: null,
             error_message: null,
             requested_at: "2026-03-31T00:00:00Z",
@@ -150,15 +144,19 @@ describe("deletion admin page", () => {
     render(<DeletionPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: /execute workspace wipe/i }));
-    fireEvent.change(screen.getByPlaceholderText(/legal request, tenant offboarding/i), {
-      target: { value: "offboarding" },
+    fireEvent.change(screen.getByLabelText(/type delete tenant-1/i), {
+      target: { value: "DELETE tenant-1" },
     });
     fireEvent.click(screen.getByRole("button", { name: /wipe data/i }));
 
     await waitFor(() => {
       expect(fetchWithAuthMock).toHaveBeenCalledWith("/admin/data-deletions", {
         method: "POST",
-        body: JSON.stringify({ reason: "offboarding", target_tenant_id: "tenant-1" }),
+        body: JSON.stringify({
+          reason: "workspace_offboarding",
+          target_confirmation: "DELETE tenant-1",
+          target_tenant_id: "tenant-1",
+        }),
       });
     });
 
@@ -166,6 +164,65 @@ describe("deletion admin page", () => {
       expect(screen.getByText("del-2")).toBeInTheDocument();
     });
 
-    expect(toastSuccessMock).toHaveBeenCalled();
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      "Deletion request is waiting for a second administrator: del-2",
+    );
+  });
+
+  it("lets a different administrator approve a pending workspace purge", async () => {
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    fetchWithAuthMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [
+            {
+              tenant_id: "tenant-1",
+              name: "Workspace One",
+              created_at: "2026-03-31T00:00:00Z",
+              updated_at: "2026-03-31T00:00:00Z",
+              seats_used: 3,
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          items: [
+            {
+              deletion_id: "del-3",
+              tenant_id: "tenant-1",
+              status: "awaiting_approval",
+              scope: "tenant_data",
+              reason: "workspace_offboarding",
+              can_approve: true,
+              error_code: null,
+              error_message: null,
+              requested_at: "2026-03-31T00:00:00Z",
+              started_at: null,
+              completed_at: null,
+              failed_at: null,
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: "queued" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [] }) });
+
+    render(<DeletionPage />);
+    const approveButton = await screen.findByRole("button", { name: /approve purge/i });
+    fireEvent.click(approveButton);
+
+    await waitFor(() => {
+      expect(fetchWithAuthMock).toHaveBeenCalledWith(
+        "/admin/data-deletions/del-3/approve?target_tenant_id=tenant-1",
+        { method: "POST" },
+      );
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith("Deletion approved and queued.");
   });
 });

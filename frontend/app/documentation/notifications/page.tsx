@@ -45,8 +45,9 @@ export default function NotificationsDocsPage() {
         <p>
           Notification content is designed to avoid including prompts, provider credentials, raw
           exception details, or internal support notes. Notifications are scoped to the account and
-          tenant authorized for the underlying event. Support and feedback messages themselves are
-          readable by the submitter and authorized support staff; they are not end-to-end encrypted.
+          tenant authorized for the underlying event. Support messages are readable by the submitter
+          and assigned Support Managers. Feedback messages are readable by the submitter and
+          assigned Feedback Managers; neither workflow is end-to-end encrypted.
         </p>
       </DocsSection>
     </DocsShell>

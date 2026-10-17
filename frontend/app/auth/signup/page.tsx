@@ -238,9 +238,10 @@ export default function SignupPage() {
               >
                 Privacy Policy
               </Link>
-              . AverQel uses account and security data to run the service. Workspace content such as
-              documents and queries is stored to deliver the product and should not be accessed
-              casually outside support, security, abuse, or legal handling.
+              . AverQel processes workspace content to provide the service. Assigned Support
+              Managers can read support tickets and attachments; Feedback Managers can read
+              submitted feedback; and Qel Connect moderators can read reports in their assigned
+              workspace. Configured external providers receive data needed for requests you enable.
             </p>
           </div>
 

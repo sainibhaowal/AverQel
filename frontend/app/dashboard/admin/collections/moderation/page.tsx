@@ -13,22 +13,20 @@ type StatusFilter = ReportStatus | "all";
 
 type ModerationReport = {
   id: string;
-  collection_id: string;
   collection_name: string | null;
-  reporter_user_id: string;
-  reported_user_id: string | null;
-  message_id: string | null;
-  reason: string;
-  details: string | null;
   status: ReportStatus;
   created_at: string;
   resolved_at: string | null;
 };
 
+type ModerationReportDetail = {
+  reason: string;
+  details: string | null;
+};
+
 type ModerationAction = {
   id: string;
   report_id: string;
-  actor_user_id: string | null;
   actor_role: string;
   action_type: "report_created" | "status_changed" | "note_added" | "history_baseline";
   previous_status: ReportStatus | null;
@@ -79,6 +77,11 @@ export default function CollectionModerationPage() {
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [historyByReport, setHistoryByReport] = useState<Record<string, HistoryState>>({});
   const [requestedReportId, setRequestedReportId] = useState<string | null>(null);
+  const [detailsByReport, setDetailsByReport] = useState<Record<string, ModerationReportDetail>>(
+    {},
+  );
+  const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
+  const [loadingDetailsId, setLoadingDetailsId] = useState<string | null>(null);
 
   useEffect(() => {
     const reportId = new URLSearchParams(window.location.search).get("report");
@@ -185,6 +188,29 @@ export default function CollectionModerationPage() {
     if (!historyByReport[reportId]) void loadHistory(reportId, false);
   };
 
+  const toggleDetails = async (reportId: string) => {
+    if (expandedDetailsId === reportId) {
+      setExpandedDetailsId(null);
+      return;
+    }
+    setExpandedDetailsId(reportId);
+    if (detailsByReport[reportId]) return;
+    setLoadingDetailsId(reportId);
+    try {
+      const response = (await fetchWithAuth(
+        `/collections/admin/security/reports/${reportId}`,
+      )) as Response;
+      if (!response.ok) throw new Error(`Report details could not be loaded (${response.status}).`);
+      const detail = (await response.json()) as ModerationReportDetail;
+      setDetailsByReport((current) => ({ ...current, [reportId]: detail }));
+    } catch (error) {
+      setExpandedDetailsId(null);
+      toast.error(error instanceof Error ? error.message : "Report details could not be loaded.");
+    } finally {
+      setLoadingDetailsId(null);
+    }
+  };
+
   const updateReport = async (
     report: ModerationReport,
     nextStatus: ReportStatus,
@@ -220,7 +246,7 @@ export default function CollectionModerationPage() {
     <main className="dashboard-theme-scope w-full min-w-0 space-y-6">
       <DashboardSectionHeader
         title="Moderation Queue"
-        subtitle="Review member-submitted reports; message bodies are not shown here"
+        subtitle="Review tenant reports; sensitive report details load only when opened"
         icon={Flag}
         accentClassName="bg-cyan-500 text-cyan-500"
         accentGlowClassName="shadow-[0_0_18px_rgba(6,182,212,0.28)]"
@@ -294,9 +320,7 @@ export default function CollectionModerationPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h2 className="text-foreground font-semibold capitalize">
-                        {report.reason.replaceAll("_", " ")}
-                      </h2>
+                      <h2 className="text-foreground font-semibold">Moderation report</h2>
                       <p className="text-muted-foreground mt-1 text-xs">
                         Qel Connect:{" "}
                         <span className="text-foreground/80">
@@ -311,38 +335,6 @@ export default function CollectionModerationPage() {
                       {report.status.replaceAll("_", " ")}
                     </span>
                   </div>
-
-                  <dl className="text-muted-foreground mt-4 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-3">
-                    <div>
-                      <dt className="font-semibold">Report ID</dt>
-                      <dd className="text-foreground/80 break-all">{report.id}</dd>
-                    </div>
-                    <div>
-                      <dt className="font-semibold">Reported by</dt>
-                      <dd className="text-foreground/80 break-all">{report.reporter_user_id}</dd>
-                    </div>
-                    {report.reported_user_id && (
-                      <div>
-                        <dt className="font-semibold">Reported member</dt>
-                        <dd className="text-foreground/80 break-all">{report.reported_user_id}</dd>
-                      </div>
-                    )}
-                    {report.message_id && (
-                      <div>
-                        <dt className="font-semibold">Message reference</dt>
-                        <dd className="text-foreground/80 break-all">
-                          {report.message_id}{" "}
-                          <span className="text-muted-foreground">(message body not returned)</span>
-                        </dd>
-                      </div>
-                    )}
-                  </dl>
-
-                  {report.details && (
-                    <p className="text-foreground/85 border-border bg-background mt-4 rounded-xl border px-3 py-3 text-sm whitespace-pre-wrap">
-                      {report.details}
-                    </p>
-                  )}
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     {report.status !== "reviewing" &&
@@ -389,6 +381,17 @@ export default function CollectionModerationPage() {
                     )}
                     <button
                       type="button"
+                      onClick={() => void toggleDetails(report.id)}
+                      className="border-border text-foreground inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold"
+                    >
+                      {loadingDetailsId === report.id
+                        ? "Loading details…"
+                        : expandedDetailsId === report.id
+                          ? "Hide report details"
+                          : "View report details"}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => toggleHistory(report.id)}
                       className="border-border text-foreground inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold"
                     >
@@ -399,6 +402,26 @@ export default function CollectionModerationPage() {
                       />
                     </button>
                   </div>
+
+                  {expandedDetailsId === report.id && detailsByReport[report.id] ? (
+                    <div className="border-border bg-background mt-4 space-y-3 rounded-xl border px-3 py-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs font-semibold">Report reason</p>
+                        <p className="text-foreground/85 mt-1 capitalize">
+                          {detailsByReport[report.id].reason.replaceAll("_", " ")}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs font-semibold">
+                          Additional details
+                        </p>
+                        <p className="text-foreground/85 mt-1 whitespace-pre-wrap">
+                          {detailsByReport[report.id].details ||
+                            "No additional details were provided."}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 grid gap-2">
                     <label
@@ -462,14 +485,7 @@ export default function CollectionModerationPage() {
                               {new Date(action.created_at).toLocaleString()}
                             </time>
                           </div>
-                          <p className="text-muted-foreground mt-1 break-all">
-                            Actor: {action.actor_role}
-                            {action.actor_user_id
-                              ? ` · ${action.actor_user_id}`
-                              : action.actor_role === "system"
-                                ? ""
-                                : " · account removed"}
-                          </p>
+                          <p className="text-muted-foreground mt-1">Actor role: {action.actor_role}</p>
                           {action.note && (
                             <p className="text-foreground/85 bg-background mt-2 rounded-lg px-3 py-2 whitespace-pre-wrap">
                               {action.note}

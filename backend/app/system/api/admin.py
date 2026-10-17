@@ -3,28 +3,26 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
-from app.auth.rbac import require_permissions
+from app.auth.rbac import require_permissions, resolve_permissions
 from app.auth.repositories.users import UsersRepository
 from app.auth.roles import is_admin_role, is_platform_admin_email
 from app.auth.schemas.admin import (
-    AdminDocumentStatusCountResponse,
     AdminDocumentSummaryListResponse,
     AdminDocumentTenantSummaryResponse,
+    AdminStaffRoleUpdateRequest,
     AdminTenantListResponse,
-    AdminTenantStatsResponse,
     AdminTenantSummaryResponse,
     AdminUserActionResponse,
     AdminUserDeleteResponse,
     AdminUserDetailResponse,
     AdminUserListResponse,
-    AdminUserStatsResponse,
     AdminUserSummaryResponse,
     AuditLogItem,
     AuditLogListResponse,
@@ -47,6 +45,7 @@ from app.auth.services.admin_user_service import (
 from app.auth.tenancy import TenantContext, get_tenant_context
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
+from app.documents.models.data_deletion import DataDeletion
 from app.documents.repositories.documents import DocumentsRepository
 from app.documents.services.deletion_service import DeletionService
 from app.ingestion.models.ingestion_job import IngestionJob
@@ -61,12 +60,6 @@ logger = logging.getLogger(__name__)
 UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
 
-def _safe_details_map(details: Any) -> dict[str, str]:
-    if not isinstance(details, dict):
-        return {}
-    return {str(k): str(v) for k, v in details.items()}
-
-
 def _to_admin_user_response(summary: AdminUserSummary) -> AdminUserSummaryResponse:
     return AdminUserSummaryResponse(
         user_id=summary.user_id,
@@ -76,18 +69,6 @@ def _to_admin_user_response(summary: AdminUserSummary) -> AdminUserSummaryRespon
         is_active=summary.is_active,
         totp_enabled=summary.totp_enabled,
         roles=summary.roles,
-        created_at=summary.created_at,
-        updated_at=summary.updated_at,
-        last_login_at=summary.last_login_at,
-        stats=AdminUserStatsResponse(
-            documents_count=summary.stats.documents_count,
-            queries_count=summary.stats.queries_count,
-            conversations_count=summary.stats.conversations_count,
-            comments_count=summary.stats.comments_count,
-            pinned_findings_count=summary.stats.pinned_findings_count,
-            providers_count=summary.stats.providers_count,
-            storage_bytes=summary.stats.storage_bytes,
-        ),
     )
 
 
@@ -100,14 +81,7 @@ def _to_admin_tenant_response(
         created_at=summary.created_at,
         updated_at=summary.updated_at,
         status=summary.status,
-        last_activity_at=summary.last_activity_at,
-        stats=AdminTenantStatsResponse(
-            users_count=summary.stats.users_count,
-            active_users_count=summary.stats.active_users_count,
-            documents_count=summary.stats.documents_count,
-            queries_count=summary.stats.queries_count,
-            collections_count=summary.stats.collections_count,
-        ),
+        seats_used=summary.seats_used,
     )
 
 
@@ -137,6 +111,29 @@ def _require_platform_admin(
             message="Only platform admins can perform this operation.",
             status_code=403,
         )
+
+
+def _resolve_deletion_tenant_id(
+    *,
+    target_tenant_id: uuid.UUID | None,
+    tenant_context: TenantContext,
+    auth: AuthContext,
+    db: Session,
+    settings: Settings,
+) -> uuid.UUID:
+    effective_tenant_id = target_tenant_id or tenant_context.tenant_id
+    if effective_tenant_id != tenant_context.tenant_id:
+        _require_platform_admin(auth, db=db, settings=settings)
+    return effective_tenant_id
+
+
+def _can_approve_deletion(row: DataDeletion, auth: AuthContext) -> bool:
+    return bool(
+        row.status == "awaiting_approval"
+        and row.requested_by_user_id != auth.user_id
+        and "admin:data_deletions:approve"
+        in resolve_permissions(roles=auth.roles, direct_permissions=auth.permissions)
+    )
 
 
 def require_platform_admin_access(
@@ -185,25 +182,12 @@ def list_audit_logs(
         action=action,
     )
 
-    try:
-        service.write_event(
-            tenant_id=tenant_context.tenant_id,
-            action="admin.audit_logs.read",
-            resource_type="admin",
-            actor_user_id=tenant_context.user_id,
-            details={"limit": str(limit), "action": str(action) if action else ""},
-        )
-        db.commit()
-    except Exception:  # noqa: BLE001
-        db.rollback()
-        logger.warning(
-            "Failed to write admin audit-log read event.",
-            extra={
-                "tenant_id": str(tenant_context.tenant_id),
-                "user_id": str(tenant_context.user_id),
-            },
-            exc_info=True,
-        )
+    service.write_admin_read_event(
+        tenant_id=tenant_context.tenant_id,
+        actor_user_id=tenant_context.user_id,
+        action="admin.audit_logs.read",
+        resource_type="admin_audit_logs",
+    )
 
     return AuditLogListResponse(
         items=[
@@ -216,9 +200,7 @@ def list_audit_logs(
                 resource_id=item.resource_id,
                 status=item.status,
                 trace_id=item.trace_id,
-                ip_address=item.ip_address,
                 created_at=item.created_at,
-                details=_safe_details_map(item.details),
             )
             for item in page.items
         ],
@@ -242,17 +224,19 @@ def list_storage_cleanup(
         .limit(200)
         .all()
     )
+    AuditService(db).write_admin_read_event(
+        tenant_id=tenant_context.tenant_id,
+        actor_user_id=tenant_context.user_id,
+        action="admin.storage_cleanup.list.read",
+        resource_type="storage_cleanup_jobs",
+    )
     return StorageCleanupListResponse(
         items=[
             StorageCleanupJobResponse(
                 id=job.id,
                 tenant_id=job.tenant_id,
-                owner_user_id=job.owner_user_id,
-                bucket=job.bucket,
-                object_key=job.object_key,
                 status=job.status,
                 attempts=job.attempts,
-                last_error=job.last_error,
                 next_attempt_at=job.next_attempt_at,
                 created_at=job.created_at,
             )
@@ -289,29 +273,21 @@ def list_admin_document_summary(
         tenant_ids = [tenant_context.tenant_id]
     items: list[AdminDocumentTenantSummaryResponse] = []
     for tenant_id in tenant_ids:
-        status_counts = document_repo.status_counts_by_tenant(tenant_id=tenant_id)
         items.append(
             AdminDocumentTenantSummaryResponse(
                 tenant_id=tenant_id,
-                documents_count=document_repo.count_by_tenant(tenant_id=tenant_id),
-                storage_bytes=document_repo.sum_storage_by_tenant(tenant_id=tenant_id),
                 quarantined_count=document_repo.count_quarantined_by_tenant(tenant_id=tenant_id),
-                status_counts=[
-                    AdminDocumentStatusCountResponse(status=status, count=count)
-                    for status, count in status_counts.items()
-                ],
                 error_count=document_repo.count_error_by_tenant(tenant_id=tenant_id),
             )
         )
 
-    AuditService(db).write_event(
+    AuditService(db).write_admin_read_event(
         tenant_id=tenant_context.tenant_id,
-        action="admin.documents.summary.read",
-        resource_type="admin_documents",
         actor_user_id=auth.user_id,
-        details={"target_tenant_id": str(target_tenant_id or "")},
+        action="admin.documents.summary.read",
+        resource_type="document_processing_health",
+        resource_id=str(target_tenant_id) if target_tenant_id else "all_workspaces",
     )
-    db.commit()
     return AdminDocumentSummaryListResponse(items=items)
 
 
@@ -334,19 +310,21 @@ def list_document_recovery_history(
         .limit(limit)
         .all()
     )
+    AuditService(db).write_admin_read_event(
+        tenant_id=tenant_context.tenant_id,
+        actor_user_id=tenant_context.user_id,
+        action="admin.documents.recovery_history.read",
+        resource_type="document_recovery_history",
+    )
     return {
         "items": [
             {
                 "job_id": job.id,
-                "document_id": job.document_id,
                 "status": job.status,
                 "checkpoint_stage": job.checkpoint_stage,
-                "checkpoint_cursor": job.checkpoint_cursor,
                 "checkpoint_updated_at": job.checkpoint_updated_at,
-                "pause_reason": job.pause_reason,
                 "resume_count": job.resume_count,
                 "last_error_code": job.last_error_code,
-                "last_error_message": job.last_error_message,
                 "updated_at": job.updated_at,
             }
             for job in jobs
@@ -357,7 +335,7 @@ def list_document_recovery_history(
 @router.post(
     "/break-glass",
     response_model=BreakGlassGrantResponse,
-    dependencies=[Depends(require_permissions("admin:users:write"))],
+    dependencies=[Depends(require_permissions("admin:break_glass:write"))],
 )
 def create_break_glass_grant(
     payload: BreakGlassGrantRequest,
@@ -408,7 +386,7 @@ def create_break_glass_grant(
 @router.post(
     "/break-glass/{grant_id}/revoke",
     response_model=BreakGlassRevokeResponse,
-    dependencies=[Depends(require_permissions("admin:users:write"))],
+    dependencies=[Depends(require_permissions("admin:break_glass:write"))],
 )
 def revoke_break_glass_grant(
     grant_id: uuid.UUID,
@@ -455,11 +433,20 @@ def request_data_deletion(
     settings: Settings = Depends(get_settings),
 ) -> DataDeletionRequestResponse:
     service = DeletionService(db, settings)
-    target_tenant_id = (
-        payload.target_tenant_id
-        if _has_admin_access(auth) and payload.target_tenant_id
-        else tenant_context.tenant_id
+    target_tenant_id = _resolve_deletion_tenant_id(
+        target_tenant_id=payload.target_tenant_id,
+        tenant_context=tenant_context,
+        auth=auth,
+        db=db,
+        settings=settings,
     )
+    expected_confirmation = f"DELETE {target_tenant_id}"
+    if payload.target_confirmation.strip() != expected_confirmation:
+        raise ApiError(
+            code="INVALID_REQUEST",
+            message="Type DELETE followed by the exact workspace ID to confirm this request.",
+            status_code=400,
+        )
 
     result = service.request_deletion(
         tenant_id=target_tenant_id,
@@ -467,27 +454,62 @@ def request_data_deletion(
         reason=payload.reason,
     )
 
-    try:
-        process_data_deletion.delay(str(result.deletion_id), str(target_tenant_id))
-    except Exception as exc:  # noqa: BLE001
-        logger.exception(
-            "Failed to enqueue data deletion task.",
-            extra={
-                "tenant_id": str(tenant_context.tenant_id),
-                "user_id": str(auth.user_id),
-                "deletion_id": str(result.deletion_id),
-            },
-        )
-        raise ApiError(
-            code="INTERNAL_SERVER_ERROR",
-            message="Failed to schedule data deletion job.",
-            status_code=500,
-        ) from exc
-
     return DataDeletionRequestResponse(
         deletion_id=result.deletion_id,
         status=result.status,
     )
+
+
+@router.post(
+    "/data-deletions/{deletion_id}/approve",
+    response_model=DataDeletionRequestResponse,
+    dependencies=[Depends(require_permissions("admin:data_deletions:approve"))],
+)
+def approve_data_deletion(
+    deletion_id: uuid.UUID,
+    target_tenant_id: uuid.UUID | None = None,
+    tenant_context: TenantContext = Depends(get_tenant_context),
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> DataDeletionRequestResponse:
+    target_tenant_id = _resolve_deletion_tenant_id(
+        target_tenant_id=target_tenant_id,
+        tenant_context=tenant_context,
+        auth=auth,
+        db=db,
+        settings=settings,
+    )
+    service = DeletionService(db, settings)
+    result = service.approve_deletion(
+        tenant_id=target_tenant_id,
+        deletion_id=deletion_id,
+        approved_by_user_id=auth.user_id,
+    )
+
+    try:
+        process_data_deletion.delay(str(result.deletion_id), str(target_tenant_id))
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Failed to enqueue approved data deletion task.",
+            extra={
+                "tenant_id": str(target_tenant_id),
+                "user_id": str(auth.user_id),
+                "deletion_id": str(result.deletion_id),
+            },
+        )
+        service.mark_enqueue_failed(
+            tenant_id=target_tenant_id,
+            deletion_id=result.deletion_id,
+            actor_user_id=auth.user_id,
+        )
+        raise ApiError(
+            code="INTERNAL_SERVER_ERROR",
+            message="The approved deletion could not be queued. It is marked failed; create a new request when the service is available.",
+            status_code=503,
+        ) from exc
+
+    return DataDeletionRequestResponse(deletion_id=result.deletion_id, status=result.status)
 
 
 @router.get(
@@ -504,24 +526,36 @@ def list_data_deletions(
     settings: Settings = Depends(get_settings),
 ) -> DataDeletionListResponse:
     service = DeletionService(db, settings)
-    effective_tenant_id = (
-        target_tenant_id
-        if _has_admin_access(auth) and target_tenant_id
-        else tenant_context.tenant_id
+    effective_tenant_id = _resolve_deletion_tenant_id(
+        target_tenant_id=target_tenant_id,
+        tenant_context=tenant_context,
+        auth=auth,
+        db=db,
+        settings=settings,
     )
     rows = service.list_statuses(tenant_id=effective_tenant_id, limit=limit)
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.data_deletions.list.read",
+        resource_type="data_deletion_requests",
+        resource_id=str(effective_tenant_id),
+    )
     return DataDeletionListResponse(
         items=[
             DataDeletionStatusResponse(
                 deletion_id=row.id,
                 tenant_id=row.tenant_id,
-                requested_by_user_id=row.requested_by_user_id,
                 status=row.status,
                 scope=row.scope,
                 reason=row.reason,
-                result_counts={str(k): int(v) for k, v in (row.result_counts or {}).items()},
+                can_approve=_can_approve_deletion(row, auth),
                 error_code=row.error_code,
-                error_message=row.error_message,
+                error_message=(
+                    "Deletion could not be completed. Contact support with the request ID."
+                    if row.status == "failed"
+                    else None
+                ),
                 requested_at=row.requested_at,
                 started_at=row.started_at,
                 completed_at=row.completed_at,
@@ -546,26 +580,38 @@ def get_data_deletion_status(
     settings: Settings = Depends(get_settings),
 ) -> DataDeletionStatusResponse:
     service = DeletionService(db, settings)
-    effective_tenant_id = (
-        target_tenant_id
-        if _has_admin_access(auth) and target_tenant_id
-        else tenant_context.tenant_id
+    effective_tenant_id = _resolve_deletion_tenant_id(
+        target_tenant_id=target_tenant_id,
+        tenant_context=tenant_context,
+        auth=auth,
+        db=db,
+        settings=settings,
     )
     row = service.get_status(
         tenant_id=effective_tenant_id,
         deletion_id=deletion_id,
     )
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.data_deletion.read",
+        resource_type="data_deletion_request",
+        resource_id=str(deletion_id),
+    )
 
     return DataDeletionStatusResponse(
         deletion_id=row.id,
         tenant_id=row.tenant_id,
-        requested_by_user_id=row.requested_by_user_id,
         status=row.status,
         scope=row.scope,
         reason=row.reason,
-        result_counts={str(k): int(v) for k, v in (row.result_counts or {}).items()},
+        can_approve=_can_approve_deletion(row, auth),
         error_code=row.error_code,
-        error_message=row.error_message,
+        error_message=(
+            "Deletion could not be completed. Contact support with the request ID."
+            if row.status == "failed"
+            else None
+        ),
         requested_at=row.requested_at,
         started_at=row.started_at,
         completed_at=row.completed_at,
@@ -590,6 +636,12 @@ def list_admin_users(
         if _has_admin_access(auth)
         else service.list_users(tenant_id=tenant_context.tenant_id)
     )
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.users.list.read",
+        resource_type="admin_users",
+    )
     return AdminUserListResponse(items=[_to_admin_user_response(item) for item in items])
 
 
@@ -608,38 +660,44 @@ def get_admin_user(
     service = AdminUserService(db, settings)
     if _has_admin_access(auth):
         summary = service.get_user_global(user_id=user_id)
-        activity = service.list_recent_activity_global(user_id=user_id, limit=20)
     else:
         summary = service.get_user(tenant_id=tenant_context.tenant_id, user_id=user_id)
-        activity = service.list_recent_activity(
-            tenant_id=tenant_context.tenant_id,
-            user_id=user_id,
-            limit=20,
-        )
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.user.read",
+        resource_type="user",
+        resource_id=str(user_id),
+    )
     return AdminUserDetailResponse(
         user=_to_admin_user_response(summary),
-        recent_activity=[
-            AuditLogItem(
-                id=item.id,
-                tenant_id=item.tenant_id,
-                actor_user_id=item.actor_user_id,
-                action=item.action,
-                resource_type=item.resource_type,
-                resource_id=item.resource_id,
-                status=item.status,
-                trace_id=item.trace_id,
-                created_at=item.created_at,
-                details=_safe_details_map(item.details),
-            )
-            for item in activity
-        ],
     )
+
+
+@router.put(
+    "/users/{user_id}/staff-roles",
+    response_model=AdminUserDetailResponse,
+    dependencies=[Depends(require_permissions("admin:staff_roles:write"))],
+)
+def update_admin_user_staff_roles(
+    user_id: uuid.UUID,
+    payload: AdminStaffRoleUpdateRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> AdminUserDetailResponse:
+    summary = AdminUserService(db, settings).update_staff_roles_global(
+        user_id=user_id,
+        role_names=payload.roles,
+        actor=auth,
+    )
+    return AdminUserDetailResponse(user=_to_admin_user_response(summary))
 
 
 @router.post(
     "/users/{user_id}/disable",
     response_model=AdminUserActionResponse,
-    dependencies=[Depends(require_permissions("admin:users:write"))],
+    dependencies=[Depends(require_permissions("admin:users:disable"))],
 )
 def disable_admin_user(
     user_id: uuid.UUID,
@@ -665,7 +723,7 @@ def disable_admin_user(
 @router.post(
     "/users/{user_id}/reactivate",
     response_model=AdminUserActionResponse,
-    dependencies=[Depends(require_permissions("admin:users:write"))],
+    dependencies=[Depends(require_permissions("admin:users:reactivate"))],
 )
 def reactivate_admin_user(
     user_id: uuid.UUID,
@@ -691,7 +749,7 @@ def reactivate_admin_user(
 @router.post(
     "/users/{user_id}/force-logout",
     response_model=AdminUserActionResponse,
-    dependencies=[Depends(require_permissions("admin:users:write"))],
+    dependencies=[Depends(require_permissions("admin:users:logout"))],
 )
 def force_logout_admin_user(
     user_id: uuid.UUID,
@@ -717,7 +775,7 @@ def force_logout_admin_user(
 @router.delete(
     "/users/{user_id}",
     response_model=AdminUserDeleteResponse,
-    dependencies=[Depends(require_permissions("admin:users:write"))],
+    dependencies=[Depends(require_permissions("admin:users:delete"))],
 )
 def delete_admin_user(
     user_id: uuid.UUID,
@@ -740,8 +798,6 @@ def delete_admin_user(
     return AdminUserDeleteResponse(
         success=True,
         deleted_user_id=result.deleted_user_id,
-        deleted_email=result.deleted_email,
-        deleted_counts=result.counts,
     )
 
 
@@ -762,4 +818,10 @@ def list_admin_tenants(
             status_code=403,
         )
     items = AdminUserService(db, settings).list_tenants_global()
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.workspaces.list.read",
+        resource_type="workspaces",
+    )
     return AdminTenantListResponse(items=[_to_admin_tenant_response(item) for item in items])

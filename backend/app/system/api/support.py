@@ -33,6 +33,7 @@ from app.system.schemas.support import (
     SupportTicketUpdate,
     UserSupportSummary,
 )
+from app.system.services.audit_service import AuditService
 from app.system.services.rate_limit_service import RateLimitService
 from app.system.services.storage_quota import StorageQuotaService
 from app.system.services.storage_service import StorageService, StorageServiceError
@@ -442,6 +443,13 @@ def download_ticket_attachment_admin(
     row, data = _read_ticket_attachment(
         db, ticket_id=ticket_id, attachment_id=attachment_id, tenant_id=ticket.tenant_id
     )
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.support.attachment.read",
+        resource_type="support_attachment",
+        resource_id=str(attachment_id),
+    )
     from urllib.parse import quote
 
     return Response(
@@ -485,6 +493,12 @@ def list_all_tickets_admin(
         )
         for user_id, tickets in grouped.items()
     ]
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.support.history.list.read",
+        resource_type="support_history",
+    )
     return AdminSupportListResponse(items=items)
 
 
@@ -571,6 +585,12 @@ def list_support_queue_admin(
         )
         or 0
     )
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.support.queue.read",
+        resource_type="support_queue",
+    )
     return AdminSupportQueueResponse(
         items=tickets,
         total=int(total),
@@ -597,7 +617,15 @@ def get_ticket_admin(
     ).one_or_none()
     if result is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    return _detail(db, result[0], include_internal=True, user_email=result[1])
+    detail = _detail(db, result[0], include_internal=True, user_email=result[1])
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.support.ticket.read",
+        resource_type="support_ticket",
+        resource_id=str(ticket_id),
+    )
+    return detail
 
 
 @router.post(
@@ -650,6 +678,13 @@ def add_admin_ticket_message(
         )
     db.flush()
     detail = _detail(db, ticket, include_internal=True, user_email=user_email)
+    AuditService(db).write_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.support.ticket.message.created",
+        resource_type="support_ticket",
+        resource_id=str(ticket.id),
+    )
     db.commit()
     return detail
 
@@ -744,5 +779,12 @@ def update_ticket_admin(
             resource_id=ticket.id,
             idempotency_key=f"support:status:{ticket.id}:{uuid.uuid4()}",
         )
+    AuditService(db).write_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.support.ticket.updated",
+        resource_type="support_ticket",
+        resource_id=str(ticket.id),
+    )
     db.commit()
     return SupportTicketResponse.model_validate(ticket)

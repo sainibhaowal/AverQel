@@ -39,10 +39,10 @@ export default function CollectionsSharingDocsPage() {
       <DocsSection title="Reports and moderation">
         <p>
           Members can submit reports about Qel Connect activity. The moderation queue is a
-          restricted tenant-admin workflow for reviewing those reports and recording decisions; it
-          is not a feature for browsing users&apos; Qel Connect spaces or private chat histories.
-          Access to the queue requires the relevant authenticated administrative role and backend
-          permission checks.
+          restricted workflow for designated moderators. Each moderator can review only reports
+          from the active tenant. The queue is not a feature for browsing users&apos; Qel Connect
+          spaces or private chat histories. Report text loads only when a moderator opens a report;
+          reads and decisions are recorded in the audit history.
         </p>
       </DocsSection>
       <DocsSection title="Retention and beta status">

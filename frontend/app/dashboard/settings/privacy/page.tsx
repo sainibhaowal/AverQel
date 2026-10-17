@@ -51,7 +51,7 @@ const cards = [
     title: "Privacy Policy",
     href: "/legal/privacy",
     icon: <ScrollText size={20} />,
-    body: "What AverQel collects, what stays private, and when platform-level access may happen.",
+    body: "What AverQel collects, what the standard admin view shows, and which assigned staff can read submitted content.",
     accent: "text-primary",
     accentBg: "bg-primary/10 border-primary/20",
   },
@@ -238,7 +238,9 @@ export default function PrivacySettingsPage() {
         throw new Error(body?.error?.message || `Delete failed (${res.status})`);
       }
       setShowDeleteModal(false);
-      toast.success("Your account has been permanently deleted.");
+      toast.success(
+        "Your account was deleted. Any remaining file cleanup may continue in the background.",
+      );
       await logout();
       window.location.replace("/auth/login");
     } catch (error) {
@@ -327,13 +329,13 @@ export default function PrivacySettingsPage() {
           {
             icon: <FileLock2 className="text-emerald-500" size={18} />,
             title: "What should remain private",
-            body: "Documents, prompts, answers, and chat history are product content. They should not be casually accessed outside legitimate support, security, or legal needs.",
+            body: "Documents, prompts, answers, and chat history are product content. Assigned support staff, feedback managers, or tenant moderators can read the content needed for their specific workflow; those reads are audited.",
             accent: "border-emerald-500/15",
           },
           {
             icon: <Eye className="text-amber-300" size={18} />,
             title: "Owner access model",
-            body: "The platform owner sees account and security metadata globally. Private content access must stay controlled, justified, and auditable.",
+            body: "The standard administrator view shows account and security metadata. Content workflows require separate staff roles, and support also requires platform-admin allowlisting.",
             accent: "border-amber-500/15",
           },
         ].map((panel, idx) => (
@@ -482,14 +484,20 @@ export default function PrivacySettingsPage() {
               <div className="space-y-4 px-6 py-5">
                 <div className="rounded-xl border border-red-500/15 bg-red-500/6 px-4 py-3 text-sm leading-6 text-red-300/80">
                   <p className="mb-1 font-semibold text-red-300">
-                    The following will be permanently erased:
+                    Your account and associated records will be deleted, including:
                   </p>
                   <ul className="list-inside list-disc space-y-0.5 text-xs text-red-400/75">
                     <li>All your documents and uploaded files</li>
                     <li>All your queries and chat history</li>
                     <li>All your comments and pinned findings</li>
+                    <li>Your support tickets and feedback submissions</li>
                     <li>Your account and login credentials</li>
                   </ul>
+                  <p className="mt-2 text-xs text-red-400/75">
+                    Uploaded file cleanup can continue in the background if storage is temporarily
+                    unavailable. Security records and deployment backups follow separate retention
+                    schedules.
+                  </p>
                 </div>
 
                 {/* Password field */}

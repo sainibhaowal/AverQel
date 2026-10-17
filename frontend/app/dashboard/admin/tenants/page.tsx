@@ -1,19 +1,11 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { Building2, Database, FileText, Loader2, Search, Users } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Building2, Database, Loader2, Users } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { fetchWithAuth } from "@/lib/api";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
-
-interface TenantStats {
-  users_count: number;
-  active_users_count: number;
-  documents_count: number;
-  queries_count: number;
-  collections_count: number;
-}
 
 interface TenantSummary {
   tenant_id: string;
@@ -21,8 +13,7 @@ interface TenantSummary {
   created_at: string;
   updated_at: string;
   status?: "active" | "empty" | "suspended" | "pending_deletion";
-  last_activity_at?: string | null;
-  stats: TenantStats;
+  seats_used: number;
 }
 
 interface TenantListResponse {
@@ -42,12 +33,10 @@ export default function AdminTenantsPage() {
   const totals = items.reduce(
     (acc, tenant) => {
       acc.workspaces += 1;
-      acc.users += tenant.stats.users_count;
-      acc.documents += tenant.stats.documents_count;
-      acc.collections += tenant.stats.collections_count;
+      acc.seats += tenant.seats_used;
       return acc;
     },
-    { workspaces: 0, users: 0, documents: 0, collections: 0 },
+    { workspaces: 0, seats: 0 },
   );
 
   const load = useCallback(async () => {
@@ -116,17 +105,15 @@ export default function AdminTenantsPage() {
                       Cross-tenant visibility without opening tenant content
                     </h2>
                     <p className="text-muted-foreground mt-2 text-sm leading-7">
-                      Review live workspace footprint, operational density, and tenant-level
-                      activity shape from one compact owner surface.
+                      Review workspace status and seat use without exposing member activity or
+                      workspace content volume.
                     </p>
                   </div>
                 </div>
 
                 <div className="grid min-w-0 grid-cols-2 gap-3">
                   <SummaryCell label="Workspaces" value={totals.workspaces} tone="primary" />
-                  <SummaryCell label="Users" value={totals.users} tone="primary" />
-                  <SummaryCell label="Documents" value={totals.documents} tone="amber" />
-                  <SummaryCell label="Qel Connect" value={totals.collections} tone="primary" />
+                  <SummaryCell label="Seats in use" value={totals.seats} tone="primary" />
                 </div>
               </div>
             </div>
@@ -175,44 +162,37 @@ export default function AdminTenantsPage() {
                   </div>
                   <div className="space-y-2 xl:text-right">
                     <div className="theme-chip min-w-[10.5rem] rounded-[1rem] px-4 py-2.5 text-center text-[10px] leading-4 font-bold tracking-[0.16em] whitespace-normal uppercase xl:ml-auto xl:w-fit">
-                      {tenant.status ?? "active"} · Updated {formatDate(tenant.updated_at)}
+                      {tenant.status ?? "active"} · Record updated {formatDate(tenant.updated_at)}
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-                  <MetricTile
-                    icon={<Users className="text-primary" size={16} />}
-                    label="Users"
-                    value={tenant.stats.users_count}
-                  />
-                  <MetricTile
-                    icon={<Users className="text-primary" size={16} />}
-                    label="Active"
-                    value={tenant.stats.active_users_count}
-                  />
-                  <MetricTile
-                    icon={<FileText className="text-amber-300" size={16} />}
-                    label="Documents"
-                    value={tenant.stats.documents_count}
-                  />
-                  <MetricTile
-                    icon={<Search className="text-primary" size={16} />}
-                    label="Queries"
-                    value={tenant.stats.queries_count}
-                  />
-                  <MetricTile
-                    icon={<Database className="text-primary" size={16} />}
-                    label="Qel Connect"
-                    value={tenant.stats.collections_count}
-                  />
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <div className="theme-panel-muted flex min-h-[7.5rem] min-w-0 flex-col rounded-[1rem] p-4">
+                    <Users className="text-primary" size={16} />
+                    <p className="text-muted-foreground mt-3 text-[10px] font-bold tracking-[0.18em] uppercase">
+                      Seats in use
+                    </p>
+                    <p className="text-foreground mt-auto text-3xl leading-none font-semibold">
+                      {tenant.seats_used}
+                    </p>
+                  </div>
+                  <div className="theme-panel-muted flex min-h-[7.5rem] min-w-0 flex-col rounded-[1rem] p-4">
+                    <Building2 className="text-primary" size={16} />
+                    <p className="text-muted-foreground mt-3 text-[10px] font-bold tracking-[0.18em] uppercase">
+                      Workspace status
+                    </p>
+                    <p className="text-foreground mt-auto text-lg leading-none font-semibold capitalize">
+                      {tenant.status ?? "active"}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="mt-5 flex flex-1 flex-col justify-end">
                   <div className="border-glass-border rounded-[1.1rem] border border-dashed bg-white/[0.02] px-4 py-3">
                     <p className="text-muted-foreground text-[11px] leading-6">
-                      Owner-level visibility only. This card exposes footprint and usage density
-                      without opening tenant documents, chats, or private content bodies.
+                      This view shows workspace metadata and seat use. It does not show individual
+                      activity or document, query, and conversation volumes.
                     </p>
                   </div>
                 </div>
@@ -249,18 +229,6 @@ function SummaryCell({
         {label}
       </p>
       <p className="mt-3 text-3xl leading-none font-semibold">{value}</p>
-    </div>
-  );
-}
-
-function MetricTile({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
-  return (
-    <div className="theme-panel-muted flex min-h-[7.5rem] min-w-0 flex-col rounded-[1rem] p-4">
-      <div>{icon}</div>
-      <p className="text-muted-foreground mt-3 truncate text-[10px] font-bold tracking-[0.18em] uppercase">
-        {label}
-      </p>
-      <p className="text-foreground mt-auto text-3xl leading-none font-semibold">{value}</p>
     </div>
   );
 }

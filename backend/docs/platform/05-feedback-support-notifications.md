@@ -19,7 +19,26 @@ User support endpoints are under `/api/v1/support/tickets`: create/list, `GET /{
 
 User feedback endpoints are `/api/v1/app-feedback/submit`, `/mine`, `/mine/{feedback_id}`, and `/mine/{feedback_id}/messages`. Admin submissions are `/api/v1/app-feedback/admin/submissions`, `GET /{feedback_id}`, `PATCH /{feedback_id}`, and `POST /{feedback_id}/messages`. Campaign endpoints remain available.
 
-Feedback campaigns are platform-wide prompts created by authorized platform support staff; they are not tenant-specific. A tenant user's actual feedback submission and conversation remain scoped to that tenant and user. The Feedback Center's campaign panel is empty when no active campaign exists; users can still submit general feedback.
+Platform administrators can grant or revoke only the `support_manager`,
+`feedback_manager`, and `collection_moderator` roles through
+`PUT /api/v1/admin/users/{user_id}/staff-roles`.
+The operation preserves base roles and is audited. A target user must sign in
+again before a newly granted role appears in their access token.
+
+Reads of the platform support queue, ticket history, ticket details, support
+attachments, and app-feedback submissions are recorded as metadata-only audit
+events. Message and status changes are also audited without copying message
+bodies into those audit events. Only an explicitly assigned `support_manager`
+with a platform-admin allowlisted account can read ticket content and
+attachments across tenants. Feedback content is available only to the separate
+`feedback_manager` role; that staff API omits submitter email addresses and user
+IDs, while the backend keeps the account link needed to deliver in-app replies.
+
+Feedback campaigns are platform-wide prompts created by an assigned Feedback
+Manager; they are not tenant-specific. A tenant user's actual feedback
+submission and conversation remain scoped to that tenant and user. The Feedback
+Center's campaign panel is empty when no active campaign exists; users can
+still submit general feedback.
 
 The Admin Feedback queue refreshes every 30 seconds while visible and supports manual refresh. Queue access failures are shown as errors instead of an empty queue; the conversation opens in a viewport-level overlay outside the dashboard's clipped content area, with loading/error states and a scrollable message history. User replies use a multiline input.
 
@@ -28,8 +47,10 @@ The authenticated notification feed is `/api/v1/notifications`: list (maximum 10
 ## Security and persistence
 
 - User list/detail/reply queries constrain both tenant and authenticated user. Ticket/message and notification tables enforce tenant RLS. Cross-user resource lookups return 404.
-- Feedback text is stored so the submitter and authorized platform support staff can read and discuss it. Access is protected by user/tenant checks, PostgreSQL RLS, and the platform-admin allowlist; this is not end-to-end encryption, because the support team must be able to read and reply to submissions.
-- Admin routes keep their existing `admin:support:*` / `admin:feedback:*` permission checks and platform-admin email allowlist verification. Admin messages set visibility explicitly.
+- Feedback text is stored so the submitter and assigned Feedback Managers can read and discuss it. User reads remain user/tenant scoped; the global staff queue uses a server-only RLS bypass after checking `admin:feedback:read` or `admin:feedback:write`. Staff responses omit account IDs and email addresses. This is not end-to-end encryption, because Feedback Managers must be able to read and reply to submissions.
+- Support-management routes require the separate `support_manager` role and platform-admin allowlist; the general `admin` role no longer grants support-content access. Feedback management uses the separate `feedback_manager` role with only `admin:feedback:read` and `admin:feedback:write`; the general `admin` role does not imply feedback access. Admin messages set visibility explicitly.
+- Qel Connect moderation uses the separate `collection_moderator` role with `collections:moderation:read` and `collections:moderation:write`. Its report and history queries remain scoped to the active tenant. The general `admin` role does not imply moderation access. `feedback_manager` and `collection_moderator` are seeded by migration `20261016_0001`; `support_manager` is seeded by `20261017_0001`. A platform administrator explicitly grants or revokes these roles in the Admin Users view. Role changes preserve the user's base role and create an audit event. New grants take effect after the user signs in again; revocations take effect on subsequent API requests.
+- Feedback submission alerts go only to active Feedback Managers; Qel Connect report alerts go only to active moderators assigned in that tenant. Alert text contains no submitted feedback subject or report details. Keep each staff member's normal account role when granting a staff role; bootstrap-owner authentication preserves additional explicit roles.
 - Feedback/ticket changes and their user/admin notifications are written in the same database transaction, so a committed submission cannot lose its in-app receipt alert.
 - The global admin-notification lookup temporarily switches to the existing `bypass` tenant context and restores the caller's context before returning. The bypass is not exposed to user input.
 - Tenant context is transaction-local. Endpoints build response data before committing when they need RLS-protected messages; they do not refresh RLS rows after the context has been cleared.

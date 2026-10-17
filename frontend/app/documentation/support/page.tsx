@@ -43,10 +43,11 @@ export default function SupportDocsPage() {
       </DocsSection>
       <DocsSection title="Who can read support content">
         <p>
-          Your ticket and public replies are visible to you and authorized support staff. Authorized
-          staff may also record internal notes that are not shown in your user view. Support content
-          is not end-to-end encrypted. Access is controlled by the application and backend
-          authorization; do not submit information that support does not need.
+          Your ticket, replies, and attachments are visible to you and explicitly assigned Support
+          Managers. Support Managers can read tickets across workspaces and must also be in the
+          deployment&apos;s platform-admin allowlist. They may record internal notes that are not
+          shown in your user view. Support content is not end-to-end encrypted and privileged reads
+          are audited. Do not submit information support does not need.
         </p>
       </DocsSection>
       <DocsSection title="Response targets and email">

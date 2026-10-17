@@ -49,11 +49,12 @@ dependency; the latter must not be described as WhatsApp/Signal-equivalent.
 
 ## Collection report moderation workflow
 
-The moderation console is restricted in the dashboard layout to admin roles;
-the API independently requires `admin:collections:read` or
-`admin:collections:write` and filters every report/history query by the
-authenticated tenant. Collection members can submit reports, but only tenant
-admins receive moderation notifications and can review or change report state.
+The moderation console is restricted in the dashboard layout to users assigned
+the `collection_moderator` role. The API independently requires
+`collections:moderation:read` or `collections:moderation:write` and filters
+every report/history query by the authenticated tenant. The general `admin`
+role does not imply moderation access. Collection members can submit reports;
+only assigned moderators in that tenant can review or change report state.
 Notifications contain no report details and link to the specific report.
 
 The reports endpoint keeps its existing JSON array response and adds bounded
@@ -77,9 +78,11 @@ foreign key, and protects direct updates/deletes with a database trigger. The
 trigger permits the database's account-erasure nulling and parent-record
 cascades so existing account and collection deletion workflows continue to
 work. Existing reports receive a `history_baseline` marker; previous moderator
-actions cannot be reconstructed. Message bodies are not included in the
-moderation response schema. The current collection encryption design does not
-provide a server-blind key boundary; see
+actions cannot be reconstructed. The default report list returns only report
+metadata. A separate tenant-scoped detail route returns user-submitted report
+details after an explicit read, and both reads and moderation actions are
+audited. Message bodies are not included in the moderation response schema.
+The current collection encryption design does not provide a server-blind key boundary; see
 [`../library/10-collection-chat-encryption.md`](../library/10-collection-chat-encryption.md).
 
 Run the focused verification from `backend/`:
@@ -110,8 +113,9 @@ revoking every other device. The routes are:
 - `DELETE /api/v1/auth/sessions/{session_id}`
 - `GET /api/v1/collections/security/push-config`
 - `GET /api/v1/collections/admin/security/reports`
+- `GET /api/v1/collections/admin/security/reports/{report_id}`
+- `GET /api/v1/collections/admin/security/reports/{report_id}/history`
 - `POST /api/v1/collections/admin/security/reports/{report_id}`
-- `GET /api/v1/collections/{collection_id}/security/spam-score/{user_id}`
 
 ## Verification
 

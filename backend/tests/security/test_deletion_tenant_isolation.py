@@ -39,7 +39,10 @@ def test_cross_tenant_deletion_status_access_is_blocked(
             "Authorization": f"Bearer {token_a}",
             "X-Tenant-Id": str(tenant_a.tenant_id),
         },
-        json={"reason": "tenant-a purge"},
+        json={
+            "reason": "workspace_offboarding",
+            "target_confirmation": f"DELETE {tenant_a.tenant_id}",
+        },
     )
     assert create.status_code == 200
     deletion_id = create.json()["deletion_id"]

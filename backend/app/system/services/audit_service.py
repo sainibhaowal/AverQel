@@ -93,6 +93,26 @@ class AuditService:
         )
         return self.repo.create(event=event)
 
+    def write_admin_read_event(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_user_id: uuid.UUID,
+        action: str,
+        resource_type: str,
+        resource_id: str | None = None,
+    ) -> AuditLog:
+        """Persist a metadata-only record before returning a privileged read."""
+        event = self.write_event(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+        )
+        self.db.commit()
+        return event
+
     def list_events(
         self,
         *,

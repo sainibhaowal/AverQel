@@ -6,27 +6,68 @@ export default function DataRetentionPage() {
     <PolicyLayout
       eyebrow="Retention"
       title="Data Retention & Deletion"
-      intro="Effective 15 August 2026. AverQel retains information for the period needed to provide the requested feature, secure accounts, operate the service, resolve disputes, and meet legal obligations."
+      intro="Last reviewed 17 October 2026. Retention depends on record type, workspace settings, and the operator's deployment. The periods below are application defaults, not a guarantee that every deployment has configured or run its cleanup workers."
     >
-      <PolicySection title="Data Retention (Cloud Server)">
+      <PolicySection title="Application defaults">
+        <ul className="list-disc space-y-2 pl-5">
+          <li>Audit records: 90 days by default.</li>
+          <li>Transient records: 30 days by default.</li>
+          <li>Revoked authentication sessions and related token records: 90 days by default.</li>
+          <li>Dismissed in-app notifications: 365 days by default.</li>
+          <li>Delivered or suppressed notification-delivery records: 90 days by default.</li>
+        </ul>
         <p>
-          Structured records are stored in PostgreSQL; runtime coordination uses Redis; documents
-          and media may be stored in MinIO-compatible object storage. Active workspace content is
-          retained until the user or an authorized administrator deletes it, subject to pending
-          jobs, security records, legal obligations, and backup lifecycle.
-        </p>
-        <p>
-          Current operational defaults include 90 days for audit records, 30 days for transient
-          records, and a configurable session-memory retention window. These defaults can change by
-          deployment and do not replace the retention rules shown in the product.
+          The operator can configure these values. Account sessions, provider records, support
+          tickets, feedback, workspace content, and backups have separate lifecycle behavior. Their
+          final retention period depends on the applicable feature and deployment configuration. The
+          source repository does not define a production backup retention schedule.
         </p>
       </PolicySection>
-      <PolicySection title="Account Deletion Controls">
+
+      <PolicySection title="Workspace content retention">
         <p>
-          Users can use the available privacy settings or Support Centre to request deletion.
-          Deletion is processed through account and data-deletion workflows. It may take time to
-          remove related objects, queued work, audit records, and encrypted backups; data required
-          for security or law may be retained for the applicable period.
+          Workspace storage settings provide Off, 30, 60, and 90-day options for eligible inactive
+          content. The lifecycle is archive-first; selecting a period does not mean that all content
+          is immediately and permanently deleted at that age. The current server default keeps
+          automatic archive disabled unless an operator enables it. Check the retention status shown
+          in your workspace settings.
+        </p>
+      </PolicySection>
+
+      <PolicySection title="Account deletion">
+        <p>
+          Account deletion removes the account and its account-owned database records, including
+          submitted support tickets and feedback. Uploaded object files are deleted directly where
+          possible. If object storage is unavailable, a restricted background worker retries the
+          cleanup; after the configured retry limit, an operator may need to investigate. There is
+          no fixed cleanup completion time.
+        </p>
+        <p>
+          Security and audit records may remain for their configured retention period. Deletion from
+          backups follows the deployment&apos;s backup lifecycle, which is not defined in this
+          repository, so deletion from the live database does not establish immediate removal from
+          every backup.
+        </p>
+      </PolicySection>
+
+      <PolicySection title="Workspace offboarding is different">
+        <p>
+          A workspace purge removes its documents and source files, extracted text and embeddings,
+          ingestion and index records, queries and citations, conversations and messages, Qel
+          Connect workspace data, comments, and pinned findings. It retains user accounts, provider
+          settings, support and feedback records, and audit records. A platform administrator must
+          confirm the exact workspace ID and choose a reason to request this destructive operation.
+          A different authorized platform administrator must approve it before processing begins.
+          This does not replace account deletion or individual data-rights requests.
+        </p>
+      </PolicySection>
+
+      <PolicySection title="Requesting a change or deletion">
+        <p>
+          Use the in-app Trust &amp; Privacy settings or Support Centre to request an export or
+          deletion. The Support Centre requires an account. The hosted service is operated by
+          Ravinder Singh — Independent Developer, AverQel Independent Project. This source does not
+          provide an external privacy contact for people who cannot sign in.
         </p>
       </PolicySection>
     </PolicyLayout>

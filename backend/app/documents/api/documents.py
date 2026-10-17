@@ -229,16 +229,13 @@ def _delete_document_object_or_queue(
             raise_on_error=True,
         )
         return
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         logger.error(
             "Document blob deletion deferred to durable cleanup.",
             extra={
                 "tenant_id": str(document.tenant_id),
                 "document_id": str(document.id),
-                "bucket": document.storage_bucket,
-                "object_key": document.storage_object_key,
             },
-            exc_info=exc,
         )
         db.add(
             StorageCleanupJob(
@@ -291,11 +288,10 @@ def _delete_grounded_query_derivatives(
                 object_key=object_key,
                 raise_on_error=True,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.warning(
                 "Grounded Query derivative cleanup deferred.",
-                extra={"tenant_id": str(tenant_id), "object_key": object_key},
-                exc_info=exc,
+                extra={"tenant_id": str(tenant_id)},
             )
             db.add(
                 StorageCleanupJob(

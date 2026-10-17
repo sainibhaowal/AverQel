@@ -41,9 +41,10 @@ and retrieval. Access remains subject to Qel Connect membership and document
 permissions.
 
 Members can submit reports and block members where those controls are
-available. The restricted moderation queue lets authorized tenant
-administrators triage reports and record moderation history. It is not a
-general Qel Connect or private-message browser.
+available. The restricted moderation queue lets users assigned the
+`collection_moderator` role triage reports inside their active tenant and record
+moderation history. Report details load on demand, reads and decisions are
+audited, and the queue is not a general Qel Connect or private-message browser.
 
 ## 5. Expiry and deletion
 

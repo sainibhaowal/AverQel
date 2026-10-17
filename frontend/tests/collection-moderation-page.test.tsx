@@ -13,11 +13,6 @@ const report = {
   id: "report-1",
   collection_id: "collection-1",
   collection_name: "Team workspace",
-  reporter_user_id: "user-1",
-  reported_user_id: "user-2",
-  message_id: "message-1",
-  reason: "spam",
-  details: "Repeated links",
   status: "open",
   created_at: "2026-10-01T10:00:00Z",
   resolved_at: null,
@@ -44,6 +39,12 @@ describe("collection moderation page", () => {
     fetchWithAuthMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST")
         return { ok: true, json: async () => ({ ...report, status: "resolved" }) };
+      if (init?.method !== "POST" && url === "/collections/admin/security/reports/report-1") {
+        return {
+          ok: true,
+          json: async () => ({ ...report, reason: "spam", details: "Repeated links" }),
+        };
+      }
       return listResponse();
     });
 
@@ -53,11 +54,13 @@ describe("collection moderation page", () => {
       "href",
       "/dashboard",
     );
-    expect(await screen.findByText("Repeated links")).toBeInTheDocument();
+    expect(await screen.findByText("Moderation report")).toBeInTheDocument();
     expect(screen.getByText("Team workspace")).toBeInTheDocument();
-    expect(screen.getByText("user-1")).toBeInTheDocument();
-    expect(screen.getByText(/message bodies are not shown here/i)).toBeInTheDocument();
-    expect(screen.getByText("(message body not returned)")).toBeInTheDocument();
+    expect(screen.queryByText("user-1")).not.toBeInTheDocument();
+    expect(screen.queryByText("Repeated links")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /view report details/i }));
+    expect(await screen.findByText("Repeated links")).toBeInTheDocument();
+    expect(screen.getByText("spam")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Resolve" }));
 
     await waitFor(() => {
@@ -69,9 +72,7 @@ describe("collection moderation page", () => {
         },
       );
     });
-    await waitFor(() => {
-      expect(fetchWithAuthMock).toHaveBeenCalledTimes(3);
-    });
+    await waitFor(() => expect(fetchWithAuthMock).toHaveBeenCalledTimes(4));
   });
 
   it("paginates without hiding older reports", async () => {
@@ -105,7 +106,7 @@ describe("collection moderation page", () => {
 
     render(<CollectionModerationPage />);
 
-    expect(await screen.findByText("Repeated links")).toBeInTheDocument();
+    expect(await screen.findByText("Moderation report")).toBeInTheDocument();
     await waitFor(() => {
       expect(fetchWithAuthMock).toHaveBeenCalledWith(
         expect.stringContaining("status=all&limit=25&offset=0&report_id=report-1"),
@@ -120,7 +121,6 @@ describe("collection moderation page", () => {
     const action = {
       id: "action-1",
       report_id: "report-1",
-      actor_user_id: "admin-1",
       actor_role: "admin",
       action_type: "note_added",
       previous_status: null,
@@ -134,12 +134,20 @@ describe("collection moderation page", () => {
           ...listResponse([action], 1, false),
         };
       }
+      if (init?.method !== "POST" && url === "/collections/admin/security/reports/report-1") {
+        return {
+          ok: true,
+          json: async () => ({ ...report, reason: "spam", details: "Repeated links" }),
+        };
+      }
       if (init?.method === "POST") return { ok: true, json: async () => report };
       return listResponse();
     });
 
     render(<CollectionModerationPage />);
-    await screen.findByText("Repeated links");
+    expect(await screen.findByText("Moderation report")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /view report details/i }));
+    expect(await screen.findByText("Repeated links")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Internal moderator note"), {
       target: { value: "Confirmed with the workspace owner." },
     });
@@ -160,6 +168,6 @@ describe("collection moderation page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Activity history/ }));
     expect(await screen.findByText("Confirmed with the workspace owner.")).toBeInTheDocument();
-    expect(screen.getByText("Actor: admin · admin-1")).toBeInTheDocument();
+    expect(screen.getByText("Actor role: admin")).toBeInTheDocument();
   });
 });

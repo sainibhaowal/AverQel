@@ -14,11 +14,11 @@ describe("analytics dashboard page", () => {
     fetchWithAuthMock.mockResolvedValue({
       ok: true,
       json: async () => ({
+        suppressed: false,
         total_queries: 42,
         avg_confidence: 0.87,
         volume_over_time: [{ date: "2026-03-19", count: 4 }],
         confidence_distribution: { high: 3, medium: 1, low: 0 },
-        api_latency_p95_ms: null,
       }),
     });
 
@@ -33,38 +33,22 @@ describe("analytics dashboard page", () => {
     expect(screen.queryByText(/api latency/i)).not.toBeInTheDocument();
   });
 
-  it("renders real latency card when api_latency_p95_ms is provided", async () => {
+  it("hides analytics when the contributor threshold is not met", async () => {
     fetchWithAuthMock.mockResolvedValue({
       ok: true,
       json: async () => ({
-        total_queries: 10,
-        avg_confidence: 0.75,
+        suppressed: true,
+        total_queries: null,
+        avg_confidence: null,
         volume_over_time: [],
-        confidence_distribution: { high: 5, medium: 3, low: 2 },
-        api_latency_p95_ms: 245.0,
+        confidence_distribution: null,
       }),
     });
 
     render(<AnalyticsDashboard />);
 
-    expect(await screen.findByText(/api latency/i)).toBeInTheDocument();
-    expect(screen.getByText("245ms")).toBeInTheDocument();
-  });
-
-  it("formats latency as seconds when value is 1000ms or more", async () => {
-    fetchWithAuthMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        total_queries: 5,
-        avg_confidence: 0.6,
-        volume_over_time: [],
-        confidence_distribution: { high: 2, medium: 2, low: 1 },
-        api_latency_p95_ms: 1200.0,
-      }),
-    });
-
-    render(<AnalyticsDashboard />);
-
-    expect(await screen.findByText("1.20s")).toBeInTheDocument();
+    expect(await screen.findByText(/analytics are hidden/i)).toBeInTheDocument();
+    expect(screen.getByText(/at least five distinct workspace members/i)).toBeInTheDocument();
+    expect(screen.queryByText(/total queries|confidence distribution/i)).not.toBeInTheDocument();
   });
 });

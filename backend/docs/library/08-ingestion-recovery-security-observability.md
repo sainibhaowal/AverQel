@@ -80,9 +80,14 @@ for status, active jobs, failures, quarantine, indexed documents, total
 documents, and storage bytes. `GET /api/v1/documents/duplicates` returns
 duplicate-group information without exposing another tenant's content.
 
-The admin metrics endpoint remains separate from document content. Metrics may
-contain low-cardinality operational labels, but must not contain prompts,
-answers, extracted text, filenames, secrets, or raw provider reasoning.
+The global JSON admin metrics endpoint is restricted to allowlisted platform
+administrators. The raw Prometheus endpoint is unauthenticated inside the API
+process, so deployment routing must keep it internal: the production Caddy
+gateway returns 403 for the public metrics route and the API port is only
+exposed on the Docker network. Development binds the API port to loopback.
+Metrics may contain low-cardinality operational labels, but must not contain
+prompts, answers, extracted text, filenames, secrets, or raw provider
+reasoning.
 
 ## Operational checklist
 

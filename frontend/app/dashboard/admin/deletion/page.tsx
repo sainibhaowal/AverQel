@@ -26,10 +26,11 @@ import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 
 interface DeletionRequest {
   deletion_id: string;
+  tenant_id: string;
   status: string;
   scope: string;
   reason: string | null;
-  result_counts: Record<string, number>;
+  can_approve: boolean;
   error_code: string | null;
   error_message: string | null;
   requested_at: string;
@@ -39,20 +40,7 @@ interface DeletionRequest {
 }
 
 interface DeletionListResponse {
-  items: Array<
-    DeletionRequest & {
-      tenant_id: string;
-      requested_by_user_id: string;
-    }
-  >;
-}
-
-interface TenantStats {
-  users_count: number;
-  active_users_count: number;
-  documents_count: number;
-  queries_count: number;
-  collections_count: number;
+  items: DeletionRequest[];
 }
 
 interface TenantSummary {
@@ -60,7 +48,7 @@ interface TenantSummary {
   name: string;
   created_at: string;
   updated_at: string;
-  stats: TenantStats;
+  seats_used: number;
 }
 
 interface TenantListResponse {
@@ -87,8 +75,12 @@ export default function DeletionPage() {
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(user?.tenant_id ?? null);
   const [expandedRequestIds, setExpandedRequestIds] = useState<string[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState<"workspace_offboarding" | "security_incident">(
+    "workspace_offboarding",
+  );
+  const [targetConfirmation, setTargetConfirmation] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [approvingRequestId, setApprovingRequestId] = useState<string | null>(null);
   const [loadingRequests, setLoadingRequests] = useState(true);
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const workspaceMenuRef = useRef<HTMLDivElement | null>(null);
@@ -102,7 +94,10 @@ export default function DeletionPage() {
     useState<FloatingTooltipPosition | null>(null);
 
   const hasActiveRequests = useMemo(
-    () => requests.some((request) => ["queued", "processing"].includes(request.status)),
+    () =>
+      requests.some((request) =>
+        ["awaiting_approval", "queued", "processing"].includes(request.status),
+      ),
     [requests],
   );
   const selectedTenant = useMemo(
@@ -151,10 +146,11 @@ export default function DeletionPage() {
       setRequests(
         data.items.map((item) => ({
           deletion_id: item.deletion_id,
+          tenant_id: item.tenant_id,
           status: item.status,
           scope: item.scope,
           reason: item.reason,
-          result_counts: item.result_counts,
+          can_approve: item.can_approve,
           error_code: item.error_code,
           error_message: item.error_message,
           requested_at: item.requested_at,
@@ -254,29 +250,38 @@ export default function DeletionPage() {
   }, [controlTooltipVisible]);
 
   const handleWipe = async () => {
-    if (!reason.trim()) return;
     if (isAdmin && !selectedTenantId) {
       toast.error("Select a workspace first.");
       return;
     }
+    const targetTenantId = selectedTenantId ?? user?.tenant_id ?? null;
+    const expectedConfirmation = targetTenantId ? `DELETE ${targetTenantId}` : "";
+    if (!targetTenantId || targetConfirmation.trim() !== expectedConfirmation) return;
     setSubmitting(true);
     try {
       const res = (await fetchWithAuth("/admin/data-deletions", {
         method: "POST",
         body: JSON.stringify({
           reason,
+          target_confirmation: targetConfirmation.trim(),
           ...(isAdmin && selectedTenantId ? { target_tenant_id: selectedTenantId } : {}),
         }),
       })) as Response;
       if (res.ok) {
         const data = await res.json();
         setShowModal(false);
-        setReason("");
-        toast.success(`Deletion initiated: ${data.deletion_id}`);
+        setReason("workspace_offboarding");
+        setTargetConfirmation("");
+        toast.success(
+          `Deletion request is waiting for a second administrator: ${data.deletion_id}`,
+        );
         await fetchRequests();
       } else {
-        const errorData = await res.json();
-        toast.error(errorData.message || "Failed to initiate data deletion.");
+        const errorData = await res.json().catch(() => null);
+        toast.error(
+          errorData?.error?.message || errorData?.message || "Failed to initiate data deletion.",
+        );
+        await fetchRequests();
       }
     } catch (e) {
       console.error("Deletion failed", e);
@@ -286,6 +291,38 @@ export default function DeletionPage() {
     }
   };
 
+  const handleApprove = async (request: DeletionRequest) => {
+    const confirmed = window.confirm(
+      `Approve the irreversible workspace data deletion for ${request.tenant_id}? This approval will be recorded and the deletion will start. Account records, support, feedback, and audit records are retained.`,
+    );
+    if (!confirmed) return;
+    setApprovingRequestId(request.deletion_id);
+    try {
+      const query = new URLSearchParams({ target_tenant_id: request.tenant_id });
+      const response = (await fetchWithAuth(
+        `/admin/data-deletions/${request.deletion_id}/approve?${query.toString()}`,
+        { method: "POST" },
+      )) as Response;
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        toast.error(errorData?.error?.message || "Could not approve this deletion request.");
+        return;
+      }
+      toast.success("Deletion approved and queued.");
+      await fetchRequests();
+    } catch (error) {
+      console.error("Deletion approval failed", error);
+      toast.error("Could not approve this deletion request.");
+    } finally {
+      setApprovingRequestId(null);
+    }
+  };
+
+  const closeConfirmation = () => {
+    setShowModal(false);
+    setTargetConfirmation("");
+  };
+
   const toggleExpanded = (deletionId: string) => {
     setExpandedRequestIds((current) =>
       current.includes(deletionId)
@@ -293,12 +330,6 @@ export default function DeletionPage() {
         : [...current, deletionId],
     );
   };
-
-  const formatCountLabel = (key: string) =>
-    key
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
 
   const formatTimestamp = (value: string | null) => {
     if (!value) return "Not recorded";
@@ -347,8 +378,12 @@ export default function DeletionPage() {
                 Deletion Target
               </h2>
               <p className="text-muted-foreground mt-2 max-w-[56ch] text-sm leading-7">
-                Select the exact workspace that will be wiped. This prevents accidental confusion
-                between different user workspaces.
+                This operation removes content from one workspace. Account data-rights requests must
+                be submitted through{" "}
+                <a href="/dashboard/support" className="text-primary underline underline-offset-2">
+                  support
+                </a>
+                ; this workspace purge does not process them.
               </p>
             </div>
             {isAdmin ? (
@@ -403,7 +438,7 @@ export default function DeletionPage() {
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="theme-panel-muted flex min-h-[7rem] min-w-0 flex-col rounded-xl p-4">
               <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
                 Workspace
@@ -417,26 +452,10 @@ export default function DeletionPage() {
             </div>
             <div className="theme-panel-muted flex min-h-[7rem] flex-col rounded-xl p-4">
               <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                Users
+                Seats in use
               </p>
               <p className="text-foreground mt-auto text-3xl leading-none font-semibold">
-                {selectedTenant?.stats?.users_count ?? "—"}
-              </p>
-            </div>
-            <div className="theme-panel-muted flex min-h-[7rem] flex-col rounded-xl p-4">
-              <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                Documents
-              </p>
-              <p className="text-foreground mt-auto text-3xl leading-none font-semibold">
-                {selectedTenant?.stats?.documents_count ?? "—"}
-              </p>
-            </div>
-            <div className="theme-panel-muted flex min-h-[7rem] flex-col rounded-xl p-4">
-              <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                Queries
-              </p>
-              <p className="text-foreground mt-auto text-3xl leading-none font-semibold">
-                {selectedTenant?.stats?.queries_count ?? "—"}
+                {selectedTenant?.seats_used ?? "—"}
               </p>
             </div>
           </div>
@@ -476,6 +495,7 @@ export default function DeletionPage() {
                           type="button"
                           onClick={() => {
                             setSelectedTenantId(tenant.tenant_id);
+                            setTargetConfirmation("");
                             setWorkspaceMenuOpen(false);
                           }}
                           className={`flex w-full min-w-0 items-center justify-between rounded-xl px-3 py-3 text-left text-sm transition-all ${
@@ -536,9 +556,13 @@ export default function DeletionPage() {
                 </span>
               </h4>
               <p className="mt-2 text-sm leading-relaxed text-red-500/70 italic">
-                Executing a wipe for <span className="font-semibold not-italic">{targetLabel}</span>{" "}
-                will permanently remove documents, chunks, vector embeddings, chats, queries, and
-                Qel Connect sharing in that workspace. User accounts remain.
+                A request and approval from two different authorized administrators are required
+                before this irreversible workspace purge starts. This removes workspace documents
+                and source files, extracted text and embeddings, ingestion/index records, queries
+                and citations, conversations and messages, Qel Connect collections and sharing,
+                comments, and pinned findings. User accounts, provider settings, support and
+                feedback records, and audit records remain. Account and data-rights requests use
+                separate privacy controls. Any storage cleanup retries continue separately.
               </p>
             </div>
           </div>
@@ -573,10 +597,6 @@ export default function DeletionPage() {
               ) : requests.length > 0 ? (
                 requests.map((req) => {
                   const isExpanded = expandedRequestIds.includes(req.deletion_id);
-                  const detailEntries = Object.entries(req.result_counts ?? {}).filter(
-                    ([, value]) => Number.isFinite(value),
-                  );
-
                   return (
                     <div key={req.deletion_id} className="p-6">
                       <div className="flex items-start justify-between gap-4">
@@ -584,13 +604,33 @@ export default function DeletionPage() {
                           <p className="text-foreground text-sm font-bold tracking-widest break-all uppercase">
                             {req.deletion_id}
                           </p>
-                          <p className="text-muted-foreground mt-1 text-xs">Status: {req.status}</p>
+                          <p className="text-muted-foreground mt-1 text-xs">
+                            Status:{" "}
+                            {req.status === "awaiting_approval"
+                              ? "Awaiting second approval"
+                              : req.status}
+                          </p>
                           <p className="text-muted-foreground mt-2 text-[11px]">
                             Requested: {formatTimestamp(req.requested_at)}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-3">
                           {getStatusIcon(req.status)}
+                          {req.status === "awaiting_approval" && req.can_approve ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleApprove(req)}
+                              disabled={approvingRequestId === req.deletion_id}
+                              className="inline-flex items-center gap-2 rounded-full border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-[10px] font-bold tracking-widest text-amber-600 uppercase transition-colors hover:bg-amber-500/20 disabled:opacity-60"
+                            >
+                              {approvingRequestId === req.deletion_id ? (
+                                <Loader2 size={12} className="animate-spin" />
+                              ) : (
+                                <CheckCircle2 size={12} />
+                              )}
+                              Approve purge
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => toggleExpanded(req.deletion_id)}
@@ -666,35 +706,6 @@ export default function DeletionPage() {
                                   </p>
                                 </div>
                               ) : null}
-
-                              <div>
-                                <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                                  Deleted Items
-                                </p>
-                                {detailEntries.length > 0 ? (
-                                  <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                    {detailEntries
-                                      .sort(([left], [right]) => left.localeCompare(right))
-                                      .map(([key, value]) => (
-                                        <div
-                                          key={key}
-                                          className="rounded-xl border border-white/6 bg-black/10 p-3"
-                                        >
-                                          <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                                            {formatCountLabel(key)}
-                                          </p>
-                                          <p className="text-foreground mt-2 text-lg font-bold">
-                                            {value}
-                                          </p>
-                                        </div>
-                                      ))}
-                                  </div>
-                                ) : (
-                                  <p className="text-muted-foreground mt-3 text-sm">
-                                    No deletion counts are available yet for this request.
-                                  </p>
-                                )}
-                              </div>
                             </div>
                           </motion.div>
                         ) : null}
@@ -746,7 +757,8 @@ export default function DeletionPage() {
                   Requirement Traceability
                 </h4>
                 <p className="text-[11px] leading-relaxed text-orange-400/70 italic">
-                  All deletions require a valid administrative justification for audit parity.
+                  Select the operational reason. You must also type the exact workspace ID to
+                  confirm this irreversible request.
                 </p>
               </div>
 
@@ -769,15 +781,15 @@ export default function DeletionPage() {
             <ul className="space-y-3 text-[11px] font-medium text-slate-500">
               <li className="flex items-center gap-2">
                 <ChevronRight size={10} className="text-primary" />
-                Standard Blob Storage Objects
+                Source files and derived artifacts; failed storage deletes enter a retry queue
               </li>
               <li className="flex items-center gap-2">
                 <ChevronRight size={10} className="text-primary" />
-                Vector Embeddings (all dims)
+                Queries, chats, comments, and Qel Connect workspace data
               </li>
               <li className="flex items-center gap-2">
                 <ChevronRight size={10} className="text-primary" />
-                Relational Knowledge Nodes
+                User accounts, provider settings, support, and feedback remain
               </li>
               <li className="flex items-center gap-2">
                 <ChevronRight size={10} className="text-red-500" />
@@ -807,7 +819,7 @@ export default function DeletionPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowModal(false)}
+              onClick={closeConfirmation}
               className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
             />
             <motion.div
@@ -840,28 +852,55 @@ export default function DeletionPage() {
                   ) : null}
                 </div>
                 <div>
-                  <label className="text-muted-foreground mb-2 block text-[10px] font-bold tracking-widest uppercase">
-                    Administrative Reason
+                  <label
+                    htmlFor="deletion-reason"
+                    className="text-muted-foreground mb-2 block text-[10px] font-bold tracking-widest uppercase"
+                  >
+                    Reason
                   </label>
-                  <textarea
+                  <select
+                    id="deletion-reason"
                     value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder="Ex. Legal request, Tenant offboarding, Data corruption..."
-                    className="bg-muted border-glass-border text-foreground min-h-[100px] w-full resize-none rounded-xl border px-4 py-3 text-sm transition-colors outline-none focus:border-red-500/50"
+                    onChange={(event) => setReason(event.target.value as typeof reason)}
+                    className="bg-muted border-glass-border text-foreground w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-red-500/50"
+                  >
+                    <option value="workspace_offboarding">Workspace offboarding</option>
+                    <option value="security_incident">Security incident</option>
+                  </select>
+                </div>
+                <div>
+                  <label
+                    htmlFor="target-confirmation"
+                    className="text-muted-foreground mb-2 block text-[10px] font-bold tracking-widest uppercase"
+                  >
+                    Type DELETE {selectedTenantId ?? user?.tenant_id ?? "workspace ID"}
+                  </label>
+                  <input
+                    id="target-confirmation"
+                    value={targetConfirmation}
+                    onChange={(event) => setTargetConfirmation(event.target.value)}
+                    placeholder={`DELETE ${selectedTenantId ?? user?.tenant_id ?? "workspace ID"}`}
+                    autoComplete="off"
+                    className="bg-muted border-glass-border text-foreground w-full rounded-xl border px-4 py-3 font-mono text-sm outline-none focus:border-red-500/50"
                   />
                 </div>
               </div>
 
               <div className="flex gap-4">
                 <button
-                  onClick={() => setShowModal(false)}
+                  onClick={closeConfirmation}
                   className="bg-muted text-muted-foreground hover:bg-muted/80 border-glass-border flex-1 rounded-xl border px-6 py-3 text-sm font-bold tracking-widest uppercase transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleWipe}
-                  disabled={!reason.trim() || submitting || (isAdmin && !selectedTenantId)}
+                  disabled={
+                    submitting ||
+                    (!selectedTenantId && !user?.tenant_id) ||
+                    targetConfirmation.trim() !==
+                      `DELETE ${selectedTenantId ?? user?.tenant_id ?? ""}`
+                  }
                   className="disabled:bg-muted disabled:text-muted-foreground flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-sm font-bold tracking-widest text-white uppercase shadow-lg shadow-red-500/25 transition-all hover:bg-red-500"
                 >
                   {submitting ? (

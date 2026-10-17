@@ -45,11 +45,11 @@ the registered device and configured push service.
 ## 4. Reports and restricted moderation
 
 Members may block another member and submit a report, including a supported
-message reference. The moderation queue is an administrative report-triage
-workflow. It is protected by role/permission checks and tenant scope, and is
-not intended as a general interface for browsing member collections or chat
-history. Review access should follow the deployment's support and privacy
-policy.
+message reference. The moderation queue is a report-triage workflow for users
+assigned the `collection_moderator` role. It is protected by permission checks
+and active-tenant scope, and is not a general interface for browsing member
+collections or chat history. Report details load on demand; reads and decisions
+are audited.
 
 ## 5. Deployment and release status
 

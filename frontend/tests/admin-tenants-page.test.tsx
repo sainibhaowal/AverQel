@@ -24,13 +24,7 @@ describe("admin tenants page", () => {
             name: "Workspace One",
             created_at: "2026-04-01T00:00:00Z",
             updated_at: "2026-04-02T00:00:00Z",
-            stats: {
-              users_count: 2,
-              active_users_count: 2,
-              documents_count: 5,
-              queries_count: 3,
-              collections_count: 1,
-            },
+            seats_used: 2,
           },
         ],
       }),
@@ -42,5 +36,7 @@ describe("admin tenants page", () => {
     expect(
       screen.getByText(/cross-tenant visibility without opening tenant content/i),
     ).toBeInTheDocument();
+    expect(screen.getAllByText(/seats in use/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/documents|queries|qel connect/i)).not.toBeInTheDocument();
   });
 });

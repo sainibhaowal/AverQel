@@ -42,7 +42,7 @@ import { APP_VERSION } from "@/lib/release";
 import Breadcrumbs from "@/app/components/ui/Breadcrumbs";
 import SystemStatus from "@/app/components/dashboard/SystemStatus";
 import BetaNoticeBanner from "@/app/components/dashboard/BetaNoticeBanner";
-import { hasAdminRole } from "@/lib/roles";
+import { hasAdminRole, hasNamedRole } from "@/lib/roles";
 import DisabledOverlay from "@/app/components/auth/DisabledOverlay";
 import CodexRuntimeBridge from "@/app/components/providers/CodexRuntimeBridge";
 import toast from "react-hot-toast";
@@ -55,12 +55,14 @@ type NavLeaf = {
   action?: "open-neosis";
   isHeader?: false;
   admin?: boolean;
+  requiresRole?: "feedback_manager" | "collection_moderator" | "support_manager";
 };
 type NavHeader = {
   name: string;
   href: string;
   isHeader: true;
   admin?: boolean;
+  staff?: boolean;
   items: NavLeaf[];
 };
 type NavItem = NavLeaf | NavHeader;
@@ -110,23 +112,31 @@ const BASE_NAV_ITEMS: NavItem[] = [
         href: "/dashboard/admin/support",
         icon: <LifeBuoy size={18} />,
         admin: true,
+        requiresRole: "support_manager",
       },
+      { name: "Data Deletion", href: "/dashboard/admin/deletion", icon: <Trash2 size={18} /> },
+
+      { name: "System Metrics", href: "/dashboard/admin/metrics", icon: <Activity size={18} /> },
+    ],
+  },
+  {
+    name: "Staff Tools",
+    href: "#",
+    isHeader: true,
+    staff: true,
+    items: [
       {
         name: "Feedback Management",
         href: "/dashboard/admin/feedback",
         icon: <Sparkles size={18} />,
-        admin: true,
+        requiresRole: "feedback_manager",
       },
       {
         name: "Qel Connect Moderation",
         href: "/dashboard/admin/collections/moderation",
         icon: <Flag size={18} />,
-        admin: true,
+        requiresRole: "collection_moderator",
       },
-
-      { name: "Data Deletion", href: "/dashboard/admin/deletion", icon: <Trash2 size={18} /> },
-
-      { name: "System Metrics", href: "/dashboard/admin/metrics", icon: <Activity size={18} /> },
     ],
   },
   {
@@ -163,6 +173,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isProvidersSettingsRoute = pathname === "/dashboard/settings/providers";
   const fillsAvailableHeight = isFullHeightRoute || isProvidersSettingsRoute;
   const hasAdminAccess = user ? hasAdminRole(user.roles) : false;
+  const hasFeedbackAccess = user ? hasNamedRole(user.roles, "feedback_manager") : false;
+  const hasModerationAccess = user ? hasNamedRole(user.roles, "collection_moderator") : false;
+  const hasSupportAccess = user ? hasNamedRole(user.roles, "support_manager") : false;
+  const isFeedbackStaffPage = pathname.startsWith("/dashboard/admin/feedback");
+  const isModeratorStaffPage = pathname.startsWith("/dashboard/admin/collections/moderation");
+  const isSupportStaffPage = pathname.startsWith("/dashboard/admin/support");
+  const canAccessStaffPage =
+    (isFeedbackStaffPage && hasFeedbackAccess) ||
+    (isModeratorStaffPage && hasModerationAccess) ||
+    (isSupportStaffPage && hasAdminAccess && hasSupportAccess);
 
   useEffect(() => {
     let active = true;
@@ -198,9 +218,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [neosisOpening]);
 
   const navItems = useMemo(() => {
-    const items = BASE_NAV_ITEMS.filter((item) => {
-      if (item.admin && !hasAdminAccess) return false;
-      return true;
+    const items = BASE_NAV_ITEMS.flatMap((item): NavItem[] => {
+      if (item.admin && !hasAdminAccess) return [];
+      if ("isHeader" in item && item.isHeader && item.staff) {
+        const visibleItems = item.items.filter((sub) =>
+          sub.requiresRole === "feedback_manager"
+            ? hasFeedbackAccess
+            : sub.requiresRole === "collection_moderator"
+              ? hasModerationAccess
+              : sub.requiresRole === "support_manager"
+                ? hasSupportAccess
+                : true,
+        );
+        return visibleItems.length ? [{ ...item, items: visibleItems }] : [];
+      }
+      return [item];
     });
     if (!neosisAvailable || !user) return items;
 
@@ -213,7 +245,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       action: "open-neosis",
     });
     return items;
-  }, [hasAdminAccess, neosisAvailable, user]);
+  }, [
+    hasAdminAccess,
+    hasFeedbackAccess,
+    hasModerationAccess,
+    hasSupportAccess,
+    neosisAvailable,
+    user,
+  ]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -372,7 +411,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )}
                 <div className="space-y-1">
                   {item.items
-                    .filter((sub) => !sub.admin || hasAdminAccess)
+                    .filter(
+                      (sub) =>
+                        (!sub.admin || hasAdminAccess) &&
+                        (!sub.requiresRole || hasNamedRole(user?.roles, sub.requiresRole)),
+                    )
                     .map((subItem) => (
                       <NavLink
                         key={subItem.href}
@@ -531,9 +574,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             {isMobile && !isDeepSpaceRoute && !isQueryRoute && !neosisAvailable && (
-              <div
-                className="pointer-events-none absolute top-1/2 left-1/2 z-10 hidden -translate-x-1/2 -translate-y-1/2 sm:block lg:hidden"
-              >
+              <div className="pointer-events-none absolute top-1/2 left-1/2 z-10 hidden -translate-x-1/2 -translate-y-1/2 sm:block lg:hidden">
                 <AverQelLogo size="footer" disableAnimation />
               </div>
             )}
@@ -609,7 +650,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className={fillsAvailableHeight ? "flex h-full min-h-0 w-full flex-col" : "w-full"}
             >
               {!isFullHeightRoute && <BetaNoticeBanner />}
-              {isAdminRoute && !hasAdminAccess ? (
+              {(isAdminRoute && !hasAdminAccess && !canAccessStaffPage) ||
+              ((isFeedbackStaffPage || isModeratorStaffPage || isSupportStaffPage) &&
+                !canAccessStaffPage) ? (
                 renderRestrictedContent({
                   title: "Admin Console Restricted",
                   body: "This area is reserved for admins. Normal users can continue using documents, Query, Qel Connect, profile, and trust/privacy settings.",
