@@ -34,8 +34,9 @@ jobs:
       - name: Detect PR paths
         id: filter
         if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
+          predicate-quantifier: 'some-with-excludes'
           filters: |
             backend:
               - 'backend/**'
