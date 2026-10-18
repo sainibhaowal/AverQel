@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useId, useMemo, useState } from "react";
+import { memo, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Copy, Download } from "lucide-react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
@@ -10,8 +10,48 @@ import { normalizeMarkdown, normalizeThinkingDisplay } from "../_lib/markdown";
 import { isMermaidErrorSvg } from "../../query/_lib/mermaid";
 import { sanitizeMermaidSyntax } from "../../query/_components/CodeBlock";
 import AdaptiveMarkdownTable from "../../_components/AdaptiveMarkdownTable";
+import ChartBlock from "../../query/_components/ChartBlock";
+import GraphBlock from "../../query/_components/GraphBlock";
+import GalleryBlock, {
+  parseGalleryPayload,
+  type GalleryAssetRef,
+  type GalleryAssetRetention,
+} from "../../query/_components/GalleryBlock";
+import VisualBlockExport from "./VisualBlockExport";
+import { parseVisualChart } from "../../query/_lib/chart-parser";
+import {
+  inferVisualFenceKind,
+  normalizePersistedRichContent,
+  unwrapPersistedVisualFence,
+} from "../../query/_lib/visual-fences";
+import type {
+  StreamChartBlock,
+  StreamCardBlock,
+  StreamDiagramBlock,
+  StreamGalleryBlock,
+  StructuredBlock,
+} from "../_lib/deepspace-stream";
 import { exportDiagramPdf, exportDiagramPng, exportDiagramSvg } from "@/lib/client-export";
 import { useTheme } from "../../../context/ThemeContext";
+
+import { RichInfoCard } from "./DeepSpaceRichContent";
+
+const MERMAID_EXPORT_ITEM_CLASS =
+  "text-foreground rounded-lg px-3 py-2 text-left text-xs transition-colors duration-150 enabled:hover:bg-primary/10 enabled:hover:text-primary focus-visible:bg-primary/10 focus-visible:text-primary focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40";
+
+function DeepSpaceTableHeader({ children }: { children?: ReactNode }) {
+  return (
+    <th className="border-b border-white/10 bg-white/5 px-4 py-3 text-xs uppercase">{children}</th>
+  );
+}
+DeepSpaceTableHeader.displayName = "th";
+
+function DeepSpaceTableCell({ children }: { children?: ReactNode }) {
+  return (
+    <td className="text-foreground/80 border-b border-white/5 px-4 py-3 text-sm">{children}</td>
+  );
+}
+DeepSpaceTableCell.displayName = "td";
 
 function MermaidPreview({ source }: { source: string }) {
   const id = useId().replace(/:/g, "");
@@ -20,6 +60,7 @@ function MermaidPreview({ source }: { source: string }) {
   const [copied, setCopied] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<"png" | "pdf" | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const sanitizedSource = useMemo(() => sanitizeMermaidSyntax(source), [source]);
   const { theme } = useTheme();
 
@@ -33,6 +74,9 @@ function MermaidPreview({ source }: { source: string }) {
           securityLevel: "strict",
           suppressErrorRendering: true,
           theme: isDark ? "dark" : "default",
+          // SVG text labels keep Mermaid exports self-contained and rasterizable.
+          // HTML labels use foreignObject nodes that can taint PNG/PDF canvases.
+          htmlLabels: false,
           fontFamily: "inherit",
           themeVariables: {
             primaryColor: isDark ? "#1e293b" : "#f8fafc",
@@ -84,6 +128,7 @@ function MermaidPreview({ source }: { source: string }) {
 
   const exportDiagram = async (format: "svg" | "png" | "pdf") => {
     if (!svg) return;
+    setExportError(null);
     try {
       if (format === "svg") {
         exportDiagramSvg(svg, "diagram.svg");
@@ -93,6 +138,8 @@ function MermaidPreview({ source }: { source: string }) {
         else await exportDiagramPdf(svg, "diagram.pdf");
       }
       setExportOpen(false);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Diagram export failed safely.");
     } finally {
       setExporting(null);
     }
@@ -104,7 +151,7 @@ function MermaidPreview({ source }: { source: string }) {
         <button
           type="button"
           onClick={() => void copySource()}
-          className="theme-chip text-foreground/72 hover:text-foreground absolute top-0 left-0 inline-flex h-8 w-8 items-center justify-center rounded-full"
+          className="visual-block-action absolute top-0 left-0 inline-flex h-8 w-8 items-center justify-center rounded-lg"
           aria-label="Copy Mermaid source"
           title={copied ? "Copied" : "Copy Mermaid source"}
         >
@@ -114,7 +161,7 @@ function MermaidPreview({ source }: { source: string }) {
           <button
             type="button"
             onClick={() => setExportOpen((current) => !current)}
-            className="theme-chip text-foreground/72 hover:text-foreground inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs"
+            className="visual-block-action inline-flex h-8 items-center gap-1 rounded-lg px-3 text-xs"
             aria-label="Export Mermaid diagram"
             aria-expanded={exportOpen}
           >
@@ -122,18 +169,14 @@ function MermaidPreview({ source }: { source: string }) {
           </button>
           {exportOpen ? (
             <div className="border-border bg-surface-1 absolute top-10 right-0 z-50 grid min-w-36 gap-1 rounded-xl border p-1 shadow-xl">
-              <button
-                type="button"
-                onClick={downloadSource}
-                className="rounded-lg px-3 py-2 text-left text-xs hover:bg-white/10"
-              >
+              <button type="button" onClick={downloadSource} className={MERMAID_EXPORT_ITEM_CLASS}>
                 Mermaid (.mmd)
               </button>
               <button
                 type="button"
                 onClick={() => void exportDiagram("svg")}
                 disabled={!svg}
-                className="rounded-lg px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                className={MERMAID_EXPORT_ITEM_CLASS}
               >
                 SVG
               </button>
@@ -141,7 +184,7 @@ function MermaidPreview({ source }: { source: string }) {
                 type="button"
                 onClick={() => void exportDiagram("png")}
                 disabled={!svg || exporting !== null}
-                className="rounded-lg px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                className={MERMAID_EXPORT_ITEM_CLASS}
               >
                 {exporting === "png" ? "PNG…" : "PNG"}
               </button>
@@ -149,7 +192,7 @@ function MermaidPreview({ source }: { source: string }) {
                 type="button"
                 onClick={() => void exportDiagram("pdf")}
                 disabled={!svg || exporting !== null}
-                className="rounded-lg px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                className={MERMAID_EXPORT_ITEM_CLASS}
               >
                 {exporting === "pdf" ? "PDF…" : "PDF"}
               </button>
@@ -159,13 +202,21 @@ function MermaidPreview({ source }: { source: string }) {
       </div>
       <div className="overflow-x-auto">
         {svg ? (
-          <div dangerouslySetInnerHTML={{ __html: svg }} />
+          <div data-visual-export-source="diagram" dangerouslySetInnerHTML={{ __html: svg }} />
         ) : (
           <pre className="text-xs text-cyan-100">
             <code>{error ? sanitizedSource : "Rendering diagram…"}</code>
           </pre>
         )}
       </div>
+      {exportError ? (
+        <p
+          className="mt-3 rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs text-amber-100"
+          role="alert"
+        >
+          {exportError}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -173,8 +224,12 @@ function MermaidPreview({ source }: { source: string }) {
 function isAsciiDiagram(source: string): boolean {
   const lines = source.split("\n").filter((line) => line.trim());
   if (lines.length < 3) return false;
-  const structuralLines = lines.filter((line) => /[│┌┐└┘├┤┬┴─|+]/.test(line)).length;
-  const hasFlow = /(?:↓|↑|←|→|-->|<-|\||v|\^)/.test(source);
+  const structuralLines = lines.filter(
+    (line) => /[│┌┐└┘├┤┬┴─]/.test(line) || /^\s*(?:\+[-=+]{2,}\+|\|[-=|]{2,}\|)\s*$/.test(line),
+  ).length;
+  const hasFlow = lines.some(
+    (line) => /(?:↓|↑|←|→|-->|<-)/.test(line) || /^\s*(?:\||v|\^)\s*$/.test(line),
+  );
   return structuralLines >= 2 && hasFlow;
 }
 
@@ -197,7 +252,7 @@ function AsciiDiagramPreview({ source }: { source: string }) {
         <button
           type="button"
           onClick={() => void copySource()}
-          className="theme-chip text-foreground/72 hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-full"
+          className="visual-block-action inline-flex h-8 w-8 items-center justify-center rounded-lg"
           aria-label="Copy ASCII diagram"
           title={copied ? "Copied" : "Copy ASCII diagram"}
         >
@@ -213,39 +268,249 @@ function AsciiDiagramPreview({ source }: { source: string }) {
   );
 }
 
-function ChartPreview({ payload }: { payload: Record<string, unknown> }) {
-  const title =
-    typeof payload.title === "string" && payload.title.trim() ? payload.title : "Chart Data";
-  const chartType = typeof payload.chart_type === "string" ? payload.chart_type : "bar";
-  const series = Array.isArray(payload.series)
-    ? payload.series.filter(
-        (item): item is Record<string, unknown> => Boolean(item) && typeof item === "object",
-      )
-    : [];
+type MarkdownVisualCallbacks = {
+  messageId?: string;
+  onVisualBlockChange?: (
+    messageId: string,
+    block: StructuredBlock,
+  ) => void | boolean | Promise<void | boolean>;
+  onSaveVisualArtifact?: (block: StructuredBlock) => void | Promise<void>;
+  onImportGalleryAsset?: (
+    messageId: string,
+    url: string,
+    retention: GalleryAssetRetention,
+  ) => Promise<GalleryAssetRef>;
+  onRetainGalleryAsset?: (messageId: string, fileId: string) => Promise<GalleryAssetRef>;
+};
+
+function ChartPreview({
+  source,
+  callbacks,
+}: {
+  source: string;
+  callbacks: MarkdownVisualCallbacks;
+}) {
+  const parsed = parseVisualChart(source, "chart");
+  if (!parsed || parsed.data.length < 2) {
+    return (
+      <pre className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-cyan-100">
+        <code>{source}</code>
+      </pre>
+    );
+  }
+
+  const block: StreamChartBlock = {
+    id: readPersistedBlockId(source) ?? stableBlockId("deepspace-chart", source),
+    type: "chart",
+    ...readPersistedBlockMetadata(source),
+    title: parsed.title,
+    chart_type: parsed.type,
+    series: parsed.data.map((point) => ({
+      ...point,
+      label: String(point[parsed.xKey] ?? point.label ?? ""),
+      value: Number(point[parsed.yKey] ?? point.value ?? 0),
+      ...(parsed.zKey ? { z: Number(point[parsed.zKey]) } : {}),
+    })),
+    raw_payload: source,
+    source_markdown: source,
+    parser_source: parsed.metadata.source,
+    confidence: parsed.metadata.confidence,
+    fields: parsed.metadata.fields,
+    x_key: parsed.xKey,
+    y_key: parsed.yKey,
+    z_key: parsed.zKey,
+    x_label: parsed.xLabel,
+    y_label: parsed.yLabel,
+    equation: readChartEquation(source),
+  };
+
   return (
-    <section
-      role="img"
-      aria-label={title}
-      className="my-4 rounded-xl border border-white/10 bg-black/20 p-4"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h4 className="font-semibold">{title}</h4>
-        <span className="text-xs text-cyan-300 uppercase">{chartType}</span>
-      </div>
-      <div className="text-foreground/60 mt-2 text-xs">{series.length} points · JSON chart</div>
-      <div className="text-foreground/75 mt-3 grid gap-1 text-xs">
-        {series.map((point, index) => (
-          <div
-            key={`${String(point.label ?? index)}-${index}`}
-            className="flex justify-between gap-4 rounded bg-white/[0.03] px-2 py-1"
-          >
-            <span>{String(point.label ?? point.name ?? index + 1)}</span>
-            <span>{String(point.value ?? point.y ?? "")}</span>
-          </div>
-        ))}
-      </div>
-    </section>
+    <VisualBlockExport block={block}>
+      <ChartBlock
+        block={block as never}
+        onChange={(next) =>
+          callbacks.messageId && callbacks.onVisualBlockChange
+            ? callbacks.onVisualBlockChange(callbacks.messageId, {
+                ...block,
+                ...next,
+              } as StructuredBlock)
+            : undefined
+        }
+        onSaveArtifact={(next) =>
+          void Promise.resolve(
+            callbacks.onSaveVisualArtifact?.({ ...block, ...next } as StructuredBlock),
+          ).catch(() => undefined)
+        }
+      />
+    </VisualBlockExport>
   );
+}
+
+function CardPreview({
+  source,
+  callbacks,
+}: {
+  source: string;
+  callbacks: MarkdownVisualCallbacks;
+}) {
+  const block = parseCardPayload(source);
+  if (!block) {
+    return (
+      <pre className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-cyan-100">
+        <code>{source}</code>
+      </pre>
+    );
+  }
+  return (
+    <VisualBlockExport block={block}>
+      <RichInfoCard
+        block={block}
+        onChange={(next) => {
+          if (callbacks.messageId && callbacks.onVisualBlockChange) {
+            void callbacks.onVisualBlockChange(callbacks.messageId, next);
+          }
+        }}
+        onSaveArtifact={(next) =>
+          void Promise.resolve(callbacks.onSaveVisualArtifact?.(next)).catch(() => undefined)
+        }
+      />
+    </VisualBlockExport>
+  );
+}
+
+function GraphPreview({
+  source,
+  callbacks,
+}: {
+  source: string;
+  callbacks: MarkdownVisualCallbacks;
+}) {
+  const block = parseGraphBlock(source);
+  if (!block) {
+    return (
+      <pre className="my-4 overflow-x-auto rounded-xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-cyan-100">
+        <code>{source}</code>
+      </pre>
+    );
+  }
+  return (
+    <VisualBlockExport block={block}>
+      <GraphBlock
+        block={block as never}
+        onChange={(next) => {
+          if (callbacks.messageId && callbacks.onVisualBlockChange) {
+            void callbacks.onVisualBlockChange(callbacks.messageId, {
+              ...block,
+              ...next,
+            } as StructuredBlock);
+          }
+        }}
+      />
+    </VisualBlockExport>
+  );
+}
+
+function toGalleryBlock(
+  payload: ReturnType<typeof parseGalleryPayload>,
+): StreamGalleryBlock | null {
+  if (!payload) return null;
+  const id = payload.block_id ?? payload.id;
+  if (!id) return null;
+  return {
+    id,
+    block_id: id,
+    type: "gallery",
+    title: payload.title ?? "Gallery",
+    items: payload.items,
+    schema_version: payload.schema_version ?? 1,
+    revision: payload.revision ?? 0,
+    assets: payload.assets,
+    history: payload.history,
+    source_markdown: payload.source_markdown ?? null,
+    undo: payload.undo,
+  };
+}
+
+function parseGraphBlock(source: string): StreamDiagramBlock | null {
+  try {
+    const payload = JSON.parse(source) as Record<string, unknown>;
+    const graph = (
+      payload.graph && typeof payload.graph === "object" ? payload.graph : payload
+    ) as StreamDiagramBlock["graph"];
+    if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) return null;
+    return {
+      id: readPersistedBlockId(source) ?? stableBlockId("deepspace-graph", source),
+      type: "diagram",
+      ...readPersistedBlockMetadata(source),
+      title: typeof payload.title === "string" ? payload.title : "Diagram canvas",
+      diagram_type: "graph_canvas",
+      source: "graph_json",
+      syntax: source,
+      graph,
+      source_markdown: source,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseCardPayload(source: string): StreamCardBlock | null {
+  try {
+    const payload = JSON.parse(source) as Record<string, unknown>;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload))
+      throw new Error("Invalid card");
+    const title =
+      typeof payload.title === "string" && payload.title.trim()
+        ? payload.title
+        : "Information card";
+    const content =
+      typeof payload.content === "string" ? payload.content : String(payload.body ?? "");
+    if (!content.trim()) throw new Error("Card content is empty");
+    const block: StreamCardBlock = {
+      id: readPersistedBlockId(source) ?? stableBlockId("deepspace-card", source),
+      type: "card",
+      ...readPersistedBlockMetadata(source),
+      title,
+      content,
+      tone: normalizeCardTone(payload.tone),
+      subtitle: typeof payload.subtitle === "string" ? payload.subtitle : null,
+      image_url: typeof payload.image_url === "string" ? payload.image_url : null,
+      href: typeof payload.href === "string" ? payload.href : null,
+      metrics: Array.isArray(payload.metrics)
+        ? payload.metrics.flatMap((item) => {
+            if (!item || typeof item !== "object") return [];
+            const metric = item as Record<string, unknown>;
+            if (typeof metric.label !== "string") return [];
+            return [
+              {
+                label: metric.label,
+                value: String(metric.value ?? ""),
+                detail: typeof metric.detail === "string" ? metric.detail : null,
+              },
+            ];
+          })
+        : [],
+      actions: Array.isArray(payload.actions)
+        ? payload.actions.flatMap((item) => {
+            if (!item || typeof item !== "object") return [];
+            const action = item as Record<string, unknown>;
+            if (typeof action.label !== "string") return [];
+            return [
+              {
+                label: action.label,
+                href: typeof action.href === "string" ? action.href : null,
+                action: isCardAction(action.action) ? action.action : "open",
+                content: typeof action.content === "string" ? action.content : null,
+              },
+            ];
+          })
+        : [],
+      source_markdown: source,
+    };
+    return block;
+  } catch {
+    return null;
+  }
 }
 
 function DiffPreview({ source }: { source: string }) {
@@ -281,11 +546,44 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
   content,
   streaming = false,
   compact = false,
+  messageId,
+  onVisualBlockChange,
+  onSaveVisualArtifact,
+  onImportGalleryAsset,
+  onRetainGalleryAsset,
 }: {
   content: string;
   streaming?: boolean;
   compact?: boolean;
+  messageId?: string;
+  onVisualBlockChange?: (
+    messageId: string,
+    block: StructuredBlock,
+  ) => void | boolean | Promise<void | boolean>;
+  onSaveVisualArtifact?: (block: StructuredBlock) => void | Promise<void>;
+  onImportGalleryAsset?: (
+    messageId: string,
+    url: string,
+    retention: GalleryAssetRetention,
+  ) => Promise<GalleryAssetRef>;
+  onRetainGalleryAsset?: (messageId: string, fileId: string) => Promise<GalleryAssetRef>;
 }) {
+  const callbacks = useMemo<MarkdownVisualCallbacks>(
+    () => ({
+      messageId,
+      onVisualBlockChange,
+      onSaveVisualArtifact,
+      onImportGalleryAsset,
+      onRetainGalleryAsset,
+    }),
+    [
+      messageId,
+      onImportGalleryAsset,
+      onRetainGalleryAsset,
+      onSaveVisualArtifact,
+      onVisualBlockChange,
+    ],
+  );
   const components = useMemo<Components>(
     () => ({
       pre: ({ children }) => <>{children}</>,
@@ -300,20 +598,95 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
             </code>
           );
         }
+        const persistedFence = unwrapPersistedVisualFence(value);
+        const visualKind = persistedFence?.kind ?? inferVisualFenceKind(language, value);
+        const visualValue = persistedFence?.source ?? value;
+        const visualLanguage = visualKind ?? language;
         // Do not repeatedly mount Mermaid/chart renderers for incomplete stream
         // fences. The plain code block is stable until the provider is done.
-        if (!streaming && language === "mermaid" && value.trim())
-          return <MermaidPreview source={value} />;
+        if (!streaming && visualLanguage === "mermaid" && visualValue.trim()) {
+          const diagramId =
+            readPersistedBlockId(visualValue) ?? stableBlockId("deepspace-mermaid", visualValue);
+          const diagram: StreamDiagramBlock = {
+            id: diagramId,
+            block_id: diagramId,
+            type: "diagram",
+            title: "Diagram",
+            diagram_type: "mermaid_flowchart",
+            source: "mermaid",
+            syntax: visualValue,
+            source_mermaid: visualValue,
+            source_markdown: `\`\`\`mermaid\n${visualValue}\n\`\`\``,
+            schema_version: 1,
+            revision: 0,
+          };
+          return (
+            <VisualBlockExport block={diagram} onSaveArtifact={callbacks.onSaveVisualArtifact}>
+              <MermaidPreview source={visualValue} />
+            </VisualBlockExport>
+          );
+        }
         if (!streaming && isAsciiDiagram(value)) return <AsciiDiagramPreview source={value} />;
         if (language === "diff" || language === "patch") return <DiffPreview source={value} />;
-        if (!streaming && language === "chart") {
-          try {
-            const parsed = JSON.parse(value) as unknown;
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-              return <ChartPreview payload={parsed as Record<string, unknown>} />;
-            }
-          } catch {
-            // Keep the incomplete chart as a normal code block while streaming.
+        if (!streaming && visualLanguage === "chart") {
+          return <ChartPreview source={visualValue} callbacks={callbacks} />;
+        }
+        if (!streaming && visualLanguage === "card") {
+          return <CardPreview source={visualValue} callbacks={callbacks} />;
+        }
+        if (!streaming && visualLanguage === "graph") {
+          return <GraphPreview source={visualValue} callbacks={callbacks} />;
+        }
+        if (!streaming && visualLanguage === "gallery") {
+          const gallery = parseGalleryPayload(visualValue);
+          if (gallery) {
+            const galleryBlock = toGalleryBlock(gallery) ?? {
+              id: stableBlockId("deepspace-gallery", visualValue),
+              block_id: stableBlockId("deepspace-gallery", visualValue),
+              type: "gallery" as const,
+              title: gallery.title ?? "Gallery",
+              items: gallery.items,
+            };
+            const persistedGallery = {
+              ...gallery,
+              id: gallery.id ?? galleryBlock.id,
+              block_id: gallery.block_id ?? galleryBlock.id,
+            };
+            return (
+              <VisualBlockExport block={galleryBlock}>
+                <GalleryBlock
+                  payload={persistedGallery}
+                  onChange={(next) => {
+                    const nextBlock = toGalleryBlock(next);
+                    if (!callbacks.messageId || !callbacks.onVisualBlockChange || !nextBlock) {
+                      return undefined;
+                    }
+                    return Promise.resolve(
+                      callbacks.onVisualBlockChange(callbacks.messageId, nextBlock),
+                    ).then((saved) => {
+                      if (saved === false) {
+                        throw new Error("The gallery update could not be saved to this chat.");
+                      }
+                    });
+                  }}
+                  onImportAsset={
+                    callbacks.messageId && callbacks.onImportGalleryAsset
+                      ? (url, retention) =>
+                          callbacks.onImportGalleryAsset!(callbacks.messageId!, url, retention)
+                      : undefined
+                  }
+                  onRetainAsset={
+                    callbacks.messageId && callbacks.onRetainGalleryAsset
+                      ? (fileId) => callbacks.onRetainGalleryAsset!(callbacks.messageId!, fileId)
+                      : undefined
+                  }
+                  onSaveArtifact={(next) => {
+                    const nextBlock = toGalleryBlock(next);
+                    return nextBlock ? callbacks.onSaveVisualArtifact?.(nextBlock) : undefined;
+                  }}
+                />
+              </VisualBlockExport>
+            );
           }
         }
         return (
@@ -324,7 +697,30 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
           </pre>
         );
       },
-      table: ({ children }) => <AdaptiveMarkdownTable>{children}</AdaptiveMarkdownTable>,
+      table: ({ children }) => (
+        <AdaptiveMarkdownTable
+          onSaveToLibrary={
+            callbacks.onSaveVisualArtifact
+              ? (tableRows, tableId) => {
+                  const [headers = [], ...rows] = tableRows;
+                  const messagePart = (callbacks.messageId ?? "message").replace(
+                    /[^a-zA-Z0-9_-]/g,
+                    "-",
+                  );
+                  return callbacks.onSaveVisualArtifact?.({
+                    id: `deepspace-table-${messagePart}-${tableId}`,
+                    type: "table",
+                    title: "Markdown table",
+                    headers,
+                    rows,
+                  });
+                }
+              : undefined
+          }
+        >
+          {children}
+        </AdaptiveMarkdownTable>
+      ),
       h1: ({ children }) => (
         <h1
           className={`${compact ? "mt-3 mb-2 pb-1 text-lg" : "mt-8 mb-4 pb-3 text-3xl"} border-b border-cyan-300/20 font-bold tracking-tight text-cyan-50`}
@@ -357,14 +753,8 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
           {children}
         </h6>
       ),
-      th: ({ children }) => (
-        <th className="border-b border-white/10 bg-white/5 px-4 py-3 text-xs uppercase">
-          {children}
-        </th>
-      ),
-      td: ({ children }) => (
-        <td className="text-foreground/80 border-b border-white/5 px-4 py-3 text-sm">{children}</td>
-      ),
+      th: DeepSpaceTableHeader,
+      td: DeepSpaceTableCell,
       p: ({ children }) => (
         <p className={`text-foreground/90 ${compact ? "my-1 leading-5" : "my-3 leading-8"}`}>
           {children}
@@ -419,16 +809,28 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
         </blockquote>
       ),
       img: ({ src, alt }) => (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={alt || "Markdown image"}
-          loading="lazy"
-          className="my-4 max-h-[34rem] max-w-full rounded-xl border border-white/10 bg-black/20 object-contain"
-        />
+        <span className="my-4 block max-w-full" data-markdown-image>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt={alt || "Markdown image"}
+            loading="lazy"
+            className="max-h-[34rem] max-w-full rounded-xl border border-white/10 bg-black/20 object-contain"
+            onError={(event) => {
+              event.currentTarget.hidden = true;
+              event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+            }}
+          />
+          <span
+            hidden
+            className="text-foreground/55 rounded-xl border border-dashed border-white/15 px-3 py-2 text-xs"
+          >
+            Image unavailable at this URL.
+          </span>
+        </span>
       ),
     }),
-    [compact, streaming],
+    [callbacks, compact, streaming],
   );
   // Stream events are already batched once per animation frame by
   // useDeepSpaceStream. Deferring a second time here caused each new delta to
@@ -437,7 +839,10 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
   // value directly so Markdown structure appears as soon as its marker is
   // complete.
   const normalizedContent = useMemo(
-    () => normalizeMarkdown(compact ? normalizeThinkingDisplay(content) : content),
+    () =>
+      normalizeMarkdown(
+        normalizePersistedRichContent(compact ? normalizeThinkingDisplay(content) : content),
+      ),
     [compact, content],
   );
 
@@ -462,3 +867,83 @@ const DeepSpaceMarkdownRenderer = memo(function DeepSpaceMarkdownRenderer({
 });
 
 export default DeepSpaceMarkdownRenderer;
+
+function isCardTone(value: unknown): value is NonNullable<StreamCardBlock["tone"]> {
+  return (
+    value === "info" ||
+    value === "success" ||
+    value === "warning" ||
+    value === "error" ||
+    value === "neutral"
+  );
+}
+
+function normalizeCardTone(value: unknown): NonNullable<StreamCardBlock["tone"]> {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (isCardTone(normalized)) return normalized;
+  if (normalized === "positive") return "success";
+  if (normalized === "caution") return "warning";
+  if (normalized === "negative" || normalized === "critical") return "error";
+  if (normalized === "informational") return "info";
+  return "neutral";
+}
+
+function isCardAction(
+  value: unknown,
+): value is NonNullable<StreamCardBlock["actions"]>[number]["action"] {
+  return value === "open" || value === "copy" || value === "download";
+}
+
+function readChartEquation(source: string): string | null {
+  try {
+    const payload = JSON.parse(source) as Record<string, unknown>;
+    return typeof payload.equation === "string" && payload.equation.trim()
+      ? payload.equation.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readPersistedBlockId(source: string): string | null {
+  try {
+    const payload = JSON.parse(source) as Record<string, unknown>;
+    return typeof payload.id === "string" && payload.id.trim() ? payload.id : null;
+  } catch {
+    return null;
+  }
+}
+
+function readPersistedBlockMetadata(
+  source: string,
+): Pick<StreamChartBlock, "block_id" | "revision" | "schema_version"> {
+  try {
+    const payload = JSON.parse(source) as Record<string, unknown>;
+    return {
+      block_id:
+        typeof payload.block_id === "string"
+          ? payload.block_id
+          : typeof payload.id === "string"
+            ? payload.id
+            : undefined,
+      revision:
+        typeof payload.revision === "number" && Number.isInteger(payload.revision)
+          ? Math.max(0, payload.revision)
+          : undefined,
+      schema_version:
+        typeof payload.schema_version === "number" && Number.isInteger(payload.schema_version)
+          ? Math.max(1, payload.schema_version)
+          : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function stableBlockId(prefix: string, source: string): string {
+  let hash = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    hash = (hash * 31 + source.charCodeAt(index)) | 0;
+  }
+  return `${prefix}-${Math.abs(hash).toString(36)}`;
+}

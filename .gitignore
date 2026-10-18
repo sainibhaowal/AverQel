@@ -62,13 +62,6 @@ next-env.d.ts
 # User excluded directories
 /.vscode/
 /assets/
-!/assets/
-/assets/*
-!/assets/brand/
-/assets/brand/*
-!/assets/brand/deepspace-logo.svg
-!/assets/brand/deepspace-logo.png
-!/assets/brand/deepspace-agentic.svg
 /ZevaConnector/
 /scratch/
 /AverQel Harness/
@@ -78,6 +71,8 @@ next-env.d.ts
 !/applications/desktop/electron/**
 !/applications/desktop/assets/
 !/applications/desktop/assets/**
+# Generated from canonical frontend brand files by the desktop packaging script.
+/applications/desktop/assets/brand/
 /applications/linux/
 /runtime/
 /Runtime/

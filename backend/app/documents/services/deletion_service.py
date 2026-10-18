@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -36,6 +37,7 @@ from app.system.services.metrics_service import observe_db_query
 from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
+UTC = getattr(datetime, "UTC", timezone.utc)  # noqa: UP017
 
 
 @dataclass(slots=True)
@@ -57,13 +59,13 @@ class DeletionService:
         *,
         tenant_id: uuid.UUID,
         requested_by_user_id: uuid.UUID,
-        reason: str | None,
+        reason: str,
     ) -> DeletionRequestResult:
         row = DataDeletion(
             id=generate_uuid7_with_fallback(),
             tenant_id=tenant_id,
             requested_by_user_id=requested_by_user_id,
-            status="queued",
+            status="awaiting_approval",
             scope="tenant_data",
             reason=reason,
             result_counts={},
@@ -76,13 +78,77 @@ class DeletionService:
             resource_type="data_deletion",
             resource_id=str(row.id),
             actor_user_id=requested_by_user_id,
-            details={"reason": reason or ""},
         )
 
         deletion_id = row.id
         status = row.status
         self.db.commit()
         return DeletionRequestResult(deletion_id=deletion_id, status=status)
+
+    def approve_deletion(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        deletion_id: uuid.UUID,
+        approved_by_user_id: uuid.UUID,
+    ) -> DeletionRequestResult:
+        row = self.repo.get_by_id(tenant_id=tenant_id, deletion_id=deletion_id, for_update=True)
+        if row is None:
+            raise ApiError(
+                code="DATA_DELETION_NOT_FOUND",
+                message="Deletion request was not found for tenant.",
+                status_code=404,
+            )
+        if row.requested_by_user_id == approved_by_user_id:
+            raise ApiError(
+                code="SECOND_APPROVER_REQUIRED",
+                message="A different authorized administrator must approve this workspace deletion.",
+                status_code=403,
+            )
+        if row.status != "awaiting_approval":
+            raise ApiError(
+                code="DATA_DELETION_NOT_AWAITING_APPROVAL",
+                message="This deletion request is no longer awaiting approval.",
+                status_code=409,
+            )
+
+        row.status = "queued"
+        row.approved_by_user_id = approved_by_user_id
+        row.approved_at = datetime.now(UTC)
+        self.audit.write_event(
+            tenant_id=tenant_id,
+            action="deletion.approved",
+            resource_type="data_deletion",
+            resource_id=str(row.id),
+            actor_user_id=approved_by_user_id,
+        )
+        self.db.commit()
+        return DeletionRequestResult(deletion_id=row.id, status=row.status)
+
+    def mark_enqueue_failed(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        deletion_id: uuid.UUID,
+        actor_user_id: uuid.UUID,
+    ) -> None:
+        row = self.get_status(tenant_id=tenant_id, deletion_id=deletion_id)
+        self.repo.mark_failed(
+            tenant_id=tenant_id,
+            row=row,
+            error_code="DELETION_QUEUE_UNAVAILABLE",
+            error_message="Deletion request could not be queued. Retry when the service is available.",
+        )
+        self.audit.write_event(
+            tenant_id=tenant_id,
+            action="deletion.queue_failed",
+            resource_type="data_deletion",
+            resource_id=str(row.id),
+            actor_user_id=actor_user_id,
+            status="failed",
+            details={"error_code": "DELETION_QUEUE_UNAVAILABLE"},
+        )
+        self.db.commit()
 
     def get_status(self, *, tenant_id: uuid.UUID, deletion_id: uuid.UUID) -> DataDeletion:
         row = self.repo.get_by_id(tenant_id=tenant_id, deletion_id=deletion_id)
@@ -100,7 +166,29 @@ class DeletionService:
     def process_deletion(self, *, tenant_id: uuid.UUID, deletion_id: uuid.UUID) -> None:
         row = self.get_status(tenant_id=tenant_id, deletion_id=deletion_id)
 
-        if row.status in {"completed", "processing"}:
+        if row.status in {"completed", "processing", "awaiting_approval"}:
+            return
+
+        if row.status == "queued" and (
+            row.approved_by_user_id is None or row.approved_by_user_id == row.requested_by_user_id
+        ):
+            row.status = "awaiting_approval"
+            row.approved_by_user_id = None
+            row.approved_at = None
+            self.audit.write_event(
+                tenant_id=tenant_id,
+                action="deletion.execution_blocked",
+                resource_type="data_deletion",
+                resource_id=str(row.id),
+                actor_user_id=None,
+                status="failed",
+                details={"error_code": "SECOND_APPROVER_REQUIRED"},
+            )
+            self.db.commit()
+            logger.warning(
+                "Skipped workspace deletion task without a distinct administrator approval.",
+                extra={"tenant_id": str(tenant_id), "deletion_id": str(row.id)},
+            )
             return
 
         self.repo.mark_processing(tenant_id=tenant_id, row=row)
@@ -120,11 +208,11 @@ class DeletionService:
                 resource_type="data_deletion",
                 resource_id=str(row.id),
                 actor_user_id=row.requested_by_user_id,
-                details={k: str(v) for k, v in result_counts.items()},
+                details={"scope": row.scope},
             )
             self.db.commit()
 
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             logger.exception(
                 "Tenant deletion failed.",
                 extra={
@@ -136,7 +224,7 @@ class DeletionService:
                 tenant_id=tenant_id,
                 row=row,
                 error_code="DELETION_FAILED",
-                error_message=str(exc),
+                error_message="Deletion could not be completed. Contact support with the request ID.",
             )
             self.audit.write_event(
                 tenant_id=tenant_id,
@@ -145,7 +233,7 @@ class DeletionService:
                 resource_id=str(row.id),
                 actor_user_id=row.requested_by_user_id,
                 status="failed",
-                details={"error": str(exc)},
+                details={"error_code": "DELETION_FAILED"},
             )
             self.db.commit()
             raise
@@ -156,9 +244,11 @@ class DeletionService:
         with observe_db_query("deletion.fetch_storage_objects"):
             objects = list(
                 self.db.execute(
-                    select(Document.storage_bucket, Document.storage_object_key).where(
-                        Document.tenant_id == tenant_id
-                    )
+                    select(
+                        Document.storage_bucket,
+                        Document.storage_object_key,
+                        Document.uploaded_by_user_id,
+                    ).where(Document.tenant_id == tenant_id)
                 ).all()
             )
 
@@ -178,18 +268,26 @@ class DeletionService:
                 ).all()
             )
 
-        for bucket, object_key in objects:
+        for bucket, object_key, owner_user_id in objects:
             try:
-                self.storage.delete_object(bucket=str(bucket), object_key=str(object_key))
+                self.storage.delete_object(
+                    bucket=str(bucket), object_key=str(object_key), raise_on_error=True
+                )
             except Exception:  # noqa: BLE001
+                self.db.add(
+                    StorageCleanupJob(
+                        tenant_id=tenant_id,
+                        owner_user_id=owner_user_id,
+                        bucket=str(bucket),
+                        object_key=str(object_key),
+                        last_error="workspace_deletion_storage_cleanup_pending",
+                    )
+                )
                 logger.warning(
-                    "Data deletion object-storage cleanup failed.",
+                    "Workspace deletion object cleanup queued for retry.",
                     extra={
                         "tenant_id": str(tenant_id),
-                        "bucket": str(bucket),
-                        "object_key": str(object_key),
                     },
-                    exc_info=True,
                 )
 
         for bucket, object_key, owner_user_id in dataset_objects:
@@ -202,11 +300,10 @@ class DeletionService:
                     object_key=str(object_key),
                     raise_on_error=True,
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 logger.warning(
                     "Tenant purge could not remove a Grounded Query derivative; queuing cleanup.",
-                    extra={"tenant_id": str(tenant_id), "object_key": str(object_key)},
-                    exc_info=exc,
+                    extra={"tenant_id": str(tenant_id)},
                 )
                 self.db.add(
                     StorageCleanupJob(

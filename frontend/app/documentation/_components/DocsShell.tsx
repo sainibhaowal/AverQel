@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { BookOpen, ChevronRight, Zap } from "lucide-react";
+import { ChevronRight, Zap } from "lucide-react";
 import { Menu, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import ParticleBackground from "../../components/marketing/ParticleBackground";
+import AverQelLogo from "../../components/ui/AverQelLogo";
 import { docsNavGroups } from "./docsNav";
 
 export function DocsShell({
@@ -37,14 +38,8 @@ export function DocsShell({
 
       <div className="relative z-10 flex w-full flex-col gap-4 px-4 py-4 sm:px-5 sm:py-5 lg:h-full lg:flex-row lg:gap-5 lg:px-5 lg:py-5">
         <header className="flex items-center justify-between lg:hidden">
-          <Link
-            href="/"
-            className="text-primary group flex items-center gap-3 text-lg font-black tracking-tighter"
-          >
-            <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-xl transition-transform group-hover:scale-110">
-              <BookOpen size={20} />
-            </div>
-            AverQel OS
+          <Link href="/" className="group flex items-center gap-3">
+            <AverQelLogo size="footer" />
           </Link>
           <button
             type="button"
@@ -58,14 +53,8 @@ export function DocsShell({
         </header>
 
         <aside className="hidden w-full lg:sticky lg:top-5 lg:block lg:h-[calc(100dvh-2.5rem)] lg:w-[280px] lg:flex-shrink-0">
-          <Link
-            href="/"
-            className="text-primary group mb-8 flex items-center gap-3 text-lg font-black tracking-tighter"
-          >
-            <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-xl transition-transform group-hover:scale-110">
-              <BookOpen size={20} />
-            </div>
-            AverQel OS
+          <Link href="/" className="group mb-8 flex items-center gap-3">
+            <AverQelLogo size="footer" />
           </Link>
           <nav className="theme-panel docs-scrollbar bg-background/50 flex h-[calc(100%-4rem)] flex-col gap-4 overflow-x-hidden overflow-y-auto rounded-2xl border p-4 backdrop-blur-xl">
             {docsNavGroups.map((group) => (
@@ -179,12 +168,9 @@ export function DocsShell({
                 <Link
                   href="/"
                   onClick={() => setMenuOpen(false)}
-                  className="text-primary flex items-center gap-3 text-lg font-black tracking-tighter"
+                  className="flex items-center gap-3"
                 >
-                  <div className="bg-primary/10 flex h-10 w-10 items-center justify-center rounded-xl">
-                    <BookOpen size={20} />
-                  </div>
-                  AverQel OS
+                  <AverQelLogo size="footer" />
                 </Link>
                 <button
                   type="button"

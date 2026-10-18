@@ -10,7 +10,11 @@ function registerCodexIpcHandlers({ ipcMain, getRuntime, isAverQelSender }) {
   });
   ipcMain.handle("codex:connect", async (event, accountId, source) => {
     authorize(event, "account");
-    if (accountId !== undefined && typeof accountId !== "string") {
+    if (
+      accountId !== undefined &&
+      accountId !== null &&
+      (typeof accountId !== "string" || accountId.length > 64)
+    ) {
       throw new Error("Invalid Codex account identifier.");
     }
     if (source !== undefined && !["chatgpt", "codex_cli"].includes(source)) {

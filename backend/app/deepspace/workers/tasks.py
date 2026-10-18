@@ -9,16 +9,20 @@ from typing import Any, cast
 
 import redis
 from celery import Task
-from sqlalchemy import select, text, update
+from sqlalchemy import select, text
 
 from app.auth.dependencies import AuthContext
 from app.core.config import get_settings
-from app.deepspace.models.agent_runtime import DeepSpaceRunEvent
 from app.deepspace.models.artifact_job import DeepSpaceArtifactJob
 from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
 from app.deepspace.models.schedule_run import DeepSpaceScheduleRun
 from app.deepspace.services.chat_service import DeepSpaceChatService, sse
-from app.deepspace.services.run_events import append_event, cancellation_key
+from app.deepspace.services.run_events import (
+    AsyncRunEventFanout,
+    append_event,
+    cancellation_key,
+    latest_sequence,
+)
 from app.deepspace.services.runtime_store import DeepSpaceRuntimeStore
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore
 from app.deepspace.services.turn_queue import DeepSpaceTurnQueueStore
@@ -276,99 +280,87 @@ def run_deepspace_task(
             auth_type="worker",
         )
         service = DeepSpaceChatService(db=session, settings=settings)
+        event_fanout: AsyncRunEventFanout | None = None
 
         async def execute() -> None:
-            nonlocal resolved_conversation_id, resolved_run_id, terminal_error, terminal_status
-            async for frame in service.stream_turn(
-                auth=auth,
-                conversation_id=parsed_conversation_id,
-                prompt=prompt,
-                client_request_id=request_id,
-                existing_assistant_message_id=parsed_regenerate_message_id,
-                thinking_enabled=thinking_enabled,
-                reasoning_effort=reasoning_effort,
-                request=None,
-                resume_approval_id=resume_approval_id,
-                resume_user_question_id=resume_user_question_id,
-                resume_from_request_id=resume_from_request_id,
-                attachment_file_ids=attachment_file_ids,
-            ):
-                # Every frame is committed before Redis fan-out. This is what
-                # makes a later browser reconnect lossless.
-                data_line = next(
-                    (line[5:].strip() for line in frame.splitlines() if line.startswith("data:")),
-                    "",
-                )
-                try:
-                    data = json.loads(data_line)
-                    if isinstance(data, dict):
-                        if resolved_conversation_id is None and data.get("conversation_id"):
-                            resolved_conversation_id = uuid.UUID(str(data["conversation_id"]))
-                        raw_run_id = data.get("run_id")
-                        if raw_run_id:
-                            resolved_run_id = uuid.UUID(str(raw_run_id))
-                except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-                    pass
-                if resolved_conversation_id is not None:
-                    if resolved_run_id is not None:
-                        # The first meta frame may arrive after earlier
-                        # frames. Backfill those rows before publishing the
-                        # current event. Legacy rows from before this release
-                        # remain NULL and are conservatively protected.
-                        session.execute(
-                            update(DeepSpaceRunEvent)
-                            .where(
-                                DeepSpaceRunEvent.tenant_id == parsed_tenant_id,
-                                DeepSpaceRunEvent.user_id == parsed_user_id,
-                                DeepSpaceRunEvent.conversation_id == resolved_conversation_id,
-                                DeepSpaceRunEvent.client_request_id == request_id,
-                                DeepSpaceRunEvent.run_id.is_(None),
+            nonlocal event_fanout, resolved_conversation_id, resolved_run_id, terminal_error
+            nonlocal terminal_status
+            try:
+                async for frame in service.stream_turn(
+                    auth=auth,
+                    conversation_id=parsed_conversation_id,
+                    prompt=prompt,
+                    client_request_id=request_id,
+                    existing_assistant_message_id=parsed_regenerate_message_id,
+                    thinking_enabled=thinking_enabled,
+                    reasoning_effort=reasoning_effort,
+                    request=None,
+                    resume_approval_id=resume_approval_id,
+                    resume_user_question_id=resume_user_question_id,
+                    resume_from_request_id=resume_from_request_id,
+                    attachment_file_ids=attachment_file_ids,
+                ):
+                    data_line = next(
+                        (
+                            line[5:].strip()
+                            for line in frame.splitlines()
+                            if line.startswith("data:")
+                        ),
+                        "",
+                    )
+                    try:
+                        data = json.loads(data_line)
+                        if isinstance(data, dict):
+                            if resolved_conversation_id is None and data.get("conversation_id"):
+                                resolved_conversation_id = uuid.UUID(str(data["conversation_id"]))
+                            raw_run_id = data.get("run_id")
+                            if raw_run_id:
+                                resolved_run_id = uuid.UUID(str(raw_run_id))
+                    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                        pass
+                    if resolved_conversation_id is not None:
+                        if event_fanout is None:
+                            event_fanout = AsyncRunEventFanout(
+                                settings=settings,
+                                tenant_id=parsed_tenant_id,
+                                user_id=parsed_user_id,
+                                conversation_id=resolved_conversation_id,
+                                client_request_id=request_id,
+                                initial_sequence=latest_sequence(
+                                    session,
+                                    tenant_id=parsed_tenant_id,
+                                    user_id=parsed_user_id,
+                                    conversation_id=resolved_conversation_id,
+                                    client_request_id=request_id,
+                                ),
                             )
-                            .values(run_id=resolved_run_id)
-                        )
-                    append_event(
-                        session,
-                        settings=settings,
-                        tenant_id=parsed_tenant_id,
-                        user_id=parsed_user_id,
-                        conversation_id=resolved_conversation_id,
-                        client_request_id=request_id,
-                        frame=frame,
-                        run_id=resolved_run_id,
-                    )
-                if "event: done" in frame:
-                    data_line = next(
-                        (
-                            line[5:].strip()
-                            for line in frame.splitlines()
-                            if line.startswith("data:")
-                        ),
-                        "{}",
-                    )
-                    try:
-                        terminal_status = str(json.loads(data_line).get("status") or "completed")
-                    except (TypeError, ValueError, json.JSONDecodeError):
-                        terminal_status = "completed"
-                elif "event: error" in frame:
-                    # A worker must not report a failed provider stream as a
-                    # completed queue turn merely because no `done` frame was
-                    # emitted. The queue can then advance with truthful state.
-                    terminal_status = "failed"
-                    data_line = next(
-                        (
-                            line[5:].strip()
-                            for line in frame.splitlines()
-                            if line.startswith("data:")
-                        ),
-                        "{}",
-                    )
-                    try:
-                        terminal_error = str(
-                            json.loads(data_line).get("message")
-                            or "DeepSpace stream returned an error"
-                        )[:2000]
-                    except (TypeError, ValueError, json.JSONDecodeError):
-                        terminal_error = "DeepSpace stream returned an error"
+                            await event_fanout.start()
+                        # Queueing is intentionally the only per-frame work on
+                        # the provider-consumer path. PostgreSQL commits and
+                        # Redis network I/O happen in the fan-out tasks.
+                        await event_fanout.submit(frame=frame, run_id=resolved_run_id)
+                    if "event: done" in frame:
+                        try:
+                            terminal_status = str(
+                                json.loads(data_line).get("status") or "completed"
+                            )
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            terminal_status = "completed"
+                    elif "event: error" in frame:
+                        # A worker must not report a failed provider stream as a
+                        # completed queue turn merely because no `done` frame
+                        # was emitted. The queue can then advance with truthful state.
+                        terminal_status = "failed"
+                        try:
+                            terminal_error = str(
+                                json.loads(data_line).get("message")
+                                or "DeepSpace stream returned an error"
+                            )[:2000]
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            terminal_error = "DeepSpace stream returned an error"
+            finally:
+                if event_fanout is not None:
+                    await event_fanout.close()
 
         asyncio.run(execute())
         # A clarification or approval is deliberately non-terminal.  Its

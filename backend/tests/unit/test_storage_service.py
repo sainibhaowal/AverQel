@@ -68,7 +68,10 @@ def test_put_bytes_success_and_get_client_scheme(
     assert str(document_id) in result.object_key
 
 
-def test_put_bytes_maps_storage_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_put_bytes_maps_storage_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     class FakeClient:
         def head_bucket(self, *, Bucket: str) -> None:  # noqa: N803
             assert Bucket
@@ -85,12 +88,40 @@ def test_put_bytes_maps_storage_unavailable(monkeypatch: pytest.MonkeyPatch) -> 
         service.put_bytes(
             tenant_id=uuid.uuid4(),
             document_id=uuid.uuid4(),
-            filename="doc.txt",
+            filename="private-customer-document.txt",
             content_type="text/plain",
             payload=b"x",
         )
     assert exc_info.value.code == "STORAGE_UNAVAILABLE"
     assert exc_info.value.retryable is True
+    assert "private-customer-document.txt" not in caplog.text
+
+
+def test_delete_failure_logs_do_not_expose_object_key(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    private_object_key = "tenant/private-user/private-contract.pdf"
+
+    class FakeClient:
+        def delete_object(self, **kwargs: object) -> None:
+            raise _client_error("AccessDenied", 403)
+
+    monkeypatch.setattr(
+        "app.system.services.storage_service.boto3.client",
+        lambda *_args, **_kwargs: FakeClient(),
+    )
+    service = StorageService(cast(Settings, _settings()))
+
+    with pytest.raises(StorageServiceError):
+        service.delete_object(
+            bucket="private-bucket",
+            object_key=private_object_key,
+            raise_on_error=True,
+        )
+
+    assert private_object_key not in caplog.text
+    assert "private-contract.pdf" not in caplog.text
 
 
 def test_get_bytes_not_found_maps_non_retryable(

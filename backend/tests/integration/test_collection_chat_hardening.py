@@ -4,7 +4,24 @@ from collections.abc import Callable
 from fastapi.testclient import TestClient
 
 from app.documents.api import collections as collections_api
+from app.system.services.rate_limit_service import (
+    AdaptiveSystemMetrics,
+    SystemHealthMonitor,
+)
 from tests.conftest import SeededUser
+
+
+def _keep_system_health_normal(monkeypatch) -> None:
+    monkeypatch.setattr(
+        SystemHealthMonitor,
+        "get_metrics",
+        lambda: AdaptiveSystemMetrics(
+            cpu_load_ratio=0.0,
+            memory_usage_pct=0.0,
+            multiplier=1.0,
+            status="NORMAL",
+        ),
+    )
 
 
 def _login(client: TestClient, seeded: SeededUser) -> str:
@@ -27,7 +44,9 @@ def _headers(seeded: SeededUser, token: str) -> dict[str, str]:
 def test_chat_post_is_idempotent_and_rejects_foreign_media_reference(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    monkeypatch,
 ) -> None:
+    _keep_system_health_normal(monkeypatch)
     seeded = seed_user(
         "collection-chat-hardening",
         "chat-hardening@example.com",
@@ -50,7 +69,7 @@ def test_chat_post_is_idempotent_and_rejects_foreign_media_reference(
         headers=headers,
         json={"message": "encrypted", "client_message_id": "client-1"},
     )
-    assert first.status_code == 200
+    assert first.status_code == 200, first.text
 
     duplicate = client.post(
         f"/api/v1/collections/{collection_id}/chats",
@@ -145,6 +164,7 @@ def test_websocket_message_mutation_cannot_cross_collection(
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
     monkeypatch,
 ) -> None:
+    _keep_system_health_normal(monkeypatch)
     seeded = seed_user(
         "collection-ws-isolation",
         "ws-isolation@example.com",
@@ -178,7 +198,7 @@ def test_websocket_message_mutation_cannot_cross_collection(
         headers=headers,
         json={"message": "message in B"},
     )
-    assert message_b.status_code == 200
+    assert message_b.status_code == 200, message_b.text
     message_b_id = message_b.json()["id"]
 
     with client.websocket_connect(

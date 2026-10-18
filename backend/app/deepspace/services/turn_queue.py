@@ -18,6 +18,7 @@ from app.deepspace.models.message import Message
 from app.deepspace.models.queue_control import DeepSpaceQueueControl
 from app.deepspace.models.queued_turn import DeepSpaceQueuedTurn
 from app.deepspace.services.run_events import append_event
+from app.platform.database.session import set_db_tenant_context
 from app.realtime.event_bus import publish_event_sync
 from app.system.services.cache_service import get_redis_client
 from app.system.services.storage_lifecycle import StorageLifecycleService
@@ -147,6 +148,10 @@ class DeepSpaceTurnQueueStore:
             "cancelled_after_worker_lease_expired",
         }:
             return
+        # recover_stale_claims commits its queue transition before this helper
+        # runs, which clears transaction-local tenant context. Rebind it before
+        # checking for an existing terminal frame or updating the assistant.
+        set_db_tenant_context(self.db, turn.tenant_id)
         cancelled = run.last_error == "cancelled_after_worker_lease_expired"
         message_text = (
             "This DeepSpace run was stopped before it finished. Its saved prompt is available to regenerate."
@@ -976,12 +981,14 @@ class DeepSpaceTurnQueueStore:
         conversation_id: uuid.UUID,
         stale_after: timedelta = STALE_DISPATCH_AFTER,
     ) -> int:
-        """Recover dispatcher claims that never created a worker run.
+        """Recover stale queue claims and finalize interrupted cancellations.
 
         A normal active worker has a live agent-run row. A claimed queue row
         without that row after the grace period means the dispatcher died
         between the queue commit and Celery submission. Re-queue it instead
-        of leaving the conversation blocked forever.
+        of leaving the conversation blocked forever. A stale ``cancelling``
+        row can also outlive a worker lease; reconcile it from the durable run
+        and close its stream rather than leaving the browser in a running state.
         """
         cutoff = datetime.now(UTC) - stale_after
         turns = list(
@@ -991,7 +998,7 @@ class DeepSpaceTurnQueueStore:
                     DeepSpaceQueuedTurn.tenant_id == tenant_id,
                     DeepSpaceQueuedTurn.user_id == user_id,
                     DeepSpaceQueuedTurn.conversation_id == conversation_id,
-                    DeepSpaceQueuedTurn.status == "running",
+                    DeepSpaceQueuedTurn.status.in_({"running", "cancelling"}),
                     DeepSpaceQueuedTurn.started_at.is_not(None),
                     DeepSpaceQueuedTurn.started_at < cutoff,
                 )

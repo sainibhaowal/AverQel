@@ -482,14 +482,24 @@ class AuthService:
         current_roles = canonicalize_role_names(
             self.roles.get_role_names_for_user(user.tenant_id, user.id)
         )
-        if current_roles == {"admin"}:
+        if "admin" in current_roles:
             return
 
-        self._replace_user_roles(
-            tenant_id=user.tenant_id,
-            user_id=user.id,
-            role_name="admin",
+        admin_role = self.roles.get_by_name("admin")
+        if admin_role is None:
+            raise ApiError(
+                code="ROLE_ASSIGNMENT_REQUIRED",
+                message="Required role 'admin' is not configured.",
+                status_code=500,
+            )
+        self.db.add(
+            UserRole(
+                tenant_id=user.tenant_id,
+                user_id=user.id,
+                role_id=admin_role.id,
+            )
         )
+        self.db.flush()
 
     def _replace_user_roles(
         self,
@@ -716,17 +726,20 @@ class AuthService:
         )
         for bucket, object_key in objects:
             try:
-                storage.delete_object(bucket=str(bucket), object_key=str(object_key))
+                storage.delete_object(
+                    bucket=str(bucket), object_key=str(object_key), raise_on_error=True
+                )
             except Exception:  # noqa: BLE001
+                cleanup_job = StorageCleanupJob(
+                    tenant_id=auth.tenant_id,
+                    owner_user_id=auth.user_id,
+                    bucket=str(bucket),
+                    object_key=str(object_key),
+                    last_error="document_storage_delete_failed",
+                )
+                self.db.add(cleanup_job)
                 logger.warning(
-                    "Failed to delete self-owned object from storage.",
-                    extra={
-                        "tenant_id": str(auth.tenant_id),
-                        "user_id": str(auth.user_id),
-                        "bucket": str(bucket),
-                        "object_key": str(object_key),
-                    },
-                    exc_info=True,
+                    "Self-account document cleanup was queued after storage deletion failed.",
                 )
         for bucket, object_key in attachment_objects:
             try:
@@ -747,13 +760,7 @@ class AuthService:
                     )
                 )
                 logger.warning(
-                    "Failed to delete self-owned support attachment from storage.",
-                    extra={
-                        "tenant_id": str(auth.tenant_id),
-                        "user_id": str(auth.user_id),
-                        "object_key": str(object_key),
-                    },
-                    exc_info=True,
+                    "Self-account support attachment cleanup was queued after storage deletion failed.",
                 )
         self.db.execute(
             delete(Query).where(

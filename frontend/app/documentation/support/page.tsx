@@ -43,10 +43,11 @@ export default function SupportDocsPage() {
       </DocsSection>
       <DocsSection title="Who can read support content">
         <p>
-          Your ticket and public replies are visible to you and authorized support staff. Authorized
-          staff may also record internal notes that are not shown in your user view. Support content
-          is not end-to-end encrypted. Access is controlled by the application and backend
-          authorization; do not submit information that support does not need.
+          Your ticket, replies, and attachments are visible to you and explicitly assigned Support
+          Managers. Support Managers can read tickets across workspaces and must also be in the
+          deployment&apos;s platform-admin allowlist. They may record internal notes that are not
+          shown in your user view. Support content is not end-to-end encrypted and privileged reads
+          are audited. Do not submit information support does not need.
         </p>
       </DocsSection>
       <DocsSection title="Response targets and email">
@@ -58,6 +59,20 @@ export default function SupportDocsPage() {
           and waiting for the user does not pause the resolution clock. Email notifications require
           the deployment to configure SMTP and run the notification worker and scheduler. In-app
           ticket updates remain the primary thread.
+        </p>
+      </DocsSection>
+      <DocsSection title="Contact without signing in">
+        <p>
+          Visitors can use the Contact the developer form at the bottom of the public landing page.
+          First, it sends a one-time code to the reply email address you enter. After you verify
+          that address, the form sends your name, subject, and message through the mail service
+          configured for that site; replies are addressed to the verified email. Direct mail to the
+          published contact address is forwarded only when the site has configured Resend inbound
+          processing. Messages are not saved in AverQel&apos;s application database. The mail
+          provider and receiving mailbox handle them under their own retention and privacy rules. Do
+          not include passwords, API keys, private documents, or other information the developer
+          does not need. The form is unavailable until the site operator configures secure email
+          delivery.
         </p>
       </DocsSection>
     </DocsShell>

@@ -114,7 +114,7 @@ export default function NotificationCenter() {
   );
   const failedFeedLabels = failedFeeds.map(
     ({ source, reason }) =>
-      `${source === "collection" ? "collection updates" : "workspace updates"} (${reason})`,
+      `${source === "collection" ? "Qel Connect updates" : "workspace updates"} (${reason})`,
   );
 
   const loadNotifications = async (options?: { silent?: boolean }) => {

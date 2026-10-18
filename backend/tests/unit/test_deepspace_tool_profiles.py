@@ -1,108 +1,107 @@
 import pytest
 
-from app.deepspace.services.chat_service import PRODUCTIVITY_TOOLS, DeepSpaceChatService
+from app.deepspace.services.chat_service import DISCOVER_TOOLS_TOOL, NATIVE_TOOL_REGISTRY
+from app.deepspace.services.native_tool_broker import NativeToolBroker
 
 pytestmark = pytest.mark.unit_no_db
 
 
-def _names(tools: list[dict]) -> set[str]:
-    return {str(tool["function"]["name"]) for tool in tools}
+def _names(items: list[dict]) -> set[str]:
+    return {str(item["name"]) for item in items}
 
 
-def test_greeting_profile_has_no_native_tools() -> None:
-    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
-        "Hello", PRODUCTIVITY_TOOLS
+def test_initial_native_tool_surface_is_one_small_discovery_schema() -> None:
+    assert DISCOVER_TOOLS_TOOL["function"]["name"] == "discover_tools"
+    assert len(str(DISCOVER_TOOLS_TOOL)) < 1_500
+
+
+def test_native_discovery_lists_compact_request_authorized_catalog() -> None:
+    broker = NativeToolBroker()
+
+    result = broker.discover(
+        query="Search current web sources and read the official pages",
+        registry=NATIVE_TOOL_REGISTRY,
+        allowed_names={"web_search", "url_read", "write", "delete"},
     )
 
-    assert profile == "direct"
-    assert tools == []
-
-
-def test_library_profile_keeps_document_capabilities_without_mutation_tools() -> None:
-    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
-        "Compare these two PDFs and cite the differences", PRODUCTIVITY_TOOLS
-    )
-
-    assert profile == "library"
-    assert {"find", "document_read", "document_query", "document_compare", "final"} <= _names(tools)
-    assert "delete" not in _names(tools)
-
-
-def test_library_save_request_receives_read_and_write_capabilities() -> None:
-    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
-        "Read the AI news and save it as a .txt file in the Library and note editor",
-        PRODUCTIVITY_TOOLS,
-    )
-
-    assert profile == "library+workspace_edit"
-    assert {"document_read", "document_query", "write", "edit", "final"} <= _names(tools)
-
-
-def test_ordinary_request_uses_direct_profile_without_unrelated_native_tools() -> None:
-    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
-        "Help me solve this difficult problem", PRODUCTIVITY_TOOLS
-    )
-
-    assert profile == "direct"
-    assert _names(tools) == {"ask_user"}
-
-
-def test_vague_request_with_attachment_exposes_only_relevant_read_tools() -> None:
-    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
-        "Summarize this",
-        PRODUCTIVITY_TOOLS,
-        attachments=[{"id": "file-1", "name": "report.pdf"}],
-    )
-
-    assert profile == "attachments"
-    assert {
-        "document_read",
-        "document_query",
-        "document_compare",
-        "sandbox_execute",
-        "analyze",
-        "ask_user",
-    } <= _names(tools)
-    assert not {"write", "edit", "delete", "find", "read", "todo_write"} & _names(tools)
-
-
-def test_retrospective_request_receives_only_read_only_context_tools() -> None:
-    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
-        "What did we decide before, and are we still on the right track?",
-        PRODUCTIVITY_TOOLS,
-    )
-
-    assert profile == "retrospective"
-    assert {"read", "find", "final"} <= _names(tools)
-    assert not {"write", "edit", "delete", "sandbox_execute"} & _names(tools)
-
-
-def test_is_placeholder_response_identifies_stalling_messages() -> None:
+    assert result["status"] == "catalog"
+    assert {item["name"] for item in result["available_tools"]} == {
+        "web_search",
+        "url_read",
+        "write",
+        "delete",
+    }
+    assert result["catalog_truncated"] is False
     assert (
-        DeepSpaceChatService._is_placeholder_response(
-            "I am searching for the latest news regarding general announcements... Please wait while I compile this information for you."
-        )
-        is True
-    )
-    assert DeepSpaceChatService._is_placeholder_response("Please wait while I look this up") is True
-    assert (
-        DeepSpaceChatService._is_placeholder_response(
-            "Here are the latest announcements from OpenAI and Google..."
-        )
-        is False
+        result["requested_capability"] == "Search current web sources and read the official pages"
     )
 
 
-def test_explicit_agent_request_keeps_full_native_tool_set() -> None:
-    tools, profile = DeepSpaceChatService._productivity_tools_for_prompt(
-        "Plan and execute this multi-step workspace task", PRODUCTIVITY_TOOLS
+def test_native_discovery_loads_only_exact_selected_request_authorized_schemas() -> None:
+    broker = NativeToolBroker()
+
+    result = broker.discover(
+        query="Delete a Library document",
+        registry=NATIVE_TOOL_REGISTRY,
+        allowed_names={"read", "find"},
+        tool_names=["read"],
     )
 
-    assert profile == "full"
-    assert tools == PRODUCTIVITY_TOOLS
+    assert result["status"] == "loaded"
+    assert _names(result["loaded_tools"]) == {"read"}
+
+
+def test_native_discovery_rejects_a_name_outside_the_authorized_catalog() -> None:
+    broker = NativeToolBroker()
+
+    result = broker.discover(
+        query="Delete a Library document",
+        registry=NATIVE_TOOL_REGISTRY,
+        allowed_names={"read", "find"},
+        tool_names=["delete"],
+    )
+
+    assert result["status"] == "invalid_selection"
+    assert result["loaded_tools"] == []
+    assert result["invalid_names"] == ["delete"]
+
+
+def test_native_catalog_does_not_depend_on_keyword_matching_and_is_deterministic() -> None:
+    broker = NativeToolBroker()
+    allowlist = {"web_search", "url_read", "read", "analyze", "artifact_create"}
+
+    first = broker.discover(
+        query="florbulate zaa", registry=NATIVE_TOOL_REGISTRY, allowed_names=allowlist
+    )
+    second = broker.discover(
+        query="a completely different intent",
+        registry=NATIVE_TOOL_REGISTRY,
+        allowed_names=allowlist,
+    )
+
+    assert first["status"] == "catalog"
+    assert _names(first["available_tools"]) == allowlist
+    assert first["available_tools"] == second["available_tools"]
+
+
+def test_native_tool_selection_is_bounded_to_eight_schemas() -> None:
+    broker = NativeToolBroker()
+    allowlist = set(NATIVE_TOOL_REGISTRY.names()) - {"discover_tools"}
+
+    result = broker.discover(
+        query="load the entire tool set",
+        registry=NATIVE_TOOL_REGISTRY,
+        allowed_names=allowlist,
+        tool_names=sorted(allowlist)[:9],
+    )
+
+    assert result["status"] == "selection_too_large"
+    assert result["loaded_tools"] == []
 
 
 def test_rolling_history_keeps_recent_turns_and_bounded_reference_digest() -> None:
+    from app.deepspace.services.chat_service import DeepSpaceChatService
+
     history = [
         {"role": "user" if index % 2 == 0 else "assistant", "content": f"turn {index} " * 100}
         for index in range(10)
@@ -117,6 +116,8 @@ def test_rolling_history_keeps_recent_turns_and_bounded_reference_digest() -> No
 
 
 def test_visible_token_count_excludes_system_and_request_wrappers() -> None:
+    from app.deepspace.services.chat_service import DeepSpaceChatService
+
     assert (
         DeepSpaceChatService._estimate_visible_tokens(
             [
@@ -130,6 +131,8 @@ def test_visible_token_count_excludes_system_and_request_wrappers() -> None:
 
 
 def test_durable_summary_is_bounded_and_explicitly_reference_only() -> None:
+    from app.deepspace.services.chat_service import DeepSpaceChatService
+
     summary, payload = DeepSpaceChatService._structured_history_summary(
         [
             {"role": "user", "content": "Please compare inventory.csv with archive.xlsx"},

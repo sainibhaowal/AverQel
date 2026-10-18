@@ -112,11 +112,7 @@ class StorageService:
         except (BotoCoreError, ClientError) as exc:
             logger.warning(
                 "Object storage put failed.",
-                exc_info=exc,
-                extra={
-                    "bucket": self.settings.minio_bucket,
-                    "object_key": object_key,
-                },
+                extra={"error_type": type(exc).__name__},
             )
             raise StorageServiceError(
                 code="STORAGE_UNAVAILABLE",
@@ -233,8 +229,7 @@ class StorageService:
         except (BotoCoreError, ClientError) as exc:
             logger.warning(
                 "Object storage stream failed.",
-                exc_info=exc,
-                extra={"bucket": bucket, "object_key": object_key},
+                extra={"error_type": type(exc).__name__},
             )
             raise StorageServiceError(
                 code="STORAGE_UNAVAILABLE",
@@ -255,8 +250,7 @@ class StorageService:
         except (BotoCoreError, ClientError) as exc:
             logger.warning(
                 "Object storage delete failed.",
-                exc_info=exc,
-                extra={"bucket": bucket, "object_key": object_key},
+                extra={"error_type": type(exc).__name__},
             )
             if raise_on_error:
                 raise StorageServiceError(

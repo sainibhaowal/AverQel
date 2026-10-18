@@ -63,3 +63,33 @@ def test_library_concurrency_benchmark_smoke() -> None:
     )
     assert payload["benchmark"] == "library_concurrency"
     assert payload["dry_run"] is True
+
+
+def test_staging_durable_load_dry_run_is_safe() -> None:
+    payload = _run_script(
+        "scripts/staging_durable_load.py",
+        "--dry-run",
+        "--provider-mode",
+        "mock",
+    )
+    assert payload["benchmark"] == "staging_durable_load"
+    assert payload["dry_run"] is True
+
+
+def test_staging_durable_load_refuses_non_loopback_without_explicit_opt_in() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/staging_durable_load.py",
+            "--base-url",
+            "https://staging.example.invalid",
+            "--dry-run",
+            "--provider-mode",
+            "mock",
+        ],
+        cwd=BACKEND_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert "--allow-staging" in completed.stderr

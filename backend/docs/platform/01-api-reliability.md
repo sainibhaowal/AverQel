@@ -35,6 +35,11 @@ write. Keep read endpoints free of unconditional row locks and recovery writes;
 queue recovery checks first for the exact persisted failure state before
 locking a conversation.
 
+DeepSpace chat history can also use the authenticated client storage proxy.
+That read has a five-second RPC budget; when the client tab is suspended or
+does not answer, the API falls back to the tenant-scoped server history instead
+of holding the browser request for the proxy's general 30-second timeout.
+
 `QueryService.execute` is synchronous because it uses the synchronous database
 session and retrieval pipeline. The HTTP endpoint dispatches that work to the
 framework worker pool so provider/database latency cannot block the async event

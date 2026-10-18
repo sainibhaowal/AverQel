@@ -83,3 +83,7 @@ Search-to-page extraction is wired end to end. Research requests expose both
 search provider; fetched results include title, bounded text, links, final URL,
 and citations. The optional browser adapter is used only when static extraction
 looks like an empty JavaScript shell and the isolated renderer is enabled.
+Providers that skip the second just-in-time discovery call are handled by a
+bounded compatibility path for the three public web readers (`web_search`,
+`url_read`, and `image_read`). Workspace and write tools still require explicit
+discovery selection.

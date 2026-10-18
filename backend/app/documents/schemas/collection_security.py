@@ -56,7 +56,6 @@ class CollectionReportStatusUpdate(BaseModel):
 class CollectionModerationActionResponse(BaseModel):
     id: uuid.UUID
     report_id: uuid.UUID
-    actor_user_id: uuid.UUID | None
     actor_role: str
     action_type: str
     previous_status: str | None
@@ -67,16 +66,17 @@ class CollectionModerationActionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
-class CollectionModerationReportResponse(BaseModel):
+class CollectionModerationReportSummaryResponse(BaseModel):
     id: uuid.UUID
-    collection_id: uuid.UUID
-    reporter_user_id: uuid.UUID
-    reported_user_id: uuid.UUID | None
-    message_id: uuid.UUID | None
     collection_name: str | None = None
-    reason: str
-    details: str | None
     status: str
     created_at: datetime
     resolved_at: datetime | None
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class CollectionModerationReportDetailResponse(CollectionModerationReportSummaryResponse):
+    reason: str
+    details: str | None
+
     model_config = ConfigDict(from_attributes=True, extra="forbid")

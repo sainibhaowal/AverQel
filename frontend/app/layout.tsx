@@ -30,9 +30,9 @@ export const metadata: Metadata = {
     siteName: BRAND_NAME,
   },
   icons: {
-    icon: "/logo_icon.svg",
-    shortcut: "/logo_icon.svg",
-    apple: "/logo_icon.png",
+    icon: "/brand/AverQel_Icon.svg",
+    shortcut: "/brand/AverQel_Icon.svg",
+    apple: "/brand/AverQel_Icon.svg",
   },
 };
 

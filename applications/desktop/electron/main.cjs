@@ -13,8 +13,15 @@ const { existsSync } = require("node:fs");
 const { spawn } = require("node:child_process");
 const { resolveNeosisSourceRoot } = require("./neosis-source.cjs");
 const { createNeosisEnvironment } = require("./neosis-environment.cjs");
+const { resolveAverQelReturnUrl } = require("./workspace-navigation.cjs");
+const {
+  getPackagedNeosisPaths,
+  hasPackagedNeosisRuntime,
+} = require("./neosis-runtime.cjs");
 const { CodexDesktopRuntime } = require("./codex-runtime.cjs");
 const { registerCodexIpcHandlers } = require("./codex-ipc.cjs");
+const { LocalRuntime } = require("./local-runtime.cjs");
+const { registerLocalRuntimeIpcHandlers } = require("./local-runtime-ipc.cjs");
 
 let mainWindow;
 let tray;
@@ -24,6 +31,8 @@ let neosisStart;
 let neosisUrl;
 let neosisOrigin;
 let codexRuntime;
+let localRuntime;
+let lastAverQelUrl;
 
 const trustedHosts = new Set([
   "averqel.com",
@@ -80,9 +89,11 @@ function isAverQelSender(event) {
 }
 
 function launchPackagedNeosis() {
-  const runtimeRoot = path.join(process.resourcesPath, "neosis");
-  const entry = path.join(runtimeRoot, "node_modules", "@averqel", "neosis", "lib", "bin.js");
-  const profilePatch = path.join(runtimeRoot, "averqel-local-profile.patch.yml");
+  const {
+    root: runtimeRoot,
+    entry,
+    profilePatch,
+  } = getPackagedNeosisPaths(process.resourcesPath);
   if (!existsSync(entry)) {
     throw new Error("NeoSIS runtime is missing from this AverQel installation.");
   }
@@ -166,12 +177,14 @@ function startNeosis() {
 }
 
 async function openNeosis() {
+  const currentUrl = mainWindow?.webContents.getURL();
+  if (currentUrl && isAverQelRenderer(currentUrl)) lastAverQelUrl = currentUrl;
   const url = await startNeosis();
   await mainWindow?.loadURL(url);
 }
 
 async function openAverQel() {
-  await mainWindow?.loadURL(appStartUrl());
+  await mainWindow?.loadURL(resolveAverQelReturnUrl(lastAverQelUrl, appStartUrl()));
 }
 
 function stopNeosis() {
@@ -189,17 +202,8 @@ function createWindow() {
     height: 800,
     minWidth: 960,
     minHeight: 640,
+    frame: false,
     title: "AverQel",
-    titleBarStyle: "hidden",
-    ...(process.platform === "darwin"
-      ? {}
-      : {
-          titleBarOverlay: {
-            color: "#34332f",
-            symbolColor: "#63d6df",
-            height: 40,
-          },
-        }),
     icon: path.join(__dirname, "../assets/icon.png"),
     backgroundColor: "#070b0d",
     webPreferences: {
@@ -277,6 +281,7 @@ function createTray() {
 }
 
 ipcMain.handle("window:minimize", () => mainWindow?.minimize());
+ipcMain.handle("window:close", () => mainWindow?.close());
 ipcMain.handle("window:toggle-maximize", () => {
   if (!mainWindow) return false;
   if (mainWindow.isMaximized()) mainWindow.unmaximize();
@@ -299,6 +304,10 @@ ipcMain.handle("open-external", (_event, rawUrl) => {
 ipcMain.handle("workspace:current", (event) => {
   if (!isWorkspaceSender(event)) return null;
   return isNeosisRenderer(event.senderFrame?.url ?? "") ? "neosis" : "averqel";
+});
+ipcMain.handle("workspace:neosis-available", (event) => {
+  if (!isWorkspaceSender(event)) return false;
+  return hasPackagedNeosisRuntime(process.resourcesPath, app.isPackaged);
 });
 ipcMain.handle("workspace:open-neosis", async (event) => {
   if (!isWorkspaceSender(event)) return { ok: false, error: "Unauthorized workspace request." };
@@ -324,6 +333,11 @@ registerCodexIpcHandlers({
   getRuntime: () => codexRuntime,
   isAverQelSender,
 });
+registerLocalRuntimeIpcHandlers({
+  ipcMain,
+  getRuntime: () => localRuntime,
+  isAverQelSender,
+});
 
 app.whenReady().then(() => {
   // AverQel uses its own in-app controls and tray menu; do not show Electron's
@@ -339,6 +353,13 @@ app.whenReady().then(() => {
       }
     },
   });
+  localRuntime = new LocalRuntime({
+    emit: (streamId, frame) => {
+      if (!mainWindow?.isDestroyed()) {
+        mainWindow.webContents.send("local-runtime:stream-event", { streamId, ...frame });
+      }
+    },
+  });
   createWindow();
   createTray();
   app.on("activate", showWindow);
@@ -347,6 +368,7 @@ app.whenReady().then(() => {
 app.on("before-quit", () => {
   isQuitting = true;
   codexRuntime?.cancelAllStreams?.();
+  localRuntime?.cancelAllStreams?.();
   stopNeosis();
 });
 

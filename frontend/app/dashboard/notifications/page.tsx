@@ -45,7 +45,7 @@ export default function NotificationsPage() {
         ...collectionItems.map((item) => ({
           ...item,
           source: "collection" as const,
-          title: item.collection_name ?? "Collection update",
+          title: item.collection_name ?? "Qel Connect update",
         })),
       ];
       merged.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
@@ -100,7 +100,7 @@ export default function NotificationsPage() {
           ...rows.map((item) => ({
             ...item,
             source: "collection" as const,
-            title: item.collection_name ?? "Collection update",
+            title: item.collection_name ?? "Qel Connect update",
           })),
         );
         setOffsets((current) => ({ ...current, collection: current.collection + rows.length }));

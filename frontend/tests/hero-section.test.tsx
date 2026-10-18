@@ -43,12 +43,14 @@ describe("HeroSection", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the current landing hero and runtime monitor", () => {
+  it("renders the current landing hero, particle runtime, and actions", () => {
     render(<HeroSection />);
 
     const heading = screen.getByRole("heading", { level: 1 });
-    expect(heading).toHaveTextContent(/One workspace for knowledge, AI, and action/i);
-    expect(screen.getByText(/Your Connected AI Workspace/i)).toBeInTheDocument();
+    expect(heading).toHaveTextContent(/Intelligence\. All you need\./i);
+    expect(screen.queryByText("Into the Unknown")).not.toBeInTheDocument();
+    expect(screen.getByText(/AI grounded in your sources/i)).toBeInTheDocument();
+    expect(document.querySelector("canvas[data-hero-morphing-background]")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Create your workspace/i })).toHaveAttribute(
       "href",
       "/auth/signup",
@@ -57,7 +59,7 @@ describe("HeroSection", () => {
       "href",
       "https://github.com/sainibhaowal/AverQel/releases/latest",
     );
-    expect(screen.getByRole("link", { name: /Security Overview/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Security overview/i })).toHaveAttribute(
       "href",
       "/documentation/privacy-security",
     );
@@ -65,8 +67,6 @@ describe("HeroSection", () => {
       "href",
       "/documentation",
     );
-    expect(screen.getByText(/averqel \| productivity runtime/i)).toBeInTheDocument();
-    expect(screen.getByText(/DeepSpace for research and deliverables/i)).toBeInTheDocument();
   });
 
   it("does not offer an unsupported macOS installer", async () => {

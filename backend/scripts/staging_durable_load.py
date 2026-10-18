@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import create_engine, text
@@ -422,6 +423,21 @@ def main() -> None:
     parser.add_argument("--redis-url", default=None)
     parser.add_argument("--provider-mode", choices=("real", "mock"), default="real")
     parser.add_argument(
+        "--allow-staging",
+        action="store_true",
+        help="Allow a non-loopback staging target; production-like hosts are always refused.",
+    )
+    parser.add_argument(
+        "--write-staging-data",
+        action="store_true",
+        help="Acknowledge that this load run creates synthetic users, conversations, and runs.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate bounds and target safety without making a network request or writing data.",
+    )
+    parser.add_argument(
         "--process-pids",
         default="",
         help="Comma-separated API/worker PIDs for CPU/RSS samples.",
@@ -446,6 +462,37 @@ def main() -> None:
         )
     if not 1 <= args.concurrency <= args.count:
         raise SystemExit("--concurrency must be between 1 and --count")
+    parsed_target = urlparse(args.base_url)
+    target_host = (parsed_target.hostname or "").lower()
+    if parsed_target.scheme not in {"http", "https"} or not target_host:
+        raise SystemExit("--base-url must be an absolute http(s) URL")
+    if target_host not in {"localhost", "127.0.0.1", "::1"}:
+        if not args.allow_staging:
+            raise SystemExit("non-loopback load targets require --allow-staging")
+        if any(marker in target_host for marker in ("prod", "production", "live")):
+            raise SystemExit("production-like load targets are refused")
+    if not args.dry_run and not args.write_staging_data:
+        raise SystemExit("load runs create data; add --write-staging-data to continue")
+    if args.dry_run:
+        print(
+            json.dumps(
+                {
+                    "benchmark": "staging_durable_load",
+                    "dry_run": True,
+                    "base_url": args.base_url,
+                    "count": args.count,
+                    "concurrency": args.concurrency,
+                    "provider_mode": args.provider_mode,
+                    "target": (
+                        "loopback"
+                        if target_host in {"localhost", "127.0.0.1", "::1"}
+                        else "staging"
+                    ),
+                },
+                sort_keys=True,
+            )
+        )
+        return
     if args.provider_mode == "mock" and args.count >= 50:
         # Mock traffic can validate transport and persistence, but it must be
         # explicitly marked and cannot be mistaken for provider certification.

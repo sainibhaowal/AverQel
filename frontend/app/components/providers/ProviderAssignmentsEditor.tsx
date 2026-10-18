@@ -142,6 +142,9 @@ function AssignmentRow({
     assignment?.provider_config_id || (allowsServerDefault ? "" : compatibleProviders[0]?.id || ""),
   );
   const [selectedModel, setSelectedModel] = React.useState(assignment?.model_name || "");
+  const selectedProvider = compatibleProviders.find(
+    (provider) => provider.id === selectedProviderId,
+  );
 
   React.useEffect(() => {
     queueMicrotask(() => {
@@ -173,8 +176,14 @@ function AssignmentRow({
       className={`grid gap-4 px-4 py-4 xl:grid-cols-[220px,1fr,1fr,auto] xl:items-center ${bordered ? "border-glass-border border-b" : ""}`}
     >
       <div className="flex items-start gap-3">
-        <div className="theme-chip text-accent-cyan flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.95rem]">
-          {scopeIcon(scope)}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+          {selectedProvider ? (
+            <ProviderLogo providerType={selectedProvider.provider_type} size={28} />
+          ) : allowsServerDefault && !selectedProviderId ? (
+            <ProviderLogo providerType="sentence-transformers" size={28} />
+          ) : (
+            scopeIcon(scope)
+          )}
         </div>
         <div>
           <div className="theme-chip text-foreground/55 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.2em] uppercase">

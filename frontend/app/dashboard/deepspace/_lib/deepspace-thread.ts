@@ -2282,6 +2282,14 @@ function rehydrateMetricsFromHistory(
   const sessionTotalTokens = readNumber("session_total_tokens");
   const requestInputTokens = readNumber("request_input_tokens");
   const requestOutputTokens = readNumber("request_output_tokens");
+  const requestInputTokensSource =
+    typeof metadata.request_input_tokens_source === "string"
+      ? metadata.request_input_tokens_source
+      : undefined;
+  const requestOutputTokensSource =
+    typeof metadata.request_output_tokens_source === "string"
+      ? metadata.request_output_tokens_source
+      : undefined;
   const userVisibleInputTokens = readNumber("user_visible_input_tokens");
   const userVisibleOutputTokens = readNumber("user_visible_output_tokens");
   const conversationVisibleTokens = readNumber("conversation_visible_tokens");
@@ -2317,6 +2325,16 @@ function rehydrateMetricsFromHistory(
   const providerUsage =
     providerUsageRaw && typeof providerUsageRaw === "object" && !Array.isArray(providerUsageRaw)
       ? (providerUsageRaw as MessageMetrics["providerUsage"])
+      : undefined;
+  const providerUsageScope =
+    typeof metadata.provider_usage_scope === "string" ? metadata.provider_usage_scope : undefined;
+  const providerUsageRoundCount = readNumber("provider_usage_round_count");
+  const providerTurnUsageRaw = metadata.provider_turn_usage;
+  const providerTurnUsage =
+    providerTurnUsageRaw &&
+    typeof providerTurnUsageRaw === "object" &&
+    !Array.isArray(providerTurnUsageRaw)
+      ? (providerTurnUsageRaw as MessageMetrics["providerTurnUsage"])
       : undefined;
   const hasContextMetrics =
     contextUsedTokens !== undefined ||
@@ -2354,6 +2372,9 @@ function rehydrateMetricsFromHistory(
     phase,
     ...(timeline.length > 0 ? { latencyTimeline: timeline } : {}),
     ...(providerUsage ? { providerUsage } : {}),
+    ...(providerTurnUsage ? { providerTurnUsage } : {}),
+    ...(providerUsageScope !== undefined ? { providerUsageScope } : {}),
+    ...(providerUsageRoundCount !== undefined ? { providerUsageRoundCount } : {}),
     ...(providerOutputTokens !== undefined ? { providerOutputTokens } : {}),
     ...(providerGenerationDurationMs !== undefined ? { providerGenerationDurationMs } : {}),
     ...(tokensPerSecond !== undefined ? { tokensPerSecond } : {}),
@@ -2369,6 +2390,8 @@ function rehydrateMetricsFromHistory(
     ...(sessionTotalTokens !== undefined ? { sessionTotalTokens } : {}),
     ...(requestInputTokens !== undefined ? { requestInputTokens } : {}),
     ...(requestOutputTokens !== undefined ? { requestOutputTokens } : {}),
+    ...(requestInputTokensSource !== undefined ? { requestInputTokensSource } : {}),
+    ...(requestOutputTokensSource !== undefined ? { requestOutputTokensSource } : {}),
     ...(userVisibleInputTokens !== undefined ? { userVisibleInputTokens } : {}),
     ...(userVisibleOutputTokens !== undefined ? { userVisibleOutputTokens } : {}),
     ...(conversationVisibleTokens !== undefined ? { conversationVisibleTokens } : {}),
@@ -2566,6 +2589,19 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
         }))
         .filter((item) => item.id)
     : undefined;
+  const rawBlocks = Array.isArray(metadata.blocks) ? (metadata.blocks as StructuredBlock[]) : [];
+  const visualOverrides =
+    metadata.visual_blocks && typeof metadata.visual_blocks === "object"
+      ? (metadata.visual_blocks as Record<string, unknown>)
+      : {};
+  const blocks = rawBlocks.map((block) => {
+    const override = visualOverrides[block.id];
+    if (!override || typeof override !== "object" || Array.isArray(override)) return block;
+    const persisted = (override as Record<string, unknown>).block;
+    return persisted && typeof persisted === "object" && !Array.isArray(persisted)
+      ? ({ ...block, ...(persisted as Record<string, unknown>) } as StructuredBlock)
+      : block;
+  });
   // Rehydrate timeline from agentSteps if timeline is not explicitly persisted
   let timeline: TimelineStep[] = [];
   const rawTimelineEvents = metadata.timeline_events;
@@ -2717,7 +2753,7 @@ function fromHistoryMessage(message: DeepSpaceHistoryMessage): DeepSpaceMessage 
       : persistedStatus === "streaming" && metadata.runtime_active !== false
         ? "streaming"
         : "ready",
-    blocks: Array.isArray(metadata.blocks) ? (metadata.blocks as StructuredBlock[]) : [],
+    blocks,
     structured,
     thinkingContent: thinking || undefined,
     activeVersionId: message.active_version_id,
@@ -3161,15 +3197,24 @@ function reduceDeepSpaceThread(
         const tempIndex = nextMessages.findIndex(
           (m) => m.role === "assistant" && m.id.startsWith("assistant_") && !m.rawContent,
         );
+        const existingMessageIndex = nextMessages.findIndex((message) => message.id === messageId);
         if (tempIndex !== -1) {
-          nextMessages[tempIndex] = {
-            ...nextMessages[tempIndex],
-            id: messageId,
-            createdAt:
-              typeof event.data.started_at === "string"
-                ? event.data.started_at
-                : nextMessages[tempIndex].createdAt,
-          };
+          // A reconnect or regeneration can reuse the durable assistant ID
+          // already present in history. Remove the temporary row instead of
+          // renaming it into a duplicate React key; the existing durable row
+          // will receive the streaming state below.
+          if (existingMessageIndex !== -1 && existingMessageIndex !== tempIndex) {
+            nextMessages.splice(tempIndex, 1);
+          } else {
+            nextMessages[tempIndex] = {
+              ...nextMessages[tempIndex],
+              id: messageId,
+              createdAt:
+                typeof event.data.started_at === "string"
+                  ? event.data.started_at
+                  : nextMessages[tempIndex].createdAt,
+            };
+          }
         }
 
         const existingIndex = nextMessages.findIndex((message) => message.id === messageId);

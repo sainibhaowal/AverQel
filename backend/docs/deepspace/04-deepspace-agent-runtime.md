@@ -1,20 +1,29 @@
 # 04. DeepSpace runtime agent loop
 
-DeepSpace is a productivity runtime, not an IDE or operating-system agent. Its
-loop continues dynamically until the model calls `final` after verification,
-the user cancels, the client disconnects, a required user answer is requested,
-or a runtime safety policy reports a blocker.
+DeepSpace is a productivity runtime, not an IDE or operating-system agent. It
+answers directly when no action is needed. When work requires tools, it loads
+only selected schemas from the request-authorized catalog. Substantial
+multi-step work can use a persisted task plan; after the plan is verified, the
+model responds in ordinary assistant text. Cancellation, user input, approval,
+the durable run deadline, or a runtime safety blocker can pause execution.
 
 ## Runtime contract
 
-The loop is owned by `app/deepspace/services/chat_service.py`. There is no
-fixed 12-round limit. Each model turn can emit multiple tool calls. Independent
-read-only calls run concurrently; note writes, task writes, questions, and
-final verification are serialized to protect state.
+The loop is owned by `app/deepspace/services/chat_service.py`. Provider calls
+continue within the durable run deadline and existing per-capability budgets.
+Independent native read-only calls can run concurrently during an in-progress
+task when their inputs do not depend on one another. The same provider turn
+cannot combine that batch with discovery, MCP, task-ledger changes, writes,
+questions, approvals, or verification. Those operations are ordered to protect
+state. Native schemas use
+the compact catalog and exact schema-loading flow described in
+`03-deepspace-agent-loop.md`; MCP uses its separate live broker.
 
 Native provider events are forwarded as DeepSpace SSE events, including
 `thinking`, `delta`, `tool_delta`, `tool_start`, `tool_result`, `tool_error`,
-`observing`, `ask_user_question`, and `agent_status`.
+`ask_user_question`, and `agent_status`. These events describe actual provider
+output or runtime actions; DeepSpace does not synthesize an extra user prompt
+to advance its task loop.
 
 Completed reply metrics separate two first-output measurements. End-to-end
 TTFT runs from DeepSpace beginning to handle the request to the first visible
@@ -66,6 +75,10 @@ frames between API workers and that user's desktop connection. The desktop
 streams the OpenAI response back to DeepSpace, and cancellation is relayed to
 the local request. If the desktop disconnects, the turn fails with a runtime
 unavailable error; this mode does not perform an automatic API-key fallback.
+Before a local CLI turn starts, OpenAI-compatible function definitions are
+coalesced into a single AverQel namespace and duplicate names are removed. This
+matches the Codex app-server contract and prevents a valid DeepSpace tool set
+from being rejected before model execution.
 Queued relay requests are discarded when runtime ownership ends, so an old
 prompt cannot start later after the desktop reconnects.
 
@@ -140,17 +153,17 @@ the saved prompt can be used to start a fresh attempt.
 
 ## Productivity tools
 
-The DeepSpace allowlist contains:
+The native capability catalog contains the explicit-target workspace tools
+`read`, `find`, `write`, `edit`, and `delete`; the unified task lifecycle tool
+`todo_write`; document comparison through
+`analyze(operation="compare_documents")`; current web tools `web_search`,
+`url_read`, and `image_read`; bounded `sandbox_execute` and `artifact_create`;
+and `ask_user`. The catalog exposes descriptions first, then loads only exact
+selected schemas. There are no separate `document_read`, `document_query`,
+`document_compare`, `todo_read`, `todo_mark`, `todo_check`, `observe`, or `final` tools.
 
-- task planning and verification: `todo_write`, `todo_read`, `todo_check`,
-  `todo_mark`
-- active-note work: `read`, `write`
-- state and reasoning: `observe`, `analyze`, `final`
-- current web work: `web_search`, `url_read`, `image_read`
-- required clarification: `ask_user`
-
-`read` and `write` are limited to the active DeepSpace note in the application
-database. URL and image tools use server-side HTTP with timeouts, redirect
+Workspace operations are scoped to the active user, tenant, and conversation.
+URL and image tools use server-side HTTP with timeouts, redirect
 limits, DNS/IP private-network blocking, domain allowlists, response-size
 limits, and provider/user rate limiting. The model never receives shell,
 terminal, arbitrary cURL, filesystem, or file-explorer access.
@@ -159,12 +172,10 @@ terminal, arbitrary cURL, filesystem, or file-explorer access.
 
 Before a chat request uses an attachment, DeepSpace verifies that the file
 belongs to the authenticated tenant, user, and conversation. The model receives
-the authorized file names and IDs plus a small set of file-reading tools, even
-when the prompt is brief (for example, “Summarize this”). It chooses whether to
-read extracted text, search a longer document, compare attached files, or use
-the sandbox for calculations and tabular work. Attachment context alone does
-not grant Library write or delete tools; those still require the matching user
-request and existing tool policy.
+authorized file names and IDs as context and discovers the appropriate read,
+query, compare, or sandbox schema from the catalog. Attachment context alone
+does not grant Library write or delete tools; those still require the matching
+user request and existing tool policy.
 
 Attached images are sent as visual inputs only when the selected model advertises
 or is known to support image input. DeepSpace verifies the image signature and
@@ -183,20 +194,16 @@ whether text was extracted, no readable text was found, extraction was
 unavailable, and whether OCR or layout vision ran. The composer shows only this
 summary; the completed-upload status response does not include extracted text.
 
-For documents, `document_read` returns saved extraction/OCR text directly and
-is preferred for a concise whole-file read. `document_query` performs bounded
-hybrid RAG for targeted evidence searches or large documents. It reports
-whether embeddings and reranking actually ran; a direct read is not described
-as RAG. Supported raster images embedded in Office files are OCR'd directly
-within bounded image-count and byte limits, so scanned inserts can supplement
-substantial native text. The existing LibreOffice-to-PDF OCR fallback remains
-available for sparse Office files and embedded formats the direct image path
-cannot read.
-
-`document_query` uses the configured hybrid retrieval path and reports whether
-embeddings and reranking actually ran; they are not implied by a direct read or
-comparison. The tool result’s retrieval metadata remains the source of truth
-when describing those steps.
+For documents, `read(target="library", operation="read")` returns saved
+extraction/OCR text and `read(target="library", operation="query")` performs
+bounded hybrid retrieval for targeted evidence or large files. The query result
+reports whether embeddings and reranking actually ran; a direct read is not
+described as RAG. `analyze(operation="compare_documents")` performs exact
+text comparison. Supported raster images embedded in Office files are OCR'd
+directly within bounded image-count and byte limits, so scanned inserts can
+supplement substantial native text. The existing LibreOffice-to-PDF OCR
+fallback remains available for sparse Office files and embedded formats the
+direct image path cannot read.
 
 ## MCP-connected productivity tools
 
@@ -292,9 +299,13 @@ context. The runtime has maximum-runtime, concurrent read-tool, and URL-size
 policies, plus duplicate-call detection, retries, cancellation, tenant/user
 scoping, and persisted task dependencies.
 
-The existing `POST /api/v1/deepspace/chats/{conversation_id}/cancel` route now
-sets the durable cancellation flag. The stream checks it between model and
-tool steps, so a separate request can stop a long run safely.
+The existing `POST /api/v1/deepspace/chats/{conversation_id}/cancel` route
+sets the durable cancellation flag before it attempts to publish the optional
+Redis cancellation marker. The stream polls both signals while waiting for a
+provider chunk, so a cache outage cannot turn a persisted Stop request into a
+failed HTTP request or leave the browser waiting indefinitely. The client keeps
+the stream attached briefly for the worker's terminal event, then reconciles
+saved history if that event never arrives.
 
 ### Durable composer queue
 
@@ -305,6 +316,13 @@ message at priority and asks the active run to cancel; it does not depend on a
 browser tab remaining open. Each record stores the submitting tenant, user,
 conversation, request id, and an authorization snapshot. Queue reads, removal,
 and dispatch are all scoped to that same tenant/user/conversation boundary.
+
+Queue state reports an ID as active only after a dispatcher has claimed the
+turn (or a durable runtime row confirms it is active). The next queued ID is
+not an active run and clients must not attach an event stream to it yet. Queue
+dispatch tasks use the bounded `deepspace_control` worker queue, separate from
+the long-running `deepspace` model tasks; both worker services must be running
+for prompt dispatch and generation.
 
 A failed turn is terminal but does not pause the conversation queue. Its error
 and prompt stay visible while the dispatcher advances to the next queued item,
@@ -441,3 +459,13 @@ API must both be enabled in the Google Cloud project. For Gmail these are
 profile check does not prove that the Gmail MCP API is enabled; the remote MCP
 server can still return `The caller does not have permission` until that
 service is enabled and the OAuth consent configuration is saved.
+## Desktop local model relay
+
+LM Studio and Ollama can be selected with `metadata_json.runtime_target` set to
+`desktop`. The provider registry then uses the authenticated Electron runtime
+relay instead of making the backend call a loopback address. The relay accepts
+only loopback URLs and normalizes chat, model discovery, health, embedding, and
+Ollama pull results into the provider contracts. The existing one-use ticket,
+single-owner WebSocket, Redis request queue, frame limits, and cancellation
+path are shared with the Codex desktop bridge. Omitting `runtime_target` keeps
+the existing server-side LM Studio/Ollama path unchanged.

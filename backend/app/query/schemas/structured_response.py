@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -614,14 +615,18 @@ class StructuredTableResponse(BaseModel):
 class StructuredChartPointResponse(BaseModel):
     label: str
     value: float
+    z: float | None = None
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
 
 class StructuredChartResponse(BaseModel):
     title: str = Field(default="Chart Data")
-    chart_type: str = Field(default="bar", description="bar|line")
+    chart_type: Literal["bar", "line", "area", "scatter", "pie"] = "bar"
     series: list[StructuredChartPointResponse] = Field(default_factory=list)
+    equation: str | None = None
+    x_label: str | None = None
+    y_label: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -631,6 +636,11 @@ class StructuredDiagramResponse(BaseModel):
         id: str
         label: str
         category: str | None = None
+        x: float | None = None
+        y: float | None = None
+        width: float | None = Field(default=None, gt=0)
+        height: float | None = Field(default=None, gt=0)
+        group_id: str | None = None
 
         model_config = ConfigDict(extra="forbid")
 
@@ -638,28 +648,50 @@ class StructuredDiagramResponse(BaseModel):
         source: str
         target: str
         label: str | None = None
+        style: Literal["solid", "dashed", "dotted"] = "solid"
 
         model_config = ConfigDict(extra="forbid")
 
     class GraphPayload(BaseModel):
+        class Drawing(BaseModel):
+            d: str
+            color: str | None = None
+            width: float | None = Field(default=None, gt=0)
+
+            model_config = ConfigDict(extra="forbid")
+
         nodes: list[StructuredDiagramResponse.GraphNode] = Field(default_factory=list)
         edges: list[StructuredDiagramResponse.GraphEdge] = Field(default_factory=list)
-        layout: str = Field(default="horizontal", description="horizontal|vertical|radial")
+        layout: Literal["horizontal", "vertical", "radial"] = "horizontal"
+        drawings: list[Drawing] = Field(default_factory=list)
 
         model_config = ConfigDict(extra="forbid")
 
     title: str = Field(default="Process Diagram")
-    diagram_type: str = Field(
-        default="mermaid_flowchart",
-        description=(
-            "mermaid_flowchart|mermaid_sequence|mermaid_state|mermaid_class|mermaid_er|"
-            "mermaid_journey|mermaid_timeline|mermaid_gantt|mermaid_mindmap|mermaid_pie|"
-            "mermaid_gitgraph|mermaid_quadrant|mermaid_requirement|mermaid_block|"
-            "mermaid_xychart|mermaid_c4|mermaid_architecture|mermaid_sankey|"
-            "mermaid_packet|mermaid_kanban|graph_canvas"
-        ),
-    )
-    source: str = Field(default="mermaid", description="mermaid|graph_json")
+    diagram_type: Literal[
+        "mermaid_flowchart",
+        "mermaid_sequence",
+        "mermaid_state",
+        "mermaid_class",
+        "mermaid_er",
+        "mermaid_journey",
+        "mermaid_timeline",
+        "mermaid_gantt",
+        "mermaid_mindmap",
+        "mermaid_pie",
+        "mermaid_gitgraph",
+        "mermaid_quadrant",
+        "mermaid_requirement",
+        "mermaid_block",
+        "mermaid_xychart",
+        "mermaid_c4",
+        "mermaid_architecture",
+        "mermaid_sankey",
+        "mermaid_packet",
+        "mermaid_kanban",
+        "graph_canvas",
+    ] = "mermaid_flowchart"
+    source: Literal["mermaid", "graph_json"] = "mermaid"
     syntax: str = Field(default="", description="Diagram definition string")
     description: str = Field(default="", description="Short supporting explanation")
     graph: GraphPayload | None = Field(

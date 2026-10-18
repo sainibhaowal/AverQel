@@ -3,13 +3,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.deepspace.services.chat_service import PRODUCTIVITY_TOOLS
+from app.deepspace.services.chat_service import NATIVE_TOOL_REGISTRY
 from app.deepspace.services.sandbox_executor import SandboxExecutorError, execute_sandbox
 
 
 def test_advanced_native_tools_are_provider_neutral() -> None:
-    names = {item["function"]["name"] for item in PRODUCTIVITY_TOOLS}
-    assert {"sandbox_execute", "document_read", "document_compare"} <= names
+    names = NATIVE_TOOL_REGISTRY.names()
+    assert {"sandbox_execute", "read", "analyze"} <= names
+    assert not {"document_read", "document_query", "document_compare"} & names
 
 
 @pytest.mark.asyncio

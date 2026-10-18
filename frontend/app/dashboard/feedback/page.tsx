@@ -95,7 +95,7 @@ const categories: Array<{
   },
   {
     id: "documents_collections",
-    label: "Documents & collections",
+    label: "Documents & Qel Connect",
     icon: <FileText size={16} />,
     color: "text-cyan-700",
   },

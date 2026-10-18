@@ -57,31 +57,6 @@ class SandboxExecuteArguments(ToolArguments):
     file_ids: list[str] | None = Field(default=None, max_length=5)
 
 
-class DocumentReadArguments(ToolArguments):
-    file_id: str | None = Field(default=None, max_length=80)
-    filename: str | None = Field(default=None, max_length=255)
-    max_characters: int | None = Field(default=None, ge=100, le=200_000)
-
-
-class DocumentCompareArguments(ToolArguments):
-    left_file_id: str | None = Field(default=None, max_length=80)
-    right_file_id: str | None = Field(default=None, max_length=80)
-    file_ids: list[str] | None = Field(default=None, min_length=2, max_length=5)
-    max_characters: int | None = Field(default=None, ge=100, le=100_000)
-
-    @model_validator(mode="after")
-    def require_comparison_targets(self) -> DocumentCompareArguments:
-        if self.file_ids or (self.left_file_id and self.right_file_id):
-            return self
-        raise ValueError("document_compare requires file_ids or left_file_id and right_file_id")
-
-
-class DocumentQueryArguments(ToolArguments):
-    query: str = Field(min_length=1, max_length=1_000)
-    file_id: str | None = Field(default=None, max_length=80)
-    limit: int | None = Field(default=None, ge=1, le=20)
-
-
 class ArtifactCreateArguments(ToolArguments):
     filename: str = Field(min_length=1, max_length=255)
     content: str = Field(min_length=1, max_length=100_000)
@@ -98,39 +73,127 @@ class AskUserArguments(ToolArguments):
 
 
 class TaskArguments(ToolArguments):
-    id: str | None = None
+    id: str | None = Field(default=None, min_length=1, max_length=120)
     content: str = Field(min_length=1, max_length=1_000)
     active_form: str | None = Field(default=None, max_length=1_000)
+    success_criteria: str | None = Field(default=None, max_length=1_000)
+    verification: str | None = Field(default=None, max_length=1_000)
     status: Literal["pending", "in_progress", "completed", "blocked", "failed"] | None = None
     priority: int | None = Field(default=None, ge=0, le=1_000)
     dependencies: list[str] | None = Field(default=None, max_length=40)
 
 
 class TodoWriteArguments(ToolArguments):
-    tasks: list[TaskArguments] = Field(max_length=40)
+    """One durable task-ledger tool with explicit, validated operations."""
 
-
-class TodoMarkArguments(ToolArguments):
-    task_id: str
-    status: Literal["pending", "in_progress", "completed", "blocked", "failed"]
+    operation: Literal["replace", "read", "update", "check"]
+    tasks: list[TaskArguments] | None = Field(default=None, min_length=1, max_length=40)
+    task_id: str | None = Field(default=None, min_length=1, max_length=120)
+    status: Literal["pending", "in_progress", "completed", "blocked", "failed"] | None = None
     evidence: str | None = Field(default=None, max_length=1_000)
+
+    @model_validator(mode="after")
+    def validate_operation(self) -> TodoWriteArguments:
+        """Keep incomplete plans out of the execution loop.
+
+        The task store repeats these checks as a persistence boundary. Doing
+        the structural part here lets the provider correct its plan instead of
+        beginning work from an ambiguous checklist.
+        """
+
+        if self.operation == "read" or self.operation == "check":
+            return self
+        if self.operation == "update":
+            if not self.task_id or not self.status:
+                raise ValueError("todo_write(update) requires task_id and status")
+            if (
+                self.status in {"completed", "blocked", "failed"}
+                and not str(self.evidence or "").strip()
+            ):
+                raise ValueError("terminal todo_write(update) requires evidence")
+            return self
+        if not self.tasks:
+            raise ValueError("todo_write(replace) requires a tasks array")
+        if len(self.tasks) <= 1:
+            return self
+
+        task_ids = [str(task.id or "").strip() for task in self.tasks]
+        if not all(task_ids):
+            raise ValueError("multi-step plans require an id for every task")
+        if len(set(task_ids)) != len(task_ids):
+            raise ValueError("multi-step plans require unique task ids")
+        for task, task_id in zip(self.tasks, task_ids, strict=True):
+            if not str(task.success_criteria or "").strip():
+                raise ValueError(f"task {task_id!r} requires success_criteria")
+            if not str(task.verification or "").strip():
+                raise ValueError(f"task {task_id!r} requires verification")
+            dependencies = [
+                str(item).strip() for item in (task.dependencies or []) if str(item).strip()
+            ]
+            if task_id in dependencies:
+                raise ValueError(f"task {task_id!r} cannot depend on itself")
+            unknown = [item for item in dependencies if item not in task_ids]
+            if unknown:
+                raise ValueError(f"task {task_id!r} has unknown dependencies")
+
+        dependencies_by_task = {
+            task_id: [str(item).strip() for item in (task.dependencies or []) if str(item).strip()]
+            for task, task_id in zip(self.tasks, task_ids, strict=True)
+        }
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(task_id: str) -> None:
+            if task_id in visited:
+                return
+            if task_id in visiting:
+                raise ValueError("task dependencies contain a cycle")
+            visiting.add(task_id)
+            for dependency in dependencies_by_task[task_id]:
+                visit(dependency)
+            visiting.remove(task_id)
+            visited.add(task_id)
+
+        for task_id in task_ids:
+            visit(task_id)
+        return self
 
 
 class AnalyzeArguments(ToolArguments):
-    focus: str | None = Field(default=None, max_length=1_000)
+    operation: Literal["compare_documents"] = "compare_documents"
+    left_file_id: str | None = Field(default=None, max_length=80)
+    right_file_id: str | None = Field(default=None, max_length=80)
+    file_ids: list[str] | None = Field(default=None, min_length=2, max_length=5)
+    max_characters: int | None = Field(default=None, ge=100, le=100_000)
+
+    @model_validator(mode="after")
+    def require_comparison_targets(self) -> AnalyzeArguments:
+        if self.file_ids or (self.left_file_id and self.right_file_id):
+            return self
+        raise ValueError("analyze(compare_documents) requires file_ids or a left/right file pair")
 
 
-class FinalArguments(ToolArguments):
-    answer: str = Field(max_length=100_000)
-    summary: str | None = Field(default=None, max_length=1_000)
+class DiscoverToolsArguments(ToolArguments):
+    query: str = Field(min_length=2, max_length=1_000)
+    tool_names: list[str] | None = Field(default=None, min_length=1, max_length=8)
 
 
 class ReadArguments(ToolArguments):
-    target: Literal["note", "library", "memory", "chat", "tasks"]
+    target: Literal["note", "library", "memory", "chat", "project"]
+    operation: Literal["read", "query"] = "read"
     file_id: str | None = Field(default=None, max_length=80)
     filename: str | None = Field(default=None, max_length=255)
     memory_key: str | None = Field(default=None, max_length=120)
     folder_id: str | None = Field(default=None, max_length=80)
+    query: str | None = Field(default=None, min_length=1, max_length=1_000)
+    limit: int | None = Field(default=None, ge=1, le=20)
+    max_characters: int | None = Field(default=None, ge=100, le=200_000)
+
+    @model_validator(mode="after")
+    def validate_read_operation(self) -> ReadArguments:
+        if self.operation == "query" and (self.target != "library" or not self.query):
+            raise ValueError("read(query) requires target='library' and a query")
+        return self
 
 
 class FindArguments(ToolArguments):
@@ -245,22 +308,15 @@ class ToolRegistry:
 
 _ARGUMENT_MODELS: dict[str, type[ToolArguments]] = {
     "get_tool_result": GetToolResultArguments,
+    "discover_tools": DiscoverToolsArguments,
     "web_search": WebSearchArguments,
     "url_read": UrlReadArguments,
     "image_read": UrlReadArguments,
     "sandbox_execute": SandboxExecuteArguments,
-    "document_read": DocumentReadArguments,
-    "document_compare": DocumentCompareArguments,
-    "document_query": DocumentQueryArguments,
     "artifact_create": ArtifactCreateArguments,
     "ask_user": AskUserArguments,
     "todo_write": TodoWriteArguments,
-    "todo_read": EmptyArguments,
-    "todo_check": EmptyArguments,
-    "todo_mark": TodoMarkArguments,
-    "observe": EmptyArguments,
     "analyze": AnalyzeArguments,
-    "final": FinalArguments,
     "read": ReadArguments,
     "find": FindArguments,
     "write": WriteArguments,
@@ -270,26 +326,19 @@ _ARGUMENT_MODELS: dict[str, type[ToolArguments]] = {
 
 _TOOL_MODES: dict[str, ToolMode] = {
     "get_tool_result": "read",
+    "discover_tools": "read",
     "web_search": "read",
     "url_read": "read",
     "image_read": "read",
-    "document_read": "read",
-    "document_query": "read",
-    "document_compare": "read",
-    "todo_read": "read",
-    "todo_check": "read",
-    "observe": "read",
     "analyze": "read",
     "read": "read",
     "find": "read",
     "todo_write": "write",
-    "todo_mark": "write",
     "write": "write",
     "edit": "write",
     "delete": "write",
     "sandbox_execute": "write",
     "artifact_create": "write",
-    "final": "write",
     "ask_user": "interactive",
 }
 

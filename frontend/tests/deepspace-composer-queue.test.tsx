@@ -55,6 +55,72 @@ describe("DeepSpaceComposer active-turn controls", () => {
     expect(screen.getByRole("button", { name: "Queue message" })).toBeInTheDocument();
   });
 
+  it("shows the live output estimate and generation rate during a stream", () => {
+    render(
+      <DeepSpaceComposer
+        query=""
+        isStreaming
+        contextUsedTokens={4516}
+        contextLimit={1_048_576}
+        requestInputTokens={4516}
+        requestOutputTokens={12}
+        liveTokensPerSecond={7.5}
+        onQueryChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/4,516 model in · 12 model out ·/)).toBeInTheDocument();
+    expect(screen.getByText(/~7\.5 tok\/s/)).toBeInTheDocument();
+  });
+
+  it("labels turn estimates separately from latest provider-round usage", () => {
+    render(
+      <DeepSpaceComposer
+        query=""
+        isStreaming={false}
+        contextUsedTokens={8_046}
+        contextLimit={1_048_576}
+        requestInputTokens={38_952}
+        requestOutputTokens={1_908}
+        requestInputTokensSource="serialized_request_estimate"
+        requestOutputTokensSource="serialized_response_estimate"
+        providerUsage={{
+          input_tokens: 7_324,
+          output_tokens: 901,
+          cached_input_tokens: 7_168,
+          cache_write_input_tokens: 0,
+          usage_source: "provider",
+        }}
+        providerUsageScope="latest_reported_round"
+        providerUsageRoundCount={5}
+        providerTurnUsage={{
+          input_tokens: 38_952,
+          output_tokens: 1_908,
+          cached_input_tokens: 35_840,
+          cache_write_input_tokens: 0,
+          usage_source: "provider",
+        }}
+        promptCacheMode="google_implicit"
+        promptCacheStatus="native_requested"
+        promptCacheEligible
+        onQueryChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show context usage details" }));
+    const dialog = screen.getByRole("dialog", { name: "Context usage details" });
+    expect(dialog).toHaveTextContent("Latest round context estimate");
+    expect(dialog).toHaveTextContent("Turn input estimate (all rounds)");
+    expect(dialog).toHaveTextContent("Provider usage (latest reported model round)");
+    expect(dialog).toHaveTextContent("input 7,324 · output 901 · cache read 7,168");
+    expect(dialog).toHaveTextContent("Provider turn total (5 reported rounds): input 38,952");
+    expect(dialog).toHaveTextContent("google_implicit reported by provider");
+  });
+
   it("shows an opaque attachment tooltip above the animated composer border", () => {
     render(
       <DeepSpaceComposer

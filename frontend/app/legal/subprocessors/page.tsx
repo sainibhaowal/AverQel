@@ -4,34 +4,51 @@ import PolicySection from "@/app/components/legal/PolicySection";
 export default function SubprocessorsPage() {
   return (
     <PolicyLayout
-      eyebrow="Infrastructure and external services"
-      title="Infrastructure and external services"
-      intro="This page describes the infrastructure categories currently visible in the AverQel deployment. It is not a claim that every provider below is enabled in every deployment."
+      eyebrow="External services"
+      title="Infrastructure and connected providers"
+      intro="AverQel deployments can use external services to host data or perform features you enable. This page describes service categories; it is not a verified supplier register for a particular hosted instance."
     >
-      <PolicySection title="Cloud Infrastructure">
-        <p>
-          The current Docker deployment runs PostgreSQL, Redis, and MinIO-compatible object storage
-          as separate service components. The public repository does not identify a single hosting
-          vendor, so AverQel does not claim DigitalOcean or Hetzner as a confirmed subprocessor
-          here. The active hosting vendor and region must be confirmed for the production deployment
-          before publication.
-        </p>
-        <ul className="mt-2 list-disc space-y-2 pl-5">
+      <PolicySection title="Service categories">
+        <ul className="list-disc space-y-2 pl-5">
           <li>
-            <strong>Infrastructure host:</strong> The VPS or cloud provider selected for the active
-            AverQel deployment; its identity, region, and current status must be published here.
+            <strong>Hosting and storage:</strong> the operator&apos;s selected infrastructure host,
+            database, runtime coordination, and object-storage services.
           </li>
           <li>
-            <strong>AI and search providers:</strong> A provider receives request data only when an
-            administrator or user configures and authorizes that provider. The applicable provider
-            terms and privacy policy govern its processing.
+            <strong>AI and retrieval:</strong> model, embedding, reranking, and web-search providers
+            configured for the deployment or selected by an authorized user.
+          </li>
+          <li>
+            <strong>Connected tools:</strong> MCP-connected services receive data required for a
+            user-authorized tool call, subject to connection scope and approval settings.
+          </li>
+          <li>
+            <strong>Optional delivery:</strong> SMTP email, push, voice, or other integrations may
+            process the information needed for the enabled feature. The public contact form sends
+            its verification code, message, and reply address through the deployment&apos;s
+            configured SMTP provider. Resend may receive direct mail sent to the site contact
+            address and forward it to the operator&apos;s private inbox through a signed webhook.
           </li>
         </ul>
+      </PolicySection>
+
+      <PolicySection title="What this repository can confirm">
         <p>
-          MCP-connected services such as Google or GitHub may receive data for a user-authorized
-          tool call. Access is limited by connection scope, tool policy, and approval state. Before
-          commercial launch, publish the legal names, purposes, regions, and change-notice process
-          for each actual infrastructure and external service provider.
+          The source defines PostgreSQL, Redis, and MinIO-compatible storage components and supports
+          configurable external providers. It does not identify the live hosting company, data
+          region, enabled supplier names, applicable transfer safeguards, or each provider&apos;s
+          current contractual role. Those facts are set outside the source repository and must be
+          confirmed for the specific deployment.
+        </p>
+      </PolicySection>
+
+      <PolicySection title="Before using the hosted service">
+        <p>
+          The service operator must publish the legal names, purpose, processing location, and
+          privacy notice for each supplier used by the hosted instance, and update this page when
+          that list changes. The codebase does not contain enough information to present a complete
+          production subprocessor list. Do not treat the categories above as a substitute for that
+          deployment-specific notice.
         </p>
       </PolicySection>
     </PolicyLayout>

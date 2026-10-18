@@ -141,7 +141,7 @@ PLANS: Final[dict[str, StoragePlan]] = {
         description="Essential AverQel workspace storage.",
         features=(
             "Tags and folders",
-            "Documents and collections",
+            "Documents and Qel Connect",
             "DeepSpace workspace",
             "Tenant-isolated storage",
             "500 MB shared workspace storage",
@@ -882,8 +882,8 @@ class StorageQuotaService:
         """Measure collection metadata, indexed text, vectors, and collection chat."""
         base = self._text_metric(
             key="collections_and_index",
-            label="Collections and search index",
-            description="Collection metadata, indexed document chunks, embeddings, and collection chat.",
+            label="Qel Connect and search index",
+            description="Qel Connect metadata, indexed document chunks, embeddings, and Qel Connect chat.",
             model=DocumentChunk,
             columns=(DocumentChunk.content, cast(DocumentChunk.chunk_metadata, Text)),
             tenant_id=tenant_id,

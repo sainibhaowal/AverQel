@@ -619,9 +619,9 @@ export default function QueryComposer({
                               >
                                 <span
                                   aria-hidden="true"
-                                  className="bg-primary/[0.07] border-primary/15 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border"
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center"
                                 >
-                                  <ProviderLogo providerType={group.providerType} size={18} />
+                                  <ProviderLogo providerType={group.providerType} size={22} />
                                 </span>
                                 <span className="flex min-w-0 flex-1 flex-col">
                                   <span className="text-foreground/85 truncate text-xs font-semibold">

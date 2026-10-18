@@ -19,6 +19,7 @@ interface ProviderAuthFieldsProps {
   secretValue: string;
   onSecretValueChange: (value: string) => void;
   maskedSummary: string | null;
+  disabled?: boolean;
 }
 
 export default function ProviderAuthFields({
@@ -31,6 +32,7 @@ export default function ProviderAuthFields({
   secretValue,
   onSecretValueChange,
   maskedSummary,
+  disabled = false,
 }: ProviderAuthFieldsProps) {
   const authModes = catalogEntry?.auth_modes || ["api_key", "none"];
   // Only hide URL for fully built-in providers (auth_mode "none") — local runtimes like LM Studio still need their URL
@@ -55,6 +57,7 @@ export default function ProviderAuthFields({
             onChange={onAuthModeChange}
             options={authOptions}
             placeholder="Select Auth Mode"
+            disabled={disabled}
             className="bg-surface-1 border-glass-border h-10 opacity-90"
           />
         </div>
@@ -69,8 +72,9 @@ export default function ProviderAuthFields({
                 type="text"
                 value={apiBaseUrl}
                 onChange={(e) => onApiBaseUrlChange(e.target.value)}
+                disabled={disabled}
                 placeholder="https://api.provider.ai/v1"
-                className="border-glass-border bg-surface-1 text-foreground placeholder:text-muted-foreground/30 focus:border-primary/40 focus:ring-primary/5 h-10 w-full rounded-lg border px-4 pr-10 text-xs ring-1 ring-transparent transition-all outline-none"
+                className="border-glass-border bg-surface-1 text-foreground placeholder:text-muted-foreground/30 focus:border-primary/40 focus:ring-primary/5 h-10 w-full rounded-lg border px-4 pr-10 text-xs ring-1 ring-transparent transition-all outline-none disabled:cursor-not-allowed disabled:opacity-50"
               />
               <Globe className="text-muted-foreground/40 group-focus-within:text-primary/50 pointer-events-none absolute top-[11px] right-4 h-3.5 w-3.5 transition-colors" />
             </div>
@@ -92,6 +96,7 @@ export default function ProviderAuthFields({
             value={secretValue}
             onChange={onSecretValueChange}
             maskedSummary={maskedSummary}
+            disabled={disabled}
             className="bg-surface-1 border-glass-border h-10"
           />
         </div>

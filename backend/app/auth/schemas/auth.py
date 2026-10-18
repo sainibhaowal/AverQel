@@ -98,20 +98,70 @@ class ProfileResponse(BaseModel):
     tenant_id: str
     collection_code: str
     email: str
+    display_name: str | None = None
     roles: list[str]
     status: str
     created_at: datetime
     last_login_at: datetime | None
     totp_enabled: bool = False
     avatar: str | None = None
+    onboarding_completed: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
 
 class ProfileUpdateRequest(BaseModel):
     avatar: str | None = None
+    display_name: str | None = Field(default=None, max_length=48)
+    onboarding_completed: bool | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def normalize_display_name(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        cleaned = value.strip()
+        if any(ord(char) < 32 or ord(char) == 127 for char in cleaned):
+            raise ValueError("display_name must not contain control characters")
+        return cleaned or None
+
+    @field_validator("avatar")
+    @classmethod
+    def validate_avatar(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if len(cleaned) > 700_000:
+            raise ValueError("avatar image is too large")
+        if cleaned.startswith("data:image/"):
+            header = cleaned.partition(",")[0].lower()
+            media_type = header.split(";", maxsplit=1)[0]
+            if media_type not in {
+                "data:image/jpeg",
+                "data:image/jpg",
+                "data:image/png",
+                "data:image/webp",
+                "data:image/svg+xml",
+            }:
+                raise ValueError("avatar must be a supported image")
+            if "," not in cleaned:
+                raise ValueError("avatar image data is invalid")
+            return cleaned
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(cleaned)
+        if (
+            parsed.scheme == "https"
+            and parsed.netloc
+            and not parsed.username
+            and not parsed.password
+        ):
+            return cleaned
+        raise ValueError("avatar must be an HTTPS image URL or image data")
 
 
 class RegisterRequest(BaseModel):

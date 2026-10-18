@@ -565,12 +565,14 @@ def get_profile(
         tenant_id=str(user.tenant_id),
         collection_code=user.collection_code,
         email=user.email,
+        display_name=user.display_name,
         roles=sorted(list(auth.roles)),
         status="active" if user.is_active else "locked",
         created_at=user.created_at,
         last_login_at=user.last_login_at,
         totp_enabled=user.totp_enabled,
         avatar=user.avatar,
+        onboarding_completed=user.onboarding_completed_at is not None,
     )
 
 
@@ -590,8 +592,17 @@ def update_profile(
             status_code=404,
         )
 
-    if payload.avatar is not None:
+    fields_changed = False
+    if "avatar" in payload.model_fields_set:
         user.avatar = payload.avatar
+        fields_changed = True
+    if "display_name" in payload.model_fields_set:
+        user.display_name = payload.display_name
+        fields_changed = True
+    if payload.onboarding_completed is True and user.onboarding_completed_at is None:
+        user.onboarding_completed_at = datetime.now(UTC)
+        fields_changed = True
+    if fields_changed:
         db.commit()
 
     return ProfileResponse(
@@ -599,12 +610,14 @@ def update_profile(
         tenant_id=str(user.tenant_id),
         collection_code=user.collection_code,
         email=user.email,
+        display_name=user.display_name,
         roles=sorted(list(auth.roles)),
         status="active" if user.is_active else "locked",
         created_at=user.created_at,
         last_login_at=user.last_login_at,
         totp_enabled=user.totp_enabled,
         avatar=user.avatar,
+        onboarding_completed=user.onboarding_completed_at is not None,
     )
 
 

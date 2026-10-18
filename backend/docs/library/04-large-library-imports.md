@@ -13,9 +13,11 @@ flowchart LR
     U[User selects a file] --> B[Chunked browser upload]
     B --> S[Private upload chunks]
     S --> Q[Dedicated library_uploads queue]
-    Q --> W[Single constrained Library worker]
+    Q --> W[Fast file-publication worker]
     W --> O[Private object storage]
-    W --> P[Bounded extracted preview]
+    W --> X[Completed Library attachment]
+    X --> E[Separate extraction and media queues]
+    E --> P[Bounded extracted preview]
     P --> L[Library preview / RAG]
     O --> D[Authenticated download / sandbox]
 ```
@@ -23,11 +25,12 @@ flowchart LR
 1. The browser uploads in 2 MiB resumable chunks.
 2. Files larger than 2 MiB upload one at a time from a browser tab. Small
    batches retain limited parallel upload behavior.
-3. Finalization runs in the `library_uploads` Celery queue, not the
-   interactive `deepspace` chat queue.
-4. The `library-worker` has concurrency one, one CPU, and a 768 MiB memory
-   limit. A malformed or expensive import cannot consume API or chat-worker
-   capacity.
+3. The `library-worker` assembles and stores the verified original, then marks
+   the upload complete. It does not run OCR or document parsers and does not
+   keep the upload database row locked during object-storage I/O.
+4. OCR, document extraction, and media manifests run on the separate
+   `library-processing-worker`. A slow parser cannot keep an image or file
+   stuck in the upload state or block cancellation.
 5. Text data over 512 KiB is retained as a private object rather than copied
    into PostgreSQL and browser editor state. The original can still be
    downloaded or used by the authorized sandbox.
@@ -37,8 +40,12 @@ flowchart LR
 
 ## User experience
 
-- A 4–25 MiB CSV shows normal upload and processing status while the rest of
-  AverQel remains usable.
+- The attachment becomes available to chat as soon as its bytes are safely
+  stored. The composer may show **Uploaded · reading text** while optional
+  extraction continues; supported images can be sent to a vision-capable model
+  during OCR.
+- A 4–25 MiB CSV shows upload completion independently from its profile and
+  extraction status while the rest of AverQel remains usable.
 - The Library displays a compact first-page table, rather than trying to
   render the complete dataset.
 - Large files are read-only in the in-browser editor. Use **Download** for
@@ -61,8 +68,9 @@ flowchart LR
 
 ## Verification
 
-1. Upload a 9 MiB CSV and a 4 MiB CSV. They should be processed serially and
-   show `processing`, then `complete`, without freezing the DeepSpace tab.
+1. Upload an image and a 9 MiB CSV. Both should become attachable after secure
+   storage; OCR/extraction status can finish separately without freezing the
+   DeepSpace tab.
 2. Open the large CSV. Confirm that the banner says it is a safe preview and
    no more than 200 rows are rendered.
 3. Download the same file and verify its checksum/size matches the original.

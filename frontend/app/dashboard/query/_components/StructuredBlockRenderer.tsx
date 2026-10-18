@@ -3,6 +3,7 @@
 import type { StructuredBlock } from "../_lib/stream-protocol";
 
 import ChartBlock from "./ChartBlock";
+import CardBlock from "./CardBlock";
 import DiagramBlock from "./DiagramBlock";
 import TableBlock from "./TableBlock";
 
@@ -19,6 +20,7 @@ export default function StructuredBlockRenderer({
     (block) =>
       block.type === "table" ||
       block.type === "chart" ||
+      block.type === "card" ||
       (block.type === "diagram" && !(isStreaming && block.source !== "graph_json")),
   );
 
@@ -43,6 +45,8 @@ export default function StructuredBlockRenderer({
             );
           case "chart":
             return <ChartBlock key={block.id} block={block} />;
+          case "card":
+            return <CardBlock key={block.id} block={block} />;
           case "diagram":
             return <DiagramBlock key={block.id} block={block} isStreaming={isStreaming} />;
           default:

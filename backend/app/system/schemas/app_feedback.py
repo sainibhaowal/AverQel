@@ -89,3 +89,34 @@ class AppFeedbackMessageResponse(BaseModel):
 
 class AppFeedbackDetailResponse(AppFeedbackResponse):
     messages: list[AppFeedbackMessageResponse]
+
+
+class AdminAppFeedbackResponse(BaseModel):
+    """Staff view of feedback without account identifiers or contact details."""
+
+    id: uuid.UUID
+    campaign_id: uuid.UUID | None
+    subject: str
+    content: str
+    category: FeedbackCategory
+    created_at: datetime
+    status: FeedbackStatus
+    updated_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class AdminAppFeedbackMessageResponse(BaseModel):
+    id: uuid.UUID
+    feedback_id: uuid.UUID
+    author_role: str
+    kind: str
+    body: str
+    is_internal: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+
+class AdminAppFeedbackDetailResponse(AdminAppFeedbackResponse):
+    messages: list[AdminAppFeedbackMessageResponse]

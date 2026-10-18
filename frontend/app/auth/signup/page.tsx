@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import AverQelLogo from "@/app/components/ui/AverQelLogo";
+import AverQelExactBrand from "@/app/components/ui/AverQelExactBrand";
 import { getApiBaseUrl } from "../../../lib/api";
 
 function getPasswordStrength(pw: string): {
@@ -109,8 +109,8 @@ export default function SignupPage() {
         transition={{ duration: 0.45 }}
       >
         <div className="mb-10 flex justify-center">
-          <Link href="/">
-            <AverQelLogo size="hero" />
+          <Link href="/" className="login-brand-lockup">
+            <AverQelExactBrand />
           </Link>
         </div>
 
@@ -238,9 +238,10 @@ export default function SignupPage() {
               >
                 Privacy Policy
               </Link>
-              . AverQel uses account and security data to run the service. Workspace content such as
-              documents and queries is stored to deliver the product and should not be accessed
-              casually outside support, security, abuse, or legal handling.
+              . AverQel processes workspace content to provide the service. Assigned Support
+              Managers can read support tickets and attachments; Feedback Managers can read
+              submitted feedback; and Qel Connect moderators can read reports in their assigned
+              workspace. Configured external providers receive data needed for requests you enable.
             </p>
           </div>
 

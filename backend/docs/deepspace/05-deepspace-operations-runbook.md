@@ -101,6 +101,22 @@ or explicitly retry a failure instead. The edit route also checks the prompt
 version submitted by the browser to prevent stale tabs from overwriting newer
 edits.
 
+The dispatcher runs on the `deepspace_control` queue, while model calls run on
+`deepspace`. The compose manifests start a dedicated control worker with
+concurrency one, keeping short claim-and-submit work available while model
+workers are occupied. Keep both worker services enabled during an application
+rollout. A queue row is shown as active only after a worker claim; a waiting
+row remains queued, and the browser reconnects after the queue state changes.
+The model worker has no fixed container name so Compose can scale its
+`deepspace` consumers horizontally; each replica uses the configured
+`AKS_WORKER_CONCURRENCY` (default two). The control worker uses
+`AKS_DEEPSPACE_CONTROL_WORKER_CONCURRENCY` (default one). For example, from
+`backend/`, start two model-worker replicas with
+`docker compose --env-file .env.vps -f docker-compose.prod.yml up -d --scale worker=2 worker`.
+Scale only after checking provider quotas and the combined API/worker database
+connection budget. This is operator-controlled scaling, not automatic capacity
+prediction.
+
 If a dispatcher claims a turn and dies before submitting the worker, the claim
 is released immediately when broker submission reports an error. A periodic
 maintenance heartbeat also recovers claims older than ten minutes: it

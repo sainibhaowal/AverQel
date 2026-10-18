@@ -4,14 +4,34 @@ export default function ProfileDocsPage() {
   return (
     <DocsShell
       title="Profile & sessions"
-      intro="Manage the security controls available for your AverQel account. Profile settings are for account access and authentication; collection invitations and workspace content are managed in their respective product areas."
+      intro="Choose the name and avatar shown in your AverQel workspace, then manage the security controls available for your account. Your sign-in email, account role, and permissions are not changed by profile customization."
     >
+      <DocsSection title="Display name and avatar">
+        <p>
+          Open Profile from the account menu in the dashboard header, or visit Settings → Profile.
+          Choose one of the built-in avatars or upload a JPEG, PNG, WebP, or AVIF photo. AverQel
+          crops the photo to a square and resizes it before saving it to your account profile. Your
+          avatar may also appear beside your messages in shared Qel Connect spaces. Your email
+          address and assigned role remain unchanged.
+        </p>
+      </DocsSection>
+      <DocsSection title="First sign-in welcome">
+        <p>
+          New accounts see a short welcome flow after sign-in. It introduces the main workspace
+          areas, lets you choose a display name, avatar, and light or dark appearance, and offers
+          optional provider setup. The flow follows the selected appearance and uses a short
+          transition between steps. You can skip the flow at any time. Your completion choice is
+          saved to your account; appearance is saved in this browser. DeepSpace uses your display
+          name for its welcome message when one has been saved.
+        </p>
+      </DocsSection>
       <DocsSection title="Sign-in and two-factor authentication">
         <p>
-          Settings show the account identity recorded by the service and provide password controls.
-          Where enabled, you can set up time-based one-time password (TOTP) two-factor
-          authentication. Store the recovery codes securely when they are issued; they are intended
-          for account recovery and should not be shared with support.
+          The account menu shows your display name, sign-in email, assigned role, account status,
+          and whether time-based one-time password (TOTP) two-factor authentication is enabled. In
+          Profile settings, you can change your password and, where enabled, set up or disable TOTP.
+          Store recovery codes securely when they are issued; they are for account recovery and
+          should not be shared with support.
         </p>
       </DocsSection>
       <DocsSection title="Linked sessions">
@@ -32,16 +52,16 @@ export default function ProfileDocsPage() {
       <DocsSection title="Account export and deletion">
         <p>
           Account export and deletion are available from Trust &amp; Privacy when enabled for the
-          deployment. They are not functions of a collection code or local browser cache. Read the
+          deployment. They are not functions of a Qel Connect code or local browser cache. Read the
           confirmation and scope before starting either action; deletion may be irreversible after
           its workflow completes.
         </p>
       </DocsSection>
-      <DocsSection title="Collection identifiers">
+      <DocsSection title="Qel Connect identifiers">
         <p>
-          Collection membership uses the collection and invitation flows shown in Collections. An
-          identifier shown there is not a peer-to-peer identity credential or proof that a chat is
-          cryptographically end-to-end encrypted.
+          Qel Connect membership uses the invitation flows shown in Qel Connect. An identifier shown
+          there is not a peer-to-peer identity credential or proof that a chat is cryptographically
+          end-to-end encrypted.
         </p>
       </DocsSection>
     </DocsShell>

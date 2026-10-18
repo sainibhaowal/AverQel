@@ -69,6 +69,37 @@ describe("provider form validation", () => {
     );
   });
 
+  it("uses a directional sweep for the waiting-for-token state", async () => {
+    const catalogEntry: ProviderCatalogEntry = {
+      provider_type: "openai",
+      display_name: "OpenAI",
+      auth_modes: ["api_key"],
+      supports_chat: true,
+      supports_embeddings: true,
+      supports_model_listing: true,
+      supports_model_install: false,
+      supports_account_linking: false,
+      is_local: false,
+    };
+
+    render(
+      <ProviderForm
+        catalogEntry={catalogEntry}
+        provider={null}
+        models={[]}
+        kind="chat"
+        saving={false}
+        busyAction={null}
+        onCancel={() => {}}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const badge = await screen.findByText(/waiting for token/i);
+    expect(badge).toHaveClass("waiting-token-sweep");
+    expect(badge).not.toHaveClass("animate-pulse");
+  });
+
   it("discovers Cline models and allows selecting a discovered model", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const discoveredModel: ProviderModel = {

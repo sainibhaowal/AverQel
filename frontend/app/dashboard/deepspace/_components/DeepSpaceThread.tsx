@@ -33,12 +33,15 @@ import { createPortal } from "react-dom";
 
 import { fetchWithAuth } from "@/lib/api";
 import { exportToDocx, exportToMarkdown, exportToPDF } from "@/lib/exportUtils";
+import DeepSpaceWormhole from "@/app/components/ui/DeepSpaceWormhole";
 
 import DeepSpaceThinkingPanel from "./DeepSpaceThinkingPanel";
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
 import DeepSpaceMediaArtifacts from "./DeepSpaceMediaArtifacts";
+import DeepSpaceRichContent from "./DeepSpaceRichContent";
+import type { GalleryAssetRef, GalleryAssetRetention } from "../../query/_components/GalleryBlock";
 
-import type { DeepSpaceMessage } from "../_lib/deepspace-stream";
+import type { DeepSpaceMessage, StructuredBlock } from "../_lib/deepspace-stream";
 
 const LARGE_THREAD_THRESHOLD = 28;
 const RECENT_MESSAGE_WINDOW = 14;
@@ -149,6 +152,17 @@ interface DeepSpaceThreadProps {
   onResolveApproval?: (approvalId: string, decision: "approved" | "denied") => Promise<void>;
   onSubmitUserQuestion?: (answer: string) => Promise<void>;
   onRetryFailedTurn?: (requestId: string) => void;
+  onVisualBlockChange?: (
+    messageId: string,
+    block: StructuredBlock,
+  ) => void | boolean | Promise<void | boolean>;
+  onSaveVisualArtifact?: (block: StructuredBlock) => void | Promise<void>;
+  onImportGalleryAsset?: (
+    messageId: string,
+    url: string,
+    retention: GalleryAssetRetention,
+  ) => Promise<GalleryAssetRef>;
+  onRetainGalleryAsset?: (messageId: string, fileId: string) => Promise<GalleryAssetRef>;
   retryableRequestIds?: ReadonlySet<string>;
   retryingRequestId?: string | null;
   retryActionDisabled?: boolean;
@@ -355,16 +369,14 @@ function QuestionCard({
   );
 }
 
-function ResponseLoadingDots() {
+function ResponseLoadingIndicator() {
   return (
     <div
-      className="deepspace-response-dots"
+      className="deepspace-response-indicator"
       role="status"
       aria-label="AverQel is preparing a response"
     >
-      <span className="deepspace-response-dot" aria-hidden="true" />
-      <span className="deepspace-response-dot" aria-hidden="true" />
-      <span className="deepspace-response-dot" aria-hidden="true" />
+      <DeepSpaceWormhole size={24} />
       <span className="sr-only">Preparing response…</span>
     </div>
   );
@@ -382,6 +394,10 @@ const MessageBubble = memo(
     onResolveApproval,
     onSubmitUserQuestion,
     onRetryFailedTurn,
+    onVisualBlockChange,
+    onSaveVisualArtifact,
+    onImportGalleryAsset,
+    onRetainGalleryAsset,
     canRetryFailedPrompt,
     isRetryingFailedPrompt,
     isRetryActionDisabled,
@@ -400,6 +416,17 @@ const MessageBubble = memo(
     onResolveApproval?: (approvalId: string, decision: "approved" | "denied") => Promise<void>;
     onSubmitUserQuestion?: (answer: string) => Promise<void>;
     onRetryFailedTurn?: (requestId: string) => void;
+    onVisualBlockChange?: (
+      messageId: string,
+      block: StructuredBlock,
+    ) => void | boolean | Promise<void | boolean>;
+    onSaveVisualArtifact?: (block: StructuredBlock) => void | Promise<void>;
+    onImportGalleryAsset?: (
+      messageId: string,
+      url: string,
+      retention: GalleryAssetRetention,
+    ) => Promise<GalleryAssetRef>;
+    onRetainGalleryAsset?: (messageId: string, fileId: string) => Promise<GalleryAssetRef>;
     canRetryFailedPrompt: boolean;
     isRetryingFailedPrompt: boolean;
     isRetryActionDisabled: boolean;
@@ -756,7 +783,7 @@ const MessageBubble = memo(
       );
     }
 
-    // The response dots are only a first-frame placeholder. Thinking text,
+    // The response indicator is only a first-frame placeholder. Thinking text,
     // timeline entries, tool activity, or the answer itself all mean the
     // stream has started, so the placeholder must disappear immediately.
     const hasAssistantProgress = Boolean(
@@ -765,7 +792,7 @@ const MessageBubble = memo(
       message.agentSteps?.length ||
       message.timeline?.length,
     );
-    const showResponseDots = message.status === "streaming" && !hasAssistantProgress;
+    const showResponseIndicator = message.status === "streaming" && !hasAssistantProgress;
 
     return (
       <article
@@ -778,9 +805,9 @@ const MessageBubble = memo(
             <div className="text-primary/80 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5">
               <Bot size={16} />
             </div>
-            {showResponseDots ? (
+            {showResponseIndicator ? (
               <div className="flex h-8 items-center justify-start">
-                <ResponseLoadingDots />
+                <ResponseLoadingIndicator />
               </div>
             ) : null}
           </div>
@@ -914,12 +941,40 @@ const MessageBubble = memo(
                 >
                   {pendingQuestion ? null : message.status === "streaming" &&
                     message.content.trim() ? (
-                    <DeepSpaceMarkdownRenderer content={message.content} streaming={true} />
+                    <DeepSpaceMarkdownRenderer
+                      content={message.content}
+                      streaming={true}
+                      messageId={message.id}
+                      onVisualBlockChange={onVisualBlockChange}
+                      onSaveVisualArtifact={onSaveVisualArtifact}
+                      onImportGalleryAsset={onImportGalleryAsset}
+                      onRetainGalleryAsset={onRetainGalleryAsset}
+                    />
                   ) : message.status !== "streaming" ? (
-                    <DeepSpaceMarkdownRenderer content={message.content} />
+                    <DeepSpaceMarkdownRenderer
+                      content={message.content}
+                      messageId={message.id}
+                      onVisualBlockChange={onVisualBlockChange}
+                      onSaveVisualArtifact={onSaveVisualArtifact}
+                      onImportGalleryAsset={onImportGalleryAsset}
+                      onRetainGalleryAsset={onRetainGalleryAsset}
+                    />
                   ) : null}
                 </motion.div>
               </AnimatePresence>
+
+              {message.blocks?.length ? (
+                <DeepSpaceRichContent
+                  blocks={message.blocks}
+                  content={message.content}
+                  isStreaming={message.status === "streaming"}
+                  messageId={message.id}
+                  onVisualBlockChange={onVisualBlockChange}
+                  onSaveVisualArtifact={onSaveVisualArtifact}
+                  onImportGalleryAsset={onImportGalleryAsset}
+                  onRetainGalleryAsset={onRetainGalleryAsset}
+                />
+              ) : null}
 
               {message.memoryUsed?.length ? (
                 <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.04] px-3 py-2 text-[10px] text-cyan-100/70">
@@ -1460,6 +1515,10 @@ export default function DeepSpaceThread({
   onResolveApproval,
   onSubmitUserQuestion,
   onRetryFailedTurn,
+  onVisualBlockChange,
+  onSaveVisualArtifact,
+  onImportGalleryAsset,
+  onRetainGalleryAsset,
   retryableRequestIds = EMPTY_RETRYABLE_REQUEST_IDS,
   retryingRequestId = null,
   retryActionDisabled = false,
@@ -1552,10 +1611,7 @@ export default function DeepSpaceThread({
                   aria-hidden="true"
                   className="deepspace-welcome-status col-start-1 row-start-1"
                 >
-                  <span className="deepspace-welcome-status-orbit">
-                    <span className="deepspace-welcome-status-dot" />
-                    <span className="deepspace-welcome-status-dot deepspace-welcome-status-dot--secondary" />
-                  </span>
+                  <DeepSpaceWormhole size={24} />
                   <AnimatePresence initial={false} mode="wait">
                     <motion.span
                       key={welcomeStatusRotation}
@@ -1680,6 +1736,10 @@ export default function DeepSpaceThread({
             onResolveApproval={onResolveApproval}
             onSubmitUserQuestion={onSubmitUserQuestion}
             onRetryFailedTurn={onRetryFailedTurn}
+            onVisualBlockChange={onVisualBlockChange}
+            onSaveVisualArtifact={onSaveVisualArtifact}
+            onImportGalleryAsset={onImportGalleryAsset}
+            onRetainGalleryAsset={onRetainGalleryAsset}
             canRetryFailedPrompt={
               message.status === "error" &&
               Boolean(message.clientRequestId && retryableRequestIds.has(message.clientRequestId))

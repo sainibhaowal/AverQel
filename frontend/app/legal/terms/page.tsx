@@ -5,60 +5,102 @@ export default function TermsPage() {
   return (
     <PolicyLayout
       eyebrow="Terms Of Service"
-      title="The operating rules for the AverQel independent project."
-      intro="Effective 15 August 2026. AverQel is an independently operated software project. By using it, you agree to use the service lawfully, protect your account, and understand the limits of AI-assisted output and connected services."
+      title="AverQel Terms of Service"
+      intro="Last reviewed 17 October 2026. AverQel is developed by a solo developer and is not a separate registered company. The individual or entity operating a hosted instance must identify themselves and its deployment-specific providers before public launch."
     >
-      <PolicySection title="Account responsibility">
+      <PolicySection title="Your account and security">
         <p>
-          You are responsible for the credentials, devices, provider accounts, files, prompts, and
-          instructions used with your account. Enable available account security controls and do not
-          share credentials or authorization links.
+          Provide accurate account information, protect your sign-in credentials and devices, and
+          use available security controls. You are responsible for activity performed through your
+          account, subject to rights and protections that apply under local law.
         </p>
       </PolicySection>
 
       <PolicySection title="Acceptable use">
         <p>
-          You must not use AverQel for unlawful activity, malware, credential theft, unauthorized
-          access, privacy invasion, unlawful surveillance, harassment, abusive automation, malicious
-          uploads, attempts to bypass access controls, or activity that harms the service or another
-          user.
+          Use AverQel lawfully and only with content and connections you are authorized to use. Do
+          not use it for malware, credential theft, unauthorized access, privacy invasion, unlawful
+          surveillance, harassment, deceptive impersonation, abusive automation, malicious uploads,
+          or attempts to bypass access controls or harm another person or the service. See the
+          <a className="underline" href="/legal/acceptable-use">
+            Acceptable Use Policy
+          </a>
+          .
         </p>
       </PolicySection>
 
-      <PolicySection title="User content and AI output">
+      <PolicySection title="Your content and service processing">
         <p>
-          You retain rights in content you submit, subject to rights belonging to other people. You
-          grant AverQel the limited permission needed to store, transform, retrieve, transmit, and
-          display that content to operate the features you request. You are responsible for having
-          the right to upload, share, and process it.
+          You retain rights in content you submit, subject to rights belonging to others. You permit
+          AverQel to store, transform, retrieve, transmit, and display that content as needed to
+          provide the features you request, protect the service, and respond to authorized support
+          or security work. You are responsible for having the rights and permissions needed to
+          submit or share it.
         </p>
+        <p>
+          Some staff workflows can read submitted content: assigned Support Managers can read
+          support tickets and attachments across workspaces; assigned Feedback Managers can read
+          submitted feedback; and Qel Connect moderators can review reports within their assigned
+          workspace. Support access also requires platform-admin allowlisting. These workflows are
+          described in the{" "}
+          <a className="underline" href="/legal/privacy">
+            Privacy Policy
+          </a>
+          .
+        </p>
+      </PolicySection>
+
+      <PolicySection title="External providers and connected services">
+        <p>
+          When you configure an AI, search, voice, embedding, reranking, email, or MCP-connected
+          service, the information necessary for your selected request may be sent to it. Those
+          services have their own terms, privacy practices, availability, and limits. Review their
+          terms and the data you choose to send. You authorize external actions only through enabled
+          connections and applicable approval controls.
+        </p>
+      </PolicySection>
+
+      <PolicySection title="AI output and availability">
         <p>
           AI output, search results, extracted text, citations, and connected-service results may be
-          incomplete or incorrect. Review outputs before relying on them, especially for legal,
-          medical, financial, security, or other high-impact decisions.
+          incomplete or incorrect. Review them before relying on them, especially for legal,
+          medical, financial, safety, or other high-impact decisions. Service availability depends
+          on the hosted deployment and external providers.
         </p>
       </PolicySection>
 
-      <PolicySection title="Connected services and availability">
+      <PolicySection title="Account controls, suspension, and deletion">
         <p>
-          AI providers, web services, and MCP-connected apps are separate services. Their
-          availability, limits, policies, and processing are outside AverQel&apos;s control. You
-          authorize an external action only when you enable the connection and satisfy the
-          applicable policy or approval requirement.
+          You can stop using the service and use available privacy settings to export or delete your
+          account. Account deletion removes account-owned records; object-storage cleanup may
+          continue in the background, and security records or deployment backups can follow separate
+          retention periods. An administrator workspace purge is a different operation. It requires
+          approval from a second, different authorized administrator and does not delete user
+          accounts, provider settings, support records, feedback records, or audit records. Read the{" "}
+          <a className="underline" href="/legal/data-retention">
+            Retention &amp; Deletion notice
+          </a>{" "}
+          before requesting deletion.
+        </p>
+        <p>
+          Access may be restricted to respond to abuse, security risks, legal requirements, or a
+          serious service incident. Where appropriate and permitted, the operator will provide
+          notice and a support route.
         </p>
       </PolicySection>
 
-      <PolicySection title="Suspension, deletion, and changes">
+      <PolicySection title="Changes and contact">
         <p>
-          AverQel may restrict or suspend access when needed to respond to abuse, security risk,
-          legal requirements, or a serious service-impacting issue. You may stop using the service
-          and use available account deletion controls. Deletion may require asynchronous cleanup and
-          may not immediately remove encrypted backups, security records, or legally required data.
-        </p>
-        <p>
-          Features, infrastructure, and these terms may change. Material changes will be announced
-          through the product or website when reasonably practicable. The Support Centre is the
-          current contact route for questions about these terms.
+          Features and these terms may change. Material changes should be announced before they
+          apply where required by law. The hosted service is operated by Ravinder Singh —
+          Independent Developer, AverQel Independent Project. Questions about these terms can be
+          sent through the public Contact the developer form on the landing page or the Support
+          Centre for signed-in users. The form requires the deployment to configure SMTP delivery.
+          Direct mail sent to the contact address is forwarded only when the deployment has
+          configured Resend inbound processing. A postal address and deployment-specific providers
+          are not specified here and must be confirmed for the hosted service. This page was
+          reviewed 17 October 2026; a review date does not mean the hosted service has published,
+          adopted, or notified users about this revision.
         </p>
       </PolicySection>
     </PolicyLayout>

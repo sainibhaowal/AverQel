@@ -4,7 +4,7 @@ export default function DeepSpaceLibraryDocsPage() {
   return (
     <DocsShell
       title="DeepSpace Library"
-      intro="DeepSpace Library holds working files associated with DeepSpace conversations and analysis. It is separate from Documents Hub, which manages the user’s source document collection."
+      intro="DeepSpace Library holds working files associated with DeepSpace conversations and analysis. It is separate from Documents Hub, which manages the user’s source documents."
     >
       <DocsSection title="What belongs here">
         <p>

@@ -115,7 +115,7 @@ services:
       inference:
         condition: service_healthy
     ports:
-      - "1000:1000"
+      - "127.0.0.1:1000:1000"
     expose:
       - "1000"
     healthcheck:
@@ -224,7 +224,6 @@ services:
       - "1030"
 
   worker:
-    container_name: averqel-worker
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -277,6 +276,16 @@ services:
       - research_renderer
       - sandbox_internal
 
+  deepspace-control-worker:
+    extends:
+      service: worker
+    container_name: averqel-deepspace-control-worker
+    environment:
+      AKS_WORKER_QUEUES: deepspace_control
+      AKS_WORKER_CONCURRENCY: ${AKS_DEEPSPACE_CONTROL_WORKER_CONCURRENCY:-1}
+    mem_limit: 512m
+    cpus: 0.5
+
   maintenance-worker:
     extends:
       service: worker
@@ -313,12 +322,21 @@ services:
       service: worker
     container_name: averqel-library-worker
     environment:
-      AKS_WORKER_QUEUES: library_uploads,media_derivatives
+      AKS_WORKER_QUEUES: library_uploads
       AKS_WORKER_CONCURRENCY: ${AKS_LIBRARY_WORKER_CONCURRENCY:-1}
-    # A single import cannot starve API, chat, or ingestion workers.  This is
-    # deliberately above the 25 MiB upload ceiling to leave room for safe
-    # extraction, malware scanning, and archive handling.
-    mem_limit: 768m
+    # This worker only assembles and durably publishes uploaded bytes. Slow
+    # parsers and OCR run in the separate library-processing-worker.
+    mem_limit: 512m
+    cpus: 1.0
+
+  library-processing-worker:
+    extends:
+      service: worker
+    container_name: averqel-library-processing-worker
+    environment:
+      AKS_WORKER_QUEUES: library_extraction,media_derivatives
+      AKS_WORKER_CONCURRENCY: ${AKS_LIBRARY_PROCESSING_WORKER_CONCURRENCY:-1}
+    mem_limit: 1024m
     cpus: 1.0
 
   dataset-worker:

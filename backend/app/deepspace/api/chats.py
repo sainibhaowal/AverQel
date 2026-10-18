@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
+from time import monotonic
 from typing import Annotated, Any
 
 import redis.asyncio as aioredis
@@ -61,6 +63,7 @@ from app.deepspace.schemas.chats import (
     QueueTurnRequest,
     RegenerateRequest,
     RetryFailedTurnRequest,
+    VisualBlockUpdateRequest,
 )
 from app.deepspace.services.chat_service import DeepSpaceChatService, sse
 from app.deepspace.services.context_cache import DeepSpaceContextCache
@@ -88,6 +91,7 @@ from app.deepspace.services.turn_queue import (
 from app.deepspace.workers.tasks import dispatch_deepspace_turn_queue, run_deepspace_task
 from app.platform.database.session import get_db, managed_db_session, set_db_tenant_context
 from app.providers.services.reasoning_capabilities import normalize_reasoning_effort_value
+from app.query.services.visual_blocks import validate_visual_block_payload
 from app.realtime.event_bus import publish_event
 from app.system.models.storage_lifecycle import StorageArchiveManifest, StorageLifecycleItem
 from app.system.services.cache_service import get_redis_client
@@ -103,6 +107,45 @@ SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
+
+
+async def _record_cancellation_marker(
+    *,
+    settings: Settings,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    client_request_id: str,
+) -> None:
+    """Best-effort fast cancellation signal for a live provider stream.
+
+    The durable run and queue records are authoritative. Redis makes an
+    in-flight provider read react faster, but an unavailable cache must never
+    make a successfully persisted Stop request look like an HTTP failure.
+    """
+    client = None
+    try:
+        client = aioredis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=0.5,
+            socket_timeout=0.5,
+        )
+        await client.set(
+            cancellation_key(tenant_id, user_id, client_request_id),
+            "1",
+            ex=60 * 60 * 24,
+        )
+    except Exception:  # noqa: BLE001 - durable cancellation remains authoritative
+        logger.warning(
+            "DeepSpace cancellation marker could not be written; worker will poll durable state",
+            exc_info=True,
+        )
+    finally:
+        if client is not None:
+            try:
+                await client.aclose()
+            except Exception:  # noqa: BLE001 - best-effort connection cleanup
+                logger.debug("Unable to close DeepSpace cancellation Redis client", exc_info=True)
 
 
 def _attachment_file_ids(value: Any) -> list[str]:
@@ -280,6 +323,240 @@ def _serialize_message(message: Any) -> MessageSchema:
         active_version_index=(active_version.version_index if active_version is not None else 1),
         version_count=max(len(versions), 1),
         versions=versions,
+    )
+
+
+_VISUAL_FENCE_CONTENT_RE = re.compile(
+    r"(?P<open>```(?P<kind>chart|card|graph|gallery)[^\r\n]*\r?\n)"
+    r"(?P<body>[\s\S]*?)(?P<close>\r?\n```)",
+    re.IGNORECASE,
+)
+
+
+def _replace_visual_fence_content(content: str, *, block_id: str, block: dict[str, Any]) -> str:
+    """Refresh the Markdown source for a visual edit so chat reloads its model."""
+    source_markdown = block.get("source_markdown")
+
+    def replace(match: re.Match[str]) -> str:
+        body = match.group("body")
+        try:
+            parsed = json.loads(body)
+        except (TypeError, ValueError):
+            return match.group(0)
+        if not isinstance(parsed, dict):
+            return match.group(0)
+        id_matches = parsed.get("id") == block_id or parsed.get("block_id") == block_id
+        source_matches = (
+            isinstance(source_markdown, str) and body.strip() == source_markdown.strip()
+        )
+        if not id_matches and not source_matches:
+            return match.group(0)
+        updated = dict(block)
+        updated["id"] = block_id
+        updated["block_id"] = block_id
+        # Once the canonical id is present, subsequent edits find the block by
+        # id. Keeping the original source string would become stale.
+        updated["source_markdown"] = None
+        return f"{match.group('open')}{json.dumps(updated, ensure_ascii=False, indent=2)}{match.group('close')}"
+
+    return _VISUAL_FENCE_CONTENT_RE.sub(replace, content, count=1)
+
+
+@router.patch(
+    "/{conversation_id}/messages/{message_id}/visual-block",
+    response_model=MessageSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def update_visual_block(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    payload: VisualBlockUpdateRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> MessageSchema:
+    """Persist an interactive chart/diagram/card edit as a message version.
+
+    Visual edits use the same immutable message-version mechanism as text edits.
+    The optional revision guard prevents an older browser tab from overwriting a
+    newer edit after a reload or cross-device change.
+    """
+
+    try:
+        validate_visual_block_payload(payload.block)
+    except ValueError as exc:
+        raise ApiError(code="INVALID_REQUEST", message=str(exc), status_code=422) from exc
+    repo = DeepSpaceChatRepository(db)
+    conversation = repo.get_conversation(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        user_id=auth.user_id,
+        kind=CONVERSATION_KIND,
+        for_update=True,
+    )
+    if conversation is None:
+        raise ApiError(code="MESSAGE_NOT_FOUND", message="Message not found.", status_code=404)
+    message = repo.get_message_by_conversation(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        user_id=auth.user_id,
+        message_id=message_id,
+        kind=CONVERSATION_KIND,
+    )
+    if message is None:
+        raise ApiError(code="MESSAGE_NOT_FOUND", message="Message not found.", status_code=404)
+    if message.role != "assistant":
+        raise ApiError(
+            code="INVALID_MESSAGE_ROLE",
+            message="Only assistant visual blocks can be edited.",
+            status_code=400,
+        )
+    metadata = dict(message.metadata_json or {})
+    stored = metadata.get("visual_blocks")
+    visual_blocks = dict(stored) if isinstance(stored, dict) else {}
+    current = visual_blocks.get(payload.block_id)
+    current_record = dict(current) if isinstance(current, dict) else {}
+    current_revision = int(current_record.get("revision") or 0)
+    if payload.expected_revision is not None and payload.expected_revision != current_revision:
+        raise ApiError(
+            code="VISUAL_BLOCK_EDIT_CONFLICT",
+            message="This visual block changed in another session. Reload and apply your edit again.",
+            status_code=409,
+            details={"revision": current_revision, "block_id": payload.block_id},
+        )
+    next_revision = current_revision + 1
+    previous_history = current_record.get("history")
+    history = list(previous_history) if isinstance(previous_history, list) else []
+    history.append({"revision": next_revision, "source": "chat", "at": str(monotonic())})
+    next_block = {
+        **payload.block,
+        "id": payload.block.get("id") or payload.block_id,
+        "block_id": payload.block_id,
+        "revision": next_revision,
+        "schema_version": int(payload.block.get("schema_version") or 1),
+        "history": history,
+    }
+    visual_blocks[payload.block_id] = {
+        "revision": next_revision,
+        "schema_version": int(payload.block.get("schema_version") or 1),
+        "block": next_block,
+        "history": history,
+    }
+    next_metadata = {**metadata, "visual_blocks": visual_blocks}
+    content = (
+        message.active_version.content if message.active_version is not None else message.content
+    )
+    content = _replace_visual_fence_content(
+        content,
+        block_id=payload.block_id,
+        block=next_block,
+    )
+    updated = repo.create_message_version(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        user_id=auth.user_id,
+        content=content,
+        source_type="visual_edit",
+        activate=True,
+        metadata_json=next_metadata,
+    )
+    if updated is None:
+        raise ApiError(code="MESSAGE_NOT_FOUND", message="Message not found.", status_code=404)
+    db.commit()
+    refreshed = repo.get_message_by_conversation(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        kind=CONVERSATION_KIND,
+    )
+    if refreshed is None:
+        raise ApiError(code="MESSAGE_NOT_FOUND", message="Message not found.", status_code=404)
+    await _publish_conversation_event(
+        auth=auth,
+        event_type="conversation.visual_block_updated",
+        conversation_id=conversation_id,
+        data={
+            "message_id": str(message_id),
+            "block_id": payload.block_id,
+            "revision": next_revision,
+        },
+    )
+    return _serialize_message(refreshed)
+
+
+@router.patch(
+    "/{conversation_id}/visual-block",
+    response_model=MessageSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def update_visual_block_by_id(
+    conversation_id: uuid.UUID,
+    payload: VisualBlockUpdateRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> MessageSchema:
+    """Update a visual block when a note/editor only knows its stable block id.
+
+    The lookup is owner and tenant scoped, and the same revision guard used by
+    the message-addressed endpoint prevents stale browser tabs from winning.
+    """
+    repo = DeepSpaceChatRepository(db)
+    conversation = repo.get_conversation(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        user_id=auth.user_id,
+        kind=CONVERSATION_KIND,
+        for_update=True,
+    )
+    if conversation is None:
+        raise ApiError(
+            code="VISUAL_BLOCK_NOT_FOUND",
+            message="The visual block is no longer available in this conversation.",
+            status_code=404,
+        )
+    _conversation_messages = repo.get_messages(
+        tenant_id=auth.tenant_id,
+        conversation_id=conversation_id,
+        user_id=auth.user_id,
+        kind=CONVERSATION_KIND,
+    )
+    for item in reversed(list(_conversation_messages)):
+        if item.role != "assistant":
+            continue
+        metadata = item.metadata_json if isinstance(item.metadata_json, dict) else {}
+        stored = metadata.get("visual_blocks")
+        if isinstance(stored, dict) and payload.block_id in stored:
+            return await update_visual_block(
+                conversation_id=conversation_id,
+                message_id=item.id,
+                payload=payload,
+                auth=auth,
+                db=db,
+            )
+        active = item.active_version.content if item.active_version is not None else item.content
+        structured_blocks = metadata.get("blocks")
+        has_structured_block = isinstance(structured_blocks, list) and any(
+            isinstance(block, dict)
+            and (block.get("id") == payload.block_id or block.get("block_id") == payload.block_id)
+            for block in structured_blocks
+        )
+        source_markdown = payload.block.get("source_markdown")
+        source_is_present = isinstance(source_markdown, str) and source_markdown.strip() in str(
+            active
+        )
+        if has_structured_block or source_is_present or payload.block_id in str(active):
+            return await update_visual_block(
+                conversation_id=conversation_id,
+                message_id=item.id,
+                payload=payload,
+                auth=auth,
+                db=db,
+            )
+    raise ApiError(
+        code="VISUAL_BLOCK_NOT_FOUND",
+        message="The visual block is no longer available in this conversation.",
+        status_code=404,
     )
 
 
@@ -704,7 +981,10 @@ async def get_chat_history(
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> ChatHistoryResponse:
-    from app.deepspace.integrations.client_proxy import client_proxy_registry
+    from app.deepspace.integrations.client_proxy import (
+        INTERACTIVE_STORAGE_RPC_TIMEOUT_SECONDS,
+        client_proxy_registry,
+    )
 
     proxied_messages: list[MessageSchema] | None = None
     if client_proxy_registry.is_storage_connected(str(auth.tenant_id), str(auth.user_id)):
@@ -714,6 +994,7 @@ async def get_chat_history(
                 str(auth.user_id),
                 "db.chats.get_chat_history",
                 {"conversation_id": str(conversation_id), "user_id": str(auth.user_id)},
+                timeout=INTERACTIVE_STORAGE_RPC_TIMEOUT_SECONDS,
                 channel="storage",
             )
             proxied_messages = []
@@ -1079,16 +1360,6 @@ async def cancel_deepspace_chat(
         request_id = str(payload.get("client_request_id") or "").strip()
     except Exception:  # noqa: BLE001, B110 - malformed optional JSON is treated as no request id
         request_id = ""
-    if request_id:
-        cancel_client = aioredis.from_url(settings.redis_url, decode_responses=True)
-        try:
-            await cancel_client.set(
-                cancellation_key(auth.tenant_id, auth.user_id, request_id),
-                "1",
-                ex=60 * 60 * 24,
-            )
-        finally:
-            await cancel_client.close()
     cancelled = DeepSpaceRuntimeStore(db).request_cancel(
         tenant_id=auth.tenant_id,
         user_id=auth.user_id,
@@ -1104,17 +1375,30 @@ async def cancel_deepspace_chat(
             )
             or cancelled
         )
+    if request_id:
+        await _record_cancellation_marker(
+            settings=settings,
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            client_request_id=request_id,
+        )
     if cancelled:
         # This is harmless while a worker is still running (the active-run
         # guard prevents a second claim), but it is required when cancellation
         # releases a paused approval/question turn whose worker already ended.
-        dispatch_deepspace_turn_queue.apply_async(
-            kwargs={
-                "tenant_id": str(auth.tenant_id),
-                "user_id": str(auth.user_id),
-                "conversation_id": str(conversation_id),
-            }
-        )
+        try:
+            dispatch_deepspace_turn_queue.apply_async(
+                kwargs={
+                    "tenant_id": str(auth.tenant_id),
+                    "user_id": str(auth.user_id),
+                    "conversation_id": str(conversation_id),
+                }
+            )
+        except Exception:  # noqa: BLE001 - persisted worker sees the cancellation flag
+            logger.exception(
+                "DeepSpace cancellation dispatch failed after durable cancellation",
+                extra={"conversation_id": str(conversation_id)},
+            )
     return Response(
         status_code=204,
         headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"},
@@ -1132,15 +1416,6 @@ async def cancel_queued_deepspace_run(
     db: Session = Depends(get_db),
 ) -> Response:
     """Cancel a queued run before its worker has created a conversation run row."""
-    client = aioredis.from_url(settings.redis_url, decode_responses=True)
-    try:
-        await client.set(
-            cancellation_key(auth.tenant_id, auth.user_id, client_request_id),
-            "1",
-            ex=60 * 60 * 24,
-        )
-    finally:
-        await client.close()
     queue_store = DeepSpaceTurnQueueStore(db)
     conversation_id = queue_store.conversation_id_for_request_id(
         tenant_id=auth.tenant_id,
@@ -1152,14 +1427,26 @@ async def cancel_queued_deepspace_run(
         user_id=auth.user_id,
         client_request_id=client_request_id,
     )
+    await _record_cancellation_marker(
+        settings=settings,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        client_request_id=client_request_id,
+    )
     if cancelled and conversation_id is not None:
-        dispatch_deepspace_turn_queue.apply_async(
-            kwargs={
-                "tenant_id": str(auth.tenant_id),
-                "user_id": str(auth.user_id),
-                "conversation_id": str(conversation_id),
-            }
-        )
+        try:
+            dispatch_deepspace_turn_queue.apply_async(
+                kwargs={
+                    "tenant_id": str(auth.tenant_id),
+                    "user_id": str(auth.user_id),
+                    "conversation_id": str(conversation_id),
+                }
+            )
+        except Exception:  # noqa: BLE001 - queue cancellation is already durable
+            logger.exception(
+                "DeepSpace queued cancellation dispatch failed after durable cancellation",
+                extra={"conversation_id": str(conversation_id)},
+            )
     return Response(
         status_code=204,
         headers={"X-DeepSpace-Cancel-Requested": "1" if cancelled else "0"},
@@ -1220,8 +1507,6 @@ def get_deepspace_queue_state(
         user_id=auth.user_id,
         conversation_id=conversation_id,
     )
-    if active_request_id is None and not state.paused:
-        active_request_id = next_request_id
     return QueueStateSchema(
         paused=state.paused,
         reason=state.reason,
@@ -1314,11 +1599,20 @@ def resume_deepspace_queue(
             user_id=auth.user_id,
             conversation_id=conversation_id,
         )
+    active_request_id = queue_store.active_request_id(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    ) or DeepSpaceRuntimeStore(db).active_request_id(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
     return QueueStateSchema(
         paused=state.paused,
         reason=state.reason,
         failed_request_id=state.failed_request_id,
-        active_request_id=next_request_id,
+        active_request_id=active_request_id,
         paused_at=state.paused_at,
     )
 
@@ -1595,7 +1889,12 @@ def steer_deepspace_queued_turn(
     )
     if turn is None:
         raise ApiError(
-            code="QUEUE_TURN_NOT_FOUND", message="Queued message not found.", status_code=404
+            code="QUEUE_TURN_NOT_EDITABLE",
+            message=(
+                "This message has already started or is no longer pending. "
+                "Refresh the queue before steering it."
+            ),
+            status_code=409,
         )
     queue_store = DeepSpaceTurnQueueStore(db)
     if queue_store.state(
@@ -1608,13 +1907,11 @@ def steer_deepspace_queued_turn(
             user_id=auth.user_id,
             conversation_id=conversation_id,
         )
-        dispatch_deepspace_turn_queue.apply_async(
-            kwargs={
-                "tenant_id": str(auth.tenant_id),
-                "user_id": str(auth.user_id),
-                "conversation_id": str(conversation_id),
-            }
-        )
+    _dispatch_deepspace_queue(
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+    )
     return QueuedTurnSchema.model_validate(turn)
 
 
@@ -2193,45 +2490,71 @@ async def _stream_deepspace_chat_payload(
                     )
                     return
 
+            async def read_replay() -> list[tuple[int, str]]:
+                """Read durable gaps without holding a DB session open."""
+                if conversation_id is None:
+                    return []
+                # PostgreSQL is the replay source of truth. Materialize plain
+                # tuples while the session is open; ORM rows are detached when
+                # managed_db_session() exits.
+                with managed_db_session() as replay_db:
+                    stored = load_events(
+                        replay_db,
+                        tenant_id=auth.tenant_id,
+                        user_id=auth.user_id,
+                        conversation_id=conversation_id,
+                        client_request_id=client_request_id,
+                        after_sequence=last_sequence,
+                    )
+                    replay_frames = frames_after(stored, after_sequence=last_sequence)
+                return replay_frames
+
             terminal = False
+            last_replay_at = 0.0
+            replay_interval_seconds = 1.0
+            replay_frames = await read_replay()
+            last_replay_at = monotonic()
+            for sequence, frame in replay_frames:
+                last_sequence = sequence
+                yield frame
+                terminal = is_terminal_event(event_name_from_frame(frame))
+                if terminal:
+                    return
+
             while not terminal:
-                # PostgreSQL is the replay source of truth. This also closes
-                # the small race between queue submission and Redis subscribe.
-                if conversation_id is not None:
-                    # Do not keep a request-scoped database session open for
-                    # the lifetime of an SSE stream. Long-running responses
-                    # would otherwise reserve pool connections until the
-                    # model finishes, starving history and other UI requests.
-                    with managed_db_session() as replay_db:
-                        stored = load_events(
-                            replay_db,
-                            tenant_id=auth.tenant_id,
-                            user_id=auth.user_id,
-                            conversation_id=conversation_id,
-                            client_request_id=client_request_id,
-                            after_sequence=last_sequence,
-                        )
-                        # Materialize plain (sequence, frame) tuples while the
-                        # ORM session is still open. Accessing ORM attributes
-                        # after managed_db_session() rolls back and closes the
-                        # session raises DetachedInstanceError, which aborts the
-                        # SSE stream with no terminal event and makes the UI
-                        # report "The chat provider returned an empty stream."
-                        replay_frames = frames_after(stored, after_sequence=last_sequence)
+                # Redis is the low-latency path. A low-frequency durable gap
+                # check preserves recovery if Redis drops a message while the
+                # stream is otherwise quiet, without querying PostgreSQL for
+                # every provider chunk.
+                if (
+                    conversation_id is not None
+                    and monotonic() - last_replay_at >= replay_interval_seconds
+                ):
+                    replay_frames = await read_replay()
+                    last_replay_at = monotonic()
                     for sequence, frame in replay_frames:
                         last_sequence = sequence
                         yield frame
                         terminal = is_terminal_event(event_name_from_frame(frame))
                         if terminal:
-                            break
-                    if terminal:
-                        return
-
+                            return
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True,
                     timeout=1.0,
                 )
                 if message is None:
+                    if (
+                        conversation_id is not None
+                        and monotonic() - last_replay_at >= replay_interval_seconds
+                    ):
+                        replay_frames = await read_replay()
+                        last_replay_at = monotonic()
+                        for sequence, frame in replay_frames:
+                            last_sequence = sequence
+                            yield frame
+                            terminal = is_terminal_event(event_name_from_frame(frame))
+                            if terminal:
+                                return
                     yield ": keep-alive\n\n"
                     await asyncio.sleep(0)
                     continue
@@ -2241,6 +2564,18 @@ async def _stream_deepspace_chat_payload(
                 sequence, frame = decoded
                 if sequence <= last_sequence:
                     continue
+                if is_terminal_event(event_name_from_frame(frame)):
+                    # Terminal frames are published only after durable flush by
+                    # the worker. Replay any Redis gap before exposing the
+                    # terminal frame to the browser.
+                    replay_frames = await read_replay()
+                    last_replay_at = monotonic()
+                    for replay_sequence, replay_frame in replay_frames:
+                        last_sequence = replay_sequence
+                        yield replay_frame
+                        terminal = is_terminal_event(event_name_from_frame(replay_frame))
+                        if terminal:
+                            return
                 last_sequence = sequence
                 yield frame
                 terminal = is_terminal_event(event_name_from_frame(frame))

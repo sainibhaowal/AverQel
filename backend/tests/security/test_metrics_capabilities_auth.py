@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
-from tests.conftest import SeededUser
+from app.auth.models.user import User
+from app.auth.security import hash_password
+from app.core.config import get_settings
+from app.core.ids import generate_uuid7_with_fallback
+from app.platform.database.session import get_session_factory, set_db_tenant_context
+from app.query.models.query import Query
+from tests.conftest import SeededUser, _generate_test_collection_code
 
 
 def _login(client: TestClient, tenant_id: str, email: str, password: str) -> str:
@@ -61,6 +69,7 @@ def test_metrics_summary_accessible_for_admin(
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
 ) -> None:
     user = seed_user("metrics-admin-tenant", "admin@example.com", "StrongPass!1234", ("admin",))
+    get_settings().bootstrap_super_admin_emails = [user.email]
     token = _login(client, str(user.tenant_id), user.email, user.password)
 
     response = client.get(
@@ -78,6 +87,31 @@ def test_metrics_summary_accessible_for_admin(
     assert isinstance(body["api_requests_total"], int)
     assert isinstance(body["api_errors_total"], int)
     assert isinstance(body["db_query_count"], int)
+
+
+def test_metrics_summary_forbidden_for_admin_outside_platform_allowlist(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    user = seed_user(
+        "metrics-unlisted-admin-tenant",
+        "unlisted-admin@example.com",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    get_settings().bootstrap_super_admin_emails = ["different-owner@example.com"]
+    token = _login(client, str(user.tenant_id), user.email, user.password)
+
+    response = client.get(
+        "/api/v1/metrics/summary",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-Id": str(user.tenant_id),
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +167,106 @@ def test_analytics_dashboard_accessible_for_admin(
         },
     )
     assert response.status_code == 200
+    assert response.json()["suppressed"] is True
+    assert response.json()["total_queries"] is None
+
+
+def test_analytics_dashboard_uses_fixed_window_and_suppresses_small_daily_groups(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    admin = seed_user(
+        "analytics-window-tenant",
+        "analytics-window-admin@example.com",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    settings = get_settings()
+    settings.bootstrap_super_admin_emails = [admin.email]
+    now = datetime.now(UTC)
+    member_ids = [generate_uuid7_with_fallback() for _ in range(4)]
+
+    session = get_session_factory()()
+    try:
+        set_db_tenant_context(session, admin.tenant_id)
+        for index, member_id in enumerate(member_ids):
+            session.add(
+                User(
+                    id=member_id,
+                    tenant_id=admin.tenant_id,
+                    email=f"analytics-member-{index}@example.com",
+                    collection_code=_generate_test_collection_code(),
+                    password_hash=hash_password("UnusedStrongPass!1234"),
+                    is_active=True,
+                )
+            )
+        session.flush()
+        contributors = [admin.user_id, *member_ids]
+        for index, user_id in enumerate(contributors):
+            created_at = now - timedelta(days=31 if index == 4 else index + 1)
+            session.add(
+                Query(
+                    id=generate_uuid7_with_fallback(),
+                    tenant_id=admin.tenant_id,
+                    user_id=user_id,
+                    query_text="private query prompt",
+                    normalized_query="private query prompt",
+                    top_k=3,
+                    cache_hit=False,
+                    answer="private answer text",
+                    confidence=0.8,
+                    trace_id=str(uuid.uuid4()),
+                    shared_with=[],
+                    created_at=created_at,
+                )
+            )
+        session.commit()
+    finally:
+        session.rollback()
+        session.close()
+
+    token = _login(client, str(admin.tenant_id), admin.email, admin.password)
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-Id": str(admin.tenant_id),
+    }
+    response = client.get("/api/v1/analytics/dashboard", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["suppressed"] is True
+
+    session = get_session_factory()()
+    try:
+        set_db_tenant_context(session, admin.tenant_id)
+        session.add(
+            Query(
+                id=generate_uuid7_with_fallback(),
+                tenant_id=admin.tenant_id,
+                user_id=member_ids[-1],
+                query_text="private query prompt",
+                normalized_query="private query prompt",
+                top_k=3,
+                cache_hit=False,
+                answer="private answer text",
+                confidence=0.8,
+                trace_id=str(uuid.uuid4()),
+                shared_with=[],
+                created_at=now - timedelta(days=2),
+            )
+        )
+        session.commit()
+    finally:
+        session.rollback()
+        session.close()
+
+    response = client.get("/api/v1/analytics/dashboard", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["suppressed"] is False
+    assert payload["total_queries"] == 5
+    assert payload["volume_over_time"] == []
+    assert "user_id" not in response.text
+    assert "private query prompt" not in response.text
+    assert "private answer text" not in response.text
 
 
 # ---------------------------------------------------------------------------

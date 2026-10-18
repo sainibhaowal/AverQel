@@ -18,8 +18,15 @@ from app.deepspace.services.dataset_derivatives import (
     DatasetDerivativeService,
     safe_dataset_profile,
 )
-from app.deepspace.services.library_storage import LibraryStorageService, safe_archive_entries
-from app.deepspace.services.library_uploads import finalize_upload
+from app.deepspace.services.library_storage import (
+    LibraryStorageService,
+    safe_archive_entries,
+    safe_extraction_status,
+)
+from app.deepspace.services.library_uploads import (
+    _bounded_extraction_payload,
+    finalize_upload,
+)
 from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.platform.worker.celery_app import celery_app
 from app.system.services.metrics_service import (
@@ -36,10 +43,12 @@ logger = logging.getLogger(__name__)
     bind=True,
     name="deepspace.library_upload_finalize",
     queue="library_uploads",
+    max_retries=3,
+    acks_late=True,
+    reject_on_worker_lost=True,
 )  # type: ignore[misc]
 def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> str:
-    """Assemble chunks, create the normal Library file, and publish completion in PostgreSQL."""
-    del self
+    """Assemble and publish a Library file without holding locks during storage I/O."""
     settings = get_settings()
     parsed_upload_id = uuid.UUID(upload_id)
     parsed_tenant_id = uuid.UUID(tenant_id)
@@ -62,7 +71,27 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
         if upload.status == "cancelled":
             return "cancelled"
         if upload.status == "completed":
+            completed_file_id = upload.file_id
+            db.commit()
+            if completed_file_id is not None:
+                from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+
+                completed_file = db.execute(
+                    select(DeepSpaceWorkspaceFile).where(
+                        DeepSpaceWorkspaceFile.id == completed_file_id,
+                        DeepSpaceWorkspaceFile.tenant_id == parsed_tenant_id,
+                    )
+                ).scalar_one_or_none()
+                if completed_file is not None:
+                    _enqueue_library_file_processing(
+                        db,
+                        file=completed_file,
+                        tenant_id=tenant_id,
+                        parsed_tenant_id=parsed_tenant_id,
+                    )
+                    return str(completed_file.id)
             return "completed"
+        total_chunks = upload.total_chunks
         upload.status = "processing"
         upload.error_message = None
         db.commit()
@@ -72,13 +101,19 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
                 upload_id=parsed_upload_id,
                 chunk_index=index,
             )
-            for index in range(upload.total_chunks)
+            for index in range(total_chunks)
         ]
         payload = b"".join(chunks)
-        # Re-acquire the row lock after the potentially long storage read. A
-        # cancel request that arrived while chunks were being assembled must
-        # win before we create the final Library record. The lock is held
-        # through finalization so cancellation cannot race a completed commit.
+        # File storage is deliberately done without the upload row lock. Slow
+        # object storage or extraction must never block cancellation/status API
+        # calls on this transaction.
+        record = finalize_upload(
+            db,
+            settings=settings,
+            upload=upload,
+            payload=payload,
+            extract_content=False,
+        )
         upload = db.execute(
             select(DeepSpaceLibraryUpload)
             .where(
@@ -86,30 +121,65 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
                 DeepSpaceLibraryUpload.tenant_id == parsed_tenant_id,
             )
             .with_for_update()
+            .execution_options(populate_existing=True)
         ).scalar_one_or_none()
         if upload is None or upload.status == "cancelled":
+            stored_bucket = record.storage_bucket
+            stored_key = record.storage_key
+            db.rollback()
+            if stored_bucket and stored_key:
+                storage.delete_object(bucket=stored_bucket, object_key=stored_key)
             return "cancelled"
-        record = finalize_upload(db, settings=settings, upload=upload, payload=payload)
+        if upload.status == "completed":
+            stored_bucket = record.storage_bucket
+            stored_key = record.storage_key
+            existing_file_id = upload.file_id
+            db.rollback()
+            if stored_bucket and stored_key:
+                storage.delete_object(bucket=stored_bucket, object_key=stored_key)
+            return str(existing_file_id or "completed")
         upload.file_id = record.id
         upload.bytes_received = len(payload)
-        upload.received_chunks = list(range(upload.total_chunks))
+        upload.received_chunks = list(range(total_chunks))
         upload.status = "completed"
         db.commit()
-        if DatasetDerivativeService.supports(record.content_type):
-            profile_library_dataset.delay(file_id=str(record.id), tenant_id=tenant_id)
-        else:
-            profile_library_media.delay(file_id=str(record.id), tenant_id=tenant_id)
+        _enqueue_library_file_processing(
+            db,
+            file=record,
+            tenant_id=tenant_id,
+            parsed_tenant_id=parsed_tenant_id,
+        )
         return str(record.id)
     except Exception as exc:  # noqa: BLE001
         db.rollback()
-        if upload is not None and upload.status != "cancelled":
-            upload.status = "failed"
-            upload.error_message = str(exc)[:1000]
-            try:
+        if self.request.retries < self.max_retries:
+            increment_worker_retry(stage="deepspace_library_upload_finalize")
+            logger.warning(
+                "Library upload finalization retry scheduled",
+                extra={"upload_id": upload_id, "retry": self.request.retries + 1},
+                exc_info=True,
+            )
+            raise self.retry(exc=exc, countdown=min(30, 2 ** (self.request.retries + 1))) from exc
+        increment_worker_dead_letter(stage="deepspace_library_upload_finalize")
+        try:
+            current = db.execute(
+                select(DeepSpaceLibraryUpload)
+                .where(
+                    DeepSpaceLibraryUpload.id == parsed_upload_id,
+                    DeepSpaceLibraryUpload.tenant_id == parsed_tenant_id,
+                )
+                .with_for_update()
+            ).scalar_one_or_none()
+            if current is not None and current.status not in {"cancelled", "completed"}:
+                current.status = "failed"
+                current.error_message = "The file could not be stored. Please retry the upload."
                 db.commit()
-            except Exception:  # noqa: BLE001
-                db.rollback()
-        logger.exception("Library upload finalization failed", extra={"upload_id": upload_id})
+                upload = current
+        except Exception:  # noqa: BLE001
+            db.rollback()
+        logger.exception(
+            "Library upload finalization exhausted retries", extra={"upload_id": upload_id}
+        )
         raise
     finally:
         try:
@@ -129,6 +199,203 @@ def finalize_library_upload(self: Task, *, upload_id: str, tenant_id: str) -> st
             db.execute(text("RESET ROLE"))
             db.commit()
         except Exception:  # noqa: BLE001
+            db.rollback()
+        db.close()
+
+
+def _set_library_extraction_status(
+    db: Any,
+    *,
+    file_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    status: dict[str, Any],
+) -> None:
+    """Persist bounded extraction status to the file and its originating upload."""
+    from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+
+    safe_status = safe_extraction_status(status)
+    file = db.execute(
+        select(DeepSpaceWorkspaceFile).where(
+            DeepSpaceWorkspaceFile.id == file_id,
+            DeepSpaceWorkspaceFile.tenant_id == tenant_id,
+        )
+    ).scalar_one_or_none()
+    if file is not None:
+        metadata = dict(file.metadata_json or {})
+        metadata.pop("_extraction_attempts", None)
+        metadata["extraction_status"] = safe_status
+        file.metadata_json = metadata
+    upload = db.execute(
+        select(DeepSpaceLibraryUpload).where(
+            DeepSpaceLibraryUpload.file_id == file_id,
+            DeepSpaceLibraryUpload.tenant_id == tenant_id,
+        )
+    ).scalar_one_or_none()
+    if upload is not None:
+        metadata = dict(upload.metadata_json or {})
+        metadata["extraction_status"] = safe_status
+        upload.metadata_json = metadata
+    db.commit()
+
+
+def _enqueue_library_file_processing(
+    db: Any,
+    *,
+    file: Any,
+    tenant_id: str,
+    parsed_tenant_id: uuid.UUID,
+) -> None:
+    """Queue optional extraction/profile work without delaying file readiness."""
+    extraction = (
+        file.metadata_json.get("extraction_status", {})
+        if isinstance(file.metadata_json, dict)
+        else {}
+    )
+    if safe_extraction_status(extraction, attempted=False)["state"] == "processing":
+        try:
+            extract_library_file.delay(file_id=str(file.id), tenant_id=tenant_id)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Library text extraction could not be queued", extra={"file_id": str(file.id)}
+            )
+            _set_library_extraction_status(
+                db,
+                file_id=file.id,
+                tenant_id=parsed_tenant_id,
+                status={
+                    "state": "unavailable",
+                    "text_available": bool(file.extracted_text),
+                    "error_code": "EXTRACTION_QUEUE_UNAVAILABLE",
+                },
+            )
+    metadata = file.metadata_json if isinstance(file.metadata_json, dict) else {}
+    dataset_profile = metadata.get("dataset_profile", {})
+    media_derivative = metadata.get("universal_derivative", {})
+    if DatasetDerivativeService.supports(file.content_type):
+        if not isinstance(dataset_profile, dict) or dataset_profile.get("status") != "ready":
+            try:
+                profile_library_dataset.delay(file_id=str(file.id), tenant_id=tenant_id)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Library dataset profile could not be queued", extra={"file_id": str(file.id)}
+                )
+    elif not isinstance(media_derivative, dict) or media_derivative.get("status") != "ready":
+        try:
+            profile_library_media.delay(file_id=str(file.id), tenant_id=tenant_id)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Library media derivative could not be queued", extra={"file_id": str(file.id)}
+            )
+
+
+@celery_app.task(
+    bind=True,
+    name="deepspace.library_file_extract",
+    queue="library_extraction",
+    max_retries=3,
+    acks_late=True,
+    reject_on_worker_lost=True,
+)  # type: ignore[misc]
+def extract_library_file(self: Task, *, file_id: str, tenant_id: str) -> str:
+    """Extract text/OCR after the private Library file is already available."""
+    settings = get_settings()
+    parsed_file_id = uuid.UUID(file_id)
+    parsed_tenant_id = uuid.UUID(tenant_id)
+    db = get_session_factory()()
+    try:
+        with observe_worker_stage("deepspace_library_file_extract"):
+            db.execute(text("SET ROLE aks_app"))
+            set_db_tenant_context(db, parsed_tenant_id)
+            from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
+
+            file = db.execute(
+                select(DeepSpaceWorkspaceFile).where(
+                    DeepSpaceWorkspaceFile.id == parsed_file_id,
+                    DeepSpaceWorkspaceFile.tenant_id == parsed_tenant_id,
+                )
+            ).scalar_one_or_none()
+            if file is None:
+                return "not-found"
+            metadata = dict(file.metadata_json or {})
+            extraction_state = (metadata.get("extraction_status") or {}).get("state")
+            if extraction_state != "processing":
+                return str(extraction_state or "not-needed")
+            attempts = int(metadata.get("_extraction_attempts", 0) or 0)
+            if attempts >= 5:
+                _set_library_extraction_status(
+                    db,
+                    file_id=parsed_file_id,
+                    tenant_id=parsed_tenant_id,
+                    status={
+                        "state": "unavailable",
+                        "text_available": bool(file.extracted_text),
+                        "error_code": "EXTRACTION_WORKER_RESTARTED",
+                    },
+                )
+                return "unavailable"
+            metadata["_extraction_attempts"] = attempts + 1
+            file.metadata_json = metadata
+            db.commit()
+
+            service = LibraryStorageService(settings)
+            if file.is_binary:
+                if not file.storage_bucket or not file.storage_key:
+                    raise RuntimeError("Stored Library file has no private object reference.")
+                payload = service.storage.get_bytes(
+                    bucket=file.storage_bucket, object_key=file.storage_key
+                )
+            else:
+                payload = file.content.encode("utf-8")
+            extraction = service.extract(
+                filename=file.name,
+                content_type=file.content_type,
+                payload=_bounded_extraction_payload(payload, file.content_type),
+                tenant_id=parsed_tenant_id,
+            )
+            file.extracted_text = extraction.get("text")
+            _set_library_extraction_status(
+                db,
+                file_id=parsed_file_id,
+                tenant_id=parsed_tenant_id,
+                status=extraction,
+            )
+            extraction_state = safe_extraction_status(extraction).get("state")
+            if not isinstance(extraction_state, str):
+                raise RuntimeError("Library extraction returned an invalid status.")
+            return extraction_state
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        if self.request.retries < self.max_retries:
+            increment_worker_retry(stage="deepspace_library_file_extract")
+            logger.warning(
+                "Library file extraction retry scheduled",
+                extra={"file_id": file_id, "retry": self.request.retries + 1},
+                exc_info=True,
+            )
+            raise self.retry(exc=exc, countdown=min(60, 2 ** (self.request.retries + 1))) from exc
+        increment_worker_dead_letter(stage="deepspace_library_file_extract")
+        try:
+            db.execute(text("SET ROLE aks_app"))
+            set_db_tenant_context(db, parsed_tenant_id)
+            _set_library_extraction_status(
+                db,
+                file_id=parsed_file_id,
+                tenant_id=parsed_tenant_id,
+                status={
+                    "state": "unavailable",
+                    "text_available": False,
+                    "error_code": "EXTRACTION_FAILED",
+                },
+            )
+        except Exception:  # noqa: BLE001
+            db.rollback()
+        logger.exception("Library file extraction exhausted retries", extra={"file_id": file_id})
+        return "unavailable"
+    finally:
+        try:
+            db.execute(text("RESET ROLE"))
+            db.commit()
+        except Exception:
             db.rollback()
         db.close()
 

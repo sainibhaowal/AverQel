@@ -19,8 +19,8 @@ const categories = [
   { code: "system", label: "System", channels: ["in_app", "email"] },
   { code: "documents", label: "Documents", channels: ["in_app", "email"] },
   { code: "deepspace", label: "DeepSpace", channels: ["in_app", "email"] },
-  { code: "collection_moderation", label: "Collection moderation", channels: ["in_app", "email"] },
-  { code: "collections", label: "Collections", channels: ["in_app"] },
+  { code: "collection_moderation", label: "Qel Connect moderation", channels: ["in_app", "email"] },
+  { code: "collections", label: "Qel Connect", channels: ["in_app"] },
 ];
 
 function preferences(overrides: Record<string, unknown> = {}) {
@@ -50,10 +50,10 @@ describe("notification preferences page", () => {
 
     render(<NotificationSettingsPage />);
     expect(await screen.findByText("DeepSpace")).toBeInTheDocument();
-    expect(screen.getByText("Collections")).toBeInTheDocument();
-    expect(screen.getByText("Collection moderation")).toBeInTheDocument();
+    expect(screen.getByText("Qel Connect")).toBeInTheDocument();
+    expect(screen.getByText("Qel Connect moderation")).toBeInTheDocument();
     const collectionsMute = screen.getByRole("checkbox", {
-      name: "Mute Collections notifications",
+      name: "Mute Qel Connect notifications",
     });
     expect(collectionsMute).not.toBeChecked();
     fireEvent.click(collectionsMute);

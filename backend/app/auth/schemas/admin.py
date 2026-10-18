@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,9 +16,7 @@ class AuditLogItem(BaseModel):
     resource_id: str | None
     status: str
     trace_id: str
-    ip_address: str | None = None
     created_at: datetime
-    details: dict[str, str] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -37,8 +36,9 @@ class AuditLogListResponse(BaseModel):
 
 
 class DataDeletionRequest(BaseModel):
-    reason: str | None = Field(default=None, max_length=255)
+    reason: Literal["workspace_offboarding", "security_incident"]
     target_tenant_id: UUID | None = None
+    target_confirmation: str = Field(min_length=1, max_length=64)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -53,11 +53,10 @@ class DataDeletionRequestResponse(BaseModel):
 class DataDeletionStatusResponse(BaseModel):
     deletion_id: UUID
     tenant_id: UUID
-    requested_by_user_id: UUID
     status: str
     scope: str
     reason: str | None
-    result_counts: dict[str, int] = Field(default_factory=dict)
+    can_approve: bool = False
     error_code: str | None
     error_message: str | None
     requested_at: datetime
@@ -74,18 +73,6 @@ class DataDeletionListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class AdminUserStatsResponse(BaseModel):
-    documents_count: int
-    queries_count: int
-    conversations_count: int
-    comments_count: int
-    pinned_findings_count: int
-    providers_count: int
-    storage_bytes: int
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class AdminUserSummaryResponse(BaseModel):
     user_id: UUID
     tenant_id: UUID
@@ -94,10 +81,6 @@ class AdminUserSummaryResponse(BaseModel):
     is_active: bool
     totp_enabled: bool
     roles: list[str] = Field(default_factory=list)
-    created_at: datetime
-    updated_at: datetime
-    last_login_at: datetime | None
-    stats: AdminUserStatsResponse
 
     model_config = ConfigDict(extra="forbid")
 
@@ -110,7 +93,14 @@ class AdminUserListResponse(BaseModel):
 
 class AdminUserDetailResponse(BaseModel):
     user: AdminUserSummaryResponse
-    recent_activity: list[AuditLogItem]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AdminStaffRoleUpdateRequest(BaseModel):
+    roles: list[Literal["feedback_manager", "collection_moderator", "support_manager"]] = Field(
+        default_factory=list, max_length=3
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -124,8 +114,6 @@ class AdminUserActionResponse(BaseModel):
 class AdminUserDeleteResponse(BaseModel):
     success: bool = True
     deleted_user_id: UUID
-    deleted_email: str
-    deleted_counts: dict[str, int] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -133,12 +121,8 @@ class AdminUserDeleteResponse(BaseModel):
 class StorageCleanupJobResponse(BaseModel):
     id: UUID
     tenant_id: UUID
-    owner_user_id: UUID
-    bucket: str
-    object_key: str
     status: str
     attempts: int
-    last_error: str | None
     next_attempt_at: datetime
     created_at: datetime
 
@@ -151,24 +135,13 @@ class StorageCleanupListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class AdminTenantStatsResponse(BaseModel):
-    users_count: int
-    active_users_count: int
-    documents_count: int
-    queries_count: int
-    collections_count: int
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class AdminTenantSummaryResponse(BaseModel):
     tenant_id: UUID
     name: str
     created_at: datetime
     updated_at: datetime
     status: str = "active"
-    last_activity_at: datetime | None = None
-    stats: AdminTenantStatsResponse
+    seats_used: int
 
     model_config = ConfigDict(extra="forbid")
 
@@ -179,19 +152,9 @@ class AdminTenantListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class AdminDocumentStatusCountResponse(BaseModel):
-    status: str
-    count: int
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class AdminDocumentTenantSummaryResponse(BaseModel):
     tenant_id: UUID
-    documents_count: int
-    storage_bytes: int
     quarantined_count: int
-    status_counts: list[AdminDocumentStatusCountResponse] = Field(default_factory=list)
     error_count: int
 
     model_config = ConfigDict(extra="forbid")

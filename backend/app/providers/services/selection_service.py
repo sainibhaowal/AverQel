@@ -371,10 +371,7 @@ class ProviderSelectionService:
                     provider_config_id=provider.id,
                     tenant_id=tenant_id,
                     workspace_id=provider.workspace_id,
-                    base_url=self._dockerize_url(
-                        provider.api_base_url
-                        or DEFAULT_PROVIDER_BASE_URLS.get(provider.provider_type)
-                    ),
+                    base_url=self._provider_url(provider),
                     api_key=api_key,
                     auth_mode=provider.auth_mode,
                     context_window=context_window,
@@ -387,6 +384,7 @@ class ProviderSelectionService:
                         "display_name": provider.display_name,
                         "auto_selected": True,
                         "is_local": bool(provider.is_local),
+                        **({"owner_user_id": str(owner_user_id)} if owner_user_id else {}),
                     },
                 )
             )
@@ -518,10 +516,7 @@ class ProviderSelectionService:
                     provider_config_id=provider.id,
                     tenant_id=tenant_id,
                     workspace_id=provider.workspace_id,
-                    base_url=self._dockerize_url(
-                        provider.api_base_url
-                        or DEFAULT_PROVIDER_BASE_URLS.get(provider.provider_type)
-                    ),
+                    base_url=self._provider_url(provider),
                     api_key=api_key,
                     auth_mode=provider.auth_mode,
                     priority=provider.priority,
@@ -530,6 +525,7 @@ class ProviderSelectionService:
                         "display_name": provider.display_name,
                         "auto_selected": True,
                         "is_local": bool(provider.is_local),
+                        **({"owner_user_id": str(owner_user_id)} if owner_user_id else {}),
                     },
                 )
             )
@@ -586,10 +582,7 @@ class ProviderSelectionService:
                     provider_config_id=provider.id,
                     tenant_id=tenant_id,
                     workspace_id=provider.workspace_id,
-                    base_url=self._dockerize_url(
-                        provider.api_base_url
-                        or DEFAULT_PROVIDER_BASE_URLS.get(provider.provider_type)
-                    ),
+                    base_url=self._provider_url(provider),
                     api_key=api_key,
                     auth_mode=provider.auth_mode,
                     priority=provider.priority,
@@ -681,6 +674,12 @@ class ProviderSelectionService:
 
         return url
 
+    def _provider_url(self, provider: ProviderConfig) -> str | None:
+        base_url = provider.api_base_url or DEFAULT_PROVIDER_BASE_URLS.get(provider.provider_type)
+        if dict(provider.metadata_json or {}).get("runtime_target") == "desktop":
+            return base_url
+        return self._dockerize_url(base_url)
+
     def _provider_to_auto_embedding_candidate(
         self,
         *,
@@ -709,7 +708,11 @@ class ProviderSelectionService:
         )
 
         base_url = provider.api_base_url or DEFAULT_PROVIDER_BASE_URLS.get(provider.provider_type)
-        docker_url = self._dockerize_url(base_url)
+        docker_url = (
+            base_url
+            if dict(provider.metadata_json or {}).get("runtime_target") == "desktop"
+            else self._dockerize_url(base_url)
+        )
 
         return ProviderSelectionCandidate(
             provider_type=provider.provider_type,
@@ -731,6 +734,9 @@ class ProviderSelectionService:
                 "display_name": provider.display_name,
                 "auto_selected": True,
                 "is_local": bool(provider.is_local),
+                **(
+                    {"owner_user_id": str(provider.owner_user_id)} if provider.owner_user_id else {}
+                ),
             },
         )
 
@@ -881,9 +887,7 @@ class ProviderSelectionService:
             provider_config_id=config.id,
             tenant_id=tenant_id,
             workspace_id=assignment.workspace_id,
-            base_url=self._dockerize_url(
-                config.api_base_url or DEFAULT_PROVIDER_BASE_URLS.get(config.provider_type)
-            ),
+            base_url=self._provider_url(config),
             api_key=api_key,
             auth_mode=config.auth_mode,
             context_window=context_window,
@@ -895,6 +899,7 @@ class ProviderSelectionService:
                 **dict(config.metadata_json or {}),
                 "display_name": config.display_name,
                 "is_local": bool(config.is_local),
+                **({"owner_user_id": str(actor_user_id)} if actor_user_id else {}),
             },
         )
 

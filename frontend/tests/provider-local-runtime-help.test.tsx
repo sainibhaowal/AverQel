@@ -13,8 +13,7 @@ describe("provider local runtime help", () => {
     rerender(<ProviderLocalRuntimeHelp providerType="lmstudio" />);
     expect(screen.getByText(/lm studio local runtime/i)).toBeInTheDocument();
     expect(screen.getByText(/127.0.0.1:1234\/v1/i)).toBeInTheDocument();
-    expect(screen.getByText(/host\.docker\.internal:1234\/v1/i)).toBeInTheDocument();
-    expect(screen.getByText(/remote hosted averqel/i)).toBeInTheDocument();
+    expect(screen.getByText(/local runtime bridge/i)).toBeInTheDocument();
     expect(
       screen.getByText(/does not install or download lm studio models directly/i),
     ).toBeInTheDocument();

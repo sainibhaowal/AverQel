@@ -113,6 +113,155 @@ def test_message_versions_are_created_and_activated(db_session, seed_user):
     assert [item.version_index for item in refreshed.versions] == [1, 2]
 
 
+def test_deepspace_visual_block_edit_is_revisioned_and_conflict_checked(
+    client: TestClient, seed_user
+):
+    user_data = seed_user(
+        "Visual Tenant",
+        "visual@example.com",
+        "password123",
+        ("editor",),
+    )
+    headers = _auth_headers(user_data, roles=("editor",))
+    session = get_session_factory()()
+    try:
+        set_db_tenant_context(session, user_data.tenant_id)
+        repo = ChatRepository(session)
+        conversation = repo.create_conversation(
+            tenant_id=user_data.tenant_id,
+            user_id=user_data.user_id,
+            title="Visual Chat",
+            kind="deepspace",
+        )
+        message = repo.add_message(
+            tenant_id=user_data.tenant_id,
+            conversation_id=conversation.id,
+            kind="deepspace",
+            role="assistant",
+            content=(
+                '```chart\n{"title":"Revenue","chart_type":"line",'
+                '"series":[{"label":"Q1","value":10},{"label":"Q2","value":20}]}\n```'
+            ),
+            metadata_json={
+                "blocks": [
+                    {
+                        "id": "chart-1",
+                        "type": "chart",
+                        "title": "Revenue",
+                        "chart_type": "line",
+                        "series": [
+                            {"label": "Q1", "value": 10},
+                            {"label": "Q2", "value": 20},
+                        ],
+                    }
+                ]
+            },
+        )
+        session.commit()
+    finally:
+        session.rollback()
+        session.close()
+
+    updated = client.patch(
+        f"/api/v1/deepspace/chats/{conversation.id}/messages/{message.id}/visual-block",
+        headers=headers,
+        json={
+            "block_id": "chart-1",
+            "expected_revision": 0,
+            "block": {
+                "id": "chart-1",
+                "type": "chart",
+                "source_markdown": '{"title":"Revenue","chart_type":"line","series":[{"label":"Q1","value":10},{"label":"Q2","value":20}]}',
+                "title": "Revenue",
+                "chart_type": "line",
+                "series": [
+                    {"label": "Q1", "value": 12},
+                    {"label": "Q2", "value": 24},
+                ],
+            },
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["metadata_json"]["visual_blocks"]["chart-1"]["revision"] == 1
+    assert '"value": 12' in updated.json()["content"]
+    assert '"id": "chart-1"' in updated.json()["content"]
+
+    conflict = client.patch(
+        f"/api/v1/deepspace/chats/{conversation.id}/messages/{message.id}/visual-block",
+        headers=headers,
+        json={
+            "block_id": "chart-1",
+            "expected_revision": 0,
+            "block": {
+                "id": "chart-1",
+                "type": "chart",
+                "title": "Revenue",
+                "chart_type": "line",
+                "series": [
+                    {"label": "Q1", "value": 13},
+                    {"label": "Q2", "value": 26},
+                ],
+            },
+        },
+    )
+    assert conflict.status_code == 409
+
+    note_sync = client.patch(
+        f"/api/v1/deepspace/chats/{conversation.id}/visual-block",
+        headers=headers,
+        json={
+            "block_id": "chart-1",
+            "expected_revision": 1,
+            "block": {
+                "id": "chart-1",
+                "type": "chart",
+                "title": "Revenue",
+                "chart_type": "line",
+                "series": [{"label": "Q1", "value": 14}, {"label": "Q2", "value": 28}],
+            },
+        },
+    )
+    assert note_sync.status_code == 200
+    assert note_sync.json()["metadata_json"]["visual_blocks"]["chart-1"]["revision"] == 2
+
+    artifact = client.post(
+        f"/api/v1/deepspace/library/{conversation.id}/visual-artifacts",
+        headers=headers,
+        json={
+            "block_id": "chart-1",
+            "filename": "chart-1.visual.json",
+            "block": {
+                "id": "chart-1",
+                "type": "chart",
+                "chart_type": "line",
+                "series": [{"label": "Q1", "value": 14}, {"label": "Q2", "value": 28}],
+                "revision": 2,
+            },
+        },
+    )
+    assert artifact.status_code == 200
+    assert artifact.json()["version"] == 1
+
+    artifact_update = client.post(
+        f"/api/v1/deepspace/library/{conversation.id}/visual-artifacts",
+        headers=headers,
+        json={
+            "block_id": "chart-1",
+            "filename": "chart-1.visual.json",
+            "expected_version": 1,
+            "block": {
+                "id": "chart-1",
+                "type": "chart",
+                "chart_type": "line",
+                "series": [{"label": "Q1", "value": 15}, {"label": "Q2", "value": 30}],
+                "revision": 3,
+            },
+        },
+    )
+    assert artifact_update.status_code == 200
+    assert artifact_update.json()["version"] == 2
+
+
 def test_latest_turn_pair_tracks_latest_user_and_assistant(db_session, seed_user):
     user_data = seed_user(
         "Turn Tenant",

@@ -37,8 +37,10 @@ export default defineConfig({
   // before their client bundles finish loading, so use the same serial mode
   // locally and in CI.
   workers: 1,
-  reporter: "line",
+  reporter: [["line"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   timeout: 30_000,
+  outputDir: "test-results",
+  preserveOutput: "failures-only",
   use: {
     baseURL: externalBaseUrl || localBaseUrl,
     // Browser credentials are only loaded for the explicitly approved target.
@@ -46,7 +48,10 @@ export default defineConfig({
       ? process.env.DEEPSPACE_E2E_STORAGE_STATE || undefined
       : undefined,
     ignoreHTTPSErrors: Boolean(externalBaseUrl?.startsWith("https://localhost")),
-    trace: "on-first-retry",
+    // Keep a complete trace for every failed test, including local runs with
+    // retries disabled. This makes an isolated failure diagnosable without
+    // rerunning against a different application state.
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },

@@ -462,6 +462,44 @@ test("returns Codex CLI function calls to the existing AverQel tool handler", as
   assert.ok(frames.some((frame) => frame.event?.type === "response.completed"));
 });
 
+test("coalesces top-level function tools into one unique AverQel namespace", async () => {
+  const { runtime, frames, appServerInstances } = createRuntime({
+    onTurnStart: (client) => {
+      client.emit("turn/completed", { turn: { status: "completed" } });
+    },
+  });
+  const status = await runtime.status();
+
+  await runtime.startStream({
+    streamId: "323e4567-e89b-12d3-a456-426614174000",
+    accountId: status.accounts[0].id,
+    request: {
+      model: "gpt-5-codex",
+      input: [{ role: "user", content: [{ type: "input_text", text: "Search" }] }],
+      tools: [
+        { type: "function", name: "lookup", parameters: { type: "object", properties: {} } },
+        { type: "function", name: "search", parameters: { type: "object", properties: {} } },
+      ],
+    },
+  });
+  await waitForClosed(frames);
+
+  const threadStart = appServerInstances.at(-1).calls.find((call) => call.method === "thread/start");
+  assert.deepEqual(threadStart.params.dynamicTools, [
+    {
+      type: "namespace",
+      name: "averqel",
+      description: "Tools available to the AverQel agent.",
+      tools: [
+        { type: "function", name: "lookup", description: "", inputSchema: { type: "object", properties: {} } },
+        { type: "function", name: "search", description: "", inputSchema: { type: "object", properties: {} } },
+      ],
+    },
+  ]);
+  assert.ok(appServerInstances.at(-1).calls.some((call) => call.method === "turn/start"));
+  assert.ok(frames.some((frame) => frame.event?.type === "response.completed"));
+});
+
 test("fails closed when the Codex CLI cannot provide the restricted inference profile", async () => {
   const { runtime } = createRuntime({ permissionProfileAllowed: false });
   const status = await runtime.status();

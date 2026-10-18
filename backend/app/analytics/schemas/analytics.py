@@ -19,10 +19,10 @@ class ConfidenceDistribution(BaseModel):
 
 
 class AnalyticsDashboardResponse(BaseModel):
-    total_queries: int
-    avg_confidence: float
+    suppressed: bool
+    total_queries: int | None
+    avg_confidence: float | None
     volume_over_time: list[QueryVolumePoint]
-    confidence_distribution: ConfidenceDistribution
-    api_latency_p95_ms: float | None = None
+    confidence_distribution: ConfidenceDistribution | None
 
     model_config = ConfigDict(extra="forbid")

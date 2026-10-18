@@ -210,6 +210,24 @@ export default function ProvidersPage() {
         </p>
       </DocsSection>
 
+      <DocsSection title="LM Studio and Ollama on AverQel Desktop">
+        <p>
+          AverQel Desktop can use LM Studio or Ollama installed on the same computer. Start LM
+          Studio&apos;s OpenAI-compatible server at <code>http://127.0.0.1:1234/v1</code> or Ollama
+          at <code>http://127.0.0.1:11434</code>, choose the provider, and select{" "}
+          <strong>This computer</strong>. The Electron main process validates the loopback URL and
+          streams chat, model discovery, health, embeddings, and Ollama pulls through the existing
+          authenticated desktop relay.
+        </p>
+        <p>
+          LM Studio and Ollama are shown as unavailable in the hosted web app because its browser
+          cannot reach a user&apos;s loopback process. Open AverQel Desktop to configure them. The
+          desktop option does not make the complete application offline: authentication,
+          conversation storage, DeepSpace orchestration, and tools continue to use the AverQel
+          backend. AverQel does not bundle either runtime or download LM Studio models.
+        </p>
+      </DocsSection>
+
       <DocsSection title="Search available models">
         <p>
           Every model selector in provider settings includes a search field. Search by model ID,

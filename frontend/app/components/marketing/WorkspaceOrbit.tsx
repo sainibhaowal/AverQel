@@ -24,6 +24,7 @@ import {
   landingSectionTitleClass,
   landingTitleGradientBySection,
 } from "./landingType";
+import QelConnectMark from "../ui/QelConnectMark";
 
 const members = [
   { initials: "RS", tone: "bg-cyan-400/20 text-cyan-200" },
@@ -55,7 +56,7 @@ export default function WorkspaceOrbit() {
               Work together with the context in view
             </h2>
             <p className={`${landingSectionLeadClass} mx-0 max-w-xl text-left`}>
-              Collections, Documents Hub, and DeepSpace meet in one permission-aware workspace. The
+              Qel Connect, Documents Hub, and DeepSpace meet in one permission-aware workspace. The
               interface below is an illustrated product flow based on the real surfaces, not a claim
               that every account is connected automatically.
             </p>
@@ -63,7 +64,7 @@ export default function WorkspaceOrbit() {
               <p className="text-sm font-bold text-white">A shared source, not a copied source.</p>
               <p className="mt-2 max-w-lg text-sm leading-7 text-slate-400">
                 Invite members, exchange encrypted messages and files, then add the exact documents
-                the collection is allowed to use.
+                Qel Connect is allowed to use.
               </p>
             </div>
             <Link
@@ -106,7 +107,7 @@ export default function WorkspaceOrbit() {
               <div className="grid min-h-[390px] lg:grid-cols-[0.78fr_1.38fr_0.9fr]">
                 <aside className="hidden border-r border-white/[0.08] p-4 lg:block">
                   <p className="font-mono text-[9px] font-bold tracking-[0.18em] text-slate-500 uppercase">
-                    Collections
+                    <QelConnectMark size={13} /> Qel Connect
                   </p>
                   <div className="mt-4 space-y-2 text-xs">
                     <div className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.08] px-3 py-2.5 text-cyan-100">
@@ -181,7 +182,7 @@ export default function WorkspaceOrbit() {
                       <ShieldCheck size={14} /> Policy checked
                     </div>
                     <p className="mt-2 text-[10px] leading-4 text-slate-400">
-                      Members can use permitted collection documents.
+                      Members can use permitted Qel Connect documents.
                     </p>
                   </div>
                   <div className="mt-3 space-y-2">

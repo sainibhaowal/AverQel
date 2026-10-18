@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 
 import ProviderForm from "../app/components/providers/ProviderForm";
@@ -124,6 +124,10 @@ describe("provider settings page", () => {
   });
 
   it("sends a PATCH-compatible payload when updating a provider", async () => {
+    Object.defineProperty(window, "electron", {
+      configurable: true,
+      value: { isElectron: true, codex: {}, localRuntime: {} },
+    });
     const onSubmit = vi.fn(async () => {});
 
     render(
@@ -164,7 +168,13 @@ describe("provider settings page", () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /update connectivity/i }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const updateButton = await screen.findByRole("button", { name: /update connectivity/i });
+    expect(updateButton).toHaveClass("border", "border-primary/35", "relative", "z-[3]");
+    fireEvent.click(updateButton);
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(
@@ -180,5 +190,6 @@ describe("provider settings page", () => {
         }),
       );
     });
+    delete (window as Window & { electron?: unknown }).electron;
   });
 });

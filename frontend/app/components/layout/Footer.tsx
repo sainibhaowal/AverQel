@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import AverQelLogo from "../ui/AverQelLogo";
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_NAME, QEL_CONNECT_NAME } from "@/lib/brand";
 import { APP_VERSION } from "@/lib/release";
 import { useLandingSectionMotion } from "../marketing/landingMotion";
 
@@ -13,7 +13,7 @@ const links = [
     items: [
       { label: "Documents Hub", href: "#documents-hub" },
       { label: "Query", href: "#query" },
-      { label: "Collections", href: "#collections" },
+      { label: QEL_CONNECT_NAME, href: "#qel-connect" },
       { label: "DeepSpace", href: "#deepspace" },
       { label: "AI Providers", href: "#providers" },
       { label: "MCP Servers", href: "#mcp" },
@@ -36,6 +36,7 @@ const links = [
       { label: "Trust and policies", href: "/documentation/privacy-security" },
       { label: "Support centre", href: "/documentation/support" },
       { label: "Share feedback", href: "/documentation/feedback" },
+      { label: "Contact the developer", href: "#contact" },
     ],
   },
   {
@@ -53,22 +54,24 @@ const links = [
 export default function Footer() {
   const { ref, style } = useLandingSectionMotion<HTMLElement>({
     depth: 8,
-    scaleRange: [0.998, 1.003],
+    scaleRange: [0.999, 1.002],
   });
 
   return (
     <motion.footer
       ref={ref}
-      style={style}
       className="landing-trace-frame border-glass-border bg-surface-0 border-t"
     >
-      <div className="mx-auto max-w-[1800px] px-4 py-12 sm:px-8 sm:py-16 lg:px-12">
-        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 xl:grid-cols-5">
+      <motion.div
+        style={style}
+        className="mx-auto max-w-[1800px] px-4 py-12 sm:px-8 sm:py-16 lg:px-12"
+      >
+        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
           {/* Brand */}
           <div className="md:col-span-1">
             <AverQelLogo size="footer" showWordmark={true} />
             <p className="text-muted-foreground mt-4 max-w-xs text-sm leading-6">
-              AverQel brings source documents, evidence-based Query, shared Collections, and
+              AverQel brings source documents, evidence-based Query, shared Qel Connect spaces, and
               DeepSpace work together, with separate provider, MCP, and workspace controls.
             </p>
           </div>
@@ -110,7 +113,7 @@ export default function Footer() {
             Review the privacy, security, and data-retention policies for current details.
           </p>
         </div>
-      </div>
+      </motion.div>
     </motion.footer>
   );
 }

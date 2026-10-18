@@ -109,10 +109,10 @@ export const docsNavGroups: NavGroup[] = [
     ],
   },
   {
-    group: "Collections & sharing",
+    group: "Qel Connect & sharing",
     items: [
       {
-        title: "Collections",
+        title: "Qel Connect",
         href: "/documentation/collections-sharing",
         icon: <FolderKanban size={14} />,
       },

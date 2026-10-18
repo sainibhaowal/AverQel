@@ -25,9 +25,9 @@ export default function FeaturesPage() {
             body: "Conversational research and productivity work with its own Library, editor, and optional tools.",
           },
           {
-            title: "Collections",
+            title: "Qel Connect",
             href: "/documentation/collections-sharing",
-            body: "Explicit member invitations and shared content within collection access boundaries.",
+            body: "Explicit member invitations and shared content within Qel Connect access boundaries.",
           },
           {
             title: "Providers & MCP",
@@ -55,7 +55,7 @@ export default function FeaturesPage() {
             outputs.
           </li>
           <li>
-            Collections share selected content with invited members under explicit access controls.
+            Qel Connect shares selected content with invited members under explicit access controls.
           </li>
           <li>
             Providers supply model or service capability; MCP connections provide separately

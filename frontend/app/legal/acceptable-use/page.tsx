@@ -6,12 +6,12 @@ export default function AcceptableUsePage() {
     <PolicyLayout
       eyebrow="Acceptable Use"
       title="Acceptable Use Policy"
-      intro="Effective 15 August 2026. This policy sets the baseline rules for lawful document, research, productivity, and collaboration use of the independently operated AverQel project."
+      intro="Last reviewed 17 October 2026. This policy sets the baseline rules for lawful document, research, productivity, and collaboration use of AverQel."
     >
       <PolicySection title="Allowed use">
         <p>
-          Use AverQel for lawful documents, research, analysis, drafting, private work, and
-          collection sharing where you have the necessary rights and permissions.
+          Use AverQel for lawful documents, research, analysis, drafting, private work, and Qel
+          Connect sharing where you have the necessary rights and permissions.
         </p>
       </PolicySection>
       <PolicySection title="Not allowed">

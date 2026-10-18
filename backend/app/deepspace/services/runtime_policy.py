@@ -17,33 +17,28 @@ class DeepSpaceToolPolicy:
     """The allowlist and workspace boundary for DeepSpace productivity tools."""
 
     _MODES: dict[str, ToolMode] = {
+        "discover_tools": "read",
         "web_search": "read",
         "url_read": "read",
         "image_read": "read",
-        "document_read": "read",
-        "document_query": "read",
-        "document_compare": "read",
-        "todo_read": "read",
-        "todo_check": "read",
-        "observe": "read",
         "analyze": "read",
         "read": "read",
         "find": "read",
         "todo_write": "write",
-        "todo_mark": "write",
         "write": "write",
         "edit": "write",
         "delete": "write",
         "sandbox_execute": "write",
         "artifact_create": "write",
         "ask_user": "interactive",
-        # Final verification must not race a write-capable tool emitted in the
-        # same provider response.
-        "final": "write",
     }
 
     def decide(self, tool_name: str, arguments: dict[str, Any]) -> ToolPolicyDecision:
-        del arguments
+        if tool_name == "todo_write" and str(arguments.get("operation") or "") in {
+            "read",
+            "check",
+        }:
+            return ToolPolicyDecision(True, mode="read")
         mode = self._MODES.get(tool_name)
         if mode is None:
             return ToolPolicyDecision(

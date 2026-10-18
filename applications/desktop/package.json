@@ -2,7 +2,7 @@
   "name": "averqel-desktop",
   "private": true,
   "version": "0.1.6",
-  "description": "AverQel — Agentic OS for documents, connectors, and autonomous work",
+  "description": "AI workspace for documents and connected tools",
   "homepage": "https://averqel.com",
   "desktopName": "AverQel",
   "author": {
@@ -19,11 +19,12 @@
   "scripts": {
     "dev": "electron .",
     "test": "node --test tests/*.test.cjs",
+    "prepare:brand-assets": "node scripts/prepare-brand-assets.mjs",
     "prepare:neosis-runtime": "node scripts/prepare-neosis-runtime.mjs",
-    "build": "pnpm run prepare:neosis-runtime && electron-builder --publish never",
-    "build:linux": "pnpm run prepare:neosis-runtime && electron-builder --publish never --linux deb && node scripts/verify-neosis-runtime.cjs release/linux-unpacked/resources/neosis linux x64",
-    "build:windows": "pnpm run prepare:neosis-runtime && electron-builder --publish never --win nsis && node scripts/verify-neosis-runtime.cjs release/win-unpacked/resources/neosis win32 x64",
-    "build:mac": "electron-builder --publish never --mac dmg --universal"
+    "build": "pnpm run prepare:brand-assets && pnpm run prepare:neosis-runtime && electron-builder --publish never",
+    "build:linux": "pnpm run prepare:brand-assets && pnpm run prepare:neosis-runtime && electron-builder --publish never --linux deb && node scripts/verify-neosis-runtime.cjs release/linux-unpacked/resources/neosis linux x64",
+    "build:windows": "pnpm run prepare:brand-assets && pnpm run prepare:neosis-runtime && electron-builder --publish never --win nsis && node scripts/verify-neosis-runtime.cjs release/win-unpacked/resources/neosis win32 x64",
+    "build:mac": "pnpm run prepare:brand-assets && electron-builder --publish never --mac dmg --universal"
   },
   "devDependencies": {
     "electron": "44.0.0",
@@ -70,8 +71,20 @@
       "category": "Office",
       "icon": "assets/icon.png",
       "syncDesktopName": true,
+      "synopsis": "AI workspace for documents and connected tools",
+      "description": "Search your documents, chat with AI models, and work with connected services in one desktop app.",
+      "desktop": {
+        "entry": {
+          "Name": "AverQel"
+        }
+      },
       "target": [
         "deb"
+      ]
+    },
+    "deb": {
+      "fpm": [
+        "assets/com.averqel.app.metainfo.xml=/usr/share/metainfo/com.averqel.app.metainfo.xml"
       ]
     },
     "win": {

@@ -121,6 +121,13 @@ def test_safe_extraction_status_distinguishes_no_text_and_unavailable() -> None:
     assert "private" not in str(unavailable)
 
 
+def test_safe_extraction_status_exposes_background_processing_state() -> None:
+    status = safe_extraction_status({"state": "processing", "text_available": False})
+
+    assert status["state"] == "processing"
+    assert status["text_available"] is False
+
+
 def test_export_request_accepts_a_file_selection() -> None:
     selected = uuid.uuid4()
     request = LibraryExportRequest(file_ids=[selected])
@@ -192,6 +199,35 @@ def test_finalize_upload_creates_text_file_and_version(
     assert upload.metadata_json["extraction_status"]["text_available"] is True
     assert _serialize_upload(upload).extraction_status.ocr_used is False
     assert len(db.rows) == 2
+
+
+def test_finalize_upload_can_publish_file_before_optional_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Storage:
+        def __init__(self, settings: object) -> None:
+            self.storage = SimpleNamespace()
+
+        def extract(self, **kwargs: object) -> dict[str, object]:
+            raise AssertionError("optional extraction must run in its own worker")
+
+    monkeypatch.setattr(uploads_module, "LibraryStorageService", _Storage)
+    upload = _upload()
+    db = _Db()
+
+    record = finalize_upload(
+        db,
+        settings=SimpleNamespace(upload_max_bytes=100),
+        upload=upload,
+        payload=b"hello",
+        extract_content=False,
+    )
+
+    assert record.content == "hello"
+    assert record.extracted_text is None
+    assert record.metadata_json["extraction_status"]["state"] == "processing"
+    assert upload.metadata_json["extraction_status"]["state"] == "processing"
+    assert _serialize_upload(upload).extraction_status.state == "processing"
 
 
 def test_finalize_image_upload_persists_upload_time_ocr_for_chat_reuse(

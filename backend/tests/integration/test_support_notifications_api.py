@@ -12,6 +12,8 @@ from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.documents.models.collection_notification import CollectionNotification
 from app.documents.repositories.collection_notifications import CollectionNotificationsRepository
+from app.platform.database.session import set_db_tenant_context
+from app.system.models.audit_log import AuditLog
 from tests.conftest import SeededUser
 
 
@@ -85,22 +87,57 @@ def test_assigned_admin_sla_notice_uses_recipient_tenant(monkeypatch) -> None:
     assert calls[0]["tenant_id"] != ticket_owner_tenant
 
 
-def _headers(seeded: SeededUser) -> dict[str, str]:
+def _headers(seeded: SeededUser, roles: set[str] | None = None) -> dict[str, str]:
     token = create_access_token(
         user_id=seeded.user_id,
         tenant_id=seeded.tenant_id,
-        roles={"admin"},
+        roles=roles or {"admin"},
         settings=get_settings(),
     )
     return {"Authorization": f"Bearer {token}", "X-Tenant-Id": str(seeded.tenant_id)}
 
 
-def test_support_ticket_thread_and_durable_notifications(
-    client: TestClient, seed_user, monkeypatch
+def test_support_management_requires_separately_assigned_staff_role(
+    client: TestClient,
+    seed_user,
 ) -> None:
-    seeded = seed_user("Support Tenant", "support-admin@example.org", "StrongPass!1234", ("admin",))
+    seeded = seed_user(
+        "Support Role Tenant",
+        "support-role-admin@example.org",
+        "StrongPass!1234",
+        ("admin",),
+    )
     get_settings().bootstrap_super_admin_emails = [seeded.email]
-    headers = _headers(seeded)
+
+    denied = client.get("/api/v1/support/admin/queue", headers=_headers(seeded))
+    assert denied.status_code == 403
+
+    role_update = client.put(
+        f"/api/v1/admin/users/{seeded.user_id}/staff-roles",
+        headers=_headers(seeded),
+        json={"roles": ["support_manager"]},
+    )
+    assert role_update.status_code == 200
+    assert role_update.json()["user"]["roles"] == ["admin", "support_manager"]
+
+    allowed = client.get(
+        "/api/v1/support/admin/queue",
+        headers=_headers(seeded, {"admin", "support_manager"}),
+    )
+    assert allowed.status_code == 200
+
+
+def test_support_ticket_thread_and_durable_notifications(
+    client: TestClient, db_session, seed_user, monkeypatch
+) -> None:
+    seeded = seed_user(
+        "Support Tenant",
+        "support-admin@example.org",
+        "StrongPass!1234",
+        ("admin", "support_manager"),
+    )
+    get_settings().bootstrap_super_admin_emails = [seeded.email]
+    headers = _headers(seeded, {"admin", "support_manager"})
 
     created = client.post(
         "/api/v1/support/tickets",
@@ -121,6 +158,10 @@ def test_support_ticket_thread_and_durable_notifications(
     assert queue.status_code == 200
     assert queue.json()["total"] == 1
     assert queue.json()["items"][0]["id"] == ticket_id
+
+    admin_history = client.get("/api/v1/support/admin/tickets", headers=headers)
+    assert admin_history.status_code == 200
+    assert admin_history.json()["items"][0]["ticket_count"] == 1
 
     assigned = client.patch(
         f"/api/v1/support/admin/tickets/{ticket_id}",
@@ -246,6 +287,16 @@ def test_support_ticket_thread_and_durable_notifications(
         admin_detail_with_file.json()["attachments"][0]["download_url"], headers=headers
     )
     assert admin_download.status_code == 200
+
+    set_db_tenant_context(db_session, seeded.tenant_id)
+    audited_actions = {
+        event.action
+        for event in db_session.query(AuditLog).filter(AuditLog.tenant_id == seeded.tenant_id).all()
+    }
+    assert "admin.support.queue.read" in audited_actions
+    assert "admin.support.history.list.read" in audited_actions
+    assert "admin.support.ticket.read" in audited_actions
+    assert "admin.support.attachment.read" in audited_actions
 
     other = seed_user(
         "Different Support Tenant", "other-support-user@example.org", "StrongPass!1234", ("user",)

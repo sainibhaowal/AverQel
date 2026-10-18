@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
+import { Children, isValidElement, useId, type ReactElement, type ReactNode } from "react";
 
 import TableActions from "./TableActions";
 
@@ -8,6 +8,15 @@ type ElementWithChildren = ReactElement<{ children?: ReactNode }>;
 
 function elementChildren(node: ReactNode): ReactNode[] {
   return isValidElement(node) ? Children.toArray((node as ElementWithChildren).props.children) : [];
+}
+
+function elementName(element: ElementWithChildren): string | undefined {
+  if (typeof element.type === "string") return element.type;
+  if (typeof element.type === "function") {
+    const component = element.type as { displayName?: string; name?: string };
+    return component.displayName || component.name;
+  }
+  return undefined;
 }
 
 const MAX_TREE_DEPTH = 32;
@@ -28,7 +37,7 @@ function elementsNamed(node: ReactNode, names: ReadonlySet<string>): ElementWith
     const { child, depth } = current;
     if (!isValidElement(child)) continue;
     const element = child as ElementWithChildren;
-    if (typeof element.type === "string" && names.has(element.type)) matches.push(element);
+    if (names.has(elementName(element) ?? "")) matches.push(element);
     const children = Children.toArray(element.props.children);
     for (let index = children.length - 1; index >= 0; index -= 1) {
       pending.push({ child: children[index]!, depth: depth + 1 });
@@ -70,21 +79,30 @@ function rowCells(row: ElementWithChildren): ElementWithChildren[] {
  * column. Presenting each numbered record as a card preserves every value
  * without pretending the displaced text belongs to an incorrect column.
  */
-export default function AdaptiveMarkdownTable({ children }: { children?: ReactNode }) {
-  const sections = elementsNamed(children, new Set(["thead", "tbody"]));
-  const head = sections.find((section) => section.type === "thead");
-  const body = sections.find((section) => section.type === "tbody");
-  const headerRow = head ? elementsNamed(head.props.children, new Set(["tr"]))[0] : undefined;
+export default function AdaptiveMarkdownTable({
+  children,
+  onSaveToLibrary,
+}: {
+  children?: ReactNode;
+  onSaveToLibrary?: (rows: string[][], tableId: string) => void | Promise<void>;
+}) {
+  const tableId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const tableRows = elementsNamed(children, new Set(["tr"]));
+  const headerRow = tableRows.find((row) =>
+    rowCells(row).some((cell) => elementName(cell) === "th"),
+  );
   const headers = headerRow ? rowCells(headerRow) : [];
-  const rows = body ? elementsNamed(body.props.children, new Set(["tr"])) : [];
-  const parsedRows = rows.map((row) => ({
-    cells: rowCells(row),
-    text: rowCells(row).map((cell) => visibleText(cell.props.children)),
-  }));
+  const parsedRows = tableRows
+    .filter((row) => row !== headerRow)
+    .map((row) => ({
+      cells: rowCells(row),
+      text: rowCells(row).map((cell) => visibleText(cell.props.children)),
+    }));
   const tableMatrix = [
     ...(headers.length ? [headers.map((header) => visibleText(header.props.children))] : []),
     ...parsedRows.map((row) => row.text),
   ].filter((row) => row.some(Boolean));
+  const saveToLibrary = onSaveToLibrary ? () => onSaveToLibrary(tableMatrix, tableId) : undefined;
   const primaryIndexes = parsedRows.flatMap((row, index) =>
     /^\d{1,3}$/.test(row.text[0] ?? "") ? [index] : [],
   );
@@ -102,7 +120,7 @@ export default function AdaptiveMarkdownTable({ children }: { children?: ReactNo
     return (
       <div className="group relative my-5 grid gap-4" data-adaptive-table="cards">
         <div className="flex justify-end opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
-          <TableActions rows={tableMatrix} title="markdown-table" />
+          <TableActions rows={tableMatrix} title="Markdown table" onSaveToLibrary={saveToLibrary} />
         </div>
         {records.map(({ primary, continuations }, recordIndex) => {
           const title = primary.text[1] || `Result ${primary.text[0] || recordIndex + 1}`;
@@ -165,7 +183,7 @@ export default function AdaptiveMarkdownTable({ children }: { children?: ReactNo
       data-adaptive-table="grid"
     >
       <div className="absolute top-1 right-1 z-10 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
-        <TableActions rows={tableMatrix} title="markdown-table" />
+        <TableActions rows={tableMatrix} title="Markdown table" onSaveToLibrary={saveToLibrary} />
       </div>
       <table className="w-full min-w-[36rem] border-collapse text-left">{children}</table>
     </div>

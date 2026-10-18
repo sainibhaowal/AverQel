@@ -28,6 +28,7 @@ from app.system.api import (
     admin,
     app_feedback,
     capabilities,
+    contact,
     feedback,
     health,
     metrics,
@@ -135,6 +136,7 @@ def create_app() -> FastAPI:
     app.include_router(deepspace_sandbox.router, prefix=settings.api_prefix)
     app.include_router(deepspace_schedules.router, prefix=settings.api_prefix)
     app.include_router(admin.router, prefix=settings.api_prefix)
+    app.include_router(contact.router, prefix=settings.api_prefix)
     app.include_router(dashboard.router, prefix=settings.api_prefix)
     app.include_router(integrations.router, prefix=settings.api_prefix)
     app.include_router(support.router, prefix=settings.api_prefix)

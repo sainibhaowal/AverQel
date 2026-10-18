@@ -2020,6 +2020,14 @@ class ProviderManagementService:
                 api_key=api_key,
                 auth_mode=provider.auth_mode,
                 priority=provider.priority,
+                metadata={
+                    **dict(provider.metadata_json or {}),
+                    **(
+                        {"owner_user_id": str(provider.owner_user_id)}
+                        if provider.owner_user_id
+                        else {}
+                    ),
+                },
             )
         )
         try:

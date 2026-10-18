@@ -1,9 +1,41 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import DeepSpaceThinkingPanel from "../app/dashboard/deepspace/_components/DeepSpaceThinkingPanel";
+import DeepSpaceTaskPlanDrawer from "../app/dashboard/deepspace/_components/DeepSpaceTaskPlanDrawer";
 
 describe("DeepSpace verified task progress", () => {
+  it("keeps the active task and its running indicator visible when collapsed", () => {
+    render(
+      <DeepSpaceTaskPlanDrawer
+        isStreaming
+        progress={{
+          completed: 1,
+          verified: false,
+          tasks: [
+            { id: "research", content: "Research sources", status: "completed" },
+            {
+              id: "read",
+              content: "Read primary sources",
+              active_form: "Reading the official papers",
+              status: "in_progress",
+            },
+            { id: "write", content: "Write the case study", status: "pending" },
+          ],
+        }}
+      />,
+    );
+
+    const toggle = screen.getByRole("button", { name: /task plan/i });
+    if (toggle.getAttribute("aria-expanded") === "true") fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const activeSummary = screen.getByTestId("deepspace-active-task-summary");
+    expect(activeSummary).toHaveTextContent("Active");
+    expect(within(activeSummary).getByLabelText("In progress")).toBeInTheDocument();
+    expect(screen.getAllByText("Reading the official papers").length).toBeGreaterThan(0);
+  });
+
   it("shows a queued turn as waiting until the worker starts it", () => {
     const { rerender } = render(<DeepSpaceThinkingPanel content="" isStreaming isQueued />);
 
@@ -18,6 +50,28 @@ describe("DeepSpace verified task progress", () => {
     expect(screen.getByText("Thinking & activity…")).toBeInTheDocument();
     expect(screen.getByText("Waiting for the model and tools…")).toBeInTheDocument();
     expect(screen.queryByText("Queued")).not.toBeInTheDocument();
+  });
+
+  it("shows a persisted active task as paused after a failed stream", () => {
+    render(
+      <DeepSpaceTaskPlanDrawer
+        isStreaming={false}
+        progress={{
+          completed: 1,
+          verified: false,
+          tasks: [
+            { id: "research", content: "Research sources", status: "completed" },
+            { id: "write", content: "Write the report", status: "in_progress" },
+          ],
+        }}
+      />,
+    );
+
+    const toggle = screen.getByRole("button", { name: /task plan/i });
+    expect(toggle).toHaveTextContent("Paused");
+    expect(within(screen.getByTestId("deepspace-active-task-summary")).getByLabelText("Paused"))
+      .toBeInTheDocument();
+    expect(screen.getByText("Paused · retry to continue")).toBeInTheDocument();
   });
 
   it("keeps persisted model thinking visible when tool steps are restored", () => {
@@ -49,7 +103,7 @@ describe("DeepSpace verified task progress", () => {
     expect(screen.getByText("Searching the web")).toBeInTheDocument();
   });
 
-  it("derives progress only from a real todo tool result", () => {
+  it("keeps task progress out of Thinking & activity", () => {
     render(
       <DeepSpaceThinkingPanel
         content=""
@@ -65,8 +119,9 @@ describe("DeepSpace verified task progress", () => {
             status: "completed",
             startedAt: new Date().toISOString(),
             completedAt: new Date().toISOString(),
-            toolName: "todo_check",
+            toolName: "todo_write",
             toolId: "call-1",
+            toolInput: { operation: "check" },
             toolOutput: JSON.stringify({
               completed_count: 1,
               tasks: [
@@ -79,9 +134,8 @@ describe("DeepSpace verified task progress", () => {
       />,
     );
 
-    expect(screen.getByTestId("deepspace-task-progress")).toHaveTextContent("1/2 complete");
-    expect(screen.getByTestId("deepspace-task-progress")).toHaveTextContent("Research sources");
-    expect(screen.getByTestId("deepspace-task-progress")).toHaveTextContent("Write the report");
+    expect(screen.queryByTestId("deepspace-task-progress")).not.toBeInTheDocument();
+    expect(screen.getByText("Check Task Ledger")).toBeInTheDocument();
   });
 
   it("collapses completed timeline entries while keeping the live entry open", () => {

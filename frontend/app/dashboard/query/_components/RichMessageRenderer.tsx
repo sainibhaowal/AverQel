@@ -198,7 +198,7 @@ function parseLegacySummary(content: string): LegacySummary | null {
     }
   }
 
-  const collectionHeading = first.match(/^Collection summary for\s+(.+?):\s*$/i);
+  const collectionHeading = first.match(/^(?:Collection|Qel Connect) summary for\s+(.+?):\s*$/i);
   if (collectionHeading) {
     const documentsIndex = lines.findIndex((line) => /^Documents:\s*$/i.test(line.trim()));
     const metricLines = (documentsIndex === -1 ? lines.slice(1) : lines.slice(1, documentsIndex))
@@ -278,7 +278,7 @@ function LegacySummaryPanel({ summary }: { summary: LegacySummary }) {
   return (
     <section className="border-glass-border/60 bg-glass-bg/30 rounded-2xl border p-4 shadow-sm sm:p-5">
       <div className="text-primary text-xs font-semibold tracking-[0.16em] uppercase">
-        Collection Summary
+        Qel Connect Summary
       </div>
       <div className="text-foreground mt-2 text-sm font-semibold">{summary.collection}</div>
       {summary.metrics.length > 0 ? (
@@ -318,10 +318,15 @@ function resolveDisplayBlocks(message: QueryThreadMessage): StructuredBlock[] {
   const hasMermaidFence = /```[ \t]*mermaid\b/i.test(content);
 
   const blocks = message.blocks.filter((block) => {
-    if (block.type === "card") return false;
     if (block.type === "table" && hasTable) return false;
     if (block.type === "chart" && hasChartFence) return false;
     if (block.type === "diagram" && block.source === "mermaid" && hasMermaidFence) return false;
+    // Keep legacy, decorative card metadata out of the Query answer surface.
+    // DeepSpace renders every card as a first-class interactive surface; Query
+    // only promotes cards that carry an explicit action, source, image, or
+    // metric payload.
+    if (block.type === "card" && !isFunctionalCard(block)) return false;
+    if (block.type === "card" && containsCardContent(content, block)) return false;
     return true;
   });
 
@@ -391,6 +396,23 @@ function containsChartFence(content: string): boolean {
     (/```[ \t]*json\b/i.test(content) &&
       /"(?:chart_type|series|chart_data|chartData)"\s*:/.test(content))
   );
+}
+
+function isFunctionalCard(block: Extract<StructuredBlock, { type: "card" }>): boolean {
+  return Boolean(
+    block.href ||
+    block.image_url ||
+    (block.metrics && block.metrics.length > 0) ||
+    (block.actions && block.actions.length > 0),
+  );
+}
+
+function containsCardContent(
+  content: string,
+  block: Extract<StructuredBlock, { type: "card" }>,
+): boolean {
+  const cardContent = block.content.trim();
+  return cardContent.length > 0 && content.includes(cardContent);
 }
 
 function containsMarkdownTable(content: string): boolean {

@@ -5,8 +5,8 @@ HEAD_SHA="${1:-HEAD}"
 BASE_TAG="${2:-}"
 
 if [[ -n "$BASE_TAG" ]]; then
-  [[ "$BASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-    echo "Invalid base tag '$BASE_TAG'; expected vMAJOR.MINOR.PATCH" >&2
+  [[ "$BASE_TAG" =~ ^v1\.[0-9]+\.[0-9]+$ ]] || {
+    echo "Invalid base tag '$BASE_TAG'; AverQel releases are restricted to v1.x.x" >&2
     exit 2
   }
   git rev-parse --verify "$BASE_TAG^{commit}" >/dev/null || {
@@ -25,11 +25,15 @@ else
 
   if ((${#STABLE_TAGS[@]} > 0)); then
     LAST_TAG="${STABLE_TAGS[${#STABLE_TAGS[@]}-1]}"
+    [[ "$LAST_TAG" =~ ^v1\.[0-9]+\.[0-9]+$ ]] || {
+      echo "Latest stable tag '$LAST_TAG' is outside AverQel's v1.x.x release line" >&2
+      exit 2
+    }
     BASE_VERSION="${LAST_TAG#v}"
     COMMIT_RANGE="$LAST_TAG..$HEAD_SHA"
   else
     LAST_TAG=""
-    BASE_VERSION="0.0.0"
+    BASE_VERSION="1.0.0"
     COMMIT_RANGE="$HEAD_SHA"
   fi
 fi
@@ -40,8 +44,8 @@ IFS=. read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
 
 if grep -Eq '^[[:alnum:]_-]+(\([^)]*\))?!:[[:space:]]' <<< "$COMMIT_SUBJECTS" \
   || grep -Eq '^[[:space:]]*BREAKING[ -]CHANGE:' <<< "$COMMIT_BODIES"; then
-  MAJOR=$((MAJOR + 1))
-  MINOR=0
+  # AverQel remains on the v1 release line, including for breaking changes.
+  MINOR=$((MINOR + 1))
   PATCH=0
 elif grep -Eq '^feat(\([^)]*\))?:[[:space:]]' <<< "$COMMIT_SUBJECTS"; then
   MINOR=$((MINOR + 1))
@@ -52,5 +56,10 @@ else
   echo "::error::No release-worthy Conventional Commit found since ${LAST_TAG:-the start of history}. Use feat:, fix:, perf:, revert:, or a BREAKING CHANGE marker; otherwise provide an explicit release_version." >&2
   exit 1
 fi
+
+[[ "$MAJOR" == "1" ]] || {
+  echo "Calculated release version escaped AverQel's v1.x.x release line" >&2
+  exit 2
+}
 
 echo "v${MAJOR}.${MINOR}.${PATCH}"

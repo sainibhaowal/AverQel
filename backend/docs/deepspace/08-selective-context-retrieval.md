@@ -21,9 +21,11 @@ explicit retrospective request
   -> model answer marked by evidence, not by guessed history
 ```
 
-The retrospective profile can use `find`, `read`, `ask_user`, and `final`. It
-cannot use write, edit, delete, analyze, sandbox, or external side-effect
-tools merely because the user asked for history.
+Retrospective requests use the same dynamic capability catalog as other turns.
+The model can load only the read or search schemas needed to retrieve the
+requested evidence, such as `find` or `read`. A history request does not itself
+authorize a workspace mutation or external side effect. There is no separate
+`final` tool; after retrieval, the model answers in ordinary text.
 
 ## Chat index
 

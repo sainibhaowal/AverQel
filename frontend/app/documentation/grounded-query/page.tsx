@@ -87,7 +87,7 @@ export default function GroundedQueryDocsPage() {
             before sending your question.
           </li>
           <li>
-            Attachments are included with the selected document or collection scope, and answers
+            Attachments are included with the selected document or Qel Connect scope, and answers
             continue to use the existing grounded retrieval and citation path.
           </li>
           <li>

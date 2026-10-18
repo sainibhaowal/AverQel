@@ -28,7 +28,8 @@ describe("audit logs page", () => {
             status: "success",
             trace_id: "trace-1",
             created_at: "2026-03-31T00:00:00Z",
-            details: {},
+            ip_address: "203.0.113.7",
+            details: { message_content: "private support content" },
           },
         ],
         page: {
@@ -42,6 +43,10 @@ describe("audit logs page", () => {
 
     const badge = await screen.findByText("success");
     expect(badge.className).toContain("text-green-500");
+    fireEvent.click(screen.getByText("documents.upload"));
+    expect(screen.getByText("doc-1")).toBeInTheDocument();
+    expect(screen.queryByText("203.0.113.7")).not.toBeInTheDocument();
+    expect(screen.queryByText(/private support content/i)).not.toBeInTheDocument();
   });
 
   it("loads the next page through the existing cursor API", async () => {

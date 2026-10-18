@@ -22,7 +22,6 @@ import { fetchWithAuth } from "@/lib/api";
 
 interface Submission {
   id: string;
-  email: string;
   subject: string;
   content: string;
   category: string;
@@ -97,7 +96,7 @@ export default function AdminFeedbackPage() {
       if (!subRes.ok) {
         const reason =
           subRes.status === 403
-            ? "Your account does not have platform feedback access."
+            ? "Your account is not assigned the feedback manager role."
             : `Could not load feedback submissions (${subRes.status}).`;
         throw new Error(reason);
       }
@@ -195,7 +194,7 @@ export default function AdminFeedbackPage() {
       (!statusFilter || item.status === statusFilter) &&
       (!categoryFilter || item.category === categoryFilter) &&
       (!search ||
-        `${item.subject} ${item.content} ${item.email}`
+        `${item.subject} ${item.content}`
           .toLowerCase()
           .includes(search.toLowerCase())),
   );
@@ -273,6 +272,12 @@ export default function AdminFeedbackPage() {
           </button>
         }
       />
+
+      <aside className="border-border bg-surface-1 text-muted-foreground rounded-2xl border px-4 py-3 text-sm">
+        Feedback contains text submitted by users and is visible to accounts assigned the Feedback
+        Manager role. Replies are delivered through the user&apos;s in-app thread; this staff view
+        does not show submitter email addresses or user IDs.
+      </aside>
 
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-4">
         {/* Campaigns Column */}
@@ -394,10 +399,7 @@ export default function AdminFeedbackPage() {
                           {s.category.replace("_", " ")}
                         </span>
                         <span className="text-muted-foreground text-xs">
-                          from <b>{s.email}</b>
-                        </span>
-                        <span className="text-muted-foreground text-xs">
-                          • {new Date(s.created_at).toLocaleDateString()}
+                          {new Date(s.created_at).toLocaleDateString()}
                         </span>
                         <span className="rounded-full border border-white/10 px-2 py-1 text-[10px] text-white/70 uppercase">
                           {s.status?.replace("_", " ") ?? "new"}

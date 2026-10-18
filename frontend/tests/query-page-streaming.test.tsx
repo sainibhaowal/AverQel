@@ -486,7 +486,7 @@ describe("AssistantMessage", () => {
         message={{
           ...baseAssistantMessage,
           content: [
-            'Collection summary for "Research":',
+            'Qel Connect summary for "Research":',
             "- Documents: 2",
             "- Total storage: 3.00 KB",
             "- Average document health: 77.5/100",
@@ -504,7 +504,7 @@ describe("AssistantMessage", () => {
       />,
     );
 
-    expect(screen.getByText("Collection Summary")).toBeInTheDocument();
+    expect(screen.getByText("Qel Connect Summary")).toBeInTheDocument();
     expect(screen.getByText('"Research"')).toBeInTheDocument();
     expect(screen.getByText("3.00 KB")).toBeInTheDocument();
     expect(screen.getByText(/77.5\/100/i)).toBeInTheDocument();

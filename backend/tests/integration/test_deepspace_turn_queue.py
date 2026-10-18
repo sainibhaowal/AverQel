@@ -622,6 +622,72 @@ def test_expired_worker_closes_the_saved_stream_and_marks_message_recoverable(
     assert "DEEPSPACE_WORKER_LEASE_EXPIRED" in appended_frames[0]
 
 
+def test_expired_cancelled_worker_finishes_stale_cancelling_queue(
+    db_session, seed_user, monkeypatch
+) -> None:
+    _silence_queue_side_effects(monkeypatch)
+    seeded = seed_user(
+        "QueueExpiredCancelTenant",
+        "queue-expired-cancel@example.com",
+        "StrongPass!1234",
+        ("user",),
+    )
+    conversation_id = _conversation(db_session, seeded)
+    repo = DeepSpaceChatRepository(db_session)
+    assistant = repo.add_message(
+        tenant_id=seeded.tenant_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content="Partial output",
+        metadata_json={"status": "streaming", "client_request_id": "expired-cancel"},
+    )
+    db_session.commit()
+    turn = _turn(
+        db_session,
+        seeded,
+        conversation_id,
+        request_id="expired-cancel",
+        prompt="Stop this prompt",
+        sequence=1,
+        status="cancelling",
+    )
+    turn.started_at = datetime.now(UTC) - timedelta(hours=1)
+    run = DeepSpaceAgentRun(
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        conversation_id=conversation_id,
+        assistant_message_id=assistant.id,
+        status="cancelled",
+        checkpoint={},
+        last_error="cancelled_after_worker_lease_expired",
+        heartbeat_at=None,
+    )
+    db_session.add(run)
+    db_session.commit()
+    appended_frames: list[str] = []
+
+    def capture_event(_db, *, frame, **_kwargs):
+        appended_frames.append(frame)
+
+    monkeypatch.setattr(turn_queue_module, "append_event", capture_event)
+    recovered = DeepSpaceTurnQueueStore(db_session).recover_stale_claims(
+        tenant_id=seeded.tenant_id,
+        user_id=seeded.user_id,
+        conversation_id=conversation_id,
+    )
+    db_session.refresh(turn)
+    db_session.refresh(assistant)
+
+    assert recovered == 1
+    assert turn.status == "cancelled"
+    assert turn.completed_at is not None
+    assert assistant.metadata_json["status"] == "ready"
+    assert assistant.metadata_json["runtime_active"] is False
+    assert len(appended_frames) == 1
+    assert appended_frames[0].startswith("event: done\n")
+    assert '"status":"cancelled"' in appended_frames[0]
+
+
 def test_retry_lookup_finds_the_saved_prompt_through_assistant_retry_id(
     db_session, seed_user
 ) -> None:
@@ -661,7 +727,7 @@ def test_retry_lookup_finds_the_saved_prompt_through_assistant_retry_id(
     assert found[1].id == retried_assistant.id
 
 
-def test_queue_state_repairs_legacy_failure_pause_and_returns_next_request(
+def test_queue_state_repairs_legacy_failure_pause_without_claiming_pending_turn(
     client, db_session, seed_user, monkeypatch
 ) -> None:
     from app.auth.dependencies import create_access_token
@@ -719,7 +785,240 @@ def test_queue_state_repairs_legacy_failure_pause_and_returns_next_request(
     assert response.status_code == 200
     assert response.json()["paused"] is False
     assert response.json()["failed_request_id"] is None
-    assert response.json()["active_request_id"] == "next-prompt"
+    # Dispatch is asynchronous: a waiting item must not be advertised as
+    # active until a worker has claimed it.
+    assert response.json()["active_request_id"] is None
+    assert dispatches == [
+        {
+            "tenant_id": seeded.tenant_id,
+            "user_id": seeded.user_id,
+            "conversation_id": conversation_id,
+        }
+    ]
+
+
+def test_queue_state_returns_only_a_worker_claimed_request(client, db_session, seed_user):
+    from app.auth.dependencies import create_access_token
+    from app.core.config import get_settings
+
+    seeded = seed_user(
+        "QueueActiveStateTenant",
+        "queue-active-state@example.com",
+        "StrongPass!1234",
+        ("user",),
+    )
+    conversation_id = _conversation(db_session, seeded)
+    _turn(
+        db_session,
+        seeded,
+        conversation_id,
+        request_id="claimed-request",
+        prompt="A worker has claimed this prompt",
+        sequence=1,
+        status="running",
+    )
+    db_session.commit()
+    token = create_access_token(
+        user_id=seeded.user_id,
+        tenant_id=seeded.tenant_id,
+        roles={"user"},
+        settings=get_settings(),
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-Id": str(seeded.tenant_id),
+    }
+
+    response = client.get(f"/api/v1/deepspace/chats/{conversation_id}/queue/state", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["active_request_id"] == "claimed-request"
+
+
+def test_resume_response_does_not_label_unclaimed_prompt_active(
+    client, db_session, seed_user, monkeypatch
+) -> None:
+    from app.auth.dependencies import create_access_token
+    from app.core.config import get_settings
+    from app.deepspace.api import chats as chat_api
+
+    seeded = seed_user(
+        "QueueResumeStateTenant",
+        "queue-resume-state@example.com",
+        "StrongPass!1234",
+        ("user",),
+    )
+    conversation_id = _conversation(db_session, seeded)
+    _turn(
+        db_session,
+        seeded,
+        conversation_id,
+        request_id="resume-pending",
+        prompt="This remains pending until a worker claims it",
+        sequence=1,
+        status="queued",
+    )
+    db_session.add(
+        DeepSpaceQueueControl(
+            tenant_id=seeded.tenant_id,
+            user_id=seeded.user_id,
+            conversation_id=conversation_id,
+            paused=True,
+            reason="Paused by the user",
+        )
+    )
+    db_session.commit()
+    token = create_access_token(
+        user_id=seeded.user_id,
+        tenant_id=seeded.tenant_id,
+        roles={"user"},
+        settings=get_settings(),
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-Id": str(seeded.tenant_id),
+    }
+    dispatches: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        chat_api,
+        "_dispatch_deepspace_queue",
+        lambda **kwargs: dispatches.append(kwargs),
+    )
+
+    response = client.post(
+        f"/api/v1/deepspace/chats/{conversation_id}/queue/resume",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["paused"] is False
+    assert response.json()["active_request_id"] is None
+    assert dispatches == [
+        {
+            "tenant_id": seeded.tenant_id,
+            "user_id": seeded.user_id,
+            "conversation_id": conversation_id,
+        }
+    ]
+
+
+def test_chat_history_proxy_timeout_falls_back_to_server_history(
+    client, db_session, seed_user, monkeypatch
+) -> None:
+    from app.auth.dependencies import create_access_token
+    from app.core.config import get_settings
+    from app.deepspace.integrations import client_proxy
+
+    seeded = seed_user(
+        "HistoryProxyTimeoutTenant",
+        "history-proxy-timeout@example.com",
+        "StrongPass!1234",
+        ("user",),
+    )
+    conversation_id = _conversation(db_session, seeded)
+    DeepSpaceChatRepository(db_session).add_message(
+        tenant_id=seeded.tenant_id,
+        conversation_id=conversation_id,
+        role="user",
+        content="Saved on the server",
+    )
+    db_session.commit()
+    token = create_access_token(
+        user_id=seeded.user_id,
+        tenant_id=seeded.tenant_id,
+        roles={"user"},
+        settings=get_settings(),
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-Id": str(seeded.tenant_id),
+    }
+    timeout_values: list[float] = []
+
+    monkeypatch.setattr(client_proxy.client_proxy_registry, "is_storage_connected", lambda *_: True)
+
+    async def fail_proxy(*_args, **kwargs):
+        timeout_values.append(kwargs["timeout"])
+        raise TimeoutError("browser storage proxy did not respond")
+
+    monkeypatch.setattr(client_proxy.client_proxy_registry, "db_proxy_call", fail_proxy)
+
+    response = client.get(
+        f"/api/v1/deepspace/chats/{conversation_id}/messages",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert timeout_values == [client_proxy.INTERACTIVE_STORAGE_RPC_TIMEOUT_SECONDS]
+    assert [message["content"] for message in response.json()["messages"]] == [
+        "Saved on the server"
+    ]
+
+
+def test_steer_requeues_dispatch_and_reports_already_started_turn(
+    client, db_session, seed_user, monkeypatch
+) -> None:
+    from app.auth.dependencies import create_access_token
+    from app.core.config import get_settings
+    from app.deepspace.api import chats as chat_api
+
+    seeded = seed_user(
+        "QueueSteerApiTenant",
+        "queue-steer-api@example.com",
+        "StrongPass!1234",
+        ("user",),
+    )
+    conversation_id = _conversation(db_session, seeded)
+    _turn(
+        db_session,
+        seeded,
+        conversation_id,
+        request_id="steer-pending",
+        prompt="Pending prompt to prioritize",
+        sequence=1,
+        status="queued",
+    )
+    _turn(
+        db_session,
+        seeded,
+        conversation_id,
+        request_id="steer-already-running",
+        prompt="Prompt already claimed by a worker",
+        sequence=2,
+        status="running",
+    )
+    db_session.commit()
+    token = create_access_token(
+        user_id=seeded.user_id,
+        tenant_id=seeded.tenant_id,
+        roles={"user"},
+        settings=get_settings(),
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-Id": str(seeded.tenant_id),
+    }
+    dispatches: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        chat_api,
+        "_dispatch_deepspace_queue",
+        lambda **kwargs: dispatches.append(kwargs),
+    )
+
+    promoted = client.post(
+        f"/api/v1/deepspace/chats/{conversation_id}/queue/steer-pending/steer",
+        headers=headers,
+    )
+    stale_steer = client.post(
+        f"/api/v1/deepspace/chats/{conversation_id}/queue/steer-already-running/steer",
+        headers=headers,
+    )
+
+    assert promoted.status_code == 200
+    assert promoted.json()["priority"] > 0
+    assert promoted.json()["status"] == "queued"
+    assert stale_steer.status_code == 409
+    assert "already started" in stale_steer.json()["error"]["message"]
     assert dispatches == [
         {
             "tenant_id": seeded.tenant_id,

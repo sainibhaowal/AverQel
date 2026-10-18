@@ -6,15 +6,19 @@ import csv
 import hashlib
 import html
 import io
+import ipaddress
 import json
 import posixpath
 import re
+import socket
 import uuid
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -42,9 +46,12 @@ from app.deepspace.services.library_storage import (
     safe_extraction_status,
 )
 from app.deepspace.services.task_loop import DeepSpaceTaskLoopStore
+from app.deepspace.services.temporary_assets import temporary_asset_expiration
 from app.deepspace.workers.library_uploads import finalize_library_upload, profile_library_dataset
 from app.ingestion.services.office_writer import text_to_docx, text_to_pptx, text_to_xlsx
 from app.platform.database.session import get_db
+from app.query.schemas.visual_document import VisualDocument
+from app.query.services.visual_blocks import validate_visual_block_payload
 from app.system.services.storage_lifecycle import StorageLifecycleService
 from app.system.services.storage_quota import (
     StorageQuotaExceededError,
@@ -291,7 +298,7 @@ def _content_disposition(*, disposition: str, filename: str) -> str:
 
 
 class ExtractionStatusSchema(BaseModel):
-    state: Literal["extracted", "no_text", "unavailable", "not_attempted"]
+    state: Literal["processing", "extracted", "no_text", "unavailable", "not_attempted"]
     text_available: bool
     extraction_method: str | None = None
     ocr_used: bool = False
@@ -562,6 +569,25 @@ class WorkspaceFileCopy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class VisualArtifactCreate(BaseModel):
+    """Editable visual document saved as a versioned Library text artifact."""
+
+    block_id: str = Field(min_length=1, max_length=160)
+    block: dict[str, object]
+    filename: str | None = Field(default=None, max_length=255)
+    expected_version: int | None = Field(default=None, ge=1)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AssetImportRequest(BaseModel):
+    url: str = Field(min_length=8, max_length=4096)
+    filename: str | None = Field(default=None, max_length=255)
+    retention: Literal["temporary", "library"] = "library"
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class LibraryExportRequest(BaseModel):
     """The selected Library files to package for an authenticated download."""
 
@@ -590,6 +616,75 @@ def _conversation(*, db: Session, auth: AuthContext, conversation_id: uuid.UUID)
             status_code=404,
         )
     return conversation
+
+
+def _validate_remote_asset_url(value: str) -> str:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(value.strip())
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ApiError(
+            code="INVALID_REQUEST", message="Only HTTP(S) image URLs are allowed.", status_code=422
+        )
+    host = parsed.hostname.rstrip(".").lower()
+    if host in {"localhost", "localhost.localdomain"}:
+        raise ApiError(
+            code="INVALID_REQUEST",
+            message="Private network image URLs are not allowed.",
+            status_code=422,
+        )
+    try:
+        addresses = {ipaddress.ip_address(info[4][0]) for info in socket.getaddrinfo(host, None)}
+    except OSError as exc:
+        raise ApiError(
+            code="ASSET_UNAVAILABLE",
+            message="The image host could not be resolved.",
+            status_code=422,
+        ) from exc
+    if any(
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_unspecified
+        or address.is_reserved
+        for address in addresses
+    ):
+        raise ApiError(
+            code="INVALID_REQUEST",
+            message="Private network image URLs are not allowed.",
+            status_code=422,
+        )
+    return parsed.geturl()
+
+
+def _validated_raster_asset_mime(content_type: str, payload: bytes) -> str:
+    """Accept only common raster image types and verify their file signatures."""
+    mime = content_type.split(";", 1)[0].strip().lower()
+    signatures: dict[str, Callable[[bytes], bool]] = {
+        "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+        "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/gif": lambda data: data.startswith((b"GIF87a", b"GIF89a")),
+        "image/webp": lambda data: (
+            len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+        ),
+        "image/avif": lambda data: (
+            len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in {b"avif", b"avis"}
+        ),
+    }
+    signature_check = signatures.get(mime)
+    if signature_check is None or not signature_check(payload):
+        raise ApiError(
+            code="UNSUPPORTED_MEDIA_TYPE",
+            message="The URL must return a supported raster image with a matching file type.",
+            status_code=415,
+        )
+    return mime
 
 
 def _serialize_file(
@@ -1154,6 +1249,7 @@ async def list_workspace_files(
                 DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
                 DeepSpaceWorkspaceFile.user_id == auth.user_id,
                 DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+                DeepSpaceWorkspaceFile.source != "temporary_asset",
             )
             .order_by(
                 DeepSpaceWorkspaceFile.updated_at.desc(),
@@ -1203,6 +1299,7 @@ async def list_workspace_entries(
                 DeepSpaceWorkspaceFile.user_id == auth.user_id,
                 DeepSpaceWorkspaceFile.conversation_id == conversation_id,
                 DeepSpaceWorkspaceFile.parent_folder_id == parent_id,
+                DeepSpaceWorkspaceFile.source != "temporary_asset",
             )
             .order_by(DeepSpaceWorkspaceFile.name.asc())
         )
@@ -1415,6 +1512,7 @@ async def export_workspace_files(
                 DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
                 DeepSpaceWorkspaceFile.user_id == auth.user_id,
                 DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+                DeepSpaceWorkspaceFile.source != "temporary_asset",
             )
         )
         .scalars()
@@ -1717,6 +1815,309 @@ async def create_workspace_file(
     db.refresh(file)
     if DatasetDerivativeService.supports(file.content_type):
         profile_library_dataset.delay(file_id=str(file.id), tenant_id=str(auth.tenant_id))
+    return _serialize_file(file, include_content=True)
+
+
+@router.post(
+    "/{conversation_id}/visual-artifacts",
+    response_model=WorkspaceFileSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def save_visual_artifact(
+    conversation_id: uuid.UUID,
+    payload: VisualArtifactCreate,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> WorkspaceFileSchema:
+    """Create or revise an editable canonical visual artifact.
+
+    The JSON source is intentionally stored as a normal text Library file, so
+    the existing version list, restore endpoint, ownership checks, and export
+    routes apply without creating a second persistence system.
+    """
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    try:
+        validate_visual_block_payload(payload.block)
+    except ValueError as exc:
+        raise ApiError(code="INVALID_REQUEST", message=str(exc), status_code=422) from exc
+    visual_payload = cast(dict[str, Any], payload.block)
+    filename = WorkspaceFileCreate.safe_name(payload.filename or f"{payload.block_id}.visual.json")
+    document = VisualDocument.model_validate(
+        {
+            "block_id": payload.block_id,
+            "schema_version": int(visual_payload.get("schema_version") or 1),
+            "revision": int(visual_payload.get("revision") or 0),
+            "kind": str(payload.block.get("type") or payload.block.get("kind") or "visual"),
+            "data": payload.block,
+            "source_markdown": payload.block.get("source_markdown"),
+            "source_mermaid": payload.block.get("source_mermaid"),
+            "assets": payload.block.get("assets") or [],
+            "history": payload.block.get("history") or [],
+            "undo": payload.block.get("undo") or {},
+        }
+    )
+    content = json.dumps(
+        document.model_dump(mode="json"),
+        ensure_ascii=False,
+        indent=2,
+    )
+    file = db.execute(
+        select(DeepSpaceWorkspaceFile).where(
+            DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
+            DeepSpaceWorkspaceFile.user_id == auth.user_id,
+            DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+            DeepSpaceWorkspaceFile.name == filename,
+        )
+    ).scalar_one_or_none()
+    if file is not None:
+        if payload.expected_version is not None and payload.expected_version != file.version:
+            raise ApiError(
+                code="IDEMPOTENCY_CONFLICT",
+                message="The visual artifact changed elsewhere. Reload before saving.",
+                status_code=409,
+            )
+        old_size = file.size_bytes
+        _ensure_storage_capacity(
+            db=db,
+            auth=auth,
+            additional_bytes=len(content.encode("utf-8")),
+            replacing_bytes=old_size,
+        )
+        file.content = content
+        file.size_bytes = len(content.encode("utf-8"))
+        file.checksum_sha256 = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        file.version += 1
+        file.updated_at = datetime.now(UTC)
+        file.metadata_json = {
+            **(file.metadata_json if isinstance(file.metadata_json, dict) else {}),
+            "visual_document": {
+                "block_id": payload.block_id,
+                "schema_version": int(visual_payload.get("schema_version") or 1),
+                "revision": int(visual_payload.get("revision") or 0),
+            },
+        }
+    else:
+        _ensure_storage_capacity(
+            db=db,
+            auth=auth,
+            additional_bytes=len(content.encode("utf-8")),
+        )
+        file = DeepSpaceWorkspaceFile(
+            id=uuid.uuid4(),
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            conversation_id=conversation_id,
+            name=filename,
+            content_type="application/json",
+            source="visual_editor",
+            content=content,
+            size_bytes=len(content.encode("utf-8")),
+            checksum_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            metadata_json={
+                "visual_document": {
+                    "block_id": payload.block_id,
+                    "schema_version": int(visual_payload.get("schema_version") or 1),
+                    "revision": int(visual_payload.get("revision") or 0),
+                }
+            },
+        )
+        db.add(file)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ApiError(
+            code="IDEMPOTENCY_CONFLICT",
+            message="A visual artifact with that name already exists.",
+            status_code=409,
+        ) from exc
+    _add_version(db, file)
+    db.commit()
+    db.refresh(file)
+    return _serialize_file(file, include_content=True)
+
+
+@router.post(
+    "/{conversation_id}/assets/import",
+    response_model=WorkspaceFileSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def import_remote_asset(
+    conversation_id: uuid.UUID,
+    payload: AssetImportRequest,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> WorkspaceFileSchema:
+    """Download one public raster image into this conversation's owned storage."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    url = _validate_remote_asset_url(payload.url)
+    try:
+        # Do not follow redirects before validating the destination; this keeps
+        # the authenticated asset proxy closed to redirect-based SSRF.
+        async with httpx.AsyncClient(
+            follow_redirects=False,
+            timeout=10.0,
+            trust_env=False,
+        ) as client:
+            async with client.stream("GET", url, headers={"Accept": "image/*"}) as response:
+                if 300 <= response.status_code < 400:
+                    raise ApiError(
+                        code="ASSET_UNAVAILABLE",
+                        message="Redirecting image URLs cannot be imported.",
+                        status_code=422,
+                    )
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+                declared_length = response.headers.get("content-length")
+                if declared_length:
+                    try:
+                        if int(declared_length) > settings.upload_max_bytes:
+                            raise ApiError(
+                                code="DOC_TOO_LARGE",
+                                message="The image exceeds the configured upload limit.",
+                                status_code=413,
+                            )
+                    except ValueError:
+                        raise ApiError(
+                            code="ASSET_UNAVAILABLE",
+                            message="The image server returned an invalid content length.",
+                            status_code=422,
+                        ) from None
+                content = bytearray()
+                async for chunk in response.aiter_bytes(64 * 1024):
+                    content.extend(chunk)
+                    if len(content) > settings.upload_max_bytes:
+                        raise ApiError(
+                            code="DOC_TOO_LARGE",
+                            message="The image exceeds the configured upload limit.",
+                            status_code=413,
+                        )
+                body = bytes(content)
+                final_url = str(response.url)
+    except ApiError:
+        raise
+    except httpx.HTTPStatusError as exc:
+        raise ApiError(
+            code="ASSET_UNAVAILABLE", message="The image URL returned an error.", status_code=422
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise ApiError(
+            code="ASSET_UNAVAILABLE", message="The image could not be downloaded.", status_code=422
+        ) from exc
+    if len(body) > settings.upload_max_bytes:
+        raise ApiError(
+            code="DOC_TOO_LARGE",
+            message="The image exceeds the configured upload limit.",
+            status_code=413,
+        )
+    content_type = _validated_raster_asset_mime(content_type, body)
+    _validate_remote_asset_url(final_url)
+    from urllib.parse import unquote, urlparse
+
+    path_name = unquote(urlparse(final_url).path.rsplit("/", 1)[-1]) or "image"
+    extension = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "image/svg+xml": ".svg",
+    }.get(content_type, ".img")
+    raw_name = payload.filename or path_name
+    if "." not in raw_name:
+        raw_name = f"{raw_name}{extension}"
+    name = WorkspaceFileCreate.safe_name(raw_name)
+    file_id = uuid.uuid4()
+    duplicate_name = db.execute(
+        select(DeepSpaceWorkspaceFile.id).where(
+            DeepSpaceWorkspaceFile.tenant_id == auth.tenant_id,
+            DeepSpaceWorkspaceFile.user_id == auth.user_id,
+            DeepSpaceWorkspaceFile.conversation_id == conversation_id,
+            DeepSpaceWorkspaceFile.parent_folder_id.is_(None),
+            DeepSpaceWorkspaceFile.name == name,
+        )
+    ).scalar_one_or_none()
+    if duplicate_name is not None:
+        stem, dot, suffix = name.rpartition(".")
+        name = f"{stem if dot else name}-{file_id.hex[:8]}{dot}{suffix if dot else ''}"
+    _ensure_storage_capacity(db=db, auth=auth, additional_bytes=len(body))
+    stored = LibraryStorageService(settings).store(
+        tenant_id=auth.tenant_id,
+        file_id=file_id,
+        filename=name,
+        content_type=content_type,
+        payload=body,
+    )
+    file = DeepSpaceWorkspaceFile(
+        id=file_id,
+        tenant_id=auth.tenant_id,
+        user_id=auth.user_id,
+        conversation_id=conversation_id,
+        name=name,
+        content_type=content_type,
+        source="temporary_asset" if payload.retention == "temporary" else "remote_asset",
+        content="",
+        size_bytes=len(body),
+        storage_bucket=stored.bucket,
+        storage_key=stored.object_key,
+        checksum_sha256=hashlib.sha256(body).hexdigest(),
+        is_binary=True,
+        metadata_json={
+            "remote_url": url,
+            "validated_url": final_url,
+            "asset_status": "owned",
+            "retention": payload.retention,
+            **(
+                {"expires_at": temporary_asset_expiration().isoformat()}
+                if payload.retention == "temporary"
+                else {}
+            ),
+        },
+    )
+    db.add(file)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        StorageService(settings).delete_object(bucket=stored.bucket, object_key=stored.object_key)
+        raise ApiError(
+            code="IDEMPOTENCY_CONFLICT",
+            message="An owned asset with that name already exists.",
+            status_code=409,
+        ) from exc
+    _add_version(db, file)
+    db.commit()
+    db.refresh(file)
+    return _serialize_file(file, include_content=True)
+
+
+@router.post(
+    "/{conversation_id}/assets/{file_id}/retain",
+    response_model=WorkspaceFileSchema,
+    dependencies=[Depends(require_permissions("queries:run"))],
+)
+async def retain_temporary_asset(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> WorkspaceFileSchema:
+    """Keep a temporary chat image in the visible Library without re-downloading it."""
+    _conversation(db=db, auth=auth, conversation_id=conversation_id)
+    file = _owned_file(db=db, auth=auth, conversation_id=conversation_id, file_id=file_id)
+    if file.source == "temporary_asset":
+        metadata = dict(file.metadata_json or {})
+        metadata.pop("expires_at", None)
+        metadata["retention"] = "library"
+        file.metadata_json = metadata
+        file.source = "remote_asset"
+        file.version += 1
+        file.updated_at = datetime.now(UTC)
+        db.commit()
+        _add_version(db, file)
+        db.commit()
+        db.refresh(file)
     return _serialize_file(file, include_content=True)
 
 

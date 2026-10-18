@@ -73,6 +73,11 @@ function appendStructuredBlocks(content: string, blocks: StructuredBlock[] | und
       result += block.rows.map((row) => "| " + row.join(" | ") + " |").join("\n");
       result += "\n";
     }
+
+    if (block.type === "card" && block.content && !result.includes(block.content.trim())) {
+      result +=
+        "\n\n### " + (block.title || "Information card") + "\n\n" + block.content.trim() + "\n";
+    }
   }
 
   return result;

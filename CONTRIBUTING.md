@@ -137,7 +137,9 @@ chore(scope): maintain tooling without product behavior changes
 ```
 
 Breaking changes must be documented in the commit body with `BREAKING CHANGE:`
-so semantic release calculation can identify them.
+so semantic release calculation can identify them. AverQel keeps releases on
+the `v1.x.x` line, so a breaking-change marker advances the minor version
+instead of creating a `v2` release.
 
 Pull request titles are also required to use Conventional Commit format because
 the automatic release calculation reads commit subjects. With squash merging,

@@ -24,13 +24,17 @@ flowchart LR
 
 ## 3. Queue isolation
 
-1. `library_uploads` assembles chunks and creates the private Library record.
-2. `dataset_indexing` converts CSV, TSV, JSON, and XLSX into tenant-private,
+1. `library_uploads` assembles chunks and publishes the private Library record.
+   It does not run document extraction and releases the upload-row lock before
+   object-storage I/O. The upload becomes usable by chat once the original is
+   durably stored.
+2. `library_extraction` runs OCR and document/text extraction after publication.
+   `media_derivatives` builds bounded media/archive manifests on the same
+   separate processing worker, so a slow parser cannot stall file publication.
+3. `dataset_indexing` converts CSV, TSV, JSON, and XLSX into tenant-private,
    Zstandard-compressed Parquet away from API and chat workers. Parquet is
    written with 100,000-row groups and statistics so DuckDB can use durable
    columnar indexes and predicate pushdown.
-3. Additional format workers must use dedicated queues as they are added:
-   document/OCR, media preview, archive inspection, and artifact export.
 4. Worker concurrency, memory, CPU, retry, and time limits are independent.
 5. A large file may be queued or show `processing`; that is a controlled state,
    not an API timeout or browser freeze.
@@ -116,13 +120,15 @@ short-lived bearer token and is dry-run safe.
 
 ## 8. Verification
 
-1. Upload a dense CSV and confirm the UI remains responsive while the worker
-   reports processing.
+1. Upload an image and a dense CSV. Confirm each is attachable after secure
+   storage, while OCR/profile status proceeds independently and the UI remains
+   responsive.
 2. Confirm the profile becomes ready without changing the original checksum.
 3. Navigate pages and verify only one bounded page is rendered at a time.
 4. Saturate the indexing queue and confirm chat/API health checks remain fast.
 5. Attempt a cross-tenant file ID and confirm an authorization denial.
-6. Test cancellation, retry, malformed CSV, and worker restart recovery.
+6. Test cancellation during storage, extraction retries, malformed CSV, and
+   worker restart recovery.
 7. Run the derivative unit tests: `pytest -q tests/unit/test_dataset_derivatives.py`.
 8. Verify unknown columns, filters, and aggregation expressions return the
    canonical 422 error response and never reach SQL execution.

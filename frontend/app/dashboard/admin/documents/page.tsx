@@ -6,17 +6,9 @@ import { FileStack, Loader2, RefreshCcw, ShieldCheck } from "lucide-react";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import { fetchWithAuth } from "@/lib/api";
 
-interface StatusCount {
-  status: string;
-  count: number;
-}
-
 interface TenantDocumentSummary {
   tenant_id: string;
-  documents_count: number;
-  storage_bytes: number;
   quarantined_count: number;
-  status_counts: StatusCount[];
   error_count: number;
 }
 
@@ -26,20 +18,12 @@ interface SummaryResponse {
 
 interface RecoveryItem {
   job_id: string;
-  document_id: string;
   status: string;
   checkpoint_stage?: string | null;
-  checkpoint_cursor?: number | null;
   resume_count: number;
-  pause_reason?: string | null;
-  last_error_message?: string | null;
+  last_error_code?: string | null;
   updated_at?: string;
 }
-
-const formatStorage = (bytes: number) => {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-};
 
 export default function AdminDocumentsPage() {
   const [items, setItems] = useState<TenantDocumentSummary[]>([]);
@@ -52,12 +36,10 @@ export default function AdminDocumentsPage() {
     () =>
       items.reduce(
         (acc, item) => ({
-          documents: acc.documents + item.documents_count,
-          storage: acc.storage + item.storage_bytes,
           quarantined: acc.quarantined + item.quarantined_count,
           errors: acc.errors + item.error_count,
         }),
-        { documents: 0, storage: 0, quarantined: 0, errors: 0 },
+        { quarantined: 0, errors: 0 },
       ),
     [items],
   );
@@ -96,8 +78,8 @@ export default function AdminDocumentsPage() {
   return (
     <div className="space-y-6">
       <DashboardSectionHeader
-        title="Document Privacy"
-        subtitle="Metadata-Only Platform Oversight"
+        title="Document Processing Health"
+        subtitle="Restricted Operations · Issue Counts Only"
         icon={ShieldCheck}
         accentClassName="bg-emerald-500 text-emerald-500"
         accentGlowClassName="shadow-[0_0_20px_rgba(16,185,129,0.35)]"
@@ -122,10 +104,13 @@ export default function AdminDocumentsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <p className="text-muted-foreground max-w-3xl text-sm leading-6">
+        This restricted operations view shows issue counts and recovery status for triage. It does
+        not expose filenames, document IDs, storage paths, or raw error messages.
+      </p>
+
+      <div className="grid gap-4 md:grid-cols-2">
         {[
-          ["Documents", totals.documents.toLocaleString()],
-          ["Storage", formatStorage(totals.storage)],
           ["Quarantined", totals.quarantined.toLocaleString()],
           ["Errors", totals.errors.toLocaleString()],
         ].map(([label, value]) => (
@@ -143,46 +128,29 @@ export default function AdminDocumentsPage() {
           <div className="flex items-center gap-3">
             <FileStack size={18} className="text-emerald-400" />
             <h2 className="text-foreground text-sm font-bold tracking-[0.18em] uppercase">
-              Tenant Metadata
+              Workspace Processing Health
             </h2>
           </div>
           <span className="text-muted-foreground text-xs">
-            {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : "Not loaded"}
+            {lastUpdated ? `Page refreshed ${lastUpdated.toLocaleTimeString()}` : "Not loaded"}
           </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[520px] text-left text-sm">
             <thead className="text-muted-foreground border-glass-border border-b text-xs tracking-[0.14em] uppercase">
               <tr>
-                <th className="py-3 pr-4">Tenant</th>
-                <th className="py-3 pr-4">Documents</th>
-                <th className="py-3 pr-4">Storage</th>
+                <th className="py-3 pr-4">Workspace reference</th>
                 <th className="py-3 pr-4">Quarantined</th>
-                <th className="py-3 pr-4">Errors</th>
-                <th className="py-3 pr-4">Statuses</th>
+                <th className="py-3 pr-4">Processing errors</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.tenant_id} className="border-glass-border border-b last:border-b-0">
                   <td className="text-foreground py-4 pr-4 font-mono text-xs">{item.tenant_id}</td>
-                  <td className="py-4 pr-4">{item.documents_count.toLocaleString()}</td>
-                  <td className="py-4 pr-4">{formatStorage(item.storage_bytes)}</td>
                   <td className="py-4 pr-4">{item.quarantined_count.toLocaleString()}</td>
                   <td className="py-4 pr-4">{item.error_count.toLocaleString()}</td>
-                  <td className="py-4 pr-4">
-                    <div className="flex flex-wrap gap-2">
-                      {item.status_counts.map((status) => (
-                        <span
-                          key={`${item.tenant_id}:${status.status}`}
-                          className="bg-muted text-muted-foreground rounded-md px-2 py-1 text-xs font-semibold"
-                        >
-                          {status.status}: {status.count}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -197,7 +165,8 @@ export default function AdminDocumentsPage() {
               Recovery history
             </h2>
             <p className="text-muted-foreground mt-1 text-xs">
-              Checkpoint-based resumptions and failure context, scoped to the current admin tenant.
+              Checkpoint stage and error codes for this workspace; document identifiers and raw
+              failure text are hidden.
             </p>
           </div>
           <span className="text-muted-foreground text-xs">{recovery.length} records</span>
@@ -206,27 +175,20 @@ export default function AdminDocumentsPage() {
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="text-muted-foreground border-glass-border border-b text-xs uppercase">
               <tr>
-                <th className="py-3 pr-4">Document</th>
                 <th className="py-3 pr-4">Stage</th>
                 <th className="py-3 pr-4">Status</th>
                 <th className="py-3 pr-4">Resumes</th>
-                <th className="py-3 pr-4">Reason</th>
+                <th className="py-3 pr-4">Error code</th>
               </tr>
             </thead>
             <tbody>
               {recovery.map((item) => (
                 <tr key={item.job_id} className="border-glass-border border-b last:border-b-0">
-                  <td className="text-foreground py-3 pr-4 font-mono text-xs">
-                    {item.document_id}
-                  </td>
-                  <td className="py-3 pr-4">
-                    {item.checkpoint_stage ?? "—"}
-                    {item.checkpoint_cursor != null ? ` @ ${item.checkpoint_cursor}` : ""}
-                  </td>
+                  <td className="py-3 pr-4">{item.checkpoint_stage ?? "—"}</td>
                   <td className="py-3 pr-4">{item.status}</td>
                   <td className="py-3 pr-4">{item.resume_count}</td>
                   <td className="text-muted-foreground max-w-[320px] truncate py-3 pr-4">
-                    {item.pause_reason || item.last_error_message || "—"}
+                    {item.last_error_code || "—"}
                   </td>
                 </tr>
               ))}

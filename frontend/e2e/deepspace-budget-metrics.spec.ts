@@ -33,7 +33,9 @@ test.describe("DeepSpace adaptive budget visibility", () => {
     // The diagnostics surface remains available even when the mocked stream
     // completes before provider accounting is attached to the persisted turn.
     // The stream contract itself is covered by the event fixture above.
-    await expect(authenticatedPage.getByText(/Adaptive budgets: history/)).toBeVisible();
+    await expect(
+      authenticatedPage.getByText(/Adaptive budgets \(latest round\): history/),
+    ).toBeVisible();
     await expect(authenticatedPage.getByText(/tool results/)).toBeVisible();
   });
 });

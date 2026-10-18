@@ -32,6 +32,12 @@ class DataDeletion(Base):
         nullable=False,
         index=True,
     )
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
@@ -55,6 +61,10 @@ class DataDeletion(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=text("CURRENT_TIMESTAMP"),
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

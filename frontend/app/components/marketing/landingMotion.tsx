@@ -1,17 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
-import {
-  animate,
-  motion,
-  useInView,
-  useMotionValue,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-  useSpring,
-  useTransform,
-} from "framer-motion";
+import { useRef, useSyncExternalStore } from "react";
+import { motion, useReducedMotion, useScroll, useSpring, useTransform } from "framer-motion";
 
 type LandingSectionMotionOptions = {
   depth?: number;
@@ -27,59 +17,29 @@ export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
 ) {
   const ref = useRef<T | null>(null);
   const reduceMotion = useReducedMotion();
-  // Electron renders the landing page inside a GPU-composited native window.
-  // Scaling full-width sections there can expose a one-pixel edge while the
-  // spring settles, so keep the decorative web-only parallax disabled in the
-  // desktop shell.
-  // Keep the first browser render identical to the server render. Reading
-  // window directly here changes the section style during hydration in Electron.
   const isElectron = useSyncExternalStore(
     subscribeToElectronRuntime,
     getElectronRuntimeSnapshot,
     getServerElectronRuntimeSnapshot,
   );
-  const motionDisabled = Boolean(reduceMotion || isElectron);
-  const inView = useInView(ref, {
-    margin: "-12% 0px -12% 0px",
-    amount: 0.15,
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "end start"],
+  });
+  const smoothProgress = useSpring(scrollYProgress, {
+    stiffness: 120,
+    damping: 30,
+    mass: 0.45,
+    restDelta: 0.001,
   });
 
-  const depth = options.depth ?? 20;
+  const depth = options.depth ?? 14;
   const scaleRange = options.scaleRange ?? [0.996, 1.004];
-  const baseOffset = depth * 0.22;
-  const baseScale = scaleRange[0];
-  const y = useMotionValue(motionDisabled ? 0 : baseOffset);
-  const scale = useMotionValue(motionDisabled ? 1 : baseScale);
-
-  // Animate only when sections enter or leave the viewport instead of tracking every
-  // section continuously on scroll. This preserves the floating feel with far less work.
-  useEffect(() => {
-    if (motionDisabled) {
-      y.set(0);
-      scale.set(1);
-      return;
-    }
-
-    const targetY = inView ? 0 : baseOffset;
-    const targetScale = inView ? 1 : baseScale;
-    const yAnimation = animate(y, targetY, {
-      type: "spring",
-      stiffness: 90,
-      damping: 26,
-      mass: 0.9,
-    });
-    const scaleAnimation = animate(scale, targetScale, {
-      type: "spring",
-      stiffness: 90,
-      damping: 26,
-      mass: 0.9,
-    });
-
-    return () => {
-      yAnimation.stop();
-      scaleAnimation.stop();
-    };
-  }, [baseOffset, baseScale, inView, motionDisabled, scale, y]);
+  const minScale = Math.min(...scaleRange);
+  const maxScale = Math.max(...scaleRange);
+  const y = useTransform(smoothProgress, [0, 0.5, 1], [depth * 0.55, 0, -depth * 0.55]);
+  const scale = useTransform(smoothProgress, [0, 0.5, 1], [minScale, maxScale, minScale]);
+  const motionDisabled = Boolean(reduceMotion || isElectron);
 
   return {
     ref,
@@ -88,51 +48,38 @@ export function useLandingSectionMotion<T extends HTMLElement = HTMLElement>(
       : {
           y,
           scale,
-          willChange: "transform",
-          transformOrigin: "center top",
+          willChange: "transform" as const,
+          transformOrigin: "center top" as const,
         },
   };
 }
 
-export function LandingScrollEffects() {
+export function LandingAmbientEffects() {
   const reduceMotion = useReducedMotion();
-  const { scrollY, scrollYProgress } = useScroll();
-
+  const isElectron = useSyncExternalStore(
+    subscribeToElectronRuntime,
+    getElectronRuntimeSnapshot,
+    getServerElectronRuntimeSnapshot,
+  );
+  const { scrollYProgress } = useScroll();
   const smoothProgress = useSpring(scrollYProgress, {
-    stiffness: 44,
-    damping: 36,
-    mass: 1.05,
+    stiffness: 90,
+    damping: 32,
+    mass: 0.55,
+    restDelta: 0.001,
   });
-
-  const scrollDirection = useMotionValue(1);
-  const directionSpring = useSpring(scrollDirection, {
-    stiffness: 96,
-    damping: 26,
-    mass: 0.9,
-  });
-  const lastScrollY = useRef(0);
-
-  useMotionValueEvent(scrollY, "change", (current) => {
-    const delta = current - lastScrollY.current;
-    if (Math.abs(delta) > 0.5) {
-      scrollDirection.set(delta > 0 ? 1 : -1);
-    }
-    lastScrollY.current = current;
-  });
-
-  const gridX = useTransform(() => smoothProgress.get() * -18 + directionSpring.get() * 8);
-  const gridY = useTransform(() => smoothProgress.get() * 22 + directionSpring.get() * -10);
-  const gridScale = useTransform(smoothProgress, [0, 1], [1, 1.03]);
-
-  if (reduceMotion) {
-    return null;
-  }
+  const x = useTransform(smoothProgress, [0, 1], [0, -20]);
+  const y = useTransform(smoothProgress, [0, 1], [0, 28]);
+  const scale = useTransform(smoothProgress, [0, 0.5, 1], [1, 1.018, 1]);
+  const motionDisabled = Boolean(reduceMotion || isElectron);
 
   return (
     <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
       <motion.div
         className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(0,255,163,0.04),transparent_35%)] opacity-70"
-        style={{ x: gridX, y: gridY, scale: gridScale }}
+        style={motionDisabled ? undefined : { x, y, scale }}
+        animate={motionDisabled ? undefined : { opacity: [0.28, 0.48, 0.28] }}
+        transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
       />
     </div>
   );

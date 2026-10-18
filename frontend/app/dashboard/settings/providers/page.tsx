@@ -55,6 +55,7 @@ import {
 type TabKind = "runtime" | "chat" | "embedding" | "reranker" | "web";
 
 const HIDDEN_CATALOG_TYPES = new Set(["groq-openai-compatible"]);
+const DESKTOP_ONLY_LOCAL_TYPES = new Set(["lmstudio", "ollama"]);
 
 function normalizeCatalogType(providerType: string | null | undefined): string | null {
   if (!providerType) return null;
@@ -80,6 +81,8 @@ export default function ProvidersSettingsPage() {
   const [selectedCatalogType, setSelectedCatalogType] = useState<string | null>(null);
   const [browsingCatalog, setBrowsingCatalog] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+  const [localRuntimeChecked, setLocalRuntimeChecked] = useState(false);
+  const [localRuntimeAvailable, setLocalRuntimeAvailable] = useState(false);
 
   // Accordion state for mobile
   const [isInventoryExpanded, setIsInventoryExpanded] = useState(true);
@@ -136,6 +139,14 @@ export default function ProvidersSettingsPage() {
     return () => {
       window.removeEventListener("resize", updateViewport);
     };
+  }, []);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      const hasElectron = Boolean(window.electron?.isElectron);
+      setLocalRuntimeAvailable(Boolean(hasElectron && window.electron?.localRuntime));
+      setLocalRuntimeChecked(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -474,7 +485,7 @@ export default function ProvidersSettingsPage() {
       </div>
 
       <div
-        className={`providers-page-section mt-1 flex min-h-0 w-full flex-1 flex-col overflow-hidden px-0 sm:px-0 ${
+        className={`providers-page-section providers-page-content relative z-[1] mt-1 flex min-h-0 w-full flex-1 flex-col overflow-hidden px-0 pb-1 sm:px-0 ${
           entered ? "is-entered" : ""
         }`}
       >
@@ -482,7 +493,7 @@ export default function ProvidersSettingsPage() {
           className={`${
             isNarrowViewport
               ? "custom-scrollbar flex min-h-0 w-full flex-1 flex-col space-y-6 overflow-x-hidden overflow-y-auto px-4 pb-24"
-              : "grid h-full w-full grid-cols-12 grid-rows-[minmax(0,1fr)] gap-5 overflow-hidden lg:gap-8 xl:gap-12"
+              : "relative z-[1] grid h-full min-h-0 w-full grid-cols-12 grid-rows-[minmax(0,1fr)] gap-5 overflow-hidden pb-1 lg:gap-8 xl:gap-12"
           }`}
         >
           {activeTab === "runtime" ? (
@@ -517,7 +528,7 @@ export default function ProvidersSettingsPage() {
             <>
               {/* Sidebar Navigator / Inventory Section */}
               <aside
-                className={`theme-panel-muted providers-inventory-panel mt-1 flex flex-col rounded-2xl p-4 sm:p-5 ${
+                className={`theme-panel-muted providers-inventory-panel relative isolate z-[2] mt-1 flex flex-col rounded-2xl p-4 sm:p-5 ${
                   isNarrowViewport
                     ? "h-[min(46rem,calc(100dvh-8rem))] w-full shrink-0 overflow-hidden border"
                     : "col-span-12 min-h-0 overflow-hidden lg:col-span-3"
@@ -583,6 +594,15 @@ export default function ProvidersSettingsPage() {
                               exit={{ opacity: 0, x: -20 }}
                               className="w-full space-y-2 pr-1"
                             >
+                              {localRuntimeChecked && !localRuntimeAvailable ? (
+                                <div
+                                  role="note"
+                                  className="mb-3 rounded-xl border border-slate-400/20 bg-slate-400/5 p-3 text-[11px] leading-5 text-slate-400"
+                                >
+                                  LM Studio and Ollama run on your computer through AverQel Desktop.
+                                  Open or install the desktop app to configure them.
+                                </div>
+                              ) : null}
                               <button
                                 onClick={() => setBrowsingCatalog(false)}
                                 className="hover:bg-surface-1 group flex w-full items-center gap-2 rounded-xl p-3 text-left transition-all"
@@ -604,33 +624,52 @@ export default function ProvidersSettingsPage() {
                                     return Boolean(entry.supports_web_search);
                                   return true;
                                 })
-                                .map((entry) => (
-                                  <button
-                                    key={entry.provider_type}
-                                    onClick={() => {
-                                      setSelectedProviderId(null);
-                                      setSelectedCatalogType(entry.provider_type);
-                                      setShowCreateFlow(true);
-                                    }}
-                                    className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
-                                      selectedCatalogType === entry.provider_type
-                                        ? "border-primary/40 bg-primary/5 ring-primary/20 ring-1"
-                                        : "border-glass-border bg-surface-0 hover:border-primary/20 hover:bg-surface-1"
-                                    }`}
-                                  >
-                                    <div className="theme-panel-muted text-primary flex h-8 w-8 items-center justify-center rounded-lg">
-                                      <ProviderLogo providerType={entry.provider_type} size={20} />
-                                    </div>
-                                    <div>
-                                      <p className="text-foreground text-xs leading-none font-bold">
-                                        {entry.display_name}
-                                      </p>
-                                      <p className="text-muted-foreground mt-1 text-[9px] tracking-widest uppercase">
-                                        {entry.provider_type}
-                                      </p>
-                                    </div>
-                                  </button>
-                                ))}
+                                .map((entry) => {
+                                  const desktopOnly = DESKTOP_ONLY_LOCAL_TYPES.has(
+                                    entry.provider_type,
+                                  );
+                                  const unavailable =
+                                    desktopOnly && localRuntimeChecked && !localRuntimeAvailable;
+                                  return (
+                                    <button
+                                      key={entry.provider_type}
+                                      type="button"
+                                      disabled={unavailable}
+                                      aria-disabled={unavailable}
+                                      title={
+                                        unavailable
+                                          ? "Available in AverQel Desktop only"
+                                          : undefined
+                                      }
+                                      onClick={() => {
+                                        if (unavailable) return;
+                                        setSelectedProviderId(null);
+                                        setSelectedCatalogType(entry.provider_type);
+                                        setShowCreateFlow(true);
+                                      }}
+                                      className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${
+                                        selectedCatalogType === entry.provider_type
+                                          ? "border-primary/40 bg-primary/5 ring-primary/20 ring-1"
+                                          : "border-glass-border bg-surface-0 hover:border-primary/20 hover:bg-surface-1"
+                                      } ${unavailable ? "cursor-not-allowed border-slate-500/10 bg-slate-500/5 opacity-45 hover:border-slate-500/10 hover:bg-slate-500/5" : ""}`}
+                                    >
+                                      <div className="flex h-8 w-8 items-center justify-center">
+                                        <ProviderLogo
+                                          providerType={entry.provider_type}
+                                          size={26}
+                                        />
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-foreground text-xs leading-none font-bold">
+                                          {entry.display_name}
+                                        </p>
+                                        <p className="text-muted-foreground mt-1 text-[9px] tracking-widest uppercase">
+                                          {unavailable ? "desktop app only" : entry.provider_type}
+                                        </p>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
                             </motion.div>
                           ) : (
                             <motion.div
@@ -677,7 +716,7 @@ export default function ProvidersSettingsPage() {
                 )}
 
                 <div
-                  className={`theme-panel-strong providers-setup-panel flex flex-col rounded-2xl border bg-white/[0.02] ${isNarrowViewport ? "min-h-0" : "h-full overflow-hidden"}`}
+                  className={`theme-panel-strong providers-setup-panel relative isolate z-[2] flex flex-col rounded-2xl border bg-white/[0.02] ${isNarrowViewport ? "min-h-0" : "h-full overflow-hidden"}`}
                 >
                   <div
                     className={`flex-1 ${isNarrowViewport ? "" : "custom-scrollbar overflow-y-auto"} p-4 sm:p-8`}
@@ -828,8 +867,10 @@ function RuntimeCard({
   return (
     <div className="theme-card flex flex-col space-y-6 border border-white/5 bg-white/[0.02]">
       <div className="flex items-start justify-between">
-        <div className="theme-panel-muted text-primary rounded-xl p-3">
-          {title.includes("LLM") ? (
+        <div className="flex h-11 w-11 items-center justify-center">
+          {provider ? (
+            <ProviderLogo providerType={provider.provider_type} size={28} />
+          ) : title.includes("LLM") ? (
             <Bot size={22} />
           ) : title.includes("Embedding") ? (
             <Database size={22} />
