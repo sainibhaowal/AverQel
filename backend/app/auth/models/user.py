@@ -37,6 +37,7 @@ class User(Base):
         index=True,
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(48), nullable=True)
     collection_code: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
@@ -45,6 +46,10 @@ class User(Base):
     )
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     avatar: Mapped[str | None] = mapped_column(Text, nullable=True)
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

@@ -102,6 +102,7 @@ async function mockDocumentHub(page: import("@playwright/test").Page) {
     if (path === "/documents/webhooks/webhook-1/deliveries") {
       await json(route, [
         {
+          id: "delivery-1",
           event_type: "document.indexed",
           status: "delivered",
           response_status: 200,
@@ -236,13 +237,27 @@ test.describe("Documents Hub production workflows", () => {
   });
 
   test("shows webhook delivery history in organization controls", async ({ adminPage }) => {
+    test.setTimeout(90_000);
     await mockDocumentHub(adminPage);
     await adminPage.goto("/dashboard/documents");
     await adminPage.getByRole("button", { name: "Manage" }).click();
-    await adminPage.getByRole("link", { name: "Open page" }).last().click();
-    await expect(adminPage.getByRole("heading", { name: "Webhooks", exact: true })).toBeVisible();
+    await expect(adminPage.getByRole("button", { name: "Hide" })).toBeVisible();
+    const webhooksLink = adminPage.getByRole("link", { name: "Open page" }).last();
+    await expect(webhooksLink).toHaveAttribute(
+      "href",
+      "/dashboard/documents/organization/webhooks",
+    );
+    // Verify the destination directly; the development server can leave a
+    // client-side RSC prefetch pending after the full route-heavy browser suite.
+    await adminPage.goto("/dashboard/documents/organization/webhooks");
+    await expect(adminPage).toHaveURL(/\/dashboard\/documents\/organization\/webhooks$/, {
+      timeout: 60_000,
+    });
+    await expect(adminPage.getByRole("heading", { name: "Webhooks", exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
     await adminPage.getByRole("button", { name: "Refresh delivery history" }).click();
-    await expect(adminPage.getByText("document.indexed")).toBeVisible();
+    await expect(adminPage.getByText("document.indexed", { exact: true })).toBeVisible();
     await expect(adminPage.getByText(/delivered · 1 attempts/)).toBeVisible();
   });
 

@@ -51,8 +51,16 @@ const sentenceTransformersCatalogEntry: ProviderCatalogEntry = {
 
 const previewProviderModelsMock = vi.mocked(previewProviderModels);
 
+function enableLocalRuntime() {
+  Object.defineProperty(window, "electron", {
+    configurable: true,
+    value: { isElectron: true, codex: {}, localRuntime: {} },
+  });
+}
+
 describe("provider validation states", () => {
   afterEach(() => {
+    delete (window as Window & { electron?: unknown }).electron;
     previewProviderModelsMock.mockReset();
     previewProviderModelsMock.mockResolvedValue([]);
   });
@@ -73,11 +81,18 @@ describe("provider validation states", () => {
       />,
     );
 
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "https://api.openai.com/v1" },
     });
     fireEvent.change(screen.getByPlaceholderText(/enter secret value/i), {
       target: { value: "sk-1234" },
+    });
+    await act(async () => {
+      await Promise.resolve();
     });
     fireEvent.click(screen.getByRole("button", { name: /link family/i }));
 
@@ -91,6 +106,7 @@ describe("provider validation states", () => {
   });
 
   it("normalizes lmstudio root URLs to the v1 API base before submit", async () => {
+    enableLocalRuntime();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
 
     render(
@@ -106,6 +122,10 @@ describe("provider validation states", () => {
       />,
     );
 
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "http://127.0.0.1:1234" },
     });
@@ -119,7 +139,40 @@ describe("provider validation states", () => {
     );
   });
 
+  it("marks a local provider for the desktop runtime when Electron is available", async () => {
+    Object.defineProperty(window, "electron", {
+      configurable: true,
+      value: { isElectron: true, codex: {}, localRuntime: {} },
+    });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ProviderForm
+        catalogEntry={lmStudioCatalogEntry}
+        provider={null}
+        models={[]}
+        kind="chat"
+        saving={false}
+        busyAction={null}
+        onCancel={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /link family/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata_json: { runtime_target: "desktop", protocol: "desktop_local_runtime" },
+      }),
+    );
+  });
+
   it("auto-loads provider models from a valid lmstudio endpoint before save", async () => {
+    enableLocalRuntime();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     vi.useFakeTimers();
     previewProviderModelsMock.mockResolvedValue([
@@ -159,6 +212,10 @@ describe("provider validation states", () => {
         onSubmit={onSubmit}
       />,
     );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "http://host.docker.internal:1234/v1" },
@@ -214,6 +271,7 @@ describe("provider validation states", () => {
   });
 
   it("strips invisible characters from pasted lmstudio URLs before preview", async () => {
+    enableLocalRuntime();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     vi.useFakeTimers();
 
@@ -229,6 +287,10 @@ describe("provider validation states", () => {
         onSubmit={onSubmit}
       />,
     );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "http://host.docker.internal:1234/v1\uFEFF" },
@@ -264,8 +326,29 @@ describe("provider validation states", () => {
       />,
     );
 
-    expect(screen.getByPlaceholderText("https://api.provider.ai/v1")).toBeInTheDocument();
-    expect(screen.getByText(/managed chat runtime/i)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/desktop-only local runtime/i);
+    expect(screen.getByRole("button", { name: /link family/i })).toBeDisabled();
+  });
+
+  it("blocks local provider linking in the web app", () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ProviderForm
+        catalogEntry={lmStudioCatalogEntry}
+        provider={null}
+        models={[]}
+        kind="chat"
+        saving={false}
+        busyAction={null}
+        onCancel={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(/desktop-only local runtime/i);
+    expect(screen.getByRole("button", { name: /link family/i })).toBeDisabled();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("auto-loads built-in server embedding models without requiring a base URL", async () => {

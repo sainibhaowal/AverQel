@@ -8,8 +8,8 @@ export default function NotificationsDocsPage() {
     >
       <DocsSection title="In-app notification centre">
         <p>
-          The centre shows the latest available notifications from supported application and
-          collection feeds. You can review unread items, mark an item read, and dismiss items. Older
+          The centre shows the latest available notifications from supported application and Qel
+          Connect feeds. You can review unread items, mark an item read, and dismiss items. Older
           items may be loaded in pages. Realtime events can update the interface, while durable
           notifications are stored through the notification service.
         </p>
@@ -23,7 +23,7 @@ export default function NotificationsDocsPage() {
         <p>
           In Settings → Notifications, users can mute supported event categories and choose whether
           to receive email notifications and the available cadence. Muting a category affects its
-          notification delivery according to the saved preference. Collection notification settings
+          notification delivery according to the saved preference. Qel Connect notification settings
           have their own controls where applicable.
         </p>
       </DocsSection>
@@ -45,8 +45,9 @@ export default function NotificationsDocsPage() {
         <p>
           Notification content is designed to avoid including prompts, provider credentials, raw
           exception details, or internal support notes. Notifications are scoped to the account and
-          tenant authorized for the underlying event. Support and feedback messages themselves are
-          readable by the submitter and authorized support staff; they are not end-to-end encrypted.
+          tenant authorized for the underlying event. Support messages are readable by the submitter
+          and assigned Support Managers. Feedback messages are readable by the submitter and
+          assigned Feedback Managers; neither workflow is end-to-end encrypted.
         </p>
       </DocsSection>
     </DocsShell>

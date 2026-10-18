@@ -54,9 +54,12 @@ outputs. Do not use “Library” without naming which product area it belongs t
 
 Collections are experimental beta in this repository. Their current chat
 encryption is not zero-knowledge or server-blind end-to-end encryption. The
-collection moderation queue is tenant-admin report triage and its response
-schema does not include chat message bodies. Support and feedback content is
-readable by the submitter and authorized support staff.
+collection moderation queue is tenant-scoped report triage for users assigned
+the `collection_moderator` role; its response schema does not include chat
+message bodies. Support content is readable by the submitter and authorized
+platform support staff. Feedback content is readable by the submitter and
+assigned Feedback Managers; the staff API omits account IDs and email
+addresses.
 
 ### Identity, settings, and storage
 

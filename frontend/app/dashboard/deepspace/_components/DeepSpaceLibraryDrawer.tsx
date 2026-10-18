@@ -34,6 +34,10 @@ import {
 } from "../_lib/library-uploads";
 
 import DeepSpaceLibraryFileWorkspace from "./DeepSpaceLibraryFileWorkspace";
+import DeepSpaceVisualArtifactWorkspace, {
+  isVisualArtifactDocument,
+} from "./DeepSpaceVisualArtifactWorkspace";
+import type { StructuredBlock } from "../_lib/deepspace-stream";
 
 type LibraryFile = {
   id: string;
@@ -85,6 +89,7 @@ type DeepSpaceLibraryDrawerProps = {
   embedded?: boolean;
   conversationId: string | null;
   onClose: () => void;
+  onVisualArtifactChange?: (block: StructuredBlock) => void | Promise<void>;
 };
 
 // Version the preference so older builds cannot restore the Files panel as a
@@ -118,6 +123,7 @@ export default function DeepSpaceLibraryDrawer({
   embedded = false,
   conversationId,
   onClose,
+  onVisualArtifactChange,
 }: DeepSpaceLibraryDrawerProps) {
   const [files, setFiles] = useState<LibraryFile[]>([]);
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
@@ -526,30 +532,73 @@ export default function DeepSpaceLibraryDrawer({
     await refresh();
   };
 
-  const saveFile = async () => {
-    if (!conversationId || !selected) return;
+  const saveFileContent = async (content: string): Promise<boolean> => {
+    if (!conversationId || !selected) return false;
     const editableBinaryTypes = new Set([
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ]);
-    if (selected.is_binary && !editableBinaryTypes.has(selected.content_type)) return;
+    if (selected.is_binary && !editableBinaryTypes.has(selected.content_type)) return false;
     setSaving(true);
     try {
       const response = (await fetchWithAuth(
         `/deepspace/library/${conversationId}/files/${selected.id}`,
         {
           method: "PATCH",
-          body: JSON.stringify({ content: draft, expected_version: selected.version ?? 1 }),
+          body: JSON.stringify({ content, expected_version: selected.version ?? 1 }),
         },
       )) as Response;
-      if (!response.ok) return;
+      if (!response.ok) {
+        setActionError(
+          response.status === 409
+            ? "This artifact changed in another session. Reload it before saving."
+            : "The file could not be saved.",
+        );
+        return false;
+      }
       const file = (await response.json()) as LibraryFile;
       setSelected(file);
       await refresh();
+      return true;
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveFile = async () => {
+    await saveFileContent(draft);
+  };
+
+  const handleVisualArtifactChange = async (block: StructuredBlock) => {
+    // The visual workspace updates its draft before this callback. Persist its
+    // editable canonical JSON first, then fan the same stable block id out to
+    // the originating chat and note through the page-level synchronizer.
+    const nextDraft = JSON.stringify(
+      (() => {
+        try {
+          const document = JSON.parse(draft) as Record<string, unknown>;
+          return {
+            ...document,
+            data: block,
+            revision: (block as { revision?: number }).revision ?? document.revision,
+          };
+        } catch {
+          return {
+            block_id: block.id,
+            schema_version: 1,
+            revision: (block as { revision?: number }).revision ?? 0,
+            kind: block.type,
+            data: block,
+          };
+        }
+      })(),
+      null,
+      2,
+    );
+    setDraft(nextDraft);
+    const persisted = await saveFileContent(nextDraft);
+    if (persisted) await onVisualArtifactChange?.(block);
   };
 
   const downloadBlobResponse = async (response: Response, fallbackName: string) => {
@@ -1648,39 +1697,48 @@ export default function DeepSpaceLibraryDrawer({
           </aside>
           <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
             {selected ? (
-              <DeepSpaceLibraryFileWorkspace
-                key={`${selected.id}:${archiveSelection?.name ?? "archive"}`}
-                name={archiveSelection?.name ?? selected.name}
-                contentType={archiveSelection?.contentType ?? selected.content_type}
-                value={draft}
-                onChange={setDraft}
-                previewUrl={previewUrl}
-                archiveEntries={archiveSelection ? null : selected.archive_entries}
-                onArchiveEntrySelect={archiveSelection ? undefined : openArchiveEntry}
-                archiveEntryName={archiveSelection?.name}
-                onArchiveBack={
-                  archiveSelection
-                    ? () => {
-                        setArchiveSelection(null);
-                        setPreviewUrl(null);
-                        setDraft(selected.extracted_text ?? "");
-                      }
-                    : undefined
-                }
-                readOnly={Boolean(
-                  selected.content_truncated ||
-                  (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
-                )}
-                contentTruncated={Boolean(selected.content_truncated)}
-                sizeBytes={selected.size_bytes}
-                csvPageUrl={
-                  selected.content_type === "text/csv" ||
-                  selected.content_type === "text/x-csv" ||
-                  selected.content_type === "text/tab-separated-values"
-                    ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page`
-                    : null
-                }
-              />
+              isVisualArtifactDocument(draft) ? (
+                <DeepSpaceVisualArtifactWorkspace
+                  key={`${selected.id}:visual`}
+                  value={draft}
+                  onChange={setDraft}
+                  onBlockChange={handleVisualArtifactChange}
+                />
+              ) : (
+                <DeepSpaceLibraryFileWorkspace
+                  key={`${selected.id}:${archiveSelection?.name ?? "archive"}`}
+                  name={archiveSelection?.name ?? selected.name}
+                  contentType={archiveSelection?.contentType ?? selected.content_type}
+                  value={draft}
+                  onChange={setDraft}
+                  previewUrl={previewUrl}
+                  archiveEntries={archiveSelection ? null : selected.archive_entries}
+                  onArchiveEntrySelect={archiveSelection ? undefined : openArchiveEntry}
+                  archiveEntryName={archiveSelection?.name}
+                  onArchiveBack={
+                    archiveSelection
+                      ? () => {
+                          setArchiveSelection(null);
+                          setPreviewUrl(null);
+                          setDraft(selected.extracted_text ?? "");
+                        }
+                      : undefined
+                  }
+                  readOnly={Boolean(
+                    selected.content_truncated ||
+                    (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
+                  )}
+                  contentTruncated={Boolean(selected.content_truncated)}
+                  sizeBytes={selected.size_bytes}
+                  csvPageUrl={
+                    selected.content_type === "text/csv" ||
+                    selected.content_type === "text/x-csv" ||
+                    selected.content_type === "text/tab-separated-values"
+                      ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page`
+                      : null
+                  }
+                />
+              )
             ) : (
               <div className="border-glass-border bg-surface-1/40 text-foreground/45 flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed px-6 text-center text-xs">
                 Select a file to edit and preview it here.
@@ -1690,39 +1748,48 @@ export default function DeepSpaceLibraryDrawer({
         </div>
       ) : selected ? (
         <section className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
-          <DeepSpaceLibraryFileWorkspace
-            key={`${selected.id}:${archiveSelection?.name ?? "archive"}`}
-            name={archiveSelection?.name ?? selected.name}
-            contentType={archiveSelection?.contentType ?? selected.content_type}
-            value={draft}
-            onChange={setDraft}
-            previewUrl={previewUrl}
-            archiveEntries={archiveSelection ? null : selected.archive_entries}
-            onArchiveEntrySelect={archiveSelection ? undefined : openArchiveEntry}
-            archiveEntryName={archiveSelection?.name}
-            onArchiveBack={
-              archiveSelection
-                ? () => {
-                    setArchiveSelection(null);
-                    setPreviewUrl(null);
-                    setDraft(selected.extracted_text ?? "");
-                  }
-                : undefined
-            }
-            readOnly={Boolean(
-              selected.content_truncated ||
-              (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
-            )}
-            contentTruncated={Boolean(selected.content_truncated)}
-            sizeBytes={selected.size_bytes}
-            csvPageUrl={
-              selected.content_type === "text/csv" ||
-              selected.content_type === "text/x-csv" ||
-              selected.content_type === "text/tab-separated-values"
-                ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page`
-                : null
-            }
-          />
+          {isVisualArtifactDocument(draft) ? (
+            <DeepSpaceVisualArtifactWorkspace
+              key={`${selected.id}:visual`}
+              value={draft}
+              onChange={setDraft}
+              onBlockChange={handleVisualArtifactChange}
+            />
+          ) : (
+            <DeepSpaceLibraryFileWorkspace
+              key={`${selected.id}:${archiveSelection?.name ?? "archive"}`}
+              name={archiveSelection?.name ?? selected.name}
+              contentType={archiveSelection?.contentType ?? selected.content_type}
+              value={draft}
+              onChange={setDraft}
+              previewUrl={previewUrl}
+              archiveEntries={archiveSelection ? null : selected.archive_entries}
+              onArchiveEntrySelect={archiveSelection ? undefined : openArchiveEntry}
+              archiveEntryName={archiveSelection?.name}
+              onArchiveBack={
+                archiveSelection
+                  ? () => {
+                      setArchiveSelection(null);
+                      setPreviewUrl(null);
+                      setDraft(selected.extracted_text ?? "");
+                    }
+                  : undefined
+              }
+              readOnly={Boolean(
+                selected.content_truncated ||
+                (selected.is_binary && selected.size_bytes > MAX_LIBRARY_EDITABLE_BYTES),
+              )}
+              contentTruncated={Boolean(selected.content_truncated)}
+              sizeBytes={selected.size_bytes}
+              csvPageUrl={
+                selected.content_type === "text/csv" ||
+                selected.content_type === "text/x-csv" ||
+                selected.content_type === "text/tab-separated-values"
+                  ? `/deepspace/library/${conversationId}/files/${selected.id}/csv-page`
+                  : null
+              }
+            />
+          )}
         </section>
       ) : (
         fileList

@@ -21,7 +21,6 @@ import {
   Brain,
   Hash,
   Compass,
-  Folder,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
@@ -57,6 +56,7 @@ import {
 } from "../_lib/query-uploads";
 import { MAX_QUERY_ATTACHMENTS } from "../_lib/query-limits";
 import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
+import QelConnectMark from "@/app/components/ui/QelConnectMark";
 
 import MessageThread from "./MessageThread";
 import QueryDatasetPreview from "./QueryDatasetPreview";
@@ -1356,10 +1356,10 @@ export default function QueryPageClient() {
                   </div>
                 </div>
 
-                {/* Collection Scope */}
+                {/* Qel Connect Scope */}
                 <div className="space-y-3">
                   <label className="text-foreground/40 block text-[10px] font-bold tracking-[0.2em] uppercase">
-                    Collection Scope
+                    Qel Connect Scope
                   </label>
                   <div className="relative">
                     <button
@@ -1374,7 +1374,7 @@ export default function QueryPageClient() {
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <div className="text-primary flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
-                          <Folder size={14} />
+                          <QelConnectMark size={16} />
                         </div>
                         <div className="min-w-0">
                           <p className="text-foreground/90 truncate text-xs font-semibold">
@@ -1423,7 +1423,7 @@ export default function QueryPageClient() {
                                     : "border-white/10 bg-white/5"
                                 }`}
                               >
-                                <Folder size={12} />
+                                <QelConnectMark size={14} />
                               </div>
                               <div>
                                 <p className="text-xs font-semibold">All accessible documents</p>
@@ -1461,12 +1461,12 @@ export default function QueryPageClient() {
                                         : "border-white/10 bg-white/5"
                                     }`}
                                   >
-                                    <Folder size={12} />
+                                    <QelConnectMark size={14} />
                                   </div>
                                   <div>
                                     <p className="text-xs font-semibold">{collection.name}</p>
                                     <p className="text-foreground/42 mt-0.5 text-[9px] tracking-[0.18em] uppercase">
-                                      Shared bridge collection
+                                      Shared Qel Connect bridge
                                     </p>
                                   </div>
                                 </div>

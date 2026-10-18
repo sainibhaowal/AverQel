@@ -5,14 +5,15 @@ from fastapi.testclient import TestClient
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.system.models.app_feedback import AppFeedback, FeedbackCampaign
+from app.system.models.audit_log import AuditLog
 from tests.conftest import SeededUser
 
 
-def _auth_headers(seeded: SeededUser) -> dict[str, str]:
+def _auth_headers(seeded: SeededUser, roles: set[str] | None = None) -> dict[str, str]:
     token = create_access_token(
         user_id=seeded.user_id,
         tenant_id=seeded.tenant_id,
-        roles={"admin"},
+        roles=roles or {"user"},
         settings=get_settings(),
     )
     return {
@@ -30,10 +31,10 @@ def test_app_feedback_campaigns_and_admin_submissions_round_trip(
         "Feedback Tenant",
         "feedback-admin@example.org",
         "StrongPass!1234",
-        ("admin",),
+        ("admin", "feedback_manager"),
     )
     get_settings().bootstrap_super_admin_emails = [seeded.email]
-    headers = _auth_headers(seeded)
+    headers = _auth_headers(seeded, roles={"admin", "feedback_manager"})
 
     campaign = FeedbackCampaign(
         title="Feature check-in",
@@ -74,8 +75,30 @@ def test_app_feedback_campaigns_and_admin_submissions_round_trip(
     assert submissions_response.status_code == 200
     submissions = submissions_response.json()
     assert len(submissions) == 1
-    assert submissions[0]["email"] == seeded.email
+    assert "email" not in submissions[0]
+    assert "user_id" not in submissions[0]
     assert submissions[0]["subject"] == "Dashboard spacing"
+
+    admin_detail_response = client.get(
+        f"/api/v1/app-feedback/admin/submissions/{submission['id']}",
+        headers=headers,
+    )
+    assert admin_detail_response.status_code == 200
+    assert (
+        admin_detail_response.json()["content"]
+        == "The memory page should fill the available width."
+    )
+    assert "user_id" not in admin_detail_response.json()
+
+    from app.platform.database.session import set_db_tenant_context
+
+    set_db_tenant_context(db_session, seeded.tenant_id)
+    audited_actions = {
+        event.action
+        for event in db_session.query(AuditLog).filter(AuditLog.tenant_id == seeded.tenant_id).all()
+    }
+    assert "admin.feedback.submissions.list.read" in audited_actions
+    assert "admin.feedback.submission.read" in audited_actions
 
     detail_response = client.get(f"/api/v1/app-feedback/mine/{submission['id']}", headers=headers)
     assert detail_response.status_code == 200

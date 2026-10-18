@@ -64,6 +64,8 @@ type CodeBlockVariant = "plain" | "mermaid" | "preview";
 const COLLAPSED_BODY_MIN_HEIGHT = 260;
 const COLLAPSED_BODY_MAX_HEIGHT = 560;
 const COLLAPSED_MERMAID_MAX_HEIGHT = 640;
+const MERMAID_EXPORT_ITEM_CLASS =
+  "text-foreground rounded-md px-3 py-2 text-left text-xs transition-colors duration-150 enabled:hover:bg-primary/10 enabled:hover:text-primary focus-visible:bg-primary/10 focus-visible:text-primary focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40";
 
 const BRACKET_PALETTE = [
   "hsl(243, 75%, 70%)",
@@ -1788,7 +1790,12 @@ export default function CodeBlock({
   defaultPreviewOpen = false,
   title = null,
 }: CodeBlockProps) {
-  const normalizedLanguage = (language ?? "code").toLowerCase();
+  const sourceLanguage = (language ?? "code").trim().toLowerCase();
+  const normalizedLanguage = ["gantt", "mmd", "mermaid-gantt", "mermaid_gantt"].includes(
+    sourceLanguage,
+  )
+    ? "mermaid"
+    : sourceLanguage;
   const normalizedMermaidValue =
     normalizedLanguage === "mermaid" ? sanitizeMermaidSyntax(value) : value;
   const codeValue = normalizedLanguage === "mermaid" ? normalizedMermaidValue : value;
@@ -1812,6 +1819,7 @@ export default function CodeBlock({
   const [copied, setCopied] = useState(false);
   // FIX: Separate copy error state so failed clipboard writes show feedback.
   const [copyError, setCopyError] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [exportingDiagram, setExportingDiagram] = useState<"png" | "pdf" | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
@@ -2243,6 +2251,7 @@ export default function CodeBlock({
   const handleDiagramExport = async (format: "svg" | "png" | "pdf") => {
     if (!renderedSvg) return;
     const filename = `${safeExportName(title ?? codeFileDescriptor.baseName, "diagram")}.${format}`;
+    setExportError(null);
     try {
       if (format === "svg") {
         exportDiagramSvg(renderedSvg, filename);
@@ -2251,7 +2260,8 @@ export default function CodeBlock({
       setExportingDiagram(format);
       if (format === "png") await exportDiagramPng(renderedSvg, filename);
       else await exportDiagramPdf(renderedSvg, filename);
-    } catch {
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Diagram export failed safely.");
       setCopyError(true);
       window.setTimeout(() => setCopyError(false), 2000);
     } finally {
@@ -2521,18 +2531,14 @@ export default function CodeBlock({
               </button>
               {exportMenuOpen ? (
                 <div className="theme-panel-strong border-border bg-card text-foreground absolute top-9 right-0 z-50 grid min-w-36 gap-1 rounded-lg border p-1 shadow-xl">
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10"
-                  >
+                  <button type="button" onClick={handleSave} className={MERMAID_EXPORT_ITEM_CLASS}>
                     Mermaid (.mmd)
                   </button>
                   <button
                     type="button"
                     onClick={() => void handleDiagramExport("svg")}
                     disabled={!renderedSvg || isRendering}
-                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                    className={MERMAID_EXPORT_ITEM_CLASS}
                   >
                     SVG
                   </button>
@@ -2540,7 +2546,7 @@ export default function CodeBlock({
                     type="button"
                     onClick={() => void handleDiagramExport("png")}
                     disabled={!renderedSvg || isRendering || exportingDiagram !== null}
-                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                    className={MERMAID_EXPORT_ITEM_CLASS}
                   >
                     {exportingDiagram === "png" ? "PNG…" : "PNG"}
                   </button>
@@ -2548,7 +2554,7 @@ export default function CodeBlock({
                     type="button"
                     onClick={() => void handleDiagramExport("pdf")}
                     disabled={!renderedSvg || isRendering || exportingDiagram !== null}
-                    className="rounded-md px-3 py-2 text-left text-xs hover:bg-white/10 disabled:opacity-40"
+                    className={MERMAID_EXPORT_ITEM_CLASS}
                   >
                     {exportingDiagram === "pdf" ? "PDF…" : "PDF"}
                   </button>
@@ -2662,6 +2668,7 @@ export default function CodeBlock({
             <div className="absolute inset-0 overflow-hidden">
               <div
                 ref={svgStageRef}
+                data-visual-export-source={normalizedLanguage === "mermaid" ? "diagram" : undefined}
                 className="absolute top-0 left-0 [&_svg]:block [&_svg]:max-w-none"
                 style={{
                   transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
@@ -2704,6 +2711,14 @@ export default function CodeBlock({
       {renderError && !(supportsRichPreview && isExpanded && !answerStreaming) ? (
         <div className="border-glass-border/20 border-t px-4 py-3 text-xs text-amber-700 dark:text-amber-200/85">
           {renderError}
+        </div>
+      ) : null}
+      {exportError ? (
+        <div
+          className="border-glass-border/20 border-t px-4 py-3 text-xs text-amber-700 dark:text-amber-200/85"
+          role="alert"
+        >
+          {exportError}
         </div>
       ) : null}
     </div>

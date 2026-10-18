@@ -39,7 +39,7 @@ describe("ProductDomains", () => {
     expect(ids).toEqual([
       "documents-hub",
       "query",
-      "collections",
+      "qel-connect",
       "deepspace",
       "providers",
       "mcp",
@@ -79,7 +79,8 @@ describe("ProductDomains", () => {
   it("keeps Query history separate from DeepSpace work and Library files", () => {
     render(<ProductDomains />);
     const querySection = within(document.getElementById("query") as HTMLElement);
-    const deepSpaceSection = within(document.getElementById("deepspace") as HTMLElement);
+    const deepSpaceElement = document.getElementById("deepspace") as HTMLElement;
+    const deepSpaceSection = within(deepSpaceElement);
 
     expect(querySection.getByRole("heading", { name: /scoped retrieval/i })).toBeInTheDocument();
     expect(
@@ -96,6 +97,14 @@ describe("ProductDomains", () => {
       deepSpaceSection.getByRole("heading", { name: /DeepSpace Memory/i }),
     ).toBeInTheDocument();
     expect(
+      Array.from(deepSpaceElement.querySelectorAll("article[data-card-index='0'] img")).some(
+        (image) =>
+          decodeURIComponent(image.getAttribute("src") ?? "").includes(
+            "/DeepSpace Logo/DeepSpace_Logo_Only_NoBlack_Exact.svg",
+          ),
+      ),
+    ).toBe(true);
+    expect(
       deepSpaceSection.getByRole("heading", { name: /schedules and voice/i }),
     ).toBeInTheDocument();
     expect(
@@ -107,9 +116,9 @@ describe("ProductDomains", () => {
     expect(deepSpaceSection.getByText(/separately isolated sandbox/i)).toBeInTheDocument();
   });
 
-  it("separates Collections, AI Providers, MCP, and user-facing workspace controls", () => {
+  it("separates Qel Connect, AI Providers, MCP, and user-facing workspace controls", () => {
     const { container } = render(<ProductDomains />);
-    const collections = within(document.getElementById("collections") as HTMLElement);
+    const collections = within(document.getElementById("qel-connect") as HTMLElement);
     const providers = within(document.getElementById("providers") as HTMLElement);
     const mcp = within(document.getElementById("mcp") as HTMLElement);
     const controls = within(document.getElementById("workspace-controls") as HTMLElement);

@@ -1114,7 +1114,15 @@ def test_responses_protocol_maps_messages_tools_usage_and_manual_route(monkeypat
                     "description": "Lookup data",
                     "parameters": {"type": "object", "properties": {}},
                 },
-            }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "lookup",
+                    "description": "Duplicate lookup definition",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
         ],
         tool_choice="auto",
         metadata={"provider_type": "custom"},

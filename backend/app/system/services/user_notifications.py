@@ -203,10 +203,11 @@ def notify_platform_admins(
             set_db_tenant_context(db, prior_tenant_context)
 
 
-def notify_tenant_admins(
+def notify_role_assignees(
     db: Session,
     *,
-    tenant_id: uuid.UUID,
+    role_name: str,
+    tenant_id: uuid.UUID | None,
     event_domain: str,
     event_type: str,
     title: str,
@@ -214,7 +215,7 @@ def notify_tenant_admins(
     href: str,
     resource_id: uuid.UUID | str,
 ) -> None:
-    """Queue deduplicated in-app alerts for active admins in one tenant."""
+    """Queue content-minimal alerts for users assigned a staff role."""
     prior_tenant_context = db.execute(
         text("SELECT current_setting('app.tenant_id', true)")
     ).scalar_one_or_none()
@@ -222,43 +223,46 @@ def notify_tenant_admins(
     try:
         try:
             with db.begin_nested():
-                admins = (
-                    db.execute(
-                        select(User.id)
-                        .join(UserRole, UserRole.user_id == User.id)
-                        .join(Role, Role.id == UserRole.role_id)
-                        .where(
-                            User.tenant_id == tenant_id,
-                            UserRole.tenant_id == tenant_id,
-                            Role.name == "admin",
-                            User.is_active.is_(True),
-                        )
-                        .distinct()
+                query = (
+                    select(User.id, User.tenant_id)
+                    .join(UserRole, UserRole.user_id == User.id)
+                    .join(Role, Role.id == UserRole.role_id)
+                    .where(
+                        User.is_active.is_(True),
+                        UserRole.tenant_id == User.tenant_id,
+                        Role.name == role_name,
                     )
-                    .scalars()
-                    .all()
                 )
+                if tenant_id is not None:
+                    query = query.where(
+                        User.tenant_id == tenant_id,
+                        UserRole.tenant_id == tenant_id,
+                    )
+                assignees = db.execute(query.distinct()).all()
         except Exception:
-            logger.exception("Could not find tenant admins for collection moderation alert")
+            logger.exception("Could not find users assigned the %s role", role_name)
             return
-        for admin_id in admins:
+        for user_id, user_tenant_id in assignees:
             try:
                 with db.begin_nested():
                     add_user_notification(
                         db,
-                        tenant_id=tenant_id,
-                        recipient_user_id=admin_id,
+                        tenant_id=user_tenant_id,
+                        recipient_user_id=user_id,
                         event_domain=event_domain,
                         event_type=event_type,
                         title=title,
                         message=message,
                         href=href,
                         resource_id=resource_id,
-                        idempotency_key=f"{event_domain}:{event_type}:{resource_id}:{admin_id}",
+                        idempotency_key=(f"{event_domain}:{event_type}:{resource_id}:{user_id}"),
                     )
-            except Exception:  # notification delivery must not discard the submitted report
+            except Exception:
                 logger.exception(
-                    "Could not enqueue collection moderation alert for tenant admin %s", admin_id
+                    "Could not enqueue %s notification for assigned user %s",
+                    event_domain,
+                    user_id,
                 )
     finally:
-        set_db_tenant_context(db, prior_tenant_context or str(tenant_id))
+        if prior_tenant_context and prior_tenant_context != "bypass":
+            set_db_tenant_context(db, prior_tenant_context)

@@ -9,6 +9,7 @@ import {
   normalizeStreamTransportMessage,
 } from "@/app/lib/streaming/sseTransport";
 
+import { retryAfterDelayMs } from "../_lib/queue-api";
 import { parseSseFrames, type DeepSpaceStreamEvent } from "../_lib/deepspace-stream";
 
 interface StartStreamArgs {
@@ -25,7 +26,7 @@ interface UseDeepSpaceStreamOptions {
 }
 
 const MAX_INITIAL_STREAM_RETRIES = 1;
-const INITIAL_STREAM_RETRY_DELAY_MS = 350;
+const INITIAL_STREAM_RETRY_DELAY_MS = 1_000;
 
 export function compactQueuedEvents(events: DeepSpaceStreamEvent[]): DeepSpaceStreamEvent[] {
   return events;
@@ -122,7 +123,10 @@ export function useDeepSpaceStream({
                 isRetryableStreamStatus(response.status)
               ) {
                 await new Promise((resolve) =>
-                  window.setTimeout(resolve, INITIAL_STREAM_RETRY_DELAY_MS),
+                  window.setTimeout(
+                    resolve,
+                    retryAfterDelayMs(response, INITIAL_STREAM_RETRY_DELAY_MS),
+                  ),
                 );
                 continue;
               }

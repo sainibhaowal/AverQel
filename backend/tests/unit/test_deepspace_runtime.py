@@ -8,8 +8,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.deepspace.api import chats as chats_api_module
+from app.deepspace.services import chat_service as chat_service_module
 from app.deepspace.services.chat_service import (
-    PRODUCTIVITY_TOOLS,
+    NATIVE_TOOL_REGISTRY,
     DeepSpaceChatService,
     _TimedProviderItem,
 )
@@ -28,8 +30,8 @@ async def test_provider_stream_default_deadline_allows_full_provider_window() ->
     async def stream_factory():
         yield {"type": "delta", "text": "ok"}
 
-    async def capture_stream(_iterable, *, run_id, deadline):
-        del run_id
+    async def capture_stream(_iterable, *, run_id, deadline, cancel_key=None):
+        del run_id, cancel_key
         captured["remaining"] = deadline - time.monotonic()
         async for item in _iterable:
             yield item
@@ -48,13 +50,93 @@ async def test_provider_stream_default_deadline_allows_full_provider_window() ->
     assert 295 <= captured["remaining"] <= 300
 
 
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_provider_stream_stops_on_redis_cancel_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Redis marker stops a live provider even if database state lags or fails."""
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = SimpleNamespace(redis_url="redis://cancel-test")
+    client = _FakeCancellationRedis()
+    monkeypatch.setattr(chat_service_module.aioredis, "from_url", lambda *_args, **_kwargs: client)
+    provider_cancelled = asyncio.Event()
+
+    async def never_finishes():
+        try:
+            await asyncio.Event().wait()
+            yield None
+        finally:
+            provider_cancelled.set()
+
+    events = [
+        event
+        async for event in service._cancellable_provider_stream(
+            never_finishes(),
+            run_id=uuid.uuid4(),
+            cancel_key="deepspace:cancel:test",
+            deadline=time.monotonic() + 5,
+        )
+    ]
+
+    assert events == [{"type": "runtime_cancelled"}]
+    assert client.checked_keys == ["deepspace:cancel:test"]
+    assert client.closed
+    assert provider_cancelled.is_set()
+
+
+class _FakeCancellationRedis:
+    def __init__(self) -> None:
+        self.checked_keys: list[str] = []
+        self.closed = False
+
+    async def exists(self, key: str) -> int:
+        self.checked_keys.append(key)
+        return 1
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit_no_db
+async def test_cancellation_marker_failure_does_not_reject_a_durable_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Redis is a fast signal, never the source of truth for a Stop request."""
+
+    class BrokenCancellationRedis:
+        closed = False
+
+        async def set(self, *_args, **_kwargs) -> None:
+            raise OSError("Redis is unavailable")
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    client = BrokenCancellationRedis()
+    monkeypatch.setattr(chats_api_module.aioredis, "from_url", lambda *_args, **_kwargs: client)
+
+    await chats_api_module._record_cancellation_marker(
+        settings=SimpleNamespace(redis_url="redis://cancel-test"),
+        tenant_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        client_request_id="cancel-request",
+    )
+
+    assert client.closed
+
+
 def test_deepspace_policy_blocks_ide_and_mcp_tools() -> None:
     policy = DeepSpaceToolPolicy()
 
     assert policy.decide("url_read", {}).allowed
-    assert policy.decide("document_read", {}).allowed
-    assert policy.decide("document_query", {}).allowed
-    assert policy.decide("document_compare", {}).allowed
+    assert policy.decide("read", {"target": "library"}).allowed
+    assert policy.decide("analyze", {"operation": "compare_documents"}).allowed
+    assert policy.decide("todo_write", {"operation": "read"}).mode == "read"
+    assert policy.decide("todo_write", {"operation": "check"}).mode == "read"
+    assert policy.decide("todo_write", {"operation": "update"}).mode == "write"
+    assert not policy.decide("document_read", {}).allowed
     assert policy.decide("sandbox_execute", {}).allowed
     assert policy.decide("artifact_create", {}).allowed
     assert policy.mode("write") == "write"
@@ -70,11 +152,7 @@ def test_deepspace_policy_blocks_ide_and_mcp_tools() -> None:
 
 
 def test_deepspace_exposes_universal_workspace_tools() -> None:
-    names = {
-        item["function"]["name"]
-        for item in PRODUCTIVITY_TOOLS
-        if isinstance(item.get("function"), dict)
-    }
+    names = set(NATIVE_TOOL_REGISTRY.names())
 
     assert {"read", "find", "write", "edit", "delete"}.issubset(names)
     assert "save" not in names

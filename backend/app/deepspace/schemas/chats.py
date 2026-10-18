@@ -136,6 +136,16 @@ class MessageEditRequest(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
 
 
+class VisualBlockUpdateRequest(BaseModel):
+    """Versioned edit for one persisted visual block in an assistant reply."""
+
+    block_id: str = Field(min_length=1, max_length=160)
+    block: dict[str, Any]
+    expected_revision: int | None = Field(default=None, ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class RegenerateRequest(BaseModel):
     client_request_id: str | None = Field(default=None, max_length=255)
     thinking_enabled: bool = False

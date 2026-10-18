@@ -11,6 +11,16 @@ export interface MessageMetrics {
     cache_write_input_tokens?: number | null;
     usage_source?: string;
   } | null;
+  providerTurnUsage?: {
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    cached_input_tokens?: number | null;
+    cache_write_input_tokens?: number | null;
+    usage_source?: string;
+  } | null;
+  /** Scope of providerUsage; provider adapters report one model request at a time. */
+  providerUsageScope?: "latest_reported_round" | "turn_total" | "unavailable" | string | null;
+  providerUsageRoundCount?: number | null;
   providerOutputTokens?: number | null;
   providerGenerationDurationMs?: number | null;
   tokensPerSecond?: number | null;
@@ -35,6 +45,8 @@ export interface MessageMetrics {
   sessionTotalTokens?: number;
   requestInputTokens?: number;
   requestOutputTokens?: number;
+  requestInputTokensSource?: string | null;
+  requestOutputTokensSource?: string | null;
   userVisibleInputTokens?: number;
   userVisibleOutputTokens?: number;
   conversationVisibleTokens?: number;
@@ -97,11 +109,118 @@ export interface StreamChartBlock {
   type: "chart";
   title?: string | null;
   chart_type: "line" | "bar" | "pie" | "area" | "scatter";
-  series: Array<{ label: string; value: number }>;
+  series: Array<{
+    label: string;
+    value: number;
+    z?: number;
+    [key: string]: string | number | null | undefined;
+  }>;
+  series_groups?: Array<{
+    name: string;
+    points: Array<{
+      label: string;
+      value: number;
+      z?: number;
+      [key: string]: string | number | null | undefined;
+    }>;
+    axis?: "left" | "right";
+    color?: string | null;
+    visible?: boolean;
+  }>;
+  annotations?: Array<{
+    label: string;
+    x: string | number;
+    y?: number | null;
+    color?: string | null;
+  }>;
+  legend?: boolean;
+  secondary_y_label?: string | null;
+  revision?: number;
   raw_payload?: string | null;
+  parser_source?: "json" | "pattern" | "structured";
+  confidence?: number;
+  fields?: string[];
+  is_streaming?: boolean;
   x_key?: string;
   y_key?: string;
   z_key?: string;
+  equation?: string | null;
+  x_label?: string | null;
+  y_label?: string | null;
+  block_id?: string;
+  schema_version?: number;
+  source_markdown?: string | null;
+  source_mermaid?: string | null;
+  assets?: Array<{
+    url: string;
+    owned_url?: string | null;
+    mime_type?: string | null;
+    status?: string;
+  }>;
+  history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
+  undo?: Record<string, unknown>;
+  visual_model?: Record<string, unknown>;
+}
+
+export interface StreamCardAction {
+  label: string;
+  href?: string | null;
+  action?: "open" | "copy" | "download";
+  content?: string | null;
+}
+
+export interface StreamCardMetric {
+  label: string;
+  value: string | number;
+  detail?: string | null;
+}
+
+export interface StreamCardBlock {
+  id: string;
+  type: "card";
+  title: string;
+  content: string;
+  tone?: "info" | "success" | "warning" | "error" | "neutral";
+  subtitle?: string | null;
+  image_url?: string | null;
+  href?: string | null;
+  metrics?: StreamCardMetric[];
+  actions?: StreamCardAction[];
+  incomplete?: boolean;
+  block_id?: string;
+  schema_version?: number;
+  revision?: number;
+  source_markdown?: string | null;
+  source_mermaid?: string | null;
+  assets?: Array<{
+    url: string;
+    owned_url?: string | null;
+    mime_type?: string | null;
+    status?: string;
+  }>;
+  history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
+  undo?: Record<string, unknown>;
+}
+
+export interface StreamGalleryBlock {
+  id: string;
+  type: "gallery";
+  title?: string | null;
+  items: Array<{ src: string; alt: string; caption?: string | null; href?: string | null }>;
+  block_id?: string;
+  schema_version?: number;
+  revision?: number;
+  source_markdown?: string | null;
+  assets?: Array<{
+    url: string;
+    owned_url?: string | null;
+    mime_type?: string | null;
+    status?: string;
+    file_id?: string | null;
+    retention?: "temporary" | "library";
+  }>;
+  history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
+  undo?: Record<string, unknown>;
 }
 
 export interface StreamDiagramBlock {
@@ -112,9 +231,47 @@ export interface StreamDiagramBlock {
   source: "mermaid" | "graph_json";
   syntax: string;
   description?: string;
+  graph?: {
+    nodes: Array<{
+      id: string;
+      label: string;
+      category?: string | null;
+      x?: number;
+      y?: number;
+      width?: number;
+      height?: number;
+      group_id?: string | null;
+    }>;
+    edges: Array<{
+      source: string;
+      target: string;
+      label?: string | null;
+      style?: "solid" | "dashed" | "dotted";
+    }>;
+    layout: "horizontal" | "vertical" | "radial";
+    drawings?: Array<{ d: string; color?: string; width?: number }>;
+  } | null;
+  revision?: number;
+  block_id?: string;
+  schema_version?: number;
+  source_markdown?: string | null;
+  source_mermaid?: string | null;
+  assets?: Array<{
+    url: string;
+    owned_url?: string | null;
+    mime_type?: string | null;
+    status?: string;
+  }>;
+  history?: Array<{ revision: number; source: string; actor?: string | null; at?: string | null }>;
+  undo?: Record<string, unknown>;
 }
 
-export type StructuredBlock = StreamTableBlock | StreamChartBlock | StreamDiagramBlock;
+export type StructuredBlock =
+  | StreamTableBlock
+  | StreamChartBlock
+  | StreamCardBlock
+  | StreamGalleryBlock
+  | StreamDiagramBlock;
 
 export interface DeepSpaceStreamEvent {
   event:

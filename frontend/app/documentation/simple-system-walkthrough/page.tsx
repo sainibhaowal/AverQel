@@ -30,7 +30,7 @@ export default function SimpleSystemWalkthroughPage() {
       </DocsSection>
       <DocsSection title="Other workspace areas">
         <ul className="list-disc space-y-2 pl-6">
-          <li>Collections provide explicit collaboration and sharing with invited members.</li>
+          <li>Qel Connect provides explicit collaboration and sharing with invited members.</li>
           <li>
             Providers configure model runtimes; MCP connections configure separately permissioned
             remote tools.
@@ -44,7 +44,7 @@ export default function SimpleSystemWalkthroughPage() {
       <DocsSection title="A useful mental model">
         <p>
           Documents Hub manages sources. Query finds evidence in sources. DeepSpace helps you carry
-          out broader work using a conversation and its own working Library. Collections share
+          out broader work using a conversation and its own working Library. Qel Connect shares
           selected content with invited people. Backend authorization controls which data and tools
           each request may access.
         </p>

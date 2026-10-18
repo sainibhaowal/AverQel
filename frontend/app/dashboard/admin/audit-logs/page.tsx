@@ -8,8 +8,6 @@ import {
   RefreshCcw,
   User,
   ChevronRight,
-  Database,
-  Lock,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -110,9 +108,7 @@ interface AuditLogItem {
   resource_id: string | null;
   status: string;
   trace_id: string;
-  ip_address?: string | null;
   created_at: string;
-  details: Record<string, string>;
 }
 
 export default function AuditLogsPage() {
@@ -341,19 +337,11 @@ export default function AuditLogsPage() {
                             className="border-primary/10 bg-primary/[0.02] border-y px-8 py-6"
                           >
                             <div className="grid grid-cols-3 gap-8">
-                              <div className="col-span-2 space-y-4">
-                                <h4 className="text-primary flex items-center gap-2 text-[10px] font-bold tracking-widest uppercase">
-                                  <Database size={12} /> Forensic Detail Package
+                              <div className="col-span-3 space-y-3">
+                                <h4 className="text-primary text-[10px] font-bold tracking-widest uppercase">
+                                  Audit reference
                                 </h4>
-                                <pre className="bg-muted/50 border-glass-border text-muted-foreground overflow-x-auto rounded-xl border p-4 font-mono text-[11px]">
-                                  {JSON.stringify(log.details, null, 2)}
-                                </pre>
-                              </div>
-                              <div className="space-y-4">
-                                <h4 className="flex items-center gap-2 text-[10px] font-bold tracking-widest text-slate-500 uppercase">
-                                  <Lock size={12} /> Security Context
-                                </h4>
-                                <div className="space-y-3">
+                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                                   <div>
                                     <p className="text-[9px] font-bold text-slate-600 uppercase">
                                       Event ID
@@ -364,30 +352,22 @@ export default function AuditLogsPage() {
                                   </div>
                                   <div>
                                     <p className="text-[9px] font-bold text-slate-600 uppercase">
-                                      IP address
-                                    </p>
-                                    <p className="truncate font-mono text-xs text-slate-400">
-                                      {log.ip_address || "Not recorded"}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-[9px] font-bold text-slate-600 uppercase">
                                       Trace ID
                                     </p>
                                     <p className="truncate font-mono text-xs text-slate-400">
                                       {log.trace_id}
                                     </p>
                                   </div>
-                                  {log.resource_id && (
+                                  {log.resource_id ? (
                                     <div>
                                       <p className="text-[9px] font-bold text-slate-600 uppercase">
-                                        Resource ID
+                                        Resource reference
                                       </p>
                                       <p className="truncate font-mono text-xs text-slate-400">
                                         {log.resource_id}
                                       </p>
                                     </div>
-                                  )}
+                                  ) : null}
                                 </div>
                               </div>
                             </div>

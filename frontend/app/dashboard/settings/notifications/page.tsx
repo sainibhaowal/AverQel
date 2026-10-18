@@ -226,8 +226,8 @@ export default function NotificationSettingsPage() {
             </h2>
             <p className="text-muted-foreground mt-1 text-xs">
               {emailAvailable
-                ? "Check a category to mute it. Muted notifications are hidden in-app and excluded from future email. This does not delete source records or collection history."
-                : "Check a category to mute it. Muted notifications are hidden from your in-app notification center. This does not delete source records or collection history."}
+                ? "Check a category to mute it. Muted notifications are hidden in-app and excluded from future email. This does not delete source records or Qel Connect history."
+                : "Check a category to mute it. Muted notifications are hidden from your in-app notification center. This does not delete source records or Qel Connect history."}
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {preferences.categories.map((category) => (

@@ -5,7 +5,8 @@ import Footer from "@/app/components/layout/Footer";
 import HeroSection from "@/app/components/marketing/HeroSection";
 import CallToAction from "@/app/components/marketing/CallToAction";
 import ProductDomains from "@/app/components/marketing/ProductDomains";
-import { LandingScrollEffects } from "@/app/components/marketing/landingMotion";
+import { LandingAmbientEffects } from "@/app/components/marketing/landingMotion";
+import ContactSection from "@/app/components/marketing/ContactSection";
 
 export default function Home() {
   useEffect(() => {
@@ -21,11 +22,12 @@ export default function Home() {
         <div className="absolute inset-0 bg-[#030508]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(0,255,163,0.2)_1px,transparent_1.35px),radial-gradient(circle_at_1px_1px,rgba(0,184,255,0.1)_1px,transparent_1.35px)] bg-[size:32px_32px,128px_128px] opacity-72" />
       </div>
-      <LandingScrollEffects />
+      <LandingAmbientEffects />
       <div className="relative z-10">
         <HeroSection />
         <ProductDomains />
         <CallToAction />
+        <ContactSection />
         <Footer />
       </div>
     </main>

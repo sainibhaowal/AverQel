@@ -1,10 +1,16 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import mermaid from "mermaid";
 
 import StructuredBlockRenderer from "../app/dashboard/query/_components/StructuredBlockRenderer";
 import CodeBlock from "../app/dashboard/query/_components/CodeBlock";
 import DiagramBlock from "../app/dashboard/query/_components/DiagramBlock";
+import MarkdownRenderer from "../app/dashboard/query/_components/MarkdownRenderer";
+import {
+  inferVisualFenceKind,
+  normalizePersistedRichContent,
+  unwrapPersistedVisualFence,
+} from "../app/dashboard/query/_lib/visual-fences";
 
 vi.mock("mermaid", () => ({
   default: {
@@ -17,6 +23,69 @@ vi.mock("mermaid", () => ({
 }));
 
 describe("diagram block rendering", () => {
+  it("normalizes unambiguous and persisted Gantt aliases without reclassifying JSON", () => {
+    const source = "gantt\n  title Launch";
+
+    expect(inferVisualFenceKind("gantt", source)).toBe("mermaid");
+    expect(inferVisualFenceKind("plaintext", source)).toBe("mermaid");
+    expect(inferVisualFenceKind("json", source)).toBeNull();
+    expect(unwrapPersistedVisualFence(`\`\`\`gantt\n${source}\n\`\`\``)).toEqual({
+      kind: "mermaid",
+      source,
+    });
+    expect(
+      normalizePersistedRichContent(
+        `<pre data-rich-content-kind="gantt" data-rich-content-source="${source}"><code>source</code></pre>`,
+      ),
+    ).toBe(`\`\`\`mermaid\n${source}\n\`\`\``);
+  });
+
+  it("renders a gantt-labeled Markdown fence as a Mermaid diagram", async () => {
+    const source = [
+      "gantt",
+      "  title Four-Week Launch (illustrative dates)",
+      "  dateFormat YY-MM-D",
+      "  axisFormat %b %d",
+      "  section Discovery",
+      "  Research :done, res, 2026-01-05, 5d",
+      "  section Delivery",
+      "  Build :active, build, 2026-01-12, 10d",
+      "  Review :crit, review, after build, 3d",
+      "  Release :rel, after review, 2d",
+      "  Launch :milestone, ml, after rel, 0d",
+    ].join("\n");
+    const renderMock = vi.mocked(mermaid.render);
+    renderMock.mockClear();
+
+    const { container } = render(<MarkdownRenderer content={`\`\`\`gantt\n${source}\n\`\`\``} />);
+
+    await waitFor(() => expect(renderMock).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Hide View" })).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="diagram-stage"] svg')).toBeTruthy();
+    expect(renderMock.mock.calls[0]?.[1]).toContain("gantt\n");
+  });
+
+  it("renders a direct gantt CodeBlock through the Mermaid preview path", async () => {
+    const renderMock = vi.mocked(mermaid.render);
+    renderMock.mockClear();
+
+    const { container } = render(
+      <CodeBlock
+        language="gantt"
+        value={
+          "gantt\n  title Launch\n  dateFormat YYYY-MM-DD\n  section Build\n  API :api, 2026-01-01, 3d"
+        }
+        incomplete={false}
+        enableRichPreview={true}
+        defaultPreviewOpen={true}
+      />,
+    );
+
+    await waitFor(() => expect(renderMock).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Hide View" })).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="diagram-stage"] svg')).toBeTruthy();
+  });
+
   it("renders structured tables as the supported tabular fallback", () => {
     render(
       <StructuredBlockRenderer
@@ -36,6 +105,39 @@ describe("diagram block rendering", () => {
     expect(screen.getByText("Alpha")).toBeInTheDocument();
   });
 
+  it("edits gantt tasks through the structured editor and persists regenerated Mermaid", () => {
+    const onChange = vi.fn();
+    render(
+      <DiagramBlock
+        block={{
+          id: "gantt-1",
+          type: "diagram",
+          diagram_type: "mermaid_gantt",
+          source: "mermaid",
+          syntax:
+            "gantt\n  title Launch\n  dateFormat YYYY-MM-DD\n  section Build\n  API :api, 2026-01-01, 3d",
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    const editStructured = screen.getByRole("button", { name: /edit structured/i });
+    expect(editStructured).toHaveClass("visual-block-action", "rounded-lg");
+    fireEvent.click(editStructured);
+    const taskInput = screen.getByDisplayValue("API");
+    fireEvent.change(taskInput, { target: { value: "Public API" } });
+    const saveStructured = screen.getByRole("button", { name: /save structured/i });
+    expect(saveStructured).toHaveClass("visual-block-action", "visual-block-action--active");
+    fireEvent.click(saveStructured);
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        revision: 1,
+        syntax: expect.stringContaining("Public API :api, 2026-01-01, 3d"),
+      }),
+    );
+  });
+
   it("renders inline mermaid code with an on-demand view action", async () => {
     const { container } = render(
       <CodeBlock
@@ -51,6 +153,31 @@ describe("diagram block rendering", () => {
     fireEvent.click(screen.getByTitle(/view diagram/i));
     await screen.findByRole("button", { name: "Hide View" });
     expect(container.querySelector("svg")).toBeTruthy();
+  });
+
+  it("gives Mermaid export options a visible hover and keyboard-focus state", async () => {
+    render(
+      <CodeBlock
+        language="mermaid"
+        value={"flowchart LR\nA --> B"}
+        incomplete={false}
+        enableRichPreview={true}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export Mermaid diagram" }));
+
+    for (const label of ["Mermaid (.mmd)", "SVG", "PNG", "PDF"]) {
+      expect(screen.getByRole("button", { name: label })).toHaveClass(
+        "enabled:hover:bg-primary/10",
+        "enabled:hover:text-primary",
+        "focus-visible:ring-2",
+        "transition-colors",
+      );
+    }
   });
 
   it("does not call Mermaid render when parse reports invalid syntax", async () => {

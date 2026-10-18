@@ -17,9 +17,10 @@ type TableBlockData = {
 interface TableBlockProps {
   block: TableBlockData;
   isStreaming?: boolean;
+  onSaveToLibrary?: () => void | Promise<void>;
 }
 
-function TableBlockInner({ block, isStreaming = false }: TableBlockProps) {
+function TableBlockInner({ block, isStreaming = false, onSaveToLibrary }: TableBlockProps) {
   const { hasRealHeaders, paddedRows, colCount } = useMemo(() => {
     const colCount = block.headers.length;
 
@@ -54,7 +55,7 @@ function TableBlockInner({ block, isStreaming = false }: TableBlockProps) {
     // content inside table cells cyan/blue regardless of our own classes.
     <div className="not-prose table-wrapper theme-panel group relative w-full min-w-0 overflow-hidden rounded-[1.8rem] shadow-[0_24px_70px_-48px_rgba(15,23,42,0.12)] dark:shadow-[0_24px_70px_-48px_rgba(15,23,42,0.96)]">
       <div className="absolute top-3 right-3 z-10 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
-        <TableActions rows={tableMatrix} title={block.title} />
+        <TableActions rows={tableMatrix} title={block.title} onSaveToLibrary={onSaveToLibrary} />
       </div>
       {block.title ? (
         <div
@@ -114,6 +115,7 @@ function TableBlockInner({ block, isStreaming = false }: TableBlockProps) {
 
 function arePropsEqual(prev: TableBlockProps, next: TableBlockProps): boolean {
   if (prev.isStreaming !== next.isStreaming) return false;
+  if (prev.onSaveToLibrary !== next.onSaveToLibrary) return false;
 
   const pb = prev.block;
   const nb = next.block;

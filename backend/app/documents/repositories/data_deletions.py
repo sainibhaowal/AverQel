@@ -18,12 +18,20 @@ class DataDeletionsRepository(BaseRepository):
         self.db.flush()
         return row
 
-    def get_by_id(self, *, tenant_id: uuid.UUID, deletion_id: uuid.UUID) -> DataDeletion | None:
+    def get_by_id(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        deletion_id: uuid.UUID,
+        for_update: bool = False,
+    ) -> DataDeletion | None:
         self.apply_tenant_scope(tenant_id)
         statement = select(DataDeletion).where(
             DataDeletion.tenant_id == tenant_id,
             DataDeletion.id == deletion_id,
         )
+        if for_update:
+            statement = statement.with_for_update()
         return self.db.execute(statement).scalar_one_or_none()
 
     def get_next_queued(self, *, tenant_id: uuid.UUID) -> DataDeletion | None:

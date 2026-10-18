@@ -766,8 +766,8 @@ async def test_active_worker_aborts_turn_persistence_if_conversation_deleted(db_
 
 
 @pytest.mark.asyncio
-async def test_library_search_empty_forces_immediate_stop_in_turn_loop(monkeypatch):
-    """Verify that when find(target='library') returns not_found, the agent loop stops immediately via forced_answer without continuing to guess."""
+async def test_library_miss_does_not_stop_requested_web_research(monkeypatch):
+    """A Library miss is local to that source; requested web research continues."""
     from types import SimpleNamespace
     from uuid import uuid4
 
@@ -793,6 +793,34 @@ async def test_library_search_empty_forces_immediate_stop_in_turn_loop(monkeypat
                         "tool_calls": [
                             {
                                 "index": 0,
+                                "id": "call_discover_sources",
+                                "function": {
+                                    "name": "discover_tools",
+                                    "arguments": '{"query":"find Library files and search web sources"}',
+                                },
+                            }
+                        ],
+                    }
+                elif call_count == 2:
+                    yield {
+                        "type": "tool_calls_delta",
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_load_library_and_web_tools",
+                                "function": {
+                                    "name": "discover_tools",
+                                    "arguments": '{"query":"find Library files and search web sources","tool_names":["find","web_search"]}',
+                                },
+                            }
+                        ],
+                    }
+                elif call_count == 3:
+                    yield {
+                        "type": "tool_calls_delta",
+                        "tool_calls": [
+                            {
+                                "index": 0,
                                 "id": "call_find_1",
                                 "function": {
                                     "name": "find",
@@ -801,11 +829,44 @@ async def test_library_search_empty_forces_immediate_stop_in_turn_loop(monkeypat
                             }
                         ],
                     }
+                elif call_count == 4:
+                    yield {
+                        "type": "tool_calls_delta",
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_web_search",
+                                "function": {
+                                    "name": "web_search",
+                                    "arguments": '{"query":"official report source"}',
+                                },
+                            }
+                        ],
+                    }
                 else:
-                    yield {"type": "delta", "text": "I am guessing another filename."}
+                    yield {
+                        "type": "delta",
+                        "text": "The Library did not contain report.pdf. I continued with the requested web search and found an official source.",
+                    }
 
             provider.stream_generate_events = _fake_stream
             return provider
+
+        def get_web_search_provider_from_selection(self, candidate):
+            return SimpleNamespace(
+                search=lambda request: SimpleNamespace(
+                    query=request.query,
+                    results=[
+                        SimpleNamespace(
+                            title="Official report source",
+                            url="https://example.test/report",
+                            content="The official report overview.",
+                            published_date=None,
+                            source="test",
+                        )
+                    ],
+                )
+            )
 
     class _MockSelectionService:
         def __init__(self, *args, **kwargs):
@@ -824,6 +885,9 @@ async def test_library_search_empty_forces_immediate_stop_in_turn_loop(monkeypat
                     )
                 ]
             )
+
+        def resolve_web_search(self, **kwargs):
+            return SimpleNamespace(candidates=[SimpleNamespace(provider_type="test", metadata={})])
 
     class _MockTaskStore:
         def __init__(self, *args, **kwargs):
@@ -875,20 +939,33 @@ async def test_library_search_empty_forces_immediate_stop_in_turn_loop(monkeypat
         async for frame in service.stream_turn(
             auth=auth,
             conversation_id=uuid4(),
-            prompt="Find report.pdf in library",
+            prompt="Find report.pdf in Library, then search the web for its official source if missing.",
             thinking_enabled=False,
         )
     ]
 
-    assert call_count == 1
+    assert call_count == 5
     result_frames = [f for f in frames if f.startswith("event: tool_result")]
-    assert len(result_frames) == 1
-    result_data = json.loads(result_frames[0].split("data: ", 1)[1].strip())
-    assert result_data["tool_name"] == "find"
+    assert len(result_frames) == 4
+    result_names = [
+        json.loads(frame.split("data: ", 1)[1].strip())["tool_name"] for frame in result_frames
+    ]
+    assert result_names == ["discover_tools", "discover_tools", "find", "web_search"]
+    result_data_by_name = {
+        json.loads(frame.split("data: ", 1)[1].strip())["tool_name"]: json.loads(
+            frame.split("data: ", 1)[1].strip()
+        )
+        for frame in result_frames
+    }
+    result_data = result_data_by_name["find"]
     output_obj = json.loads(result_data["output"])
     assert output_obj["status"] == "not_found"
 
     delta_frames = [f for f in frames if f.startswith("event: delta")]
     assert len(delta_frames) >= 1
     delta_text = "".join(json.loads(f.split("data: ", 1)[1].strip())["text"] for f in delta_frames)
-    assert "No file found matching query in the Library" in delta_text
+    assert "continued with the requested web search" in delta_text
+    assert (
+        "https://example.test/report"
+        in mock_chat_repo.complete_assistant_message.call_args.kwargs["content"]
+    )

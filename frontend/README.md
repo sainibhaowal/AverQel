@@ -97,8 +97,9 @@ completed when that real result arrives; the UI does not fabricate progress.
 The model chooses whether a request needs a direct answer, workspace inspection, research, a connected
 service, a clarification, or a task plan. It creates a plan with `todo_write` only when a multi-step,
 agent-owned outcome benefits from one. Once a real plan exists, DeepSpace enforces its verified lifecycle:
-`todo_read`, `todo_mark(in_progress)`, appropriate work tools, `todo_mark(completed, evidence)`,
-`todo_check`, then `final`. `observe` and `analyze` remain optional real inspection tools, chosen when
+`todo_write(operation="read")`, `todo_write(operation="update", status="in_progress")`, appropriate
+work tools, `todo_write(operation="update", evidence=...)`, and `todo_write(operation="check")`.
+`analyze` remains an optional real inspection tool, chosen when
 the model needs workspace or evidence state. The visible task-progress card is derived from actual todo
 tool results; it is not a synthetic status. A task may be completed only with evidence and after its
 dependencies are complete.
@@ -121,6 +122,23 @@ only the validated, tenant-scoped write-tool result replaces or appends the dura
 fails, the draft remains visibly marked as unsaved; if the user changes the note while the agent is
 writing, the user's newer local content is retained rather than being replaced automatically.
 
+DeepSpace and Grounded Query share rich Markdown fences. `chart` fences render interactive line, bar,
+area, scatter, or pie charts with hover details, point editing, safe live equation recalculation,
+payload view, and JSON download. In DeepSpace, recalculation updates the chart and its editable JSON
+source together, returns to the visual view, and keeps the editor open if the revision cannot be saved.
+`card` fences render safe Markdown information cards with metrics,
+source links, copy, download, images, and explicit actions. `graph` fences render an interactive
+node canvas with connectors, movement, resizing, zoom, grouping, alignment, freehand paths, and JSON
+export. `gallery` fences render clickable/downloadable image sequences. Mermaid fences render flow,
+UML, architecture, business-model, timeline, and Gantt diagrams with Save artifact, editable source,
+JSON and Mermaid source downloads, and SVG, PNG, and PDF exports. SVG exports stay vector-based;
+PNG/PDF rasterization uses the diagram viewBox and renders at up to 2× resolution within browser
+canvas limits. Inserting an answer into the note editor preserves these surfaces as native rich blocks;
+the editor's autosave persists block props across reloads and devices. Generic `json` fences with an
+unambiguous visual payload are promoted to the matching surface automatically. Failed image reads
+remain recoverable research results, and diagram raster exports sanitize external SVG resources and
+show an inline error if the browser still blocks PNG/PDF conversion.
+
 ### DeepSpace Library and generated media
 
 Each DeepSpace conversation has a **DeepSpace Library** drawer for separate files only. The active
@@ -130,12 +148,16 @@ editing for private Markdown, plain-text, JSON, JavaScript/TypeScript, Python, a
 Diff files render added lines in green, removed lines in red, and hunk/header lines distinctly. Markdown
 has Edit, Split, and Preview modes with CommonMark/GFM headings, emphasis, links, lists, task checkboxes,
 tables, blockquotes, rules, fenced code, diff fences, math, Mermaid diagrams, charts, and standard images.
-Raw HTML stays disabled in previews as a security boundary. The Library does not
-accept arbitrary binary uploads: provider-generated image, video,
-and audio remain authenticated artifacts rather than being exposed through a public file URL. The
-`workspace_write` tool can create or update the same visible files when a separate file genuinely helps
-the user’s request; it is tenant-, user-, and conversation-scoped and never accesses the host
-filesystem.
+Raw HTML stays disabled in previews as a security boundary. Message attachments use a separate
+chunked upload flow for supported file types and remain private to their conversation. Provider-
+generated image, video, and audio also remain authenticated artifacts rather than being exposed
+through a public file URL. The `workspace_write` tool can create or update private text files when a
+separate file genuinely helps the user’s request; it is tenant-, user-, and conversation-scoped and
+never accesses the host filesystem.
+
+Chat attachments become ready once their bytes are safely stored. Text extraction and OCR continue
+in the background, so supported images can be sent to a vision-capable model before OCR finishes.
+Other file-reading tools become useful as their extraction status reports completion.
 
 The note editor's **Save to Library** action exports the current editor document as Markdown and asks
 the user for a filename with an extension before creating a separate Library file. It does not replace
@@ -179,6 +201,17 @@ pnpm test
 pnpm e2e
 pnpm build
 ```
+
+Browser workflows are split into independently runnable suites:
+
+```bash
+pnpm e2e:smoke
+pnpm e2e:deepspace
+pnpm e2e:documents
+```
+
+See [`e2e/README.md`](e2e/README.md) for isolation guarantees, external-run
+gates, and failure artifacts.
 
 Local browser E2E starts its own loopback-only Next server, does not load
 `.local` runtime settings or reuse an existing server, and sends API proxy

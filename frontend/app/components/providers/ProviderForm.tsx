@@ -22,6 +22,7 @@ import OpenAICompatibleSettingsPanel, {
   type OpenAICompatibleFormSettings,
 } from "./OpenAICompatibleSettingsPanel";
 import OpenAICodexLoginPanel from "./OpenAICodexLoginPanel";
+import ProviderLocalRuntimeHelp from "./ProviderLocalRuntimeHelp";
 
 interface ProviderFormProps {
   catalogEntry: ProviderCatalogEntry | null;
@@ -58,6 +59,7 @@ const PROVIDER_BASE_URL_PRESETS: Record<string, string> = {
   "nvidia-nim": "https://integrate.api.nvidia.com/v1",
   manus: "https://api.manus.ai",
   lmstudio: "http://localhost:1234/v1",
+  ollama: "http://localhost:11434",
   together: "https://api.together.xyz/v1",
   fireworks: "https://api.fireworks.ai/inference/v1",
   perplexity: "https://api.perplexity.ai",
@@ -101,10 +103,18 @@ export default function ProviderForm({
   const activeProviderType = provider?.provider_type || catalogEntry?.provider_type || "";
   const isOpenAIProvider = activeProviderType === "openai";
   const isCustomCompatible = activeProviderType === "custom";
+  const isLocalRuntimeProvider =
+    activeProviderType === "lmstudio" || activeProviderType === "ollama";
   const supportsManualChatModel =
     isCustomCompatible || ["cline", "zai"].includes(activeProviderType);
   const catalogFamilyRef = useRef(activeProviderType);
   const [electronAvailable, setElectronAvailable] = useState(false);
+  const [localRuntimeAvailable, setLocalRuntimeAvailable] = useState(false);
+  const [runtimeTarget, setRuntimeTarget] = useState<"server" | "desktop">(
+    isLocalRuntimeProvider || provider?.metadata_json?.runtime_target === "desktop"
+      ? "desktop"
+      : "server",
+  );
 
   const [apiBaseUrl, setApiBaseUrl] = useState(
     provider?.api_base_url || PROVIDER_BASE_URL_PRESETS[activeProviderType] || "",
@@ -175,9 +185,16 @@ export default function ProviderForm({
 
   useEffect(() => {
     queueMicrotask(() => {
-      setElectronAvailable(Boolean(window.electron?.isElectron && window.electron.codex));
+      const hasElectron = Boolean(window.electron?.isElectron);
+      const hasLocalRuntime = Boolean(hasElectron && window.electron?.localRuntime);
+      setElectronAvailable(
+        Boolean(hasElectron && (window.electron?.codex || window.electron?.localRuntime)),
+      );
+      setLocalRuntimeAvailable(hasLocalRuntime);
     });
   }, []);
+
+  const localRuntimeUnavailable = isLocalRuntimeProvider && !localRuntimeAvailable;
 
   const isCodexLogin = isOpenAIProvider && authMode === "codex_desktop";
   const showOpenAIAuthToggle = isOpenAIProvider && electronAvailable;
@@ -187,6 +204,11 @@ export default function ProviderForm({
     if (provider) {
       queueMicrotask(() => {
         setApiBaseUrl(provider.api_base_url || "");
+        setRuntimeTarget(
+          isLocalRuntimeProvider || provider.metadata_json?.runtime_target === "desktop"
+            ? "desktop"
+            : "server",
+        );
         setAuthMode(provider.auth_mode || "none");
         const codex = provider.metadata_json?.codex_desktop;
         setCodexAccountId(
@@ -234,7 +256,7 @@ export default function ProviderForm({
         setDiscoverError(null);
       });
     }
-  }, [provider, models]);
+  }, [isLocalRuntimeProvider, models, provider]);
 
   // A catalog family is a wholly new configuration. Never retain another
   // provider's endpoint, credentials, selected model, or discovery result
@@ -248,6 +270,9 @@ export default function ProviderForm({
     queueMicrotask(() => {
       const providerType = catalogEntry.provider_type;
       setApiBaseUrl(PROVIDER_BASE_URL_PRESETS[providerType] || "");
+      setRuntimeTarget(
+        providerType === "lmstudio" || providerType === "ollama" ? "desktop" : "server",
+      );
       setAuthMode(catalogEntry.auth_modes[0] || "api_key");
       setCodexAccountId(null);
       setCodexModels([]);
@@ -349,6 +374,7 @@ export default function ProviderForm({
   // Model discovery
   useEffect(() => {
     if (!activeProviderType || !supportsModelListing) return;
+    if (localRuntimeUnavailable) return;
     if (isCodexLogin) return;
     // Cline's public catalog can be previewed before the API key is entered.
     if (
@@ -395,7 +421,13 @@ export default function ProviderForm({
           supports_reranking:
             catalogEntry?.supports_reranking ?? provider?.supports_reranking ?? false,
           supports_model_listing: supportsModelListing,
-          ...(compatibleMetadata ? { metadata_json: compatibleMetadata } : {}),
+          ...(isLocalRuntimeProvider
+            ? {
+                metadata_json: { runtime_target: runtimeTarget, protocol: "desktop_local_runtime" },
+              }
+            : compatibleMetadata
+              ? { metadata_json: compatibleMetadata }
+              : {}),
         });
         if (!cancelled) {
           setPreviewModels(items);
@@ -422,6 +454,9 @@ export default function ProviderForm({
     normalizedSecretValue,
     supportsModelListing,
     compatibleMetadata,
+    isLocalRuntimeProvider,
+    localRuntimeUnavailable,
+    runtimeTarget,
     catalogEntry?.supports_chat,
     catalogEntry?.supports_embeddings,
     catalogEntry?.supports_reranking,
@@ -429,6 +464,12 @@ export default function ProviderForm({
   ]);
 
   const handleLocalSubmit = async () => {
+    if (localRuntimeUnavailable) {
+      setDiscoverError(
+        "LM Studio and Ollama connections are available only in the AverQel Desktop app.",
+      );
+      return;
+    }
     if (isCodexLogin) {
       if (!codexAccountId || codexModels.length === 0) {
         setDiscoverError("Sign in with ChatGPT and load this account's models first.");
@@ -492,6 +533,9 @@ export default function ProviderForm({
         }
       : undefined;
     const switchingAwayFromCodex = provider?.auth_mode === "codex_desktop" && !isCodexLogin;
+    const localRuntimeMetadata = isLocalRuntimeProvider
+      ? { runtime_target: "desktop", protocol: "desktop_local_runtime" }
+      : undefined;
     const basePayload: CreateProviderInput = {
       display_name: isCodexLogin
         ? provider?.display_name === "OpenAI API"
@@ -529,7 +573,9 @@ export default function ProviderForm({
             ? { metadata_json: compatibleMetadata }
             : searchMetadata
               ? { metadata_json: searchMetadata }
-              : {}),
+              : localRuntimeMetadata
+                ? { metadata_json: localRuntimeMetadata }
+                : {}),
     };
 
     if (normalizedSecretValue) basePayload.api_key = normalizedSecretValue;
@@ -686,8 +732,38 @@ export default function ProviderForm({
               secretValue={secretValue}
               onSecretValueChange={setSecretValue}
               maskedSummary={provider?.secrets?.[0]?.masked_value || null}
+              disabled={localRuntimeUnavailable}
             />
           )}
+
+          {isLocalRuntimeProvider ? (
+            localRuntimeUnavailable ? (
+              <div
+                role="status"
+                className="rounded-2xl border border-slate-400/20 bg-slate-400/5 p-5 text-sm text-slate-300"
+              >
+                <p className="font-semibold text-slate-200">
+                  {activeProviderType === "ollama" ? "Ollama" : "LM Studio"} is a desktop-only local
+                  runtime
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                  Install or open AverQel Desktop to connect to a model running on this computer.
+                  Local LM Studio and Ollama connections are disabled in the web app.
+                </p>
+              </div>
+            ) : (
+              <div className="theme-panel-muted space-y-4 rounded-2xl p-5 ring-1 ring-white/5">
+                <div>
+                  <p className="text-foreground text-sm font-semibold">This computer</p>
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    AverQel Desktop connects to LM Studio or Ollama on this computer through its
+                    local runtime bridge.
+                  </p>
+                </div>
+                <ProviderLocalRuntimeHelp providerType={activeProviderType} />
+              </div>
+            )
+          ) : null}
 
           {isCustomCompatible ? (
             <OpenAICompatibleSettingsPanel
@@ -802,7 +878,7 @@ export default function ProviderForm({
                 Model Discovery
               </span>
               {waitingForToken ? (
-                <span className="animate-pulse rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-amber-700 uppercase dark:text-amber-400">
+                <span className="waiting-token-sweep rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 font-mono text-[9px] font-black tracking-widest text-amber-700 uppercase dark:text-amber-400">
                   ⊙ Waiting for token
                 </span>
               ) : waitingForCodex ? (
@@ -830,6 +906,8 @@ export default function ProviderForm({
                     ? "Loading Cline's model catalog. This does not test chat access."
                     : "Inspecting endpoint and validating credentials..."}
                 </p>
+              ) : localRuntimeUnavailable ? (
+                <p>Open AverQel Desktop to discover models from this local runtime.</p>
               ) : isCodexLogin ? (
                 <p>
                   Models come from the signed-in ChatGPT account. DeepSpace uses the selected model
@@ -891,7 +969,7 @@ export default function ProviderForm({
       {/* end scrollable content */}
 
       {/* Sticky footer — always visible regardless of scroll position */}
-      <div className="mt-2 flex shrink-0 items-center justify-between border-t border-white/5 pt-5">
+      <div className="relative z-[2] mt-2 flex shrink-0 items-center justify-between border-t border-white/5 pt-5">
         <button
           onClick={() => provider && onTest?.(provider)}
           disabled={!provider}
@@ -917,8 +995,8 @@ export default function ProviderForm({
 
         <button
           onClick={handleLocalSubmit}
-          disabled={saving || waitingForToken || waitingForCodex}
-          className="to-primary/80 flex items-center gap-3 rounded-xl bg-gradient-to-r from-teal-500/80 px-8 py-3.5 text-sm font-bold text-white shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+          disabled={saving || waitingForToken || waitingForCodex || localRuntimeUnavailable}
+          className="border-primary/35 to-primary/80 hover:border-primary/60 relative z-[3] flex items-center gap-3 rounded-xl border bg-gradient-to-r from-teal-500/80 px-8 py-3.5 text-sm font-bold text-white shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
         >
           <Link2 size={16} />
           {saving ? "Saving..." : provider ? "Update Connectivity" : "Link Family"}

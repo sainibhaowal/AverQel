@@ -14,6 +14,7 @@ export default function ProviderLocalRuntimeHelp({ providerType }: { providerTyp
         items={[
           "Start Ollama locally.",
           "Use the default base URL `http://127.0.0.1:11434` unless you changed it.",
+          "AverQel Desktop connects to this computer through its local runtime bridge.",
           "Save the provider, then refresh models or pull a model from the UI through Ollama's official API.",
           "Choose separate chat and embedding defaults where the runtime/model supports them.",
         ]}
@@ -28,7 +29,7 @@ export default function ProviderLocalRuntimeHelp({ providerType }: { providerTyp
         title="LM Studio local runtime"
         items={[
           "Start LM Studio and enable the OpenAI-compatible server.",
-          "Use a base URL the AverQel backend can reach: `http://127.0.0.1:1234/v1` only when both run on the same machine, `http://host.docker.internal:1234/v1` when Docker shares that host, or a public/VPN/reverse-proxied URL for remote hosted AverQel.",
+          "Use `http://127.0.0.1:1234/v1`; AverQel Desktop connects to LM Studio through its local runtime bridge.",
           "Load a model inside LM Studio, then refresh models from AverQel.",
           "AverQel can discover and select models exposed by LM Studio, but it does not install or download LM Studio models directly.",
         ]}

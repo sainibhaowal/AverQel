@@ -30,6 +30,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { fetchWithAuth } from "@/lib/api";
 import ProviderLogo from "@/app/components/providers/ProviderLogo";
 import { formatReasoningEffortLabel, isValidReasoningEffort } from "../_lib/reasoning-options";
+import type { TaskProgress } from "../_lib/task-progress";
+import DeepSpaceTaskPlanDrawer from "./DeepSpaceTaskPlanDrawer";
 
 type ReasoningEffort = string;
 
@@ -38,6 +40,8 @@ interface DeepSpaceComposerProps {
   query: string;
   isStreaming: boolean;
   showActiveResponseControls?: boolean;
+  stopping?: boolean;
+  taskProgress?: TaskProgress | null;
   onQueryChange: (value: string) => void;
   onSubmit: (attachmentFileIds?: string[]) => void;
   editingQueuedTurnId?: string | null;
@@ -93,6 +97,9 @@ interface DeepSpaceComposerProps {
   sessionTotalTokens?: number | null;
   requestInputTokens?: number | null;
   requestOutputTokens?: number | null;
+  requestInputTokensSource?: string | null;
+  requestOutputTokensSource?: string | null;
+  liveTokensPerSecond?: number | null;
   reservedOutputTokens?: number | null;
   maxOutputTokens?: number | null;
   contextStatus?: string | null;
@@ -111,9 +118,17 @@ interface DeepSpaceComposerProps {
   toolResultTokens?: number | null;
   adaptiveHistoryBudgetTokens?: number | null;
   adaptiveToolResultBudgetTokens?: number | null;
-  cachedInputTokens?: number | null;
   uncachedInputTokens?: number | null;
   providerUsage?: {
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    cached_input_tokens?: number | null;
+    cache_write_input_tokens?: number | null;
+    usage_source?: string;
+  } | null;
+  providerUsageScope?: string | null;
+  providerUsageRoundCount?: number | null;
+  providerTurnUsage?: {
     input_tokens?: number | null;
     output_tokens?: number | null;
     cached_input_tokens?: number | null;
@@ -132,7 +147,7 @@ interface DeepSpaceComposerProps {
 }
 
 type ComposerExtractionStatus = {
-  state: "extracted" | "no_text" | "unavailable" | "not_attempted";
+  state: "processing" | "extracted" | "no_text" | "unavailable" | "not_attempted";
   ocr_used: boolean;
 };
 
@@ -154,6 +169,7 @@ function attachmentExtractionLabel(
   status: ComposerExtractionStatus | null | undefined,
 ): string | null {
   if (!status || status.state === "not_attempted") return null;
+  if (status.state === "processing") return "Uploaded · reading text";
   if (status.state === "extracted")
     return status.ocr_used ? "Text extracted · OCR used" : "Text extracted";
   if (status.state === "no_text") return "No readable text found";
@@ -229,6 +245,8 @@ export default function DeepSpaceComposer({
   onCancelQueueEdit,
   onSaveQueueEdit,
   onStop,
+  stopping = false,
+  taskProgress = null,
   onSteer,
   queuedTurns = [],
   queuePaused = false,
@@ -256,6 +274,9 @@ export default function DeepSpaceComposer({
   sessionTotalTokens = null,
   requestInputTokens = null,
   requestOutputTokens = null,
+  requestInputTokensSource = null,
+  requestOutputTokensSource = null,
+  liveTokensPerSecond = null,
   reservedOutputTokens = null,
   maxOutputTokens = null,
   contextStatus = null,
@@ -274,9 +295,11 @@ export default function DeepSpaceComposer({
   toolResultTokens = null,
   adaptiveHistoryBudgetTokens = null,
   adaptiveToolResultBudgetTokens = null,
-  cachedInputTokens = null,
   uncachedInputTokens = null,
   providerUsage = null,
+  providerUsageScope = null,
+  providerUsageRoundCount = null,
+  providerTurnUsage = null,
   tokenCategorySource = null,
   sttActive = false,
   ttsActive = false,
@@ -492,6 +515,37 @@ export default function DeepSpaceComposer({
               : item,
           ),
         );
+        if (upload.extraction_status?.state === "processing" && upload.file_id) {
+          const uploadId = upload.id;
+          const fileId = upload.file_id;
+          // Keep the attachment sendable as soon as the private file exists.
+          // Track optional OCR in the background so the composer never waits
+          // for a parser to finish before allowing a vision/file request.
+          void (async () => {
+            for (let attempt = 0; attempt < 90; attempt += 1) {
+              await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+              try {
+                const response = (await fetchWithAuth(
+                  `/deepspace/library/${conversationId}/uploads/${uploadId}`,
+                  { timeoutMs: 8_000 },
+                )) as Response;
+                if (!response.ok) break;
+                const latest = (await response.json()) as {
+                  extraction_status?: ComposerExtractionStatus | null;
+                };
+                const extractionStatus = latest.extraction_status ?? null;
+                setAttachments((current) =>
+                  current.map((item) =>
+                    item.id === fileId ? { ...item, extractionStatus } : item,
+                  ),
+                );
+                if (extractionStatus?.state !== "processing") break;
+              } catch {
+                break;
+              }
+            }
+          })();
+        }
         window.dispatchEvent(
           new CustomEvent("deepspace-library-updated", { detail: { conversationId } }),
         );
@@ -608,6 +662,20 @@ export default function DeepSpaceComposer({
       ? Math.min(1, Math.max(0, (contextUsedTokens ?? 0) / contextLimit))
       : 0;
   const hasContextLimit = Boolean(contextLimit && contextLimit > 0);
+  const providerUsageAvailable = providerUsage?.usage_source === "provider";
+  const providerTurnUsageAvailable = providerTurnUsage?.usage_source === "provider";
+  const providerUsageScopeLabel =
+    providerUsageScope === "latest_reported_round"
+      ? "latest reported model round"
+      : providerUsageScope === "turn_total"
+        ? "whole turn"
+        : "not reported";
+  const tokenCategorySourceLabel =
+    tokenCategorySource === "serialized_request_estimate"
+      ? "local serialized estimate"
+      : tokenCategorySource || "unavailable";
+  const adaptiveBudgetLabel = (value: number | null | undefined) =>
+    typeof value === "number" && Number.isFinite(value) ? value.toLocaleString() : "not allocated";
   const runtimeStyle = {
     "--deepspace-context-ratio": contextRatio,
     "--deepspace-context-hue": Math.round(155 - contextRatio * 155),
@@ -725,6 +793,15 @@ export default function DeepSpaceComposer({
             : "bg-white/30";
   return (
     <div className="border-glass-border/60 sticky bottom-0 z-20 w-full border-t bg-transparent px-3 pt-3 pb-0 sm:px-5">
+      <AnimatePresence initial={false}>
+        {taskProgress?.tasks.length ? (
+          <DeepSpaceTaskPlanDrawer
+            key="conversation-task-plan"
+            progress={taskProgress}
+            isStreaming={isStreaming}
+          />
+        ) : null}
+      </AnimatePresence>
       <div
         className={`deepspace-composer-runtime relative mx-auto w-full max-w-[min(100%,74rem)] overflow-visible ${runtimeLegendOpen ? "z-[100]" : "z-0"}`}
         data-runtime-phase={visualPhase}
@@ -1249,12 +1326,21 @@ export default function DeepSpaceComposer({
                 <Gauge size={11} />
                 Request context (est.)
               </button>
-              <span className="deepspace-context-values shrink-0 tabular-nums">
+              <span className="deepspace-context-values min-w-0 overflow-x-auto whitespace-nowrap tabular-nums">
                 {(contextUsedTokens ?? 0).toLocaleString()} /{" "}
                 {hasContextLimit ? contextLimit?.toLocaleString() : "—"} ·{" "}
                 {(requestInputTokens ?? 0).toLocaleString()} model in ·{" "}
                 {(requestOutputTokens ?? 0).toLocaleString()} model out ·{" "}
                 {hasContextLimit ? `${Math.round(contextRatio * 100)}%` : "—"}
+                {isStreaming ? (
+                  <>
+                    {" · "}~
+                    {typeof liveTokensPerSecond === "number" && Number.isFinite(liveTokensPerSecond)
+                      ? liveTokensPerSecond.toFixed(1)
+                      : "0.0"}{" "}
+                    tok/s
+                  </>
+                ) : null}
               </span>
             </div>
             <div
@@ -1304,7 +1390,7 @@ export default function DeepSpaceComposer({
                   <div className="deepspace-diagnostics-metrics grid grid-cols-2 gap-2">
                     <div className="deepspace-diagnostics-metric deepspace-diagnostics-metric--context rounded-xl border p-2.5">
                       <span className="deepspace-diagnostics-metric-label text-muted-foreground block">
-                        Current request context
+                        Latest round context estimate
                       </span>
                       <strong className="deepspace-diagnostics-metric-value text-foreground">
                         {(contextUsedTokens ?? 0).toLocaleString()} /{" "}
@@ -1316,7 +1402,7 @@ export default function DeepSpaceComposer({
                     </div>
                     <div className="deepspace-diagnostics-metric deepspace-diagnostics-metric--input rounded-xl border p-2.5">
                       <span className="deepspace-diagnostics-metric-label text-muted-foreground block">
-                        Model input estimate
+                        Turn input estimate (all rounds)
                       </span>
                       <strong className="deepspace-diagnostics-metric-value text-foreground">
                         {(requestInputTokens ?? 0).toLocaleString()}
@@ -1324,7 +1410,7 @@ export default function DeepSpaceComposer({
                     </div>
                     <div className="deepspace-diagnostics-metric deepspace-diagnostics-metric--output rounded-xl border p-2.5">
                       <span className="deepspace-diagnostics-metric-label text-muted-foreground block">
-                        Model output estimate
+                        Turn output estimate
                       </span>
                       <strong className="deepspace-diagnostics-metric-value text-foreground">
                         {(requestOutputTokens ?? 0).toLocaleString()}
@@ -1342,7 +1428,7 @@ export default function DeepSpaceComposer({
                     </div>
                     <div className="deepspace-diagnostics-metric deepspace-diagnostics-metric--session rounded-xl border p-2.5">
                       <span className="deepspace-diagnostics-metric-label text-muted-foreground block">
-                        Session processed
+                        Session total (estimated)
                       </span>
                       <strong className="deepspace-diagnostics-metric-value text-foreground">
                         {(sessionTotalTokens ?? 0).toLocaleString()}
@@ -1350,7 +1436,7 @@ export default function DeepSpaceComposer({
                     </div>
                     <div className="deepspace-diagnostics-metric deepspace-diagnostics-metric--reserve rounded-xl border p-2.5">
                       <span className="deepspace-diagnostics-metric-label text-muted-foreground block">
-                        Output reserve
+                        Reserved output budget
                       </span>
                       <strong className="deepspace-diagnostics-metric-value text-foreground">
                         {(reservedOutputTokens ?? maxOutputTokens ?? 0).toLocaleString()}
@@ -1358,10 +1444,10 @@ export default function DeepSpaceComposer({
                     </div>
                   </div>
                   <p className="deepspace-diagnostics-description border-border text-muted-foreground mt-3 border-t pt-3">
-                    This is an estimate for the latest serialized model request. It can change when
-                    the prompt, history, selected tools, or retrieved evidence changes. Model input
-                    includes hidden instructions and selected context; it is separate from the
-                    visible conversation meter.
+                    DeepSpace keeps provider-neutral serialized estimates for every model round. The
+                    latest round context is the current request sent to the provider; turn input and
+                    output include earlier tool and recovery rounds. Provider tokenizers can differ,
+                    so an exact count is shown only when the adapter reports it.
                   </p>
                   <p className="text-muted-foreground mt-1">
                     Conversation: {(conversationVisibleTokens ?? 0).toLocaleString()} tokens ·{" "}
@@ -1369,35 +1455,62 @@ export default function DeepSpaceComposer({
                     {(userVisibleOutputTokens ?? 0).toLocaleString()} out
                   </p>
                   <p className="text-muted-foreground mt-1">
-                    Categories: system {systemContextTokens?.toLocaleString() ?? "—"} · schemas{" "}
-                    {toolSchemaTokens?.toLocaleString() ?? "—"} · results{" "}
-                    {toolResultTokens?.toLocaleString() ?? "—"} · cached{" "}
-                    {cachedInputTokens?.toLocaleString() ?? "unknown"} · uncached{" "}
+                    Local token estimate: system {systemContextTokens?.toLocaleString() ?? "—"} ·
+                    schemas {toolSchemaTokens?.toLocaleString() ?? "—"} · results{" "}
+                    {toolResultTokens?.toLocaleString() ?? "—"} · context{" "}
                     {uncachedInputTokens?.toLocaleString() ?? "—"}
-                    {providerUsage?.usage_source === "provider"
-                      ? ` · provider input ${providerUsage.input_tokens?.toLocaleString() ?? "—"} · output ${providerUsage.output_tokens?.toLocaleString() ?? "—"} · cache read ${providerUsage.cached_input_tokens?.toLocaleString() ?? "0"} · cache write ${providerUsage.cache_write_input_tokens?.toLocaleString() ?? "0"}`
-                      : ""}
                   </p>
                   <p className="text-muted-foreground mt-1">
-                    Adaptive budgets: history {adaptiveHistoryBudgetTokens?.toLocaleString() ?? "—"}{" "}
-                    · tool results {adaptiveToolResultBudgetTokens?.toLocaleString() ?? "—"}
+                    Provider usage ({providerUsageScopeLabel})
+                    {providerUsageAvailable
+                      ? `: input ${providerUsage?.input_tokens?.toLocaleString() ?? "—"} · output ${providerUsage?.output_tokens?.toLocaleString() ?? "—"} · cache read ${providerUsage?.cached_input_tokens?.toLocaleString() ?? "not reported"} · cache write ${providerUsage?.cache_write_input_tokens?.toLocaleString() ?? "not reported"}`
+                      : ": not reported by this adapter"}
+                    {providerUsageRoundCount && providerUsageRoundCount > 1
+                      ? ` · ${providerUsageRoundCount} rounds reported`
+                      : ""}
                   </p>
-                  {tokenCategorySource ? (
-                    <p className="text-muted-foreground mt-1 text-[9px]">
-                      Source: {tokenCategorySource}
+                  {providerTurnUsageAvailable ? (
+                    <p className="text-muted-foreground mt-1">
+                      Provider turn total ({providerUsageRoundCount ?? 0} reported rounds): input{" "}
+                      {providerTurnUsage?.input_tokens?.toLocaleString() ?? "not complete"} · output{" "}
+                      {providerTurnUsage?.output_tokens?.toLocaleString() ?? "not complete"} · cache
+                      read{" "}
+                      {providerTurnUsage?.cached_input_tokens?.toLocaleString() ?? "not complete"} ·
+                      cache write{" "}
+                      {providerTurnUsage?.cache_write_input_tokens?.toLocaleString() ??
+                        "not complete"}
                     </p>
                   ) : null}
                   <p className="text-muted-foreground mt-1">
+                    Adaptive budgets (latest round): history{" "}
+                    {adaptiveBudgetLabel(adaptiveHistoryBudgetTokens)} · tool results{" "}
+                    {adaptiveBudgetLabel(adaptiveToolResultBudgetTokens)}
+                  </p>
+                  <p className="text-muted-foreground mt-1 text-[9px]">
+                    Estimate source: {tokenCategorySourceLabel}; turn input{" "}
+                    {requestInputTokensSource === "serialized_request_estimate"
+                      ? "serialized"
+                      : requestInputTokensSource || "unavailable"}
+                    ; turn output{" "}
+                    {requestOutputTokensSource === "serialized_response_estimate"
+                      ? "serialized"
+                      : requestOutputTokensSource || "unavailable"}
+                  </p>
+                  <p className="text-muted-foreground mt-1">
                     Prompt cache:{" "}
-                    {promptCacheStatus === "native_requested"
-                      ? `${promptCacheMode} requested (provider status unavailable)`
-                      : promptCacheStatus === "unsupported"
-                        ? "provider-native caching unavailable"
-                        : promptCacheStatus === "disabled"
-                          ? "disabled"
-                          : promptCacheEligible
-                            ? `${promptCacheMode} eligible`
-                            : "status unavailable"}
+                    {providerUsageAvailable &&
+                    (providerUsage?.cached_input_tokens != null ||
+                      providerUsage?.cache_write_input_tokens != null)
+                      ? `${promptCacheMode || "provider cache"} reported by provider`
+                      : promptCacheStatus === "native_requested"
+                        ? `${promptCacheMode} requested; provider did not report cache usage`
+                        : promptCacheStatus === "unsupported"
+                          ? "not supported by this adapter"
+                          : promptCacheStatus === "disabled"
+                            ? "disabled"
+                            : promptCacheEligible
+                              ? `${promptCacheMode} eligible; usage not reported yet`
+                              : "not reported"}
                   </p>
                   <div className="deepspace-diagnostics-footer border-border mt-3 border-t pt-2.5">
                     <div className="text-muted-foreground flex items-center justify-between">
@@ -1520,9 +1633,9 @@ export default function DeepSpaceComposer({
                                 >
                                   <span
                                     aria-hidden="true"
-                                    className="deepspace-model-provider-mark flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border"
+                                    className="deepspace-model-provider-mark flex h-7 w-7 shrink-0 items-center justify-center"
                                   >
-                                    <ProviderLogo providerType={group.providerType} size={18} />
+                                    <ProviderLogo providerType={group.providerType} size={22} />
                                   </span>
                                   <span className="flex min-w-0 flex-1 flex-col">
                                     <span
@@ -1816,12 +1929,22 @@ export default function DeepSpaceComposer({
                   <motion.button
                     type="button"
                     onClick={onStop}
-                    aria-label="Stop response"
-                    title="Stop response"
-                    className="deepspace-composer-control deepspace-composer-stop flex h-10 w-10 items-center justify-center rounded-xl border border-red-300/45 bg-red-400/10 text-red-100 transition hover:bg-red-400/20 active:scale-95"
+                    disabled={stopping}
+                    aria-label={stopping ? "Stopping response" : "Stop response"}
+                    title={
+                      stopping ? "Waiting for the server to stop this response" : "Stop response"
+                    }
+                    className="deepspace-composer-control deepspace-composer-stop flex h-10 w-10 items-center justify-center rounded-xl border border-red-300/45 bg-red-400/10 text-red-100 transition hover:bg-red-400/20 active:scale-95 disabled:cursor-wait disabled:opacity-55"
                     whileTap={{ scale: 0.94 }}
                   >
-                    <StopIcon />
+                    {stopping ? (
+                      <span
+                        className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <StopIcon />
+                    )}
                   </motion.button>
                 </>
               ) : null}

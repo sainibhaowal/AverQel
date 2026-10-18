@@ -18,7 +18,12 @@
     "format": "prettier --write .",
     "pretest": "bash ./scripts/ensure-runtime-dirs.sh",
     "test": "vitest run",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:smoke": "playwright test homepage.spec.ts profile-onboarding.spec.ts dashboard-route-matrix.spec.ts",
+    "e2e:deepspace": "playwright test --grep 'DeepSpace'",
+    "e2e:documents": "playwright test documents-hub-workflows.spec.ts",
+    "e2e:debug": "playwright test --headed --trace on",
+    "e2e:report": "playwright show-report playwright-report"
   },
   "dependencies": {
     "@blocknote/code-block": "^0.55.0",
@@ -107,6 +112,7 @@
       "linkify-it": "5.0.2",
       "markdown-it": "14.3.2",
       "postcss": "8.5.23",
+      "prosemirror-model": "1.25.12",
       "prosemirror-view": "1.42.6",
       "source-map-js": "1.2.2",
       "fflate": "0.8.3",

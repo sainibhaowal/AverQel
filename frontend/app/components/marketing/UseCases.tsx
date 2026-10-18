@@ -24,7 +24,7 @@ const useCases = [
     title: "Project and knowledge work",
     icon: BriefcaseBusiness,
     accent: "text-emerald-300 border-emerald-400/25 bg-emerald-500/[0.08]",
-    body: "Create focused collections, keep project context organized, use DeepSpace to draft and analyze, and save useful outcomes for the next session.",
+    body: "Create focused Qel Connect spaces, keep project context organized, use DeepSpace to draft and analyze, and save useful outcomes for the next session.",
   },
   {
     title: "Technical work",

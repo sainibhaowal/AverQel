@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,7 +19,6 @@ import {
   Moon,
   User,
   Activity,
-  FolderKanban,
   LifeBuoy,
   Sparkles,
   Trash2,
@@ -35,27 +34,35 @@ import AuthGuard from "@/app/components/layout/AuthGuard";
 import NotificationCenter from "@/app/components/layout/NotificationCenter";
 import AverQelLogo from "@/app/components/ui/AverQelLogo";
 import DeepSpaceMark from "@/app/components/ui/DeepSpaceMark";
+import QelConnectMark from "@/app/components/ui/QelConnectMark";
+import NeoSISMark from "@/app/components/ui/NeoSISMark";
+import AccountProfileMenu from "@/app/components/profile/AccountProfileMenu";
+import WelcomeFlow from "@/app/components/onboarding/WelcomeFlow";
 import { APP_VERSION } from "@/lib/release";
 import Breadcrumbs from "@/app/components/ui/Breadcrumbs";
 import SystemStatus from "@/app/components/dashboard/SystemStatus";
 import BetaNoticeBanner from "@/app/components/dashboard/BetaNoticeBanner";
-import { getRoleLabel, hasAdminRole } from "@/lib/roles";
+import { hasAdminRole, hasNamedRole } from "@/lib/roles";
 import DisabledOverlay from "@/app/components/auth/DisabledOverlay";
 import CodexRuntimeBridge from "@/app/components/providers/CodexRuntimeBridge";
+import toast from "react-hot-toast";
 
 type NavLeaf = {
   name: string;
   href: string;
   icon: React.ReactNode;
   exact?: boolean;
+  action?: "open-neosis";
   isHeader?: false;
   admin?: boolean;
+  requiresRole?: "feedback_manager" | "collection_moderator" | "support_manager";
 };
 type NavHeader = {
   name: string;
   href: string;
   isHeader: true;
   admin?: boolean;
+  staff?: boolean;
   items: NavLeaf[];
 };
 type NavItem = NavLeaf | NavHeader;
@@ -64,9 +71,23 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: <LayoutDashboard size={18} />, exact: true },
   { name: "Documents Hub", href: "/dashboard/documents", icon: <FileText size={18} /> },
   { name: "Query", href: "/dashboard/query", icon: <FileSearch size={18} /> },
-  { name: "Collections", href: "/dashboard/collections", icon: <FolderKanban size={18} /> },
+  {
+    name: "Qel Connect",
+    href: "/dashboard/collections",
+    icon: <QelConnectMark size={20} />,
+  },
   { name: "MCP Servers", href: "/dashboard/mcp", icon: <Cable size={18} /> },
-  { name: "DeepSpace", href: "/dashboard/deepspace", icon: <DeepSpaceMark size={18} /> },
+  {
+    name: "DeepSpace",
+    href: "/dashboard/deepspace",
+    icon: (
+      <DeepSpaceMark
+        size={18}
+        visualScale={1.3}
+        source="/DeepSpace Logo/DeepSpace_Logo_Only_NoBlack_Exact.svg"
+      />
+    ),
+  },
 
   {
     name: "Admin",
@@ -91,23 +112,31 @@ const BASE_NAV_ITEMS: NavItem[] = [
         href: "/dashboard/admin/support",
         icon: <LifeBuoy size={18} />,
         admin: true,
+        requiresRole: "support_manager",
       },
+      { name: "Data Deletion", href: "/dashboard/admin/deletion", icon: <Trash2 size={18} /> },
+
+      { name: "System Metrics", href: "/dashboard/admin/metrics", icon: <Activity size={18} /> },
+    ],
+  },
+  {
+    name: "Staff Tools",
+    href: "#",
+    isHeader: true,
+    staff: true,
+    items: [
       {
         name: "Feedback Management",
         href: "/dashboard/admin/feedback",
         icon: <Sparkles size={18} />,
-        admin: true,
+        requiresRole: "feedback_manager",
       },
       {
-        name: "Collection Moderation",
+        name: "Qel Connect Moderation",
         href: "/dashboard/admin/collections/moderation",
         icon: <Flag size={18} />,
-        admin: true,
+        requiresRole: "collection_moderator",
       },
-
-      { name: "Data Deletion", href: "/dashboard/admin/deletion", icon: <Trash2 size={18} /> },
-
-      { name: "System Metrics", href: "/dashboard/admin/metrics", icon: <Activity size={18} /> },
     ],
   },
   {
@@ -129,6 +158,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [neosisAvailable, setNeosisAvailable] = useState(false);
+  const [neosisOpening, setNeosisOpening] = useState(false);
   const navContainerRef = useRef<HTMLDivElement>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
 
@@ -142,13 +173,86 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isProvidersSettingsRoute = pathname === "/dashboard/settings/providers";
   const fillsAvailableHeight = isFullHeightRoute || isProvidersSettingsRoute;
   const hasAdminAccess = user ? hasAdminRole(user.roles) : false;
+  const hasFeedbackAccess = user ? hasNamedRole(user.roles, "feedback_manager") : false;
+  const hasModerationAccess = user ? hasNamedRole(user.roles, "collection_moderator") : false;
+  const hasSupportAccess = user ? hasNamedRole(user.roles, "support_manager") : false;
+  const isFeedbackStaffPage = pathname.startsWith("/dashboard/admin/feedback");
+  const isModeratorStaffPage = pathname.startsWith("/dashboard/admin/collections/moderation");
+  const isSupportStaffPage = pathname.startsWith("/dashboard/admin/support");
+  const canAccessStaffPage =
+    (isFeedbackStaffPage && hasFeedbackAccess) ||
+    (isModeratorStaffPage && hasModerationAccess) ||
+    (isSupportStaffPage && hasAdminAccess && hasSupportAccess);
+
+  useEffect(() => {
+    let active = true;
+    const checkAvailability = window.electron?.workspace.neosisAvailable;
+    if (!checkAvailability) return;
+
+    void checkAvailability()
+      .then((available) => {
+        if (active) setNeosisAvailable(available);
+      })
+      .catch(() => {
+        if (active) setNeosisAvailable(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const openNeosis = useCallback(async () => {
+    const openWorkspace = window.electron?.workspace.openNeosis;
+    if (!openWorkspace || neosisOpening) return;
+
+    setNeosisOpening(true);
+    try {
+      const result = await openWorkspace();
+      if (!result.ok) toast.error(result.error || "NeoSIS could not be opened.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "NeoSIS could not be opened.");
+    } finally {
+      setNeosisOpening(false);
+    }
+  }, [neosisOpening]);
 
   const navItems = useMemo(() => {
-    return BASE_NAV_ITEMS.filter((item) => {
-      if (item.admin && !hasAdminAccess) return false;
-      return true;
+    const items = BASE_NAV_ITEMS.flatMap((item): NavItem[] => {
+      if (item.admin && !hasAdminAccess) return [];
+      if ("isHeader" in item && item.isHeader && item.staff) {
+        const visibleItems = item.items.filter((sub) =>
+          sub.requiresRole === "feedback_manager"
+            ? hasFeedbackAccess
+            : sub.requiresRole === "collection_moderator"
+              ? hasModerationAccess
+              : sub.requiresRole === "support_manager"
+                ? hasSupportAccess
+                : true,
+        );
+        return visibleItems.length ? [{ ...item, items: visibleItems }] : [];
+      }
+      return [item];
     });
-  }, [hasAdminAccess]);
+    if (!neosisAvailable || !user) return items;
+
+    const deepSpaceIndex = items.findIndex((item) => !item.isHeader && item.name === "DeepSpace");
+    if (deepSpaceIndex < 0) return items;
+    items.splice(deepSpaceIndex + 1, 0, {
+      name: "NeoSIS",
+      href: "#neosis",
+      icon: <NeoSISMark size={18} />,
+      action: "open-neosis",
+    });
+    return items;
+  }, [
+    hasAdminAccess,
+    hasFeedbackAccess,
+    hasModerationAccess,
+    hasSupportAccess,
+    neosisAvailable,
+    user,
+  ]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -179,9 +283,81 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const NavLink = ({ item, onClick }: { item: NavLeaf; onClick?: () => void }) => {
     // Improved active check: exact match for home, startsWith for others but avoid overlaps
-    const isActive = item.exact
-      ? pathname === item.href
-      : pathname.startsWith(item.href) && (item.href !== "/dashboard" || pathname === "/dashboard");
+    const isActive = item.action
+      ? false
+      : item.exact
+        ? pathname === item.href
+        : pathname.startsWith(item.href) &&
+          (item.href !== "/dashboard" || pathname === "/dashboard");
+
+    const className = `group sweeping-light-btn relative flex h-11 items-center overflow-hidden rounded-xl transition-all duration-200 ${
+      isActive
+        ? "text-primary shadow-sm"
+        : "text-foreground/60 hover:bg-foreground/[0.04] hover:text-foreground"
+    } ${!sidebarOpen && !isMobile ? "justify-center px-0" : ""}`;
+    const contents = (
+      <motion.div
+        className={`relative z-10 flex h-full w-full items-center ${!sidebarOpen && !isMobile ? "justify-center gap-0 px-0" : "gap-3 px-3"}`}
+        whileTap={{ scale: 0.96 }}
+        transition={{ type: "spring", stiffness: 450, damping: 26 }}
+      >
+        {/* Left Indicator - Premium Sliding Bar */}
+        {isActive && (
+          <motion.div
+            layoutId="active-nav-indicator"
+            className={`bg-primary absolute left-0 rounded-r-full ${
+              !sidebarOpen && !isMobile ? "h-6 w-[3px]" : "h-5 w-[3px]"
+            }`}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          />
+        )}
+
+        <div
+          className={`shrink-0 transition-transform duration-200 ${isActive ? "scale-110" : "group-hover:scale-110"}`}
+        >
+          {item.icon}
+        </div>
+        <motion.span
+          initial={false}
+          animate={{
+            maxWidth: sidebarOpen || isMobile ? 180 : 0,
+            opacity: sidebarOpen || isMobile ? 1 : 0,
+          }}
+          transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+          className={`block truncate overflow-hidden text-sm font-bold tracking-tight whitespace-nowrap ${isActive ? "" : "font-medium"}`}
+          aria-hidden={!sidebarOpen && !isMobile}
+        >
+          {item.name}
+        </motion.span>
+      </motion.div>
+    );
+    const activePill = isActive ? (
+      <motion.div
+        layoutId="active-nav-pill"
+        className="bg-primary/10 absolute inset-0 z-0 rounded-xl"
+        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      />
+    ) : null;
+
+    if (item.action === "open-neosis") {
+      return (
+        <button
+          type="button"
+          data-active="false"
+          aria-label={neosisOpening ? "Opening NeoSIS" : "Open NeoSIS local workspace"}
+          aria-busy={neosisOpening}
+          title="Open NeoSIS local workspace"
+          disabled={neosisOpening}
+          onClick={() => {
+            onClick?.();
+            void openNeosis();
+          }}
+          className={className}
+        >
+          {contents}
+        </button>
+      );
+    }
 
     return (
       <Link
@@ -189,55 +365,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         prefetch={false}
         data-active={isActive}
         onClick={onClick}
-        className={`group sweeping-light-btn relative flex h-11 items-center overflow-hidden rounded-xl transition-all duration-200 ${
-          isActive
-            ? "text-primary shadow-sm"
-            : "text-foreground/60 hover:bg-foreground/[0.04] hover:text-foreground"
-        } ${!sidebarOpen && !isMobile ? "justify-center px-0" : ""}`}
+        className={className}
       >
-        <motion.div
-          className={`relative z-10 flex h-full w-full items-center ${!sidebarOpen && !isMobile ? "justify-center gap-0 px-0" : "gap-3 px-3"}`}
-          whileTap={{ scale: 0.96 }}
-          transition={{ type: "spring", stiffness: 450, damping: 26 }}
-        >
-          {/* Left Indicator - Premium Sliding Bar */}
-          {isActive && (
-            <motion.div
-              layoutId="active-nav-indicator"
-              className={`bg-primary absolute left-0 rounded-r-full ${
-                !sidebarOpen && !isMobile ? "h-6 w-[3px]" : "h-5 w-[3px]"
-              }`}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            />
-          )}
-
-          <div
-            className={`shrink-0 transition-transform duration-200 ${isActive ? "scale-110" : "group-hover:scale-110"}`}
-          >
-            {item.icon}
-          </div>
-          <motion.span
-            initial={false}
-            animate={{
-              maxWidth: sidebarOpen || isMobile ? 180 : 0,
-              opacity: sidebarOpen || isMobile ? 1 : 0,
-            }}
-            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-            className={`block truncate overflow-hidden text-sm font-bold tracking-tight whitespace-nowrap ${isActive ? "" : "font-medium"}`}
-            aria-hidden={!sidebarOpen && !isMobile}
-          >
-            {item.name}
-          </motion.span>
-        </motion.div>
-
-        {/* Sliding Background Pill */}
-        {isActive && (
-          <motion.div
-            layoutId="active-nav-pill"
-            className="bg-primary/10 absolute inset-0 z-0 rounded-xl"
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-          />
-        )}
+        {contents}
+        {activePill}
       </Link>
     );
   };
@@ -248,8 +379,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         className={`flex h-18 items-center px-4 pt-2 ${!sidebarOpen && !isMobile ? "justify-center px-0" : "justify-between"}`}
       >
         <AverQelLogo
-          size="nav"
+          size="footer"
           showWordmark
+          disableAnimation
           animateWordmark={!isMobile}
           wordmarkVisible={sidebarOpen || isMobile}
         />
@@ -279,7 +411,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )}
                 <div className="space-y-1">
                   {item.items
-                    .filter((sub) => !sub.admin || hasAdminAccess)
+                    .filter(
+                      (sub) =>
+                        (!sub.admin || hasAdminAccess) &&
+                        (!sub.requiresRole || hasNamedRole(user?.roles, sub.requiresRole)),
+                    )
                     .map((subItem) => (
                       <NavLink
                         key={subItem.href}
@@ -430,20 +566,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Breadcrumbs />
               </div>
 
-              {isMobile && (
-                <div
-                  className={`origin-left scale-[0.58] ${isDeepSpaceRoute ? "hidden sm:block" : ""}`}
-                >
-                  <AverQelLogo size="nav" showWordmark={false} disableAnimation />
+              {isMobile && !isDeepSpaceRoute && (
+                <div className={isQueryRoute || neosisAvailable ? "" : "sm:hidden"}>
+                  <AverQelLogo size="footer" disableAnimation />
                 </div>
               )}
             </div>
 
-            {/* Center portal target for Deepspace layout controls */}
+            {isMobile && !isDeepSpaceRoute && !isQueryRoute && !neosisAvailable && (
+              <div className="pointer-events-none absolute top-1/2 left-1/2 z-10 hidden -translate-x-1/2 -translate-y-1/2 sm:block lg:hidden">
+                <AverQelLogo size="footer" disableAnimation />
+              </div>
+            )}
+
+            {/* Center portal target for workspace and DeepSpace layout controls */}
             <div
               id="header-layout-controls"
-              className="mx-1 flex flex-1 items-center justify-center empty:hidden sm:mx-4"
-            />
+              className="mx-1 flex flex-1 items-center justify-center gap-2 sm:mx-4"
+            >
+              {user && neosisAvailable ? (
+                <button
+                  type="button"
+                  aria-label="Switch to NeoSIS workspace"
+                  aria-busy={neosisOpening}
+                  title="Open NeoSIS local workspace"
+                  disabled={neosisOpening}
+                  onClick={() => void openNeosis()}
+                  className="border-glass-border bg-muted/80 text-foreground/80 hover:border-primary/35 hover:text-foreground inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60"
+                >
+                  <NeoSISMark size={17} />
+                  <span>NeoSIS</span>
+                  <span className="text-muted-foreground text-[9px] font-bold tracking-[0.12em] uppercase">
+                    Local
+                  </span>
+                </button>
+              ) : null}
+            </div>
 
             <div className="relative z-10 flex items-center justify-end gap-1.5 md:gap-3">
               <div className="hidden sm:block">
@@ -462,24 +620,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
               <div className="bg-glass-border hidden h-5 w-px sm:block" />
 
-              <div className="hidden flex-col items-end lg:flex">
-                <span className="text-foreground max-w-[12rem] truncate text-sm font-black">
-                  {user?.email}
-                </span>
-                <span className="text-primary text-[10px] font-black tracking-[0.18em] uppercase">
-                  {user?.roles[0] ? getRoleLabel(user.roles[0]) : ""}
-                </span>
-              </div>
-
-              <div
-                className={`dashboard-user-avatar relative flex h-9 w-9 items-center justify-center rounded-full border text-sm font-bold ${isDeepSpaceRoute ? "hidden sm:flex" : ""}`}
-                title={user?.email ?? "Account"}
-                aria-label={`Account for ${user?.email ?? "user"}`}
-              >
-                <span className="dashboard-user-avatar-letter relative z-10">
-                  {user?.email?.[0]?.toUpperCase() ?? "U"}
-                </span>
-                <span className="dashboard-user-avatar-status" aria-hidden="true" />
+              <div className={isDeepSpaceRoute ? "hidden sm:block" : "block"}>
+                <AccountProfileMenu />
               </div>
 
               <button
@@ -498,7 +640,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ref={mainContentRef}
             className={`dashboard-main-surface flex-1 overflow-x-hidden ${
               fillsAvailableHeight && !isMobile ? "overflow-y-hidden" : "overflow-y-auto"
-            } ${
+            } ${isProvidersSettingsRoute ? "scrollbar-hide" : ""} ${
               isQueryRoute || isDeepSpaceRoute
                 ? "px-0 pt-3 pb-0 sm:pt-4"
                 : "px-3 pt-3 pb-4 sm:px-6 sm:pt-4"
@@ -508,10 +650,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className={fillsAvailableHeight ? "flex h-full min-h-0 w-full flex-col" : "w-full"}
             >
               {!isFullHeightRoute && <BetaNoticeBanner />}
-              {isAdminRoute && !hasAdminAccess ? (
+              {(isAdminRoute && !hasAdminAccess && !canAccessStaffPage) ||
+              ((isFeedbackStaffPage || isModeratorStaffPage || isSupportStaffPage) &&
+                !canAccessStaffPage) ? (
                 renderRestrictedContent({
                   title: "Admin Console Restricted",
-                  body: "This area is reserved for admins. Normal users can continue using documents, query, collections, profile, and trust/privacy settings.",
+                  body: "This area is reserved for admins. Normal users can continue using documents, Query, Qel Connect, profile, and trust/privacy settings.",
                   chip: "Admin Only",
                 })
               ) : isProvidersSettingsRoute ? (
@@ -523,6 +667,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </main>
         </div>
         <DisabledOverlay isVisible={shouldShowDisabledOverlay} />
+        <WelcomeFlow neosisAvailable={neosisAvailable} />
       </div>
     </AuthGuard>
   );

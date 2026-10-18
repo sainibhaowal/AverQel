@@ -13,6 +13,7 @@ from app.auth.rbac import require_permissions
 from app.auth.tenancy import require_request_tenant_id
 from app.core.errors import ApiError
 from app.platform.database.session import get_db
+from app.system.services.audit_service import AuditService
 
 logger = logging.getLogger(__name__)
 
@@ -37,4 +38,11 @@ def get_analytics_dashboard(
         )
 
     service = AnalyticsService(db)
-    return service.get_dashboard_metrics(tenant_id=auth.tenant_id)
+    response = service.get_dashboard_metrics(tenant_id=auth.tenant_id)
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.analytics.dashboard.read",
+        resource_type="tenant_analytics",
+    )
+    return response

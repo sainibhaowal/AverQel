@@ -61,3 +61,10 @@ def test_normalize_openresponses_nested_cache_details() -> None:
     )
     assert result["cached_input_tokens"] == 75
     assert result["usage_source"] == "provider"
+
+
+def test_normalize_ollama_native_usage_names() -> None:
+    result = normalize_chat_usage({"prompt_eval_count": 64, "eval_count": 18})
+    assert result["input_tokens"] == 64
+    assert result["output_tokens"] == 18
+    assert result["usage_source"] == "provider"

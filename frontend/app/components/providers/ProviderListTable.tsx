@@ -69,14 +69,8 @@ export default function ProviderListTable({
                   className="relative z-10 flex w-full flex-col space-y-3 rounded-[1.25rem] p-4 text-left"
                 >
                   <div className="flex h-10 items-center justify-between gap-3 pr-10">
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
-                        selected
-                          ? "border-primary/30 bg-primary/10 text-primary"
-                          : "border-glass-border bg-surface-2 text-muted-foreground"
-                      }`}
-                    >
-                      <ProviderLogo providerType={entry.provider_type} size={20} />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+                      <ProviderLogo providerType={entry.provider_type} size={26} />
                     </div>
                     <div className="flex flex-row items-center gap-2">
                       <span

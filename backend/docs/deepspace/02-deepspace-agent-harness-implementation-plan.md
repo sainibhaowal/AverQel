@@ -2,15 +2,14 @@
 
 ## Objective
 
-Evolve DeepSpace from a provider-facing tool-calling loop into an adaptive,
-typed capability runtime without changing its authorization, tenant isolation,
-MCP approval, durable-run, or existing API guarantees.
+Evolve DeepSpace from a provider-facing tool-calling loop into a dynamically
+discovered, typed capability runtime without changing its authorization,
+tenant isolation, MCP approval, durable-run, or existing API guarantees.
 
 ## Current system and preserved strengths
 
 - `app/deepspace/services/chat_service.py` owns native tool definitions,
-  request profiles, provider rounds, lifecycle enforcement, and execution
-  dispatch.
+  provider rounds, lifecycle enforcement, and execution dispatch.
 - `app/deepspace/services/mcp_tool_broker.py` already provides the correct
   compact broker pattern for dynamic MCP catalogs: exact references, bounded
   schemas, bounded results, and no direct upstream tool exposure.
@@ -401,3 +400,25 @@ Implementation status for this final harness increment:
 - No approved anonymized production traces or staging credentials were present
   in this workspace, so real production replay and live staging measurement
   remain intentionally unexecuted external validation steps.
+
+## Dynamic native discovery and unified workspace schemas
+
+The native capability broker now returns a compact catalog of all capabilities
+authorized for the current request. The model chooses exact names from their
+descriptions, and a second broker call loads only those full schemas. Native
+selection no longer uses request keyword profiles. MCP keeps its separate live
+conversation-scoped search/schema broker because connected services own their
+schemas and references.
+
+Overlapping native operations share canonical schemas: `read` handles extracted
+Library reads and targeted document queries, `analyze` handles exact document
+comparison, and `todo_write` owns task replacement, reading, updates, and checks.
+The runtime does not expose `observe` or `final`; it verifies task state and then accepts a
+normal assistant response. The task lifecycle uses real persisted tasks and
+does not add synthetic user messages.
+
+This layer preserves existing tenant/user/conversation scopes, typed argument
+validation, MCP approval checks, bounded provider calls, and execution policy.
+Its catalog is intentionally small today; if the native tool count grows past
+the catalog bound, pagination or a dedicated retrieval index must be added
+before further expansion.

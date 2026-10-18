@@ -30,6 +30,7 @@ from app.providers.services.reasoning_capabilities import (
     uses_groq_reasoning_api,
     uses_slash_think_controls,
 )
+from app.providers.services.tool_definitions import unique_tool_definitions
 from app.providers.services.types import (
     ChatGenerateRequest,
     ChatGenerateResponse,
@@ -315,8 +316,9 @@ class OpenAICompatibleProvider:
             "messages": messages,
         }
         self._apply_common_generation_limits(payload, request)
-        if request.tools:
-            payload["tools"] = request.tools
+        tools = unique_tool_definitions(request.tools)
+        if tools:
+            payload["tools"] = tools
         effective_tool_choice = self._effective_tool_choice(request)
         if effective_tool_choice:
             payload["tool_choice"] = effective_tool_choice
@@ -447,8 +449,9 @@ class OpenAICompatibleProvider:
         if stream:
             payload["stream"] = True
         self._apply_common_generation_limits(payload, request)
-        if request.tools:
-            payload["tools"] = self._chat_tools_to_responses_tools(request.tools)
+        tools = unique_tool_definitions(request.tools)
+        if tools:
+            payload["tools"] = self._chat_tools_to_responses_tools(tools)
         effective_tool_choice = self._effective_tool_choice(request)
         if effective_tool_choice:
             payload["tool_choice"] = self._chat_tool_choice_to_responses(effective_tool_choice)
@@ -971,8 +974,9 @@ class OpenAICompatibleProvider:
             # Custom endpoints can opt in through validated provider metadata.
             payload["stream_options"] = {"include_usage": True}
         self._apply_common_generation_limits(payload, request)
-        if request.tools:
-            payload["tools"] = request.tools
+        tools = unique_tool_definitions(request.tools)
+        if tools:
+            payload["tools"] = tools
         effective_tool_choice = self._effective_tool_choice(request)
         if effective_tool_choice:
             payload["tool_choice"] = effective_tool_choice
@@ -1176,8 +1180,9 @@ class OpenAICompatibleProvider:
             "stream": True,
         }
         self._apply_common_generation_limits(payload, request)
-        if request.tools:
-            payload["tools"] = request.tools
+        tools = unique_tool_definitions(request.tools)
+        if tools:
+            payload["tools"] = tools
         effective_tool_choice = self._effective_tool_choice(request)
         if effective_tool_choice:
             payload["tool_choice"] = effective_tool_choice

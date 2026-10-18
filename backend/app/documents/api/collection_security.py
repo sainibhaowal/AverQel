@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import and_, func
@@ -30,7 +30,8 @@ from app.documents.schemas.collection_security import (
     CollectionDeviceResponse,
     CollectionDeviceUpsert,
     CollectionModerationActionResponse,
-    CollectionModerationReportResponse,
+    CollectionModerationReportDetailResponse,
+    CollectionModerationReportSummaryResponse,
     CollectionPushSubscriptionRequest,
     CollectionReportRequest,
     CollectionReportStatusUpdate,
@@ -40,8 +41,9 @@ from app.integrations.services.connector_secret_crypto import (
     ConnectorSecretCryptoError,
 )
 from app.platform.database.session import get_db, set_db_tenant_context
+from app.system.services.audit_service import AuditService
 from app.system.services.rate_limit_service import RateLimitService
-from app.system.services.user_notifications import notify_tenant_admins
+from app.system.services.user_notifications import notify_role_assignees
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/collections", tags=["collection-security"])
@@ -85,8 +87,8 @@ def get_push_config() -> dict[str, str | bool | None]:
 
 @router.get(
     "/admin/security/reports",
-    response_model=list[CollectionModerationReportResponse],
-    dependencies=[Depends(require_permissions("admin:collections:read"))],
+    response_model=list[CollectionModerationReportSummaryResponse],
+    dependencies=[Depends(require_permissions("collections:moderation:read"))],
 )
 def list_moderation_reports(
     response: Response,
@@ -98,7 +100,7 @@ def list_moderation_reports(
     offset: int = Query(default=0, ge=0, le=1_000_000),
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
-) -> list[CollectionModerationReportResponse]:
+) -> list[CollectionModerationReportSummaryResponse]:
     query = db.query(CollectionChatReport).filter(CollectionChatReport.tenant_id == auth.tenant_id)
     if report_id is not None:
         query = query.filter(CollectionChatReport.id == report_id)
@@ -124,16 +126,64 @@ def list_moderation_reports(
     response.headers["X-Page-Offset"] = str(offset)
     responses = []
     for report, collection_name in rows:
-        serialized = CollectionModerationReportResponse.model_validate(report).model_dump()
+        serialized = CollectionModerationReportSummaryResponse.model_validate(report).model_dump()
         serialized["collection_name"] = collection_name
-        responses.append(CollectionModerationReportResponse.model_validate(serialized))
+        responses.append(CollectionModerationReportSummaryResponse.model_validate(serialized))
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.collection_moderation.reports.list.read",
+        resource_type="collection_moderation_reports",
+    )
     return responses
+
+
+@router.get(
+    "/admin/security/reports/{report_id}",
+    response_model=CollectionModerationReportDetailResponse,
+    dependencies=[Depends(require_permissions("collections:moderation:read"))],
+)
+def get_moderation_report(
+    report_id: uuid.UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+) -> CollectionModerationReportDetailResponse:
+    result = (
+        db.query(CollectionChatReport, DocumentCollection.name)
+        .outerjoin(
+            DocumentCollection,
+            and_(
+                DocumentCollection.id == CollectionChatReport.collection_id,
+                DocumentCollection.tenant_id == auth.tenant_id,
+            ),
+        )
+        .filter(
+            CollectionChatReport.id == report_id,
+            CollectionChatReport.tenant_id == auth.tenant_id,
+        )
+        .one_or_none()
+    )
+    if result is None:
+        raise ApiError(
+            code="REPORT_NOT_FOUND", message="Moderation report not found.", status_code=404
+        )
+    report, collection_name = result
+    payload = CollectionModerationReportDetailResponse.model_validate(report).model_dump()
+    payload["collection_name"] = collection_name
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.collection_moderation.report.read",
+        resource_type="collection_moderation_report",
+        resource_id=str(report_id),
+    )
+    return CollectionModerationReportDetailResponse.model_validate(payload)
 
 
 @router.get(
     "/admin/security/reports/{report_id}/history",
     response_model=list[CollectionModerationActionResponse],
-    dependencies=[Depends(require_permissions("admin:collections:read"))],
+    dependencies=[Depends(require_permissions("collections:moderation:read"))],
 )
 def list_moderation_report_history(
     report_id: uuid.UUID,
@@ -171,20 +221,27 @@ def list_moderation_report_history(
     response.headers["X-Total-Count"] = str(total)
     response.headers["X-Has-More"] = "true" if offset + len(rows) < total else "false"
     response.headers["X-Page-Offset"] = str(offset)
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.collection_moderation.history.read",
+        resource_type="collection_moderation_report_history",
+        resource_id=str(report_id),
+    )
     return [CollectionModerationActionResponse.model_validate(row) for row in rows]
 
 
 @router.post(
     "/admin/security/reports/{report_id}",
-    response_model=CollectionModerationReportResponse,
-    dependencies=[Depends(require_permissions("admin:collections:write"))],
+    response_model=CollectionModerationReportSummaryResponse,
+    dependencies=[Depends(require_permissions("collections:moderation:write"))],
 )
 def update_moderation_report(
     report_id: uuid.UUID,
     payload: CollectionReportStatusUpdate,
     auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
-) -> CollectionModerationReportResponse:
+) -> CollectionModerationReportSummaryResponse:
     row = (
         db.query(CollectionChatReport)
         .filter(
@@ -238,52 +295,17 @@ def update_moderation_report(
                 note=note,
             )
         )
+    AuditService(db).write_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.collection_moderation.report.updated",
+        resource_type="collection_moderation_report",
+        resource_id=str(report_id),
+        details={"status": payload.status},
+    )
     db.commit()
     db.refresh(row)
-    return CollectionModerationReportResponse.model_validate(row)
-
-
-@router.get(
-    "/{collection_id}/security/spam-score/{user_id}",
-    dependencies=[Depends(require_permissions("admin:collections:read"))],
-)
-def collection_member_spam_score(
-    collection_id: uuid.UUID,
-    user_id: uuid.UUID,
-    auth: AuthContext = Depends(get_auth_context),
-    db: Session = Depends(get_db),
-) -> dict[str, int | str]:
-    collection = _collection(db, collection_id, auth)
-    cutoff = datetime.now(UTC) - timedelta(hours=24)
-    reports = (
-        db.query(func.count(CollectionChatReport.id))
-        .filter(
-            CollectionChatReport.tenant_id == auth.tenant_id,
-            CollectionChatReport.collection_id == collection.id,
-            CollectionChatReport.reported_user_id == user_id,
-            CollectionChatReport.created_at >= cutoff,
-            CollectionChatReport.status.in_(("open", "reviewing")),
-        )
-        .scalar()
-        or 0
-    )
-    messages = (
-        db.query(func.count(CollectionChatMessage.id))
-        .filter(
-            CollectionChatMessage.collection_id == collection.id,
-            CollectionChatMessage.user_id == user_id,
-            CollectionChatMessage.created_at >= cutoff,
-        )
-        .scalar()
-        or 0
-    )
-    score = min(100, int(reports) * 25 + max(0, int(messages) - 100) // 5)
-    return {
-        "user_id": str(user_id),
-        "score": score,
-        "reports_24h": int(reports),
-        "messages_24h": int(messages),
-    }
+    return CollectionModerationReportSummaryResponse.model_validate(row)
 
 
 def _collection(db: Session, collection_id: uuid.UUID, auth: AuthContext) -> DocumentCollection:
@@ -291,7 +313,7 @@ def _collection(db: Session, collection_id: uuid.UUID, auth: AuthContext) -> Doc
     collection = repo.get_by_id_global(collection_id=collection_id)
     if collection is None:
         raise ApiError(
-            code="COLLECTION_NOT_FOUND", message="Collection not found.", status_code=404
+            code="COLLECTION_NOT_FOUND", message="Qel Connect not found.", status_code=404
         )
     _enforce_collection_access_global(repo=repo, collection_id=collection_id, user_id=auth.user_id)
     return collection
@@ -345,7 +367,7 @@ def register_collection_device(
     if payload.protocol_version not in {"legacy-shared-key", "signal-pattern-v1"}:
         raise ApiError(
             code="VALIDATION_ERROR",
-            message="Unsupported collection protocol version.",
+            message="Unsupported Qel Connect protocol version.",
             status_code=422,
         )
     if payload.protocol_version == "signal-pattern-v1":
@@ -554,7 +576,7 @@ def report_collection_member(
         if message is None:
             raise ApiError(
                 code="MESSAGE_NOT_FOUND",
-                message="Message not found in this collection.",
+                message="Message not found in this Qel Connect space.",
                 status_code=404,
             )
         if payload.reported_user_id is not None and message.user_id != payload.reported_user_id:
@@ -585,12 +607,13 @@ def report_collection_member(
             new_status="open",
         )
     )
-    notify_tenant_admins(
+    notify_role_assignees(
         db,
+        role_name="collection_moderator",
         tenant_id=collection.tenant_id,
         event_domain="collection_moderation",
         event_type="report_created",
-        title="New collection report",
+        title="New Qel Connect report",
         message="A member submitted a report that needs review.",
         href=f"/dashboard/admin/collections/moderation?report={report.id}",
         resource_id=report.id,

@@ -102,7 +102,10 @@ def test_week4_e2e_security_reliability_flow(
             "Authorization": f"Bearer {token}",
             "X-Tenant-Id": str(seeded.tenant_id),
         },
-        json={"reason": "week4 e2e cleanup"},
+        json={
+            "reason": "workspace_offboarding",
+            "target_confirmation": f"DELETE {seeded.tenant_id}",
+        },
     )
     assert delete_create.status_code == 200
     deletion_id = delete_create.json()["deletion_id"]
@@ -115,6 +118,8 @@ def test_week4_e2e_security_reliability_flow(
         },
     )
     assert delete_status.status_code == 200
+    assert delete_status.json()["status"] == "awaiting_approval"
+    assert delete_status.json()["can_approve"] is False
 
     audit = client.get(
         "/api/v1/admin/audit-logs?limit=50",

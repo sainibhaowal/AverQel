@@ -185,7 +185,7 @@ describe("DeepSpaceThread virtualization", () => {
     expect(screen.getByText(/^Agent message 80$/)).toBeInTheDocument();
   });
 
-  it("hides response dots as soon as any streamed progress begins", () => {
+  it("hides the response indicator as soon as any streamed progress begins", () => {
     const { rerender } = render(
       <DeepSpaceThread
         messages={[

@@ -26,6 +26,7 @@ import {
 import { createPortal } from "react-dom";
 import { fetchWithAuth } from "@/lib/api";
 import type { Transition } from "framer-motion";
+import type { StructuredBlock } from "../_lib/deepspace-stream";
 
 import DeepSpaceChatClient from "./DeepSpaceChatClient";
 import type {
@@ -171,9 +172,116 @@ function deriveNoteTitleFromContent(html: string): string | null {
   return normalized.length < plainText.length ? `${normalized}...` : normalized;
 }
 
+function replaceVisualBlockInNoteHtml(html: string, block: StructuredBlock): string | null {
+  if (typeof DOMParser === "undefined") return null;
+  const documentNode = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const candidates = Array.from(
+    documentNode.body.querySelectorAll<HTMLElement>("[data-rich-content-source]"),
+  );
+  for (const candidate of candidates) {
+    const source = candidate.dataset.richContentSource ?? "";
+    let matches = false;
+    try {
+      const parsed = JSON.parse(source) as { id?: unknown; block_id?: unknown };
+      matches =
+        parsed.id === block.id ||
+        parsed.block_id === block.id ||
+        (typeof (block as { source_markdown?: unknown }).source_markdown === "string" &&
+          source.trim() === String((block as { source_markdown?: string }).source_markdown).trim());
+    } catch {
+      matches = new RegExp(
+        `(?:deepspace-block-id|block-id)\\s*:\\s*${escapeRegExp(block.id)}`,
+      ).test(source);
+    }
+    if (!matches) continue;
+    const nextSource =
+      block.type === "diagram" && block.source === "mermaid"
+        ? `%% deepspace-block-id: ${block.id}\n${block.syntax}`
+        : JSON.stringify(block, null, 2);
+    candidate.dataset.richContentSource = nextSource;
+    return documentNode.body.innerHTML;
+  }
+  return null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractPersistedVisualBlocks(html: string): StructuredBlock[] {
+  if (typeof DOMParser === "undefined") return [];
+  const documentNode = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const blocks: StructuredBlock[] = [];
+  for (const candidate of Array.from(
+    documentNode.body.querySelectorAll<HTMLElement>("[data-rich-content-source]"),
+  )) {
+    const source = candidate.dataset.richContentSource ?? "";
+    try {
+      const parsed = JSON.parse(source) as Record<string, unknown>;
+      const kind = candidate.dataset.richContentKind;
+      if (!parsed || typeof parsed !== "object") continue;
+      const id =
+        typeof parsed.id === "string"
+          ? parsed.id
+          : typeof parsed.block_id === "string"
+            ? parsed.block_id
+            : null;
+      if (!id) continue;
+      if (typeof parsed.type === "string") {
+        blocks.push({ ...parsed, id } as StructuredBlock);
+      } else if (kind === "chart" || kind === "card" || kind === "gallery") {
+        blocks.push({ ...parsed, id, type: kind } as StructuredBlock);
+      } else if (kind === "graph" && parsed.graph && typeof parsed.graph === "object") {
+        blocks.push({
+          ...parsed,
+          id,
+          type: "diagram",
+          diagram_type: "graph_canvas",
+          source: "graph_json",
+          syntax: JSON.stringify(parsed),
+          graph: parsed.graph,
+        } as StructuredBlock);
+      }
+    } catch {
+      // Mermaid source is intentionally left to the existing text editor path.
+    }
+  }
+  return blocks;
+}
+
+function preserveLatestVisualBlockRevisions(
+  html: string,
+  latestSources: Map<string, string>,
+): string {
+  let synchronizedHtml = html;
+  for (const incomingBlock of extractPersistedVisualBlocks(html)) {
+    const latestSource = latestSources.get(incomingBlock.id);
+    if (!latestSource) continue;
+    try {
+      const latestBlock = JSON.parse(latestSource) as StructuredBlock & { revision?: number };
+      const incomingRevision = (incomingBlock as StructuredBlock & { revision?: number }).revision;
+      if (
+        typeof latestBlock.revision === "number" &&
+        typeof incomingRevision === "number" &&
+        latestBlock.revision > incomingRevision
+      ) {
+        synchronizedHtml =
+          replaceVisualBlockInNoteHtml(synchronizedHtml, latestBlock) ?? synchronizedHtml;
+      }
+    } catch {
+      // Ignore malformed cached sources; normal note validation handles them.
+    }
+  }
+  return synchronizedHtml;
+}
+
 export default function DeepSpacePageClient() {
   const [notes, setNotes] = useState<DeepSpaceNote[]>([]);
   const [activeNote, setActiveNote] = useState<DeepSpaceNote | null>(null);
+  const activeNoteRef = useRef<DeepSpaceNote | null>(null);
+  useEffect(() => {
+    activeNoteRef.current = activeNote;
+  }, [activeNote]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [agentNotePreview, setAgentNotePreview] = useState<DeepSpaceAgentNotePreview | null>(null);
@@ -201,6 +309,61 @@ export default function DeepSpacePageClient() {
       previous.includes(message) ? previous : [...previous, message].slice(-3),
     );
   }, []);
+
+  const syncExistingVisualArtifact = useCallback(
+    async (conversationId: string, block: StructuredBlock) => {
+      const entriesResponse = (await fetchWithAuth(`/deepspace/library/${conversationId}/entries`, {
+        timeoutMs: 8_000,
+      })) as Response;
+      if (!entriesResponse.ok) {
+        throw new Error("The saved visual artifact could not be checked for updates.");
+      }
+      const entries = (await entriesResponse.json()) as {
+        files?: Array<{
+          name?: string;
+          version?: number;
+          source?: string;
+          metadata_json?: unknown;
+        }>;
+      };
+      const artifact = (entries.files ?? []).find((file) => {
+        const metadata =
+          file.metadata_json && typeof file.metadata_json === "object"
+            ? (file.metadata_json as { visual_document?: { block_id?: unknown } })
+            : null;
+        return (
+          metadata?.visual_document?.block_id === block.id ||
+          (file.source === "visual_editor" && file.name === `${block.id}.visual.json`)
+        );
+      });
+      if (!artifact) return;
+      if (typeof artifact.version !== "number" || !artifact.name) {
+        throw new Error("The saved visual artifact is missing its revision information.");
+      }
+      const response = (await fetchWithAuth(
+        `/deepspace/library/${conversationId}/visual-artifacts`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            block_id: block.id,
+            block,
+            filename: artifact.name,
+            expected_version: artifact.version,
+          }),
+        },
+      )) as Response;
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          String(
+            payload?.detail?.message ??
+              "The saved visual artifact could not be synchronized with this edit.",
+          ),
+        );
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     queueMicrotask(() => setMounted(true));
@@ -300,8 +463,13 @@ export default function DeepSpacePageClient() {
   // browser restarts, and returning from another dashboard page. The message
   // history itself remains server-owned; this key stores only the selection.
   useEffect(() => {
-    if (activeNote?.id) {
-      window.localStorage.setItem(ACTIVE_NOTE_KEY, activeNote.id);
+    const selectedNote = activeNoteRef.current;
+    if (selectedNote?.id) {
+      window.localStorage.setItem(ACTIVE_NOTE_KEY, selectedNote.id);
+    }
+    noteVisualSourceRef.current.clear();
+    for (const block of extractPersistedVisualBlocks(selectedNote?.content_html ?? "")) {
+      noteVisualSourceRef.current.set(block.id, JSON.stringify(block));
     }
     agentPreviewBaseContentRef.current = null;
     queueMicrotask(() => setAgentNotePreview(null));
@@ -319,27 +487,109 @@ export default function DeepSpacePageClient() {
   // ── Auto-save ────────────────────────────────────────────────────────────
 
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const noteVisualSourceRef = useRef(new Map<string, string>());
 
   const handleEditorChange = (html: string) => {
     if (!activeNote) return;
+    // replaceHTML can trigger a delayed BlockNote change event containing the
+    // document that was current before a chat or artifact edit. Keep the
+    // newest persisted visual revision when that stale callback arrives.
+    const currentHtml = preserveLatestVisualBlockRevisions(html, noteVisualSourceRef.current);
     const nextAutoTitle =
-      activeNote.title === DEFAULT_NOTE_TITLE ? deriveNoteTitleFromContent(html) : null;
+      activeNote.title === DEFAULT_NOTE_TITLE ? deriveNoteTitleFromContent(currentHtml) : null;
     setActiveNote((prev) =>
-      prev ? { ...prev, content_html: html, title: nextAutoTitle ?? prev.title } : null,
+      prev ? { ...prev, content_html: currentHtml, title: nextAutoTitle ?? prev.title } : null,
     );
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setIsSaving(true);
     saveTimerRef.current = setTimeout(async () => {
       try {
-        const response = (await fetchWithAuth(`/deepspace/chats/${activeNote.id}`, {
+        // A note edit can originate outside the chat renderer. Persist each
+        // embedded visual block before saving its HTML. That way a revision
+        // conflict cannot leave stale note markup behind. Recheck the latest
+        // known revision when the debounce fires because a chat or artifact
+        // edit may have completed since this callback was scheduled.
+        let synchronizedHtml = preserveLatestVisualBlockRevisions(
+          html,
+          noteVisualSourceRef.current,
+        );
+        let hasVisualConflict = false;
+        for (const block of extractPersistedVisualBlocks(synchronizedHtml)) {
+          const serializedBlock = JSON.stringify(block);
+          if (noteVisualSourceRef.current.get(block.id) === serializedBlock) continue;
+          const revision =
+            typeof (block as StructuredBlock & { revision?: number }).revision === "number"
+              ? Number((block as StructuredBlock & { revision?: number }).revision)
+              : undefined;
+          const visualResponse = (await fetchWithAuth(
+            `/deepspace/chats/${activeNote.id}/visual-block`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                block_id: block.id,
+                block,
+                ...(revision === undefined ? {} : { expected_revision: revision }),
+              }),
+            },
+          )) as Response;
+          // A block may be a note-only visual or a legacy block not yet
+          // associated with a chat message. The note remains authoritative in
+          // that case; a revision conflict must stop the note write.
+          if (!visualResponse.ok && visualResponse.status !== 404) {
+            addServiceWarning(
+              "A visual block changed elsewhere; reload the note before editing it again.",
+            );
+            hasVisualConflict = visualResponse.status === 409;
+            if (!hasVisualConflict) {
+              throw new Error("The visual block could not be synchronized with the note.");
+            }
+            break;
+          } else if (visualResponse.ok) {
+            const updatedMessage = (await visualResponse.json()) as {
+              metadata_json?: { visual_blocks?: Record<string, { block?: StructuredBlock }> };
+            };
+            const persisted = updatedMessage.metadata_json?.visual_blocks?.[block.id]?.block;
+            if (persisted) {
+              noteVisualSourceRef.current.set(block.id, JSON.stringify(persisted));
+              synchronizedHtml =
+                replaceVisualBlockInNoteHtml(synchronizedHtml, persisted) ?? synchronizedHtml;
+              try {
+                await syncExistingVisualArtifact(activeNote.id, persisted);
+              } catch (error) {
+                addServiceWarning(
+                  error instanceof Error
+                    ? error.message
+                    : "The saved visual artifact could not be synchronized with this note edit.",
+                );
+              }
+            } else {
+              noteVisualSourceRef.current.set(block.id, serializedBlock);
+            }
+          }
+        }
+        if (hasVisualConflict) return;
+        const noteResponse = (await fetchWithAuth(`/deepspace/chats/${activeNote.id}`, {
           method: "PATCH",
           body: JSON.stringify({
-            content_html: html,
+            content_html: synchronizedHtml,
             ...(nextAutoTitle ? { title: nextAutoTitle } : {}),
           }),
         })) as Response;
-        if (!response.ok) {
+        if (!noteResponse.ok) {
           throw new Error("The note could not be saved.");
+        }
+        if (synchronizedHtml !== html) {
+          setActiveNote((current) =>
+            current?.id === activeNote.id
+              ? { ...current, content_html: synchronizedHtml }
+              : current,
+          );
+          setNotes((current) =>
+            current.map((item) =>
+              item.id === activeNote.id ? { ...item, content_html: synchronizedHtml } : item,
+            ),
+          );
+          await editorRef.current?.replaceHTML(synchronizedHtml);
         }
       } catch (error) {
         console.error("Failed to save DeepSpace note", error);
@@ -351,6 +601,109 @@ export default function DeepSpacePageClient() {
       }
     }, 1500);
   };
+
+  const handleVisualBlockChange = useCallback(
+    async (_messageId: string, block: StructuredBlock) => {
+      const note = activeNote;
+      if (!note) return;
+      const nextHtml = replaceVisualBlockInNoteHtml(note.content_html ?? "", block);
+      if (!nextHtml || nextHtml === (note.content_html ?? "")) return;
+      setActiveNote((previous) =>
+        previous?.id === note.id ? { ...previous, content_html: nextHtml } : previous,
+      );
+      setNotes((previous) =>
+        previous.map((item) => (item.id === note.id ? { ...item, content_html: nextHtml } : item)),
+      );
+      noteVisualSourceRef.current.set(block.id, JSON.stringify(block));
+      const response = (await fetchWithAuth(`/deepspace/chats/${note.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content_html: nextHtml }),
+      })) as Response;
+      if (!response.ok) throw new Error("The edited visual could not be saved to this note.");
+      await editorRef.current?.replaceHTML(nextHtml);
+      try {
+        await syncExistingVisualArtifact(note.id, block);
+      } catch (error) {
+        addServiceWarning(
+          error instanceof Error
+            ? error.message
+            : "The saved visual artifact could not be synchronized with this chat edit.",
+        );
+      }
+    },
+    [activeNote, addServiceWarning, syncExistingVisualArtifact],
+  );
+
+  const handleSaveVisualArtifact = useCallback(
+    async (block: StructuredBlock) => {
+      if (!activeNote) {
+        throw new Error("Open a conversation before saving this visual to Library.");
+      }
+      const response = (await fetchWithAuth(
+        `/deepspace/library/${activeNote.id}/visual-artifacts`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            block_id: block.id,
+            block,
+            filename: `${block.id}.visual.json`,
+          }),
+        },
+      )) as Response;
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          String(payload?.detail?.message ?? "The visual artifact could not be saved."),
+        );
+      }
+    },
+    [activeNote],
+  );
+
+  const handleArtifactVisualChange = useCallback(
+    async (block: StructuredBlock) => {
+      const note = activeNote;
+      if (!note) return;
+      const revision = (block as { revision?: number }).revision;
+      const response = (await fetchWithAuth(`/deepspace/chats/${note.id}/visual-block`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          block_id: block.id,
+          block,
+          ...(typeof revision === "number" ? { expected_revision: Math.max(0, revision - 1) } : {}),
+        }),
+      })) as Response;
+      if (!response.ok) {
+        if (response.status === 409) {
+          addServiceWarning("This artifact changed in another session. Reload it before editing.");
+        }
+        throw new Error("The artifact change could not be synchronized to chat.");
+      }
+      const updated = (await response.json()) as {
+        metadata_json?: { visual_blocks?: Record<string, { block?: StructuredBlock }> };
+      };
+      const persisted = updated.metadata_json?.visual_blocks?.[block.id]?.block ?? {
+        ...block,
+        revision: (revision ?? 0) + 1,
+      };
+      const nextHtml = replaceVisualBlockInNoteHtml(note.content_html ?? "", persisted);
+      if (!nextHtml || nextHtml === (note.content_html ?? "")) return;
+      setActiveNote((current) =>
+        current?.id === note.id ? { ...current, content_html: nextHtml } : current,
+      );
+      setNotes((current) =>
+        current.map((item) => (item.id === note.id ? { ...item, content_html: nextHtml } : item)),
+      );
+      noteVisualSourceRef.current.set(block.id, JSON.stringify(persisted));
+      const noteResponse = (await fetchWithAuth(`/deepspace/chats/${note.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ content_html: nextHtml }),
+      })) as Response;
+      if (!noteResponse.ok) throw new Error("The synchronized note could not be saved.");
+      await editorRef.current?.replaceHTML(nextHtml);
+    },
+    [activeNote, addServiceWarning],
+  );
 
   const handleAgentNotePreview = useCallback(
     (preview: DeepSpaceAgentNotePreview & { conversationId: string }) => {
@@ -653,6 +1006,7 @@ export default function DeepSpacePageClient() {
                         if (isSplitView) setSplitWorkspacePanel("notes");
                         else setPanelMode("chat");
                       }}
+                      onVisualArtifactChange={handleArtifactVisualChange}
                     />
                   </motion.div>
                 ) : null}
@@ -731,6 +1085,11 @@ export default function DeepSpacePageClient() {
                     setNotes((prev) => prev.map((item) => (item.id === note.id ? note : item)));
                     setActiveNote((prev) => (prev?.id === note.id ? note : prev));
                   }}
+                  onConversationUnavailable={(conversationId) => {
+                    window.localStorage.removeItem(ACTIVE_NOTE_KEY);
+                    setNotes((previous) => previous.filter((item) => item.id !== conversationId));
+                    setActiveNote((active) => (active?.id === conversationId ? null : active));
+                  }}
                   onSelectNote={(noteId) => {
                     const note = notes.find((n) => n.id === noteId);
                     if (note) {
@@ -743,6 +1102,8 @@ export default function DeepSpacePageClient() {
                   onInsertLatestAnswer={insertAnswer}
                   onAgentNotePreview={handleAgentNotePreview}
                   onAgentNoteCommitted={handleAgentNoteCommitted}
+                  onVisualBlockChange={handleVisualBlockChange}
+                  onSaveVisualArtifact={handleSaveVisualArtifact}
                   panelMode={legacyPanelMode}
                   onSetPanelMode={(mode) => {
                     if (mode === "split") toggleSplitView();

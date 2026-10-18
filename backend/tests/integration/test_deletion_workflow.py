@@ -7,6 +7,10 @@ from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 from sqlalchemy import func, select, text
 
+from app.auth.models.role import Role
+from app.auth.models.user import User
+from app.auth.models.user_role import UserRole
+from app.auth.security import hash_password
 from app.core.config import get_settings
 from app.core.ids import generate_uuid7_with_fallback
 from app.documents.models.collection import (
@@ -14,7 +18,9 @@ from app.documents.models.collection import (
     CollectionPermission,
     DocumentCollection,
 )
+from app.documents.models.data_deletion import DataDeletion
 from app.documents.models.document import Document
+from app.documents.services.deletion_service import DeletionService
 from app.platform.database.session import get_session_factory, set_db_tenant_context
 from app.query.models.comment import Comment
 from app.query.models.conversation import Conversation
@@ -23,6 +29,7 @@ from app.query.models.message_version import MessageVersion
 from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
 from app.query.repositories.chat import ChatRepository
+from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.services.storage_service import StorageService, StoredObject
 from tests.conftest import SeededUser, _generate_test_collection_code
 
@@ -62,12 +69,59 @@ def _patch_storage(monkeypatch: MonkeyPatch) -> None:
     def fake_get(self: StorageService, *, bucket: str, object_key: str) -> bytes:
         return in_memory_objects[(bucket, object_key)]
 
-    def fake_delete(self: StorageService, *, bucket: str, object_key: str) -> None:
+    def fake_delete(
+        self: StorageService,
+        *,
+        bucket: str,
+        object_key: str,
+        raise_on_error: bool = False,
+    ) -> None:
         in_memory_objects.pop((bucket, object_key), None)
 
     monkeypatch.setattr(StorageService, "put_bytes", fake_put)
     monkeypatch.setattr(StorageService, "get_bytes", fake_get)
     monkeypatch.setattr(StorageService, "delete_object", fake_delete)
+
+
+def test_worker_returns_unapproved_queued_deletion_to_approval(
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    seeded = seed_user(
+        "tenant-del-guard",
+        "admin-del-guard@tenant.example",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    session = get_session_factory()()
+    try:
+        session.execute(text("SET ROLE aks_app"))
+        set_db_tenant_context(session, seeded.tenant_id)
+        row = DataDeletion(
+            id=generate_uuid7_with_fallback(),
+            tenant_id=seeded.tenant_id,
+            requested_by_user_id=seeded.user_id,
+            status="queued",
+            scope="tenant_data",
+            reason="workspace_offboarding",
+        )
+        session.add(row)
+        session.commit()
+
+        def fail_if_purged(self: DeletionService, *, tenant_id: uuid.UUID) -> dict[str, int]:
+            raise AssertionError(f"unapproved purge ran for {tenant_id}")
+
+        monkeypatch.setattr(DeletionService, "_purge_tenant_data", fail_if_purged)
+        DeletionService(session, get_settings()).process_deletion(
+            tenant_id=seeded.tenant_id,
+            deletion_id=row.id,
+        )
+        session.refresh(row)
+        assert row.status == "awaiting_approval"
+        assert row.approved_by_user_id is None
+    finally:
+        session.execute(text("RESET ROLE"))
+        session.close()
 
 
 def test_data_deletion_workflow_completes_and_purges_tenant_documents(
@@ -82,8 +136,45 @@ def test_data_deletion_workflow_completes_and_purges_tenant_documents(
         "StrongPass!1234",
         ("admin",),
     )
-    get_settings().bootstrap_super_admin_emails = [seeded.email]
+    approver_id = generate_uuid7_with_fallback()
+    approver_email = "admin-del-flow-approver@tenant.example"
+    approver_password = "StrongPass!5678"
+    session = get_session_factory()()
+    try:
+        session.execute(text("RESET ROLE"))
+        set_db_tenant_context(session, seeded.tenant_id)
+        admin_role = session.execute(select(Role).where(Role.name == "admin")).scalar_one()
+        approver = User(
+            id=approver_id,
+            tenant_id=seeded.tenant_id,
+            email=approver_email,
+            collection_code=_generate_test_collection_code(),
+            password_hash=hash_password(approver_password),
+            is_active=True,
+        )
+        session.add(approver)
+        session.flush()
+        session.add(
+            UserRole(
+                tenant_id=seeded.tenant_id,
+                user_id=approver.id,
+                role_id=admin_role.id,
+            )
+        )
+        session.commit()
+    finally:
+        session.rollback()
+        session.close()
+    approver_seeded = SeededUser(
+        tenant_id=seeded.tenant_id,
+        user_id=approver_id,
+        collection_code="unused",
+        email=approver_email,
+        password=approver_password,
+    )
+    get_settings().bootstrap_super_admin_emails = [seeded.email, approver_email]
     token = _login(client, seeded)
+    approver_token = _login(client, approver_seeded)
 
     upload = client.post(
         "/api/v1/documents/upload",
@@ -180,16 +271,54 @@ def test_data_deletion_workflow_completes_and_purges_tenant_documents(
         session.execute(text("RESET ROLE"))
         session.close()
 
+    invalid_confirmation = client.post(
+        "/api/v1/admin/data-deletions",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-Id": str(seeded.tenant_id),
+        },
+        json={
+            "reason": "workspace_offboarding",
+            "target_confirmation": "DELETE wrong-workspace",
+        },
+    )
+    assert invalid_confirmation.status_code == 400
+    assert invalid_confirmation.json()["error"]["code"] == "INVALID_REQUEST"
+
     create = client.post(
         "/api/v1/admin/data-deletions",
         headers={
             "Authorization": f"Bearer {token}",
             "X-Tenant-Id": str(seeded.tenant_id),
         },
-        json={"reason": "tenant cleanup request"},
+        json={
+            "reason": "workspace_offboarding",
+            "target_confirmation": f"DELETE {seeded.tenant_id}",
+        },
     )
     assert create.status_code == 200
     deletion_id = create.json()["deletion_id"]
+    assert create.json()["status"] == "awaiting_approval"
+
+    self_approval = client.post(
+        f"/api/v1/admin/data-deletions/{deletion_id}/approve",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-Id": str(seeded.tenant_id),
+        },
+    )
+    assert self_approval.status_code == 403
+    assert self_approval.json()["error"]["code"] == "SECOND_APPROVER_REQUIRED"
+
+    approval = client.post(
+        f"/api/v1/admin/data-deletions/{deletion_id}/approve",
+        headers={
+            "Authorization": f"Bearer {approver_token}",
+            "X-Tenant-Id": str(seeded.tenant_id),
+        },
+    )
+    assert approval.status_code == 200
+    assert approval.json()["status"] == "queued"
 
     status = client.get(
         f"/api/v1/admin/data-deletions/{deletion_id}",
@@ -267,6 +396,73 @@ def test_data_deletion_workflow_completes_and_purges_tenant_documents(
         assert collection_permission_count == 0
         assert comment_count == 0
         assert pinned_finding_count == 0
+    finally:
+        session.execute(text("RESET ROLE"))
+        session.close()
+
+
+def test_self_account_deletion_queues_failed_document_object_cleanup(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    _patch_storage(monkeypatch)
+    seeded = seed_user(
+        "tenant-self-delete-cleanup",
+        "self-delete-cleanup@example.org",
+        "StrongPass!1234",
+        ("user",),
+    )
+    token = _login(client, seeded)
+    upload = client.post(
+        "/api/v1/documents/upload",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-Id": str(seeded.tenant_id),
+            "Idempotency-Key": "idem-self-delete-cleanup-1",
+        },
+        files={"file": ("private-self-delete.txt", b"cleanup regression content", "text/plain")},
+    )
+    assert upload.status_code == 200
+
+    def fail_delete(
+        self: StorageService,
+        *,
+        bucket: str,
+        object_key: str,
+        raise_on_error: bool = False,
+    ) -> None:
+        raise RuntimeError("private storage provider failure text")
+
+    monkeypatch.setattr(StorageService, "delete_object", fail_delete)
+    response = client.request(
+        "DELETE",
+        "/api/v1/auth/account",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Tenant-Id": str(seeded.tenant_id),
+        },
+        json={"password": seeded.password},
+    )
+    assert response.status_code == 200
+
+    session = get_session_factory()()
+    try:
+        session.execute(text("SET ROLE aks_app"))
+        set_db_tenant_context(session, seeded.tenant_id)
+        jobs = (
+            session.execute(
+                select(StorageCleanupJob).where(
+                    StorageCleanupJob.tenant_id == seeded.tenant_id,
+                    StorageCleanupJob.owner_user_id == seeded.user_id,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(jobs) == 1
+        assert jobs[0].last_error == "document_storage_delete_failed"
+        assert jobs[0].status == "pending"
     finally:
         session.execute(text("RESET ROLE"))
         session.close()

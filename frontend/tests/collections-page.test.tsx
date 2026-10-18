@@ -65,7 +65,7 @@ describe("collections admin page", () => {
     });
 
     expect(await screen.findByText(/research/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /manage collection/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /manage qel connect/i })).toHaveAttribute(
       "href",
       "/dashboard/collections/collection-1?section=documents",
     );
@@ -111,9 +111,9 @@ describe("collections admin page", () => {
 
     render(<AdminCollectionsPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /\+ new collection/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /\+ new qel connect/i }));
     fireEvent.click(screen.getByRole("button", { name: /group chat/i }));
-    fireEvent.change(screen.getByPlaceholderText(/collection name/i), {
+    fireEvent.change(screen.getByPlaceholderText(/qel connect name/i), {
       target: { value: "Policies" },
     });
     fireEvent.change(screen.getByPlaceholderText(/description/i), {
@@ -169,7 +169,7 @@ describe("collections admin page", () => {
 
     render(<AdminCollectionsPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /leave collection/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /leave qel connect/i }));
 
     await waitFor(() => {
       expect(fetchWithAuthMock).toHaveBeenCalledWith("/collections/collection-1/permissions", {

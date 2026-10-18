@@ -21,26 +21,27 @@ import {
   landingSectionTitleClass,
   landingTitleGradientBySection,
 } from "./landingType";
+import QelConnectMark from "../ui/QelConnectMark";
 
 const collaborationSteps = [
   {
     icon: UsersRound,
     label: "Invite deliberately",
-    detail: "Owners invite members and keep collection access explicit.",
+    detail: "Owners invite members and keep Qel Connect access explicit.",
     color: "text-emerald-300 border-emerald-400/25 bg-emerald-500/[0.08]",
   },
   {
     icon: UserPlus,
     label: "Request to join",
     detail:
-      "Share your collection ID, send a join request, and start chatting once the owner approves — no silent joins, ever.",
+      "Share your Qel Connect ID, send a join request, and start chatting once the owner approves. No silent joins, ever.",
     color: "text-emerald-300 border-emerald-400/25 bg-emerald-500/[0.08]",
   },
   {
     icon: MessageCircleMore,
     label: "Talk in real time",
     detail:
-      "Encrypted collection messages keep the project conversation together — matching safety numbers confirm member devices.",
+      "Encrypted Qel Connect messages keep the project conversation together. Matching safety numbers confirm member devices.",
     color: "text-cyan-300 border-cyan-400/25 bg-cyan-500/[0.08]",
   },
   {
@@ -53,14 +54,13 @@ const collaborationSteps = [
   {
     icon: ImagePlus,
     label: "Send files securely",
-    detail: "Share photos and file attachments as encrypted collection media.",
+    detail: "Share photos and file attachments as encrypted Qel Connect media.",
     color: "text-violet-300 border-violet-400/25 bg-violet-500/[0.08]",
   },
   {
     icon: FolderHeart,
     label: "Share the source once",
-    detail:
-      "Add an existing document to the collection instead of duplicating it for every member.",
+    detail: "Add an existing document to Qel Connect instead of duplicating it for every member.",
     color: "text-amber-300 border-amber-400/25 bg-amber-500/[0.08]",
   },
 ];
@@ -86,17 +86,17 @@ export default function CollectionCollaboration() {
           transition={{ type: "spring", stiffness: 100, damping: 20 }}
           className={landingHeaderWrapClass}
         >
-          <p className={landingEyebrowClass}>Collections · Secure Collaboration</p>
+          <p className={landingEyebrowClass}>Qel Connect · Secure Collaboration</p>
           <h2
             className={`${landingSectionTitleClass} ${landingTitleGradientBySection.platformSurfaces}`}
           >
             A shared room for messages, media, and source material
           </h2>
           <p className={landingSectionLeadClass}>
-            Collections let approved people work together without opening an entire workspace. Chat
+            Qel Connect lets approved people work together without opening an entire workspace. Chat
             in real time, exchange encrypted attachments, and share the documents that belong to the
-            project. Members see and use only the sources their collection permissions allow.
-            Collections are in experimental beta while external device proof completes.
+            project. Members see and use only the sources their Qel Connect permissions allow. Qel
+            Connect is in experimental beta while external device proof completes.
           </p>
         </motion.div>
 
@@ -114,7 +114,8 @@ export default function CollectionCollaboration() {
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/25 bg-emerald-400/[0.08] px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-emerald-200 uppercase">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-300" />
-                    Collection room
+                    <QelConnectMark size={16} />
+                    Qel Connect room
                   </span>
                   <ShieldCheck size={18} className="text-emerald-300" />
                 </div>
@@ -122,7 +123,7 @@ export default function CollectionCollaboration() {
                   Keep the people, permissions, and project context together.
                 </h3>
                 <p className="mt-4 text-sm leading-7 text-slate-300">
-                  Shared documents remain in controlled storage. The collection grants access to the
+                  Shared documents remain in controlled storage. Qel Connect grants access to the
                   same source instead of creating a separate copy for every member.
                 </p>
               </div>
@@ -169,7 +170,7 @@ export default function CollectionCollaboration() {
           <FileLock2 size={16} className="mt-1 shrink-0 text-cyan-300" />
           <p>
             Document querying remains permission-aware: a member can use a shared source only when
-            that collection and its document access are approved and available to the workspace.
+            that Qel Connect and its document access are approved and available to the workspace.
           </p>
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,12 +8,39 @@ import remarkGfm from "remark-gfm";
 import InlineCitation from "@/app/components/query/InlineCitation";
 
 import { parseVisualChart } from "../_lib/chart-parser";
-import type { StreamChartBlock, StreamChartPoint } from "../_lib/stream-protocol";
+import type {
+  StreamCardBlock,
+  StreamChartBlock,
+  StreamChartPoint,
+  StreamDiagramBlock,
+} from "../_lib/stream-protocol";
 import { normalizeMarkdown } from "../_lib/markdown";
 import AdaptiveMarkdownTable from "../../_components/AdaptiveMarkdownTable";
 
 import ChartBlock from "./ChartBlock";
 import CodeBlock from "./CodeBlock";
+import CardBlock from "./CardBlock";
+import GraphBlock from "./GraphBlock";
+import GalleryBlock, { parseGalleryPayload } from "./GalleryBlock";
+import {
+  inferVisualFenceKind,
+  normalizePersistedRichContent,
+  unwrapPersistedVisualFence,
+} from "../_lib/visual-fences";
+
+function QueryTableHeader({ children }: { children?: ReactNode }) {
+  return <th className="px-5 py-3.5">{children}</th>;
+}
+QueryTableHeader.displayName = "th";
+
+function QueryTableCell({ children }: { children?: ReactNode }) {
+  return (
+    <td className="border-glass-border/10 text-foreground/80 border-b px-5 py-3.5 text-sm">
+      {children}
+    </td>
+  );
+}
+QueryTableCell.displayName = "td";
 
 interface MarkdownRendererProps {
   content: string;
@@ -35,7 +62,10 @@ export default function MarkdownRenderer({
   messageId = "message",
   enableRichPreview = true,
 }: MarkdownRendererProps) {
-  const normalizedContent = useMemo(() => normalizeMarkdown(content), [content]);
+  const normalizedContent = useMemo(
+    () => normalizeMarkdown(normalizePersistedRichContent(content)),
+    [content],
+  );
   const components = useMemo<Components>(
     () => ({
       pre: ({ children }) => <>{children}</>,
@@ -52,13 +82,42 @@ export default function MarkdownRenderer({
           );
         }
 
+        const persistedFence = unwrapPersistedVisualFence(value);
+        const visualKind = persistedFence?.kind ?? inferVisualFenceKind(language, value);
+        const visualValue = persistedFence?.source ?? value;
+        const visualLanguage = visualKind ?? language;
+
+        if (!streaming && visualLanguage === "mermaid" && visualValue.trim()) {
+          return (
+            <CodeBlock
+              language="mermaid"
+              value={visualValue}
+              enableRichPreview={enableRichPreview}
+              defaultPreviewOpen={enableRichPreview}
+            />
+          );
+        }
+
         const chartBlock =
-          enableRichPreview && isChartFence(language, value)
-            ? createChartBlock(value, `${messageId}-chart`)
+          enableRichPreview && isChartFence(visualLanguage, visualValue)
+            ? createChartBlock(visualValue, `${messageId}-chart`)
             : null;
 
         if (chartBlock) {
           return <ChartBlock block={chartBlock} />;
+        }
+
+        if (!streaming && visualLanguage === "card") {
+          const card = createCardBlock(visualValue, `${messageId}-card`);
+          if (card) return <CardBlock block={card} />;
+        }
+        if (!streaming && visualLanguage === "graph") {
+          const graph = createGraphBlock(visualValue, `${messageId}-graph`);
+          if (graph) return <GraphBlock block={graph as never} />;
+        }
+        if (!streaming && visualLanguage === "gallery") {
+          const gallery = parseGalleryPayload(visualValue);
+          if (gallery) return <GalleryBlock payload={gallery} />;
         }
 
         return (
@@ -78,12 +137,8 @@ export default function MarkdownRenderer({
           {children}
         </thead>
       ),
-      th: ({ children }) => <th className="px-5 py-3.5">{children}</th>,
-      td: ({ children }) => (
-        <td className="border-glass-border/10 text-foreground/80 border-b px-5 py-3.5 text-sm">
-          {children}
-        </td>
-      ),
+      th: QueryTableHeader,
+      td: QueryTableCell,
       h1: ({ children }) => <h1 className="text-foreground text-3xl font-semibold">{children}</h1>,
       h2: ({ children }) => <h2 className="text-foreground text-2xl font-semibold">{children}</h2>,
       h3: ({ children }) => <h3 className="text-foreground text-xl font-semibold">{children}</h3>,
@@ -138,9 +193,25 @@ export default function MarkdownRenderer({
         );
       },
       img: ({ src, alt, ...props }) => (
-        <span className="my-3 block overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+        <span
+          className="my-3 block overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+          data-markdown-image
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src ?? ""} alt={alt ?? ""} loading="lazy" decoding="async" {...props} />
+          <img
+            src={src ?? ""}
+            alt={alt ?? ""}
+            loading="lazy"
+            decoding="async"
+            {...props}
+            onError={(event) => {
+              event.currentTarget.hidden = true;
+              event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+            }}
+          />
+          <span hidden className="text-foreground/55 block px-3 py-2 text-xs">
+            Image unavailable at this URL.
+          </span>
         </span>
       ),
       strong: ({ children }) => (
@@ -177,6 +248,103 @@ export default function MarkdownRenderer({
   );
 }
 
+function createCardBlock(value: string, id: string): StreamCardBlock | null {
+  try {
+    const payload = JSON.parse(value) as Record<string, unknown>;
+    if (!payload || Array.isArray(payload)) return null;
+    const title =
+      typeof payload.title === "string" && payload.title.trim()
+        ? payload.title
+        : "Information card";
+    const content =
+      typeof payload.content === "string" ? payload.content : String(payload.body ?? "");
+    if (!content.trim()) return null;
+    const tone = payload.tone;
+    return {
+      id,
+      type: "card",
+      title,
+      content,
+      tone:
+        tone === "info" ||
+        tone === "success" ||
+        tone === "warning" ||
+        tone === "error" ||
+        tone === "neutral"
+          ? tone
+          : "neutral",
+      subtitle: typeof payload.subtitle === "string" ? payload.subtitle : null,
+      image_url: typeof payload.image_url === "string" ? payload.image_url : null,
+      href: typeof payload.href === "string" ? payload.href : null,
+      metrics: Array.isArray(payload.metrics)
+        ? payload.metrics
+            .filter(
+              (
+                metric,
+              ): metric is { label: string; value: string | number; detail?: string | null } =>
+                Boolean(
+                  metric &&
+                  typeof metric === "object" &&
+                  typeof (metric as Record<string, unknown>).label === "string",
+                ),
+            )
+            .map((metric) => ({
+              label: metric.label,
+              value: metric.value ?? "",
+              detail: metric.detail ?? null,
+            }))
+        : [],
+      actions: Array.isArray(payload.actions)
+        ? payload.actions
+            .filter(
+              (
+                action,
+              ): action is {
+                label: string;
+                href?: string | null;
+                action?: "open" | "copy" | "download";
+                content?: string | null;
+              } =>
+                Boolean(
+                  action &&
+                  typeof action === "object" &&
+                  typeof (action as Record<string, unknown>).label === "string",
+                ),
+            )
+            .map((action) => ({
+              label: action.label,
+              href: action.href ?? null,
+              action: action.action ?? "open",
+              content: action.content ?? null,
+            }))
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function createGraphBlock(value: string, id: string): StreamDiagramBlock | null {
+  try {
+    const payload = JSON.parse(value) as Record<string, unknown>;
+    const graph = (
+      payload.graph && typeof payload.graph === "object" ? payload.graph : payload
+    ) as StreamDiagramBlock["graph"];
+    if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) return null;
+    return {
+      id,
+      type: "diagram",
+      title: typeof payload.title === "string" ? payload.title : "Diagram canvas",
+      diagram_type: "graph_canvas",
+      source: "graph_json",
+      syntax: value,
+      graph,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function isChartFence(language: string, value: string): boolean {
   if (language === "chart") return true;
   return language === "json" && /"(?:chart_type|series|chart_data|chartData)"\s*:/.test(value);
@@ -207,5 +375,7 @@ function createChartBlock(value: string, id: string): StreamChartBlock | null {
     x_key: parsed.xKey,
     y_key: parsed.yKey,
     z_key: parsed.zKey,
+    x_label: parsed.xLabel,
+    y_label: parsed.yLabel,
   };
 }

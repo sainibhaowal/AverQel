@@ -8,15 +8,16 @@ from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext, get_auth_context
-from app.auth.models.user import User
 from app.auth.rbac import require_permissions
 from app.auth.tenancy import TenantContext, get_tenant_context
 from app.core.config import get_settings
 from app.platform.database.session import get_db, set_db_tenant_context
-from app.system.api.admin import require_platform_admin_access
 from app.system.models.app_feedback import AppFeedback, FeedbackCampaign
 from app.system.models.app_feedback_message import AppFeedbackMessage
 from app.system.schemas.app_feedback import (
+    AdminAppFeedbackDetailResponse,
+    AdminAppFeedbackMessageResponse,
+    AdminAppFeedbackResponse,
     AdminFeedbackMessageCreate,
     AppFeedbackCreate,
     AppFeedbackDetailResponse,
@@ -27,8 +28,9 @@ from app.system.schemas.app_feedback import (
     FeedbackCampaignCreate,
     FeedbackCampaignResponse,
 )
+from app.system.services.audit_service import AuditService
 from app.system.services.rate_limit_service import RateLimitService
-from app.system.services.user_notifications import add_user_notification, notify_platform_admins
+from app.system.services.user_notifications import add_user_notification, notify_role_assignees
 
 router = APIRouter(prefix="/app-feedback", tags=["app-feedback"])
 
@@ -76,6 +78,16 @@ def _detail(
     )
 
 
+def _admin_detail(db: Session, feedback: AppFeedback) -> AdminAppFeedbackDetailResponse:
+    return AdminAppFeedbackDetailResponse(
+        **AdminAppFeedbackResponse.model_validate(feedback).model_dump(),
+        messages=[
+            AdminAppFeedbackMessageResponse.model_validate(item)
+            for item in _feedback_messages(db, feedback=feedback, include_internal=True)
+        ],
+    )
+
+
 @router.post("/submit", response_model=AppFeedbackResponse)
 def submit_app_feedback(
     payload: AppFeedbackCreate,
@@ -119,12 +131,14 @@ def submit_app_feedback(
         resource_id=str(feedback.id),
         idempotency_key=f"feedback:received:{feedback.id}",
     )
-    notify_platform_admins(
+    notify_role_assignees(
         db,
+        role_name="feedback_manager",
+        tenant_id=None,
         event_domain="feedback",
         event_type="feedback_submitted",
         title="New user feedback",
-        message=f"{feedback.category.replace('_', ' ').title()}: {feedback.subject}",
+        message="A user submitted feedback for review.",
         href=f"/dashboard/admin/feedback?submission={feedback.id}",
         resource_id=str(feedback.id),
     )
@@ -185,12 +199,14 @@ def add_user_feedback_message(
         )
     )
     feedback.updated_at = datetime.now(UTC)
-    notify_platform_admins(
+    notify_role_assignees(
         db,
+        role_name="feedback_manager",
+        tenant_id=None,
         event_domain="feedback",
         event_type="feedback_user_reply",
         title="User added feedback details",
-        message=f"New message: {feedback.subject}",
+        message="A user added details to a feedback submission.",
         href=f"/dashboard/admin/feedback?submission={feedback.id}",
         resource_id=f"{feedback.id}:user-reply:{uuid.uuid4()}",
     )
@@ -224,11 +240,19 @@ def list_active_campaigns(
 )
 def create_campaign(
     payload: FeedbackCampaignCreate,
-    auth: AuthContext = Depends(require_platform_admin_access),
+    auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
 ) -> FeedbackCampaignResponse:
     campaign = FeedbackCampaign(**payload.model_dump())
     db.add(campaign)
+    db.flush()
+    AuditService(db).write_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.feedback.campaign.created",
+        resource_type="feedback_campaign",
+        resource_id=str(campaign.id),
+    )
     db.commit()
     db.refresh(campaign)
     return FeedbackCampaignResponse.model_validate(campaign)
@@ -236,7 +260,7 @@ def create_campaign(
 
 @router.get(
     "/admin/submissions",
-    response_model=list[AppFeedbackResponse],
+    response_model=list[AdminAppFeedbackResponse],
     dependencies=[Depends(require_permissions("admin:feedback:read"))],
 )
 def list_all_submissions(
@@ -244,15 +268,11 @@ def list_all_submissions(
     status: str | None = Query(default=None, max_length=32),
     category: str | None = Query(default=None, max_length=50),
     q: str | None = Query(default=None, max_length=200),
-    auth: AuthContext = Depends(require_platform_admin_access),
+    auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
-) -> list[AppFeedbackResponse]:
+) -> list[AdminAppFeedbackResponse]:
     set_db_tenant_context(db, "bypass")
-    query = (
-        select(AppFeedback, User.email)
-        .outerjoin(User, User.id == AppFeedback.user_id)
-        .order_by(desc(AppFeedback.created_at), desc(AppFeedback.id))
-    )
+    query = select(AppFeedback).order_by(desc(AppFeedback.created_at), desc(AppFeedback.id))
     if status:
         query = query.where(AppFeedback.status == status)
     if category:
@@ -263,50 +283,57 @@ def list_all_submissions(
             or_(
                 AppFeedback.subject.ilike(pattern),
                 AppFeedback.content.ilike(pattern),
-                User.email.ilike(pattern),
             )
         )
-    results = db.execute(query.limit(limit)).all()
-    submissions = []
-    for feedback, email in results:
-        response = AppFeedbackResponse.model_validate(feedback)
-        response.email = email
-        submissions.append(response)
+    rows = db.execute(query.limit(limit)).scalars().all()
+    submissions = [AdminAppFeedbackResponse.model_validate(feedback) for feedback in rows]
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.feedback.submissions.list.read",
+        resource_type="app_feedback_submissions",
+    )
     return submissions
 
 
 @router.get(
     "/admin/submissions/{feedback_id}",
-    response_model=AppFeedbackDetailResponse,
+    response_model=AdminAppFeedbackDetailResponse,
     dependencies=[Depends(require_permissions("admin:feedback:read"))],
 )
 def get_submission_admin(
     feedback_id: uuid.UUID,
-    auth: AuthContext = Depends(require_platform_admin_access),
+    auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
-) -> AppFeedbackDetailResponse:
+) -> AdminAppFeedbackDetailResponse:
     set_db_tenant_context(db, "bypass")
-    result = db.execute(
-        select(AppFeedback, User.email)
-        .outerjoin(User, User.id == AppFeedback.user_id)
-        .where(AppFeedback.id == feedback_id)
-    ).one_or_none()
-    if result is None:
+    feedback = db.execute(
+        select(AppFeedback).where(AppFeedback.id == feedback_id)
+    ).scalar_one_or_none()
+    if feedback is None:
         raise HTTPException(status_code=404, detail="Feedback not found")
-    return _detail(db, result[0], include_internal=True, email=result[1])
+    detail = _admin_detail(db, feedback)
+    AuditService(db).write_admin_read_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.feedback.submission.read",
+        resource_type="app_feedback_submission",
+        resource_id=str(feedback_id),
+    )
+    return detail
 
 
 @router.patch(
     "/admin/submissions/{feedback_id}",
-    response_model=AppFeedbackResponse,
+    response_model=AdminAppFeedbackResponse,
     dependencies=[Depends(require_permissions("admin:feedback:write"))],
 )
 def update_submission_admin(
     feedback_id: uuid.UUID,
     payload: AppFeedbackUpdate,
-    auth: AuthContext = Depends(require_platform_admin_access),
+    auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
-) -> AppFeedbackResponse:
+) -> AdminAppFeedbackResponse:
     set_db_tenant_context(db, "bypass")
     feedback = db.get(AppFeedback, feedback_id)
     if feedback is None:
@@ -337,21 +364,28 @@ def update_submission_admin(
             resource_id=str(feedback.id),
             idempotency_key=f"feedback:status:{feedback.id}:{uuid.uuid4()}",
         )
+        AuditService(db).write_event(
+            tenant_id=auth.tenant_id,
+            actor_user_id=auth.user_id,
+            action="admin.feedback.submission.updated",
+            resource_type="app_feedback_submission",
+            resource_id=str(feedback.id),
+        )
     db.commit()
-    return AppFeedbackResponse.model_validate(feedback)
+    return AdminAppFeedbackResponse.model_validate(feedback)
 
 
 @router.post(
     "/admin/submissions/{feedback_id}/messages",
-    response_model=AppFeedbackDetailResponse,
+    response_model=AdminAppFeedbackDetailResponse,
     dependencies=[Depends(require_permissions("admin:feedback:write"))],
 )
 def add_admin_feedback_message(
     feedback_id: uuid.UUID,
     payload: AdminFeedbackMessageCreate,
-    auth: AuthContext = Depends(require_platform_admin_access),
+    auth: AuthContext = Depends(get_auth_context),
     db: Session = Depends(get_db),
-) -> AppFeedbackDetailResponse:
+) -> AdminAppFeedbackDetailResponse:
     set_db_tenant_context(db, "bypass")
     feedback = db.get(AppFeedback, feedback_id)
     if feedback is None:
@@ -381,7 +415,14 @@ def add_admin_feedback_message(
             resource_id=str(feedback.id),
             idempotency_key=f"feedback:reply:{uuid.uuid4()}",
         )
+    AuditService(db).write_event(
+        tenant_id=auth.tenant_id,
+        actor_user_id=auth.user_id,
+        action="admin.feedback.message.created",
+        resource_type="app_feedback_submission",
+        resource_id=str(feedback.id),
+    )
     db.flush()
-    detail = _detail(db, feedback, include_internal=True)
+    detail = _admin_detail(db, feedback)
     db.commit()
     return detail

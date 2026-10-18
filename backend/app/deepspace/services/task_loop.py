@@ -15,7 +15,7 @@ from app.deepspace.models.agent_todo import AgentTodo
 from app.deepspace.models.conversation import Conversation
 from app.deepspace.models.workspace_file import DeepSpaceWorkspaceFile
 from app.deepspace.models.workspace_folder import DeepSpaceWorkspaceFolder
-from app.deepspace.services.library_storage import safe_archive_entries
+from app.deepspace.services.library_storage import safe_archive_entries, safe_extraction_status
 from app.system.services.storage_lifecycle import StorageLifecycleService
 from app.system.services.storage_quota import StorageQuotaService, ensure_capacity_if_supported
 from app.system.services.storage_service import StorageService, StorageServiceError
@@ -196,9 +196,81 @@ class DeepSpaceTaskLoopStore:
             "priority": int(task.priority or 0),
             "dependencies": list(metadata.get("dependencies") or []),
             "evidence": list(metadata.get("evidence") or []),
+            "success_criteria": str(metadata.get("success_criteria") or ""),
+            "verification": str(metadata.get("verification") or ""),
             "created_at": task.created_at.isoformat() if task.created_at else None,
             "updated_at": task.updated_at.isoformat() if task.updated_at else None,
         }
+
+    @staticmethod
+    def _validate_plan_shape(tasks: list[dict[str, Any]], *, existing_ids: set[str]) -> None:
+        """Reject ambiguous multi-step plans before they enter the durable ledger.
+
+        A single quick task remains compatible with older callers.  A plan of
+        two or more tasks must be executable without guessing: stable task
+        identifiers make dependencies reliable, while success and verification
+        statements give completion evidence a concrete meaning.
+        """
+
+        if len(tasks) <= 1:
+            return
+
+        requested_ids: list[str] = []
+        for index, raw in enumerate(tasks):
+            task_id = str(raw.get("id") or "").strip()
+            if not task_id:
+                raise ValueError(
+                    f"Task {index + 1} needs an id so dependencies and progress remain stable."
+                )
+            if not str(raw.get("success_criteria") or "").strip():
+                raise ValueError(f"Task {task_id!r} needs success_criteria.")
+            if not str(raw.get("verification") or "").strip():
+                raise ValueError(f"Task {task_id!r} needs verification.")
+            requested_ids.append(task_id)
+
+        if len(set(requested_ids)) != len(requested_ids):
+            raise ValueError("Every task id in a plan must be unique.")
+
+        known_ids = set(requested_ids) | existing_ids
+        dependencies_by_task: dict[str, list[str]] = {}
+        for raw, task_id in zip(tasks, requested_ids, strict=True):
+            dependencies = [
+                str(item).strip()
+                for item in (raw.get("dependencies") or raw.get("depends_on") or [])
+                if str(item).strip()
+            ]
+            unknown = [dependency for dependency in dependencies if dependency not in known_ids]
+            if unknown:
+                raise ValueError(
+                    f"Task {task_id!r} depends on unknown task ids: {', '.join(unknown[:5])}."
+                )
+            if task_id in dependencies:
+                raise ValueError(f"Task {task_id!r} cannot depend on itself.")
+            # Only dependencies inside this replacement plan participate in
+            # cycle detection. Existing persisted tasks have already passed
+            # their own validation and may be referenced without forming a
+            # cycle in the newly submitted graph.
+            dependencies_by_task[task_id] = [
+                dependency for dependency in dependencies if dependency in requested_ids
+            ]
+
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(task_id: str) -> None:
+            if task_id in visited:
+                return
+            if task_id in visiting:
+                raise ValueError("Task dependencies contain a cycle.")
+            visiting.add(task_id)
+            for dependency in dependencies_by_task.get(task_id, []):
+                if dependency in dependencies_by_task:
+                    visit(dependency)
+            visiting.remove(task_id)
+            visited.add(task_id)
+
+        for task_id in requested_ids:
+            visit(task_id)
 
     def read_tasks(
         self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, conversation_id: uuid.UUID
@@ -226,6 +298,7 @@ class DeepSpaceTaskLoopStore:
                 tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
             )
         }
+        self._validate_plan_shape(tasks, existing_ids=set(existing))
         # AgentTodo.id is a global primary key, while models commonly emit
         # short local ids such as "1" or "2". Always allocate UUIDs for new
         # rows and translate dependencies through the request-local ids so a
@@ -284,10 +357,9 @@ class DeepSpaceTaskLoopStore:
             existing_task_id = requested_id if requested_id in existing else task_id
             task = existing.get(existing_task_id)
             task_obj: Any = task
-            try:
-                priority = max(0, min(int(raw.get("priority") or 0), 1000))
-            except (TypeError, ValueError):
-                priority = 0
+            # The model's array order is the user-visible execution order.
+            # Do not let a guessed priority reverse a plan in storage or UI.
+            priority = index + 1
             if task is None:
                 task = AgentTodo(
                     id=task_id or str(uuid.uuid4()),
@@ -324,6 +396,14 @@ class DeepSpaceTaskLoopStore:
                 for item in dependencies
                 if str(item).strip()
             ][:MAX_TASKS]
+            if raw.get("success_criteria") is not None:
+                metadata["success_criteria"] = str(raw.get("success_criteria") or "").strip()[
+                    :MAX_TASK_TEXT
+                ]
+            if raw.get("verification") is not None:
+                metadata["verification"] = str(raw.get("verification") or "").strip()[
+                    :MAX_TASK_TEXT
+                ]
             if isinstance(raw.get("evidence"), list):
                 metadata["evidence"] = [str(item)[:1000] for item in raw["evidence"][:10]]
             task_obj.metadata_json = metadata
@@ -747,6 +827,12 @@ class DeepSpaceTaskLoopStore:
             "is_binary": file.is_binary,
             "checksum_sha256": file.checksum_sha256,
             "updated_at": file.updated_at.isoformat() if file.updated_at else None,
+            "extraction_status": (
+                safe_extraction_status(file.metadata_json["extraction_status"])
+                if isinstance(file.metadata_json, dict)
+                and isinstance(file.metadata_json.get("extraction_status"), dict)
+                else None
+            ),
         }
 
     def read_workspace_file_for_sandbox(

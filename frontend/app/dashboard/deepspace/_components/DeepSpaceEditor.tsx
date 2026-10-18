@@ -31,6 +31,51 @@ import { fetchWithAuth } from "@/lib/api";
 import { useTheme } from "@/app/context/ThemeContext";
 import { MathBlock } from "./MathBlock";
 import DeepSpaceMarkdownRenderer from "./DeepSpaceMarkdownRenderer";
+import { RICH_CONTENT_SLASH_ITEMS, RichContentBlock } from "./RichContentBlock";
+
+const RICH_CONTENT_KINDS = new Set(["chart", "card", "mermaid", "graph", "gallery"]);
+
+async function parseNoteHtml<TBlock>(
+  editor: { tryParseHTMLToBlocks: (html: string) => TBlock[] },
+  html: string,
+): Promise<TBlock[]> {
+  if (typeof DOMParser === "undefined") return editor.tryParseHTMLToBlocks(html);
+  const documentNode = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const richNodes = documentNode.body.querySelectorAll(
+    "pre[data-rich-content-kind][data-rich-content-source]",
+  );
+  if (richNodes.length === 0) return editor.tryParseHTMLToBlocks(html);
+
+  const blocks: TBlock[] = [];
+  const segment = document.createElement("div");
+  const flushSegment = () => {
+    if (!segment.childNodes.length) return;
+    blocks.push(...editor.tryParseHTMLToBlocks(segment.innerHTML));
+    segment.replaceChildren();
+  };
+
+  for (const node of Array.from(documentNode.body.childNodes)) {
+    if (
+      node instanceof HTMLElement &&
+      node.matches("pre[data-rich-content-kind][data-rich-content-source]")
+    ) {
+      const kind = node.dataset.richContentKind;
+      const source = node.dataset.richContentSource;
+      if (kind && RICH_CONTENT_KINDS.has(kind) && source) {
+        flushSegment();
+        blocks.push({
+          type: "rich_content",
+          props: { kind, source },
+        } as TBlock);
+        continue;
+      }
+    }
+    segment.appendChild(node.cloneNode(true));
+  }
+
+  flushSegment();
+  return blocks;
+}
 
 export interface DeepSpaceAgentNotePreview {
   markdown: string;
@@ -78,6 +123,7 @@ const schema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
     math: MathBlock(),
+    rich_content: RichContentBlock(),
   },
 });
 
@@ -99,7 +145,43 @@ const getCustomSlashMenuItems = (editor: unknown) => [
     icon: <Sigma size={16} />,
     hint: "Insert a LaTeX mathematical equation",
   },
+  ...RICH_CONTENT_SLASH_ITEMS.map((item) => ({
+    title: item.title,
+    onItemClick: () => {
+      insertOrUpdateBlockForSlashMenu(editor as SlashMenuEditor, {
+        type: "rich_content",
+        props: { kind: item.kind, source: item.source } as never,
+      });
+    },
+    aliases: item.aliases,
+    group: item.group,
+    icon: item.icon,
+    hint: item.hint,
+  })),
 ];
+
+async function insertMarkdownText(
+  editor: ReturnType<typeof useCreateBlockNote>,
+  markdown: string,
+): Promise<void> {
+  if (!markdown.trim()) return;
+  // Intelligent conversion of $$ math blocks to interactive MathBlocks.
+  const parts = markdown.split(/\$\$\s*([\s\S]*?)\s*\$\$/g);
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index]?.trim();
+    if (!part) continue;
+    if (index % 2 === 1) {
+      editor.insertBlocks(
+        [{ type: "math", props: { formula: part } as never }],
+        editor.getTextCursorPosition().block,
+        "after",
+      );
+    } else {
+      const blocks = await editor.tryParseMarkdownToBlocks(part);
+      editor.insertBlocks(blocks, editor.getTextCursorPosition().block, "after");
+    }
+  }
+}
 
 const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
   (
@@ -156,9 +238,9 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
         // each conversation once by ID, rather than relying on the document
         // length, so the previous note never remains visible in a new note.
         if (conversationId && loadedConversationIdRef.current === conversationId) return;
-        const blocks = initialContent ? await editor.tryParseHTMLToBlocks(initialContent) : [];
+        const blocks = initialContent ? await parseNoteHtml(editor, initialContent) : [];
         if (cancelled) return;
-        editor.replaceBlocks(editor.document, blocks);
+        editor.replaceBlocks(editor.document, blocks as never);
         loadedConversationIdRef.current = conversationId;
       };
       void loadInitial();
@@ -193,35 +275,30 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
 
     useImperativeHandle(ref, () => ({
       insertHTML: async (html: string) => {
-        const blocks = await editor.tryParseHTMLToBlocks(html);
-        editor.insertBlocks(blocks, editor.getTextCursorPosition().block, "after");
+        const blocks = await parseNoteHtml(editor, html);
+        editor.insertBlocks(blocks as never, editor.getTextCursorPosition().block, "after");
       },
       insertMarkdown: async (markdown: string) => {
-        // Intelligent conversion of $$ math blocks to interactive MathBlocks
-        const parts = markdown.split(/\$\$\s*([\s\S]*?)\s*\$\$/g);
-
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i]?.trim();
-          if (!part) continue;
-
-          if (i % 2 === 1) {
-            // This is a math block
-            editor.insertBlocks(
-              [
-                {
-                  type: "math",
-                  props: { formula: part } as never,
-                },
-              ],
-              editor.getTextCursorPosition().block,
-              "after",
-            );
-          } else {
-            // Regular text/markdown
-            const blocks = await editor.tryParseMarkdownToBlocks(part);
-            editor.insertBlocks(blocks, editor.getTextCursorPosition().block, "after");
-          }
+        // Preserve rich Markdown as native, editable BlockNote blocks instead
+        // of leaving chart/card/diagram fences as inert code blocks.
+        const richFence = /```(chart|card|mermaid|graph|gallery)\s*\n([\s\S]*?)\n```/gi;
+        let cursor = 0;
+        let match: RegExpExecArray | null;
+        while ((match = richFence.exec(markdown)) !== null) {
+          await insertMarkdownText(editor, markdown.slice(cursor, match.index));
+          editor.insertBlocks(
+            [
+              {
+                type: "rich_content",
+                props: { kind: match[1]!.toLowerCase(), source: match[2]!.trim() } as never,
+              },
+            ],
+            editor.getTextCursorPosition().block,
+            "after",
+          );
+          cursor = match.index + match[0].length;
         }
+        await insertMarkdownText(editor, markdown.slice(cursor));
       },
       getHTML: async () => {
         return await editor.blocksToHTMLLossy(editor.document);
@@ -230,8 +307,8 @@ const DeepSpaceEditor = forwardRef<DeepSpaceEditorHandle, DeepSpaceEditorProps>(
         return await editor.blocksToMarkdownLossy(editor.document);
       },
       replaceHTML: async (html: string) => {
-        const blocks = await editor.tryParseHTMLToBlocks(html);
-        editor.replaceBlocks(editor.document, blocks);
+        const blocks = await parseNoteHtml(editor, html);
+        editor.replaceBlocks(editor.document, blocks as never);
       },
       clear: () => {
         editor.replaceBlocks(editor.document, []);

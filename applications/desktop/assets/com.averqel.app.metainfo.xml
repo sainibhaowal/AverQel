@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.averqel.app</id>
+  <name>AverQel</name>
+  <summary>AI workspace for documents and connected tools</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <developer id="com.averqel">
+    <name>AverQel</name>
+  </developer>
+  <categories>
+    <category>Office</category>
+  </categories>
+  <description>
+    <p>Search your documents, chat with AI models, and work with connected services in one desktop app.</p>
+  </description>
+  <launchable type="desktop-id">AverQel.desktop</launchable>
+  <icon type="stock">averqel-desktop</icon>
+  <url type="homepage">https://averqel.com</url>
+</component>

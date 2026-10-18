@@ -7,6 +7,34 @@ call, one or more tool calls, and a grounded answer call. A slow upstream
 stream can therefore make a normal request appear frozen even when the API,
 worker, and browser are healthy.
 
+### Stream path and speed boundary
+
+Provider adapters request the provider's native streaming protocol, including
+OpenAI-compatible Chat Completions, Anthropic Messages, Google streams, and
+LM Studio-compatible local endpoints. For detached runs, the worker assigns
+each received frame one sequence number, places it on a bounded live Redis
+queue, and writes durable replay rows in short batches on a separate database
+session. A database commit is therefore not placed between provider chunks.
+Prepared chat state, including any newly recorded context epoch, is committed
+before each provider stream begins so a slow model cannot hold tenant database
+locks while it generates or waits for network input.
+The browser replays PostgreSQL once when it subscribes and uses Redis for the
+live path, with an infrequent durable-gap check for recovery. Terminal frames
+are durable before they are published.
+
+This removes AverQel's per-frame persistence overhead; it cannot make an
+upstream model generate faster. During a live browser stream, the composer
+shows a client-side character-based output estimate and an average estimate
+that refreshes as chunks arrive. That value includes answer, reasoning, and
+streamed function-argument chunks and is labeled as an estimate because the
+provider tokenizer and final usage are not available yet. After the stream completes, the displayed
+provider generation rate uses the exact provider-reported output tokens when
+available and the server-observed interval between provider output events.
+TTFT also includes routing, context preparation, tools, and provider startup.
+Buffered providers or models that emit one large response will still report
+the speed of the output they actually provide, or explain why an exact rate
+is unavailable.
+
 ## 2. Provider-owned output budgets
 
 DeepSpace does not impose a fixed output-token budget on interactive model
@@ -19,9 +47,22 @@ that reservation is not sent as an output cap and does not truncate a response.
 
 Every provider stream still receives a bounded idle-read budget from
 `AKS_DEEPSPACE_PROVIDER_READ_TIMEOUT_SECONDS` (default `90`, maximum `300`).
-The cancellation watcher enforces that budget even when an upstream SSE
-connection stops producing events without closing. This is transport safety,
-not a model output limit.
+The cancellation watcher checks both the request's Redis cancellation marker
+and the durable run flag while an upstream SSE connection is idle. The Redis
+marker is written before the API updates run and queue rows, so the worker can
+stop promptly even when that database update receives a retryable `503`. This
+is transport safety, not a model output limit.
+
+Queue submissions use a stable client request ID and are idempotent for that
+conversation and user. The web client retries a `503` once using the same ID
+and the server's `Retry-After` value, so a transient database interruption does
+not create a duplicate prompt. Stop requests follow the same bounded retry
+rule. The browser keeps the event stream attached until the worker publishes a
+durable terminal event; closing the browser reader alone is not treated as a
+confirmed cancellation. Queue recovery also reconciles an expired worker
+lease for a turn already marked `cancelling`, persists its terminal cancelled
+event, and clears the assistant message's active state so the browser does not
+leave a stopped run spinning indefinitely.
 
 ## 3. Configuration
 
@@ -55,28 +96,32 @@ were application heuristics and could truncate a capable model.
    request terminates at the configured idle-read budget rather than waiting
    indefinitely.
 
-## 6. Adaptive native-tool profiles
+## 6. Dynamic native-tool discovery
 
-DeepSpace keeps its complete authorized capability set, but does not send every
-native tool schema for clear, narrow requests. The server selects a conservative
-profile before the first provider round:
+DeepSpace starts with one compact `discover_tools` schema instead of sending
+every native schema or selecting a fixed keyword profile. When a model needs a
+capability, it requests the bounded catalog of native tools authorized for
+that request. The model then selects exact catalog names, and the backend loads
+only those full schemas for the next provider round. A later step can discover
+additional capabilities in the same conversation. Tool selection therefore
+uses the model's understanding of the request and the catalog descriptions,
+not a hard-coded intent-to-tool keyword table.
 
-- social greetings: direct response, no native tools;
-- Library/document requests: authorized discovery, read, query, compare, and
-  analysis tools;
-- tabular/data requests: the Library profile plus authorized sandbox/artifact
-  tools;
-- explicit workspace edits: note/Library read-find-write-edit-delete tools.
+The broker can return only names in the request's authorized native registry.
+Loaded schemas still pass through typed argument validation, the runtime
+allowlist, tenant/user/conversation-scoped handlers, cancellation, and existing
+side-effect policy. The initial interface does not change permissions or
+MCP's live conversation-scoped broker. MCP discovery and exact schema loading
+remain separate because those schemas and references are owned by each
+connected server.
 
-Ordinary requests default to the direct profile; the full native set is reserved
-for an explicit multi-step agent request. MCP schemas remain strictly routed by
-the existing conversation-scoped MCP policy and are additive
-to the native profile; this routing never grants a new tool or bypasses tenant,
-user, approval, catalog, or encryption boundaries.
-
-The stream emits the selected `toolProfile` and `toolSchemaCount` in its metrics
-event and persists the profile in assistant metadata. These values are
-observability metadata, not user content or authorization state.
+Direct conversational answers can use no tools. Substantial multi-step work
+uses a persisted task plan only when the model determines that ordered,
+independently verifiable steps are needed. The runtime verifies the saved task
+ledger and returns to ordinary assistant text; it has no separate `observe` or
+`final` tool and does not insert a synthetic user message. Tool profile
+telemetry now reports only `dynamic` or `direct`; it is operational metadata,
+not authorization state.
 
 Simple direct-response prompts also use a compact safety policy. The full
 DeepSpace policy remains enabled for Library, data, edit, MCP, research, and
@@ -146,5 +191,15 @@ truth. This avoids a second model call merely to summarize context and works
 identically with hosted and self-hosted providers.
 
 The composer separates user-visible conversation tokens from internal request
-context. Diagnostics may say cache *eligible*; only provider usage fields may
-later report a verified cache hit.
+context. The diagnostics panel labels its latest-round context separately from
+the cumulative serialized estimate for the whole turn. A turn can contain
+several model requests when tools or recovery steps run. Provider usage is
+shown with its scope (currently the latest reported model round). When every
+round reports a field, the panel also shows an exact provider turn total;
+otherwise that field is marked incomplete. Adapters that do not return usage,
+including many local runtimes, remain explicitly marked as
+unreported rather than being assigned a fabricated tokenizer count. Ollama
+native `prompt_eval_count`/`eval_count` fields are normalized alongside the
+OpenAI-compatible, Anthropic, Gemini, and Codex usage shapes. Diagnostics may
+say cache *eligible*; only provider usage fields may later report a verified
+cache read or write.

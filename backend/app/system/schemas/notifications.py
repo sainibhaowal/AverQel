@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from app.core.brand import APP_QEL_CONNECT_NAME
+
 NotificationDomain = Literal[
     "support",
     "feedback",
@@ -41,9 +43,13 @@ NOTIFICATION_CATEGORY_CATALOG = (
     NotificationCategoryResponse(code="documents", label="Documents", channels=["in_app", "email"]),
     NotificationCategoryResponse(code="deepspace", label="DeepSpace", channels=["in_app", "email"]),
     NotificationCategoryResponse(
-        code="collection_moderation", label="Collection moderation", channels=["in_app", "email"]
+        code="collection_moderation",
+        label=f"{APP_QEL_CONNECT_NAME} moderation",
+        channels=["in_app", "email"],
     ),
-    NotificationCategoryResponse(code="collections", label="Collections", channels=["in_app"]),
+    NotificationCategoryResponse(
+        code="collections", label=APP_QEL_CONNECT_NAME, channels=["in_app"]
+    ),
 )
 
 

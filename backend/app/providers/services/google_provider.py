@@ -18,6 +18,7 @@ from app.providers.services.reasoning_capabilities import (
     reasoning_capabilities,
     request_supports_reasoning,
 )
+from app.providers.services.tool_definitions import unique_tool_definitions
 from app.providers.services.types import (
     ChatGenerateRequest,
     ChatGenerateResponse,
@@ -131,7 +132,7 @@ class GoogleProvider:
     @staticmethod
     def _tool_declarations(request: ChatGenerateRequest) -> list[dict[str, Any]]:
         declarations: list[dict[str, Any]] = []
-        for tool in request.tools or []:
+        for tool in unique_tool_definitions(request.tools):
             function = tool.get("function") if isinstance(tool, dict) else None
             if not isinstance(function, dict):
                 continue

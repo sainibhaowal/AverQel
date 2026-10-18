@@ -35,10 +35,12 @@ export default function FeedbackDocsPage() {
       </DocsSection>
       <DocsSection title="Privacy and expectations">
         <p>
-          The submitter and authorized platform support staff can read and discuss a feedback
-          submission. Feedback is not end-to-end encrypted. The product does not provide public
-          roadmap voting, a community forum, or anonymous telemetry through this page. Do not
-          include credentials, recovery codes, customer files, or other sensitive data in feedback.
+          Feedback is attached to your account so you can follow replies. Assigned Feedback Managers
+          can read submitted text across workspaces to review and respond; their staff view does not
+          show your email address or account ID. Replies appear in your in-app feedback thread.
+          Feedback is not end-to-end encrypted. The product does not provide public roadmap voting,
+          a community forum, or anonymous telemetry through this page. Do not include credentials,
+          recovery codes, customer files, or other sensitive data in feedback.
         </p>
       </DocsSection>
     </DocsShell>

@@ -98,6 +98,22 @@ def test_opencode_zen_omits_reasoning_payload_for_required_tools() -> None:
     assert "reasoning" not in payload
 
 
+def test_opencode_zen_deduplicates_responses_function_tools() -> None:
+    definition = {
+        "type": "function",
+        "function": {
+            "name": "lookup",
+            "description": "Lookup data",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    }
+    request = replace(_request("gpt-5.4"), tools=[definition, {**definition}])
+
+    payload = OpenCodeZenProvider._build_responses_payload(request, stream=True)
+
+    assert [tool["name"] for tool in payload["tools"]] == ["lookup"]
+
+
 def test_opencode_zen_omits_output_override_when_model_does_not_advertise_one() -> None:
     request = replace(_request("nemotron-3.5-lightning-free"), max_tokens=None)
 

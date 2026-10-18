@@ -16,13 +16,21 @@ interface ConfDist {
   low: number;
 }
 
-interface AnalyticsData {
-  total_queries: number;
-  avg_confidence: number;
-  volume_over_time: VolumePoint[];
-  confidence_distribution: ConfDist;
-  api_latency_p95_ms: number | null;
-}
+type AnalyticsData =
+  | {
+      suppressed: true;
+      total_queries: null;
+      avg_confidence: null;
+      volume_over_time: [];
+      confidence_distribution: null;
+    }
+  | {
+      suppressed: false;
+      total_queries: number;
+      avg_confidence: number;
+      volume_over_time: VolumePoint[];
+      confidence_distribution: ConfDist;
+    };
 
 export default function AnalyticsDashboard() {
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -72,19 +80,30 @@ export default function AnalyticsDashboard() {
     );
   }
 
-  const {
-    total_queries,
-    avg_confidence,
-    volume_over_time,
-    confidence_distribution,
-    api_latency_p95_ms,
-  } = data;
-  const latencyDisplay =
-    api_latency_p95_ms === null || api_latency_p95_ms === undefined
-      ? null
-      : api_latency_p95_ms >= 1000
-        ? `${(api_latency_p95_ms / 1000).toFixed(2)}s`
-        : `${Math.round(api_latency_p95_ms)}ms`;
+  if (data.suppressed) {
+    return (
+      <div className="dashboard-theme-scope w-full space-y-8">
+        <DashboardSectionHeader
+          title="Analytics & Telemetry"
+          subtitle="Private, tenant-scoped service summaries"
+          icon={Activity}
+          accentClassName="bg-emerald-500 text-emerald-500"
+          accentGlowClassName="shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+          backHref="/dashboard"
+          backLabel="Back To Dashboard"
+        />
+        <section className="theme-panel rounded-[1.5rem] p-6">
+          <h2 className="text-foreground text-lg font-semibold">Analytics are hidden</h2>
+          <p className="text-muted-foreground mt-2 max-w-2xl text-sm leading-6">
+            Usage summaries appear only when at least five distinct workspace members contributed
+            during the last 30 days. Individual member activity is not shown.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  const { total_queries, avg_confidence, volume_over_time, confidence_distribution } = data;
   const totalInDist =
     confidence_distribution.high + confidence_distribution.medium + confidence_distribution.low ||
     1;
@@ -106,9 +125,7 @@ export default function AnalyticsDashboard() {
         backLabel="Back To Dashboard"
       />
 
-      <div
-        className={`grid gap-5 ${latencyDisplay !== null ? "md:grid-cols-3" : "md:grid-cols-2"}`}
-      >
+      <div className="grid gap-5 md:grid-cols-2">
         <MetricCard
           label="Total Queries"
           value={String(total_queries)}
@@ -119,13 +136,6 @@ export default function AnalyticsDashboard() {
           value={avg_confidence.toFixed(2)}
           valueClassName="text-primary dark:text-primary"
         />
-        {latencyDisplay !== null ? (
-          <MetricCard
-            label="API Latency (p95)"
-            value={latencyDisplay}
-            valueClassName="text-rose-700 dark:text-rose-300"
-          />
-        ) : null}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

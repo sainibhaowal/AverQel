@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import asdict, dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import AuthContext
-from app.auth.models.refresh_token import RefreshToken
 from app.auth.models.user import User
+from app.auth.models.user_role import UserRole
 from app.auth.repositories.refresh_tokens import RefreshTokensRepository
 from app.auth.repositories.roles import RolesRepository
 from app.auth.repositories.tenants import TenantsRepository
@@ -19,13 +19,8 @@ from app.auth.repositories.users import UsersRepository
 from app.auth.roles import is_platform_admin_email
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.documents.models.collection import DocumentCollection
 from app.documents.models.document import Document
 from app.platform.database.session import set_db_tenant_context
-from app.providers.models.provider_config import ProviderConfig
-from app.query.models.comment import Comment
-from app.query.models.conversation import Conversation
-from app.query.models.pinned_finding import PinnedFinding
 from app.query.models.query import Query
 from app.system.models.storage_cleanup import StorageCleanupJob
 from app.system.models.support_ticket_attachment import SupportTicketAttachment
@@ -33,17 +28,6 @@ from app.system.services.audit_service import AuditService
 from app.system.services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(slots=True)
-class AdminUserStats:
-    documents_count: int
-    queries_count: int
-    conversations_count: int
-    comments_count: int
-    pinned_findings_count: int
-    providers_count: int
-    storage_bytes: int
 
 
 @dataclass(slots=True)
@@ -55,26 +39,11 @@ class AdminUserSummary:
     is_active: bool
     totp_enabled: bool
     roles: list[str]
-    created_at: datetime
-    updated_at: datetime
-    last_login_at: datetime | None
-    stats: AdminUserStats
 
 
 @dataclass(slots=True)
 class AdminUserDeleteResult:
     deleted_user_id: uuid.UUID
-    deleted_email: str
-    counts: dict[str, int]
-
-
-@dataclass(slots=True)
-class AdminTenantStats:
-    users_count: int
-    active_users_count: int
-    documents_count: int
-    queries_count: int
-    collections_count: int
 
 
 @dataclass(slots=True)
@@ -83,9 +52,8 @@ class AdminTenantSummary:
     name: str
     created_at: datetime
     updated_at: datetime
-    stats: AdminTenantStats
+    seats_used: int
     status: str
-    last_activity_at: datetime | None
 
 
 class AdminUserService:
@@ -105,12 +73,10 @@ class AdminUserService:
             return []
 
         tenant = self.tenants.get_by_id(tenant_id)
-        user_ids = [user.id for user in users]
         role_map = {
             user.id: sorted(self.roles.get_role_names_for_user(tenant_id, user.id))
             for user in users
         }
-        stats = self._stats_map(tenant_id=tenant_id, user_ids=user_ids)
 
         return [
             AdminUserSummary(
@@ -121,10 +87,6 @@ class AdminUserService:
                 is_active=user.is_active,
                 totp_enabled=user.totp_enabled,
                 roles=role_map.get(user.id, []),
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-                last_login_at=user.last_login_at,
-                stats=stats[user.id],
             )
             for user in users
         ]
@@ -134,14 +96,11 @@ class AdminUserService:
         if not users:
             return []
 
-        user_ids = [user.id for user in users]
         tenant_map = {tenant.id: tenant for tenant in self.tenants.list_all()}
         role_map = {
             user.id: sorted(self.roles.get_role_names_for_user_global(user_id=user.id))
             for user in users
         }
-        stats = self._stats_map_global(user_ids=user_ids)
-
         summaries: list[AdminUserSummary] = []
         for user in users:
             tenant = tenant_map.get(user.tenant_id)
@@ -154,10 +113,6 @@ class AdminUserService:
                     is_active=user.is_active,
                     totp_enabled=user.totp_enabled,
                     roles=role_map.get(user.id, []),
-                    created_at=user.created_at,
-                    updated_at=user.updated_at,
-                    last_login_at=user.last_login_at,
-                    stats=stats[user.id],
                 )
             )
         return summaries
@@ -171,7 +126,6 @@ class AdminUserService:
                 status_code=404,
             )
         roles = sorted(self.roles.get_role_names_for_user(tenant_id, user.id))
-        stats = self._stats_map(tenant_id=tenant_id, user_ids=[user.id])[user.id]
         tenant = self.tenants.get_by_id(tenant_id)
         return AdminUserSummary(
             user_id=user.id,
@@ -181,10 +135,6 @@ class AdminUserService:
             is_active=user.is_active,
             totp_enabled=user.totp_enabled,
             roles=roles,
-            created_at=user.created_at,
-            updated_at=user.updated_at,
-            last_login_at=user.last_login_at,
-            stats=stats,
         )
 
     def get_user_global(self, *, user_id: uuid.UUID) -> AdminUserSummary:
@@ -196,7 +146,6 @@ class AdminUserService:
                 status_code=404,
             )
         roles = sorted(self.roles.get_role_names_for_user_global(user_id=user.id))
-        stats = self._stats_map_global(user_ids=[user.id])[user.id]
         tenant = self.tenants.get_by_id(user.tenant_id)
         return AdminUserSummary(
             user_id=user.id,
@@ -206,26 +155,88 @@ class AdminUserService:
             is_active=user.is_active,
             totp_enabled=user.totp_enabled,
             roles=roles,
-            created_at=user.created_at,
-            updated_at=user.updated_at,
-            last_login_at=user.last_login_at,
-            stats=stats,
         )
 
-    def list_recent_activity(
-        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, limit: int = 20
-    ) -> list[Any]:
-        return self.audit.repo.list_for_actor(
-            tenant_id=tenant_id,
-            actor_user_id=user_id,
-            limit=max(1, min(limit, 100)),
-        )
+    def update_staff_roles_global(
+        self,
+        *,
+        user_id: uuid.UUID,
+        role_names: Sequence[str],
+        actor: AuthContext,
+    ) -> AdminUserSummary:
+        """Grant or revoke only explicitly assigned content-bearing staff roles."""
+        permitted_staff_roles = {
+            "feedback_manager",
+            "collection_moderator",
+            "support_manager",
+        }
+        desired_roles = set(role_names)
+        if not desired_roles.issubset(permitted_staff_roles):
+            raise ApiError(
+                code="INVALID_STAFF_ROLE",
+                message="Only designated support, feedback, and moderation roles can be changed here.",
+                status_code=422,
+            )
 
-    def list_recent_activity_global(self, *, user_id: uuid.UUID, limit: int = 20) -> list[Any]:
-        return self.audit.repo.list_for_actor_global(
-            actor_user_id=user_id,
-            limit=max(1, min(limit, 100)),
-        )
+        set_db_tenant_context(self.db, "bypass")
+        user = self.users.get_by_id_global(user_id)
+        if user is None:
+            raise ApiError(
+                code="USER_NOT_FOUND",
+                message="User not found.",
+                status_code=404,
+            )
+
+        assigned_roles = self.roles.get_role_names_for_user_global(user_id=user.id)
+        current_staff_roles = assigned_roles & permitted_staff_roles
+        if not assigned_roles - permitted_staff_roles:
+            raise ApiError(
+                code="BASE_ROLE_REQUIRED",
+                message="A user must retain a normal account role in addition to staff roles.",
+                status_code=409,
+            )
+        if current_staff_roles != desired_roles:
+            for role_name in sorted(desired_roles - current_staff_roles):
+                role = self.roles.get_by_name(role_name)
+                if role is None:
+                    raise ApiError(
+                        code="STAFF_ROLE_NOT_CONFIGURED",
+                        message="Run the latest database migration before assigning staff roles.",
+                        status_code=503,
+                    )
+                self.db.add(
+                    UserRole(
+                        tenant_id=user.tenant_id,
+                        user_id=user.id,
+                        role_id=role.id,
+                    )
+                )
+
+            for role_name in sorted(current_staff_roles - desired_roles):
+                role = self.roles.get_by_name(role_name)
+                if role is not None:
+                    self.db.execute(
+                        delete(UserRole).where(
+                            UserRole.tenant_id == user.tenant_id,
+                            UserRole.user_id == user.id,
+                            UserRole.role_id == role.id,
+                        )
+                    )
+
+            self.audit.write_event(
+                tenant_id=actor.tenant_id,
+                action="admin.user.staff_roles.updated",
+                resource_type="user",
+                resource_id=str(user.id),
+                actor_user_id=actor.user_id,
+                details={
+                    "roles": ",".join(sorted(desired_roles)),
+                    "target_tenant_id": user.tenant_id,
+                },
+            )
+            self.db.commit()
+
+        return self.get_user_global(user_id=user.id)
 
     def list_tenants_global(self) -> list[AdminTenantSummary]:
         # Include empty tenants so platform operators can see their full lifecycle.
@@ -233,16 +244,15 @@ class AdminUserService:
         if not tenants:
             return []
         tenant_ids = [tenant.id for tenant in tenants]
-        stats = self._tenant_stats_map(tenant_ids=tenant_ids)
+        seats_used = self._tenant_seat_count_map(tenant_ids=tenant_ids)
         return [
             AdminTenantSummary(
                 tenant_id=tenant.id,
                 name=tenant.name,
                 created_at=tenant.created_at,
                 updated_at=tenant.updated_at,
-                stats=stats[tenant.id],
-                status="active" if stats[tenant.id].users_count else "empty",
-                last_activity_at=tenant.updated_at,
+                seats_used=seats_used.get(tenant.id, 0),
+                status="active" if seats_used.get(tenant.id, 0) else "empty",
             )
             for tenant in tenants
         ]
@@ -273,7 +283,6 @@ class AdminUserService:
             resource_type="user",
             resource_id=str(user.id),
             actor_user_id=actor.user_id,
-            details={"target_email": user.email},
         )
         self.db.commit()
 
@@ -299,7 +308,6 @@ class AdminUserService:
             resource_type="user",
             resource_id=str(user.id),
             actor_user_id=actor.user_id,
-            details={"target_email": user.email},
         )
         self.db.commit()
 
@@ -328,7 +336,6 @@ class AdminUserService:
             resource_type="user",
             resource_id=str(user.id),
             actor_user_id=actor.user_id,
-            details={"target_email": user.email},
         )
         self.db.commit()
 
@@ -344,16 +351,6 @@ class AdminUserService:
             target_user_id=target_user_id,
             actor=actor,
             allow_self=False,
-        )
-
-        counts = asdict(self._stats_map(tenant_id=tenant_id, user_ids=[user.id])[user.id])
-        counts["refresh_tokens"] = self._count_for_query(
-            select(func.count())
-            .select_from(self.refresh_tokens_model)
-            .where(
-                self.refresh_tokens_model.tenant_id == tenant_id,
-                self.refresh_tokens_model.user_id == user.id,
-            )
         )
 
         objects = list(
@@ -374,10 +371,11 @@ class AdminUserService:
                 )
             ).all()
         )
-        cleanup_pending = 0
         for bucket, object_key in objects:
             try:
-                self.storage.delete_object(bucket=str(bucket), object_key=str(object_key))
+                self.storage.delete_object(
+                    bucket=str(bucket), object_key=str(object_key), raise_on_error=True
+                )
             except Exception:  # noqa: BLE001
                 self.db.add(
                     StorageCleanupJob(
@@ -388,16 +386,8 @@ class AdminUserService:
                         last_error="storage_delete_failed",
                     )
                 )
-                cleanup_pending += 1
                 logger.warning(
-                    "Failed to delete user-owned object from storage.",
-                    extra={
-                        "tenant_id": str(tenant_id),
-                        "user_id": str(user.id),
-                        "bucket": str(bucket),
-                        "object_key": str(object_key),
-                    },
-                    exc_info=True,
+                    "User-owned file cleanup was queued after object deletion failed.",
                 )
 
         for bucket, object_key in attachment_objects:
@@ -418,15 +408,8 @@ class AdminUserService:
                         last_error="support_attachment_storage_delete_failed",
                     )
                 )
-                cleanup_pending += 1
                 logger.warning(
-                    "Failed to delete user-owned support attachment from storage.",
-                    extra={
-                        "tenant_id": str(tenant_id),
-                        "user_id": str(user.id),
-                        "object_key": str(object_key),
-                    },
-                    exc_info=True,
+                    "User support attachment cleanup was queued after object deletion failed.",
                 )
 
         self.refresh_tokens.revoke_all_for_user(
@@ -457,24 +440,10 @@ class AdminUserService:
             resource_type="user",
             resource_id=str(user.id),
             actor_user_id=actor.user_id,
-            details={
-                "target_email": user.email,
-                **{k: str(v) for k, v in counts.items()},
-            },
         )
-        counts["storage_cleanup_pending"] = cleanup_pending
-        counts["support_attachments"] = len(attachment_objects)
         self.db.commit()
 
-        return AdminUserDeleteResult(
-            deleted_user_id=user.id,
-            deleted_email=user.email,
-            counts=counts,
-        )
-
-    @property
-    def refresh_tokens_model(self) -> type[RefreshToken]:
-        return RefreshToken
+        return AdminUserDeleteResult(deleted_user_id=user.id)
 
     def _guard_target_user(
         self,
@@ -508,154 +477,11 @@ class AdminUserService:
     def _is_bootstrap_super_admin_email(self, email: str) -> bool:
         return is_platform_admin_email(email, self.settings.bootstrap_super_admin_emails)
 
-    def _count_for_query(self, statement: Any) -> int:
-        return int(self.db.execute(statement).scalar_one() or 0)
-
-    def _stats_map(
-        self, *, tenant_id: uuid.UUID, user_ids: list[uuid.UUID]
-    ) -> dict[uuid.UUID, AdminUserStats]:
-        def grouped(model: Any, field: Any) -> dict[uuid.UUID, int]:
-            rows = self.db.execute(
-                select(field, func.count())
-                .select_from(model)
-                .where(model.tenant_id == tenant_id, field.in_(user_ids))
-                .group_by(field)
-            ).all()
-            return {row[0]: int(row[1]) for row in rows}
-
-        documents = grouped(Document, Document.uploaded_by_user_id)
-        queries = grouped(Query, Query.user_id)
-        conversations = grouped(Conversation, Conversation.user_id)
-        comments = grouped(Comment, Comment.user_id)
-        pinned = grouped(PinnedFinding, PinnedFinding.user_id)
-        providers_count = self._count_for_query(
-            select(func.count())
-            .select_from(ProviderConfig)
-            .where(ProviderConfig.tenant_id == tenant_id)
-        )
-
-        storage_rows = self.db.execute(
-            select(
-                Document.uploaded_by_user_id,
-                func.coalesce(func.sum(Document.size_bytes), 0),
-            )
-            .select_from(Document)
-            .where(
-                Document.tenant_id == tenant_id,
-                Document.uploaded_by_user_id.in_(user_ids),
-                Document.is_deleted.is_(False),
-            )
-            .group_by(Document.uploaded_by_user_id)
+    def _tenant_seat_count_map(self, *, tenant_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+        set_db_tenant_context(self.db, "bypass")
+        rows = self.db.execute(
+            select(User.tenant_id, func.count())
+            .where(User.tenant_id.in_(tenant_ids))
+            .group_by(User.tenant_id)
         ).all()
-        storage = {row[0]: int(row[1] or 0) for row in storage_rows}
-
-        return {
-            user_id: AdminUserStats(
-                documents_count=documents.get(user_id, 0),
-                queries_count=queries.get(user_id, 0),
-                conversations_count=conversations.get(user_id, 0),
-                comments_count=comments.get(user_id, 0),
-                pinned_findings_count=pinned.get(user_id, 0),
-                providers_count=providers_count,
-                storage_bytes=storage.get(user_id, 0),
-            )
-            for user_id in user_ids
-        }
-
-    def _stats_map_global(self, *, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, AdminUserStats]:
-        def grouped(model: Any, field: Any) -> dict[uuid.UUID, int]:
-            set_db_tenant_context(self.db, "bypass")
-            rows = self.db.execute(
-                select(field, func.count())
-                .select_from(model)
-                .where(field.in_(user_ids))
-                .group_by(field)
-            ).all()
-            return {row[0]: int(row[1]) for row in rows}
-
-        documents = grouped(Document, Document.uploaded_by_user_id)
-        queries = grouped(Query, Query.user_id)
-        conversations = grouped(Conversation, Conversation.user_id)
-        comments = grouped(Comment, Comment.user_id)
-        pinned = grouped(PinnedFinding, PinnedFinding.user_id)
-        provider_rows = self.db.execute(
-            select(ProviderConfig.tenant_id, func.count())
-            .select_from(ProviderConfig)
-            .group_by(ProviderConfig.tenant_id)
-        ).all()
-        provider_counts_by_tenant = {row[0]: int(row[1]) for row in provider_rows}
-
-        user_tenants = {
-            user.id: user.tenant_id
-            for user in self.db.execute(select(User).where(User.id.in_(user_ids))).scalars()
-        }
-        storage_rows = self.db.execute(
-            select(
-                Document.uploaded_by_user_id,
-                func.coalesce(func.sum(Document.size_bytes), 0),
-            )
-            .select_from(Document)
-            .where(
-                Document.uploaded_by_user_id.in_(user_ids),
-                Document.is_deleted.is_(False),
-            )
-            .group_by(Document.uploaded_by_user_id)
-        ).all()
-        storage = {row[0]: int(row[1] or 0) for row in storage_rows}
-
-        return {
-            user_id: AdminUserStats(
-                documents_count=documents.get(user_id, 0),
-                queries_count=queries.get(user_id, 0),
-                conversations_count=conversations.get(user_id, 0),
-                comments_count=comments.get(user_id, 0),
-                pinned_findings_count=pinned.get(user_id, 0),
-                providers_count=provider_counts_by_tenant.get(user_tenants.get(user_id), 0),
-                storage_bytes=storage.get(user_id, 0),
-            )
-            for user_id in user_ids
-        }
-
-    def _tenant_stats_map(
-        self,
-        *,
-        tenant_ids: list[uuid.UUID],
-    ) -> dict[uuid.UUID, AdminTenantStats]:
-        def grouped(
-            model: Any,
-            field: Any,
-            extra_where: tuple[Any, ...] = (),
-        ) -> dict[uuid.UUID, int]:
-            set_db_tenant_context(self.db, "bypass")
-            rows = self.db.execute(
-                select(field, func.count())
-                .select_from(model)
-                .where(field.in_(tenant_ids), *extra_where)
-                .group_by(field)
-            ).all()
-            return {row[0]: int(row[1]) for row in rows}
-
-        user_counts = grouped(self.users_model, self.users_model.tenant_id)
-        active_user_counts = grouped(
-            self.users_model,
-            self.users_model.tenant_id,
-            extra_where=(self.users_model.is_active.is_(True),),
-        )
-        document_counts = grouped(Document, Document.tenant_id)
-        query_counts = grouped(Query, Query.tenant_id)
-        collection_counts = grouped(DocumentCollection, DocumentCollection.tenant_id)
-
-        return {
-            tenant_id: AdminTenantStats(
-                users_count=user_counts.get(tenant_id, 0),
-                active_users_count=active_user_counts.get(tenant_id, 0),
-                documents_count=document_counts.get(tenant_id, 0),
-                queries_count=query_counts.get(tenant_id, 0),
-                collections_count=collection_counts.get(tenant_id, 0),
-            )
-            for tenant_id in tenant_ids
-        }
-
-    @property
-    def users_model(self) -> type[User]:
-        return User
+        return {tenant_id: int(count) for tenant_id, count in rows}

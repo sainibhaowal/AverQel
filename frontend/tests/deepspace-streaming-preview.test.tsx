@@ -13,7 +13,7 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceMarkdownRenderer", () =
 import DeepSpaceThread from "../app/dashboard/deepspace/_components/DeepSpaceThread";
 
 describe("DeepSpaceThread streaming preview", () => {
-  it("shows the dots only while the assistant has no streamed progress", () => {
+  it("shows the wormhole only while the assistant has no streamed progress", () => {
     render(
       <DeepSpaceThread
         messages={[
@@ -167,7 +167,7 @@ describe("DeepSpaceThread streaming preview", () => {
     expect(screen.queryByRole("status", { name: /preparing a response/i })).not.toBeInTheDocument();
   });
 
-  it("keeps the first-frame dots out of the way once thinking content arrives", () => {
+  it("keeps the first-frame wormhole out of the way once thinking content arrives", () => {
     render(
       <DeepSpaceThread
         messages={[

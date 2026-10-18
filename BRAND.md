@@ -5,11 +5,36 @@ rules for using them.
 
 ## Official assets
 
-The repository’s official assets currently include:
+The repository’s official product assets are:
 
-- `frontend/public/logo_icon.svg` — scalable application icon;
-- `frontend/public/logo_icon.png` — raster application icon; and
-- `Docs/brand/averqel-readme-banner.svg` — repository banner artwork.
+- `frontend/public/brand/AverQel_Icon.svg` — the shared application icon; and
+- `frontend/public/brand/AverQel_Text.svg` — the shared text wordmark; and
+- `frontend/public/brand/AverQel_Exact_Logo.svg` — the complete login logo artwork.
+- `frontend/public/AverQel Logo/deepspace-telemetry-parabola.svg` — the Qel Connect feature mark.
+
+The landing page, web workspace, documentation shell, Electron title bar, and
+desktop installer metadata use the icon and text wordmark. The login page uses
+the complete logo artwork and its `INTELLIGENCE ALL YOU NEED` tagline. Electron's
+platform-specific PNG, ICO, and ICNS files are generated from the canonical
+icon for operating-system packaging. DeepSpace navigation uses its dedicated
+RGB orbital logo at
+`frontend/public/DeepSpace Logo/DeepSpace_OrangeGreenBlue_LogoOnly_Final.svg`
+next to the visible “DeepSpace” label. The repository banner is maintained
+separately under `Docs/brand/`.
+
+Qel Connect is the user-facing name for the shared project-space product
+formerly exposed as Collections. Use the telemetry parabola mark beside that
+label in product surfaces. Keep `/collections` routes, API fields, permission
+codes, and storage identifiers unchanged for compatibility.
+
+DeepSpace loading and welcome indicators use
+`frontend/public/AverQel Logo/deepspace-wormhole-aperture.svg`; only its outer
+capsule aperture rotates clockwise while the internal star remains fixed.
+
+The login artwork remains unchanged as the accessible base image. A decorative
+CSS layer may add a right-to-left RGB sweep over only the `AVER` and `EL`
+letter regions; the `Q` stays in its original colors and the source SVG is not
+modified.
 
 The official product name is `AverQel`. Keep the capitalization exactly as
 shown.

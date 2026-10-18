@@ -32,6 +32,38 @@ _BULK_TEXT_CONTENT_TYPES = {
     "application/json",
     "application/x-ipynb+json",
 }
+_EXTRACTABLE_CONTENT_TYPES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.oasis.opendocument.text",
+    "application/vnd.oasis.opendocument.presentation",
+    "application/vnd.oasis.opendocument.spreadsheet",
+    "application/msword",
+    "application/vnd.ms-word",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.ms-excel",
+    "text/csv",
+    "text/tab-separated-values",
+    "text/plain",
+    "text/markdown",
+    "text/x-markdown",
+    "application/json",
+    "application/x-ipynb+json",
+    "application/xml",
+    "application/yaml",
+    "application/x-yaml",
+    "application/rtf",
+    "text/rtf",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/tiff",
+    "image/webp",
+    "image/bmp",
+    "image/gif",
+}
 
 
 def _bounded_extraction_payload(payload: bytes, content_type: str) -> bytes:
@@ -49,14 +81,25 @@ def _bounded_extraction_payload(payload: bytes, content_type: str) -> bytes:
     return preview[:boundary] if boundary > 0 else preview
 
 
+def is_extraction_supported(content_type: str) -> bool:
+    """Whether the configured Library extraction path handles this format."""
+    return content_type.casefold() in _EXTRACTABLE_CONTENT_TYPES
+
+
 def finalize_upload(
     db: Session,
     *,
     settings: Settings,
     upload: DeepSpaceLibraryUpload,
     payload: bytes,
+    extract_content: bool = True,
 ) -> DeepSpaceWorkspaceFile:
-    """Create the normal Library file from a verified assembled upload payload."""
+    """Create the normal Library file from a verified assembled upload payload.
+
+    Workers can defer optional OCR/document parsing until after the durable file
+    has been published. The default preserves synchronous behavior for legacy
+    callers.
+    """
     if len(payload) != upload.expected_size:
         raise ApiError(
             code="UPLOAD_SIZE_MISMATCH",
@@ -70,38 +113,8 @@ def finalize_upload(
     if len(payload) > _MAX_INLINE_TEXT_BYTES:
         is_binary = True
     storage_service = LibraryStorageService(settings)
-    extraction_attempted = content_type in {
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/vnd.oasis.opendocument.text",
-        "application/vnd.oasis.opendocument.presentation",
-        "application/vnd.oasis.opendocument.spreadsheet",
-        "application/msword",
-        "application/vnd.ms-word",
-        "application/vnd.ms-powerpoint",
-        "application/vnd.ms-excel",
-        "text/csv",
-        "text/tab-separated-values",
-        "text/plain",
-        "text/markdown",
-        "text/x-markdown",
-        "application/json",
-        "application/x-ipynb+json",
-        "application/xml",
-        "application/yaml",
-        "application/x-yaml",
-        "application/rtf",
-        "text/rtf",
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-        "image/tiff",
-        "image/webp",
-        "image/bmp",
-        "image/gif",
-    }
+    extraction_supported = is_extraction_supported(content_type)
+    extraction_attempted = extraction_supported and extract_content
     extraction = (
         storage_service.extract(
             filename=upload.filename,
@@ -110,7 +123,11 @@ def finalize_upload(
             tenant_id=upload.tenant_id,
         )
         if extraction_attempted
-        else {"text": None}
+        else (
+            {"state": "processing", "text_available": False}
+            if extraction_supported
+            else {"text": None}
+        )
     )
     extraction_status = safe_extraction_status(extraction, attempted=extraction_attempted)
     upload_metadata = dict(upload.metadata_json or {})

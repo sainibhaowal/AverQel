@@ -29,8 +29,8 @@ const descriptions: Record<string, string> = {
   Memory: "Review and manage DeepSpace memory controls and saved facts available to your account.",
   Voice:
     "Optional speech input and spoken responses when the realtime voice services are configured.",
-  Collections:
-    "Invite members, share selected documents, and collaborate within a collection boundary.",
+  "Qel Connect":
+    "Invite members, share selected documents, and collaborate within a Qel Connect boundary.",
   "AI providers":
     "Configure supported model providers and understand which features depend on each provider.",
   "MCP connectors":

@@ -10,7 +10,6 @@ import {
   FileClock,
   FileSearch,
   FileText,
-  FolderKanban,
   History,
   Layers3,
   RefreshCcw,
@@ -35,12 +34,27 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import UploadModal from "@/app/components/dashboard/documents/UploadModal";
 import ParticleAccelerator from "@/app/components/dashboard/ParticleAccelerator";
 import DeepSpaceMark from "@/app/components/ui/DeepSpaceMark";
+import QelConnectMark from "@/app/components/ui/QelConnectMark";
+import { QEL_CONNECT_NAME } from "@/lib/brand";
 import { hasAdminRole, hasProviderAccess } from "@/lib/roles";
 import { fetchWithAuth } from "../../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 import { useRealtimeEvents, type RealtimeConnectionState } from "@/lib/realtime";
+
+const DASHBOARD_DEEPSPACE_LOGO_SOURCE =
+  "/DeepSpace Logo/DeepSpace_Logo_Only_NoBlack_Exact.svg";
+
+function DashboardDeepSpaceMark({ size = 24 }: { size?: number }) {
+  return (
+    <DeepSpaceMark
+      size={size}
+      visualScale={1.3}
+      source={DASHBOARD_DEEPSPACE_LOGO_SOURCE}
+    />
+  );
+}
 
 interface DashboardStats {
   total_documents: number;
@@ -461,8 +475,8 @@ export default function DashboardPage() {
               <p
                 className={`text-muted-foreground max-w-lg text-sm leading-relaxed font-medium sm:text-base`}
               >
-                Manage your documents, organize collections, ask grounded questions, and get work
-                done with DeepSpace.
+                Manage your documents, organize Qel Connect spaces, ask grounded questions, and get
+                work done with DeepSpace.
               </p>
             </div>
 
@@ -589,11 +603,11 @@ export default function DashboardPage() {
               accent: "border-cyan-500/20 bg-cyan-500/10 text-cyan-800 dark:text-cyan-300",
             },
             {
-              title: "Collections",
+              title: QEL_CONNECT_NAME,
               detail: "Keep related documents together",
-              count: loading ? "…" : `${overview.collections.length} collections`,
+              count: loading ? "…" : `${overview.collections.length} spaces`,
               href: "/dashboard/collections",
-              icon: FolderKanban,
+              icon: QelConnectMark,
               accent: "border-violet-500/20 bg-violet-500/10 text-violet-800 dark:text-violet-300",
             },
             {
@@ -610,7 +624,7 @@ export default function DashboardPage() {
               detail: "Work with an agent, tools, and memory",
               count: services.agent === "ready" ? "Ready to work" : "Status unavailable",
               href: "/dashboard/deepspace",
-              icon: DeepSpaceMark,
+              icon: DashboardDeepSpaceMark,
               accent: "border-indigo-500/20 bg-indigo-500/10 text-indigo-800 dark:text-indigo-300",
             },
           ].map((destination) => {
@@ -842,8 +856,8 @@ export default function DashboardPage() {
 
         <div className="theme-panel min-w-0 rounded-[1.25rem] p-4">
           <SectionHeader
-            eyebrow="Collections"
-            title="Organized document sets"
+            eyebrow={QEL_CONNECT_NAME}
+            title="Organized project spaces"
             chip={`${overview.collections.length} visible`}
           />
           <div className="mt-3 space-y-0.5">
@@ -868,7 +882,7 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="theme-accent-pill flex h-9 w-9 items-center justify-center rounded-lg">
-                        <FolderKanban size={15} />
+                        <QelConnectMark size={20} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-3">
@@ -896,9 +910,9 @@ export default function DashboardPage() {
               })
             ) : (
               <EmptyState
-                icon={FolderKanban}
-                title="No collections yet"
-                body="Create collections to keep document sets focused and reusable."
+                icon={QelConnectMark}
+                title={`No ${QEL_CONNECT_NAME} spaces yet`}
+                body={`Create ${QEL_CONNECT_NAME} spaces to keep document sets focused and reusable.`}
               />
             )}
           </div>
@@ -1841,7 +1855,7 @@ function getActivityConfig(event: DashboardActivityItem) {
 
   if (a.includes("agent") || a.includes("autonomous") || a.includes("deepspace")) {
     return {
-      icon: DeepSpaceMark,
+      icon: DashboardDeepSpaceMark,
       label: "Autonomous Action",
       color: "text-primary",
       detail: "DeepSpace Intelligence",

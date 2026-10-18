@@ -28,17 +28,24 @@ import toast from "react-hot-toast";
 import { fetchWithAuth } from "@/lib/api";
 import { getRoleLabel } from "@/lib/roles";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import ProfileIdentityEditor, {
+  type ProfileIdentityDraft,
+} from "@/app/components/profile/ProfileIdentityEditor";
+import { useAuth } from "@/app/context/AuthContext";
 
 interface ProfileData {
   user_id: string;
   tenant_id: string;
   collection_code: string;
   email: string;
+  display_name: string | null;
+  avatar: string | null;
   roles: string[];
   status: string;
   created_at: string;
   last_login_at: string | null;
   totp_enabled: boolean;
+  onboarding_completed: boolean;
 }
 
 const sectionVariants = {
@@ -56,6 +63,7 @@ const sectionVariants = {
 };
 
 export default function ProfilePage() {
+  const { updateUserProfile } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -206,6 +214,7 @@ export default function ProfilePage() {
       setBackupCodes(data.backup_codes);
       setTwoFaStep("backup");
       if (profile) setProfile({ ...profile, totp_enabled: true });
+      updateUserProfile({ totp_enabled: true });
     } catch (e) {
       setTwoFaError(e instanceof Error ? e.message : "Confirmation failed.");
     } finally {
@@ -226,6 +235,7 @@ export default function ProfilePage() {
         throw new Error(err.detail || err.message || "Failed to disable 2FA.");
       }
       if (profile) setProfile({ ...profile, totp_enabled: false });
+      updateUserProfile({ totp_enabled: false });
       setShowDisable2fa(false);
       setDisablePassword("");
     } catch (e) {
@@ -257,10 +267,37 @@ export default function ProfilePage() {
     }
     try {
       await navigator.clipboard.writeText(collectionCode);
-      toast.success("Collection ID copied.");
+      toast.success("Qel Connect ID copied.");
     } catch {
-      toast.error("Failed to copy collection ID.");
+      toast.error("Failed to copy Qel Connect ID.");
     }
+  };
+
+  const saveIdentity = async (draft: ProfileIdentityDraft) => {
+    const response = (await fetchWithAuth("/auth/profile", {
+      method: "PUT",
+      body: JSON.stringify(draft),
+    })) as Response;
+    if (!response.ok) {
+      let errorMessage = "Profile changes could not be saved.";
+      try {
+        const data = (await response.json()) as {
+          detail?: string;
+          error?: { message?: string };
+        };
+        errorMessage = data.error?.message || data.detail || errorMessage;
+      } catch {
+        // Keep a clear default message if the API did not return JSON.
+      }
+      throw new Error(errorMessage);
+    }
+    const updated = (await response.json()) as ProfileData;
+    setProfile(updated);
+    updateUserProfile({
+      display_name: updated.display_name,
+      avatar: updated.avatar,
+    });
+    toast.success("Profile updated.");
   };
 
   const profileHeader = (
@@ -313,6 +350,21 @@ export default function ProfilePage() {
     <div className="dashboard-theme-scope w-full space-y-8">
       {profileHeader}
 
+      <section className="settings-section p-5 sm:p-7">
+        <div className="mb-5">
+          <h2 className="text-foreground text-base font-semibold">Personal profile</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Set the name and avatar shown in your AverQel workspace. Your email and account
+            permissions stay the same.
+          </p>
+        </div>
+        <ProfileIdentityEditor
+          displayName={profile.display_name}
+          avatar={profile.avatar}
+          onSave={saveIdentity}
+        />
+      </section>
+
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
         {/* Core Identity */}
         <motion.div
@@ -349,7 +401,7 @@ export default function ProfilePage() {
               </div>
               <div>
                 <p className="text-muted-foreground text-[10px] font-bold tracking-tighter uppercase">
-                  Collection ID
+                  Qel Connect ID
                 </p>
                 <div className="mt-1 flex items-center gap-2">
                   <p className="text-muted-foreground font-mono text-xs tracking-[0.2em] uppercase">
@@ -359,7 +411,7 @@ export default function ProfilePage() {
                     type="button"
                     onClick={() => void handleCopyCollectionCode()}
                     className="border-glass-border text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/10 rounded-lg border px-2 py-1 transition-all"
-                    aria-label="Copy collection ID"
+                    aria-label="Copy Qel Connect ID"
                   >
                     <Copy size={12} />
                   </button>

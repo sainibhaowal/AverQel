@@ -728,7 +728,13 @@ class ProviderModelsService:
             base_url=provider.api_base_url,
             api_key=api_key,
             auth_mode=provider.auth_mode,
-            metadata={"display_name": provider.display_name},
+            metadata={
+                **dict(provider.metadata_json or {}),
+                "display_name": provider.display_name,
+                **(
+                    {"owner_user_id": str(provider.owner_user_id)} if provider.owner_user_id else {}
+                ),
+            },
         )
         try:
             runtime = self.registry.get_chat_provider_from_selection(candidate)
@@ -820,5 +826,11 @@ class ProviderModelsService:
             base_url=provider.api_base_url,
             api_key=api_key,
             auth_mode=provider.auth_mode,
-            metadata={"display_name": provider.display_name},
+            metadata={
+                **dict(provider.metadata_json or {}),
+                "display_name": provider.display_name,
+                **(
+                    {"owner_user_id": str(provider.owner_user_id)} if provider.owner_user_id else {}
+                ),
+            },
         )

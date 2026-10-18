@@ -102,7 +102,7 @@ def _get_collection_or_404(
     if coll is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     return coll
@@ -124,7 +124,7 @@ def _enforce_collection_admin(
         return
     raise ApiError(
         code="FORBIDDEN",
-        message="Owner access for this collection is required.",
+        message="Owner access for this Qel Connect space is required.",
         status_code=403,
     )
 
@@ -144,7 +144,7 @@ def _enforce_collection_access(
     if permission is None:
         raise ApiError(
             code="FORBIDDEN",
-            message="You do not have access to this collection.",
+            message="You do not have access to this Qel Connect space.",
             status_code=403,
         )
     return str(getattr(permission, "role", "shared"))
@@ -163,7 +163,7 @@ def _enforce_collection_access_global(
     if permission is None:
         raise ApiError(
             code="FORBIDDEN",
-            message="You do not have access to this collection.",
+            message="You do not have access to this Qel Connect space.",
             status_code=403,
         )
     return str(getattr(permission, "role", "shared"))
@@ -266,7 +266,7 @@ def _validate_media_reference(
     if not normalized_key.startswith(expected_prefix) or ".." in normalized_key.split("/"):
         raise ApiError(
             code="FORBIDDEN",
-            message="The media object is not owned by this collection tenant.",
+            message="The media object is not owned by this Qel Connect tenant.",
             status_code=403,
         )
     return parsed_media_id, normalized_key
@@ -315,7 +315,7 @@ def _validate_registered_media(
     ):
         raise ApiError(
             code="FORBIDDEN",
-            message="The media object is not available to this collection member.",
+            message="The media object is not available to this Qel Connect member.",
             status_code=403,
         )
     return media
@@ -392,7 +392,7 @@ def _generate_connection_code(repo: CollectionsRepository) -> str:
             return code
     raise ApiError(
         code="INTERNAL_SERVER_ERROR",
-        message="Failed to generate a unique collection ID.",
+        message="Failed to generate a unique Qel Connect ID.",
         status_code=500,
     )
 
@@ -565,7 +565,7 @@ def create_collection(
         db.rollback()
         raise ApiError(
             code="INTERNAL_SERVER_ERROR",
-            message="Failed to create collection.",
+            message="Failed to create Qel Connect.",
             status_code=500,
         ) from exc
 
@@ -706,7 +706,7 @@ def get_collection(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     requester_access_role = _enforce_collection_access_global(
@@ -750,7 +750,7 @@ def list_collection_notifications_for_collection(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     _enforce_collection_access_global(
@@ -863,7 +863,7 @@ def delete_collection(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     requester_role = _normalize_member_role(
@@ -876,7 +876,7 @@ def delete_collection(
     if requester_role != "owner":
         raise ApiError(
             code="FORBIDDEN",
-            message="Only the collection owner can delete this collection.",
+            message="Only the Qel Connect owner can delete this Qel Connect space.",
             status_code=403,
         )
 
@@ -915,7 +915,7 @@ def delete_collection(
                 collection_id=None,
                 collection_name=collection.name,
                 event_type="collection_deleted",
-                message=f'{actor_email} deleted the collection "{collection.name}".',
+                message=f'{actor_email} deleted the Qel Connect space "{collection.name}".',
             )
         repo.delete(
             tenant_id=collection.tenant_id,
@@ -927,7 +927,7 @@ def delete_collection(
         db.rollback()
         raise ApiError(
             code="INTERNAL_SERVER_ERROR",
-            message="Failed to delete collection.",
+            message="Failed to delete Qel Connect.",
             status_code=500,
         ) from exc
 
@@ -951,7 +951,7 @@ async def add_documents_to_collection(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     requester_role = _normalize_member_role(
@@ -964,7 +964,7 @@ async def add_documents_to_collection(
     if not _is_connected_role(requester_role):
         raise ApiError(
             code="FORBIDDEN",
-            message="Approve the collection connection before adding documents.",
+            message="Approve the Qel Connect connection before adding documents.",
             status_code=403,
         )
 
@@ -979,7 +979,7 @@ async def add_documents_to_collection(
         db.rollback()
         raise ApiError(
             code="INTERNAL_SERVER_ERROR",
-            message="Failed to add documents to collection.",
+            message="Failed to add documents to Qel Connect.",
             status_code=500,
         ) from exc
 
@@ -1014,7 +1014,7 @@ def list_collection_documents(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     requester_role = _normalize_member_role(
@@ -1027,7 +1027,7 @@ def list_collection_documents(
     if not _is_connected_role(requester_role):
         raise ApiError(
             code="FORBIDDEN",
-            message="Approve the collection connection before using shared documents.",
+            message="Approve the Qel Connect connection before using shared documents.",
             status_code=403,
         )
 
@@ -1064,7 +1064,7 @@ async def remove_documents_from_collection(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     requester_role = _normalize_member_role(
@@ -1077,7 +1077,7 @@ async def remove_documents_from_collection(
     if not _is_connected_role(requester_role):
         raise ApiError(
             code="FORBIDDEN",
-            message="Approve the collection connection before changing documents.",
+            message="Approve the Qel Connect connection before changing documents.",
             status_code=403,
         )
 
@@ -1092,7 +1092,7 @@ async def remove_documents_from_collection(
         db.rollback()
         raise ApiError(
             code="INTERNAL_SERVER_ERROR",
-            message="Failed to remove documents from collection.",
+            message="Failed to remove documents from Qel Connect.",
             status_code=500,
         ) from exc
 
@@ -1128,7 +1128,7 @@ def add_permissions(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     requester_role = _normalize_member_role(
@@ -1141,7 +1141,7 @@ def add_permissions(
     if requester_role != "owner":
         raise ApiError(
             code="FORBIDDEN",
-            message="Only the collection owner can send invitations.",
+            message="Only the Qel Connect owner can send invitations.",
             status_code=403,
         )
 
@@ -1151,13 +1151,13 @@ def add_permissions(
     if target_user is None or not target_user.is_active:
         raise ApiError(
             code="INVALID_COLLECTION_MEMBER",
-            message="That collection ID was not found.",
+            message="That Qel Connect ID was not found.",
             status_code=404,
         )
     if target_user.id == auth.user_id:
         raise ApiError(
             code="INVALID_COLLECTION_MEMBER",
-            message="Use another user's collection ID to connect.",
+            message="Use another user's Qel Connect ID to connect.",
             status_code=400,
         )
 
@@ -1188,24 +1188,27 @@ def add_permissions(
             if (
                 existing_col
                 and existing_col.description
-                and "1:1 Connection" in existing_col.description
+                and any(
+                    marker in existing_col.description
+                    for marker in ("1:1 Connection", "1:1 Qel Connect")
+                )
             ):
                 raise ApiError(
                     code="DUPLICATE_CONNECTION",
-                    message="Connection already exists!",
+                    message="Qel Connect connection already exists!",
                     status_code=400,
                 )
 
     if repo.count_connected_members_global(collection_id=collection.id) >= 10:
         raise ApiError(
             code="COLLECTION_BRIDGE_FULL",
-            message="This collection already has its maximum ten members.",
+            message="This Qel Connect space already has its maximum ten members.",
             status_code=400,
         )
     if repo.has_pending_invite_global(collection_id=collection.id):
         raise ApiError(
             code="COLLECTION_BRIDGE_PENDING",
-            message="This collection already has a pending connection request.",
+            message="This Qel Connect space already has a pending connection request.",
             status_code=400,
         )
 
@@ -1218,7 +1221,7 @@ def add_permissions(
     ):
         raise ApiError(
             code="COLLECTION_BRIDGE_EXISTS",
-            message="That user is already connected to this collection.",
+            message="That user is already connected to this Qel Connect space.",
             status_code=400,
         )
 
@@ -1233,7 +1236,7 @@ def add_permissions(
         db.rollback()
         raise ApiError(
             code="INTERNAL_SERVER_ERROR",
-            message="Failed to update collection permissions.",
+            message="Failed to update Qel Connect permissions.",
             status_code=500,
         ) from exc
 
@@ -1257,7 +1260,7 @@ def list_permissions(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     requester_role = _normalize_member_role(
@@ -1270,7 +1273,7 @@ def list_permissions(
     if not _is_connected_role(requester_role):
         raise ApiError(
             code="FORBIDDEN",
-            message="Approve the collection connection before viewing connection members.",
+            message="Approve the Qel Connect connection before viewing connection members.",
             status_code=403,
         )
 
@@ -1308,7 +1311,7 @@ def remove_permissions(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     requester_role = _normalize_member_role(
@@ -1322,7 +1325,7 @@ def remove_permissions(
     if requester_role == "pending":
         raise ApiError(
             code="FORBIDDEN",
-            message="Approve the collection connection before changing members.",
+            message="Approve the Qel Connect connection before changing members.",
             status_code=403,
         )
 
@@ -1338,7 +1341,7 @@ def remove_permissions(
         if payload.user_ids and any(user_id != auth.user_id for user_id in payload.user_ids):
             raise ApiError(
                 code="FORBIDDEN",
-                message="Members can only leave collections themselves.",
+                message="Members can only leave Qel Connect spaces themselves.",
                 status_code=403,
             )
         user_ids = [auth.user_id]
@@ -1404,7 +1407,7 @@ def remove_permissions(
         db.rollback()
         raise ApiError(
             code="INTERNAL_SERVER_ERROR",
-            message="Failed to remove collection permissions.",
+            message="Failed to remove Qel Connect permissions.",
             status_code=500,
         ) from exc
 
@@ -1428,7 +1431,7 @@ def respond_to_collection_invitation(
     if collection is None:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
     permission = repo.get_user_permission_global(
@@ -1438,7 +1441,7 @@ def respond_to_collection_invitation(
     if permission is None or permission.role != "pending":
         raise ApiError(
             code="FORBIDDEN",
-            message="No pending collection invitation was found.",
+            message="No pending Qel Connect invitation was found.",
             status_code=403,
         )
 
@@ -1447,7 +1450,7 @@ def respond_to_collection_invitation(
             if repo.count_connected_members_global(collection_id=collection_id) >= 10:
                 raise ApiError(
                     code="COLLECTION_BRIDGE_FULL",
-                    message="This collection already has its maximum ten members.",
+                    message="This Qel Connect space already has its maximum ten members.",
                     status_code=400,
                 )
             repo.update_permission_role_global(
@@ -1475,7 +1478,7 @@ def respond_to_collection_invitation(
         db.rollback()
         raise ApiError(
             code="INTERNAL_SERVER_ERROR",
-            message="Failed to respond to collection invitation.",
+            message="Failed to respond to Qel Connect invitation.",
             status_code=500,
         ) from exc
 
@@ -1843,7 +1846,7 @@ async def collection_websocket(
                             "type": "error",
                             "data": {
                                 "code": "CHAT_BLOCKED",
-                                "message": "Messaging is unavailable because a collection member is blocked.",
+                                "message": "Messaging is unavailable because a Qel Connect member is blocked.",
                             },
                         }
                     )
@@ -2394,12 +2397,12 @@ async def create_collection_chat(
     collection = repo.get_by_id_global(collection_id=collection_id)
     if collection is None:
         raise ApiError(
-            code="COLLECTION_NOT_FOUND", message="Collection not found.", status_code=404
+            code="COLLECTION_NOT_FOUND", message="Qel Connect not found.", status_code=404
         )
     if _user_has_collection_block(db, collection_id=collection_id, user_id=auth.user_id):
         raise ApiError(
             code="CHAT_BLOCKED",
-            message="Messaging is unavailable because a collection member is blocked.",
+            message="Messaging is unavailable because a Qel Connect member is blocked.",
             status_code=403,
         )
     settings = get_settings()
@@ -2624,7 +2627,7 @@ async def upload_collection_chat_media(
     repo = CollectionsRepository(db)
     collection = repo.get_by_id_global(collection_id=collection_id)
     if not collection:
-        raise ApiError(code="NOT_FOUND", message="Collection not found")
+        raise ApiError(code="NOT_FOUND", message="Qel Connect not found")
 
     _enforce_collection_access_global(
         repo=repo,
@@ -2647,7 +2650,7 @@ async def upload_collection_chat_media(
     if content_type not in allowed_types:
         raise ApiError(
             code="UNSUPPORTED_MEDIA_TYPE",
-            message="This media type is not allowed for collection chat uploads.",
+            message="This media type is not allowed for Qel Connect chat uploads.",
             status_code=415,
             details={"content_type": content_type},
         )
@@ -2663,14 +2666,14 @@ async def upload_collection_chat_media(
     if declared_size is not None and declared_size > settings.upload_max_bytes:
         raise ApiError(
             code="PAYLOAD_TOO_LARGE",
-            message="Collection media exceeds the configured upload limit.",
+            message="Qel Connect media exceeds the configured upload limit.",
             status_code=413,
         )
     file_bytes = await file.read(settings.upload_max_bytes + 1)
     if len(file_bytes) > settings.upload_max_bytes:
         raise ApiError(
             code="PAYLOAD_TOO_LARGE",
-            message="Collection media exceeds the configured upload limit.",
+            message="Qel Connect media exceeds the configured upload limit.",
             status_code=413,
         )
 
@@ -2732,7 +2735,7 @@ async def download_collection_chat_media(
     repo = CollectionsRepository(db)
     collection = repo.get_by_id_global(collection_id=collection_id)
     if not collection:
-        raise ApiError(code="NOT_FOUND", message="Collection not found")
+        raise ApiError(code="NOT_FOUND", message="Qel Connect not found")
 
     _enforce_collection_access_global(
         repo=repo,
@@ -2764,7 +2767,7 @@ async def clear_collection_chats(
     repo = CollectionsRepository(db)
     collection = repo.get_by_id_global(collection_id=collection_id)
     if not collection:
-        raise ApiError(code="NOT_FOUND", message="Collection not found")
+        raise ApiError(code="NOT_FOUND", message="Qel Connect not found")
 
     _enforce_collection_access_global(
         repo=repo,
@@ -2815,7 +2818,7 @@ def _require_collection_owner(
     if _normalize_member_role(role) != "owner":
         raise ApiError(
             code="FORBIDDEN",
-            message="Only the collection owner can manage sealed chat.",
+            message="Only the Qel Connect owner can manage sealed chat.",
             status_code=403,
         )
 
@@ -2836,7 +2839,7 @@ def enable_sealed_chat(
     collection = repo.get_by_id_global(collection_id=collection_id)
     if collection is None:
         raise ApiError(
-            code="COLLECTION_NOT_FOUND", message="Collection not found.", status_code=404
+            code="COLLECTION_NOT_FOUND", message="Qel Connect not found.", status_code=404
         )
     try:
         epoch_row = _enable_encryption(db, collection=collection)
@@ -2867,12 +2870,12 @@ def rotate_sealed_chat_epoch(
     collection = repo.get_by_id_global(collection_id=collection_id)
     if collection is None:
         raise ApiError(
-            code="COLLECTION_NOT_FOUND", message="Collection not found.", status_code=404
+            code="COLLECTION_NOT_FOUND", message="Qel Connect not found.", status_code=404
         )
     if not bool(getattr(collection, "chat_encryption_enabled", False)):
         raise ApiError(
             code="CHAT_ENCRYPTION_DISABLED",
-            message="Sealed chat is not enabled for this collection.",
+            message="Sealed chat is not enabled for this Qel Connect space.",
             status_code=409,
         )
     try:
@@ -2915,7 +2918,7 @@ def register_sealed_chat_device_key(
     collection = repo.get_by_id_global(collection_id=collection_id)
     if collection is None:
         raise ApiError(
-            code="COLLECTION_NOT_FOUND", message="Collection not found.", status_code=404
+            code="COLLECTION_NOT_FOUND", message="Qel Connect not found.", status_code=404
         )
     device_id = (payload.get("device_id") or "").strip()
     public_key = (payload.get("public_key") or "").strip()
@@ -3001,7 +3004,7 @@ async def update_collection_expiry(
     if _normalize_member_role(role) != "owner":
         raise ApiError(
             code="FORBIDDEN",
-            message="Only the bridge owner can update self-destruct timers.",
+            message="Only the Qel Connect owner can update self-destruct timers.",
             status_code=403,
         )
 
@@ -3009,7 +3012,7 @@ async def update_collection_expiry(
     if not collection:
         raise ApiError(
             code="COLLECTION_NOT_FOUND",
-            message="Collection not found.",
+            message="Qel Connect not found.",
             status_code=404,
         )
 

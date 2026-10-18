@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.platform.database.session import set_db_tenant_context
+from app.system.models.audit_log import AuditLog
 from tests.conftest import SeededUser
 
 
@@ -36,7 +37,7 @@ def test_collection_moderation_admin_workflow_and_role_gate(
         "collection-moderation-admin",
         "moderation-admin@example.com",
         "StrongPass!1234",
-        ("admin",),
+        ("admin", "collection_moderator"),
     )
     admin_headers = _headers(admin, _login(client, admin))
 
@@ -73,6 +74,11 @@ def test_collection_moderation_admin_workflow_and_role_gate(
     assert listed.headers["X-Total-Count"] == "2"
     assert listed.headers["X-Has-More"] == "true"
     assert reports[0]["collection_name"] == "Moderation workflow"
+    assert "reason" not in reports[0]
+    assert "details" not in reports[0]
+    assert "reporter_user_id" not in reports[0]
+    assert "reported_user_id" not in reports[0]
+    assert "message_id" not in reports[0]
     next_page = client.get(
         "/api/v1/collections/admin/security/reports?status=open&limit=1&offset=1",
         headers=admin_headers,
@@ -82,12 +88,7 @@ def test_collection_moderation_admin_workflow_and_role_gate(
     assert next_page.json()[0]["id"] != reports[0]["id"]
     assert next_page.headers["X-Has-More"] == "false"
 
-    report_id = next(
-        item["id"]
-        for page in (reports, next_page.json())
-        for item in page
-        if item["reason"] == "spam"
-    )
+    report_id = reports[0]["id"]
 
     notifications = client.get("/api/v1/notifications?limit=100", headers=admin_headers)
     assert notifications.status_code == 200
@@ -108,6 +109,17 @@ def test_collection_moderation_admin_workflow_and_role_gate(
     )
     assert direct_report.status_code == 200
     assert [item["id"] for item in direct_report.json()] == [report_id]
+    assert "details" not in direct_report.json()[0]
+    sensitive_detail = client.get(
+        f"/api/v1/collections/admin/security/reports/{report_id}",
+        headers=admin_headers,
+    )
+    assert sensitive_detail.status_code == 200
+    assert sensitive_detail.json()["details"] in {
+        "Reported for moderation workflow test.",
+        "Second report for pagination test.",
+    }
+    assert sensitive_detail.json()["reason"] in {"spam", "abuse"}
 
     muted = client.put(
         "/api/v1/notifications/preferences",
@@ -128,7 +140,35 @@ def test_collection_moderation_admin_workflow_and_role_gate(
     )
     assert updated.status_code == 200
     assert updated.json()["status"] == "reviewing"
-    assert updated.json()["details"] == "Reported for moderation workflow test."
+    assert "details" not in updated.json()
+
+    detail_after_update = client.get(
+        f"/api/v1/collections/admin/security/reports/{report_id}",
+        headers=admin_headers,
+    )
+    assert detail_after_update.status_code == 200
+    assert detail_after_update.json()["details"] == sensitive_detail.json()["details"]
+
+    other_admin = seed_user(
+        "collection-moderation-other-tenant",
+        "other-moderation-admin@example.com",
+        "StrongPass!1234",
+        ("admin", "collection_moderator"),
+    )
+    cross_tenant_detail = client.get(
+        f"/api/v1/collections/admin/security/reports/{report_id}",
+        headers=_headers(other_admin, _login(client, other_admin)),
+    )
+    assert cross_tenant_detail.status_code == 404
+
+    set_db_tenant_context(db_session, admin.tenant_id)
+    audited_actions = {
+        event.action
+        for event in db_session.query(AuditLog).filter(AuditLog.tenant_id == admin.tenant_id).all()
+    }
+    assert "admin.collection_moderation.reports.list.read" in audited_actions
+    assert "admin.collection_moderation.report.read" in audited_actions
+    assert "admin.collection_moderation.report.updated" in audited_actions
 
     history = client.get(
         f"/api/v1/collections/admin/security/reports/{report_id}/history?limit=2&offset=0",
@@ -141,6 +181,12 @@ def test_collection_moderation_admin_workflow_and_role_gate(
         "status_changed",
         "note_added",
     }
+    set_db_tenant_context(db_session, admin.tenant_id)
+    audited_actions = {
+        event.action
+        for event in db_session.query(AuditLog).filter(AuditLog.tenant_id == admin.tenant_id).all()
+    }
+    assert "admin.collection_moderation.history.read" in audited_actions
     older_history = client.get(
         f"/api/v1/collections/admin/security/reports/{report_id}/history?limit=2&offset=2",
         headers=admin_headers,
@@ -157,28 +203,30 @@ def test_collection_moderation_admin_workflow_and_role_gate(
         )
     db_session.rollback()
 
-    editor = seed_user(
-        "collection-moderation-editor",
-        "moderation-editor@example.com",
+    unassigned_admin = seed_user(
+        "collection-moderation-unassigned-admin",
+        "moderation-unassigned-admin@example.com",
         "StrongPass!1234",
-        ("editor",),
+        ("admin",),
     )
-    editor_headers = _headers(editor, _login(client, editor))
-    editor_notifications = client.get("/api/v1/notifications?limit=100", headers=editor_headers)
-    assert editor_notifications.status_code == 200
+    unassigned_headers = _headers(unassigned_admin, _login(client, unassigned_admin))
+    unassigned_notifications = client.get(
+        "/api/v1/notifications?limit=100", headers=unassigned_headers
+    )
+    assert unassigned_notifications.status_code == 200
     assert not any(
-        item["event_domain"] == "collection_moderation" for item in editor_notifications.json()
+        item["event_domain"] == "collection_moderation" for item in unassigned_notifications.json()
     )
 
     forbidden_list = client.get(
         "/api/v1/collections/admin/security/reports?status=all",
-        headers=editor_headers,
+        headers=unassigned_headers,
     )
     assert forbidden_list.status_code == 403
 
     forbidden_update = client.post(
         f"/api/v1/collections/admin/security/reports/{report_id}",
-        headers=editor_headers,
+        headers=unassigned_headers,
         json={"status": "dismissed"},
     )
     assert forbidden_update.status_code == 403
@@ -187,7 +235,7 @@ def test_collection_moderation_admin_workflow_and_role_gate(
         "collection-moderation-other-tenant",
         "moderation-other-admin@example.com",
         "StrongPass!1234",
-        ("admin",),
+        ("admin", "collection_moderator"),
     )
     set_db_tenant_context(db_session, "bypass")
     with pytest.raises(SQLAlchemyError):

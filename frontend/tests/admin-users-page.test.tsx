@@ -30,16 +30,6 @@ describe("admin users page", () => {
             is_active: true,
             totp_enabled: false,
             roles: ["editor"],
-            created_at: "2026-04-01T00:00:00Z",
-            updated_at: "2026-04-01T00:00:00Z",
-            last_login_at: null,
-            stats: {
-              documents_count: 2,
-              queries_count: 3,
-              conversations_count: 1,
-              comments_count: 0,
-              pinned_findings_count: 0,
-            },
           },
         ],
       }),
@@ -55,18 +45,7 @@ describe("admin users page", () => {
           is_active: true,
           totp_enabled: false,
           roles: ["editor"],
-          created_at: "2026-04-01T00:00:00Z",
-          updated_at: "2026-04-01T00:00:00Z",
-          last_login_at: null,
-          stats: {
-            documents_count: 2,
-            queries_count: 3,
-            conversations_count: 1,
-            comments_count: 0,
-            pinned_findings_count: 0,
-          },
         },
-        recent_activity: [],
       }),
     });
 
@@ -92,16 +71,6 @@ describe("admin users page", () => {
             is_active: true,
             totp_enabled: true,
             roles: ["editor"],
-            created_at: "2026-04-01T00:00:00Z",
-            updated_at: "2026-04-01T00:00:00Z",
-            last_login_at: "2026-04-02T00:00:00Z",
-            stats: {
-              documents_count: 1,
-              queries_count: 1,
-              conversations_count: 1,
-              comments_count: 0,
-              pinned_findings_count: 0,
-            },
           },
         ],
       }),
@@ -117,18 +86,7 @@ describe("admin users page", () => {
           is_active: true,
           totp_enabled: true,
           roles: ["editor"],
-          created_at: "2026-04-01T00:00:00Z",
-          updated_at: "2026-04-01T00:00:00Z",
-          last_login_at: "2026-04-02T00:00:00Z",
-          stats: {
-            documents_count: 1,
-            queries_count: 1,
-            conversations_count: 1,
-            comments_count: 0,
-            pinned_findings_count: 0,
-          },
         },
-        recent_activity: [],
       }),
     });
     render(<AdminUsersPage />);
@@ -136,5 +94,8 @@ describe("admin users page", () => {
     expect(await screen.findAllByText("member@example.org")).toHaveLength(2);
     expect(screen.getByText(/2fa on/i)).toBeInTheDocument();
     expect(screen.getByText(/platform lifecycle oversight/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/recent activity|last login|\d+ docs|\d+ queries/i),
+    ).not.toBeInTheDocument();
   });
 });

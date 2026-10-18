@@ -96,6 +96,7 @@ setsid env -i \
   NODE_ENV=development \
   NEXT_TELEMETRY_DISABLED=1 \
   PLAYWRIGHT_E2E=1 \
+  NEXT_PUBLIC_E2E_DISABLE_REALTIME=1 \
   NEXT_PUBLIC_API_URL=http://127.0.0.1:9/api/v1 \
   node "$PROJECT_DIR/node_modules/next/dist/bin/next" dev \
     --webpack \

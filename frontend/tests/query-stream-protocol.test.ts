@@ -145,6 +145,40 @@ describe("query stream protocol", () => {
     });
   });
 
+  it("preserves chart axis labels from structured JSON", () => {
+    const parsed = parseStructuredAnswer(
+      JSON.stringify({
+        key_findings: [],
+        detailed_analysis: "A labeled line chart.",
+        limitations: "",
+        conclusion: "",
+        confidence_score: 0.9,
+        follow_up_suggestions: [],
+        chart: {
+          title: "y = 2x + 1",
+          chart_type: "line",
+          x_label: "x",
+          y_label: "y",
+          series: [
+            { label: "0", value: 1 },
+            { label: "1", value: 3 },
+          ],
+        },
+      }),
+    );
+
+    expect(parsed?.chart).toMatchObject({
+      title: "y = 2x + 1",
+      chart_type: "line",
+      x_label: "x",
+      y_label: "y",
+      series: [
+        { label: "0", value: 1 },
+        { label: "1", value: 3 },
+      ],
+    });
+  });
+
   it("preserves explicit pie chart type for nested structured chart payloads", () => {
     const parsed = parseStructuredAnswer(
       JSON.stringify({
