@@ -213,13 +213,14 @@ protected `main`:
    the NeoSIS runtime manifest, and the final Linux `.deb` is checked again
    before upload. NeoSIS source is not added to the AverQel repository or its
    source archives.
-   The default version follows Conventional Commits since the latest published
-   release: breaking changes increment the major number, `feat:` increments
-   minor, and `fix:`, `perf:`, or `revert:` increment patch. The highest level
-   across those commits wins. Other commit types do not trigger an automatic
-   release; provide an explicit version only when an intentional release is
-   needed without a release-worthy commit. Published version tags are never
-   rewritten.
+   AverQel releases remain on the `v1.x.x` line. The default version follows
+   Conventional Commits since the latest published release: `feat:` and
+   breaking changes increment minor, while `fix:`, `perf:`, or `revert:`
+   increment patch. The highest level across those commits wins. Manual release
+   versions must also use `v1.x.x`. Other commit types do not trigger an
+   automatic release; provide an explicit v1 version only when an intentional
+   release is needed without a release-worthy commit. Published version tags
+   are never rewritten.
 2. **Deploy - Manual Docker Build and VPS** uses the exact release commit to
    build and test API, worker, and frontend images, scan them, create SBOMs,
    sign and publish the immutable images, and deploy them to the configured
