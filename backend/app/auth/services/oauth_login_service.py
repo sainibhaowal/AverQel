@@ -459,7 +459,13 @@ class OAuthLoginService:
         else:
             user = auth.users.get_by_email_global(email)
             if user is None:
-                user = auth.register(email=email, password=secrets.token_urlsafe(48))
+                user = auth.register(
+                    email=email,
+                    password=secrets.token_urlsafe(48),
+                    registration_method="oauth",
+                    email_verified=True,
+                    provider=provider.name,
+                )
             # ``auth.register`` commits a new-user transaction.  Tenant context is
             # transaction-local, so restore the authentication bypass before
             # inserting the OAuth identity in the new transaction.

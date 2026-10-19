@@ -184,7 +184,7 @@ def test_original_task_survives_context_compaction():
         {"role": "user", "content": "Clarification answer"},
     ]
 
-    fitted, _ = DeepSpaceChatService._fit_history_to_context(
+    fitted, _, _ = DeepSpaceChatService._fit_history_to_context(
         messages,
         context_window=1_024,
         max_output_tokens=512,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 
+import pytest
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 from sqlalchemy import func, select, text
@@ -12,6 +13,7 @@ from app.auth.models.user import User
 from app.auth.models.user_role import UserRole
 from app.auth.security import hash_password
 from app.core.config import get_settings
+from app.core.errors import ApiError
 from app.core.ids import generate_uuid7_with_fallback
 from app.documents.models.collection import (
     CollectionDocument,
@@ -119,6 +121,104 @@ def test_worker_returns_unapproved_queued_deletion_to_approval(
         session.refresh(row)
         assert row.status == "awaiting_approval"
         assert row.approved_by_user_id is None
+    finally:
+        session.execute(text("RESET ROLE"))
+        session.close()
+
+
+def test_single_admin_deletion_requires_delay_and_worker_checks_approval(
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    seeded = seed_user(
+        "tenant-del-single-admin",
+        "admin-del-single@example.org",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    session = get_session_factory()()
+    try:
+        session.execute(text("SET ROLE aks_app"))
+        set_db_tenant_context(session, seeded.tenant_id)
+        service = DeletionService(session, get_settings())
+        requested = service.request_deletion(
+            tenant_id=seeded.tenant_id,
+            requested_by_user_id=seeded.user_id,
+            reason="security_incident",
+        )
+        assert requested.self_approval_not_before is not None
+        assert requested.self_approval_not_before > datetime.now(UTC) + timedelta(hours=23)
+
+        with pytest.raises(ApiError) as early_approval:
+            service.self_approve_deletion(
+                tenant_id=seeded.tenant_id,
+                deletion_id=requested.deletion_id,
+                approved_by_user_id=seeded.user_id,
+            )
+        assert early_approval.value.code == "DELETION_SELF_APPROVAL_DELAY_ACTIVE"
+
+        row = service.get_status(tenant_id=seeded.tenant_id, deletion_id=requested.deletion_id)
+        row.self_approval_not_before = datetime.now(UTC) - timedelta(seconds=1)
+        session.commit()
+        approved = service.self_approve_deletion(
+            tenant_id=seeded.tenant_id,
+            deletion_id=requested.deletion_id,
+            approved_by_user_id=seeded.user_id,
+        )
+        assert approved.status == "queued"
+
+        monkeypatch.setattr(
+            DeletionService,
+            "_purge_tenant_data",
+            lambda self, *, tenant_id: {"documents": 2},
+        )
+        service.process_deletion(
+            tenant_id=seeded.tenant_id,
+            deletion_id=requested.deletion_id,
+        )
+        session.refresh(row)
+        assert row.status == "completed"
+        assert row.approval_mode == "single_admin_delayed"
+        assert row.approved_by_user_id == seeded.user_id
+    finally:
+        session.execute(text("RESET ROLE"))
+        session.close()
+
+
+def test_requesting_admin_can_cancel_before_purge_is_approved(
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    seeded = seed_user(
+        "tenant-del-cancel",
+        "admin-del-cancel@example.org",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    session = get_session_factory()()
+    try:
+        session.execute(text("SET ROLE aks_app"))
+        set_db_tenant_context(session, seeded.tenant_id)
+        service = DeletionService(session, get_settings())
+        requested = service.request_deletion(
+            tenant_id=seeded.tenant_id,
+            requested_by_user_id=seeded.user_id,
+            reason="workspace_offboarding",
+        )
+        cancelled = service.cancel_deletion(
+            tenant_id=seeded.tenant_id,
+            deletion_id=requested.deletion_id,
+            actor_user_id=seeded.user_id,
+        )
+        assert cancelled.status == "cancelled"
+
+        service.process_deletion(
+            tenant_id=seeded.tenant_id,
+            deletion_id=requested.deletion_id,
+        )
+        row = service.get_status(tenant_id=seeded.tenant_id, deletion_id=requested.deletion_id)
+        assert row.status == "cancelled"
     finally:
         session.execute(text("RESET ROLE"))
         session.close()

@@ -105,6 +105,7 @@ from app.system.services.metrics_service import (
     DEEPSPACE_MCP_RESULT_REFERENCES_TOTAL,
     DEEPSPACE_RESULT_REFERENCE_EVENTS_TOTAL,
     _safe_label,
+    increment_runtime_metric,
 )
 from app.system.services.rate_limit_service import RateLimitService
 from app.system.services.storage_quota import StorageQuotaService, ensure_capacity_if_supported
@@ -2046,7 +2047,7 @@ class DeepSpaceChatService:
         max_output_tokens: int,
         tools: list[dict[str, Any]] | None = None,
         history_budget_tokens: int | None = None,
-    ) -> tuple[list[dict[str, Any]], bool]:
+    ) -> tuple[list[dict[str, Any]], bool, bool]:
         """Keep the newest history inside a verified model window.
 
         The complete transcript remains persisted in PostgreSQL. This only controls
@@ -2057,6 +2058,13 @@ class DeepSpaceChatService:
         # turn's original task are protected so protocol validity and task
         # continuity survive context compaction.
         history_compacted = False
+        context_overflow_before_fit = False
+        context_budget: int | None = None
+        if context_window and context_window > 0:
+            context_budget = max(512, context_window - max(256, max_output_tokens))
+            context_overflow_before_fit = (
+                cls._estimate_context_tokens(messages, tools) > context_budget
+            )
         if history_budget_tokens is not None:
             last_user_index = max(
                 (index for index, message in enumerate(messages) if message.get("role") == "user"),
@@ -2086,11 +2094,11 @@ class DeepSpaceChatService:
                     message for index, message in enumerate(messages) if index in kept_indices
                 ]
         if not context_window or context_window <= 0:
-            return messages, history_compacted
-        budget = max(512, context_window - max(256, max_output_tokens))
+            return messages, history_compacted, False
+        budget = context_budget or max(512, context_window - max(256, max_output_tokens))
         tool_tokens = cls._estimate_context_tokens([], tools)
         if cls._estimate_context_tokens(messages, tools) <= budget:
-            return messages, history_compacted
+            return messages, history_compacted, context_overflow_before_fit
         prefix: list[dict[str, Any]] = []
         body = messages
         if messages and messages[0].get("role") == "system":
@@ -2116,7 +2124,14 @@ class DeepSpaceChatService:
             used += item_tokens
         selected.reverse()
         compacted = [*prefix, *selected]
-        return compacted, history_compacted or len(compacted) < len(messages)
+        context_overflow_prevented = context_overflow_before_fit and (
+            cls._estimate_context_tokens(compacted, tools) <= budget
+        )
+        return (
+            compacted,
+            history_compacted or len(compacted) < len(messages),
+            context_overflow_prevented,
+        )
 
     @staticmethod
     def _tool_call_accumulator(
@@ -5063,7 +5078,7 @@ class DeepSpaceChatService:
         )
 
         visible_history = list(previous)
-        previous, history_compacted = self._fit_history_to_context(
+        previous, history_compacted, _ = self._fit_history_to_context(
             previous,
             context_window=candidate.context_window,
             max_output_tokens=self.settings.llm_max_tokens_per_request,
@@ -5988,6 +6003,7 @@ class DeepSpaceChatService:
                     workload=round_budget.workload,
                     context_tier=context_tier,
                 ).inc()
+                increment_runtime_metric("deepspace_budget_allocations_total")
                 selected_tool_names = self._tool_names(tools_for_round)
                 canary_mismatch = any(
                     name not in MCP_BROKER_TOOL_NAMES and not NATIVE_TOOL_REGISTRY.contains(name)
@@ -5995,6 +6011,7 @@ class DeepSpaceChatService:
                 )
                 if canary_mismatch:
                     DEEPSPACE_CANARY_MISMATCHES_TOTAL.inc()
+                    increment_runtime_metric("deepspace_canary_mismatches_total")
                 last_context_epoch = self.context_epochs.reconcile(
                     tenant_id=auth.tenant_id,
                     user_id=auth.user_id,
@@ -6055,12 +6072,14 @@ class DeepSpaceChatService:
                         # lock. Release it before yielding progress or doing
                         # any work that can wait on the provider.
                         self.db.commit()
-                request_messages, request_compacted = self._fit_history_to_context(
-                    request_messages,
-                    context_window=candidate.context_window,
-                    max_output_tokens=(request_max_tokens or context_output_reservation),
-                    tools=tools_for_round,
-                    history_budget_tokens=round_budget.history_budget_tokens,
+                request_messages, request_compacted, context_overflow_prevented = (
+                    self._fit_history_to_context(
+                        request_messages,
+                        context_window=candidate.context_window,
+                        max_output_tokens=(request_max_tokens or context_output_reservation),
+                        tools=tools_for_round,
+                        history_budget_tokens=round_budget.history_budget_tokens,
+                    )
                 )
                 request_messages = self._strip_provider_internal_fields(request_messages)
                 context_used_tokens = self._estimate_context_tokens(
@@ -6075,7 +6094,10 @@ class DeepSpaceChatService:
                         last_context_epoch
                     )
                     DEEPSPACE_CONTEXT_COMPACTIONS_TOTAL.labels(reason="context_fit").inc()
-                    DEEPSPACE_CONTEXT_OVERFLOW_PREVENTED_TOTAL.labels(action="compaction").inc()
+                    increment_runtime_metric("deepspace_context_compactions_total")
+                if context_overflow_prevented:
+                    DEEPSPACE_CONTEXT_OVERFLOW_PREVENTED_TOTAL.labels(action="context_fit").inc()
+                    increment_runtime_metric("deepspace_overflow_prevented_total")
                 context_remaining_tokens = (
                     max(0, int(candidate.context_window) - context_used_tokens)
                     if candidate.context_window
@@ -6388,7 +6410,7 @@ class DeepSpaceChatService:
                         only_not_visual=False,
                     )
                     if has_ocr_text:
-                        fallback_messages, _ = self._fit_history_to_context(
+                        fallback_messages, _, _ = self._fit_history_to_context(
                             [
                                 *request_payload.messages,
                                 {"role": "system", "content": ocr_context},
@@ -6748,10 +6770,12 @@ class DeepSpaceChatService:
                         DEEPSPACE_CACHE_USAGE_TOTAL.labels(
                             provider=provider_label, status="read"
                         ).inc()
+                        increment_runtime_metric("deepspace_cache_reads_total")
                     if round_provider_usage.get("cache_write_input_tokens") is not None:
                         DEEPSPACE_CACHE_USAGE_TOTAL.labels(
                             provider=provider_label, status="write"
                         ).inc()
+                        increment_runtime_metric("deepspace_cache_writes_total")
                 if round_output_event_count:
                     if provider_first_output_monotonic is None:
                         provider_first_output_monotonic = round_first_output_monotonic
@@ -7859,8 +7883,11 @@ class DeepSpaceChatService:
                             "tool_count": len(valid_calls),
                         },
                     )
-                    DEEPSPACE_EXECUTION_BATCHES_TOTAL.labels(mode="planned").inc(
-                        len(execution_batches)
+
+                DEEPSPACE_EXECUTION_BATCHES_TOTAL.labels(mode="planned").inc(len(execution_batches))
+                if execution_batches:
+                    increment_runtime_metric(
+                        "deepspace_execution_batches_total", len(execution_batches)
                     )
 
                 results_by_call_id: dict[str, dict[str, Any]] = {}
@@ -7952,9 +7979,11 @@ class DeepSpaceChatService:
                                 value=tool_payload,
                             )
                             DEEPSPACE_MCP_RESULT_REFERENCES_TOTAL.inc()
+                            increment_runtime_metric("deepspace_mcp_result_references_total")
                             DEEPSPACE_RESULT_REFERENCE_EVENTS_TOTAL.labels(
                                 kind="mcp", status="created"
                             ).inc()
+                            increment_runtime_metric("deepspace_result_reference_events_total")
                             preview = json.dumps(
                                 tool_payload, ensure_ascii=False, default=str, separators=(",", ":")
                             )
@@ -8030,6 +8059,7 @@ class DeepSpaceChatService:
                                 DEEPSPACE_RESULT_REFERENCE_EVENTS_TOTAL.labels(
                                     kind="native", status="created"
                                 ).inc()
+                                increment_runtime_metric("deepspace_result_reference_events_total")
                             native_result_chars += min(len(rendered_payload), preview_limit)
                         # Materialize sandbox outputs as private, durable
                         # artifacts and expose them through the same timeline

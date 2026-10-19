@@ -30,43 +30,39 @@ PERMISSIONS_BY_ROLE: Final[dict[str, frozenset[str]]] = {
             "providers:test",
             "providers:assign",
             "providers:oauth",
-            "admin:analytics:read",
             "admin:audit_logs:read",
             "admin:break_glass:write",
             "admin:data_deletions:write",
             "admin:data_deletions:approve",
             "admin:data_deletions:read",
+            "admin:support:read",
+            "admin:support:write",
+            "admin:feedback:read",
+            "admin:feedback:write",
             "admin:metrics:read",
             "admin:users:read",
             "admin:users:disable",
             "admin:users:reactivate",
             "admin:users:logout",
             "admin:users:delete",
-            "admin:staff_roles:write",
             "mcp:catalog:manage",
         }
     ),
-    # Content-bearing staff roles are explicit assignments, never implied by
-    # a normal or platform-admin account. Support routes also require the
-    # platform-admin allowlist because they can access tickets across tenants.
+    # Legacy support/feedback manager assignments no longer grant access to
+    # cross-tenant customer content. Only the allowlisted platform-admin path
+    # can enter those queues.
     "support_manager": frozenset(
         {
             "auth:login_self",
             "auth:refresh_self",
             "auth:logout_self",
-            "admin:support:read",
-            "admin:support:write",
         }
     ),
-    # Feedback review is global across tenants, while moderation endpoints
-    # still filter every report and action by the active tenant.
     "feedback_manager": frozenset(
         {
             "auth:login_self",
             "auth:refresh_self",
             "auth:logout_self",
-            "admin:feedback:read",
-            "admin:feedback:write",
         }
     ),
     "collection_moderator": frozenset(

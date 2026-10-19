@@ -9,7 +9,7 @@ export default function HeroBackdrop() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 overflow-hidden bg-[#030508]"
+      className="pointer-events-none absolute inset-0 overflow-hidden bg-transparent"
     >
       <motion.div
         className="absolute inset-0 bg-[radial-gradient(circle_at_50%_15%,rgba(0,255,163,0.08),transparent_28%),radial-gradient(circle_at_85%_18%,rgba(0,184,255,0.08),transparent_26%)] opacity-80"

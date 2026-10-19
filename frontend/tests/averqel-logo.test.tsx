@@ -48,9 +48,9 @@ it("uses the same tight canvas overlap for the compact footer lockup", () => {
 });
 
 it("uses the correct optical centering for the footer wordmark canvas", () => {
-  expect(globalStyles).toMatch(/\.averqel-wordmark__svg\s*\{[^}]*transform:\s*translateY\(1px\);/s);
+  expect(globalStyles).toMatch(/\.averqel-wordmark__svg\s*\{[^}]*transform:\s*translateY\(1px\);/);
   expect(globalStyles).toMatch(
-    /\.averqel-wordmark--footer\s+\.averqel-wordmark__svg\s*\{[^}]*transform:\s*translateY\(0\.5px\);/s,
+    /\.averqel-wordmark--footer\s+\.averqel-wordmark__svg\s*\{[^}]*transform:\s*translateY\(0\.5px\);/,
   );
 
   const reducedMotionWordmarkRule = globalStyles.match(

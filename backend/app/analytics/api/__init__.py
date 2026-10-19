@@ -1,5 +1,5 @@
-"""Analytics API routes."""
+"""Workspace dashboard API routes."""
 
-from app.analytics.api import analytics, dashboard
+from app.analytics.api import dashboard
 
-__all__ = ["analytics", "dashboard"]
+__all__ = ["dashboard"]

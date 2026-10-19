@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -31,7 +31,10 @@ import {
   UsersRound,
   Workflow,
 } from "lucide-react";
+import DeepSpaceMark from "../ui/DeepSpaceMark";
 import QelConnectMark from "../ui/QelConnectMark";
+import styles from "./LandingVisuals.module.css";
+import { useLandingSectionMotion } from "./landingMotion";
 
 type Accent = "cyan" | "blue" | "emerald" | "violet" | "amber";
 
@@ -39,7 +42,7 @@ type DomainCard = {
   title: string;
   description: string;
   points: string[];
-  icon: LucideIcon | typeof QelConnectMark;
+  icon: LucideIcon | typeof QelConnectMark | typeof DeepSpaceMark;
   accent: Accent;
   href: string;
   linkLabel: string;
@@ -53,26 +56,6 @@ type ProductDomain = {
   title: string;
   description: string;
   cards: DomainCard[];
-};
-
-const accentClasses: Record<Accent, { text: string; border: string; background: string }> = {
-  cyan: { text: "text-cyan-300", border: "border-cyan-400/25", background: "bg-cyan-400/[0.08]" },
-  blue: { text: "text-sky-300", border: "border-sky-400/25", background: "bg-sky-400/[0.08]" },
-  emerald: {
-    text: "text-emerald-300",
-    border: "border-emerald-400/25",
-    background: "bg-emerald-400/[0.08]",
-  },
-  violet: {
-    text: "text-violet-300",
-    border: "border-violet-400/25",
-    background: "bg-violet-400/[0.08]",
-  },
-  amber: {
-    text: "text-amber-300",
-    border: "border-amber-400/25",
-    background: "bg-amber-400/[0.08]",
-  },
 };
 
 const productDomains: ProductDomain[] = [
@@ -286,7 +269,7 @@ const productDomains: ProductDomain[] = [
           "Attach relevant files to a task where supported",
           "Conversation and run state stays separate from Query history",
         ],
-        icon: Activity,
+        icon: DeepSpaceMark,
         accent: "violet",
         href: "/documentation/simple-system-walkthrough",
         linkLabel: "DeepSpace workflow guide",
@@ -561,91 +544,146 @@ const productDomains: ProductDomain[] = [
   },
 ];
 
+function ProductDomainSection({
+  domain,
+  domainIndex,
+}: {
+  domain: ProductDomain;
+  domainIndex: number;
+}) {
+  const reduceMotion = useReducedMotion();
+  const { ref, style } = useLandingSectionMotion<HTMLElement>({
+    depth: domain.id === "qel-connect" ? 12 : 16,
+    scaleRange: [0.998, 1.003],
+  });
+
+  return (
+    <motion.section
+      ref={ref}
+      id={domain.id}
+      aria-labelledby={`${domain.id}-heading`}
+      data-layout={domain.id}
+      className={`${styles.domainSection} landing-trace-frame scroll-mt-8`}
+    >
+      <motion.div style={style} className={styles.domainInner}>
+        <motion.header
+          initial={reduceMotion ? false : { opacity: 0, y: 18 }}
+          whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+          viewport={{ once: false, amount: 0.12 }}
+          transition={{
+            duration: 0.48,
+            ease: "easeOut",
+            delay: Math.min(domainIndex * 0.025, 0.12),
+          }}
+          className={styles.domainHeader}
+        >
+          <div className={styles.domainHeadingBlock}>
+            <p className={styles.domainEyebrow}>
+              <span className={styles.domainIndex}>{String(domainIndex + 1).padStart(2, "0")}</span>
+              {domain.eyebrow.replace(/^\d+\s*·\s*/, "")}
+            </p>
+            <h2 id={`${domain.id}-heading`} className={styles.domainTitle}>
+              {domain.title}
+            </h2>
+          </div>
+          <p className={styles.domainDescription}>{domain.description}</p>
+        </motion.header>
+
+        <div className={styles.domainBoard} data-layout={domain.id}>
+          {domain.cards.map((card, cardIndex) => {
+            const Icon = card.icon;
+            const motionFrom =
+              domain.id === "query"
+                ? { x: cardIndex % 2 === 0 ? -18 : 18, y: 8 }
+                : domain.id === "qel-connect"
+                  ? { scale: 0.96, y: cardIndex % 2 === 0 ? 16 : -8 }
+                  : domain.id === "deepspace"
+                    ? { y: 26, scale: 0.985 }
+                    : domain.id === "providers"
+                      ? { y: cardIndex % 2 === 0 ? 22 : -12 }
+                      : domain.id === "mcp"
+                        ? { x: 20, y: 0 }
+                        : domain.id === "workspace-controls"
+                          ? { x: cardIndex % 2 === 0 ? -10 : 10, y: 6 }
+                          : { y: 18 };
+            const hoverMotion =
+              domain.id === "query"
+                ? { y: -4, scale: 1.012 }
+                : domain.id === "qel-connect"
+                  ? { y: -3, rotateZ: cardIndex % 2 === 0 ? -0.15 : 0.15 }
+                  : domain.id === "deepspace"
+                    ? { y: -7 }
+                    : domain.id === "providers"
+                      ? { y: -3, scale: 1.012 }
+                      : domain.id === "mcp"
+                        ? { y: -5, x: 2 }
+                        : domain.id === "workspace-controls"
+                          ? { x: 3 }
+                          : { y: -5, scale: 1.006 };
+
+            return (
+              <motion.article
+                key={card.title}
+                data-card-index={cardIndex}
+                data-accent={card.accent}
+                initial={reduceMotion ? false : { opacity: 0, ...motionFrom }}
+                whileInView={
+                  reduceMotion ? undefined : { opacity: 1, x: 0, y: 0, scale: 1, rotateZ: 0 }
+                }
+                viewport={{ once: false, amount: 0.08 }}
+                whileHover={
+                  reduceMotion
+                    ? undefined
+                    : {
+                        ...hoverMotion,
+                        transition: { type: "spring", stiffness: 260, damping: 24 },
+                      }
+                }
+                transition={{
+                  type: "spring",
+                  stiffness: 170,
+                  damping: 22,
+                  delay: Math.min(cardIndex * 0.045, 0.18),
+                }}
+                className={styles.domainCard}
+              >
+                <div className={styles.cardHeader}>
+                  <span className={styles.cardIcon} aria-hidden="true">
+                    <Icon size={card.icon === DeepSpaceMark ? 26 : 18} />
+                  </span>
+                  {card.status && <span className={styles.cardStatus}>{card.status}</span>}
+                  <span className={styles.cardOrdinal} aria-hidden="true">
+                    {String(cardIndex + 1).padStart(2, "0")}
+                  </span>
+                </div>
+                <h3 className={styles.cardTitle}>{card.title}</h3>
+                <p className={styles.cardDescription}>{card.description}</p>
+                <ul className={styles.cardPoints}>
+                  {card.points.map((point) => (
+                    <li key={point} className={styles.cardPoint}>
+                      <CheckCheck size={14} aria-hidden="true" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link href={card.href} className={styles.cardAction}>
+                  {card.linkLabel}
+                  <ArrowUpRight size={14} aria-hidden="true" />
+                </Link>
+              </motion.article>
+            );
+          })}
+        </div>
+      </motion.div>
+    </motion.section>
+  );
+}
+
 export default function ProductDomains() {
   return (
     <div aria-label="AverQel product areas">
       {productDomains.map((domain, domainIndex) => (
-        <motion.section
-          key={domain.id}
-          id={domain.id}
-          aria-labelledby={`${domain.id}-heading`}
-          initial={{ opacity: 0, y: 18 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.45, delay: domainIndex === 0 ? 0 : 0.02 }}
-          className="landing-trace-frame relative scroll-mt-8 border-t border-white/[0.055] py-16 sm:py-20 lg:py-24"
-        >
-          <div className="relative mx-auto w-full max-w-[1800px] px-4 sm:px-8 lg:px-12">
-            <header className="mb-8 max-w-4xl sm:mb-10">
-              <p className="text-primary/80 text-[11px] font-bold tracking-[0.3em] uppercase">
-                {domain.eyebrow}
-              </p>
-              <h2
-                id={`${domain.id}-heading`}
-                className="mt-3 [font-family:var(--font-landing-display),var(--font-display),var(--font-inter),sans-serif] text-3xl leading-tight font-semibold tracking-[-0.02em] text-white sm:text-4xl lg:text-5xl"
-              >
-                {domain.title}
-              </h2>
-              <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base sm:leading-8">
-                {domain.description}
-              </p>
-            </header>
-
-            <div className="grid auto-rows-fr gap-4 md:grid-cols-2 2xl:grid-cols-3">
-              {domain.cards.map((card, cardIndex) => {
-                const Icon = card.icon;
-                const accent = accentClasses[card.accent];
-                return (
-                  <motion.article
-                    key={card.title}
-                    initial={{ opacity: 0, y: 14 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: "-60px" }}
-                    transition={{ duration: 0.35, delay: Math.min(cardIndex * 0.035, 0.1) }}
-                    className="theme-panel flex h-full min-w-0 flex-col rounded-2xl border border-white/[0.08] p-5 transition-colors duration-300 hover:border-white/[0.16] sm:p-6"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <span
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${accent.border} ${accent.background} ${accent.text}`}
-                        aria-hidden="true"
-                      >
-                        <Icon size={18} />
-                      </span>
-                      {card.status && (
-                        <span className="rounded-full border border-amber-300/20 bg-amber-300/[0.07] px-2.5 py-1 text-[10px] font-semibold text-amber-200">
-                          {card.status}
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="mt-5 text-lg font-bold tracking-tight text-white sm:text-xl">
-                      {card.title}
-                    </h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">{card.description}</p>
-                    <ul className="mt-4 flex-1 space-y-2.5 border-t border-white/[0.06] pt-4">
-                      {card.points.map((point) => (
-                        <li key={point} className="flex gap-2.5 text-xs leading-5 text-slate-300">
-                          <CheckCheck
-                            size={14}
-                            className={`mt-0.5 shrink-0 ${accent.text}`}
-                            aria-hidden="true"
-                          />
-                          <span>{point}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Link
-                      href={card.href}
-                      className={`mt-5 inline-flex w-fit items-center gap-1.5 text-xs font-bold ${accent.text} transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:outline-none`}
-                    >
-                      {card.linkLabel}
-                      <ArrowUpRight size={14} aria-hidden="true" />
-                    </Link>
-                  </motion.article>
-                );
-              })}
-            </div>
-          </div>
-        </motion.section>
+        <ProductDomainSection key={domain.id} domain={domain} domainIndex={domainIndex} />
       ))}
     </div>
   );

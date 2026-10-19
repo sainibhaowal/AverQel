@@ -73,6 +73,8 @@ class _FakeSettings:
     audit_log_retention_days: int = 90
     transient_record_retention_days: int = 30
     auth_session_retention_days: int = 90
+    feedback_retention_days: int = 365
+    support_ticket_retention_days: int = 365
 
 
 class _FakeIngestionService:
@@ -105,6 +107,9 @@ class _FakeScalarResult:
 
     def all(self):  # type: ignore[no-untyped-def]
         return list(self._values)
+
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        return iter(self._values)
 
 
 class _FakeRowResult:
@@ -684,6 +689,10 @@ def test_retention_cleanup_success_and_error(monkeypatch: pytest.MonkeyPatch) ->
             _ = (tenant_id, retention_days)
             return 2
 
+        def purge_platform_events(self, *, retention_days):  # type: ignore[no-untyped-def]
+            assert retention_days == 90
+            return 0
+
     class _Session(_FakeSession):
         def query(self, _model):  # type: ignore[no-untyped-def]
             return _TenantQuery()
@@ -691,6 +700,8 @@ def test_retention_cleanup_success_and_error(monkeypatch: pytest.MonkeyPatch) ->
         def execute(self, stmt, params=None):  # type: ignore[no-untyped-def]
             _ = params
             text_stmt = str(stmt)
+            if hasattr(stmt, "selected_columns"):
+                return SimpleNamespace(scalars=lambda: _FakeScalarResult([]))
             if (
                 "DELETE FROM idempotency_keys" in text_stmt
                 or "DELETE FROM data_deletions" in text_stmt
@@ -800,11 +811,20 @@ def test_retention_cleanup_finally_exception_paths(
         def all(self):  # type: ignore[no-untyped-def]
             return []
 
+    class _AuditSvc:
+        def __init__(self, session):  # type: ignore[no-untyped-def]
+            _ = session
+
+        def purge_platform_events(self, *, retention_days):  # type: ignore[no-untyped-def]
+            assert retention_days == 90
+            return 0
+
     class _Session(_FakeSession):
         def query(self, _model):  # type: ignore[no-untyped-def]
             return _TenantQuery()
 
     monkeypatch.setattr(tasks_maintenance, "Tenant", _TenantModel)
+    monkeypatch.setattr(tasks_maintenance, "AuditService", _AuditSvc)
     monkeypatch.setattr(
         tasks_maintenance,
         "get_session_factory",
@@ -820,3 +840,106 @@ def test_retention_cleanup_finally_exception_paths(
     report = run_fn()
     assert report["audit_logs_deleted"] == 0
     assert report["transient_records_deleted"] == 0
+
+
+def test_storage_cleanup_removes_successful_jobs_and_redacts_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.system.models.storage_cleanup import StorageCleanupJob
+
+    monkeypatch.setattr(tasks_maintenance, "MAINTENANCE_JOB_EVENTS_TOTAL", _DummyCounter())
+    monkeypatch.setattr(tasks_maintenance, "get_settings", lambda: _FakeSettings())
+
+    class _TenantModel:
+        id = object()
+
+    class _Query:
+        def __init__(self, items) -> None:  # type: ignore[no-untyped-def]
+            self.items = items
+
+        def filter(self, *args):  # type: ignore[no-untyped-def]
+            _ = args
+            return self
+
+        def order_by(self, *args):  # type: ignore[no-untyped-def]
+            _ = args
+            return self
+
+        def limit(self, _limit):  # type: ignore[no-untyped-def]
+            return self
+
+        def with_for_update(self, **kwargs):  # type: ignore[no-untyped-def]
+            _ = kwargs
+            return self
+
+        def all(self):  # type: ignore[no-untyped-def]
+            return list(self.items)
+
+    class _Session(_FakeSession):
+        def __init__(self, job) -> None:  # type: ignore[no-untyped-def]
+            super().__init__()
+            self.job = job
+            self.deleted = []
+            self.closed = False
+
+        def query(self, model):  # type: ignore[no-untyped-def]
+            if model is _TenantModel.id:
+                return _Query([])
+            assert model is StorageCleanupJob
+            return _Query([self.job])
+
+        def delete(self, row) -> None:  # type: ignore[no-untyped-def]
+            self.deleted.append(row)
+
+        def close(self) -> None:
+            self.closed = True
+
+    class _StorageService:
+        def __init__(self, _settings) -> None:  # type: ignore[no-untyped-def]
+            pass
+
+        def delete_object(self, *, bucket, object_key, raise_on_error):  # type: ignore[no-untyped-def]
+            _ = (bucket, object_key, raise_on_error)
+
+    monkeypatch.setattr(tasks_maintenance, "Tenant", _TenantModel)
+    monkeypatch.setattr(tasks_maintenance, "StorageService", _StorageService)
+
+    def _job(*, attempts: int = 0):
+        return SimpleNamespace(
+            tenant_id=uuid.uuid4(),
+            owner_user_id=uuid.uuid4(),
+            bucket="account-data",
+            object_key="private/user/path",
+            status="pending",
+            attempts=attempts,
+            next_attempt_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+
+    successful_job = _job()
+    success_session = _Session(successful_job)
+    monkeypatch.setattr(tasks_maintenance, "get_session_factory", lambda: lambda: success_session)
+    report = tasks_maintenance.storage_cleanup.__wrapped__()
+    assert report["succeeded"] == 1
+    assert report["failed"] == 0
+    assert success_session.deleted == [successful_job]
+    assert success_session.closed is True
+
+    class _FailingStorageService(_StorageService):
+        def delete_object(self, *, bucket, object_key, raise_on_error):  # type: ignore[no-untyped-def]
+            _ = (bucket, object_key, raise_on_error)
+            raise RuntimeError("private object path and storage credentials")
+
+    monkeypatch.setattr(tasks_maintenance, "StorageService", _FailingStorageService)
+    failed_job = _job(attempts=tasks_maintenance.STORAGE_CLEANUP_MAX_ATTEMPTS - 1)
+    failed_session = _Session(failed_job)
+    monkeypatch.setattr(tasks_maintenance, "get_session_factory", lambda: lambda: failed_session)
+    report = tasks_maintenance.storage_cleanup.__wrapped__()
+    assert report["succeeded"] == 0
+    assert report["failed"] == 1
+    assert failed_job.owner_user_id is None
+    assert failed_job.attempts == tasks_maintenance.STORAGE_CLEANUP_MAX_ATTEMPTS
+    assert failed_job.status == "failed"
+    assert failed_job.last_error == "storage_delete_failed"
+    assert failed_session.deleted == []

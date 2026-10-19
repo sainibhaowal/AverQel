@@ -11,6 +11,31 @@ const cancelMock = vi.fn();
 const queueEventHandler: {
   current: ((event: { data?: Record<string, unknown> }) => void) | null;
 } = { current: null };
+const voiceRoomMock = vi.hoisted(() => {
+  type LiveKitMockHandler = (...args: unknown[]) => void;
+  const handlers = new Map<string, LiveKitMockHandler>();
+  const localParticipant = {
+    setMicrophoneEnabled: vi.fn(async () => undefined),
+    publishData: vi.fn(async (data: Uint8Array, options?: Record<string, unknown>) => {
+      void data;
+      void options;
+    }),
+  };
+  return {
+    handlers,
+    localParticipant,
+    remoteParticipants: new Map(),
+    on: vi.fn((event: string, handler: LiveKitMockHandler) => {
+      handlers.set(event, handler);
+    }),
+    off: vi.fn((event: string) => {
+      handlers.delete(event);
+    }),
+    startAudio: vi.fn(async () => undefined),
+    connect: vi.fn(async () => undefined),
+    disconnect: vi.fn(),
+  };
+});
 
 function renderChat(props: Partial<ComponentProps<typeof DeepSpaceChatClient>> = {}) {
   const { activeConversationId = null, ...rest } = props;
@@ -54,6 +79,16 @@ vi.mock("@/lib/realtime", () => ({
   },
 }));
 
+vi.mock("livekit-client", () => ({
+  Room: vi.fn(() => voiceRoomMock),
+  RoomEvent: {
+    DataReceived: "dataReceived",
+    TrackSubscribed: "trackSubscribed",
+    TrackUnsubscribed: "trackUnsubscribed",
+    ParticipantConnected: "participantConnected",
+  },
+}));
+
 vi.mock("../app/dashboard/deepspace/_hooks/useDeepSpaceStream", () => ({
   useDeepSpaceStream: (options: {
     onEvent: (event: Record<string, unknown>) => void;
@@ -89,6 +124,10 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
     onResumeQueue,
     onRetryFailedTurn,
     onSteerQueuedTurn,
+    sttActive = false,
+    ttsActive = false,
+    onSttToggle,
+    onTtsToggle,
   }: {
     query: string;
     isStreaming?: boolean;
@@ -106,6 +145,10 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
     onResumeQueue?: () => void;
     onRetryFailedTurn?: (requestId: string) => void;
     onSteerQueuedTurn?: (requestId: string) => void;
+    sttActive?: boolean;
+    ttsActive?: boolean;
+    onSttToggle?: () => void;
+    onTtsToggle?: () => void;
   }) => (
     <div>
       <button type="button" onClick={() => onQueryChange("hi")}>
@@ -118,6 +161,12 @@ vi.mock("../app/dashboard/deepspace/_components/DeepSpaceComposer", () => ({
       />
       <button type="button" onClick={onSubmit}>
         Submit Query
+      </button>
+      <button type="button" aria-pressed={sttActive} onClick={onSttToggle}>
+        Dictate to composer
+      </button>
+      <button type="button" aria-pressed={ttsActive} onClick={onTtsToggle}>
+        Voice conversation
       </button>
       {isStreaming ? (
         <button
@@ -258,8 +307,21 @@ describe("DeepSpaceChatClient history sync", () => {
     startMock.mockReset();
     cancelMock.mockReset();
     queueEventHandler.current = null;
+    voiceRoomMock.handlers.clear();
+    voiceRoomMock.on.mockClear();
+    voiceRoomMock.off.mockClear();
+    voiceRoomMock.startAudio.mockClear();
+    voiceRoomMock.connect.mockClear();
+    voiceRoomMock.disconnect.mockClear();
+    voiceRoomMock.localParticipant.setMicrophoneEnabled.mockClear();
+    voiceRoomMock.localParticipant.publishData.mockClear();
+    voiceRoomMock.remoteParticipants.clear();
 
     fetchWithAuthMock.mockImplementation(async (url: string) => {
+      if (url.startsWith("/voice/token?")) {
+        return { ok: true, json: async () => ({ token: "voice-token" }) };
+      }
+
       if (url === "/deepspace/chats/conv-1/messages") {
         return {
           ok: true,
@@ -322,6 +384,92 @@ describe("DeepSpaceChatClient history sync", () => {
     view.unmount();
 
     expect(clearTimeoutSpy).toHaveBeenCalledWith(completionPulseTimeout);
+  });
+
+  it("keeps dictation in the composer without submitting it", async () => {
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dictate to composer" }));
+    await waitFor(() => expect(voiceRoomMock.localParticipant.publishData).toHaveBeenCalled());
+
+    const dataHandler = voiceRoomMock.handlers.get("dataReceived");
+    expect(dataHandler).toBeDefined();
+    act(() => {
+      dataHandler?.(
+        new TextEncoder().encode(JSON.stringify({ type: "dictation-result", text: "Search this" })),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("DeepSpace composer draft")).toHaveValue("Search this");
+    });
+    expect(startMock).not.toHaveBeenCalled();
+  });
+
+  it("submits voice turns to the selected DeepSpace chat and speaks only new visible output", async () => {
+    startMock.mockImplementationOnce(
+      async (options: {
+        onEvent: (event: { event: string; data: Record<string, unknown> }) => void;
+        onFinally?: () => void;
+      }) => {
+        options.onEvent({ event: "start", data: { conversation_id: "conv-1" } });
+        options.onEvent({ event: "tool_start", data: { tool_name: "web_search" } });
+        options.onEvent({ event: "thinking", data: { text: "private reasoning" } });
+        options.onEvent({ event: "tool_result", data: { output: "private tool payload" } });
+        options.onEvent({ event: "delta", data: { text: "I found two useful reports." } });
+        options.onEvent({ event: "done", data: {} });
+        options.onFinally?.();
+      },
+    );
+
+    renderChat({ activeConversationId: "conv-1" });
+    await waitForSelectedConversationReady();
+    fireEvent.click(screen.getByRole("button", { name: "Set Query" }));
+    fireEvent.click(screen.getByRole("button", { name: "Voice conversation" }));
+
+    await waitFor(() => {
+      const modeMessages = voiceRoomMock.localParticipant.publishData.mock.calls
+        .map(([bytes]) => JSON.parse(new TextDecoder().decode(bytes)))
+        .filter((message) => message.type === "set-mode");
+      expect(modeMessages).toContainEqual(
+        expect.objectContaining({ type: "set-mode", stt: true, tts: true }),
+      );
+    });
+    const beforeNewTurn = voiceRoomMock.localParticipant.publishData.mock.calls.map(([bytes]) =>
+      JSON.parse(new TextDecoder().decode(bytes)),
+    );
+    expect(beforeNewTurn.some((message) => message.type === "speak-text")).toBe(false);
+
+    const dataHandler = voiceRoomMock.handlers.get("dataReceived");
+    expect(dataHandler).toBeDefined();
+    act(() => {
+      dataHandler?.(
+        new TextEncoder().encode(
+          JSON.stringify({ type: "dictation-result", text: "What is new today?" }),
+        ),
+      );
+    });
+
+    await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
+    const request = startMock.mock.calls[0]?.[1] as {
+      body: { message: string; conversation_id: string };
+    };
+    expect(request.body).toMatchObject({
+      message: "What is new today?",
+      conversation_id: "conv-1",
+    });
+    expect(screen.getByLabelText("DeepSpace composer draft")).toHaveValue("hi");
+
+    const speechMessages = voiceRoomMock.localParticipant.publishData.mock.calls
+      .map(([bytes]) => JSON.parse(new TextDecoder().decode(bytes)))
+      .filter((message) => message.type === "speak-text");
+    expect(speechMessages.map((message) => message.text)).toEqual([
+      "I’m checking the latest sources now.",
+      "I found two useful reports.",
+    ]);
+    expect(JSON.stringify(speechMessages)).not.toContain("private reasoning");
+    expect(JSON.stringify(speechMessages)).not.toContain("private tool payload");
   });
 
   it("keeps active-response controls hidden in a new empty chat", async () => {

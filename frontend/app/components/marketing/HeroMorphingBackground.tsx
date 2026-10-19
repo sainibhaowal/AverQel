@@ -2,6 +2,15 @@
 
 import { useEffect, useRef } from "react";
 import { useReducedMotion } from "framer-motion";
+import {
+  createHexagonalStarTunnelTarget,
+  createQuantumArchitectureTarget,
+  createQuantumEntanglementTarget,
+  HERO_CYCLE_STAGES,
+  HERO_TEXT_TARGETS,
+  QUANTUM_ARCHITECTURE_SEGMENT_COUNT,
+  type TextLineConfig,
+} from "./heroMorphingCycle";
 
 type Particle = {
   x: number;
@@ -27,13 +36,15 @@ type TextTarget = {
 };
 
 const TWO_PI = Math.PI * 2;
-const PHASE_DURATIONS = [460, 420, 460, 420, 460, 420, 460, 420, 460, 420, 620, 620, 220];
-const PARTICLE_COUNT_DESKTOP = 8200;
-const PARTICLE_COUNT_TABLET = 5200;
-const PARTICLE_COUNT_MOBILE = 2800;
+const PARTICLE_COUNT_DESKTOP = 11_000;
+const PARTICLE_COUNT_TABLET = 7_000;
+const PARTICLE_COUNT_MOBILE = 3_500;
 const COLORS = ["#00ffa3", "#00b8ff", "#ffffff"] as const;
+const ARCHITECTURE_COLORS = ["#00b8ff", "#54f4ff", "#00ffa3"] as const;
+const QUANTUM_COLORS = ["#54f4ff", "#3c9dff", "#8a72ff"] as const;
+const TUNNEL_GATE_COLORS = ["#00b8ff", "#54f4ff", "#00ffa3"] as const;
 
-function sampleTextTargets(text: string, fontSize: number, lines?: string[]) {
+function sampleTextTargets(text: string, fontSize: number, lines?: readonly TextLineConfig[]) {
   const canvas = document.createElement("canvas");
   canvas.width = 2400;
   canvas.height = 600;
@@ -45,21 +56,30 @@ function sampleTextTargets(text: string, fontSize: number, lines?: string[]) {
 
   context.fillStyle = "#000000";
   context.fillRect(0, 0, canvas.width, canvas.height);
-  context.font = `900 ${fontSize}px "Chakra Petch", "Inter", sans-serif`;
   context.fillStyle = "#ffffff";
   context.textAlign = "center";
   context.textBaseline = "middle";
 
-  if (lines && lines.length > 1) {
-    const lineHeight = fontSize * 0.92;
-    const totalHeight = lineHeight * (lines.length - 1);
-
-    lines.forEach((line, index) => {
-      const y = canvas.height / 2 - totalHeight / 2 + index * lineHeight;
-      context.fillText(line, canvas.width / 2, y);
-    });
-  } else {
+  if (!lines || lines.length === 0) {
+    context.font = `900 ${fontSize}px "Chakra Petch", "Inter", sans-serif`;
     context.fillText(text, canvas.width / 2, canvas.height / 2);
+  } else {
+    const resolvedLines = lines.map((line) =>
+      typeof line === "string" ? { text: line, fontSize } : line,
+    );
+    const lineGap = fontSize * 0.1;
+    const lineHeights = resolvedLines.map((line) => line.fontSize * 0.92);
+    const totalHeight =
+      lineHeights.reduce((sum, lineHeight) => sum + lineHeight, 0) +
+      lineGap * (resolvedLines.length - 1);
+    let cursorY = canvas.height / 2 - totalHeight / 2;
+
+    resolvedLines.forEach((line, index) => {
+      const lineHeight = lineHeights[index];
+      context.font = `900 ${line.fontSize}px "Chakra Petch", "Inter", sans-serif`;
+      context.fillText(line.text, canvas.width / 2, cursorY + lineHeight / 2, canvas.width - 48);
+      cursorY += lineHeight + lineGap;
+    });
   }
 
   const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -123,6 +143,7 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
 
     let width = 0;
     let height = 0;
+    let focusXRatio = 0.5;
     let animationFrameId = 0;
     let phase = 0;
     let phaseTimer = 0;
@@ -161,7 +182,8 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
           sphereRadius: 430,
           ringRadius: 330,
           helixHeight: 1800,
-          funnelHeight: 1800,
+          tunnelLength: 900,
+          tunnelRadius: 210,
           multilineText: true,
         };
       }
@@ -176,7 +198,8 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
           sphereRadius: 560,
           ringRadius: 430,
           helixHeight: 2200,
-          funnelHeight: 2200,
+          tunnelLength: 1500,
+          tunnelRadius: 285,
           multilineText: false,
         };
       }
@@ -190,7 +213,8 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
         sphereRadius: 700,
         ringRadius: 560,
         helixHeight: 2800,
-        funnelHeight: 2800,
+        tunnelLength: 2000,
+        tunnelRadius: 330,
         multilineText: false,
       };
     };
@@ -199,6 +223,10 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
       const parent = canvas.parentElement;
       width = parent?.clientWidth ?? window.innerWidth;
       height = parent?.clientHeight ?? window.innerHeight;
+      const configuredFocusX = Number.parseFloat(
+        parent ? window.getComputedStyle(parent).getPropertyValue("--hero-focus-x") : "",
+      );
+      focusXRatio = Number.isFinite(configuredFocusX) ? configuredFocusX : 0.5;
       const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
       canvas.width = Math.max(1, Math.floor(width * dpr));
       canvas.height = Math.max(1, Math.floor(height * dpr));
@@ -242,25 +270,13 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
 
     const rebuildTargets = () => {
       const tuning = getViewportTuning();
-      const textConfigs = tuning.multilineText
-        ? [
-            { text: "AverQel", fontSize: 250 },
-            { text: "Axiom Intelligence", fontSize: 176, lines: ["Axiom", "Intelligence"] },
-            { text: "Engine Level QX-7", fontSize: 176, lines: ["Engine", "Level", "QX-7"] },
-            { text: "DeepSpace Runtime", fontSize: 176, lines: ["DeepSpace", "Runtime"] },
-            { text: "Intelligence", fontSize: 216 },
-          ]
-        : [
-            { text: "AverQel", fontSize: 250 },
-            { text: "Axiom Intelligence", fontSize: 176 },
-            { text: "Engine Level QX-7", fontSize: 176 },
-            { text: "DeepSpace Runtime", fontSize: 176 },
-            { text: "Intelligence", fontSize: 216 },
-          ];
-
-      textTargetsArrays = textConfigs.map((config) =>
+      textTargetsArrays = HERO_TEXT_TARGETS.map((config) =>
         scaleTargets(
-          sampleTextTargets(config.text, config.fontSize, config.lines),
+          sampleTextTargets(
+            config.text,
+            config.fontSize,
+            config.lines ?? (tuning.multilineText ? config.mobileLines : undefined),
+          ),
           tuning.textScale,
         ),
       );
@@ -282,28 +298,28 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
         return;
       }
 
-      context.globalCompositeOperation = "source-over";
-      context.fillStyle = "rgba(3, 5, 8, 0.22)";
+      context.globalCompositeOperation = "destination-out";
+      context.fillStyle = "rgba(0, 0, 0, 0.16)";
       context.fillRect(0, 0, width, height);
       context.globalCompositeOperation = "lighter";
 
       time += 0.006;
       phaseTimer += 1;
 
-      if (phaseTimer > PHASE_DURATIONS[phase]) {
-        phase = (phase + 1) % PHASE_DURATIONS.length;
+      if (phaseTimer > HERO_CYCLE_STAGES[phase].duration) {
+        phase = (phase + 1) % HERO_CYCLE_STAGES.length;
         phaseTimer = 0;
       }
 
+      const stage = HERO_CYCLE_STAGES[phase];
+      const isTextStage = stage.textTargetIndex !== undefined;
       const tuning = getViewportTuning();
       const fov = tuning.fov;
       const cameraZ = tuning.cameraZ;
-      const colorBuckets: Record<string, Array<{ x: number; y: number; r: number }>> = {
-        "#00ffa3": [],
-        "#00b8ff": [],
-        "#ffffff": [],
-        "#0066ff": [],
-      };
+      const colorBuckets: Record<
+        string,
+        Array<{ x: number; y: number; r: number }>
+      > = Object.fromEntries([...COLORS, "#0066ff", ...QUANTUM_COLORS].map((color) => [color, []]));
 
       const particleCount = particles.length;
 
@@ -312,7 +328,11 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
         const iNorm = index / particleCount;
         const isAmbient = index > particleCount * 0.65;
 
-        if (phase === 0 || phase === 12 || (isAmbient && phase % 2 === 1 && phase < 10)) {
+        if (
+          stage.id === "wave-grid" ||
+          stage.id === "scatter-reset" ||
+          (isAmbient && isTextStage)
+        ) {
           const gridWidth = 100;
           const mappedIndex = isAmbient ? index * 2 : index;
           const spacing = tuning.gridSpacing;
@@ -322,17 +342,17 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
             ((particleCount / gridWidth) * spacing) / 2;
           const waveY =
             Math.sin(gridX * 0.002 + time) * 360 + Math.cos(gridZ * 0.003 + time * 1.5) * 260;
-          const chaos = phase === 12 ? (PHASE_DURATIONS[12] - phaseTimer) * 4 : 0;
+          const chaos = stage.id === "scatter-reset" ? (stage.duration - phaseTimer) * 4 : 0;
 
           particle.targetX = gridX + Math.sin(time + particle.randomOffset) * chaos;
           particle.targetY =
             waveY + tuning.verticalLift + Math.cos(time + particle.randomOffset) * chaos;
           particle.targetZ = gridZ + ((time * 180) % 260);
 
-          if (isAmbient && phase !== 0 && phase !== 12) {
+          if (isAmbient && stage.id !== "wave-grid" && stage.id !== "scatter-reset") {
             particle.targetZ += 600;
           }
-        } else if (phase === 2) {
+        } else if (stage.id === "pulsing-sphere") {
           const phi = Math.acos(-1 + (2 * index) / particleCount);
           const theta = Math.sqrt(particleCount * Math.PI) * phi;
           const pulse =
@@ -341,21 +361,18 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
           particle.targetX = pulse * Math.cos(theta) * Math.sin(phi);
           particle.targetY = pulse * Math.sin(theta) * Math.sin(phi);
           particle.targetZ = pulse * Math.cos(phi);
-        } else if (phase === 4) {
-          const clusterIndex = Math.floor(iNorm * 3);
-          const clusterT = (iNorm * 3) % 1;
-          const clusterCenters = [-0.72, 0, 0.72];
-          const clusterSpread = tuning.ringRadius * 0.82;
-          const centerX = clusterCenters[clusterIndex] * clusterSpread;
-          const arc = Math.sin(clusterT * TWO_PI + time * 0.9);
-          const twist = Math.cos(clusterT * TWO_PI * 2 + time * 0.65);
-          const flare = 90 + clusterIndex * 32;
-
-          particle.targetX = centerX + arc * flare * 0.7;
-          particle.targetY = (clusterIndex - 1) * 155 + twist * 88;
-          particle.targetZ =
-            Math.sin(clusterT * TWO_PI * 3 + time * 1.15) * (165 + clusterIndex * 26);
-        } else if (phase === 6) {
+        } else if (stage.id === "quantum-architecture") {
+          const target = createQuantumArchitectureTarget(
+            index,
+            iNorm,
+            particle.randomOffset,
+            time,
+            tuning.ringRadius,
+          );
+          particle.targetX = target.x;
+          particle.targetY = target.y;
+          particle.targetZ = target.z;
+        } else if (stage.id === "double-helix") {
           const strand = index % 2;
           const angle = iNorm * Math.PI * 60 + time * 3;
           const radius = 280 + Math.sin(iNorm * 25 - time * 2) * 74;
@@ -363,22 +380,39 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
           particle.targetX = Math.cos(angle + strand * Math.PI) * radius;
           particle.targetY = iNorm * tuning.helixHeight - tuning.helixHeight / 2;
           particle.targetZ = Math.sin(angle + strand * Math.PI) * radius;
-        } else if (phase === 8) {
-          const angle = iNorm * TWO_PI * 40;
-          const horizontalX = (iNorm - 0.5) * tuning.funnelHeight;
-          const radius = 220 + Math.pow(horizontalX / 1200, 2) * 280;
-
-          particle.targetX = horizontalX;
-          particle.targetY = Math.cos(angle + time * 2) * radius * 0.42;
-          particle.targetZ = Math.sin(angle + time * 2) * radius;
-        } else if (phase === 10) {
+        } else if (stage.id === "hexagonal-star-tunnel") {
+          const target = createHexagonalStarTunnelTarget(
+            iNorm,
+            particle.sphereTheta,
+            particle.randomOffset,
+            time,
+            tuning.tunnelLength,
+            tuning.tunnelRadius,
+          );
+          particle.targetX = target.x;
+          particle.targetY = target.y;
+          particle.targetZ = target.z;
+        } else if (stage.id === "quantum-entanglement") {
+          const target = createQuantumEntanglementTarget(
+            index,
+            iNorm,
+            particle.sphereTheta,
+            particle.spherePhi,
+            particle.randomOffset,
+            time,
+            tuning.sphereRadius,
+          );
+          particle.targetX = target.x;
+          particle.targetY = target.y;
+          particle.targetZ = target.z;
+        } else if (stage.id === "rotating-earth") {
           const radius = tuning.sphereRadius;
           const currentTheta = particle.sphereTheta + time * 0.4;
 
           particle.targetX = radius * Math.sin(particle.spherePhi) * Math.cos(currentTheta);
           particle.targetY = radius * Math.cos(particle.spherePhi);
           particle.targetZ = radius * Math.sin(particle.spherePhi) * Math.sin(currentTheta);
-        } else if (phase === 11) {
+        } else if (stage.id === "collapse-disk") {
           if (phaseTimer < 150) {
             const collapseScale = Math.max(0, 1 - phaseTimer / 150);
             const radius = tuning.sphereRadius * Math.pow(collapseScale, 3);
@@ -416,9 +450,8 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
             particle.targetZ = thickness * Math.sin(tilt) + z * Math.cos(tilt);
             particle.tempDiskR = diskRadius;
           }
-        } else if (phase % 2 === 1 && phase < 10 && !isAmbient) {
-          const textIndex = Math.floor(phase / 2);
-          const targetArray = textTargetsArrays[textIndex];
+        } else if (stage.textTargetIndex !== undefined && !isAmbient) {
+          const targetArray = textTargetsArrays[stage.textTargetIndex];
           const target = targetArray[index % Math.max(1, targetArray.length)];
 
           if (target) {
@@ -430,14 +463,18 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
           }
         }
 
-        const isText = phase % 2 === 1 && phase < 10;
-        const baseEase = isText && !isAmbient ? 0.05 : 0.025;
+        const baseEase =
+          stage.id === "quantum-entanglement" || stage.id === "quantum-architecture"
+            ? 0.045
+            : isTextStage && !isAmbient
+              ? 0.05
+              : 0.025;
         let activeEase = baseEase;
         let scatterX = 0;
         let scatterY = 0;
         let scatterZ = 0;
 
-        if (phaseTimer < 120 && phase !== 11) {
+        if (phaseTimer < 120 && stage.id !== "collapse-disk" && stage.entryMotion !== "flow") {
           const transitionFront = phaseTimer / 120;
           const diff = transitionFront - iNorm;
 
@@ -454,9 +491,9 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
           }
         }
 
-        if (phase === 11 && phaseTimer < 150) {
+        if (stage.id === "collapse-disk" && phaseTimer < 150) {
           activeEase = 0.02 + (phaseTimer / 150) * 0.1;
-        } else if (phase === 11 && phaseTimer < 210) {
+        } else if (stage.id === "collapse-disk" && phaseTimer < 210) {
           activeEase = 0.1;
         }
 
@@ -467,18 +504,47 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
         const scale = fov / (fov + (particle.z - cameraZ));
 
         if (scale > 0 && scale < 4) {
-          const x2d = particle.x * scale + width / 2;
+          const x2d = particle.x * scale + width * focusXRatio;
           const y2d = particle.y * scale + height / 2;
           const size2d = particle.baseSize * scale;
 
           let particleColor = particle.color;
 
-          if (phase === 10 || (phase === 11 && phaseTimer < 150)) {
+          if (stage.id === "quantum-architecture") {
+            const memberIndex = Math.min(
+              QUANTUM_ARCHITECTURE_SEGMENT_COUNT - 1,
+              Math.floor(iNorm * QUANTUM_ARCHITECTURE_SEGMENT_COUNT),
+            );
+            particleColor =
+              index % 83 === 0
+                ? "#ffffff"
+                : ARCHITECTURE_COLORS[memberIndex % ARCHITECTURE_COLORS.length];
+          } else if (stage.id === "hexagonal-star-tunnel") {
+            if (index % 67 === 0) {
+              particleColor = "#ffffff";
+            } else if (iNorm < 0.7) {
+              const gateIndex = Math.floor((iNorm / 0.7) * 7);
+              particleColor = TUNNEL_GATE_COLORS[gateIndex % TUNNEL_GATE_COLORS.length];
+            } else {
+              const streamIndex = Math.min(2, Math.floor(((iNorm - 0.7) / 0.3) * 3));
+              particleColor = QUANTUM_COLORS[streamIndex];
+            }
+          } else if (stage.id === "quantum-entanglement") {
+            if (iNorm < 0.18) {
+              particleColor = index % 9 === 0 ? "#ffffff" : "#8a72ff";
+            } else {
+              const orbitIndex = Math.min(2, Math.floor(((iNorm - 0.18) / 0.82) * 3));
+              particleColor = index % 37 === 0 ? "#ffffff" : QUANTUM_COLORS[orbitIndex];
+            }
+          } else if (
+            stage.id === "rotating-earth" ||
+            (stage.id === "collapse-disk" && phaseTimer < 150)
+          ) {
             particleColor = particle.isLand ? "#00ffa3" : "#0066ff";
             if (Math.abs(Math.cos(particle.spherePhi)) > 0.88) {
               particleColor = "#ffffff";
             }
-          } else if (phase === 11 && phaseTimer >= 150) {
+          } else if (stage.id === "collapse-disk" && phaseTimer >= 150) {
             if (particle.isPhotonRing) {
               particleColor = "#ffffff";
             } else if (particle.tempDiskR < 300) {
@@ -502,14 +568,21 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
         }
 
         context.fillStyle = color;
-        context.beginPath();
+        if (stage.id === "quantum-architecture") {
+          for (const dot of bucket) {
+            const pixelSize = Math.max(1, dot.r * 1.8);
+            context.fillRect(dot.x - pixelSize / 2, dot.y - pixelSize / 2, pixelSize, pixelSize);
+          }
+        } else {
+          context.beginPath();
 
-        for (const dot of bucket) {
-          context.moveTo(dot.x + dot.r, dot.y);
-          context.arc(dot.x, dot.y, dot.r, 0, TWO_PI);
+          for (const dot of bucket) {
+            context.moveTo(dot.x + dot.r, dot.y);
+            context.arc(dot.x, dot.y, dot.r, 0, TWO_PI);
+          }
+
+          context.fill();
         }
-
-        context.fill();
       }
 
       animationFrameId = window.requestAnimationFrame(render);
@@ -563,8 +636,8 @@ export default function HeroMorphingBackground({ className }: HeroMorphingBackgr
     <canvas
       ref={canvasRef}
       aria-hidden="true"
+      data-hero-morphing-background
       className={`pointer-events-none absolute inset-0 z-0 h-full w-full ${className ?? ""}`}
-      style={{ background: "#030508" }}
     />
   );
 }

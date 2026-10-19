@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.analytics.api import analytics, dashboard
+from app.analytics.api import dashboard
 from app.auth import api as auth
 from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
@@ -28,6 +28,7 @@ from app.system.api import (
     admin,
     app_feedback,
     capabilities,
+    contact,
     feedback,
     health,
     metrics,
@@ -35,6 +36,7 @@ from app.system.api import (
     plans,
     storage,
     support,
+    support_encryption,
 )
 from app.system.services.otel import (
     configure_telemetry,
@@ -119,7 +121,6 @@ def create_app() -> FastAPI:
     app.include_router(codex_runtime.router, prefix=settings.api_prefix)
     app.include_router(queries.router, prefix=settings.api_prefix)
     app.include_router(intelligence.router, prefix=settings.api_prefix)
-    app.include_router(analytics.router, prefix=settings.api_prefix)
     app.include_router(providers.router, prefix=settings.api_prefix)
     app.include_router(
         feedback.router,
@@ -135,9 +136,11 @@ def create_app() -> FastAPI:
     app.include_router(deepspace_sandbox.router, prefix=settings.api_prefix)
     app.include_router(deepspace_schedules.router, prefix=settings.api_prefix)
     app.include_router(admin.router, prefix=settings.api_prefix)
+    app.include_router(contact.router, prefix=settings.api_prefix)
     app.include_router(dashboard.router, prefix=settings.api_prefix)
     app.include_router(integrations.router, prefix=settings.api_prefix)
     app.include_router(support.router, prefix=settings.api_prefix)
+    app.include_router(support_encryption.router, prefix=settings.api_prefix)
     app.include_router(app_feedback.router, prefix=settings.api_prefix)
     app.include_router(notifications.router, prefix=settings.api_prefix)
     app.include_router(metrics.router, prefix=settings.api_prefix)

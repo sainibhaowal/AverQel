@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import smtplib
-import ssl
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -21,6 +19,7 @@ from app.system.models.notification_delivery import NotificationDelivery
 from app.system.models.support_ticket import SupportTicket
 from app.system.models.user_notification import UserNotification
 from app.system.models.user_notification_preference import UserNotificationPreference
+from app.system.services.smtp_client import smtp_connection
 from app.system.services.user_notifications import add_user_notification, notify_platform_admins
 
 logger = logging.getLogger(__name__)
@@ -75,14 +74,7 @@ def _send_email(*, recipient: str, subject: str, body: str, delivery_id: str) ->
         f"<averqel-notification-{delivery_id}@{sender_address.rsplit('@', 1)[-1]}>"
     )
     message.set_content(body)
-    context = ssl.create_default_context()
-    with smtplib.SMTP(
-        settings.notification_smtp_host, settings.notification_smtp_port, timeout=15
-    ) as client:
-        client.ehlo()
-        if settings.notification_smtp_starttls:
-            client.starttls(context=context)
-            client.ehlo()
+    with smtp_connection(settings, timeout=15) as client:
         if settings.notification_smtp_username:
             client.login(
                 settings.notification_smtp_username, settings.notification_smtp_password or ""

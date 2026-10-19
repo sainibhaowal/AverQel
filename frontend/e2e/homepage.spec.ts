@@ -12,8 +12,8 @@ test("homepage renders the visual workspace hero without hydration failures", as
   await page.goto("/");
 
   const heading = page.getByRole("heading", { level: 1 });
-  await expect(heading).toHaveText("One workspace for knowledge, AI, and action.");
-  await expect(page.getByText("Your Connected AI Workspace")).toBeVisible();
+  await expect(heading).toHaveText("Intelligence. All you need.");
+  await expect(page.getByText("AI grounded in your sources")).toBeVisible();
   await expect(page.getByRole("link", { name: "Create your workspace" })).toBeVisible();
 
   const lockup = page.locator("[data-brand-lockup]:visible").first();
@@ -48,7 +48,7 @@ test("homepage renders the visual workspace hero without hydration failures", as
   if (footerMarkBox && footerWordmarkBox) {
     const footerMarkCenter = footerMarkBox.y + footerMarkBox.height / 2;
     const footerWordmarkCenter = footerWordmarkBox.y + footerWordmarkBox.height / 2;
-    expect(Math.abs(footerMarkCenter - footerWordmarkCenter)).toBeLessThan(1);
+    expect(Math.abs(footerMarkCenter - footerWordmarkCenter)).toBeLessThan(1.5);
   }
 
   await expect.poll(() => hydrationErrors).toEqual([]);

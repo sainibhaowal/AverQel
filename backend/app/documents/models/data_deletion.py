@@ -49,6 +49,14 @@ class DataDeletion(Base):
         nullable=False,
         server_default=text("'tenant_data'"),
     )
+    approval_mode: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'two_admin'"),
+    )
+    self_approval_not_before: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     result_counts: Mapped[dict[str, Any]] = mapped_column(
         JSONB,

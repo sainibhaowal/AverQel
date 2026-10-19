@@ -661,6 +661,9 @@ class Settings(BaseSettings):
     rate_limit_auth_login_per_tenant_email_per_5_minutes: int = 30
     rate_limit_support_submissions_per_hour: int = 10
     rate_limit_feedback_submissions_per_hour: int = 20
+    rate_limit_public_contact_submissions_per_hour: int = Field(default=5, ge=1, le=100)
+    rate_limit_public_contact_verification_ip_per_hour: int = Field(default=10, ge=1, le=100)
+    rate_limit_public_contact_verification_email_per_hour: int = Field(default=3, ge=1, le=20)
     rate_limit_auth_refresh_per_ip_per_5_minutes: int = 60
     rate_limit_auth_logout_per_user_per_5_minutes: int = 60
     collection_ws_messages_per_user_per_minute: int = 120
@@ -680,6 +683,11 @@ class Settings(BaseSettings):
 
     audit_log_retention_days: int = 90
     transient_record_retention_days: int = 30
+    support_ticket_retention_days: int = Field(default=365, ge=30, le=3650)
+    feedback_retention_days: int = Field(default=365, ge=30, le=3650)
+    platform_admin_mfa_required: bool = True
+    platform_admin_reauth_window_minutes: int = Field(default=10, ge=1, le=60)
+    admin_single_owner_deletion_delay_hours: int = Field(default=24, ge=24, le=168)
     # Archive is metadata-only and remains disabled unless an explicitly
     # non-production environment opts in. Permanent purge has no setting.
     storage_retention_automatic_archive_enabled: bool = False
@@ -691,6 +699,13 @@ class Settings(BaseSettings):
     notification_smtp_password: str | None = Field(default=None, repr=False)
     notification_smtp_from: str | None = None
     notification_smtp_starttls: bool = True
+    notification_smtp_implicit_tls: bool = False
+    public_contact_recipient: str | None = Field(default=None, repr=False)
+    public_contact_from: str | None = None
+    public_contact_verification_from: str | None = None
+    public_contact_address: str | None = None
+    public_contact_resend_api_key: str | None = Field(default=None, repr=False)
+    public_contact_resend_webhook_secret: str | None = Field(default=None, repr=False)
     notification_retention_days: int = 365
     notification_delivery_retention_days: int = 90
 
@@ -992,6 +1007,9 @@ class Settings(BaseSettings):
         "mcp_slack_oauth_client_id",
         "mcp_slack_oauth_client_secret",
         "mcp_oauth_redirect_uri",
+        "public_contact_from",
+        "public_contact_verification_from",
+        "public_contact_address",
         "averqel_domain",
         "averqel_public_origin",
     )
@@ -1170,8 +1188,11 @@ class Settings(BaseSettings):
             raise ValueError("Production requires a non-default minio_secret_key")
 
         if self.notification_smtp_host and self.notification_smtp_from:
-            if not self.notification_smtp_starttls:
-                raise ValueError("Production notification email requires SMTP STARTTLS")
+            if self.notification_smtp_starttls == self.notification_smtp_implicit_tls:
+                raise ValueError(
+                    "Production notification email requires exactly one SMTP TLS mode: "
+                    "STARTTLS or implicit TLS"
+                )
             if bool(self.notification_smtp_username) != bool(self.notification_smtp_password):
                 raise ValueError(
                     "Notification SMTP username and password must be configured together"
@@ -1180,6 +1201,17 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production notification email requires averqel_public_origin or averqel_domain"
                 )
+
+        public_contact_inbound_settings = (
+            self.public_contact_address,
+            self.public_contact_resend_api_key,
+            self.public_contact_resend_webhook_secret,
+        )
+        if any(public_contact_inbound_settings) and not all(public_contact_inbound_settings):
+            raise ValueError(
+                "Resend inbound contact forwarding requires the contact address, API key, "
+                "and webhook signing secret"
+            )
 
         if not self.refresh_cookie_secure:
             raise ValueError("Production requires refresh_cookie_secure=true")

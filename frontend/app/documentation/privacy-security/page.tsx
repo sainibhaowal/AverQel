@@ -22,7 +22,7 @@ export default function PrivacySecurityPage() {
           },
           {
             title: "Content boundaries",
-            body: "Documents and AI requests are processed by configured server-side services. Assigned Support Managers can read support tickets; assigned Feedback Managers can read submitted feedback text.",
+            body: "New and migrated support and feedback text is encrypted in the browser for the submitter and allowlisted platform administrator. Routing metadata remains visible; legacy records need the admin migration.",
           },
         ]}
       />
@@ -86,22 +86,27 @@ export default function PrivacySecurityPage() {
       <DocsSection title="Admin and operational boundaries">
         <p>
           Administrative access is role- and route-specific, and platform-wide routes require an
-          account in the configured platform-admin allowlist. Support content access requires the
-          separate Support Manager role; these managers can read support tickets and attachments
-          across workspaces and must also be platform-admin allowlisted. Feedback access is separate
-          and requires the assigned Feedback Manager role; it can read feedback text across
-          workspaces, but its staff API omits submitter email and account IDs. Designated Qel
-          Connect moderators can read report details only inside their active tenant. These are
-          content-bearing workflows, so do not treat AverQel as a system where administrators can
-          never access user content. Privileged support, feedback, and moderation reads and changes
-          are recorded in the audit log.
+          account in the configured platform-admin allowlist. The user and platform administrator
+          are the intended decryption recipients for support and feedback. Internal notes are
+          administrator-only. Legacy Support Manager and Feedback Manager assignments do not grant
+          access to those queues. The feedback queue omits submitter email and account IDs.
+          Designated Qel Connect moderators can read report details only inside their active tenant.
+          Support and feedback metadata remain service-visible, and the administrator can decrypt
+          the messages by design. The browser-based admin migration must be run to convert old
+          plaintext records; backups can retain old copies until expiry. Privileged support,
+          feedback, and moderation reads and changes are recorded in the audit log.
+        </p>
+        <p>
+          Browser encryption does not protect content from a compromised device or from a
+          compromised live server that changes the application code or recipient keys. The server
+          cannot malware-scan encrypted attachments. This application encryption has not been
+          independently audited; do not read it as a guarantee that all AverQel content is
+          end-to-end encrypted.
         </p>
         <p>
           The default account view shows email, status, roles, and MFA status without per-user usage
-          counts or recent activity. Workspace analytics use a rolling 30-day window with a
-          five-member minimum group threshold; smaller groups and daily points are hidden. Global
-          worker metrics require platform-admin access, and the public gateway blocks the raw
-          Prometheus route.
+          counts or recent activity. Global worker metrics require platform-admin access, and the
+          public gateway blocks the raw Prometheus route.
         </p>
         <p>
           Operators must protect signing and encryption keys, database and object-storage access,

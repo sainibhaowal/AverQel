@@ -21,17 +21,15 @@ export default function SecurityPage() {
           Platform-wide administration requires both an administrator role and an email in the
           deployment&apos;s platform-admin allowlist. The standard administrator user view is
           limited to email, account status, roles, and multi-factor status. It omits per-user
-          document, query, conversation, and recent-activity counts. Workspace views show status and
-          seats; aggregate analytics use a minimum group threshold.
+          document, query, conversation, and recent-activity counts.
         </p>
         <p>
-          Content access is separately assigned for support, feedback, and moderation. Support
-          Managers can read support ticket content and attachments across workspaces and must also
-          be in the platform-admin allowlist. Feedback Managers can read feedback text across
-          workspaces, with submitter email and account IDs omitted from their staff response. Qel
-          Connect moderators can read report details only in their assigned workspace. Staff reads
-          and administrative changes are audited. Users should not assume that all content is
-          invisible to authorized staff.
+          An allowlisted platform administrator can decrypt support and feedback through Support
+          Management and Feedback Management. Legacy Support Manager and Feedback Manager roles do
+          not grant access. Public support replies are encrypted for the user and administrator;
+          internal notes are encrypted only for the administrator. The feedback queue omits
+          submitter email and account IDs. Qel Connect moderators can read report details only in
+          their assigned workspace. Privileged reads and administrative changes are audited.
         </p>
       </PolicySection>
 
@@ -51,21 +49,30 @@ export default function SecurityPage() {
 
       <PolicySection title="Encryption and service limits">
         <p>
-          AverQel does not provide end-to-end encryption for the entire product. Qel Connect has
-          limited client-side encryption features, but document processing and other service
-          operations may require server access to content. Security also depends on deployment
-          configuration, patching, monitoring, network boundaries, key protection, backups, and
-          incident response.
+          New and migrated support and feedback content is encrypted in the browser before upload;
+          private keys are protected by a passphrase that is not sent to the server. The server
+          retains routing metadata, and the platform administrator is an intended recipient who can
+          decrypt the content. Older records remain plaintext until the administrator runs the
+          migration in each management page. Older backups can retain plaintext until they expire.
+          Encrypted attachments cannot be malware-scanned by the server.
+        </p>
+        <p>
+          This protection does not cover the whole product. A compromised live server could serve
+          altered browser code or keys, and a compromised device can expose content after it is
+          decrypted. The support and feedback encryption design has not been independently audited.
+          Security also depends on deployment configuration, patching, monitoring, network
+          boundaries, key protection, backups, and incident response.
         </p>
       </PolicySection>
 
       <PolicySection title="Report a security issue">
         <p>
           Use Support Centre in the application to report a suspected issue. Do not include
-          passwords, API keys, recovery codes, or unrelated user content. Support content is
-          readable by assigned Support Managers and is not end-to-end encrypted. The hosted service
-          is operated by Ravinder Singh — Independent Developer, AverQel Independent Project. The
-          current source does not specify a public security contact for people who cannot sign in.
+          passwords, API keys, recovery codes, or unrelated user content. Support is encrypted for
+          you and the allowlisted platform administrator after key setup and legacy migration. The
+          hosted service is operated by Ravinder Singh — Independent Developer, AverQel Independent
+          Project. The current source does not specify a public security contact for people who
+          cannot sign in.
         </p>
       </PolicySection>
     </PolicyLayout>

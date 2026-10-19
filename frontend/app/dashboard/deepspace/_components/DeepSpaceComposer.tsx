@@ -1784,7 +1784,7 @@ export default function DeepSpaceComposer({
 
               {/* Direct Voice Integration Controls */}
               <div className="relative flex h-8 items-center rounded-lg border border-white/10 bg-black/40 p-0.5 backdrop-blur-md">
-                {/* Voice Dictation (STT Mode) Button */}
+                {/* Dictation stays in the composer for review before sending. */}
                 <div className="group relative">
                   <button
                     type="button"
@@ -1794,7 +1794,7 @@ export default function DeepSpaceComposer({
                         ? "border border-emerald-500/35 bg-emerald-500/25 text-emerald-400 shadow-[0_2px_8px_rgba(16,185,129,0.3)]"
                         : "border border-transparent text-white/40 hover:text-white/80"
                     }`}
-                    aria-label="Voice Dictation (STT)"
+                    aria-label="Dictate to composer"
                   >
                     {sttActive ? (
                       <Mic
@@ -1807,12 +1807,12 @@ export default function DeepSpaceComposer({
                   </button>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                     <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
-                      Voice Dictation (STT)
+                      Dictate to composer
                     </div>
                   </div>
                 </div>
 
-                {/* Jarvis Mode (Verbal Commentary) Button */}
+                {/* Voice conversation uses the active DeepSpace chat for both directions. */}
                 <div className="group relative">
                   <button
                     type="button"
@@ -1822,7 +1822,7 @@ export default function DeepSpaceComposer({
                         ? "bg-primary/20 text-primary border-primary/35 border shadow-[0_2px_8px_rgba(var(--primary),0.3)]"
                         : "border border-transparent text-white/40 hover:text-white/80"
                     }`}
-                    aria-label="Jarvis Mode"
+                    aria-label="Voice conversation"
                   >
                     {ttsActive ? (
                       <Volume2
@@ -1835,7 +1835,7 @@ export default function DeepSpaceComposer({
                   </button>
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 -translate-x-1/2 opacity-0 transition-all group-hover:pointer-events-auto group-hover:mb-3 group-hover:opacity-100">
                     <div className="rounded-md border border-white/10 bg-black/85 px-2 py-1 text-[9px] font-bold tracking-wider whitespace-nowrap text-white uppercase shadow-xl backdrop-blur-sm">
-                      Voice Commentary (TTS)
+                      Voice conversation
                     </div>
                   </div>
                 </div>

@@ -1,365 +1,314 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  AlertTriangle,
-  Trash2,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  RefreshCcw,
-  Loader2,
-  ChevronRight,
-  Info,
-  ShieldAlert,
-  ChevronDown,
-  ChevronUp,
-  Check,
-} from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Loader2, RefreshCw, Search, Trash2, UserRound } from "lucide-react";
+import toast from "react-hot-toast";
+
+import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import { useAuth } from "@/app/context/AuthContext";
 import { fetchWithAuth } from "@/lib/api";
 import { hasAdminRole } from "@/lib/roles";
-import toast from "react-hot-toast";
-import { useAuth } from "@/app/context/AuthContext";
-import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 
-interface DeletionRequest {
+interface UserSummary {
+  user_id: string;
+  tenant_id: string;
+  tenant_name: string | null;
+  email: string;
+  is_active: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+interface UserListResponse {
+  items: UserSummary[];
+}
+
+interface DeleteResponse {
+  pending_storage_cleanup_count?: number;
+}
+
+interface StorageCleanupJob {
+  id: string;
+  tenant_id: string;
+  status: "pending" | "failed";
+  attempts: number;
+  next_attempt_at: string;
+  created_at: string;
+}
+
+interface StorageCleanupResponse {
+  items: StorageCleanupJob[];
+}
+
+interface TenantPurgeRequest {
   deletion_id: string;
   tenant_id: string;
   status: string;
   scope: string;
   reason: string | null;
   can_approve: boolean;
-  error_code: string | null;
-  error_message: string | null;
+  can_self_approve: boolean;
+  can_cancel: boolean;
+  self_approval_not_before: string | null;
   requested_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  failed_at: string | null;
-}
-
-interface DeletionListResponse {
-  items: DeletionRequest[];
-}
-
-interface TenantSummary {
-  tenant_id: string;
-  name: string;
-  created_at: string;
-  updated_at: string;
-  seats_used: number;
-}
-
-interface TenantListResponse {
-  items: TenantSummary[];
-}
-
-interface WorkspaceMenuPosition {
-  top: number;
-  left: number;
-  width: number;
-}
-
-interface FloatingTooltipPosition {
-  top: number;
-  left: number;
 }
 
 export default function DeletionPage() {
   const { user } = useAuth();
   const isAdmin = hasAdminRole(user?.roles);
-  const [requests, setRequests] = useState<DeletionRequest[]>([]);
-  const [tenants, setTenants] = useState<TenantSummary[]>([]);
-  const [loadingTenants, setLoadingTenants] = useState(false);
-  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(user?.tenant_id ?? null);
-  const [expandedRequestIds, setExpandedRequestIds] = useState<string[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [reason, setReason] = useState<"workspace_offboarding" | "security_incident">(
-    "workspace_offboarding",
+  const [users, setUsers] = useState<UserSummary[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [cleanupJobs, setCleanupJobs] = useState<StorageCleanupJob[]>([]);
+  const [loadingCleanup, setLoadingCleanup] = useState(true);
+  const [retryingJobId, setRetryingJobId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [purgeRequests, setPurgeRequests] = useState<TenantPurgeRequest[]>([]);
+  const [loadingPurgeRequests, setLoadingPurgeRequests] = useState(false);
+  const [purgeConfirmation, setPurgeConfirmation] = useState("");
+  const [purgeReason, setPurgeReason] = useState<"workspace_offboarding" | "security_incident">(
+    "security_incident",
   );
-  const [targetConfirmation, setTargetConfirmation] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [approvingRequestId, setApprovingRequestId] = useState<string | null>(null);
-  const [loadingRequests, setLoadingRequests] = useState(true);
-  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
-  const workspaceMenuRef = useRef<HTMLDivElement | null>(null);
-  const workspaceTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const [workspaceMenuPosition, setWorkspaceMenuPosition] = useState<WorkspaceMenuPosition | null>(
-    null,
-  );
-  const controlTooltipTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const [controlTooltipVisible, setControlTooltipVisible] = useState(false);
-  const [controlTooltipPosition, setControlTooltipPosition] =
-    useState<FloatingTooltipPosition | null>(null);
+  const [purgeActionId, setPurgeActionId] = useState<string | null>(null);
 
-  const hasActiveRequests = useMemo(
-    () =>
-      requests.some((request) =>
-        ["awaiting_approval", "queued", "processing"].includes(request.status),
-      ),
-    [requests],
+  const selectedUser = useMemo(
+    () => users.find((item) => item.user_id === selectedUserId) ?? null,
+    [selectedUserId, users],
   );
-  const selectedTenant = useMemo(
-    () => tenants.find((tenant) => tenant.tenant_id === selectedTenantId) ?? null,
-    [selectedTenantId, tenants],
-  );
-  const targetLabel = selectedTenant?.name ?? "Current Workspace";
-  const deletionHistoryQuery = useMemo(() => {
-    const params = new URLSearchParams({ limit: "20" });
-    if (isAdmin && selectedTenantId) {
-      params.set("target_tenant_id", selectedTenantId);
-    }
-    return params.toString();
-  }, [isAdmin, selectedTenantId]);
+  const visibleUsers = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return users;
+    return users.filter(
+      (item) =>
+        item.email.toLowerCase().includes(term) ||
+        (item.tenant_name ?? "").toLowerCase().includes(term) ||
+        item.tenant_id.toLowerCase().includes(term),
+    );
+  }, [search, users]);
+  const expectedConfirmation = selectedUser ? `DELETE ${selectedUser.email}` : "";
+  const expectedPurgeConfirmation = selectedUser ? `DELETE ${selectedUser.tenant_id}` : "";
+  const selectedTenantAccountCount = selectedUser
+    ? users.filter((item) => item.tenant_id === selectedUser.tenant_id).length
+    : 0;
 
-  const fetchTenants = useCallback(async () => {
-    if (!isAdmin) return;
-    setLoadingTenants(true);
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = (await fetchWithAuth("/admin/tenants")) as Response;
-      if (!res.ok) {
-        throw new Error(`Failed to load workspaces (${res.status})`);
-      }
-      const data = (await res.json()) as TenantListResponse;
-      const items = Array.isArray(data.items) ? data.items : [];
-      setTenants(items);
-      setSelectedTenantId((current) => current ?? items[0]?.tenant_id ?? null);
-    } catch (error) {
-      console.error("Failed to load workspaces", error);
-      toast.error("Failed to load workspaces.");
-    } finally {
-      setLoadingTenants(false);
-    }
-  }, [isAdmin]);
-
-  const fetchRequests = useCallback(async () => {
-    setLoadingRequests(true);
-    try {
-      const res = (await fetchWithAuth(
-        `/admin/data-deletions?${deletionHistoryQuery}`,
-      )) as Response;
-      if (!res.ok) {
-        throw new Error(`Failed to load deletion requests (${res.status})`);
-      }
-      const data = (await res.json()) as DeletionListResponse;
-      setRequests(
-        data.items.map((item) => ({
-          deletion_id: item.deletion_id,
-          tenant_id: item.tenant_id,
-          status: item.status,
-          scope: item.scope,
-          reason: item.reason,
-          can_approve: item.can_approve,
-          error_code: item.error_code,
-          error_message: item.error_message,
-          requested_at: item.requested_at,
-          started_at: item.started_at,
-          completed_at: item.completed_at,
-          failed_at: item.failed_at,
-        })),
+      const response = (await fetchWithAuth("/admin/users")) as Response;
+      if (!response.ok) throw new Error(`Could not load accounts (${response.status}).`);
+      const payload = (await response.json()) as Partial<UserListResponse>;
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      setUsers(items);
+      setSelectedUserId((current) =>
+        current && items.some((item) => item.user_id === current)
+          ? current
+          : (items[0]?.user_id ?? null),
       );
     } catch (error) {
-      console.error("Failed to load deletion requests", error);
-      toast.error("Failed to load deletion history.");
+      console.error("Failed to load accounts for deletion", error);
+      toast.error(error instanceof Error ? error.message : "Could not load accounts.");
     } finally {
-      setLoadingRequests(false);
+      setLoading(false);
     }
-  }, [deletionHistoryQuery]);
+  }, []);
+
+  const loadCleanupJobs = useCallback(async () => {
+    setLoadingCleanup(true);
+    try {
+      const response = (await fetchWithAuth("/admin/storage-cleanup?limit=200")) as Response;
+      if (!response.ok) throw new Error(`Could not load file cleanup queue (${response.status}).`);
+      const payload = (await response.json()) as Partial<StorageCleanupResponse>;
+      setCleanupJobs(Array.isArray(payload.items) ? payload.items : []);
+    } catch (error) {
+      console.error("Failed to load storage cleanup queue", error);
+      toast.error(error instanceof Error ? error.message : "Could not load file cleanup queue.");
+    } finally {
+      setLoadingCleanup(false);
+    }
+  }, []);
+
+  const loadPurgeRequests = useCallback(async () => {
+    if (!selectedUser) {
+      setPurgeRequests([]);
+      return;
+    }
+    setLoadingPurgeRequests(true);
+    try {
+      const params = new URLSearchParams({
+        limit: "50",
+        target_tenant_id: selectedUser.tenant_id,
+      });
+      const response = (await fetchWithAuth(
+        `/admin/data-deletions?${params.toString()}`,
+      )) as Response;
+      if (!response.ok) throw new Error(`Could not load purge requests (${response.status}).`);
+      const payload = (await response.json()) as { items?: TenantPurgeRequest[] };
+      setPurgeRequests(Array.isArray(payload.items) ? payload.items : []);
+    } catch (error) {
+      console.error("Failed to load tenant purge requests", error);
+      toast.error(error instanceof Error ? error.message : "Could not load purge requests.");
+    } finally {
+      setLoadingPurgeRequests(false);
+    }
+  }, [selectedUser]);
 
   useEffect(() => {
     if (isAdmin) {
-      queueMicrotask(() => void fetchTenants());
-    }
-  }, [fetchTenants, isAdmin]);
-
-  useEffect(() => {
-    if (isAdmin && !selectedTenantId) return;
-    queueMicrotask(() => void fetchRequests());
-  }, [fetchRequests, isAdmin, selectedTenantId]);
-
-  useEffect(() => {
-    if (!hasActiveRequests) {
-      return;
-    }
-    const interval = window.setInterval(() => {
-      void fetchRequests();
-    }, 4000);
-    return () => window.clearInterval(interval);
-  }, [fetchRequests, hasActiveRequests]);
-
-  useEffect(() => {
-    if (!workspaceMenuOpen) return;
-
-    const updateWorkspaceMenuPosition = () => {
-      const trigger = workspaceTriggerRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      setWorkspaceMenuPosition({
-        top: rect.bottom + 8,
-        left: rect.left,
-        width: rect.width,
+      queueMicrotask(() => {
+        void loadUsers();
+        void loadCleanupJobs();
       });
-    };
-
-    updateWorkspaceMenuPosition();
-
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (
-        target instanceof Node &&
-        workspaceMenuRef.current &&
-        !workspaceMenuRef.current.contains(target) &&
-        !workspaceTriggerRef.current?.contains(target)
-      ) {
-        setWorkspaceMenuOpen(false);
-      }
-    };
-
-    window.addEventListener("resize", updateWorkspaceMenuPosition);
-    window.addEventListener("scroll", updateWorkspaceMenuPosition, true);
-    window.addEventListener("mousedown", handlePointerDown);
-    return () => {
-      window.removeEventListener("resize", updateWorkspaceMenuPosition);
-      window.removeEventListener("scroll", updateWorkspaceMenuPosition, true);
-      window.removeEventListener("mousedown", handlePointerDown);
-    };
-  }, [workspaceMenuOpen]);
+    } else {
+      queueMicrotask(() => {
+        setLoading(false);
+        setLoadingCleanup(false);
+      });
+    }
+  }, [isAdmin, loadCleanupJobs, loadUsers]);
 
   useEffect(() => {
-    if (!controlTooltipVisible) return;
-
-    const updateControlTooltipPosition = () => {
-      const trigger = controlTooltipTriggerRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      setControlTooltipPosition({
-        top: rect.top - 10,
-        left: rect.right,
-      });
-    };
-
-    updateControlTooltipPosition();
-
-    window.addEventListener("resize", updateControlTooltipPosition);
-    window.addEventListener("scroll", updateControlTooltipPosition, true);
-    return () => {
-      window.removeEventListener("resize", updateControlTooltipPosition);
-      window.removeEventListener("scroll", updateControlTooltipPosition, true);
-    };
-  }, [controlTooltipVisible]);
-
-  const handleWipe = async () => {
-    if (isAdmin && !selectedTenantId) {
-      toast.error("Select a workspace first.");
-      return;
+    if (isAdmin && selectedUser) {
+      queueMicrotask(() => void loadPurgeRequests());
     }
-    const targetTenantId = selectedTenantId ?? user?.tenant_id ?? null;
-    const expectedConfirmation = targetTenantId ? `DELETE ${targetTenantId}` : "";
-    if (!targetTenantId || targetConfirmation.trim() !== expectedConfirmation) return;
-    setSubmitting(true);
+  }, [isAdmin, loadPurgeRequests, selectedUser]);
+
+  const eraseAccount = async () => {
+    if (!selectedUser || confirmation.trim() !== expectedConfirmation) return;
+    setDeleting(true);
     try {
-      const res = (await fetchWithAuth("/admin/data-deletions", {
-        method: "POST",
-        body: JSON.stringify({
-          reason,
-          target_confirmation: targetConfirmation.trim(),
-          ...(isAdmin && selectedTenantId ? { target_tenant_id: selectedTenantId } : {}),
-        }),
+      const response = (await fetchWithAuth(`/admin/users/${selectedUser.user_id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirmation: expectedConfirmation }),
       })) as Response;
-      if (res.ok) {
-        const data = await res.json();
-        setShowModal(false);
-        setReason("workspace_offboarding");
-        setTargetConfirmation("");
-        toast.success(
-          `Deletion request is waiting for a second administrator: ${data.deletion_id}`,
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          payload?.error?.message ||
+            payload?.message ||
+            `Account deletion failed (${response.status}).`,
         );
-        await fetchRequests();
-      } else {
-        const errorData = await res.json().catch(() => null);
-        toast.error(
-          errorData?.error?.message || errorData?.message || "Failed to initiate data deletion.",
-        );
-        await fetchRequests();
       }
-    } catch (e) {
-      console.error("Deletion failed", e);
-      toast.error("An unexpected error occurred.");
+      const result = (await response.json().catch(() => ({}))) as DeleteResponse;
+      const pending = Number(result.pending_storage_cleanup_count ?? 0);
+      setUsers((current) => current.filter((item) => item.user_id !== selectedUser.user_id));
+      setSelectedUserId(null);
+      setPurgeRequests([]);
+      setConfirmation("");
+      toast.success(
+        pending > 0
+          ? `Account erased. ${pending} stored file${pending === 1 ? " is" : "s are"} queued for background cleanup.`
+          : "Account and account-owned data erased.",
+      );
+      await loadCleanupJobs();
+    } catch (error) {
+      console.error("Account erasure failed", error);
+      toast.error(error instanceof Error ? error.message : "Account deletion failed.");
     } finally {
-      setSubmitting(false);
+      setDeleting(false);
     }
   };
 
-  const handleApprove = async (request: DeletionRequest) => {
-    const confirmed = window.confirm(
-      `Approve the irreversible workspace data deletion for ${request.tenant_id}? This approval will be recorded and the deletion will start. Account records, support, feedback, and audit records are retained.`,
-    );
-    if (!confirmed) return;
-    setApprovingRequestId(request.deletion_id);
+  const retryCleanup = async (job: StorageCleanupJob) => {
+    setRetryingJobId(job.id);
     try {
-      const query = new URLSearchParams({ target_tenant_id: request.tenant_id });
+      const response = (await fetchWithAuth(`/admin/storage-cleanup/${job.id}/retry`, {
+        method: "POST",
+      })) as Response;
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error?.message || `Could not retry cleanup (${response.status}).`);
+      }
+      toast.success("File cleanup has been queued for retry.");
+      await loadCleanupJobs();
+    } catch (error) {
+      console.error("Could not retry storage cleanup", error);
+      toast.error(error instanceof Error ? error.message : "Could not retry file cleanup.");
+    } finally {
+      setRetryingJobId(null);
+    }
+  };
+
+  const requestTenantPurge = async () => {
+    if (
+      !selectedUser ||
+      selectedTenantAccountCount !== 1 ||
+      purgeConfirmation.trim() !== expectedPurgeConfirmation
+    ) {
+      return;
+    }
+    setPurgeActionId("request");
+    try {
+      const response = (await fetchWithAuth("/admin/data-deletions", {
+        method: "POST",
+        body: JSON.stringify({
+          reason: purgeReason,
+          target_tenant_id: selectedUser.tenant_id,
+          target_confirmation: expectedPurgeConfirmation,
+        }),
+      })) as Response;
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error?.message || `Could not request purge (${response.status}).`);
+      }
+      setPurgeConfirmation("");
+      toast.success("Purge request created with a delayed single-admin approval window.");
+      await loadPurgeRequests();
+    } catch (error) {
+      console.error("Could not request tenant purge", error);
+      toast.error(error instanceof Error ? error.message : "Could not request purge.");
+    } finally {
+      setPurgeActionId(null);
+    }
+  };
+
+  const updatePurgeRequest = async (
+    request: TenantPurgeRequest,
+    action: "approve" | "self-approve" | "cancel",
+  ) => {
+    setPurgeActionId(request.deletion_id);
+    try {
+      const params = new URLSearchParams({ target_tenant_id: request.tenant_id });
       const response = (await fetchWithAuth(
-        `/admin/data-deletions/${request.deletion_id}/approve?${query.toString()}`,
+        `/admin/data-deletions/${request.deletion_id}/${action}?${params.toString()}`,
         { method: "POST" },
       )) as Response;
       if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        toast.error(errorData?.error?.message || "Could not approve this deletion request.");
-        return;
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error?.message || `Could not ${action} purge (${response.status}).`);
       }
-      toast.success("Deletion approved and queued.");
-      await fetchRequests();
+      toast.success(
+        action === "cancel"
+          ? "Purge request cancelled."
+          : "Purge approved and queued for processing.",
+      );
+      await loadPurgeRequests();
     } catch (error) {
-      console.error("Deletion approval failed", error);
-      toast.error("Could not approve this deletion request.");
+      console.error(`Could not ${action} tenant purge`, error);
+      toast.error(error instanceof Error ? error.message : `Could not ${action} purge.`);
     } finally {
-      setApprovingRequestId(null);
+      setPurgeActionId(null);
     }
-  };
-
-  const closeConfirmation = () => {
-    setShowModal(false);
-    setTargetConfirmation("");
-  };
-
-  const toggleExpanded = (deletionId: string) => {
-    setExpandedRequestIds((current) =>
-      current.includes(deletionId)
-        ? current.filter((item) => item !== deletionId)
-        : [...current, deletionId],
-    );
   };
 
   const formatTimestamp = (value: string | null) => {
-    if (!value) return "Not recorded";
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(value));
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "completed":
-        return <CheckCircle2 size={16} className="text-green-500" />;
-      case "failed":
-        return <XCircle size={16} className="text-red-500" />;
-      case "processing":
-      case "in_progress":
-        return <Loader2 size={16} className="text-primary animate-spin" />;
-      case "queued":
-        return <Clock size={16} className="text-amber-400" />;
-      default:
-        return <Clock size={16} className="text-slate-500" />;
-    }
+    if (!value) return "Never recorded";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? "Not available"
+      : `${new Intl.DateTimeFormat("en-GB", {
+          timeZone: "UTC",
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(date)} UTC`;
   };
 
   return (
     <div className="dashboard-theme-scope w-full space-y-8">
       <DashboardSectionHeader
         title="Data Deletion"
-        subtitle="Permanent Workspace Data Removal"
+        subtitle="Erase One User Account and Its Owned Data"
         icon={Trash2}
         accentClassName="bg-red-500 text-red-400"
         accentGlowClassName="shadow-[0_0_18px_rgba(239,68,68,0.28)]"
@@ -367,554 +316,348 @@ export default function DeletionPage() {
         backLabel="Back To Dashboard"
       />
 
-      <div className="relative z-[40] grid grid-cols-1 gap-5">
-        <div
-          className="glass-card relative z-[40] flex flex-col space-y-5 p-6"
-          style={{ overflow: "visible" }}
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <h2 className="text-foreground text-xs font-bold tracking-widest uppercase">
-                Deletion Target
-              </h2>
-              <p className="text-muted-foreground mt-2 max-w-[56ch] text-sm leading-7">
-                This operation removes content from one workspace. Account data-rights requests must
-                be submitted through{" "}
-                <a href="/dashboard/support" className="text-primary underline underline-offset-2">
-                  support
-                </a>
-                ; this workspace purge does not process them.
-              </p>
-            </div>
-            {isAdmin ? (
-              <span className="theme-chip shrink-0 rounded-full px-3 py-1 text-[10px] font-bold tracking-[0.18em] uppercase">
-                Admin Scope
-              </span>
-            ) : null}
-          </div>
+      {!isAdmin ? (
+        <section className="glass-card text-muted-foreground p-6 text-sm">
+          This account-erasure workflow is available only to an authorized platform administrator.
+        </section>
+      ) : (
+        <>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.8fr)]">
+            <section className="glass-card min-w-0 space-y-5 p-5">
+              <div>
+                <h2 className="text-foreground text-sm font-semibold">Select an account</h2>
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Search by email or tenant. This action targets one person’s account across
+                  AverQel.
+                </p>
+              </div>
+              <label className="theme-panel-muted flex items-center gap-3 rounded-xl px-4 py-3">
+                <Search size={16} className="text-muted-foreground" />
+                <span className="sr-only">Search accounts</span>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search email or tenant"
+                  className="text-foreground placeholder:text-muted-foreground w-full bg-transparent text-sm outline-none"
+                />
+              </label>
 
-          {isAdmin ? (
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] xl:items-start">
-              <div className="min-w-0">
-                <label className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                  Workspace Selection
-                </label>
-                <div className="mt-2 min-w-0">
-                  <button
-                    ref={workspaceTriggerRef}
-                    type="button"
-                    onClick={() => {
-                      if (!loadingTenants) setWorkspaceMenuOpen((current) => !current);
-                    }}
-                    disabled={loadingTenants}
-                    className="theme-panel-muted border-glass-border text-foreground hover:border-primary/25 hover:bg-primary/5 flex h-12 w-full min-w-0 items-center justify-between rounded-xl border px-4 text-left text-sm transition-all outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <span className="block min-w-0 flex-1 truncate pr-2">
-                      {loadingTenants
-                        ? "Loading workspaces..."
-                        : selectedTenant?.name || "Select workspace"}
-                    </span>
-                    <ChevronDown
-                      size={16}
-                      className={`text-primary ml-3 shrink-0 transition-transform ${
-                        workspaceMenuOpen ? "rotate-180" : ""
+              <div className="max-h-[34rem] space-y-2 overflow-y-auto">
+                {loading ? (
+                  <div className="text-muted-foreground flex items-center justify-center gap-3 py-12 text-sm">
+                    <Loader2 size={16} className="animate-spin" /> Loading accounts…
+                  </div>
+                ) : visibleUsers.length ? (
+                  visibleUsers.map((item) => (
+                    <button
+                      key={item.user_id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedUserId(item.user_id);
+                        setPurgeRequests([]);
+                        setConfirmation("");
+                      }}
+                      className={`theme-panel-muted flex w-full items-start gap-3 rounded-xl border p-4 text-left transition ${
+                        item.user_id === selectedUserId
+                          ? "border-primary/50 bg-primary/10"
+                          : "hover:border-glass-border border-transparent"
                       }`}
-                    />
-                  </button>
+                    >
+                      <UserRound size={17} className="text-primary mt-0.5 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="text-foreground block truncate text-sm font-medium">
+                          {item.email}
+                        </span>
+                        <span className="text-muted-foreground mt-1 block truncate text-xs">
+                          {item.tenant_name || item.tenant_id}
+                        </span>
+                      </span>
+                      <span className="text-muted-foreground shrink-0 text-[10px] uppercase">
+                        {item.is_active ? "Active" : "Disabled"}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground py-10 text-center text-sm">
+                    {users.length ? "No accounts match this search." : "No accounts found."}
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <section className="glass-card min-w-0 space-y-5 p-5">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={20} className="mt-0.5 shrink-0 text-red-400" />
+                <div>
+                  <h2 className="text-foreground text-sm font-semibold">
+                    Permanent account erasure
+                  </h2>
+                  <p className="text-muted-foreground mt-1 text-sm leading-6">
+                    Deletes the selected account and its account-owned records, including documents,
+                    queries, conversations, provider settings, support tickets, feedback, and
+                    personal connections. Other users’ records in a shared tenant remain.
+                  </p>
                 </div>
               </div>
-              <div className="theme-panel-muted flex min-h-[6.2rem] min-w-0 flex-col rounded-xl p-4">
-                <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                  Workspace ID
-                </p>
-                <p className="text-foreground mt-2 max-w-full overflow-hidden font-mono text-xs leading-5 break-all">
-                  {selectedTenant?.tenant_id ?? "No workspace selected"}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="theme-panel-muted text-muted-foreground flex min-h-[6.2rem] items-center rounded-xl p-4 text-sm">
-              This page applies only to your current workspace context.
-            </div>
-          )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="theme-panel-muted flex min-h-[7rem] min-w-0 flex-col rounded-xl p-4">
-              <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                Workspace
-              </p>
-              <p
-                className="text-foreground mt-auto [display:-webkit-box] overflow-hidden text-sm leading-6 font-semibold break-words [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                title={targetLabel}
-              >
-                {targetLabel}
-              </p>
-            </div>
-            <div className="theme-panel-muted flex min-h-[7rem] flex-col rounded-xl p-4">
-              <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                Seats in use
-              </p>
-              <p className="text-foreground mt-auto text-3xl leading-none font-semibold">
-                {selectedTenant?.seats_used ?? "—"}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {typeof document !== "undefined" && workspaceMenuPosition
-        ? createPortal(
-            <AnimatePresence>
-              {workspaceMenuOpen ? (
-                <div
-                  ref={workspaceMenuRef}
-                  className="fixed z-[260]"
-                  style={{
-                    top: workspaceMenuPosition.top,
-                    left: workspaceMenuPosition.left,
-                    width: workspaceMenuPosition.width,
-                  }}
-                >
-                  <motion.div
-                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 6, scale: 0.98 }}
-                    transition={{ duration: 0.16, ease: "easeOut" }}
-                    className="theme-panel border-glass-border max-h-72 overflow-x-hidden overflow-y-auto rounded-2xl border p-2 shadow-[0_18px_60px_rgba(0,0,0,0.42)]"
-                    style={{
-                      overflowY: "auto",
-                      overflowX: "hidden",
-                      WebkitOverflowScrolling: "touch",
-                    }}
-                  >
-                    {tenants.map((tenant) => {
-                      const selected = tenant.tenant_id === selectedTenantId;
-                      return (
-                        <button
-                          key={tenant.tenant_id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedTenantId(tenant.tenant_id);
-                            setTargetConfirmation("");
-                            setWorkspaceMenuOpen(false);
-                          }}
-                          className={`flex w-full min-w-0 items-center justify-between rounded-xl px-3 py-3 text-left text-sm transition-all ${
-                            selected
-                              ? "bg-primary/15 text-primary"
-                              : "text-foreground/78 hover:bg-white/[0.04]"
-                          }`}
-                        >
-                          <span className="block min-w-0 flex-1 truncate pr-2 font-semibold">
-                            {tenant.name}
-                          </span>
-                          {selected ? (
-                            <Check size={15} className="text-primary ml-3 shrink-0" />
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                  </motion.div>
-                </div>
-              ) : null}
-            </AnimatePresence>,
-            document.body,
-          )
-        : null}
-
-      {typeof document !== "undefined" && controlTooltipVisible && controlTooltipPosition
-        ? createPortal(
-            <AnimatePresence>
-              <motion.div
-                initial={{ opacity: 0, y: 6, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 4, scale: 0.98 }}
-                transition={{ duration: 0.14, ease: "easeOut" }}
-                className="pointer-events-none fixed z-[280] max-w-[min(28rem,calc(100vw-24px))] -translate-x-full -translate-y-full rounded-lg border border-white/12 bg-slate-950/96 px-3 py-2 text-xs leading-5 text-slate-100 shadow-[0_18px_50px_rgba(0,0,0,0.42)]"
-                style={{
-                  top: controlTooltipPosition.top,
-                  left: controlTooltipPosition.left,
-                }}
-                role="tooltip"
-              >
-                This wipes only the selected workspace. It does not delete all users across the
-                AverQel platform.
-              </motion.div>
-            </AnimatePresence>,
-            document.body,
-          )
-        : null}
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(22rem,1fr)] xl:items-start 2xl:grid-cols-[minmax(0,1.7fr)_minmax(24rem,1fr)]">
-        <div className="space-y-6">
-          <div className="flex min-h-[8.5rem] gap-4 rounded-2xl border border-red-500/20 bg-red-500/10 p-5">
-            <AlertTriangle className="shrink-0 text-red-500" size={24} />
-            <div>
-              <h4 className="flex items-center gap-2 font-bold text-red-400">
-                Atomic Wipe Protocol
-                <span className="rounded bg-red-500/20 px-2 py-0.5 text-[10px] font-bold tracking-tighter text-red-500 uppercase">
-                  IRREVERSIBLE
-                </span>
-              </h4>
-              <p className="mt-2 text-sm leading-relaxed text-red-500/70 italic">
-                A request and approval from two different authorized administrators are required
-                before this irreversible workspace purge starts. This removes workspace documents
-                and source files, extracted text and embeddings, ingestion/index records, queries
-                and citations, conversations and messages, Qel Connect collections and sharing,
-                comments, and pinned findings. User accounts, provider settings, support and
-                feedback records, and audit records remain. Account and data-rights requests use
-                separate privacy controls. Any storage cleanup retries continue separately.
-              </p>
-            </div>
-          </div>
-
-          {/* Active Status Placeholder */}
-          <div className="glass-card flex overflow-hidden lg:max-h-[34rem] lg:min-h-[34rem] lg:flex-col">
-            <div className="border-glass-border bg-muted/30 flex items-center justify-between border-b px-6 py-4">
-              <h3 className="text-foreground flex items-center gap-2 text-sm font-bold tracking-widest uppercase">
-                <ShieldAlert size={14} className="text-primary" />
-                Execution History
-              </h3>
-              <span className="text-muted-foreground hidden text-[10px] font-bold tracking-widest uppercase sm:inline">
-                {targetLabel}
-              </span>
-              <button
-                type="button"
-                onClick={() => void fetchRequests()}
-                disabled={loadingRequests}
-                className="text-muted-foreground hover:text-foreground flex items-center gap-2 text-[10px] font-bold tracking-widest uppercase transition-colors disabled:opacity-60"
-              >
-                <RefreshCcw size={12} className={loadingRequests ? "animate-spin" : ""} /> Sync
-                Status
-              </button>
-            </div>
-
-            <div className="divide-glass-border divide-y lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-              {loadingRequests ? (
-                <div className="flex items-center justify-center gap-3 p-12 text-center">
-                  <Loader2 size={18} className="text-primary animate-spin" />
-                  <p className="text-muted-foreground text-sm">Loading deletion history...</p>
-                </div>
-              ) : requests.length > 0 ? (
-                requests.map((req) => {
-                  const isExpanded = expandedRequestIds.includes(req.deletion_id);
-                  return (
-                    <div key={req.deletion_id} className="p-6">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                          <p className="text-foreground text-sm font-bold tracking-widest break-all uppercase">
-                            {req.deletion_id}
-                          </p>
-                          <p className="text-muted-foreground mt-1 text-xs">
-                            Status:{" "}
-                            {req.status === "awaiting_approval"
-                              ? "Awaiting second approval"
-                              : req.status}
-                          </p>
-                          <p className="text-muted-foreground mt-2 text-[11px]">
-                            Requested: {formatTimestamp(req.requested_at)}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          {getStatusIcon(req.status)}
-                          {req.status === "awaiting_approval" && req.can_approve ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleApprove(req)}
-                              disabled={approvingRequestId === req.deletion_id}
-                              className="inline-flex items-center gap-2 rounded-full border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-[10px] font-bold tracking-widest text-amber-600 uppercase transition-colors hover:bg-amber-500/20 disabled:opacity-60"
-                            >
-                              {approvingRequestId === req.deletion_id ? (
-                                <Loader2 size={12} className="animate-spin" />
-                              ) : (
-                                <CheckCircle2 size={12} />
-                              )}
-                              Approve purge
-                            </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => toggleExpanded(req.deletion_id)}
-                            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-[10px] font-bold tracking-widest uppercase transition-colors"
-                          >
-                            {isExpanded ? "Hide Details" : "View Details"}
-                            {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <AnimatePresence initial={false}>
-                        {isExpanded ? (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="overflow-hidden"
-                          >
-                            <div className="mt-4 space-y-4 rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <div className="rounded-xl border border-white/6 bg-black/10 p-3">
-                                  <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                                    Reason
-                                  </p>
-                                  <p className="text-foreground mt-2 text-sm">
-                                    {req.reason?.trim() || "No reason provided"}
-                                  </p>
-                                </div>
-                                <div className="rounded-xl border border-white/6 bg-black/10 p-3">
-                                  <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                                    Scope
-                                  </p>
-                                  <p className="text-foreground mt-2 text-sm">{req.scope}</p>
-                                </div>
-                              </div>
-
-                              <div className="grid gap-3 sm:grid-cols-3">
-                                <div className="rounded-xl border border-white/6 bg-black/10 p-3">
-                                  <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                                    Started
-                                  </p>
-                                  <p className="text-foreground mt-2 text-sm">
-                                    {formatTimestamp(req.started_at)}
-                                  </p>
-                                </div>
-                                <div className="rounded-xl border border-white/6 bg-black/10 p-3">
-                                  <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                                    Completed
-                                  </p>
-                                  <p className="text-foreground mt-2 text-sm">
-                                    {formatTimestamp(req.completed_at)}
-                                  </p>
-                                </div>
-                                <div className="rounded-xl border border-white/6 bg-black/10 p-3">
-                                  <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                                    Failed
-                                  </p>
-                                  <p className="text-foreground mt-2 text-sm">
-                                    {formatTimestamp(req.failed_at)}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {req.error_code || req.error_message ? (
-                                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3">
-                                  <p className="text-[10px] font-bold tracking-widest text-red-400 uppercase">
-                                    Failure Details
-                                  </p>
-                                  <p className="mt-2 text-sm text-red-200">
-                                    {req.error_code || "Error"}
-                                    {req.error_message ? `: ${req.error_message}` : ""}
-                                  </p>
-                                </div>
-                              ) : null}
-                            </div>
-                          </motion.div>
-                        ) : null}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="flex h-full min-h-[18rem] flex-col items-center justify-center gap-4 p-12 text-center opacity-30">
-                  <Trash2 size={48} className="text-muted-foreground" />
+              {selectedUser ? (
+                <div className="theme-panel-muted space-y-3 rounded-xl p-4">
                   <div>
-                    <p className="text-foreground text-sm font-bold tracking-widest uppercase">
-                      No Active Wipes
+                    <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
+                      Selected account
                     </p>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      Deletion history is purged after 30 days.
+                    <p className="text-foreground mt-1 text-sm font-medium break-all">
+                      {selectedUser.email}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
+                      Account created
+                    </p>
+                    <p className="text-foreground mt-1 text-sm">
+                      {formatTimestamp(selectedUser.created_at)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
+                      Last successful sign-in
+                    </p>
+                    <p className="text-foreground mt-1 text-sm">
+                      {formatTimestamp(selectedUser.last_login_at)}
                     </p>
                   </div>
                 </div>
+              ) : (
+                <div className="theme-panel-muted text-muted-foreground rounded-xl p-5 text-sm">
+                  Select an account to review its deletion details.
+                </div>
               )}
-            </div>
-          </div>
-        </div>
 
-        <div className="space-y-6 xl:sticky xl:top-0">
-          <div className="glass-card space-y-6 overflow-visible p-6">
-            <div className="border-glass-border flex items-center gap-2 border-b pb-4">
-              <h3 className="text-foreground text-xs font-bold tracking-widest uppercase">
-                Control Zone
-              </h3>
+              <div className="text-muted-foreground rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 text-xs leading-5">
+                Database records are removed in this operation. Stored files are queued for
+                background deletion and may take time to finish. Security audit events are retained
+                in a minimal, anonymized form; backups and copies held by external providers follow
+                their own retention and deletion controls. This action also requires an administrator
+                sign-in completed with MFA in the last 10 minutes.
+              </div>
+
+              <label className="text-muted-foreground block text-xs font-semibold">
+                Type{" "}
+                <span className="text-foreground font-mono">
+                  {expectedConfirmation || "DELETE email"}
+                </span>{" "}
+                to confirm
+                <input
+                  value={confirmation}
+                  onChange={(event) => setConfirmation(event.target.value)}
+                  disabled={!selectedUser || deleting}
+                  className="theme-panel-muted text-foreground border-glass-border focus:border-primary/50 mt-2 w-full rounded-xl border px-4 py-3 text-sm outline-none disabled:opacity-50"
+                  autoComplete="off"
+                />
+              </label>
+
               <button
                 type="button"
-                ref={controlTooltipTriggerRef}
-                onMouseEnter={() => setControlTooltipVisible(true)}
-                onMouseLeave={() => setControlTooltipVisible(false)}
-                onFocus={() => setControlTooltipVisible(true)}
-                onBlur={() => setControlTooltipVisible(false)}
-                className="theme-chip text-foreground/70 hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-full"
-                aria-label="Wipe scope information"
-                title="This wipes only the selected workspace. It does not delete all users across the AverQel platform."
+                onClick={() => void eraseAccount()}
+                disabled={
+                  !selectedUser ||
+                  confirmation.trim() !== expectedConfirmation ||
+                  deleting ||
+                  loading
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Info size={13} />
+                {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                {deleting ? "Erasing account…" : "Erase account and owned data"}
               </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="rounded-[1.1rem] border border-orange-500/10 bg-orange-500/5 p-4">
-                <h4 className="mb-2 text-xs font-bold tracking-tight text-orange-400 uppercase">
-                  Requirement Traceability
-                </h4>
-                <p className="text-[11px] leading-relaxed text-orange-400/70 italic">
-                  Select the operational reason. You must also type the exact workspace ID to
-                  confirm this irreversible request.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowModal(true)}
-                disabled={submitting}
-                className="flex h-13 w-full items-center justify-center gap-2 rounded-[1.1rem] bg-red-600 px-4 text-sm font-bold tracking-widest text-white uppercase shadow-lg shadow-red-500/25 transition-all hover:bg-red-500 disabled:opacity-60"
-              >
-                <Trash2 size={18} />
-                Execute Workspace Wipe
-              </button>
-            </div>
+            </section>
           </div>
-
-          <div className="glass-card space-y-5 p-6">
-            <h3 className="text-foreground mb-4 flex items-center gap-2 text-xs font-bold tracking-widest uppercase">
-              <Info size={14} className="text-muted-foreground" />
-              Scope of Deletion
-            </h3>
-            <ul className="space-y-3 text-[11px] font-medium text-slate-500">
-              <li className="flex items-center gap-2">
-                <ChevronRight size={10} className="text-primary" />
-                Source files and derived artifacts; failed storage deletes enter a retry queue
-              </li>
-              <li className="flex items-center gap-2">
-                <ChevronRight size={10} className="text-primary" />
-                Queries, chats, comments, and Qel Connect workspace data
-              </li>
-              <li className="flex items-center gap-2">
-                <ChevronRight size={10} className="text-primary" />
-                User accounts, provider settings, support, and feedback remain
-              </li>
-              <li className="flex items-center gap-2">
-                <ChevronRight size={10} className="text-red-500" />
-                <span className="font-bold text-slate-400">EXCLUDES:</span> Audit Trail Events
-              </li>
-            </ul>
-            <div className="theme-panel-muted rounded-[1.1rem] p-4">
-              <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                Current Target
+          <section className="glass-card space-y-5 p-5">
+            <div>
+              <h2 className="text-foreground text-sm font-semibold">
+                Tenant-content purge
+              </h2>
+              <p className="text-muted-foreground mt-1 text-sm leading-6">
+                This removes tenant content while retaining user accounts, provider settings,
+                support and feedback records, and audit records. Use account erasure above to delete
+                one person’s account and owned data. A second administrator can approve this tenant
+                purge immediately; a sole administrator can approve after the displayed delay. A
+                recent MFA sign-in is required to request, approve, or cancel.
               </p>
-              <p className="text-foreground mt-2 text-sm font-semibold">{targetLabel}</p>
-              {selectedTenant?.tenant_id ? (
-                <p className="text-muted-foreground mt-2 font-mono text-xs break-all">
-                  {selectedTenant.tenant_id}
-                </p>
-              ) : null}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Confirmation Modal */}
-      <AnimatePresence>
-        {showModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={closeConfirmation}
-              className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="glass-card relative w-full max-w-md space-y-8 overflow-hidden border-red-500/20 p-10 shadow-2xl"
-            >
-              <div className="pointer-events-none absolute top-0 right-0 p-8 opacity-10">
-                <Trash2 size={120} className="text-red-500" />
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="text-foreground text-2xl font-bold">Confirm Removal</h3>
-                <p className="text-muted-foreground text-sm italic">
-                  Verification required to proceed with data destruction.
+            {selectedUser ? (
+              <>
+                <p className="theme-panel-muted rounded-lg p-3 text-xs text-slate-300">
+                  Target account: <span className="font-semibold">{selectedUser.email}</span>
+                  <br />
+                  Isolated tenant: <span className="font-mono">{selectedUser.tenant_id}</span>
+                  {selectedTenantAccountCount > 1 ? (
+                    <span className="mt-2 block text-amber-300">
+                      This tenant has {selectedTenantAccountCount} accounts. Full purge is disabled
+                      to protect the other accounts.
+                    </span>
+                  ) : null}
+                </p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="min-w-48 text-xs font-semibold text-slate-400">
+                    Reason
+                    <select
+                      value={purgeReason}
+                      onChange={(event) =>
+                        setPurgeReason(event.target.value as "workspace_offboarding" | "security_incident")
+                      }
+                      className="theme-panel-muted text-foreground border-glass-border mt-1 w-full rounded-lg border px-3 py-2"
+                    >
+                      <option value="security_incident">Security incident</option>
+                      <option value="workspace_offboarding">Tenant-content offboarding</option>
+                    </select>
+                  </label>
+                  <label className="min-w-64 flex-1 text-xs font-semibold text-slate-400">
+                    Type {expectedPurgeConfirmation || "DELETE tenant ID"}
+                    <input
+                      value={purgeConfirmation}
+                      onChange={(event) => setPurgeConfirmation(event.target.value)}
+                      disabled={selectedTenantAccountCount !== 1 || purgeActionId === "request"}
+                      className="theme-panel-muted text-foreground border-glass-border mt-1 w-full rounded-lg border px-3 py-2 font-mono text-xs"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void requestTenantPurge()}
+                    disabled={
+                      selectedTenantAccountCount !== 1 ||
+                      purgeConfirmation.trim() !== expectedPurgeConfirmation ||
+                      purgeActionId !== null
+                    }
+                    className="rounded-lg bg-red-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {purgeActionId === "request" ? "Requesting…" : "Request tenant-content purge"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-muted-foreground text-sm">Select an account above.</p>
+            )}
+            <div className="space-y-2">
+              <h3 className="text-foreground text-xs font-semibold">Purge requests</h3>
+              {loadingPurgeRequests ? (
+                <p className="text-muted-foreground text-xs">Loading requests…</p>
+              ) : purgeRequests.length ? (
+                purgeRequests.map((request) => (
+                  <div
+                    key={request.deletion_id}
+                    className="theme-panel-muted flex flex-wrap items-center justify-between gap-3 rounded-lg p-3"
+                  >
+                    <div className="text-xs">
+                      <p className="text-foreground font-medium">
+                        {request.scope.replaceAll("_", " ")} · {request.status.replaceAll("_", " ")}
+                      </p>
+                      <p className="text-muted-foreground mt-1">
+                        Requested {formatTimestamp(request.requested_at)}
+                        {request.self_approval_not_before
+                          ? ` · Solo approval after ${formatTimestamp(request.self_approval_not_before)}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {request.can_approve ? (
+                        <button
+                          type="button"
+                          onClick={() => void updatePurgeRequest(request, "approve")}
+                          disabled={purgeActionId === request.deletion_id}
+                          className="rounded-lg border border-amber-400/30 px-3 py-2 text-xs text-amber-200 disabled:opacity-50"
+                        >
+                          Approve
+                        </button>
+                      ) : null}
+                      {request.can_self_approve ? (
+                        <button
+                          type="button"
+                          onClick={() => void updatePurgeRequest(request, "self-approve")}
+                          disabled={purgeActionId === request.deletion_id}
+                          className="rounded-lg border border-red-400/30 px-3 py-2 text-xs text-red-200 disabled:opacity-50"
+                        >
+                          Approve after delay
+                        </button>
+                      ) : null}
+                      {request.can_cancel ? (
+                        <button
+                          type="button"
+                          onClick={() => void updatePurgeRequest(request, "cancel")}
+                          disabled={purgeActionId === request.deletion_id}
+                          className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 disabled:opacity-50"
+                        >
+                          Cancel request
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-muted-foreground text-xs">No purge requests for this account.</p>
+              )}
+            </div>
+          </section>
+          <section className="glass-card space-y-4 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-foreground text-sm font-semibold">Stored-file cleanup</h2>
+                <p className="text-muted-foreground mt-1 text-sm">
+                  Pending and failed background file removals across accounts. Object paths and
+                  provider errors are hidden.
                 </p>
               </div>
-
-              <div className="space-y-4">
-                <div className="theme-panel-muted rounded-xl p-4">
-                  <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
-                    Target Workspace
-                  </p>
-                  <p className="text-foreground mt-2 text-sm font-semibold">{targetLabel}</p>
-                  {selectedTenant?.tenant_id ? (
-                    <p className="text-muted-foreground mt-2 font-mono text-xs break-all">
-                      {selectedTenant.tenant_id}
-                    </p>
-                  ) : null}
-                </div>
-                <div>
-                  <label
-                    htmlFor="deletion-reason"
-                    className="text-muted-foreground mb-2 block text-[10px] font-bold tracking-widest uppercase"
-                  >
-                    Reason
-                  </label>
-                  <select
-                    id="deletion-reason"
-                    value={reason}
-                    onChange={(event) => setReason(event.target.value as typeof reason)}
-                    className="bg-muted border-glass-border text-foreground w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-red-500/50"
-                  >
-                    <option value="workspace_offboarding">Workspace offboarding</option>
-                    <option value="security_incident">Security incident</option>
-                  </select>
-                </div>
-                <div>
-                  <label
-                    htmlFor="target-confirmation"
-                    className="text-muted-foreground mb-2 block text-[10px] font-bold tracking-widest uppercase"
-                  >
-                    Type DELETE {selectedTenantId ?? user?.tenant_id ?? "workspace ID"}
-                  </label>
-                  <input
-                    id="target-confirmation"
-                    value={targetConfirmation}
-                    onChange={(event) => setTargetConfirmation(event.target.value)}
-                    placeholder={`DELETE ${selectedTenantId ?? user?.tenant_id ?? "workspace ID"}`}
-                    autoComplete="off"
-                    className="bg-muted border-glass-border text-foreground w-full rounded-xl border px-4 py-3 font-mono text-sm outline-none focus:border-red-500/50"
-                  />
-                </div>
+              <button
+                type="button"
+                onClick={() => void loadCleanupJobs()}
+                disabled={loadingCleanup}
+                className="theme-chip flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={loadingCleanup ? "animate-spin" : ""} /> Refresh
+              </button>
+            </div>
+            {loadingCleanup ? (
+              <div className="text-muted-foreground flex items-center gap-2 py-4 text-sm">
+                <Loader2 size={15} className="animate-spin" /> Loading cleanup queue…
               </div>
-
-              <div className="flex gap-4">
-                <button
-                  onClick={closeConfirmation}
-                  className="bg-muted text-muted-foreground hover:bg-muted/80 border-glass-border flex-1 rounded-xl border px-6 py-3 text-sm font-bold tracking-widest uppercase transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleWipe}
-                  disabled={
-                    submitting ||
-                    (!selectedTenantId && !user?.tenant_id) ||
-                    targetConfirmation.trim() !==
-                      `DELETE ${selectedTenantId ?? user?.tenant_id ?? ""}`
-                  }
-                  className="disabled:bg-muted disabled:text-muted-foreground flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-sm font-bold tracking-widest text-white uppercase shadow-lg shadow-red-500/25 transition-all hover:bg-red-500"
-                >
-                  {submitting ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <Trash2 size={16} />
-                  )}
-                  Wipe Data
-                </button>
+            ) : cleanupJobs.length ? (
+              <div className="space-y-2">
+                {cleanupJobs.map((job) => (
+                  <div
+                    key={job.id}
+                    className="theme-panel-muted flex flex-wrap items-center justify-between gap-3 rounded-xl p-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-foreground text-sm font-medium">
+                        {job.status === "failed" ? "Needs retry" : "Waiting for cleanup worker"}
+                      </p>
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        Tenant {job.tenant_id.slice(0, 8)}… · {job.attempts} attempt
+                        {job.attempts === 1 ? "" : "s"} · next try{" "}
+                        {formatTimestamp(job.next_attempt_at)}
+                      </p>
+                    </div>
+                    {job.status === "failed" ? (
+                      <button
+                        type="button"
+                        onClick={() => void retryCleanup(job)}
+                        disabled={retryingJobId === job.id}
+                        className="rounded-lg border border-amber-400/30 px-3 py-2 text-xs font-semibold text-amber-300 transition hover:bg-amber-400/10 disabled:opacity-50"
+                      >
+                        {retryingJobId === job.id ? "Queueing…" : "Retry cleanup"}
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+            ) : (
+              <p className="text-muted-foreground py-4 text-sm">
+                No pending or failed file cleanup jobs.
+              </p>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }

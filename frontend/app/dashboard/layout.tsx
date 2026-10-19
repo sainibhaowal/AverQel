@@ -13,7 +13,6 @@ import {
   ChevronRight,
   LogOut,
   Menu,
-  Database,
   FileSearch,
   Sun,
   Moon,
@@ -55,7 +54,7 @@ type NavLeaf = {
   action?: "open-neosis";
   isHeader?: false;
   admin?: boolean;
-  requiresRole?: "feedback_manager" | "collection_moderator" | "support_manager";
+  requiresRole?: "collection_moderator";
 };
 type NavHeader = {
   name: string;
@@ -100,19 +99,16 @@ const BASE_NAV_ITEMS: NavItem[] = [
         href: "/dashboard/admin/users",
         icon: <User size={18} />,
       },
-      {
-        name: "Workspaces",
-        href: "/dashboard/admin/tenants",
-        icon: <Database size={18} />,
-      },
       { name: "Audit Logs", href: "/dashboard/admin/audit-logs", icon: <ScrollText size={18} /> },
-      { name: "Analytics", href: "/dashboard/admin/analytics", icon: <Activity size={18} /> },
       {
         name: "Support Management",
         href: "/dashboard/admin/support",
         icon: <LifeBuoy size={18} />,
-        admin: true,
-        requiresRole: "support_manager",
+      },
+      {
+        name: "Feedback Management",
+        href: "/dashboard/admin/feedback",
+        icon: <Sparkles size={18} />,
       },
       { name: "Data Deletion", href: "/dashboard/admin/deletion", icon: <Trash2 size={18} /> },
 
@@ -125,12 +121,6 @@ const BASE_NAV_ITEMS: NavItem[] = [
     isHeader: true,
     staff: true,
     items: [
-      {
-        name: "Feedback Management",
-        href: "/dashboard/admin/feedback",
-        icon: <Sparkles size={18} />,
-        requiresRole: "feedback_manager",
-      },
       {
         name: "Qel Connect Moderation",
         href: "/dashboard/admin/collections/moderation",
@@ -173,16 +163,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isProvidersSettingsRoute = pathname === "/dashboard/settings/providers";
   const fillsAvailableHeight = isFullHeightRoute || isProvidersSettingsRoute;
   const hasAdminAccess = user ? hasAdminRole(user.roles) : false;
-  const hasFeedbackAccess = user ? hasNamedRole(user.roles, "feedback_manager") : false;
   const hasModerationAccess = user ? hasNamedRole(user.roles, "collection_moderator") : false;
-  const hasSupportAccess = user ? hasNamedRole(user.roles, "support_manager") : false;
   const isFeedbackStaffPage = pathname.startsWith("/dashboard/admin/feedback");
   const isModeratorStaffPage = pathname.startsWith("/dashboard/admin/collections/moderation");
   const isSupportStaffPage = pathname.startsWith("/dashboard/admin/support");
   const canAccessStaffPage =
-    (isFeedbackStaffPage && hasFeedbackAccess) ||
+    (isFeedbackStaffPage && hasAdminAccess) ||
     (isModeratorStaffPage && hasModerationAccess) ||
-    (isSupportStaffPage && hasAdminAccess && hasSupportAccess);
+    (isSupportStaffPage && hasAdminAccess);
 
   useEffect(() => {
     let active = true;
@@ -221,14 +209,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const items = BASE_NAV_ITEMS.flatMap((item): NavItem[] => {
       if (item.admin && !hasAdminAccess) return [];
       if ("isHeader" in item && item.isHeader && item.staff) {
-        const visibleItems = item.items.filter((sub) =>
-          sub.requiresRole === "feedback_manager"
-            ? hasFeedbackAccess
-            : sub.requiresRole === "collection_moderator"
-              ? hasModerationAccess
-              : sub.requiresRole === "support_manager"
-                ? hasSupportAccess
-                : true,
+        const visibleItems = item.items.filter(
+          (sub) => !sub.requiresRole || hasNamedRole(user?.roles, sub.requiresRole),
         );
         return visibleItems.length ? [{ ...item, items: visibleItems }] : [];
       }
@@ -247,9 +229,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return items;
   }, [
     hasAdminAccess,
-    hasFeedbackAccess,
-    hasModerationAccess,
-    hasSupportAccess,
     neosisAvailable,
     user,
   ]);

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 import time
-from typing import Any
+from collections import deque
 
 import numpy as np
 from faster_whisper import WhisperModel
@@ -30,7 +30,10 @@ session_awake_states = {}  # room_name -> {"is_awake": bool, "last_active_time":
 active_speech_tasks = {}  # room_name -> asyncio.Task
 session_stt = {}  # room_name -> bool
 session_tts = {}  # room_name -> bool
+session_speaking = {}  # room_name -> bool
 initial_prompts = {}  # room_name -> initial_prompt string bias
+speech_queues: dict[str, deque[tuple[str, str | None]]] = {}
+speech_worker_tasks: dict[str, asyncio.Task] = {}
 
 # Multiple wake names/variations for high robustness under various phonetic spelling differences
 WAKE_WORDS = [
@@ -92,7 +95,7 @@ def check_and_extract_wake_word(transcript: str) -> tuple[bool, str]:
 # Lazy-loaded singletons
 _stt_model: WhisperModel | None = None
 _tts_model: Kokoro | None = None
-is_agent_speaking = False
+TTS_VOICE = "am_michael"
 
 
 def get_stt() -> WhisperModel:
@@ -139,30 +142,16 @@ async def synthesize_and_speak(
     node_id: str | None = None,
 ) -> None:
     """Convert text to speech and stream it to the room with high precision pacing."""
-    global is_agent_speaking
-
-    # Cancel previous active speech task for this room if any
-    prev_task = active_speech_tasks.get(room.name)
-    if prev_task and not prev_task.done() and prev_task != asyncio.current_task():
-        logger.info("Interrupting previous active speech playback task...")
-        prev_task.cancel()
-        try:
-            await prev_task
-        except asyncio.CancelledError:
-            pass
-
-    current_task = asyncio.current_task()
-    active_speech_tasks[room.name] = current_task
-    is_agent_speaking = True
+    session_speaking[room.name] = True
 
     try:
-        logger.info("Synthesizing TTS for text: %r", text)
+        logger.info("Synthesizing DeepSpace voice output (%d characters)", len(text))
         await broadcast_state(room, "speaking", node_id, text=text)
         tts = get_tts()
 
         loop = asyncio.get_running_loop()
         samples, sample_rate = await loop.run_in_executor(
-            None, lambda: tts.create(text, voice="af_sarah", speed=1.0, lang="en-us")
+            None, lambda: tts.create(text, voice=TTS_VOICE, speed=1.0, lang="en-us")
         )
         logger.info(
             "TTS synthesis complete. samples_len=%d, sample_rate=%d",
@@ -201,80 +190,65 @@ async def synthesize_and_speak(
         logger.info("Speech playback task cancelled (interrupted).")
         raise
     except Exception as e:
-        logger.error("Error in synthesize_and_speak: %s", e, exc_info=True)
-    finally:
-        if active_speech_tasks.get(room.name) == current_task:
-            active_speech_tasks.pop(room.name, None)
-
-        async def reset_speaking_flag():
-            await asyncio.sleep(0.1)
-            global is_agent_speaking
-            is_agent_speaking = False
-            await broadcast_state(room, "listening")
-
-        asyncio.create_task(reset_speaking_flag())
+        logger.error("Error in DeepSpace voice synthesis: %s", e, exc_info=True)
 
 
-async def _generate_spoken_text(prompt_text: str) -> str:
-    try:
-        provider, model_name = get_resolved_chat_provider()
-        if not provider:
-            return ""
-        from app.providers.services.types import ChatGenerateRequest
-
-        req = ChatGenerateRequest(
-            model=model_name,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a concise, helpful voice assistant. Output ONLY the raw spoken dialogue segment. No markdown, no quotes, no conversational preamble. Keep it under 15 words.",
-                },
-                {"role": "user", "content": prompt_text},
-            ],
-            temperature=0.3,
-            max_tokens=60,
-            base_url=provider.base_url,
-            api_key=provider.api_key,
-            stream=False,
-        )
-        full_text = ""
-        async for token in provider.stream_generate(req):
-            full_text += token
-        full_text = full_text.strip().replace('"', "").replace("'", "")
-        return full_text
-    except Exception as e:
-        logger.error("Error generating spoken text: %s", e)
-        return ""
-
-
-async def _handle_agentic_step(
-    event_type: str,
-    step_data: dict[str, Any],
+def enqueue_speech(
+    text: str,
     audio_source: rtc.AudioSource,
     room: rtc.Room,
+    node_id: str | None = None,
 ) -> None:
-    prompt = ""
-    if event_type == "agent_plan":
-        plan_text = step_data.get("plan") or step_data.get("details") or ""
-        if plan_text:
-            prompt = f"The agent formed a new plan: '{plan_text}'. Generate an extremely brief (max 10 words) verbal status update for the user indicating what you are about to do. Do not use markdown. E.g., 'Planning to verify the database, sir.'"
-    elif event_type == "tool_start":
-        tool_name = step_data.get("tool") or step_data.get("tool_name") or ""
-        description = step_data.get("description") or ""
-        if tool_name:
-            prompt = f"The agent is starting the tool '{tool_name}' with description '{description}'. Generate a brief (max 10 words) verbal status update indicating you are running it. Do not use markdown. E.g., 'Running a check on the file system, sir.'"
-    elif event_type in ("tool_error", "error"):
-        tool_name = step_data.get("tool") or ""
-        error_text = step_data.get("error") or ""
-        prompt = f"The agent encountered an error running '{tool_name}'. Error: '{error_text}'. Generate a brief (max 12 words) comforting verbal update indicating you will try another way. E.g., 'The database query failed, trying another way, sir.'"
-    elif event_type in ("done", "mission_done"):
-        content = step_data.get("content") or step_data.get("text") or ""
-        prompt = f"The task is successfully completed. Final answer summary: '{content}'. Generate a brief (max 20 words) conversational completion notice indicating you are finished and asking them to review. E.g., 'I have finished all tasks, sir. Everything is running. Please review the results.'"
+    normalized_text = text.strip()
+    if not normalized_text or len(normalized_text) > 320:
+        return
+    if not session_tts.get(room.name, False):
+        return
 
-    if prompt:
-        spoken_text = await _generate_spoken_text(prompt)
-        if spoken_text:
-            await synthesize_and_speak(spoken_text, audio_source, room, node_id="orchestrator")
+    queue = speech_queues.setdefault(room.name, deque())
+    if len(queue) >= 64:
+        logger.warning("Dropping DeepSpace voice output because its room queue is full")
+        return
+    queue.append((normalized_text, node_id))
+
+    worker = speech_worker_tasks.get(room.name)
+    if worker is None or worker.done():
+        worker = asyncio.create_task(_drain_speech_queue(room, audio_source))
+        speech_worker_tasks[room.name] = worker
+        active_speech_tasks[room.name] = worker
+
+
+async def _drain_speech_queue(room: rtc.Room, audio_source: rtc.AudioSource) -> None:
+    room_name = room.name
+    current_task = asyncio.current_task()
+    queue = speech_queues.setdefault(room_name, deque())
+    try:
+        while queue and session_tts.get(room_name, False):
+            text, node_id = queue.popleft()
+            await synthesize_and_speak(text, audio_source, room, node_id=node_id)
+    except asyncio.CancelledError:
+        logger.info("DeepSpace voice output interrupted for room %s", room_name)
+        raise
+    finally:
+        if speech_worker_tasks.get(room_name) is current_task:
+            speech_worker_tasks.pop(room_name, None)
+            active_speech_tasks.pop(room_name, None)
+            queue.clear()
+            session_speaking[room_name] = False
+            await broadcast_state(room, "listening")
+
+
+def interrupt_speech(room: rtc.Room) -> None:
+    room_name = room.name
+    speech_queues.setdefault(room_name, deque()).clear()
+    worker = speech_worker_tasks.get(room_name)
+    if worker is not None and not worker.done():
+        if speech_worker_tasks.get(room_name) is worker:
+            speech_worker_tasks.pop(room_name, None)
+        if active_speech_tasks.get(room_name) is worker:
+            active_speech_tasks.pop(room_name, None)
+        worker.cancel()
+    session_speaking[room_name] = False
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -282,6 +256,7 @@ async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
     session_stt[ctx.room.name] = False
     session_tts[ctx.room.name] = False
+    session_speaking[ctx.room.name] = False
 
     # Warm up models immediately on room connect
     try:
@@ -313,9 +288,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 logger.info("Ignoring other agent's audio track: %s", participant.identity)
                 return
             logger.info("Processing audio track for participant: %s", participant.identity)
-            asyncio.create_task(
-                _process_incoming_audio(track, participant, ctx.room, audio_source, vad)
-            )
+            asyncio.create_task(_process_incoming_audio(track, participant, ctx.room, vad))
 
     @ctx.room.on("track_subscribed")
     def on_track(
@@ -344,45 +317,17 @@ async def entrypoint(ctx: JobContext) -> None:
                 initial_prompts[ctx.room.name] = data.get("initial_prompt", "")
 
                 logger.info(
-                    "Voice session for %s updated: STT=%s, TTS=%s with prompt bias: %r",
+                    "Voice session for %s updated: STT=%s, TTS=%s",
                     ctx.room.name,
                     stt_active,
                     tts_active,
-                    initial_prompts[ctx.room.name],
                 )
-
-                # Speak confirmation only if TTS (speaker) is newly turned on
-                if tts_active and not prev_tts:
-                    import random
-
-                    greetings = [
-                        "I am online.",
-                        "Ready for service.",
-                        "Voice system active.",
-                        "TTS synthesis initialized.",
-                    ]
-                    msg = random.choice(greetings)
-                    asyncio.create_task(
-                        synthesize_and_speak(msg, audio_source, ctx.room, node_id="orchestrator")
-                    )
-            elif data.get("type") == "agentic-step":
-                if session_tts.get(ctx.room.name, False):
-                    event_type = data.get("event")
-                    step_data = data.get("data") or {}
-                    logger.info("Received agentic step for %s: %s", ctx.room.name, event_type)
-                    asyncio.create_task(
-                        _handle_agentic_step(event_type, step_data, audio_source, ctx.room)
-                    )
-            elif data.get("type") == "test-tts":
-                text_to_speak = data.get(
-                    "text", "Hello, I am AverQel. Audio output is working perfectly."
-                )
-                logger.info("Received test-tts request: %r", text_to_speak)
-                asyncio.create_task(
-                    synthesize_and_speak(
-                        text_to_speak, audio_source, ctx.room, node_id="orchestrator"
-                    )
-                )
+                if prev_tts and not tts_active:
+                    interrupt_speech(ctx.room)
+            elif data.get("type") == "speak-text":
+                text_to_speak = data.get("text")
+                if isinstance(text_to_speak, str) and len(text_to_speak) <= 320:
+                    enqueue_speech(text_to_speak, audio_source, ctx.room, node_id="deepspace")
         except Exception as e:
             logger.error("Error processing data message: %s", e)
 
@@ -430,23 +375,20 @@ def run_transcribe(
         # 1. Filter out Whisper silent/noisy loop hallucinations
         if s.no_speech_prob > 0.55:
             logger.info(
-                "Ignoring segment due to high no_speech_prob (%.3f): %r",
+                "Ignoring speech segment due to high no_speech_prob (%.3f)",
                 s.no_speech_prob,
-                text,
             )
             continue
         if s.compression_ratio > 2.4:
             logger.info(
-                "Ignoring segment due to high compression_ratio (%.3f): %r",
+                "Ignoring speech segment due to high compression_ratio (%.3f)",
                 s.compression_ratio,
-                text,
             )
             continue
         if s.avg_logprob < -1.0:
             logger.info(
-                "Ignoring segment due to low avg_logprob (%.3f): %r",
+                "Ignoring speech segment due to low avg_logprob (%.3f)",
                 s.avg_logprob,
-                text,
             )
             continue
 
@@ -474,7 +416,7 @@ def run_transcribe(
             )
             or not cleaned
         ):
-            logger.info("Ignoring known static boilerplate hallucination: %r", text)
+            logger.info("Ignoring known static transcription (%d characters)", len(text))
             continue
 
         valid_texts.append(s.text)
@@ -495,7 +437,7 @@ async def _transcribe_partial(samples: list[float], room: rtc.Room) -> None:
         transcript = await loop.run_in_executor(None, run_transcribe, model, arr, 1, initial_prompt)
 
         if transcript:
-            logger.info("Partial Transcript (amp %.1f): %r", max_amp, transcript)
+            logger.info("Partial transcription ready (%d characters)", len(transcript))
             await broadcast_state(room, "listening", text=transcript)
     except Exception as exc:
         logger.error("Error in _transcribe_partial: %s", exc)
@@ -505,7 +447,6 @@ async def _process_incoming_audio(
     track: rtc.Track,
     participant: rtc.RemoteParticipant,
     room: rtc.Room,
-    audio_source: rtc.AudioSource,
     vad: silero.VAD,
 ) -> None:
     audio_stream = rtc.AudioStream(track)
@@ -513,7 +454,6 @@ async def _process_incoming_audio(
 
     # Start a background task to pull VAD events from the stream
     async def vad_worker():
-        global is_agent_speaking
         from livekit.agents.vad import VADEventType
 
         speech_samples = []
@@ -532,14 +472,12 @@ async def _process_incoming_audio(
                 await broadcast_state(room, "listening", text="...")
                 logger.info("Speech detected.")
 
-                prev_task = active_speech_tasks.get(room.name)
-                if prev_task and not prev_task.done():
+                if session_speaking.get(room.name, False):
                     logger.info("User barge-in detected. Cancelling active speech task.")
-                    prev_task.cancel()
-                    is_agent_speaking = False
+                    interrupt_speech(room)
                 continue
 
-            if is_agent_speaking:
+            if session_speaking.get(room.name, False):
                 speech_samples.clear()
                 continue
 
@@ -581,11 +519,7 @@ async def _process_incoming_audio(
                 if speech_samples:
                     logger.info("Speech ended. Buffer size: %d samples", len(speech_samples))
                     await broadcast_state(room, "thinking")
-                    asyncio.create_task(
-                        _transcribe_and_respond(
-                            list(speech_samples), room, audio_source, participant
-                        )
-                    )
+                    asyncio.create_task(_transcribe_audio_segment(list(speech_samples), room))
                     speech_samples.clear()
                 else:
                     logger.info("Speech ended but no samples accumulated.")
@@ -625,101 +559,7 @@ async def _process_incoming_audio(
         worker_task.cancel()
 
 
-def get_resolved_chat_provider():
-    from sqlalchemy import select
-
-    from app.auth.models.user import User
-    from app.platform.database.session import SessionLocal
-    from app.providers.services.registry import ProviderRegistry
-    from app.providers.services.selection_service import ProviderSelectionService
-
-    db = SessionLocal()
-    try:
-        # Find user sainibhaowal039@gmail.com
-        stmt = select(User).where(User.email == "sainibhaowal039@gmail.com")
-        user = db.execute(stmt).scalar_one_or_none()
-        if not user:
-            # Fall back to the first user
-            stmt = select(User).order_by(User.created_at.desc())
-            user = db.execute(stmt).scalars().first()
-
-        if not user:
-            logger.error("No user found in database for resolving ChatProvider.")
-            return None, None
-
-        selection_service = ProviderSelectionService(db, None)
-        selection = selection_service.resolve_chat(tenant_id=user.tenant_id, actor_user_id=user.id)
-
-        registry = ProviderRegistry(selection_service.settings)
-        if selection.candidates:
-            for candidate in selection.candidates:
-                # connectivity check for local endpoints (LM Studio, Ollama etc.)
-                if candidate.provider_type == "lmstudio" or (
-                    candidate.base_url and "localhost" in candidate.base_url
-                ):
-                    import socket
-                    from urllib.parse import urlparse
-
-                    parsed = urlparse(candidate.base_url)
-                    try:
-                        host = (
-                            "host.docker.internal"
-                            if parsed.hostname in ("localhost", "127.0.0.1")
-                            else parsed.hostname
-                        )
-                        port = parsed.port or 80
-                        with socket.create_connection((host, port), timeout=0.3):
-                            pass
-                    except Exception:
-                        logger.warning(
-                            "Local provider candidate %s at %s is unreachable. Trying next candidate.",
-                            candidate.provider_type,
-                            candidate.base_url,
-                        )
-                        continue
-
-                logger.info(
-                    "Selected Chat Provider: %s, model: %s",
-                    candidate.provider_type,
-                    candidate.model_name,
-                )
-                provider = registry.get_chat_provider_from_selection(candidate)
-                return provider, candidate.model_name
-
-        # If lmstudio candidate is unreachable, check other active provider configs in database
-        from app.providers.models.provider_config import ProviderConfig
-
-        stmt = select(ProviderConfig).where(
-            ProviderConfig.enabled,
-            ProviderConfig.supports_chat,
-        )
-        configs = db.execute(stmt).scalars().all()
-        for config in configs:
-            if config.provider_type == "opencode-zen" or config.provider_type == "openai":
-                logger.info("Falling back to active provider config: %s", config.provider_type)
-                provider = registry._bind_chat_provider(
-                    config.provider_type,
-                    base_url=config.api_base_url,
-                    api_key=None,
-                )
-                return provider, config.default_chat_model
-
-        # Fallback to direct default settings provider
-        provider = registry.get_chat_provider()
-        return provider, selection_service.settings.llm_model
-    except Exception as e:
-        logger.error("Error resolving chat provider: %s", e)
-        return None, None
-    finally:
-        db.close()
-
-
-async def _transcribe_and_respond(
-    samples: list[float],
-    room: rtc.Room,
-    audio_source: rtc.AudioSource,
-    participant: rtc.RemoteParticipant,
-) -> None:
+async def _transcribe_audio_segment(samples: list[float], room: rtc.Room) -> None:
     try:
         arr = np.array(samples, dtype=np.float32)
         max_amp = np.max(np.abs(arr)) * 32768.0 if len(arr) > 0 else 0
@@ -738,7 +578,7 @@ async def _transcribe_and_respond(
 
         loop = asyncio.get_running_loop()
         transcript = await loop.run_in_executor(None, run_transcribe, model, arr, 5, initial_prompt)
-        logger.info("Transcript (amp %.1f): %r", max_amp, transcript)
+        logger.info("Transcription completed (%d characters)", len(transcript))
 
         if not transcript:
             await broadcast_state(room, "listening")
@@ -747,7 +587,7 @@ async def _transcribe_and_respond(
         # Broadcast final transcript as dictation-result and reset listening state
         import json
 
-        logger.info("Broadcasting dictation result: %r", transcript)
+        logger.info("Sending a transcription result to the DeepSpace client")
         await broadcast_state(room, "listening")
         payload = json.dumps({"type": "dictation-result", "text": transcript}).encode()
         await room.local_participant.publish_data(payload)

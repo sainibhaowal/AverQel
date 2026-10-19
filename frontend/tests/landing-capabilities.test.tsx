@@ -79,7 +79,8 @@ describe("ProductDomains", () => {
   it("keeps Query history separate from DeepSpace work and Library files", () => {
     render(<ProductDomains />);
     const querySection = within(document.getElementById("query") as HTMLElement);
-    const deepSpaceSection = within(document.getElementById("deepspace") as HTMLElement);
+    const deepSpaceElement = document.getElementById("deepspace") as HTMLElement;
+    const deepSpaceSection = within(deepSpaceElement);
 
     expect(querySection.getByRole("heading", { name: /scoped retrieval/i })).toBeInTheDocument();
     expect(
@@ -95,6 +96,14 @@ describe("ProductDomains", () => {
     expect(
       deepSpaceSection.getByRole("heading", { name: /DeepSpace Memory/i }),
     ).toBeInTheDocument();
+    expect(
+      Array.from(deepSpaceElement.querySelectorAll("article[data-card-index='0'] img")).some(
+        (image) =>
+          decodeURIComponent(image.getAttribute("src") ?? "").includes(
+            "/DeepSpace Logo/DeepSpace_Logo_Only_NoBlack_Exact.svg",
+          ),
+      ),
+    ).toBe(true);
     expect(
       deepSpaceSection.getByRole("heading", { name: /schedules and voice/i }),
     ).toBeInTheDocument();

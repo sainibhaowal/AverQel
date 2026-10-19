@@ -19,23 +19,101 @@ User support endpoints are under `/api/v1/support/tickets`: create/list, `GET /{
 
 User feedback endpoints are `/api/v1/app-feedback/submit`, `/mine`, `/mine/{feedback_id}`, and `/mine/{feedback_id}/messages`. Admin submissions are `/api/v1/app-feedback/admin/submissions`, `GET /{feedback_id}`, `PATCH /{feedback_id}`, and `POST /{feedback_id}/messages`. Campaign endpoints remain available.
 
-Platform administrators can grant or revoke only the `support_manager`,
-`feedback_manager`, and `collection_moderator` roles through
-`PUT /api/v1/admin/users/{user_id}/staff-roles`.
-The operation preserves base roles and is audited. A target user must sign in
-again before a newly granted role appears in their access token.
+The public landing-page contact form uses unauthenticated `GET /api/v1/contact/status`,
+`POST /api/v1/contact/verification/request`, `POST /api/v1/contact/verification/confirm`, and
+`POST /api/v1/contact` routes. A visitor must receive and enter a one-time email code before the
+message fields unlock. The status response reports only whether the required sender, SMTP,
+recipient, Redis, and verification-key configuration is present; it never returns the recipient. It
+does not probe SMTP or Redis health. Contact messages are sent directly through the configured SMTP
+service and are not persisted in the AverQel database or written to application logs. Visitors can
+use these routes without an account.
+
+### Configure Resend for public contact
+
+The public form sends a message from the configured AverQel address to the private inbox in
+<code>AKS_PUBLIC_CONTACT_RECIPIENT</code>. The visitor's email is set as Reply-To, so a reply from
+the receiving mailbox targets the visitor. The private recipient remains backend-only. Set the
+sender to <code>contact@averqel.com</code> if that is the public address visitors should see.
+
+Resend must show <code>averqel.com</code> as verified for sending. Store credentials only in the
+backend deployment secret store:
+
+| Setting | Resend value |
+| --- | --- |
+| <code>AKS_NOTIFICATION_SMTP_HOST</code> | <code>smtp.resend.com</code> |
+| <code>AKS_NOTIFICATION_SMTP_PORT</code> | <code>465</code> |
+| <code>AKS_NOTIFICATION_SMTP_USERNAME</code> | <code>resend</code> |
+| <code>AKS_NOTIFICATION_SMTP_PASSWORD</code> | Resend API key |
+| <code>AKS_NOTIFICATION_SMTP_FROM</code> | Existing application-notification sender |
+| <code>AKS_NOTIFICATION_SMTP_STARTTLS</code> | <code>false</code> |
+| <code>AKS_NOTIFICATION_SMTP_IMPLICIT_TLS</code> | <code>true</code> |
+| <code>AKS_PUBLIC_CONTACT_RECIPIENT</code> | Private inbox that receives messages and forwards |
+| <code>AKS_PUBLIC_CONTACT_FROM</code> | <code>AverQel Contact &lt;contact@averqel.com&gt;</code> |
+| <code>AKS_PUBLIC_CONTACT_VERIFICATION_FROM</code> | <code>verify@averqel.com</code> on the verified sending domain |
+| <code>AKS_PUBLIC_CONTACT_ADDRESS</code> | <code>contact@averqel.com</code> |
+| <code>AKS_PUBLIC_CONTACT_RESEND_API_KEY</code> | Resend API key allowed to read received mail and send forwards |
+| <code>AKS_PUBLIC_CONTACT_RESEND_WEBHOOK_SECRET</code> | Resend webhook signing secret (<code>whsec_...</code>) |
+
+Resend SMTP uses the API key as its password and supports implicit TLS on port 465. The SMTP TLS
+settings must select exactly one encrypted mode. These SMTP settings are also shared with AverQel's
+optional notification email worker. After changing deployment secrets, restart or redeploy the API
+and any worker that sends notification email.
+
+The public contact sender is separate from the shared application-notification sender. The backend
+sends contact messages from <code>AKS_PUBLIC_CONTACT_FROM</code> and sends a six-digit code from
+<code>AKS_PUBLIC_CONTACT_VERIFICATION_FROM</code> using the same authenticated SMTP connection. Use
+both senders on the domain verified with Resend. Verification messages include a branded HTML email
+with the AverQel logo embedded inline and a plain-text alternative for clients that do not display
+HTML. A code is valid for 10 minutes and allows up to five attempts; the resulting verification
+token is single-use and expires after 30 minutes. Redis is required for challenge and token state;
+verification fails closed if Redis is unavailable. The backend stores only keyed HMAC fingerprints
+for the address and code in Redis, not the raw code or address. Requests are rate-limited by source
+IP and an HMAC of the email address. Google OAuth is unrelated to this anonymous email-ownership
+check.
+
+### Forward mail sent directly to contact@
+
+Resend Receiving stores direct mail addressed to <code>contact@averqel.com</code>; it does not
+forward it to the private inbox by itself. To forward it through AverQel, configure a Resend webhook
+for the <code>email.received</code> event at
+<code>https://averqel.com/api/v1/contact/resend-inbound</code>. Copy that webhook's signing secret
+to <code>AKS_PUBLIC_CONTACT_RESEND_WEBHOOK_SECRET</code>. The endpoint verifies Resend's signature,
+accepts only the configured contact address, fetches the message from Resend, and forwards a
+plain-text copy to <code>AKS_PUBLIC_CONTACT_RECIPIENT</code> using a Resend API idempotency key.
+Message contents are not stored in the AverQel database or written to application logs. Attachments
+remain available in Resend and are not included in the forwarded copy.
+
+The deployed endpoint must be publicly reachable by Resend. A local form can send outbound email
+when its backend has SMTP configuration and internet access, but Resend cannot deliver webhook
+events to a plain localhost URL. <code>GET /api/v1/contact/status</code> reports whether the needed
+configuration is present; it does not test SMTP credentials, Redis connectivity, webhook setup, or
+delivery. Test the deployed form and direct-mail forwarding separately. Never put API keys, the
+webhook secret, or the private recipient in frontend configuration or source control.
+
+To reply without showing a private Gmail address, configure the mail client to send as
+<code>contact@averqel.com</code> through Resend SMTP, and choose that address in the From field.
+Replies to <code>contact@averqel.com</code> are delivered through the inbound webhook to the private
+recipient.
+
+There is no platform staff-role assignment endpoint. Legacy
+`support_manager` and `feedback_manager` role rows may remain in existing
+databases, but they grant no access to support or feedback queues. Only an
+allowlisted platform administrator can open those queues. The
+`collection_moderator` role remains separately permissioned for tenant-scoped
+Qel Connect moderation; it does not grant platform administration access.
 
 Reads of the platform support queue, ticket history, ticket details, support
 attachments, and app-feedback submissions are recorded as metadata-only audit
 events. Message and status changes are also audited without copying message
-bodies into those audit events. Only an explicitly assigned `support_manager`
-with a platform-admin allowlisted account can read ticket content and
-attachments across tenants. Feedback content is available only to the separate
-`feedback_manager` role; that staff API omits submitter email addresses and user
-IDs, while the backend keeps the account link needed to deliver in-app replies.
+bodies into those audit events. Only allowlisted platform administrators can
+read ticket content, attachments, or feedback across tenants. Admin access is
+limited to the support or feedback that a user submitted; it does not grant
+access to that user's chats, documents, or other workspace content. The
+feedback API omits submitter email addresses and user IDs, while the backend
+keeps the account link needed to deliver in-app replies.
 
-Feedback campaigns are platform-wide prompts created by an assigned Feedback
-Manager; they are not tenant-specific. A tenant user's actual feedback
+Feedback campaigns are platform-wide prompts created by an allowlisted platform
+administrator; they are not tenant-specific. A tenant user's actual feedback
 submission and conversation remain scoped to that tenant and user. The Feedback
 Center's campaign panel is empty when no active campaign exists; users can
 still submit general feedback.
@@ -46,11 +124,15 @@ The authenticated notification feed is `/api/v1/notifications`: list (maximum 10
 
 ## Security and persistence
 
-- User list/detail/reply queries constrain both tenant and authenticated user. Ticket/message and notification tables enforce tenant RLS. Cross-user resource lookups return 404.
-- Feedback text is stored so the submitter and assigned Feedback Managers can read and discuss it. User reads remain user/tenant scoped; the global staff queue uses a server-only RLS bypass after checking `admin:feedback:read` or `admin:feedback:write`. Staff responses omit account IDs and email addresses. This is not end-to-end encryption, because Feedback Managers must be able to read and reply to submissions.
-- Support-management routes require the separate `support_manager` role and platform-admin allowlist; the general `admin` role no longer grants support-content access. Feedback management uses the separate `feedback_manager` role with only `admin:feedback:read` and `admin:feedback:write`; the general `admin` role does not imply feedback access. Admin messages set visibility explicitly.
-- Qel Connect moderation uses the separate `collection_moderator` role with `collections:moderation:read` and `collections:moderation:write`. Its report and history queries remain scoped to the active tenant. The general `admin` role does not imply moderation access. `feedback_manager` and `collection_moderator` are seeded by migration `20261016_0001`; `support_manager` is seeded by `20261017_0001`. A platform administrator explicitly grants or revokes these roles in the Admin Users view. Role changes preserve the user's base role and create an audit event. New grants take effect after the user signs in again; revocations take effect on subsequent API requests.
-- Feedback submission alerts go only to active Feedback Managers; Qel Connect report alerts go only to active moderators assigned in that tenant. Alert text contains no submitted feedback subject or report details. Keep each staff member's normal account role when granting a staff role; bootstrap-owner authentication preserves additional explicit roles.
+- User list/detail/reply queries constrain both tenant and authenticated user. Support ticket/message/attachment and feedback/message tables enforce tenant RLS; cross-tenant and cross-user resource lookups return 404.
+- New support and feedback bodies are encrypted in the browser with a random AES-256-GCM content key. Each content key is wrapped to the submitter's RSA-3072 key and the platform administrator's RSA-3072 key; internal notes are wrapped only to the administrator. Support attachment bytes, filenames, and content types are encrypted before storage. Private keys are stored only as AES-GCM ciphertext derived from a user-entered passphrase with PBKDF2-SHA256 (600,000 iterations); the passphrase and unlocked key are not sent to the API. The API validates envelope structure, recipient key IDs, key fingerprints, and the RSA public-key parameters, but it does not receive or decrypt message content.
+- A browser-based migration is available on both admin management pages. It encrypts legacy ticket/feedback content in the administrator's browser and only replaces database plaintext after the API validates the ciphertext. Support attachment replacement stores the encrypted object and queues the old object for cleanup in the same database transaction. Records for users who have not initialized their own encryption key are skipped until that user visits Support or Feedback to set it up. Older backups can retain plaintext until their configured expiry; the application cannot rewrite already-created backup snapshots.
+- The service still sees account/tenant IDs, support email, category, status, timestamps, assignment and SLA state, attachment size, and event routing metadata. The administrator is an intended decryption recipient. Since this is a web application, a compromised live server could serve changed JavaScript or substitute recipient keys; compromised clients can expose plaintext after decryption. The key bootstrapping design has no out-of-band key verification, and this application scheme has not received an independent cryptographic audit. It does not make all AverQel data end-to-end encrypted.
+- Encrypted attachments cannot be scanned by server-side ClamAV. The browser encrypts them before upload, so users should only download files they trust. Existing plaintext attachments were scanned under the prior upload path; a migration encrypts them client-side before replacing the stored object.
+- Platform-admin feedback replies omit the submitter email and account ID. Allowlisted platform administrators reviewing support can see the submitter email because it is needed to answer that ticket.
+- Support-management routes require platform-admin allowlisting and the `admin:support:read` or `admin:support:write` permission. Feedback management requires platform-admin allowlisting and the `admin:feedback:read` or `admin:feedback:write` permission. Legacy `support_manager` and `feedback_manager` roles do not grant cross-tenant content access. Admin messages set visibility explicitly.
+- Qel Connect moderation uses the separate `collection_moderator` role with `collections:moderation:read` and `collections:moderation:write`. Its report and history queries remain scoped to the active tenant. The general `admin` role does not imply moderation access. Legacy `feedback_manager` and `support_manager` role rows can remain in the database, but do not grant support or feedback content permissions. The Admin Users screen and backend API do not provide staff-role assignment controls. Existing role rows are not automatically deleted.
+- Feedback submission alerts go only to active platform administrators; Qel Connect report alerts go to active moderators assigned in that tenant. Support administrator alerts contain no ticket subject or body. Bootstrap-owner authentication preserves additional explicit roles.
 - Feedback/ticket changes and their user/admin notifications are written in the same database transaction, so a committed submission cannot lose its in-app receipt alert.
 - The global admin-notification lookup temporarily switches to the existing `bypass` tenant context and restores the caller's context before returning. The bypass is not exposed to user input.
 - Tenant context is transaction-local. Endpoints build response data before committing when they need RLS-protected messages; they do not refresh RLS rows after the context has been cleared.
@@ -59,13 +141,15 @@ The authenticated notification feed is `/api/v1/notifications`: list (maximum 10
 
 - **Support queue:** `GET /api/v1/support/admin/queue` supports status, priority, search, assignee, overdue, limit, and offset filters. It returns queue totals plus open and overdue counts. Admin updates can assign or unassign a ticket. Assignment is restricted to active platform administrators in the configured allowlist.
 - **SLA tracking:** ticket rows store first-response and resolution deadlines, actual first public response, and resolution time. Normal tickets target 8 hours for first response and 72 hours for resolution; priority changes apply corresponding targets. A Celery task checks overdue tickets every five minutes and emits deduplicated alerts to platform administrators and the assignee. Existing open tickets start the SLA clock at migration rollout to avoid retroactive alert storms. These are elapsed UTC hours, not business-hours calendars; `waiting_user` currently does not pause the resolution clock.
-- **Attachments:** users can add PDF, PNG, JPEG, and UTF-8 text files up to 5 MiB to an owned ticket. Uploads are byte-sniffed, scanned through the configured malware scanner, counted against workspace storage quota, stored in private object storage below a tenant-prefixed key, and served only after ticket ownership or platform-admin authorization is checked. The raw object key is never returned to clients.
+- **Attachments:** users can add files up to 5 MiB to an owned ticket. The browser encrypts file bytes and filename/type metadata before upload. The API validates the envelope and size, counts encrypted bytes against workspace quota, stores ciphertext in private object storage below a tenant-prefixed key, and serves it only after ticket ownership or platform-admin authorization is checked. The server cannot inspect MIME bytes or run ClamAV on ciphertext; the raw object key is never returned to clients.
 - **Preferences:** `/api/v1/notifications/preferences` stores email opt-in, immediate/daily/weekly cadence, an IANA time zone, and muted event domains. The API returns the supported category catalog and channel availability. The catalog covers support, feedback, query, provider, storage, plan, system, documents, DeepSpace, collection moderation, and collection activity. Muted application events are hidden in the global notification feed; muting collection activity also hides it from the global collection notification feed, while collection history and collaboration delivery remain unchanged. Muting or opting out suppresses pending and claimed-but-not-yet-dispatched email rows. The email worker checks the current preference again immediately before SMTP submission. A message already accepted by SMTP cannot be recalled.
 - **Email outbox:** notifications and opted-in email deliveries are recorded in the same database transaction. Celery claims due rows with `SKIP LOCKED`, releases database locks before SMTP, and keeps account/tenant deliveries separate even when accounts share an email address. Immediate cadence sends one event per message; daily and weekly digests are scoped to the owning account. Digest boundaries use 08:00 in the saved IANA time zone (weekly on Monday). If SMTP is not configured, queued rows remain pending instead of being repeatedly failed. Delivery is at-least-once: an SMTP server may accept a message just before a worker crash, so retries can duplicate it. A stable Message-ID helps mail clients deduplicate but cannot guarantee exactly-once delivery. Configure `AKS_NOTIFICATION_SMTP_HOST`, `AKS_NOTIFICATION_SMTP_PORT`, `AKS_NOTIFICATION_SMTP_USERNAME`, `AKS_NOTIFICATION_SMTP_PASSWORD`, and `AKS_NOTIFICATION_SMTP_FROM`; deploy a worker and Celery beat. Email remains unavailable in the UI until host and sender are configured.
 - **Query/provider/system alerts:** Query execution failures produce content-free user alerts; authenticated API 5xx failures produce a notification containing only the trace reference. An explicit provider health-test failure alerts the provider owner (or initiating user) and platform administrators. These producers never persist prompt text, provider secrets, or exception contents.
 - **Storage/role-plan alerts:** quota checks generate deduplicated 80%, 90%, and 100% usage warnings for the initiating user; a detected role-derived allocation increase generates a plan notice. This product has no paid-subscription entity or billing integration, so payment, renewal, cancellation, and failed-payment events do not exist and are not fabricated.
 - **Submission protection:** support creation and attachment upload share an authenticated per-user/per-tenant hourly budget; feedback submissions have a separate hourly budget. Configure with `AKS_RATE_LIMIT_SUPPORT_SUBMISSIONS_PER_HOUR` and `AKS_RATE_LIMIT_FEEDBACK_SUBMISSIONS_PER_HOUR`.
+- **Public contact protection:** contact messages are limited per source IP using a keyed HMAC fingerprint with a one-hour TTL; the default is five submissions per hour. Verification requests are limited to ten per source IP and three per HMAC-fingerprinted email address per hour. Each code permits five attempts and expires after ten minutes. Configure `AKS_RATE_LIMIT_PUBLIC_CONTACT_SUBMISSIONS_PER_HOUR`, `AKS_RATE_LIMIT_PUBLIC_CONTACT_VERIFICATION_IP_PER_HOUR`, and `AKS_RATE_LIMIT_PUBLIC_CONTACT_VERIFICATION_EMAIL_PER_HOUR`. The endpoint also bounds field lengths and ignores automated submissions that fill its hidden honeypot field.
 - **Retention:** a weekly worker purges only notifications users already dismissed after `AKS_NOTIFICATION_RETENTION_DAYS` (365 by default). Undismissed notifications remain durable. Delivered and suppressed outbox rows are removed after `AKS_NOTIFICATION_DELIVERY_RETENTION_DAYS` (90 by default); permanently failed rows remain for operational follow-up.
+- **Feedback and support retention:** the daily `maintenance.retention_cleanup` worker removes feedback and support tickets of any status after 365 days since their last update by default (`AKS_FEEDBACK_RETENTION_DAYS` and `AKS_SUPPORT_TICKET_RETENTION_DAYS`). Related in-app notifications are deleted with each record. Ticket attachments are queued for the existing retryable object-storage cleanup worker before their database records are removed. Both settings accept 30–3650 days.
 - **Notification Center:** `/dashboard/notifications` combines the durable application and existing collection feeds, supports read/dismiss, and refreshes every 30 seconds. The header drawer links to this page.
 
 The shared realtime event stream remains an ephemeral invalidation/online event channel, not a durable notification source. This work does not create an always-on provider health probe: provider alerts currently follow explicit health tests. Team-based assignment and business-hours SLA calendars are not implemented. SMTP delivery depends on deployment configuration, a running worker, and Celery beat. Subscription lifecycle alerts require a billing system and are deliberately absent until such a source of truth exists.
@@ -75,6 +159,7 @@ The shared realtime event stream remains an ephemeral invalidation/online event 
 - New preferences, delivery rows, and attachment metadata have tenant RLS policies. User reads remain tenant/user scoped; cross-tenant admin queries use the existing server-side bypass only after platform-admin permission checks.
 - Attachments are not served from public URLs. The API resolves metadata by ticket, tenant, and attachment ID, then performs a tenant-prefix-guarded object read.
 - Email is opt-in. No email is sent inline in an API transaction.
+- Public website contact is separate from the notification outbox: it sends the verification code and, after successful verification, the contact message inline with a 12-second SMTP timeout. It requires authenticated SMTP using exactly one encrypted transport, STARTTLS or implicit TLS, `AKS_PUBLIC_CONTACT_FROM`, `AKS_PUBLIC_CONTACT_VERIFICATION_FROM`, and `AKS_PUBLIC_CONTACT_RECIPIENT`. Keep SMTP credentials and the private recipient in the deployment secret store; no recipient is exposed in frontend code, API responses, or application logs. The mail provider processes the verification email and contact message; email is not end-to-end encrypted. Contact text is not saved in AverQel's database. Redis holds only keyed verification fingerprints and rate-limit counters with short TTLs; the message body and OTP are not written there.
 - Preference writes are tenant/user scoped, serialize concurrent first writes, validate IANA time zones, and suppress eligible pending deliveries when the user opts out or mutes a category.
 - When SMTP is unavailable, the UI presents in-app preferences only, hides email cadence/time-zone controls and email channel labels, and still lets a user turn off a previously saved email opt-in. Digest times are local to the saved time zone. Collection collaboration history is not altered by notification muting.
 - Email is sent to the address on the user account. OAuth login requires the identity provider's verified-email claim, but this codebase does not persist a verified-email state for password accounts. Before enabling notification email for password-created accounts, deploy an email ownership verification flow or another explicit verified-address policy; the staging smoke test must include this policy.

@@ -64,6 +64,7 @@ next-env.d.ts
 /assets/
 /ZevaConnector/
 /scratch/
+/AverQel Harness/
 /applications/*
 !/applications/desktop/
 !/applications/desktop/electron/

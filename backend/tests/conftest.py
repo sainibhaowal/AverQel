@@ -41,6 +41,9 @@ def _redis_url_with_db(url: str, db_index: int) -> str:
 
 _ISOLATED_COMPOSE_RUN = os.environ.get("AVERQEL_TEST_ISOLATED_RUN") == "compose"
 os.environ["AKS_ENV"] = "test"
+# Existing integration fixtures use password-only bootstrap admins. Dedicated
+# security tests enable this setting explicitly and exercise the real gate.
+os.environ["AKS_PLATFORM_ADMIN_MFA_REQUIRED"] = "false"
 if _ISOLATED_COMPOSE_RUN:
     _required_isolated_env = (
         "AKS_DATABASE_URL",

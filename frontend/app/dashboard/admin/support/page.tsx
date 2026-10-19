@@ -21,6 +21,13 @@ import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
+import { useSupportEncryption } from "@/app/dashboard/support/SupportEncryptionGate";
+import SupportEncryptionMigration from "@/app/dashboard/admin/SupportEncryptionMigration";
+import {
+  decryptSupportAttachment,
+  decryptSupportPayload,
+  encryptSupportPayload,
+} from "@/lib/supportEncryption";
 
 interface Ticket {
   id: string;
@@ -35,16 +42,25 @@ interface Ticket {
   assigned_admin_id?: string | null;
   first_response_due_at?: string | null;
   resolution_due_at?: string | null;
+  encrypted_payload?: string | null;
 }
 
 interface TicketDetail extends Ticket {
   user_email?: string | null;
-  attachments?: Array<{ id: string; filename: string; size_bytes: number; download_url: string }>;
+  attachments?: Array<{
+    id: string;
+    filename: string;
+    size_bytes: number;
+    download_url: string;
+    is_encrypted?: boolean;
+    encrypted_metadata?: string | null;
+  }>;
   messages: Array<{
     id: string;
     author_role: string;
     kind: string;
     body: string;
+    encrypted_payload?: string | null;
     is_internal: boolean;
     created_at: string;
   }>;
@@ -60,12 +76,16 @@ interface UserSummary {
 
 function SupportContent() {
   const { user } = useAuth();
+  const authenticatedUserId = user?.id;
+  const encryption = useSupportEncryption("admin");
+  const cryptoContext = encryption.context;
   const searchParams = useSearchParams();
   const queryUserId = searchParams.get("user");
   const queryTicketId = searchParams.get("ticket");
 
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(queryUserId);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(queryTicketId);
@@ -89,18 +109,40 @@ function SupportContent() {
       const query = new URLSearchParams({ limit: "100", offset: String(pageOffset) });
       if (statusFilter !== "all") query.set("status", statusFilter);
       if (priorityFilter !== "all") query.set("priority", priorityFilter);
-      if (assignmentFilter === "mine" && user?.id) query.set("assigned_to", user.id);
+      if (assignmentFilter === "mine" && authenticatedUserId)
+        query.set("assigned_to", authenticatedUserId);
       if (assignmentFilter === "unassigned") query.set("unassigned_only", "true");
       if (overdueOnly) query.set("overdue_only", "true");
       if (searchQuery.trim()) query.set("search", searchQuery.trim());
       const res = await fetchWithAuth(`/support/admin/queue?${query.toString()}`);
       if (requestId !== loadRequestId.current) return;
+      if (!res.ok) {
+        throw new Error(
+          res.status === 403
+            ? "Your account is not authorized to review support tickets. Use an allowlisted platform-administrator account."
+            : `Support queue could not be loaded (${res.status}).`,
+        );
+      }
+      setLoadError(null);
       if (res.ok) {
         const data = await res.json();
         setQueueCounts({ open: data.open_count, overdue: data.overdue_count, total: data.total });
         setHasMoreTickets(pageOffset + data.items.length < data.total);
         const byUser = new Map<string, UserSummary>();
-        for (const ticket of data.items as Array<Ticket & { user_email?: string | null }>) {
+        const decryptedTickets = await Promise.all(
+          (data.items as Array<Ticket & { user_email?: string | null }>).map(async (ticket) => {
+            if (!cryptoContext || !ticket.encrypted_payload) return ticket;
+            return {
+              ...ticket,
+              ...(await decryptSupportPayload<{ subject: string; description: string }>(
+                ticket.encrypted_payload,
+                cryptoContext.privateKey,
+                cryptoContext.keyId,
+              )),
+            };
+          }),
+        );
+        for (const ticket of decryptedTickets) {
           const userId = ticket.user_id ?? "unknown";
           const email = ticket.user_email ?? "Unknown user";
           const summary = byUser.get(userId) ?? {
@@ -156,7 +198,11 @@ function SupportContent() {
     } catch (err) {
       if (requestId !== loadRequestId.current) return;
       console.error(err);
-      toast.error("Failed to load support data.");
+      setUsers([]);
+      setSelectedUserId(null);
+      setQueueCounts({ open: 0, overdue: 0, total: 0 });
+      setHasMoreTickets(false);
+      setLoadError(err instanceof Error ? err.message : "Failed to load support data.");
     } finally {
       if (requestId === loadRequestId.current) setLoading(false);
     }
@@ -170,40 +216,84 @@ function SupportContent() {
     overdueOnly,
     searchQuery,
     pageOffset,
-    user?.id,
+    authenticatedUserId,
+    cryptoContext,
   ]);
 
   useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
     queueMicrotask(() => void loadData());
-  }, [loadData]);
+  }, [loadData, encryption.ready, cryptoContext]);
 
-  useEffect(() => {
-    const ticketId = new URLSearchParams(window.location.search).get("ticket");
-    if (ticketId) {
-      queueMicrotask(() => void loadTicketDetail(ticketId));
-    }
-  }, []);
-
-  async function loadTicketDetail(ticketId: string) {
+  const loadTicketDetail = useCallback(async (ticketId: string) => {
     try {
       const res = await fetchWithAuth(`/support/admin/tickets/${ticketId}`);
       if (!res.ok) throw new Error(`Ticket could not be loaded (${res.status})`);
       const detail = (await res.json()) as TicketDetail;
-      setTicketDetails((current) => ({ ...current, [ticketId]: detail }));
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
+      const ticketContent = detail.encrypted_payload
+        ? await decryptSupportPayload<{ subject: string; description: string }>(
+            detail.encrypted_payload,
+            cryptoContext.privateKey,
+            cryptoContext.keyId,
+          )
+        : null;
+      const messages = await Promise.all(
+        detail.messages.map(async (message) =>
+          message.encrypted_payload
+            ? {
+                ...message,
+                ...(await decryptSupportPayload<{ body: string }>(
+                  message.encrypted_payload,
+                  cryptoContext.privateKey,
+                  cryptoContext.keyId,
+                )),
+              }
+            : message,
+        ),
+      );
+      setTicketDetails((current) => ({
+        ...current,
+        [ticketId]: { ...detail, ...(ticketContent ?? {}), messages },
+      }));
     } catch (err) {
       console.error(err);
       toast.error("Could not load this support conversation.");
     }
-  }
+  }, [cryptoContext]);
 
-  async function downloadAttachment(url: string, filename: string) {
+  useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
+    const ticketId = new URLSearchParams(window.location.search).get("ticket");
+    if (ticketId) {
+      queueMicrotask(() => void loadTicketDetail(ticketId));
+    }
+  }, [encryption.ready, cryptoContext, loadTicketDetail]);
+
+  async function downloadAttachment(
+    url: string,
+    filename: string,
+    isEncrypted = false,
+    encryptedMetadata?: string | null,
+  ) {
     try {
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
       const response = await fetchWithAuth(url);
       if (!response.ok) throw new Error(`Attachment download failed (${response.status})`);
-      const objectUrl = URL.createObjectURL(await response.blob());
+      const downloaded = await response.blob();
+      const file =
+        isEncrypted && encryptedMetadata
+          ? await decryptSupportAttachment(
+              await downloaded.arrayBuffer(),
+              encryptedMetadata,
+              cryptoContext.privateKey,
+              cryptoContext.keyId,
+            )
+          : { blob: downloaded, filename, contentType: downloaded.type };
+      const objectUrl = URL.createObjectURL(file.blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = filename;
+      anchor.download = file.filename;
       anchor.click();
       URL.revokeObjectURL(objectUrl);
     } catch (error) {
@@ -214,15 +304,28 @@ function SupportContent() {
 
   async function sendReply(ticketId: string) {
     if (!replyDraft.trim()) return;
+    if (!cryptoContext) return;
     setSaving(true);
     try {
+      const ticket = ticketDetails[ticketId];
+      if (!ticket?.user_id) throw new Error("The ticket owner key is unavailable.");
+      const recipients =
+        visibility === "internal"
+          ? [cryptoContext.ownPublicKey]
+          : [
+              cryptoContext.ownPublicKey,
+              await readUserPublicKey(ticket.user_id),
+            ];
       const res = await fetchWithAuth(`/support/admin/tickets/${ticketId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ body: replyDraft.trim(), visibility }),
+        body: JSON.stringify({
+          encrypted_payload: await encryptSupportPayload({ body: replyDraft.trim() }, recipients),
+          visibility,
+        }),
       });
       if (!res.ok) throw new Error(`Reply failed (${res.status})`);
-      const detail = (await res.json()) as TicketDetail;
-      setTicketDetails((current) => ({ ...current, [ticketId]: detail }));
+      await res.json();
+      await loadTicketDetail(ticketId);
       setReplyDraft("");
       toast.success(visibility === "public" ? "Reply sent to the user." : "Internal note saved.");
       void loadData();
@@ -232,6 +335,12 @@ function SupportContent() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function readUserPublicKey(userId: string) {
+    const response = await fetchWithAuth(`/support/encryption/users/${userId}/public-key`);
+    if (!response.ok) throw new Error("The user has not initialized encrypted support yet.");
+    return (await response.json()) as { key_id: string; public_key: string };
   }
 
   const handleUpdateStatus = async (ticketId: string, newStatus: string) => {
@@ -311,8 +420,7 @@ function SupportContent() {
           latest_tickets: [selectedDetail],
         }
       : undefined;
-  // The API search covers ticket subject/description and user email. Filtering
-  // this grouped result by email again would hide valid ticket-text matches.
+  // Ticket text is encrypted, so the API can search only account metadata.
   const filteredUsers = users;
 
   const getStatusIcon = (status: string) => {
@@ -330,6 +438,8 @@ function SupportContent() {
     }
   };
 
+  if (!encryption.ready || !cryptoContext) return encryption.panel;
+
   return (
     <div className="flex min-h-[calc(100svh-14rem)] w-full flex-col lg:h-[calc(100svh-14rem)]">
       <DashboardSectionHeader
@@ -341,6 +451,8 @@ function SupportContent() {
         backHref="/dashboard"
         backLabel="Back To Dashboard"
       />
+
+      <SupportEncryptionMigration mode="support" context={cryptoContext} />
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <div className="border-border bg-card rounded-xl border px-4 py-2 text-xs">
@@ -419,6 +531,22 @@ function SupportContent() {
         </label>
       </div>
 
+      {loadError && (
+        <div
+          role="alert"
+          className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+        >
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            className="rounded-lg border border-red-400/30 px-3 py-1.5 text-xs font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       <div className="mt-4 flex flex-1 flex-col gap-6 overflow-hidden xl:flex-row">
         {/* Users List - Left Side */}
         <div className="theme-panel flex w-full flex-col overflow-hidden rounded-[2rem] border-white/10 xl:w-80">
@@ -436,16 +564,21 @@ function SupportContent() {
                   setUsers([]);
                   setSelectedUserId(null);
                 }}
-                placeholder="Search tickets or users..."
+                placeholder="Search user email..."
                 className="focus:border-primary/40 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pr-4 pl-10 text-xs text-white transition outline-none"
               />
             </div>
+
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto p-3">
             {loading ? (
               <div className="flex justify-center py-20">
                 <Loader2 className="text-primary animate-spin" size={32} />
+              </div>
+            ) : loadError ? (
+              <div className="py-20 text-center text-xs text-red-300">
+                Support queue unavailable.
               </div>
             ) : filteredUsers.length === 0 ? (
               <div className="py-20 text-center text-xs text-slate-500 italic">No users found.</div>
@@ -659,6 +792,8 @@ function SupportContent() {
                                           void downloadAttachment(
                                             attachment.download_url,
                                             attachment.filename,
+                                            Boolean(attachment.is_encrypted),
+                                            attachment.encrypted_metadata,
                                           )
                                         }
                                         className="hover:border-primary/30 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
@@ -671,6 +806,13 @@ function SupportContent() {
                                     ),
                                   )}
                                 </div>
+                              )}
+                              {(ticketDetails[ticket.id]?.attachments ?? []).some(
+                                (attachment) => attachment.is_encrypted,
+                              ) && (
+                                <p className="text-xs leading-5 text-amber-300/80">
+                                  Encrypted attachments cannot be scanned by the VPS. Download only files you trust.
+                                </p>
                               )}
                               <div className="max-h-72 space-y-2 overflow-y-auto">
                                 {(ticketDetails[ticket.id]?.messages ?? []).map((message) => (

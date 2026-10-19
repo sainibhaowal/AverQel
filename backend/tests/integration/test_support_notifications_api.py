@@ -2,19 +2,32 @@ from __future__ import annotations
 
 import socketserver
 import threading
+from datetime import UTC, datetime, timedelta
 from email.parser import Parser
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.documents.models.collection_notification import CollectionNotification
 from app.documents.repositories.collection_notifications import CollectionNotificationsRepository
 from app.platform.database.session import set_db_tenant_context
+from app.system.models.app_feedback import AppFeedback
 from app.system.models.audit_log import AuditLog
+from app.system.models.storage_cleanup import StorageCleanupJob
+from app.system.models.support_ticket import SupportTicket
+from app.system.models.support_ticket_attachment import SupportTicketAttachment
+from app.system.models.user_notification import UserNotification
 from tests.conftest import SeededUser
+from tests.helpers.support_encryption import (
+    create_encrypted_attachment_metadata,
+    create_encrypted_payload,
+    register_support_key,
+)
 
 
 class _LocalSMTPHandler(socketserver.StreamRequestHandler):
@@ -97,7 +110,7 @@ def _headers(seeded: SeededUser, roles: set[str] | None = None) -> dict[str, str
     return {"Authorization": f"Bearer {token}", "X-Tenant-Id": str(seeded.tenant_id)}
 
 
-def test_support_management_requires_separately_assigned_staff_role(
+def test_support_management_uses_platform_admin_access_without_staff_role(
     client: TestClient,
     seed_user,
 ) -> None:
@@ -109,24 +122,32 @@ def test_support_management_requires_separately_assigned_staff_role(
     )
     get_settings().bootstrap_super_admin_emails = [seeded.email]
 
-    denied = client.get("/api/v1/support/admin/queue", headers=_headers(seeded))
-    assert denied.status_code == 403
-
-    role_update = client.put(
-        f"/api/v1/admin/users/{seeded.user_id}/staff-roles",
-        headers=_headers(seeded),
-        json={"roles": ["support_manager"]},
-    )
-    assert role_update.status_code == 200
-    assert role_update.json()["user"]["roles"] == ["admin", "support_manager"]
-
-    allowed = client.get(
-        "/api/v1/support/admin/queue",
-        headers=_headers(seeded, {"admin", "support_manager"}),
-    )
+    allowed = client.get("/api/v1/support/admin/queue", headers=_headers(seeded))
     assert allowed.status_code == 200
 
+    other_admin = seed_user(
+        "Non Allowlisted Admin Tenant",
+        "other-admin@example.org",
+        "StrongPass!1234",
+        ("admin",),
+    )
+    denied = client.get("/api/v1/support/admin/queue", headers=_headers(other_admin))
+    assert denied.status_code == 403
 
+    staff_only = seed_user(
+        "Support staff without platform access",
+        "support-staff@example.org",
+        "StrongPass!1234",
+        ("support_manager",),
+    )
+    denied_staff = client.get(
+        "/api/v1/support/admin/queue",
+        headers=_headers(staff_only, roles={"support_manager"}),
+    )
+    assert denied_staff.status_code == 403
+
+
+@pytest.mark.db_commit
 def test_support_ticket_thread_and_durable_notifications(
     client: TestClient, db_session, seed_user, monkeypatch
 ) -> None:
@@ -138,13 +159,20 @@ def test_support_ticket_thread_and_durable_notifications(
     )
     get_settings().bootstrap_super_admin_emails = [seeded.email]
     headers = _headers(seeded, {"admin", "support_manager"})
+    admin_key_id = register_support_key(client, headers, scope="platform_admin")
+    user_key_id = register_support_key(client, headers, scope="user")
 
     created = client.post(
         "/api/v1/support/tickets",
         headers=headers,
         json={
-            "subject": "DeepSpace run did not finish",
-            "description": "The run stopped before returning its findings.",
+            "encrypted_payload": create_encrypted_payload(
+                [admin_key_id, user_key_id],
+                value={
+                    "subject": "DeepSpace run did not finish",
+                    "description": "The run stopped before returning its findings.",
+                },
+            ),
             "category": "deepspace_agent",
         },
     )
@@ -178,13 +206,19 @@ def test_support_ticket_thread_and_durable_notifications(
     internal = client.post(
         f"/api/v1/support/admin/tickets/{ticket_id}/messages",
         headers=headers,
-        json={"body": "Check run telemetry before responding.", "visibility": "internal"},
+        json={
+            "encrypted_payload": create_encrypted_payload([admin_key_id]),
+            "visibility": "internal",
+        },
     )
     assert internal.status_code == 200
     public = client.post(
         f"/api/v1/support/admin/tickets/{ticket_id}/messages",
         headers=headers,
-        json={"body": "We are investigating this run.", "visibility": "public"},
+        json={
+            "encrypted_payload": create_encrypted_payload([admin_key_id, user_key_id]),
+            "visibility": "public",
+        },
     )
     assert public.status_code == 200
     assert public.json()["status"] == "waiting_user"
@@ -192,8 +226,13 @@ def test_support_ticket_thread_and_durable_notifications(
     user_detail = client.get(f"/api/v1/support/tickets/{ticket_id}", headers=headers)
     assert user_detail.status_code == 200
     bodies = [item["body"] for item in user_detail.json()["messages"]]
-    assert "We are investigating this run." in bodies
+    assert "[Encrypted message]" in bodies
     assert "Check run telemetry before responding." not in bodies
+    assert all(
+        item["encrypted_payload"]
+        for item in user_detail.json()["messages"]
+        if item["author_role"] == "admin"
+    )
 
     notification_list = client.get("/api/v1/notifications", headers=headers)
     assert notification_list.status_code == 200
@@ -201,6 +240,12 @@ def test_support_ticket_thread_and_durable_notifications(
         "ticket_received",
         "ticket_reply",
     }
+    created_notice = next(
+        (item for item in notification_list.json() if item["event_type"] == "ticket_created"),
+        None,
+    )
+    if created_notice:
+        assert "DeepSpace run did not finish" not in created_notice["message"]
 
     preferences = client.put(
         "/api/v1/notifications/preferences",
@@ -241,19 +286,12 @@ def test_support_ticket_thread_and_durable_notifications(
         headers=headers,
         files={"file": ("fake.pdf", b"not a PDF", "application/pdf")},
     )
-    assert rejected_attachment.status_code == 415
+    assert rejected_attachment.status_code == 422
 
-    from app.ingestion.services.security.malware_scan_service import (
-        MalwareScanResult,
-        MalwareScanService,
-    )
     from app.system.api import support as support_api
     from app.system.services.storage_service import StoredObject
 
-    attachment_bytes = b"%PDF-1.4\nminimal support attachment"
-    monkeypatch.setattr(
-        MalwareScanService, "scan_bytes", lambda *args, **kwargs: MalwareScanResult(is_clean=True)
-    )
+    attachment_bytes = b"e" * 64
 
     def fake_put(self, *, tenant_id, document_id, filename, content_type, payload):
         return StoredObject(
@@ -271,10 +309,14 @@ def test_support_ticket_thread_and_durable_notifications(
     uploaded = client.post(
         f"/api/v1/support/tickets/{ticket_id}/attachments",
         headers=headers,
-        files={"file": ("trace.pdf", attachment_bytes, "application/pdf")},
+        data={
+            "encrypted_metadata": create_encrypted_attachment_metadata([admin_key_id, user_key_id])
+        },
+        files={"file": ("encrypted.bin", attachment_bytes, "application/octet-stream")},
     )
     assert uploaded.status_code == 201
-    assert uploaded.json()["filename"] == "trace.pdf"
+    assert uploaded.json()["filename"] == "Encrypted attachment.bin"
+    assert uploaded.json()["is_encrypted"] is True
     user_detail_with_file = client.get(f"/api/v1/support/tickets/{ticket_id}", headers=headers)
     attachment = user_detail_with_file.json()["attachments"][0]
     downloaded = client.get(attachment["download_url"], headers=headers)
@@ -305,6 +347,172 @@ def test_support_ticket_thread_and_durable_notifications(
     assert hidden.status_code == 404
 
 
+@pytest.mark.db_commit
+def test_support_and_feedback_retention_purges_inactive_records_after_configured_period(
+    db_session,
+    seed_user,
+) -> None:
+    from app.system.workers.tasks_maintenance import retention_cleanup
+
+    owner = seed_user(
+        "Retention tenant", "retention-owner@example.org", "StrongPass!1234", ("user",)
+    )
+    settings = get_settings()
+    settings.support_ticket_retention_days = 30
+    settings.feedback_retention_days = 30
+    now = datetime.now(UTC)
+    expired_at = now - timedelta(days=31)
+
+    set_db_tenant_context(db_session, owner.tenant_id)
+    old_feedback = AppFeedback(
+        tenant_id=owner.tenant_id,
+        user_id=owner.user_id,
+        subject="Old completed feedback",
+        content="This content should be purged.",
+        category="suggestion",
+        status="completed",
+        created_at=expired_at,
+        updated_at=expired_at,
+    )
+    inactive_feedback = AppFeedback(
+        tenant_id=owner.tenant_id,
+        user_id=owner.user_id,
+        subject="Active feedback",
+        content="This old in-progress item expires by the defined retention policy.",
+        category="suggestion",
+        status="in_progress",
+        created_at=expired_at,
+        updated_at=expired_at,
+    )
+    old_ticket = SupportTicket(
+        tenant_id=owner.tenant_id,
+        user_id=owner.user_id,
+        subject="Old resolved support request",
+        description="This content should be purged.",
+        category="query",
+        status="resolved",
+        resolved_at=expired_at,
+        created_at=expired_at,
+        updated_at=expired_at,
+    )
+    inactive_ticket = SupportTicket(
+        tenant_id=owner.tenant_id,
+        user_id=owner.user_id,
+        subject="Open support request",
+        description="This old open request expires by the defined retention policy.",
+        category="query",
+        status="open",
+        created_at=expired_at,
+        updated_at=expired_at,
+    )
+    recent_feedback = AppFeedback(
+        tenant_id=owner.tenant_id,
+        user_id=owner.user_id,
+        subject="Recent feedback",
+        content="This recent feedback remains.",
+        category="suggestion",
+        status="in_progress",
+        created_at=now,
+        updated_at=now,
+    )
+    recent_ticket = SupportTicket(
+        tenant_id=owner.tenant_id,
+        user_id=owner.user_id,
+        subject="Recent open support request",
+        description="This recent request remains.",
+        category="query",
+        status="open",
+        created_at=now,
+        updated_at=now,
+    )
+    db_session.add_all(
+        [
+            old_feedback,
+            inactive_feedback,
+            old_ticket,
+            inactive_ticket,
+            recent_feedback,
+            recent_ticket,
+        ]
+    )
+    db_session.flush()
+    old_ticket_id = old_ticket.id
+    old_feedback_id = old_feedback.id
+    inactive_ticket_id = inactive_ticket.id
+    inactive_feedback_id = inactive_feedback.id
+    recent_ticket_id = recent_ticket.id
+    recent_feedback_id = recent_feedback.id
+    db_session.add(
+        SupportTicketAttachment(
+            tenant_id=owner.tenant_id,
+            ticket_id=old_ticket.id,
+            uploaded_by_user_id=owner.user_id,
+            filename="trace.pdf",
+            content_type="application/pdf",
+            size_bytes=100,
+            storage_bucket="test-support",
+            storage_key=f"{owner.tenant_id}/{old_ticket.id}/trace.pdf",
+        )
+    )
+    db_session.add_all(
+        [
+            UserNotification(
+                tenant_id=owner.tenant_id,
+                recipient_user_id=owner.user_id,
+                event_domain="support",
+                event_type="ticket_reply",
+                title="Support reply",
+                message="Old support subject",
+                href="/dashboard/support",
+                resource_id=str(old_ticket.id),
+            ),
+            UserNotification(
+                tenant_id=owner.tenant_id,
+                recipient_user_id=owner.user_id,
+                event_domain="feedback",
+                event_type="feedback_reply",
+                title="Feedback reply",
+                message="Old feedback subject",
+                href="/dashboard/feedback",
+                resource_id=str(old_feedback.id),
+            ),
+        ]
+    )
+    db_session.commit()
+
+    result = retention_cleanup()
+
+    assert result["feedback_submissions_deleted"] == 2
+    assert result["support_tickets_deleted"] == 2
+    assert result["support_attachments_queued"] == 1
+    db_session.expire_all()
+    set_db_tenant_context(db_session, owner.tenant_id)
+    assert db_session.get(AppFeedback, old_feedback_id) is None
+    assert db_session.get(SupportTicket, old_ticket_id) is None
+    assert db_session.get(AppFeedback, inactive_feedback_id) is None
+    assert db_session.get(SupportTicket, inactive_ticket_id) is None
+    assert db_session.get(AppFeedback, recent_feedback_id) is not None
+    assert db_session.get(SupportTicket, recent_ticket_id) is not None
+    queued = db_session.execute(
+        select(StorageCleanupJob).where(
+            StorageCleanupJob.tenant_id == owner.tenant_id,
+            StorageCleanupJob.object_key == f"{owner.tenant_id}/{old_ticket_id}/trace.pdf",
+        )
+    ).scalar_one()
+    assert queued.status == "pending"
+    remaining_notifications = (
+        db_session.execute(
+            select(UserNotification).where(
+                UserNotification.resource_id.in_((str(old_ticket_id), str(old_feedback_id)))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert remaining_notifications == []
+
+
+@pytest.mark.db_commit
 def test_opted_in_notification_uses_retryable_email_outbox(
     client: TestClient, seed_user, monkeypatch
 ) -> None:
@@ -319,6 +527,8 @@ def test_opted_in_notification_uses_retryable_email_outbox(
     monkeypatch.setattr(settings, "notification_smtp_password", None)
     monkeypatch.setattr(settings, "bootstrap_super_admin_emails", [seeded.email])
     headers = _headers(seeded)
+    admin_key_id = register_support_key(client, headers, scope="platform_admin")
+    user_key_id = register_support_key(client, headers, scope="user")
     opted_in = client.put(
         "/api/v1/notifications/preferences",
         headers=headers,
@@ -329,7 +539,9 @@ def test_opted_in_notification_uses_retryable_email_outbox(
     ticket = client.post(
         "/api/v1/support/tickets",
         headers=headers,
-        json={"subject": "Email delivery test", "description": "An opted-in receipt."},
+        json={
+            "encrypted_payload": create_encrypted_payload([admin_key_id, user_key_id]),
+        },
     )
     assert ticket.status_code == 200
 
@@ -349,6 +561,7 @@ def test_opted_in_notification_uses_retryable_email_outbox(
         smtp_thread.join(timeout=2)
 
 
+@pytest.mark.db_commit
 def test_opt_out_suppresses_queued_notification_email(
     client: TestClient, seed_user, monkeypatch
 ) -> None:
@@ -360,6 +573,8 @@ def test_opt_out_suppresses_queued_notification_email(
     monkeypatch.setattr(settings, "notification_smtp_from", "notices@example.test")
     monkeypatch.setattr(settings, "bootstrap_super_admin_emails", [seeded.email])
     headers = _headers(seeded)
+    admin_key_id = register_support_key(client, headers, scope="platform_admin")
+    user_key_id = register_support_key(client, headers, scope="user")
     enabled = client.put(
         "/api/v1/notifications/preferences",
         headers=headers,
@@ -369,7 +584,9 @@ def test_opt_out_suppresses_queued_notification_email(
     submitted = client.post(
         "/api/v1/support/tickets",
         headers=headers,
-        json={"subject": "Opt-out test", "description": "Queued before opt-out."},
+        json={
+            "encrypted_payload": create_encrypted_payload([admin_key_id, user_key_id]),
+        },
     )
     assert submitted.status_code == 200
 

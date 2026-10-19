@@ -1,7 +1,11 @@
 # 01. Storage retention backup and disaster recovery policy
 
-Permanent purge is disabled. The normal retention worker cannot remove chat,
-files, database rows, object-storage objects, or backups.
+Account erasure and approved tenant-data deletion remove their defined live
+database and object-storage records. The retention worker also removes expired
+support and feedback records. These application workflows do not rewrite backup
+archives. The backup scripts below prune only their managed local archive files;
+copies in remote storage or snapshots managed by the VPS provider have separate
+retention controls.
 
 ## Recovery units
 
@@ -18,9 +22,22 @@ The database and private object storage are one recovery pair:
    writes.
 
 The database backup contains lifecycle identity, reservation, archive-manifest,
-and reconciliation metadata. It does not make secrets or private content
-public; backup access must use the existing encrypted backup and operator
-access controls.
+and reconciliation metadata. The scripts create checksums but do not encrypt the
+backup archives. Restrict filesystem and remote-storage access, and use an
+encrypted volume or encrypted backup destination when encryption at rest is
+required.
+
+## Backup retention
+
+`backup_postgres.sh`, `backup_minio.sh`, and `backup_prod_config.sh` invoke
+`scripts/prune_backups.py` after a successful backup. The default retention is
+30 days and can be changed with `--retention-days` or an exported
+`AKS_BACKUP_RETENTION_DAYS` shell variable. Pruning is limited to recognized AverQel archive names and
+their checksum/metadata sidecars in the configured output directory. A dry run
+reports planned removals without deleting files. This is not a scheduled job by
+itself: the backup scripts must be run regularly, and any remote backup or VPS
+snapshot policy must be configured separately. Confirm recoverability before
+reducing retention or deleting the last usable backup.
 
 ## Verification status
 

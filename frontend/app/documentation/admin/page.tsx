@@ -9,60 +9,72 @@ export default function AdminDocsPage() {
     >
       <DocsSection title="Role and route protection">
         <p>
-          The dashboard shows each staff page only to its assigned role, and protected APIs also
-          enforce backend permissions. Frontend visibility alone is not the security boundary.
-          Platform-wide administration still requires an account in the configured platform-admin
-          allowlist. Support Manager, Feedback Manager, and Qel Connect Moderator are separate
-          roles; assigning one does not grant platform administration. Support Managers must also be
-          in the platform-admin allowlist. A platform administrator can grant or revoke only these
-          staff roles from the Users view; the change preserves each account&apos;s base role and is
-          audited. A new grant takes effect after the user signs in again; removal applies to
-          subsequent API requests. Disable, reactivate, force logout, and deletion use separate
-          backend permissions and are recorded as audit events.
+          Protected APIs enforce backend permissions; frontend visibility alone is not the security
+          boundary. Platform-wide administration requires both an administrator role and an account
+          in the configured platform-admin allowlist, with authenticator-based MFA enabled and
+          completed on the current session. Allowlisted platform administrators can use
+          Support Management and Feedback Management directly. The Users view and backend API do
+          not provide staff-role assignment controls; legacy support and feedback role rows do not
+          grant queue access. Qel Connect moderation remains a separate, tenant-scoped moderator
+          workflow. Disable, reactivate, force logout, and deletion use separate backend
+          permissions and are recorded as audit events.
         </p>
       </DocsSection>
-      <DocsSection title="Account and workspace information">
+      <DocsSection title="Account information">
         <p>
-          The default user view contains account email, enabled or disabled state, assigned roles,
-          and multi-factor status. It does not show individual document, query, chat, or recent
-          activity counts. The workspace list shows its status and seats in use; its record update
-          time is not presented as user activity.
+          The user view contains account email, tenant, enabled or disabled state, assigned roles,
+          multi-factor status, account creation time, and the last completed sign-in. A sign-in that
+          is still waiting for a required second factor does not update the last sign-in time.
         </p>
+      </DocsSection>
+      <DocsSection title="Platform security timeline">
         <p>
-          Product analytics use a rolling 30-day window and are hidden unless at least five
-          different workspace members contributed. Daily chart points are also hidden unless at
-          least five members contributed that day.
+          Audit Logs displays events across tenants and can filter the security timeline by account
+          ID. It includes registration and verified OAuth account creation, completed password and
+          OAuth sign-ins with MFA outcome, failed sign-ins and lockouts, password changes, session
+          revocation, and administrator disable, reactivate, force-logout, and erasure actions.
+          Failed password attempts for unknown accounts, OAuth callback failures, and cancellations
+          appear as anonymous platform events without the submitted email or IP address. Details
+          exclude passwords, second-factor codes, prompts, documents, chats, and query contents.
+          Account-erasure audit events retain the opaque target account ID (not its email) for the
+          configured audit period, 90 days by default.
         </p>
       </DocsSection>
       <DocsSection title="Different queues have different scopes">
         <p>
-          Support access is a separate Support Manager role. Support Managers can read ticket
-          content and attachments across workspaces, and must also be in the platform-admin
-          allowlist. Feedback review is a separate Feedback Manager role: managers can read
-          submitted text across workspaces and reply in-app, while the staff view omits submitter
-          email and account IDs. Qel Connect moderation is a separate tenant-scoped moderator role;
-          report details load only when opened. These privileged reads and changes are audited.
-          Internal support and moderator notes are not returned to the person who submitted the
-          request.
+          Allowlisted platform administrators can read and respond to support tickets and feedback
+          across tenants. Legacy Support Manager and Feedback Manager assignments do not grant
+          access to these queues. The feedback queue omits submitter email and account IDs. Qel
+          Connect moderation remains a separate tenant-scoped moderator workflow, and report details
+          load only when opened. These privileged reads and changes are audited. Internal support
+          and moderator notes are not returned to the person who submitted the request.
         </p>
       </DocsSection>
       <DocsSection title="Deletion and operations">
         <p>
-          The workspace purge deletes workspace documents and source files, extracted text and
-          embeddings, ingestion and index records, queries and citations, conversations and
-          messages, Qel Connect workspace data, comments, and pinned findings. It keeps user
-          accounts, provider settings, support and feedback records, and audit records. Operators
-          must select a reason and type the exact workspace ID to request it. A different authorized
-          platform administrator must approve the request before it starts; both actions are
-          audited. Account-level privacy requests use the separate user privacy controls; this
-          workspace purge does not process them. If object storage is unavailable, failed file
-          removals remain in the storage cleanup retry queue.
+          The Data Deletion screen erases one selected user account and that account&apos;s owned
+          database records, including provider connections and settings, queries, documents,
+          conversations, support tickets, and submitted feedback. Records and content owned by other
+          users in the same tenant remain. The screen requires typing <code>DELETE</code> followed
+          by the account email and requires recent authenticator MFA. A protected bootstrap
+          administrator and the currently signed-in administrator cannot be deleted through this
+          action.
         </p>
         <p>
-          Document recovery and storage cleanup views expose operational status and error codes
-          only; they omit document identifiers, object paths, and raw provider error messages.
-          Account deletion removes account-owned database records. If object storage is unavailable,
-          file cleanup is queued for background retries; no fixed completion time is promised.
+          Account-owned object-storage files are queued in the same transaction as database erasure
+          and retried by the maintenance worker. The API reports how many cleanup jobs were queued;
+          failed jobs remain available to the restricted operator cleanup view. Audit security
+          events retain only minimal anonymous metadata. Backups and copies held by external
+          providers follow their own retention and deletion controls, so live-app deletion does not
+          promise immediate removal from every backup or third-party system.
+        </p>
+        <p>
+          A separate tenant-data purge removes tenant content while retaining account records and
+          selected operational records. A different authorized platform administrator may approve
+          it immediately. A single administrator may approve their own request after a 24-hour hold
+          by default (configured between 24 and 168 hours); recent MFA is required, and the requester
+          can cancel while it awaits approval. The worker checks the delay again before processing.
+          This is not the account-erasure workflow shown on the Data Deletion screen.
         </p>
         <p>
           Global worker and request metrics are limited to platform operators. The unauthenticated

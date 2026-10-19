@@ -11,12 +11,13 @@ former `assets/Voice-setup.md` planning note.
 
 ## 1. What voice currently does
 
-AverQel voice currently provides two user-facing modes:
+AverQel voice provides two user-facing modes:
 
-- Voice dictation: microphone speech is transcribed and placed into the
-  DeepSpace composer.
-- TTS commentary: a completed assistant response can be spoken through the
-  active LiveKit audio room.
+- **Dictate to composer:** speech is transcribed into the DeepSpace composer
+  for review and manual submission.
+- **Voice conversation:** speech is submitted through the normal DeepSpace chat
+  stream for the currently selected conversation. New visible assistant text
+  is spoken through the active LiveKit audio room while the request runs.
 
 Voice is an optional interface around DeepSpace. It does not replace the normal
 authenticated chat API, SSE stream, queue, provider selection, or durable
@@ -25,7 +26,7 @@ conversation storage.
 Current user flow:
 
 ~~~text
-User enables Dictation
+User enables Dictate to composer
   -> browser requests authenticated voice token
   -> browser joins a LiveKit room
   -> browser publishes microphone audio
@@ -36,18 +37,32 @@ User enables Dictation
   -> browser inserts text into the composer
   -> user submits the normal DeepSpace chat request
 
-User enables TTS Commentary
-  -> completed assistant message is selected in the browser
-  -> browser sends test-tts data to the room
-  -> voice-agent generates/uses spoken text
+User enables Voice conversation
+  -> browser enables microphone and TTS in the same LiveKit room
+  -> voice-agent transcribes a final speech turn
+  -> browser submits it through the selected DeepSpace conversation
+  -> selected DeepSpace provider and tools run through the normal chat API/SSE stream
+  -> browser forwards complete visible sentences from that live stream
+  -> voice-agent queues the text in order
   -> Kokoro synthesizes audio
   -> voice-agent publishes an audio track
   -> browser plays the track
 ~~~
 
-The current dictation path does not automatically submit every transcript as a
-new chat request. The transcript is placed into the composer so the user can
-review and edit it before sending.
+The Dictate to composer mode does not submit transcripts. Voice conversation
+does submit each final transcript as a normal DeepSpace chat turn. Both modes
+use the same room-scoped authenticated token and the existing DeepSpace
+authorization, provider selection, tool approval, and durable queue behavior.
+
+Voice conversation speaks only new visible `delta` text from the active browser
+stream. It does not replay saved chat history, speak `thinking` events, read raw
+tool payloads, or call a second chat provider to generate announcements. A
+pending sentence is flushed when a tool starts or the DeepSpace turn completes.
+When a tool starts and no snippet was spoken in the previous four seconds, the
+browser may send one brief, generic progress line. It is selected from the
+known tool category and does not include the tool name, arguments, or result.
+Kokoro uses the `am_michael` voice preset. Speaking again cancels the current
+playback and queued snippets, but does not cancel the DeepSpace tool run.
 
 ## 2. Architecture
 
@@ -61,7 +76,7 @@ flowchart LR
     Agent[voice-agent worker]
     VAD[Silero VAD]
     STT[Faster-Whisper STT]
-    Provider[Configured AverQel chat provider]
+    Provider[Selected DeepSpace chat provider]
     TTS[Kokoro ONNX TTS]
     Audio[Browser audio track]
 
@@ -75,12 +90,10 @@ flowchart LR
     VAD --> STT
     STT -->|dictation-result data| LK
     LK --> Browser
-    Browser --> Composer
-    Browser -->|normal chat submit| API
-    API -->|completed answer| Browser
-    Browser -->|test-tts data| LK
-    Agent --> Provider
-    Provider --> Agent
+    Browser -->|dictation mode| Composer
+    Browser -->|voice conversation transcript| API
+    API -->|DeepSpace chat SSE| Browser
+    Browser -->|visible delta snippets| LK
     Agent --> TTS
     TTS -->|audio track| LK
     LK --> Audio
@@ -90,14 +103,14 @@ flowchart LR
 
 | Component | Responsibility |
 | --- | --- |
-| DeepSpaceChatClient | Starts/stops the browser room, controls STT/TTS modes, receives transcripts and audio |
+| DeepSpaceChatClient | Starts/stops the browser room, keeps dictation separate from voice conversation, submits voice turns to the selected chat, and forwards live visible response text |
 | DeepSpaceComposer | Displays voice state and dictation controls |
 | GET /api/v1/voice/token | Issues an authenticated, room-scoped LiveKit token |
 | LiveKit | WebRTC room and audio/data transport |
-| voice-agent | Receives microphone audio, runs VAD/STT, generates TTS, publishes state/audio |
+| voice-agent | Receives microphone audio, runs VAD/STT, serializes TTS playback, publishes state/audio |
 | Silero VAD | Detects speech boundaries and reduces noise-triggered transcription |
 | Faster-Whisper | Local speech-to-text |
-| Configured chat provider | Produces short spoken commentary text when required |
+| Selected DeepSpace chat provider | Handles the user request and tools through the normal chat API; its visible streamed answer is what voice mode speaks |
 | Kokoro ONNX | Local text-to-speech synthesis |
 | DeepSpace chat API/SSE | Continues to own normal user messages, agent execution, queueing, and answers |
 
@@ -139,13 +152,30 @@ flowchart LR
   - WSS/WS room connection.
   - Microphone enable/disable.
   - Dictation result insertion into the composer.
+  - Voice transcript submission through `submitQuery` for the current conversation.
+  - Live visible assistant sentence chunking and LiveKit `speak-text` messages.
   - TTS audio-track attachment and playback.
   - Voice state and status label handling.
 - frontend/app/dashboard/deepspace/_components/DeepSpaceComposer.tsx
-  - Dictation and TTS control buttons.
+  - Dictation and voice conversation controls.
   - Listening, thinking, and speaking presentation.
 - frontend/package.json
   - livekit-client dependency.
+
+### Existing open-source components and license review
+
+This change adds no dependency. It reuses the installed LiveKit and local
+speech stack. Upstream source and model license notices must remain available
+when distributing those components; model-weight terms are separate from
+wrapper-library terms.
+
+| Component | License reviewed |
+| --- | --- |
+| [LiveKit Agents framework](https://github.com/livekit/agents) | Apache-2.0 |
+| [Faster-Whisper source](https://github.com/SYSTRAN/faster-whisper) | MIT |
+| [Silero VAD source](https://github.com/snakers4/silero-vad/blob/master/LICENSE) | MIT |
+| [Kokoro ONNX source](https://github.com/thewh1teagle/kokoro-onnx/blob/main/LICENSE) | MIT |
+| [Kokoro-82M v1.0 model weights](https://huggingface.co/hexgrad/Kokoro-82M) | Apache-2.0 |
 
 ### Documentation and evidence
 
@@ -172,7 +202,7 @@ sequenceDiagram
     participant LK as LiveKit
     participant VA as voice-agent
 
-    User->>UI: Enable Dictation or TTS
+    User->>UI: Enable Dictate to composer or Voice conversation
     UI->>API: Request token with room and user identity
     API->>API: Authenticate user and require queries:run
     API->>API: Verify identity equals authenticated user
@@ -201,6 +231,7 @@ sequenceDiagram
     participant VAD as Silero VAD
     participant STT as Faster-Whisper
     participant UI as Composer
+    participant API as DeepSpace chat API
 
     User->>Mic: Speak
     Mic->>LK: Audio frames
@@ -213,42 +244,57 @@ sequenceDiagram
     STT-->>VA: Final transcript
     VA-->>LK: dictation-result
     LK-->>UI: Insert text into composer
-    User->>UI: Review/edit and submit
+    User->>UI: Review/edit and send manually
+    UI->>API: Submit normal DeepSpace message
 ~~~
 
 Noise and low-amplitude audio are filtered before final transcription.
 Whisper output is also filtered for silence probability, compression-ratio
 hallucinations, low-confidence segments, and known static boilerplate.
 
-### 4.3 TTS commentary
+### 4.3 Voice conversation output
 
 ~~~mermaid
 sequenceDiagram
     participant UI as DeepSpaceChatClient
     participant LK as LiveKit
     participant VA as voice-agent
-    participant Provider as Configured chat provider
+    participant API as DeepSpace chat API/SSE
     participant TTS as Kokoro
     actor User
 
-    UI->>UI: Detect completed assistant answer
-    UI->>LK: Send test-tts text payload once
-    LK->>VA: TTS request
-    VA->>TTS: Synthesize spoken text
+    UI->>API: Submit final transcript to selected conversation
+    API-->>UI: Stream new visible delta text and tool events
+    UI->>UI: Buffer text to sentence boundaries
+    UI->>LK: Send speak-text snippets from visible deltas
+    LK->>VA: Queue snippets in order
+    VA->>TTS: Synthesize next snippet
     TTS-->>VA: PCM samples
     VA->>LK: Publish agent audio track
     LK-->>User: Browser plays audio
 ~~~
 
-The current frontend deliberately sends TTS after the assistant answer is
-complete. It does not currently stream every internal tool event or private
-reasoning step as spoken commentary.
+The frontend forwards only live `delta` events from the selected DeepSpace
+stream. It ignores private `thinking` events and tool payloads, skips fenced
+code, and never walks saved messages to create audio. It flushes an unfinished
+sentence when a tool starts so spoken model commentary can lead into the tool
+work, then speaks later visible answer text as the stream continues. If no
+snippet was spoken during the previous four seconds, a tool-start event can
+also produce a brief generic status such as “I’m checking the latest sources
+now.” The status does not read tool names, arguments, or results.
+
+The voice agent queues snippets and plays them sequentially so a later sentence
+does not interrupt the one currently being synthesized. User speech or turning
+off voice conversation cancels the current snippet and clears queued snippets.
+DeepSpace still owns the active chat run and its normal cancellation and queue
+controls.
 
 ### 4.4 Barge-in
 
 When the user begins speaking while the agent is speaking, the voice agent
-cancels the active TTS playback task and returns to listening state. This is
-speech-playback interruption.
+cancels current TTS playback and clears pending voice snippets for that room.
+Speaking state is tracked per room so activity in one user's session does not
+interrupt another room.
 
 It does not automatically cancel the active DeepSpace model/tool run or
 rewrite the durable queue. DeepSpace cancellation, pause, resume, retry, and
@@ -267,6 +313,8 @@ Voice must preserve the existing application boundaries:
 - Audio transport uses the configured WSS/WS deployment route.
 - Voice status messages must not include API keys, OAuth tokens, raw secrets, or
   private infrastructure details.
+- Voice-agent logs record transcription lengths and state, not raw transcript
+  text.
 - Model paths are mounted read-only in the voice-agent container.
 - The voice-agent is a separate service, not part of the API process.
 - Normal chat history and queue persistence remain unchanged by voice mode.
@@ -280,7 +328,10 @@ Voice must preserve the existing application boundaries:
 | Kokoro TTS | Implemented locally |
 | VAD and barge-in | Implemented for speech detection and TTS interruption |
 | Voice state updates | Implemented through LiveKit data messages |
-| Completed answer spoken aloud | Implemented |
+| New visible response sentences spoken while the DeepSpace request runs | Implemented locally |
+| Voice transcript submitted to the current DeepSpace chat | Implemented locally |
+| Previous chat history replayed when voice is enabled | Not performed |
+| Hidden reasoning or raw tool results spoken | Not performed |
 | Dictation into DeepSpace composer | Implemented |
 | Full autonomous voice command center | Not the current default flow |
 | Full ReactFlow live execution graph | Not verified in the current frontend |
@@ -324,8 +375,10 @@ Before enabling voice for a real deployment, verify:
 6. The voice-agent registers successfully without repeated authentication errors.
 7. The API token route returns 200 only for an authenticated authorized user.
 8. A mismatched identity returns 403.
-9. A disposable user can connect, dictate, edit, and submit a message.
-10. The same user can receive a completed answer over TTS.
+9. A disposable user can connect, dictate into the composer, edit, and submit.
+10. In Voice conversation mode, a disposable user's final transcript reaches
+    the currently selected DeepSpace chat and new visible response snippets
+    play in order.
 11. A second tenant cannot obtain or use the first tenant's room identity.
 12. Closing/reloading the browser disconnects voice cleanly without cancelling or
     deleting unrelated DeepSpace work.
@@ -339,15 +392,15 @@ The current local implementation should not be advertised as a fully autonomous
 voice orchestration platform until these are addressed and tested:
 
 - Bind voice-provider resolution to the authenticated room user and tenant.
-  The current voice-agent provider helper contains a development-oriented user
-  selection fallback and must not be treated as a production multi-tenant
-  provider-resolution contract.
+  Voice output now uses the selected DeepSpace chat stream; the voice-agent
+  does not resolve or call a separate chat provider.
 - Add a dedicated authenticated voice E2E suite to the maintained test tree if
   the release smoke is currently only an external/scripted check.
 - Add an explicit voice-session cleanup and lifecycle metric policy.
 - Define TURN and public-network deployment configuration for staging/VPS.
-- Decide whether voice should ever submit commands automatically or remain
-  review-before-send dictation.
+- A direct audio-native speech-to-speech model is not part of this deployment.
+  Any future integration must preserve the current DeepSpace conversation,
+  tool approval, tenant, and queue boundaries.
 - If a live execution graph is desired, implement it as a separate UI contract
   tied to durable DeepSpace events; do not infer it from voice state messages.
 

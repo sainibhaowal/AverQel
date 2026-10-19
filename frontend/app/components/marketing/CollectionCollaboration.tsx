@@ -34,14 +34,14 @@ const collaborationSteps = [
     icon: UserPlus,
     label: "Request to join",
     detail:
-      "Share your Qel Connect ID, send a join request, and start chatting once the owner approves — no silent joins, ever.",
+      "Share your Qel Connect ID, send a join request, and start chatting once the owner approves. No silent joins, ever.",
     color: "text-emerald-300 border-emerald-400/25 bg-emerald-500/[0.08]",
   },
   {
     icon: MessageCircleMore,
     label: "Talk in real time",
     detail:
-      "Encrypted Qel Connect messages keep the project conversation together — matching safety numbers confirm member devices.",
+      "Encrypted Qel Connect messages keep the project conversation together. Matching safety numbers confirm member devices.",
     color: "text-cyan-300 border-cyan-400/25 bg-cyan-500/[0.08]",
   },
   {

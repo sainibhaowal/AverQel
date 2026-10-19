@@ -37,10 +37,12 @@ rendering. Storage retention/archive mutations publish storage events, and the
 storage page refreshes from those events instead of a five-second polling loop.
 
 DeepSpace queue transitions and run metrics publish user-scoped events. The
-DeepSpace queue view, operational summary, and admin metrics view use those
-events for authoritative snapshot refreshes and no longer use their former
-visible polling loops. MCP API actions and background catalog/lifecycle workers
-publish `mcp` events; both the MCP dashboard and inspector consume them.
+DeepSpace queue view and operational summary use those events for authoritative
+snapshot refreshes and no longer use their former visible polling loops. Admin
+system metrics use a separate platform-admin-only SSE endpoint backed by the
+service-wide Redis metrics counters described below. MCP API actions and
+background catalog/lifecycle workers publish `mcp` events; both the MCP
+dashboard and inspector consume them.
 Document detail status also uses the shared `documents` event stream instead
 of a short polling loop.
 
@@ -55,6 +57,25 @@ or trimmed cursor is handled by the affected REST snapshot; the application
 does not delete local state or display an empty list during a transient
 connection failure. A browser refresh remains an emergency recovery action,
 not a normal synchronization step.
+
+## Admin service metrics stream
+
+`GET /api/v1/metrics/summary/stream` is restricted to allowlisted platform
+administrators. API and instrumented worker processes atomically update a fixed
+set of low-cardinality counters in Redis and publish a change signal. The stream
+sends an initial snapshot, then checks for updated totals at one-second
+intervals; it sends a heartbeat while idle and closes after five minutes so the
+browser can reconnect and reauthenticate. It is separate from the user-scoped
+workspace event gateway.
+
+The JSON summary endpoint reads the same counters. Totals are service-wide and
+cumulative from `metrics_started_at`; they reset if the Redis metrics hash is
+lost or cleared. `metrics_complete=false` means a process observed a failed
+counter write, so the UI labels the snapshot as partial. A Redis read or
+invalid stored value is reported as unavailable; it must never be displayed as
+a successful zero snapshot. The database count covers explicitly instrumented
+repository operations, not every SQL statement. Detailed per-process samples
+remain available through the internal Prometheus scrape endpoint.
 
 ## Security requirements
 

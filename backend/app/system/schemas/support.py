@@ -28,10 +28,14 @@ class SupportTicketBase(BaseModel):
     subject: str = Field(..., min_length=1, max_length=255)
     description: str = Field(..., min_length=1, max_length=20_000)
     category: SupportCategory = "query"
+    encrypted_payload: str | None = Field(default=None, max_length=150_000)
 
 
-class SupportTicketCreate(SupportTicketBase):
-    pass
+class SupportTicketCreate(BaseModel):
+    encrypted_payload: str = Field(..., min_length=100, max_length=150_000)
+    category: SupportCategory = "query"
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class SupportTicketUpdate(BaseModel):
@@ -73,7 +77,9 @@ class AdminSupportListResponse(BaseModel):
 
 
 class SupportTicketMessageCreate(BaseModel):
-    body: str = Field(..., min_length=1, max_length=10_000)
+    encrypted_payload: str = Field(..., min_length=100, max_length=150_000)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class AdminSupportMessageCreate(SupportTicketMessageCreate):
@@ -87,6 +93,7 @@ class SupportTicketMessageResponse(BaseModel):
     author_role: str
     kind: str
     body: str
+    encrypted_payload: str | None = None
     is_internal: bool
     created_at: datetime
 
@@ -101,6 +108,8 @@ class SupportTicketAttachmentResponse(BaseModel):
     size_bytes: int
     created_at: datetime
     download_url: str
+    is_encrypted: bool = False
+    encrypted_metadata: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -136,11 +136,16 @@ available, what is gated, and which security boundary protects each feature.
    obtains a short-lived room token from `GET /api/v1/voice/token`; API keys,
    secrets, STT models, and TTS models never enter the browser.
 2. The `voice-agent` subscribes to enabled microphone audio, performs local
-   Whisper transcription, and sends partial/final dictation updates to the
-   composer. The user must grant browser microphone permission.
-3. When TTS is enabled, the completed visible assistant answer is sent to the
-   room and synthesized locally with Kokoro. Internal thinking, tool payloads,
-   and credentials are not spoken.
+   Faster-Whisper transcription, and sends partial/final dictation updates to
+   the browser. Dictation mode inserts text into the composer; Voice
+   conversation submits the final transcript through the currently selected
+   DeepSpace chat. The user must grant browser microphone permission.
+3. Voice conversation forwards new visible assistant sentences from the active
+   DeepSpace stream to the room and synthesizes them locally with Kokoro while
+   the request runs. It does not replay chat history, hidden reasoning, or raw
+   tool payloads, and it does not make a second chat-model call for commentary.
+   A brief generic tool-progress status can be spoken when no recent response
+   sentence has been spoken.
 4. The Compose stack runs `livekit` and `voice-agent` with dedicated health
    checks and model mounts. Production deployments require HTTPS/WSS and a
    TURN configuration appropriate to the deployment network.

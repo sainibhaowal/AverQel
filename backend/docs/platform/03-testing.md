@@ -83,6 +83,22 @@ regression set before a full suite:
   tests/unit/test_provider_selection_service.py
 ```
 
+For administrator MFA, account security history, user erasure, delayed solo-owner
+tenant purge, and support/feedback retention, run the isolated regression set:
+
+```bash
+./backend/scripts/test-isolated.sh -q \
+  tests/integration/test_platform_admin_mfa_security_history.py \
+  tests/integration/test_admin_user_management.py \
+  tests/integration/test_audit_logs_endpoint.py \
+  tests/integration/test_auth_flow.py \
+  tests/integration/test_deletion_workflow.py \
+  tests/integration/test_support_notifications_api.py
+```
+
+The managed-backup pruner has a database-free unit test at
+`tests/unit/test_backup_retention.py`.
+
 Coverage is expected to grow through behavior-level tests. Do not exclude
 uncovered application code or add tests that only execute lines without
 asserting behavior. New or changed production paths must include focused
@@ -124,6 +140,17 @@ Provider contracts are checked without network access by the provider matrix
 tests. Real provider checks must be run separately against disposable staging
 or an installed local runtime; no API key or local model service is contacted
 by CI's default provider matrix.
+
+Public contact tests mock SMTP, Redis verification state, and Resend's inbound
+API. They do not send real email. A local contact form can send outbound
+verification codes and messages only when the local backend has Redis, SMTP
+credentials, `AKS_PUBLIC_CONTACT_FROM`, `AKS_PUBLIC_CONTACT_VERIFICATION_FROM`,
+senders on the verified mail domain, and a test recipient configured. The one-time code and contact
+message are never sent by the test suite. Resend inbound webhooks require a
+publicly reachable endpoint; a plain `localhost` address cannot receive
+provider callbacks. Verify inbound forwarding on a deployed disposable
+endpoint or the intended deployment after configuring the Resend
+`email.received` webhook.
 
 ## Load and deployment validation
 

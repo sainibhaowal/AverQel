@@ -38,11 +38,11 @@ export default function TermsPage() {
           submit or share it.
         </p>
         <p>
-          Some staff workflows can read submitted content: assigned Support Managers can read
-          support tickets and attachments across workspaces; assigned Feedback Managers can read
-          submitted feedback; and Qel Connect moderators can review reports within their assigned
-          workspace. Support access also requires platform-admin allowlisting. These workflows are
-          described in the{" "}
+          Allowlisted platform administrators can read support tickets, attachments, and submitted
+          feedback across tenants so they can respond to those requests. Legacy Support Manager and
+          Feedback Manager assignments do not grant access to those queues. Qel Connect moderators
+          can review reports within their assigned workspace. These
+          workflows are described in the{" "}
           <a className="underline" href="/legal/privacy">
             Privacy Policy
           </a>
@@ -94,10 +94,13 @@ export default function TermsPage() {
           Features and these terms may change. Material changes should be announced before they
           apply where required by law. The hosted service is operated by Ravinder Singh —
           Independent Developer, AverQel Independent Project. Questions about these terms can be
-          sent through Support Centre, which requires an account. A postal address and
-          deployment-specific providers are not specified here and must be confirmed for the hosted
-          service. This page was reviewed 17 October 2026; a review date does not mean the hosted
-          service has published, adopted, or notified users about this revision.
+          sent through the public Contact the developer form on the landing page or the Support
+          Centre for signed-in users. The form requires the deployment to configure SMTP delivery.
+          Direct mail sent to the contact address is forwarded only when the deployment has
+          configured Resend inbound processing. A postal address and deployment-specific providers
+          are not specified here and must be confirmed for the hosted service. This page was
+          reviewed 17 October 2026; a review date does not mean the hosted service has published,
+          adopted, or notified users about this revision.
         </p>
       </PolicySection>
     </PolicyLayout>

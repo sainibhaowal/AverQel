@@ -4,21 +4,21 @@ export default function VoiceDocsPage() {
   return (
     <DocsShell
       title="DeepSpace voice"
-      intro="Voice is an optional DeepSpace input and output path. Its controls work only when the deployment has the realtime service and voice agent configured and the browser grants microphone access."
+      intro="DeepSpace has a review-before-send dictation control and a voice conversation control that uses the chat you already have open. Voice requires the realtime service and browser microphone access."
     >
       <DocsCards
         items={[
           {
-            title: "Speech input",
-            body: "Use the microphone control to dictate into the DeepSpace composer during a connected voice session.",
+            title: "Dictate to composer",
+            body: "Speech is transcribed into the composer. Review or edit the text, then send it when you are ready.",
           },
           {
-            title: "Spoken response",
-            body: "Text-to-speech can speak a completed assistant response when the voice session and agent support it; it is not a promise of continuous spoken progress updates.",
+            title: "Voice conversation",
+            body: "Speech is sent as a turn to the currently selected DeepSpace chat. The same DeepSpace model and tools answer, and new visible sentences are spoken as they arrive.",
           },
           {
-            title: "Text remains available",
-            body: "DeepSpace text chat does not require voice. If the realtime service is unavailable, voice may be disabled while text workflows remain separate.",
+            title: "Only new response text is spoken",
+            body: "Voice does not read chat history, hidden reasoning, or raw tool results. A brief generic status can announce tool work without reading tool names, inputs, or results.",
           },
           {
             title: "Browser permissions",
@@ -26,6 +26,27 @@ export default function VoiceDocsPage() {
           },
         ]}
       />
+      <DocsSection title="How voice conversation works">
+        <p>
+          Voice conversation uses the existing DeepSpace request and response path. Faster-Whisper
+          transcribes your speech, the selected DeepSpace chat model handles your request and
+          connected tools, and Kokoro speaks short visible response segments through the same voice
+          session. This keeps the answer in the selected chat instead of starting a second assistant
+          conversation.
+        </p>
+        <p>
+          Spoken output starts with complete visible sentences. Any unfinished sentence is flushed
+          when a tool step starts or the turn ends. If no recent sentence was spoken, a brief
+          generic status can announce tool work without reading tool names, inputs, or results. Code
+          blocks are skipped. Speaking can be interrupted by speaking again; that stops queued audio
+          while the DeepSpace task continues under its usual queue controls.
+        </p>
+        <p>
+          The current setup is a speech-to-text, DeepSpace chat, and text-to-speech pipeline. It is
+          not a single audio-native speech-to-speech model. The selected DeepSpace model remains the
+          only model that answers your request or calls its tools.
+        </p>
+      </DocsSection>
       <DocsSection title="Deployment requirements">
         <p>
           Operators need to deploy and configure the realtime transport (such as LiveKit) and voice

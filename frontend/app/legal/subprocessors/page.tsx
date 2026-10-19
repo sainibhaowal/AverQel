@@ -24,7 +24,10 @@ export default function SubprocessorsPage() {
           </li>
           <li>
             <strong>Optional delivery:</strong> SMTP email, push, voice, or other integrations may
-            process the information needed for the enabled feature.
+            process the information needed for the enabled feature. The public contact form sends
+            its verification code, message, and reply address through the deployment&apos;s
+            configured SMTP provider. Resend may receive direct mail sent to the site contact
+            address and forward it to the operator&apos;s private inbox through a signed webhook.
           </li>
         </ul>
       </PolicySection>

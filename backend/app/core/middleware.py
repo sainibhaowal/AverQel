@@ -15,6 +15,7 @@ from app.core.errors import ApiError, build_error_response
 from app.system.services.metrics_service import (
     API_REQUEST_LATENCY_SECONDS,
     API_REQUESTS_TOTAL,
+    increment_runtime_metric,
 )
 from app.system.services.rate_limit_service import RateLimitDecision, RateLimitService
 
@@ -58,6 +59,9 @@ def _record_request_metrics(method: str, path: str, status: str, duration_second
     try:
         API_REQUESTS_TOTAL.labels(method=method, path=path, status=status).inc()
         API_REQUEST_LATENCY_SECONDS.labels(method=method, path=path).observe(duration_seconds)
+        increment_runtime_metric("api_requests_total")
+        if int(status) >= 400:
+            increment_runtime_metric("api_errors_total")
     except Exception:  # noqa: BLE001
         # Metrics must never break request delivery.
         logger.debug("Failed to record request metrics.", exc_info=True)

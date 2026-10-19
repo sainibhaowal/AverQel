@@ -238,10 +238,10 @@ export default function SignupPage() {
               >
                 Privacy Policy
               </Link>
-              . AverQel processes workspace content to provide the service. Assigned Support
-              Managers can read support tickets and attachments; Feedback Managers can read
-              submitted feedback; and Qel Connect moderators can read reports in their assigned
-              workspace. Configured external providers receive data needed for requests you enable.
+              . AverQel processes workspace content to provide the service. Allowlisted platform
+              administrators can read the support tickets and feedback you submit so they can
+              respond; Qel Connect moderators can read reports in their assigned workspace.
+              Configured external providers receive data needed for requests you enable.
             </p>
           </div>
 
