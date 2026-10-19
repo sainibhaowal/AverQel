@@ -22,6 +22,7 @@ import {
 import MCPMarketplaceCard from "./_components/MCPMarketplaceCard";
 import MCPHealthStatus from "./_components/MCPHealthStatus";
 import MCPFilterSelect from "./_components/MCPFilterSelect";
+import MCPComposioPanel from "./_components/MCPComposioPanel";
 import { readMCPActiveContext } from "@/lib/mcp-context";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import { useRealtimeEvents } from "@/lib/realtime";
@@ -40,7 +41,9 @@ const FALLBACK_CATEGORIES = [
 export default function MCPDashboard() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [tab, setTab] = useState<"marketplace" | "installed">("marketplace");
+  const [tab, setTab] = useState<"marketplace" | "composio" | "installed">(() =>
+    searchParams.get("tab") === "composio" ? "composio" : "marketplace",
+  );
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
   const [transport, setTransport] = useState("");
@@ -164,13 +167,20 @@ export default function MCPDashboard() {
           accentClassName="bg-cyan-400 text-cyan-300"
           accentGlowClassName="shadow-[0_0_18px_rgba(34,211,238,0.35)]"
           actions={
-            <div className="mcp-marketplace-actions flex gap-2">
+            <div className="mcp-marketplace-actions flex flex-wrap gap-2">
               <button
                 type="button"
                 className={`rounded px-3 py-2 text-sm ${tab === "marketplace" ? "bg-white/15 text-white" : "border border-white/10 text-slate-300"}`}
                 onClick={() => setTab("marketplace")}
               >
                 Marketplace
+              </button>
+              <button
+                type="button"
+                className={`rounded px-3 py-2 text-sm ${tab === "composio" ? "bg-white/15 text-white" : "border border-white/10 text-slate-300"}`}
+                onClick={() => setTab("composio")}
+              >
+                Composio Apps
               </button>
               <button
                 type="button"
@@ -367,6 +377,21 @@ export default function MCPDashboard() {
             onNext={() => setPage(page + 1)}
           />
         </section>
+      ) : tab === "composio" ? (
+        <MCPComposioPanel
+          connectedProviderSlugs={installed
+            .filter((server) => server.status === "connected")
+            .map((server) => server.provider_slug || "")
+            .filter(Boolean)}
+          connectingProviderSlugs={installed
+            .filter((server) => server.status === "connecting")
+            .map((server) => server.provider_slug || "")
+            .filter(Boolean)}
+          onConnected={() => {
+            setTab("installed");
+            void load();
+          }}
+        />
       ) : (
         <section className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
           {installed.length === 0 ? (

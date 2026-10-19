@@ -4,7 +4,7 @@ export default function ConnectorsMcpDocsPage() {
   return (
     <DocsShell
       title="Connectors & MCP"
-      intro="AverQel provides a curated marketplace for approved remote MCP providers. Users authorize their own accounts, while AverQel keeps tenant isolation, encrypted credentials, tool permissions, approvals, and DeepSpace routing under its control."
+      intro="AverQel provides a curated marketplace for approved remote MCP providers and a separate live Composio app catalog. Users authorize their own accounts, while AverQel keeps tenant isolation, encrypted credentials, tool permissions, approvals, and DeepSpace routing under its control."
     >
       <DocsCards
         items={[
@@ -23,6 +23,10 @@ export default function ConnectorsMcpDocsPage() {
           {
             title: "Remote Runtime",
             body: "This release connects to remote Streamable HTTP or SSE MCP servers. Local stdio, SSH, and arbitrary local servers are not supported by the marketplace release.",
+          },
+          {
+            title: "Composio Apps",
+            body: "Open MCP Apps from Providers or use the Composio Apps tab in MCP Marketplace. Browse Composio’s live, paginated toolkit catalog; each user authorizes and owns their own app connection.",
           },
         ]}
       />
@@ -57,6 +61,37 @@ export default function ConnectorsMcpDocsPage() {
             approval requirements before calling the remote server.
           </li>
         </ol>
+      </DocsSection>
+
+      <DocsSection title="Composio app connections">
+        <p>
+          The MCP Apps shortcut under Providers opens the Composio Apps tab, which is separate from
+          AverQel&apos;s curated marketplace and its existing categories. It loads the current
+          Composio native toolkit and tool catalog on request and supports pagination; app
+          availability and counts can change. Composio supplies this catalog, so its entries are not
+          presented as individually reviewed by AverQel.
+        </p>
+        <p>
+          The AverQel platform administrator configures the Composio project API key once. Users do
+          not need to supply that key. Each connection is tied to the signed-in AverQel tenant and
+          user, then authorization completes through Composio&apos;s verified callback. Many apps
+          support hosted OAuth; some require additional provider setup, so one-click sign-in is not
+          available for every catalog entry. Toolkits Composio marks as requiring no account
+          authorization can be added directly and do not need the OAuth callback verifier.
+        </p>
+        <p>
+          Composio and the connected app provider process the authorization and the inputs and
+          results for actions you run. Composio manages the app&apos;s OAuth connection and tokens
+          for this integration; AverQel does not receive the provider password or app OAuth token.
+          This is not end-to-end encryption from Composio or the connected provider. Review the
+          requested scopes and both providers&apos; privacy terms before connecting sensitive data.
+        </p>
+        <p>
+          The Composio connection uses the same DeepSpace MCP broker and policy evaluator as other
+          MCP servers. Reads may run under your connection policy. Writes, deletions, and external
+          messages pause for approval before the remote action, and setting a tool to Always allow
+          cannot bypass that approval requirement.
+        </p>
       </DocsSection>
 
       <DocsSection title="Official and community providers">
@@ -116,8 +151,7 @@ export default function ConnectorsMcpDocsPage() {
             supported.
           </li>
           <li>
-            Write and external-message tools remain blocked until the user explicitly approves the
-            individual action.
+            Write, delete, and external-message tools require approval before each remote action.
           </li>
           <li>
             Refresh updates encrypted credentials and verified scope metadata without exposing

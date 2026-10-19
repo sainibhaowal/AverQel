@@ -81,6 +81,47 @@ export type MCPMarketplaceFacets = {
   trust_statuses: string[];
 };
 
+export type MCPComposioStatus = {
+  configured: boolean;
+  callback_verifier_enabled: boolean;
+  callback_verifier_url?: string | null;
+};
+
+export type MCPComposioAdminStatus = MCPComposioStatus;
+
+export type MCPComposioToolkit = {
+  slug: string;
+  name: string;
+  description: string;
+  logo_url?: string | null;
+  app_url?: string | null;
+  categories: string[];
+  tool_count: number;
+  auth_schemes: string[];
+  no_auth: boolean;
+};
+
+export type MCPComposioToolkitPage = {
+  items: MCPComposioToolkit[];
+  next_cursor?: string | null;
+  current_page: number;
+  total_items: number;
+};
+
+export type MCPComposioTool = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+  risk_labels: string[];
+  version?: string | null;
+};
+
+export type MCPComposioToolkitDetail = MCPComposioToolkit & {
+  tools: MCPComposioTool[];
+  tools_loaded: number;
+  tools_next_cursor?: string | null;
+};
+
 export type MCPSafeAccountIdentity = {
   email?: string;
   display_name?: string;
@@ -253,6 +294,71 @@ export function getMarketplaceFacets(): Promise<MCPMarketplaceFacets> {
 
 export function getMarketplaceEntry(entryId: string): Promise<MCPMarketplaceEntry> {
   return request<MCPMarketplaceEntry>(`/mcp/marketplace/${encodeURIComponent(entryId)}`);
+}
+
+export function getComposioStatus(): Promise<MCPComposioStatus> {
+  return request<MCPComposioStatus>("/mcp/composio/status");
+}
+
+export function getComposioAdminStatus(): Promise<MCPComposioAdminStatus> {
+  return request<MCPComposioAdminStatus>("/admin/providers/composio");
+}
+
+export function saveComposioApiKey(apiKey: string): Promise<MCPComposioStatus> {
+  return request<MCPComposioStatus>("/admin/providers/composio", {
+    method: "PUT",
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
+export function removeComposioApiKey(): Promise<void> {
+  return request<void>("/admin/providers/composio", { method: "DELETE" });
+}
+
+export function getComposioToolkits(
+  params: {
+    q?: string;
+    category?: string;
+    cursor?: string | null;
+  } = {},
+): Promise<MCPComposioToolkitPage> {
+  const query = new URLSearchParams();
+  if (params.q?.trim()) query.set("q", params.q.trim());
+  if (params.category) query.set("category", params.category);
+  if (params.cursor) query.set("cursor", params.cursor);
+  return request<MCPComposioToolkitPage>(`/mcp/composio/toolkits?${query.toString()}`);
+}
+
+export function getComposioToolkit(
+  slug: string,
+  cursor?: string | null,
+): Promise<MCPComposioToolkitDetail> {
+  const query = new URLSearchParams();
+  if (cursor) query.set("cursor", cursor);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return request<MCPComposioToolkitDetail>(
+    `/mcp/composio/toolkits/${encodeURIComponent(slug)}${suffix}`,
+  );
+}
+
+export function connectComposioToolkit(slug: string): Promise<{
+  server: MCPConnection;
+  authorization_url?: string | null;
+  already_connected: boolean;
+  authorization_required: boolean;
+}> {
+  return request(`/mcp/composio/toolkits/${encodeURIComponent(slug)}/connect`, {
+    method: "POST",
+  });
+}
+
+export function completeComposioOAuth(
+  sessionUri: string,
+): Promise<{ status: "connecting"; server_id: string }> {
+  return request("/mcp/composio/oauth/complete", {
+    method: "POST",
+    body: JSON.stringify({ session_uri: sessionUri }),
+  });
 }
 
 export function connectMarketplaceEntry(

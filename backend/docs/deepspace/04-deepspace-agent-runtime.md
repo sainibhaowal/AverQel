@@ -448,6 +448,23 @@ user's encrypted MCP connection. Tenant and user ownership are still checked
 on every discovery and tool call; a different provider email never grants
 cross-user access.
 
+Composio-hosted MCP apps use the separate live Composio catalog in the MCP
+Marketplace. The operator configures one encrypted platform project key;
+Composio users are derived from the current tenant and account UUIDs. The
+connected app's session ID is protected with the configured connector-secret
+backend and tenant/user/server associated data. Composio verifies the
+one-time OAuth callback against that same user identity. Composio manages the
+connected app's OAuth tokens; selected tool inputs and results pass through
+Composio and the app provider. These requests are not end-to-end encrypted
+from those providers.
+
+For Composio, newly connected policies permit reads under the saved policy and
+require approval before writes, deletions, or external messages. A per-tool
+Always allow setting cannot bypass the runtime's side-effect approval check.
+The connector catalog, administrator setup, callback prerequisites, and
+privacy boundaries are documented in
+[`../capabilities/mcp/03-composio-hosted-mcp.md`](../capabilities/mcp/03-composio-hosted-mcp.md).
+
 SSE transport uses the installed MCP SDK's client-factory contract and the
 same SSRF-safe HTTP client as Streamable HTTP. Provider tool errors are
 returned as redacted actionable diagnostics, while access tokens and raw

@@ -163,6 +163,10 @@ describe("providers settings page", () => {
       screen.getByText(/manage foundation models and runtime connectivity/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to settings/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /mcp apps/i })).toHaveAttribute(
+      "href",
+      "/dashboard/mcp?tab=composio",
+    );
   });
 
   it("clears the loading state after providers resolve", async () => {

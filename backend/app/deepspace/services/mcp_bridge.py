@@ -22,6 +22,7 @@ from app.auth.dependencies import AuthContext
 from app.core.config import Settings
 from app.integrations.models.mcp_connection_policy import MCPConnectionPolicy
 from app.integrations.models.mcp_server import MCPServer
+from app.integrations.services.composio_service import is_composio_server
 from app.integrations.services.mcp_runtime import (
     MCPToolPolicyDecision,
     evaluate_mcp_tool_policy,
@@ -73,7 +74,9 @@ class DeepSpaceMCPBridge:
     """Discover and execute tools from the user's connected MCP accounts."""
 
     MAX_SERVERS = 50
-    MAX_TOOLS_PER_SERVER = 100
+    # MCP's model-facing surface is a compact search broker, so the private
+    # catalogue can stay complete without injecting every schema into prompts.
+    MAX_TOOLS_PER_SERVER = 1000
 
     def __init__(self, db: Session, settings: Settings) -> None:
         self.db = db
@@ -139,7 +142,16 @@ class DeepSpaceMCPBridge:
             ).scalar_one_or_none()
             if policy is None or not policy.default_enabled:
                 continue
-            for raw_tool in cached_tools[: self.MAX_TOOLS_PER_SERVER]:
+            # Composio toolkits are served from a paginated live catalog. Keep
+            # every discovered action searchable; the broker returns only a
+            # small page of references to DeepSpace. Retain the cap for
+            # arbitrary remote MCP servers to bound their per-turn surface.
+            server_tools = (
+                cached_tools
+                if is_composio_server(server)
+                else cached_tools[: self.MAX_TOOLS_PER_SERVER]
+            )
+            for raw_tool in server_tools:
                 if not isinstance(raw_tool, dict):
                     continue
                 raw_name = str(raw_tool.get("name") or "").strip()

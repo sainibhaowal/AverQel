@@ -33,6 +33,7 @@ and must be checked against their target and date before release decisions.
 - [Scheduled jobs](capabilities/05-scheduled-jobs.md)
 - [MCP connections](capabilities/06-mcp-connections.md)
 - [MCP current release status](capabilities/mcp/01-current-release-status.md)
+- [Composio hosted MCP apps](capabilities/mcp/03-composio-hosted-mcp.md)
 - [OCR, RAG, Library, sandbox, and artifacts](capabilities/07-ocr-rag-library-sandbox-artifacts.md)
 - [Public landing and capability directory](capabilities/08-public-landing-and-capabilities.md)
 - [Advanced capability index](capabilities/09-advanced-capabilities-index.md)

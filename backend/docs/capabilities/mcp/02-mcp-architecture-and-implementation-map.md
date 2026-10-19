@@ -2,6 +2,11 @@
 
 **Status:** implementation-map snapshot; source inspection recorded on 2026-09-23.
 
+This snapshot predates the optional Composio-hosted app catalog. For its current
+provider-key, per-user session, callback, and DeepSpace behavior, use
+[`03-composio-hosted-mcp.md`](03-composio-hosted-mcp.md) and the current
+[`06-mcp-connections.md`](../06-mcp-connections.md) contract.
+
 This document is the source-grounded implementation map for AverQel MCP. It
 describes the implementation observed at that inspection date, where it was
 implemented, what DeepSpace used, and which boundaries were intentional.
@@ -245,7 +250,10 @@ These are intentionally not part of the current release:
 - SSH or arbitrary local-process execution;
 - vendor repository cloning or package execution;
 - arbitrary VPS command execution;
-- global or tenant-wide credentials;
+- provider credentials exposed to ordinary users or shared across their
+  connected accounts. The later Composio integration uses one administrator-
+  managed project key server-side while keeping each hosted session bound to
+  one tenant and user;
 - side-effecting calls that bypass policy or approval;
 - a claim that every external provider is live without provider credentials and
   a provider-specific smoke test.

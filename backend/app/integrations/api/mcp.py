@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,6 +25,12 @@ from app.integrations.schemas.mcp import (
     MCPActionResponse,
     MCPCatalogReviewRead,
     MCPCatalogReviewRequest,
+    MCPComposioAuthCompleteRead,
+    MCPComposioAuthCompleteRequest,
+    MCPComposioConnectResponse,
+    MCPComposioStatusRead,
+    MCPComposioToolkitDetailRead,
+    MCPComposioToolkitPageRead,
     MCPConnectionCreateResponse,
     MCPConnectionOverrideRead,
     MCPConnectionOverrideUpdate,
@@ -43,6 +49,11 @@ from app.integrations.schemas.mcp import (
     MCPToolPolicyUpdate,
     MCPToolRead,
 )
+from app.integrations.services.composio_service import (
+    ComposioConfigurationError,
+    ComposioService,
+    is_composio_server,
+)
 from app.integrations.services.mcp_endpoint_security import (
     MCPEndpointRejectedError,
     validate_remote_endpoint,
@@ -50,7 +61,7 @@ from app.integrations.services.mcp_endpoint_security import (
 from app.integrations.services.mcp_oauth_service import MCPServerOAuthService
 from app.integrations.services.mcp_provider_auth import get_mcp_provider_profile
 from app.integrations.workers.tasks_mcp import refresh_server_catalog
-from app.platform.database.session import get_db, set_db_tenant_context
+from app.platform.database.session import get_db, set_db_tenant_context, set_db_user_context
 from app.query.models.conversation import Conversation
 from app.realtime.event_bus import publish_event_sync
 from app.system.services.cache_service import get_redis_client
@@ -85,6 +96,168 @@ def _publish_mcp_event(
         )
     except Exception:  # noqa: BLE001
         logger.debug("MCP realtime notification failed", exc_info=True)
+
+
+def _composio_service(session: Session) -> ComposioService:
+    return ComposioService(session, get_settings())
+
+
+def _composio_error(exc: ComposioConfigurationError) -> HTTPException:
+    message = str(exc)
+    status_code = (
+        status.HTTP_409_CONFLICT
+        if "key" in message.casefold() or "verif" in message.casefold()
+        else status.HTTP_400_BAD_REQUEST
+    )
+    return HTTPException(status_code=status_code, detail=message)
+
+
+@router.get("/composio/status", response_model=MCPComposioStatusRead)
+def composio_status(
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> MCPComposioStatusRead:
+    settings = get_settings()
+    origin = (settings.averqel_public_origin or "").strip().rstrip("/")
+    callback_url = (
+        f"{origin}/dashboard/mcp/composio/callback" if origin.startswith("https://") else None
+    )
+    return MCPComposioStatusRead(
+        configured=_composio_service(session).credential_exists(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+        ),
+        callback_verifier_enabled=settings.composio_callback_verifier_enabled,
+        callback_verifier_url=callback_url,
+    )
+
+
+@router.get("/composio/toolkits", response_model=MCPComposioToolkitPageRead)
+def composio_toolkits(
+    q: str | None = Query(default=None, max_length=200),
+    category: str | None = Query(default=None, max_length=120),
+    cursor: str | None = Query(default=None, max_length=2048),
+    limit: int = Query(default=100, ge=1, le=100),
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> MCPComposioToolkitPageRead:
+    try:
+        result = _composio_service(session).list_toolkits(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            cursor=cursor,
+            category=category,
+            query=q,
+            limit=limit,
+        )
+    except ComposioConfigurationError as exc:
+        raise _composio_error(exc) from exc
+    return MCPComposioToolkitPageRead.model_validate(result)
+
+
+@router.get("/composio/toolkits/{toolkit_slug}", response_model=MCPComposioToolkitDetailRead)
+def composio_toolkit_details(
+    toolkit_slug: str,
+    cursor: str | None = Query(default=None, max_length=2048),
+    limit: int = Query(default=100, ge=1, le=100),
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> MCPComposioToolkitDetailRead:
+    try:
+        result = _composio_service(session).toolkit_details(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            toolkit_slug=toolkit_slug,
+            cursor=cursor,
+            limit=limit,
+        )
+    except ComposioConfigurationError as exc:
+        raise _composio_error(exc) from exc
+    return MCPComposioToolkitDetailRead.model_validate(result)
+
+
+@router.post(
+    "/composio/toolkits/{toolkit_slug}/connect",
+    response_model=MCPComposioConnectResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def connect_composio_toolkit(
+    toolkit_slug: str,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> MCPComposioConnectResponse:
+    settings = get_settings()
+    origin = (settings.averqel_public_origin or "").strip().rstrip("/")
+    callback_url = (
+        f"{origin}/dashboard/mcp/composio/callback" if origin.startswith("https://") else None
+    )
+    try:
+        result = _composio_service(session).start_connection(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            toolkit_slug=toolkit_slug,
+            callback_url=callback_url,
+        )
+    except ComposioConfigurationError as exc:
+        raise _composio_error(exc) from exc
+    set_db_tenant_context(session, auth.tenant_id)
+    set_db_user_context(session, auth.user_id)
+    policy_was_missing = _get_policy(session, result.server, create=False) is None
+    policy = _get_policy(session, result.server, create=True)
+    if policy_was_missing and policy is not None and is_composio_server(result.server):
+        # Give connected Composio apps useful actions while keeping every
+        # side-effecting call behind DeepSpace's per-call approval card.
+        policy.read_only = False
+        policy.risk_ceiling = "external_message"
+        policy.default_enabled = True
+        # Reads may run automatically. The runtime still requires explicit
+        # user approval for every write, deletion, and external message.
+        policy.default_tool_mode = "always_allow"
+        policy.approval_rules = {
+            "write": "needs_approval",
+            "delete": "needs_approval",
+            "external_message": "needs_approval",
+        }
+    session.commit()
+    set_db_tenant_context(session, auth.tenant_id)
+    set_db_user_context(session, auth.user_id)
+    server = session.get(MCPServer, result.server.id)
+    if server is None:
+        raise HTTPException(status_code=500, detail="Composio connection could not be saved.")
+    if not result.authorization_required and not result.already_connected:
+        try:
+            refresh_server_catalog.delay(str(server.id), str(server.tenant_id))
+        except Exception:  # noqa: BLE001
+            logger.warning("Composio MCP catalog refresh could not be queued for %s", server.id)
+    _publish_mcp_event(auth, "mcp.server.connecting", server.id)
+    return MCPComposioConnectResponse(
+        server=_connection_payload(session, server),
+        authorization_url=result.authorization_url,
+        already_connected=result.already_connected,
+        authorization_required=result.authorization_required,
+    )
+
+
+@router.post("/composio/oauth/complete", response_model=MCPComposioAuthCompleteRead)
+def complete_composio_oauth(
+    payload: MCPComposioAuthCompleteRequest,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> MCPComposioAuthCompleteRead:
+    try:
+        server = _composio_service(session).complete_auth(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            session_uri=payload.session_uri.get_secret_value(),
+        )
+    except ComposioConfigurationError as exc:
+        raise _composio_error(exc) from exc
+    try:
+        refresh_server_catalog.delay(str(server.id), str(server.tenant_id))
+    except Exception:  # noqa: BLE001
+        logger.warning("Composio MCP catalog refresh could not be queued for %s", server.id)
+    _publish_mcp_event(auth, "mcp.server.connecting", server.id)
+    return MCPComposioAuthCompleteRead(status="connecting", server_id=server.id)
 
 
 def _marketplace_capabilities(entry: MCPRegistryEntry) -> list[str]:

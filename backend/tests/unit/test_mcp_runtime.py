@@ -175,6 +175,105 @@ def test_mcp_read_call_reconnects_but_side_effect_call_does_not_retry(
     anyio.run(run)
 
 
+def test_mcp_tool_catalog_loads_cursor_pages_until_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = MCPConnectorRuntime(
+        server_url="https://remote.example/mcp",
+        client_metadata=None,
+        storage=SimpleNamespace(),
+        oauth_metadata=None,
+        resource_metadata=None,
+        declared_tools=(),
+        anonymous=True,
+    )
+    requested_cursors: list[str | None] = []
+
+    class CatalogSession:
+        async def list_tools(self, cursor: str | None = None) -> Any:
+            requested_cursors.append(cursor)
+            if cursor is None:
+                return SimpleNamespace(tools=[{"name": "first"}], nextCursor="page-2")
+            return SimpleNamespace(tools=[{"name": "second"}], nextCursor=None)
+
+    @asynccontextmanager
+    async def fake_session(self):
+        yield CatalogSession()
+
+    monkeypatch.setattr(MCPConnectorRuntime, "session", fake_session)
+
+    result = anyio.run(runtime.list_tools)
+
+    assert [item["name"] for item in result] == ["first", "second"]
+    assert requested_cursors == [None, "page-2"]
+
+
+def test_mcp_tool_catalog_fails_instead_of_silently_truncating(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = MCPConnectorRuntime(
+        server_url="https://remote.example/mcp",
+        client_metadata=None,
+        storage=SimpleNamespace(),
+        oauth_metadata=None,
+        resource_metadata=None,
+        declared_tools=(),
+        anonymous=True,
+    )
+    requested_cursors: list[str | None] = []
+
+    class CatalogSession:
+        async def list_tools(self, cursor: str | None = None) -> Any:
+            requested_cursors.append(cursor)
+            return SimpleNamespace(
+                tools=[{"name": f"page-{len(requested_cursors)}"}],
+                nextCursor=f"page-{len(requested_cursors) + 1}",
+            )
+
+    @asynccontextmanager
+    async def fake_session(self):
+        yield CatalogSession()
+
+    monkeypatch.setattr(MCPConnectorRuntime, "session", fake_session)
+    monkeypatch.setattr(mcp_runtime, "MAX_TOOL_CATALOG_PAGES", 2)
+
+    with pytest.raises(mcp_runtime.MCPRuntimeError, match="maximum pagination depth"):
+        anyio.run(runtime.list_tools)
+
+    assert requested_cursors == [None, "page-2"]
+
+
+def test_mcp_tool_catalog_rejects_a_repeated_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = MCPConnectorRuntime(
+        server_url="https://remote.example/mcp",
+        client_metadata=None,
+        storage=SimpleNamespace(),
+        oauth_metadata=None,
+        resource_metadata=None,
+        declared_tools=(),
+        anonymous=True,
+    )
+    requested_cursors: list[str | None] = []
+
+    class CatalogSession:
+        async def list_tools(self, cursor: str | None = None) -> Any:
+            requested_cursors.append(cursor)
+            return SimpleNamespace(
+                tools=[{"name": f"page-{len(requested_cursors)}"}], nextCursor="repeat"
+            )
+
+    @asynccontextmanager
+    async def fake_session(self):
+        yield CatalogSession()
+
+    monkeypatch.setattr(MCPConnectorRuntime, "session", fake_session)
+
+    with pytest.raises(mcp_runtime.MCPRuntimeError, match="repeated a tool catalog cursor"):
+        anyio.run(runtime.list_tools)
+
+    assert requested_cursors == [None, "repeat"]
+
+
 def test_mcp_runtime_snapshot_formats_text_and_structured_payload(monkeypatch) -> None:
     runtime = MCPConnectorRuntime(
         server_url="https://example.invalid/mcp",

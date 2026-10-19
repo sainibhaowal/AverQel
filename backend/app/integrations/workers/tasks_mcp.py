@@ -12,6 +12,10 @@ from sqlalchemy import select, text
 from app.core.config import get_settings
 from app.integrations.models.mcp_server import MCPServer
 from app.integrations.repositories.mcp_events import MCPEventsRepository
+from app.integrations.services.composio_service import (
+    classify_composio_tool,
+    is_composio_server,
+)
 from app.integrations.services.mcp_runtime import (
     MCPCatalog,
     build_mcp_server_runtime,
@@ -131,6 +135,11 @@ def refresh_server_catalog(server_id: str, tenant_id: str) -> dict[str, object]:
                 {
                     **item,
                     "inputSchema": MCPCatalog.normalize_schema(item.get("inputSchema")),
+                    **(
+                        {"risk_labels": [classify_composio_tool(str(item.get("name") or ""), item)]}
+                        if is_composio_server(server)
+                        else {}
+                    ),
                 }
                 for item in catalog["tools"]
                 if isinstance(item, dict)

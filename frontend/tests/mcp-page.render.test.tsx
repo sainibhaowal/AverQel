@@ -174,4 +174,49 @@ describe("MCP dashboard", () => {
       ),
     );
   });
+
+  it("opens Composio Apps when linked from Providers", async () => {
+    searchParamsMock.value = new URLSearchParams("tab=composio");
+    fetchWithAuthMock.mockReset();
+    fetchWithAuthMock.mockImplementation(async (path: string) => {
+      if (path.startsWith("/mcp/marketplace?")) {
+        return {
+          ok: true,
+          json: async () => ({ items: [], total: 0, page: 1, page_size: 24, pages: 1 }),
+        };
+      }
+      if (path === "/mcp/servers") return { ok: true, json: async () => [] };
+      if (path === "/mcp/marketplace/facets") {
+        return {
+          ok: true,
+          json: async () => ({
+            categories: [],
+            transports: [],
+            auth_types: [],
+            trust_statuses: [],
+          }),
+        };
+      }
+      if (path === "/mcp/composio/status") {
+        return {
+          ok: true,
+          json: async () => ({
+            configured: false,
+            callback_verifier_enabled: false,
+            callback_verifier_url: null,
+          }),
+        };
+      }
+      return { ok: false, status: 403, json: async () => ({ detail: "Not a platform admin" }) };
+    });
+
+    render(<MCPDashboard />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Connect apps to DeepSpace" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Composio has not been configured by the AverQel administrator yet."),
+    ).toBeInTheDocument();
+  });
 });

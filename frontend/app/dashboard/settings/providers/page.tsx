@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -17,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
   Link2Off,
+  PlugZap,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
@@ -448,37 +450,46 @@ export default function ProvidersSettingsPage() {
           backHref="/dashboard/settings"
           backLabel="Back to Settings"
           actions={
-            <div className="border-glass-border bg-surface-1/50 flex flex-wrap items-center gap-1 rounded-xl border p-1 shadow-inner">
-              <NavItem
-                active={activeTab === "runtime"}
-                label="Navigator"
-                icon={<LayoutGrid size={12} />}
-                onClick={() => handleTabChange("runtime")}
-              />
-              <NavItem
-                active={activeTab === "chat"}
-                label="LLM"
-                icon={<Bot size={12} />}
-                onClick={() => handleTabChange("chat")}
-              />
-              <NavItem
-                active={activeTab === "embedding"}
-                label="Embedding"
-                icon={<Database size={12} />}
-                onClick={() => handleTabChange("embedding")}
-              />
-              <NavItem
-                active={activeTab === "reranker"}
-                label="Reranker"
-                icon={<ScanSearch size={12} />}
-                onClick={() => handleTabChange("reranker")}
-              />
-              <NavItem
-                active={activeTab === "web"}
-                label="Web"
-                icon={<Globe2 size={12} />}
-                onClick={() => handleTabChange("web")}
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="border-glass-border bg-surface-1/50 flex flex-wrap items-center gap-1 rounded-xl border p-1 shadow-inner">
+                <NavItem
+                  active={activeTab === "runtime"}
+                  label="Navigator"
+                  icon={<LayoutGrid size={12} />}
+                  onClick={() => handleTabChange("runtime")}
+                />
+                <NavItem
+                  active={activeTab === "chat"}
+                  label="LLM"
+                  icon={<Bot size={12} />}
+                  onClick={() => handleTabChange("chat")}
+                />
+                <NavItem
+                  active={activeTab === "embedding"}
+                  label="Embedding"
+                  icon={<Database size={12} />}
+                  onClick={() => handleTabChange("embedding")}
+                />
+                <NavItem
+                  active={activeTab === "reranker"}
+                  label="Reranker"
+                  icon={<ScanSearch size={12} />}
+                  onClick={() => handleTabChange("reranker")}
+                />
+                <NavItem
+                  active={activeTab === "web"}
+                  label="Web"
+                  icon={<Globe2 size={12} />}
+                  onClick={() => handleTabChange("web")}
+                />
+              </div>
+              <Link
+                href="/dashboard/mcp?tab=composio"
+                className="text-muted-foreground hover:bg-surface-2 hover:text-foreground inline-flex items-center gap-2 rounded-xl border border-transparent px-4 py-2.5 font-mono text-[11px] tracking-[0.12em] uppercase transition-all"
+              >
+                <PlugZap size={12} aria-hidden="true" />
+                MCP Apps
+              </Link>
             </div>
           }
         />

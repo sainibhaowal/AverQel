@@ -8,6 +8,7 @@ for the latest recorded migration and environment evidence.
 
 - [Current MCP release status](01-current-release-status.md)
 - [MCP architecture and implementation map](02-mcp-architecture-and-implementation-map.md)
+- [Composio hosted app catalog and operations](03-composio-hosted-mcp.md)
 
 These documents describe the implemented curated-catalog, tenant/user-scoped
 remote MCP runtime. They do not enable arbitrary endpoints, local process
