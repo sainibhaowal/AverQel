@@ -35,12 +35,19 @@ export default function FeedbackDocsPage() {
       </DocsSection>
       <DocsSection title="Privacy and expectations">
         <p>
-          Feedback is attached to your account so you can follow replies. Assigned Feedback Managers
-          can read submitted text across workspaces to review and respond; their staff view does not
-          show your email address or account ID. Replies appear in your in-app feedback thread.
-          Feedback is not end-to-end encrypted. The product does not provide public roadmap voting,
-          a community forum, or anonymous telemetry through this page. Do not include credentials,
-          recovery codes, customer files, or other sensitive data in feedback.
+          Feedback is attached to your account so you can follow replies. New and migrated text is
+          encrypted in your browser for your account and the allowlisted platform administrator,
+          who can decrypt it to respond. Legacy Feedback Manager assignments do not grant queue
+          access. The review queue does not show your email address or account ID. Your encryption
+          passphrase is not sent to the server; losing it can make your messages unreadable. Older
+          records stay plaintext until the administrator runs the migration in Feedback Management,
+          and older backups may retain plaintext until expiry. Account IDs, category, status, and
+          timestamps remain visible to the service. A compromised live server could change the
+          browser code or keys, and decrypted content is visible on your device. Completed or
+          declined submissions are automatically deleted after 365 days by default; active
+          submissions are retained while under review. The product does not provide public roadmap
+          voting, a community forum, or anonymous telemetry through this page. Do not include
+          credentials, recovery codes, customer files, or other sensitive data in feedback.
         </p>
       </DocsSection>
     </DocsShell>

@@ -28,6 +28,8 @@ interface UserSummary {
   is_active: boolean;
   totp_enabled: boolean;
   roles: string[];
+  created_at: string;
+  last_login_at: string | null;
 }
 
 interface UserDetailResponse {
@@ -38,9 +40,6 @@ interface UserListResponse {
   items: UserSummary[];
 }
 
-const STAFF_ROLE_NAMES = ["feedback_manager", "collection_moderator", "support_manager"] as const;
-type StaffRoleName = (typeof STAFF_ROLE_NAMES)[number];
-
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -48,7 +47,6 @@ export default function AdminUsersPage() {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [staffRoleDrafts, setStaffRoleDrafts] = useState<Record<string, StaffRoleName[]>>({});
 
   // Modal State
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -71,13 +69,16 @@ export default function AdminUsersPage() {
     () => users.find((user) => user.user_id === selectedUserId) ?? detail?.user ?? null,
     [detail?.user, selectedUserId, users],
   );
-  const staffRoleSelection = selectedUser
-    ? (staffRoleDrafts[selectedUser.user_id] ??
-      selectedUser.roles.filter((role): role is StaffRoleName =>
-        STAFF_ROLE_NAMES.includes(role as StaffRoleName),
-      ))
-    : [];
 
+  const formatTimestamp = (value: string | null | undefined) => {
+    if (!value) return "Never recorded";
+    const timestamp = new Date(value);
+    return Number.isNaN(timestamp.getTime())
+      ? "Not available"
+      : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
+          timestamp,
+        );
+  };
   const loadUsers = useCallback(async (): Promise<string | null> => {
     setLoadingUsers(true);
     try {
@@ -148,7 +149,7 @@ export default function AdminUsersPage() {
   const runAction = async (
     actionKey: string,
     request: () => Promise<Response>,
-    successMessage: string,
+    successMessage: string | ((responseBody: Record<string, unknown> | null) => string),
   ) => {
     setBusyAction(actionKey);
     try {
@@ -157,7 +158,10 @@ export default function AdminUsersPage() {
         const body = await res.json().catch(() => null);
         throw new Error(body?.error?.message || `Request failed (${res.status})`);
       }
-      toast.success(successMessage);
+      const responseBody = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      toast.success(
+        typeof successMessage === "function" ? successMessage(responseBody) : successMessage,
+      );
       await refreshAll();
     } catch (error) {
       console.error(error);
@@ -165,40 +169,6 @@ export default function AdminUsersPage() {
     } finally {
       setBusyAction(null);
       setConfirmConfig((prev) => ({ ...prev, isOpen: false }));
-    }
-  };
-
-  const saveStaffRoles = async () => {
-    if (!selectedUser) return;
-    setBusyAction(`staff-roles:${selectedUser.user_id}`);
-    try {
-      const res = (await fetchWithAuth(`/admin/users/${selectedUser.user_id}/staff-roles`, {
-        method: "PUT",
-        body: JSON.stringify({ roles: staffRoleSelection }),
-      })) as Response;
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error?.message || `Request failed (${res.status})`);
-      }
-      const updated = (await res.json()) as UserDetailResponse;
-      setDetail(updated);
-      setStaffRoleDrafts((current) => ({
-        ...current,
-        [updated.user.user_id]: updated.user.roles.filter((role): role is StaffRoleName =>
-          STAFF_ROLE_NAMES.includes(role as StaffRoleName),
-        ),
-      }));
-      setUsers((current) =>
-        current.map((user) => (user.user_id === updated.user.user_id ? updated.user : user)),
-      );
-      toast.success(
-        "Staff roles updated. New access starts after the next sign-in; removed access is immediate.",
-      );
-    } catch (error) {
-      console.error(error);
-      toast.error(error instanceof Error ? error.message : "Could not update staff roles.");
-    } finally {
-      setBusyAction(null);
     }
   };
 
@@ -254,8 +224,8 @@ export default function AdminUsersPage() {
       },
       delete: {
         title: "Permanently Delete User",
-        message: `EXTREME CAUTION: This will permanently delete ${user.email} and all associated documents, queries, chats, and findings. This action cannot be undone.`,
-        confirmLabel: "Delete Everything",
+        message: `Permanently erase ${user.email} and data owned by this account, including its documents, queries, conversations, provider settings, support tickets, and feedback. Other users' data in a shared tenant remains. Stored files are queued for background removal; backups and external provider copies follow their own retention. This cannot be undone.`,
+        confirmLabel: "Erase Account Data",
         variant: "danger" as const,
         onConfirm: async () =>
           runAction(
@@ -264,7 +234,12 @@ export default function AdminUsersPage() {
               (await fetchWithAuth(`/admin/users/${user.user_id}`, {
                 method: "DELETE",
               })) as Response,
-            `${user.email} was permanently deleted.`,
+            (responseBody) => {
+              const count = Number(responseBody?.pending_storage_cleanup_count ?? 0);
+              return count > 0
+                ? `Account erased. ${count} stored file${count === 1 ? " is" : "s are"} queued for background cleanup.`
+                : "Account and account-owned data erased.";
+            },
           ),
       },
     };
@@ -357,6 +332,10 @@ export default function AdminUsersPage() {
                       <div className="text-muted-foreground mt-3 flex items-center gap-3 text-[11px]">
                         <span>{user.is_active ? "Account enabled" : "Account disabled"}</span>
                         <span>{user.totp_enabled ? "2FA on" : "2FA off"}</span>
+                      </div>
+                      <div className="text-muted-foreground mt-2 space-y-1 text-[11px]">
+                        <p>Created {formatTimestamp(user.created_at)}</p>
+                        <p>Last successful sign-in {formatTimestamp(user.last_login_at)}</p>
                       </div>
                     </button>
                   );
@@ -456,6 +435,24 @@ export default function AdminUsersPage() {
                 </div>
 
                 <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="theme-panel-muted rounded-[1.2rem] p-4">
+                      <p className="text-muted-foreground text-[10px] font-bold tracking-[0.16em] uppercase">
+                        Account created
+                      </p>
+                      <p className="text-foreground mt-2 text-sm">
+                        {formatTimestamp(selectedUser.created_at)}
+                      </p>
+                    </div>
+                    <div className="theme-panel-muted rounded-[1.2rem] p-4">
+                      <p className="text-muted-foreground text-[10px] font-bold tracking-[0.16em] uppercase">
+                        Last successful sign-in
+                      </p>
+                      <p className="text-foreground mt-2 text-sm">
+                        {formatTimestamp(selectedUser.last_login_at)}
+                      </p>
+                    </div>
+                  </div>
                   <div className="theme-panel-muted rounded-[1.2rem] p-4">
                     <div className="flex items-center gap-3">
                       {selectedUser.is_active ? (
@@ -475,51 +472,6 @@ export default function AdminUsersPage() {
                         </p>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="theme-panel-muted rounded-[1.2rem] p-4">
-                    <h3 className="text-foreground text-sm font-semibold">
-                      Restricted Staff Roles
-                    </h3>
-                    <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                      Support Managers can read support tickets across workspaces and must also be
-                      in the platform-admin allowlist. Feedback Managers can read submitted feedback
-                      across workspaces. Qel Connect Moderators can review reports only in this
-                      user&apos;s workspace. These roles do not grant platform administration.
-                    </p>
-                    <div className="mt-4 space-y-3">
-                      {STAFF_ROLE_NAMES.map((role) => (
-                        <label
-                          key={role}
-                          className="text-foreground flex items-start gap-3 text-sm"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={staffRoleSelection.includes(role)}
-                            onChange={(event) =>
-                              setStaffRoleDrafts((current) => ({
-                                ...current,
-                                [selectedUser.user_id]: event.target.checked
-                                  ? [...new Set([...staffRoleSelection, role])]
-                                  : staffRoleSelection.filter((item) => item !== role),
-                              }))
-                            }
-                            className="border-border accent-primary mt-0.5 h-4 w-4 rounded"
-                          />
-                          <span>{getRoleLabel(role)}</span>
-                        </label>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => void saveStaffRoles()}
-                      disabled={busyAction === `staff-roles:${selectedUser.user_id}`}
-                      className="bg-primary text-primary-foreground mt-4 rounded-xl px-4 py-2 text-xs font-semibold disabled:opacity-50"
-                    >
-                      {busyAction === `staff-roles:${selectedUser.user_id}`
-                        ? "Saving…"
-                        : "Save staff roles"}
-                    </button>
                   </div>
 
                   <div className="theme-panel-muted rounded-[1.2rem] p-4">

@@ -683,6 +683,11 @@ class Settings(BaseSettings):
 
     audit_log_retention_days: int = 90
     transient_record_retention_days: int = 30
+    support_ticket_retention_days: int = Field(default=365, ge=30, le=3650)
+    feedback_retention_days: int = Field(default=365, ge=30, le=3650)
+    platform_admin_mfa_required: bool = True
+    platform_admin_reauth_window_minutes: int = Field(default=10, ge=1, le=60)
+    admin_single_owner_deletion_delay_hours: int = Field(default=24, ge=24, le=168)
     # Archive is metadata-only and remains disabled unless an explicitly
     # non-production environment opts in. Permanent purge has no setting.
     storage_retention_automatic_archive_enabled: bool = False

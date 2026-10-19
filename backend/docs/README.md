@@ -101,9 +101,13 @@ and must be checked against their target and date before release decisions.
   zero-knowledge or server-blind end-to-end encryption.
 - **Providers and MCP** are separate: model providers generate or embed
   content, while MCP connections expose policy-controlled remote tools.
-- **Support and feedback** are readable to the submitter and authorized
-  support staff; they are not end-to-end encrypted. Email notification is
-  deployment-dependent.
+- **Support and feedback** are encrypted in the browser for the submitter and
+  platform administrator after key setup. The admin pages include a browser
+  migration for legacy plaintext records; older backups can retain old copies
+  until expiry. Metadata remains service-visible, encrypted attachments cannot
+  be scanned server-side, and the web server can replace the browser code or
+  recipient keys if compromised. See
+  [`platform/05-feedback-support-notifications.md`](platform/05-feedback-support-notifications.md).
 
 ## Release-status convention
 

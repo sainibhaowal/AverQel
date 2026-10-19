@@ -123,6 +123,7 @@ from app.system.models.storage_lifecycle import (
     StorageRetentionDecision,
     StorageRetentionRun,
 )
+from app.system.models.support_encryption_key import SupportEncryptionKey
 from app.system.models.support_ticket import SupportTicket
 from app.system.models.support_ticket_attachment import SupportTicketAttachment
 from app.system.models.support_ticket_message import SupportTicketMessage
@@ -217,6 +218,7 @@ __all__ = [
     "SupportTicketMessage",
     "SupportTicketAttachment",
     "AppFeedbackMessage",
+    "SupportEncryptionKey",
     "UserNotification",
     "UserNotificationPreference",
     "NotificationDelivery",

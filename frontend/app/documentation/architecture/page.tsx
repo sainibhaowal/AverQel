@@ -84,10 +84,12 @@ export default function ArchitectureDocsPage() {
         <p>
           The backend is the authorization boundary for authenticated requests, tenant access,
           provider credentials, Qel Connect sharing, and tool calls. Some product areas process
-          content server-side. Assigned Support Managers can read support tickets, assigned Feedback
-          Managers can read submitted feedback, and tenant moderators can read Qel Connect report
-          details. Do not infer a client-only or end-to-end encryption guarantee from tenant
-          isolation or encrypted storage.
+          content server-side. Allowlisted platform administrators can read support tickets and
+          submitted feedback to respond to requests; legacy Support Manager and Feedback Manager
+          assignments do not grant queue access. Tenant moderators can read Qel Connect report
+          details. Do not
+          infer a client-only or end-to-end encryption guarantee from tenant isolation or encrypted
+          storage.
         </p>
       </DocsSection>
     </DocsShell>

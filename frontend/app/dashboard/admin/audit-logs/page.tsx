@@ -102,14 +102,30 @@ function CustomSelect<T extends SelectOptionValue>({
 
 interface AuditLogItem {
   id: string;
+  tenant_id: string | null;
   action: string;
-  actor_user_id: string;
+  actor_user_id: string | null;
   resource_type: string;
   resource_id: string | null;
   status: string;
   trace_id: string;
   created_at: string;
+  details?: Record<string, string>;
 }
+
+const SECURITY_DETAIL_KEYS = new Set([
+  "auth_method",
+  "email_verified",
+  "failure_reason",
+  "mfa_verified",
+  "provider",
+  "registration_method",
+  "second_factor",
+  "storage_cleanup_jobs_pending",
+  "target_tenant_removed",
+  "target_user_id",
+  "verification_method",
+]);
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
@@ -119,6 +135,10 @@ export default function AuditLogsPage() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [limit, setLimit] = useState(50);
   const [actionFilter, setActionFilter] = useState("");
+  const [securityOnly, setSecurityOnly] = useState(false);
+  const [accountUserId, setAccountUserId] = useState("");
+  const [appliedSecurityOnly, setAppliedSecurityOnly] = useState(false);
+  const [appliedAccountUserId, setAppliedAccountUserId] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchLogs = useCallback(
@@ -133,6 +153,8 @@ export default function AuditLogsPage() {
         const params = new URLSearchParams({ limit: limit.toString() });
         if (cursor) params.append("cursor", cursor);
         if (actionFilter) params.append("action", actionFilter);
+        if (appliedSecurityOnly) params.append("security_only", "true");
+        if (appliedAccountUserId) params.append("account_user_id", appliedAccountUserId);
 
         const res = (await fetchWithAuth(`/admin/audit-logs?${params.toString()}`)) as Response;
         if (!res.ok) {
@@ -160,7 +182,7 @@ export default function AuditLogsPage() {
         }
       }
     },
-    [actionFilter, limit],
+    [actionFilter, appliedAccountUserId, appliedSecurityOnly, limit],
   );
 
   useEffect(() => {
@@ -184,10 +206,20 @@ export default function AuditLogsPage() {
     if (normalized === "success" || normalized === "completed") {
       return "bg-green-500/10 text-green-500";
     }
-    if (normalized === "failed" || normalized === "error") {
+    if (normalized === "failed" || normalized === "failure" || normalized === "error") {
       return "border-primary/30 bg-primary/5 text-primary";
     }
     return "bg-slate-500/10 text-slate-400";
+  };
+
+  const formatUtcTimestamp = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Not available";
+    return `${new Intl.DateTimeFormat("en-GB", {
+      timeZone: "UTC",
+      dateStyle: "medium",
+      timeStyle: "medium",
+    }).format(date)} UTC`;
   };
 
   return (
@@ -195,7 +227,7 @@ export default function AuditLogsPage() {
       <div className="flex flex-none items-end justify-between gap-4">
         <DashboardSectionHeader
           title="Audit Logs"
-          subtitle="Current Workspace Security Event History"
+          subtitle="Platform-Wide Security Event History"
           icon={ScrollText}
           accentClassName="bg-rose-500 text-rose-500"
           accentGlowClassName="shadow-[0_0_20px_rgba(244,63,94,0.4)]"
@@ -210,8 +242,10 @@ export default function AuditLogsPage() {
             icon={Filter}
             options={[
               { label: "All Actions", value: "" },
-              { label: "auth.login", value: "auth.login" },
-              { label: "auth.signup", value: "auth.signup" },
+              { label: "Successful sign-in", value: "auth.login" },
+              { label: "Sign-in challenge", value: "auth.login.challenge" },
+              { label: "Failed sign-in", value: "auth.login.failed" },
+              { label: "Account created", value: "auth.register" },
               { label: "queries.run", value: "queries.run" },
               { label: "documents.upload", value: "documents.upload" },
               { label: "admin.read", value: "admin.audit_logs.read" },
@@ -239,6 +273,40 @@ export default function AuditLogsPage() {
         </div>
       </div>
 
+      <section className="glass-card flex flex-wrap items-end gap-4 p-4">
+        <label className="flex items-center gap-2 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            checked={securityOnly}
+            onChange={(event) => setSecurityOnly(event.target.checked)}
+          />
+          Account security events only
+        </label>
+        <label className="min-w-64 flex-1 text-xs font-semibold text-slate-400">
+          Account ID
+          <input
+            value={accountUserId}
+            onChange={(event) => setAccountUserId(event.target.value.trim())}
+            placeholder="Optional exact account ID"
+            className="theme-panel-muted text-foreground border-glass-border mt-1 w-full rounded-lg border px-3 py-2 font-mono text-xs outline-none"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => {
+            setAppliedSecurityOnly(securityOnly);
+            setAppliedAccountUserId(accountUserId);
+          }}
+          className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-xs font-semibold"
+        >
+          Apply security filters
+        </button>
+        <p className="basis-full text-xs text-slate-500">
+          Security history shows account events and safe authentication metadata only. It excludes
+          prompts, documents, chats, query content, IP addresses, and device details.
+        </p>
+      </section>
+
       <div className="glass-card flex flex-col overflow-hidden lg:h-[calc(100dvh-15rem)] lg:min-h-0">
         <div className="relative flex-1 overflow-auto">
           <table className="w-full text-left">
@@ -256,6 +324,9 @@ export default function AuditLogsPage() {
                 </th>
                 <th className="text-muted-foreground px-6 py-4 text-[10px] leading-none font-bold tracking-widest uppercase">
                   Actor
+                </th>
+                <th className="text-muted-foreground px-6 py-4 text-[10px] leading-none font-bold tracking-widest uppercase">
+                  Tenant
                 </th>
                 <th className="text-muted-foreground px-6 py-4 text-[10px] leading-none font-bold tracking-widest uppercase">
                   Source
@@ -287,10 +358,7 @@ export default function AuditLogsPage() {
                       </td>
                       <td className="px-6 py-4">
                         <span className="font-mono text-slate-400">
-                          {new Date(log.created_at).toLocaleString([], {
-                            dateStyle: "short",
-                            timeStyle: "medium",
-                          })}
+                          {formatUtcTimestamp(log.created_at)}
                         </span>
                       </td>
                       <td className="px-6 py-4 font-bold">
@@ -308,6 +376,9 @@ export default function AuditLogsPage() {
                               : "System/Anon"}
                           </span>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-[11px] text-slate-500">
+                        {log.tenant_id ? `${log.tenant_id.split("-")[0]}...` : "Unknown"}
                       </td>
                       <td className="px-6 py-4">
                         <span className="bg-muted text-muted-foreground rounded px-2 py-0.5 text-[10px] font-bold tracking-tighter uppercase">
@@ -333,7 +404,7 @@ export default function AuditLogsPage() {
                           exit={{ opacity: 0, height: 0 }}
                         >
                           <td
-                            colSpan={8}
+                            colSpan={9}
                             className="border-primary/10 bg-primary/[0.02] border-y px-8 py-6"
                           >
                             <div className="grid grid-cols-3 gap-8">
@@ -348,6 +419,34 @@ export default function AuditLogsPage() {
                                     </p>
                                     <p className="truncate font-mono text-xs text-slate-400">
                                       {log.id}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[9px] font-bold text-slate-600 uppercase">
+                                      Actor account ID
+                                    </p>
+                                    <p className="truncate font-mono text-xs text-slate-400">
+                                      {log.actor_user_id || "Unknown or anonymous"}
+                                    </p>
+                                  </div>
+                                  {Object.entries(log.details || {})
+                                    .filter(([key]) => SECURITY_DETAIL_KEYS.has(key))
+                                    .map(([key, value]) => (
+                                      <div key={key}>
+                                        <p className="text-[9px] font-bold text-slate-600 uppercase">
+                                          {key.replaceAll("_", " ")}
+                                        </p>
+                                        <p className="truncate font-mono text-xs text-slate-400">
+                                          {value}
+                                        </p>
+                                      </div>
+                                    ))}
+                                  <div>
+                                    <p className="text-[9px] font-bold text-slate-600 uppercase">
+                                      Tenant ID
+                                    </p>
+                                    <p className="truncate font-mono text-xs text-slate-400">
+                                      {log.tenant_id}
                                     </p>
                                   </div>
                                   <div>
@@ -379,7 +478,7 @@ export default function AuditLogsPage() {
                 ))
               ) : errorMessage ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-20 text-center">
+                  <td colSpan={9} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <XCircle size={18} className="text-primary" />
                       <span className="text-sm font-bold tracking-widest text-red-400 uppercase">
@@ -398,7 +497,7 @@ export default function AuditLogsPage() {
                 </tr>
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-6 py-20 text-center">
+                  <td colSpan={9} className="px-6 py-20 text-center">
                     {loading ? (
                       <div className="flex flex-col items-center gap-3">
                         <Loader2 className="text-primary animate-spin" />
@@ -410,12 +509,14 @@ export default function AuditLogsPage() {
                       <div className="flex flex-col items-center gap-3 opacity-30 grayscale">
                         <Activity size={48} />
                         <span className="text-sm font-bold tracking-widest uppercase">
-                          {actionFilter ? "No Matching Events" : "No Events Detected"}
+                          {actionFilter || appliedAccountUserId || appliedSecurityOnly
+                            ? "No Matching Events"
+                            : "No Events Detected"}
                         </span>
                         <p className="text-xs text-slate-500">
                           {actionFilter
                             ? "Try clearing the action filter or syncing status."
-                            : "No audit events are available for this tenant yet."}
+                            : "No audit events are available yet."}
                         </p>
                       </div>
                     )}

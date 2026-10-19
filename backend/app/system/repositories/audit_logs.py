@@ -12,7 +12,10 @@ from app.system.repositories.base import BaseRepository
 
 class AuditLogsRepository(BaseRepository):
     def create(self, *, event: AuditLog) -> AuditLog:
-        self.apply_tenant_scope(event.tenant_id)
+        if event.tenant_id is None:
+            set_db_tenant_context(self.db, "bypass")
+        else:
+            self.apply_tenant_scope(event.tenant_id)
         self.db.add(event)
         self.db.flush()
         return event
@@ -51,6 +54,51 @@ class AuditLogsRepository(BaseRepository):
 
         return list(self.db.execute(statement).scalars().all())
 
+    def list_page_global(
+        self,
+        *,
+        tenant_id: uuid.UUID | None,
+        limit: int,
+        cursor_created_at: datetime | None,
+        cursor_id: uuid.UUID | None,
+        action: str | None,
+        account_user_id: uuid.UUID | None = None,
+        security_only: bool = False,
+    ) -> list[AuditLog]:
+        set_db_tenant_context(self.db, "bypass")
+        statement = (
+            select(AuditLog).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit)
+        )
+        if tenant_id is not None:
+            statement = statement.where(AuditLog.tenant_id == tenant_id)
+        if action:
+            statement = statement.where(AuditLog.action == action)
+        if account_user_id is not None:
+            account_id = str(account_user_id)
+            statement = statement.where(
+                or_(
+                    AuditLog.actor_user_id == account_user_id,
+                    AuditLog.resource_id == account_id,
+                    AuditLog.details["target_user_id"].astext == account_id,
+                    AuditLog.details["user_id"].astext == account_id,
+                )
+            )
+        if security_only:
+            statement = statement.where(
+                or_(AuditLog.action.like("auth.%"), AuditLog.action.like("admin.user.%"))
+            )
+        if cursor_created_at is not None and cursor_id is not None:
+            statement = statement.where(
+                or_(
+                    AuditLog.created_at < cursor_created_at,
+                    and_(
+                        AuditLog.created_at == cursor_created_at,
+                        AuditLog.id < cursor_id,
+                    ),
+                )
+            )
+        return list(self.db.execute(statement).scalars().all())
+
     def delete_older_than(self, *, tenant_id: uuid.UUID, cutoff: datetime) -> int:
         self.apply_tenant_scope(tenant_id)
 
@@ -74,6 +122,17 @@ class AuditLogsRepository(BaseRepository):
         self.db.execute(delete_statement)
         self.db.flush()
         return int(rows)
+
+    def delete_platform_events_older_than(self, *, cutoff: datetime) -> int:
+        set_db_tenant_context(self.db, "bypass")
+        result = self.db.execute(
+            delete(AuditLog).where(
+                AuditLog.tenant_id.is_(None),
+                AuditLog.created_at < cutoff,
+            )
+        )
+        self.db.flush()
+        return int(result.rowcount or 0)
 
     def list_for_actor(
         self,

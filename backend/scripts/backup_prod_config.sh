@@ -8,6 +8,7 @@ BACKEND_STATE_DIR="${AVERQEL_BACKEND_STATE_DIR:-$BACKEND_DIR/.local}"
 OUTPUT_DIR="$BACKEND_STATE_DIR/backups"
 ENV_FILE="${1:-$BACKEND_DIR/.env.vps}"
 DRY_RUN="false"
+BACKUP_RETENTION_DAYS="${AKS_BACKUP_RETENTION_DAYS:-30}"
 
 usage() {
   cat <<'EOF'
@@ -18,6 +19,7 @@ Arguments:
 
 Options:
   --output-dir <dir>              Backup output directory (default: ./.local/backups)
+  --retention-days <days>         Retain managed backups for this many days (default: 30)
   --dry-run                       Print backup commands without executing
   -h, --help                      Show help
 EOF
@@ -33,6 +35,10 @@ while [[ $# -gt 0 ]]; do
     --dry-run)
       DRY_RUN="true"
       shift
+      ;;
+    --retention-days)
+      BACKUP_RETENTION_DAYS="${2:-}"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -85,6 +91,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
   printf '\n'
   echo "DRY RUN: sha256sum '$ARCHIVE_FILE' > '$SHA_FILE'"
   echo "DRY RUN: write metadata to '$META_FILE'"
+  echo "DRY RUN: prune managed backups older than $BACKUP_RETENTION_DAYS days in '$OUTPUT_DIR'"
   exit 0
 fi
 
@@ -108,3 +115,7 @@ JSON
 echo "Backup created: $ARCHIVE_FILE"
 echo "Checksum file: $SHA_FILE"
 echo "Metadata file: $META_FILE"
+python3 "$SCRIPT_DIR/prune_backups.py" \
+  --output-dir "$OUTPUT_DIR" \
+  --retention-days "$BACKUP_RETENTION_DAYS" \
+  --apply

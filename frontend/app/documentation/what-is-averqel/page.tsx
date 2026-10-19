@@ -39,10 +39,11 @@ export default function WhatIsAverQelPage() {
         <p>
           AverQel processes account data through its application backend and configured services.
           Authentication, tenant boundaries, role permissions, and integration policies control
-          access. Assigned Support Managers can read support tickets; assigned Feedback Managers can
-          read submitted feedback; and designated moderators can read Qel Connect reports within
-          their tenant. Qel Connect chat encryption also has limitations documented in its guide. Do
-          not assume that all workspace content is client-only or end-to-end encrypted.
+          access. Allowlisted platform administrators can read support tickets and submitted
+          feedback so they can respond; legacy Support Manager and Feedback Manager assignments do
+          not grant queue access. Designated moderators can read Qel Connect reports within their
+          tenant. Qel Connect chat encryption also has limitations documented in its guide. Do not
+          assume that all workspace content is client-only or end-to-end encrypted.
         </p>
       </DocsSection>
       <DocsSection title="Availability is deployment-specific">

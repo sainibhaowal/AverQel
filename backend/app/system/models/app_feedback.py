@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,6 +33,7 @@ class FeedbackCampaign(Base):
 
 class AppFeedback(Base):
     __tablename__ = "app_feedback"
+    __table_args__ = (Index("ix_app_feedback_terminal_retention", "status", "updated_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -49,6 +50,7 @@ class AppFeedback(Base):
 
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    encrypted_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     rating: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     category: Mapped[str] = mapped_column(
         String(50), default="suggestion", nullable=False

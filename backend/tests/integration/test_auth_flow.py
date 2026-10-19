@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 from app.auth.dependencies import AuthContext
 from app.auth.services.auth_service import AuthService
 from app.core.config import Settings
+from app.platform.database.session import set_db_tenant_context
+from app.system.models.audit_log import AuditLog
 from tests.conftest import SeededUser
 
 
@@ -274,12 +276,121 @@ def test_totp_secret_is_encrypted_at_rest(
         password=seeded.password,
     )
     assert pending.requires_2fa is True
+    pending_user = service.users.get_by_id(seeded.tenant_id, seeded.user_id)
+    assert pending_user is not None
+    assert pending_user.last_login_at is None
 
     verified = service.verify_totp_login(
         pending_token=pending.pending_token,
         code=pyotp.TOTP(setup.secret).now(),
     )
     assert verified.access_token
+    verified_user = service.users.get_by_id(seeded.tenant_id, seeded.user_id)
+    assert verified_user is not None
+    assert verified_user.last_login_at is not None
+
+
+def test_known_account_login_failures_are_audited_without_email_or_secret(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+) -> None:
+    from app.platform.database.session import get_session_factory
+
+    seeded = seed_user(
+        "tenant-auth-failure-audit",
+        "failure-audit@example.org",
+        "StrongPass!1234",
+        ("user",),
+    )
+    response = client.post(
+        "/api/v1/auth/login",
+        headers={"X-Tenant-Id": str(seeded.tenant_id)},
+        json={"email": seeded.email, "password": "wrong-password"},
+    )
+    assert response.status_code == 401
+
+    session = get_session_factory()()
+    try:
+        set_db_tenant_context(session, seeded.tenant_id)
+        event = session.query(AuditLog).filter_by(actor_user_id=seeded.user_id).one()
+        assert event.action == "auth.login.failed"
+        assert event.status == "failure"
+        assert event.details == {
+            "auth_method": "password",
+            "failure_reason": "invalid_credentials",
+        }
+        assert seeded.email not in str(event.details)
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_unknown_account_login_failure_is_anonymous_and_visible_platform_wide(
+    client: TestClient,
+) -> None:
+    from app.platform.database.session import get_session_factory
+
+    submitted_email = "not-registered@example.org"
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": submitted_email, "password": "unused-password"},
+    )
+    assert response.status_code == 401
+
+    session = get_session_factory()()
+    try:
+        set_db_tenant_context(session, "bypass")
+        event = (
+            session.query(AuditLog)
+            .filter(AuditLog.tenant_id.is_(None), AuditLog.action == "auth.login.failed")
+            .order_by(AuditLog.created_at.desc())
+            .first()
+        )
+        assert event is not None
+        assert event.actor_user_id is None
+        assert event.status == "failure"
+        assert event.details == {
+            "auth_method": "password",
+            "failure_reason": "invalid_credentials",
+        }
+        assert submitted_email not in str(event.details)
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_oauth_callback_failure_is_anonymous_and_audited(
+    client: TestClient,
+) -> None:
+    from app.platform.database.session import get_session_factory
+
+    response = client.get(
+        "/api/v1/auth/oauth/google/callback?code=untrusted&state=untrusted",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    session = get_session_factory()()
+    try:
+        set_db_tenant_context(session, "bypass")
+        event = (
+            session.query(AuditLog)
+            .filter(
+                AuditLog.tenant_id.is_(None),
+                AuditLog.action == "auth.login.failed",
+                AuditLog.details["auth_method"].astext == "oauth",
+            )
+            .order_by(AuditLog.created_at.desc())
+            .first()
+        )
+        assert event is not None
+        assert event.actor_user_id is None
+        assert event.status == "failure"
+        assert event.details["provider"] == "google"
+        assert event.details["failure_reason"] == "oauth_callback_invalid"
+    finally:
+        session.rollback()
+        session.close()
 
 
 def test_profile_updates_display_name_avatar_and_first_run_state(

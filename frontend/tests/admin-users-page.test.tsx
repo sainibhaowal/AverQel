@@ -30,6 +30,8 @@ describe("admin users page", () => {
             is_active: true,
             totp_enabled: false,
             roles: ["editor"],
+            created_at: "2026-05-01T10:00:00Z",
+            last_login_at: null,
           },
         ],
       }),
@@ -45,6 +47,8 @@ describe("admin users page", () => {
           is_active: true,
           totp_enabled: false,
           roles: ["editor"],
+          created_at: "2026-05-01T10:00:00Z",
+          last_login_at: null,
         },
       }),
     });
@@ -71,6 +75,8 @@ describe("admin users page", () => {
             is_active: true,
             totp_enabled: true,
             roles: ["editor"],
+            created_at: "2026-05-01T10:00:00Z",
+            last_login_at: "2026-10-17T08:30:00Z",
           },
         ],
       }),
@@ -86,6 +92,8 @@ describe("admin users page", () => {
           is_active: true,
           totp_enabled: true,
           roles: ["editor"],
+          created_at: "2026-05-01T10:00:00Z",
+          last_login_at: "2026-10-17T08:30:00Z",
         },
       }),
     });
@@ -94,8 +102,7 @@ describe("admin users page", () => {
     expect(await screen.findAllByText("member@example.org")).toHaveLength(2);
     expect(screen.getByText(/2fa on/i)).toBeInTheDocument();
     expect(screen.getByText(/platform lifecycle oversight/i)).toBeInTheDocument();
-    expect(
-      screen.queryByText(/recent activity|last login|\d+ docs|\d+ queries/i),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText(/account created/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/last successful sign-in/i)).toHaveLength(2);
   });
 });

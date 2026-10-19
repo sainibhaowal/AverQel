@@ -56,10 +56,15 @@ Collections are experimental beta in this repository. Their current chat
 encryption is not zero-knowledge or server-blind end-to-end encryption. The
 collection moderation queue is tenant-scoped report triage for users assigned
 the `collection_moderator` role; its response schema does not include chat
-message bodies. Support content is readable by the submitter and authorized
-platform support staff. Feedback content is readable by the submitter and
-assigned Feedback Managers; the staff API omits account IDs and email
-addresses.
+message bodies. New and migrated support and feedback content is encrypted in
+the browser for the submitter and allowlisted platform administrator. A browser
+migration handles existing plaintext rows and support attachments; users must
+initialize their key first, and old backup snapshots retain plaintext until
+expiry. Metadata remains service-visible, encrypted attachments cannot be
+server-scanned, and a compromised live server can replace browser code or
+recipient keys. Legacy support and feedback manager roles do not grant access
+to either platform queue, and the platform staff-role assignment endpoint has
+been removed.
 
 ### Identity, settings, and storage
 

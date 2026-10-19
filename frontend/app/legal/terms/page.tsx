@@ -38,11 +38,11 @@ export default function TermsPage() {
           submit or share it.
         </p>
         <p>
-          Some staff workflows can read submitted content: assigned Support Managers can read
-          support tickets and attachments across workspaces; assigned Feedback Managers can read
-          submitted feedback; and Qel Connect moderators can review reports within their assigned
-          workspace. Support access also requires platform-admin allowlisting. These workflows are
-          described in the{" "}
+          Allowlisted platform administrators can read support tickets, attachments, and submitted
+          feedback across tenants so they can respond to those requests. Legacy Support Manager and
+          Feedback Manager assignments do not grant access to those queues. Qel Connect moderators
+          can review reports within their assigned workspace. These
+          workflows are described in the{" "}
           <a className="underline" href="/legal/privacy">
             Privacy Policy
           </a>

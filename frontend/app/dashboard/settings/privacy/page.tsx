@@ -329,13 +329,13 @@ export default function PrivacySettingsPage() {
           {
             icon: <FileLock2 className="text-emerald-500" size={18} />,
             title: "What should remain private",
-            body: "Documents, prompts, answers, and chat history are product content. Assigned support staff, feedback managers, or tenant moderators can read the content needed for their specific workflow; those reads are audited.",
+            body: "Documents, prompts, answers, and chat history are product content. Allowlisted platform administrators can read support tickets and submitted feedback; existing staff assignments and tenant moderators retain access to their specific workflows. Those reads are audited.",
             accent: "border-emerald-500/15",
           },
           {
             icon: <Eye className="text-amber-300" size={18} />,
             title: "Owner access model",
-            body: "The standard administrator view shows account and security metadata. Content workflows require separate staff roles, and support also requires platform-admin allowlisting.",
+            body: "The standard administrator view shows account and security metadata. Allowlisted platform administrators can review support tickets and feedback; Qel Connect moderation remains tenant-scoped.",
             accent: "border-amber-500/15",
           },
         ].map((panel, idx) => (

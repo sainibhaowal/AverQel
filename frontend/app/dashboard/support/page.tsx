@@ -21,6 +21,13 @@ import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
+import { useSupportEncryption } from "@/app/dashboard/support/SupportEncryptionGate";
+import {
+  decryptSupportAttachment,
+  decryptSupportPayload,
+  encryptSupportAttachment,
+  encryptSupportPayload,
+} from "@/lib/supportEncryption";
 
 interface Ticket {
   id: string;
@@ -31,6 +38,7 @@ interface Ticket {
   priority: string;
   created_at: string;
   updated_at: string;
+  encrypted_payload?: string | null;
 }
 
 interface TicketMessage {
@@ -38,12 +46,34 @@ interface TicketMessage {
   author_role: string;
   kind: string;
   body: string;
+  encrypted_payload?: string | null;
   created_at: string;
 }
 
 interface TicketDetail extends Ticket {
   messages: TicketMessage[];
-  attachments?: Array<{ id: string; filename: string; size_bytes: number; download_url: string }>;
+  attachments?: Array<{
+    id: string;
+    filename: string;
+    size_bytes: number;
+    download_url: string;
+    is_encrypted?: boolean;
+    encrypted_metadata?: string | null;
+  }>;
+}
+
+async function decryptTicket<T extends Ticket>(
+  ticket: T,
+  privateKey: CryptoKey,
+  keyId: string,
+): Promise<T> {
+  if (!ticket.encrypted_payload) return ticket;
+  const content = await decryptSupportPayload<{ subject: string; description: string }>(
+    ticket.encrypted_payload,
+    privateKey,
+    keyId,
+  );
+  return { ...ticket, ...content };
 }
 
 const supportCategories = [
@@ -63,12 +93,16 @@ const supportCategories = [
 
 export default function SupportPage() {
   const { userDisabled } = useAuth();
+  const encryption = useSupportEncryption("user");
+  const cryptoContext = encryption.context;
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<string>("query");
   const [submitting, setSubmitting] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ticketListError, setTicketListError] = useState<string | null>(null);
+  const [ticketDetailErrors, setTicketDetailErrors] = useState<Record<string, string>>({});
   const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
   const [ticketDetails, setTicketDetails] = useState<Record<string, TicketDetail>>({});
   const [replyDraft, setReplyDraft] = useState("");
@@ -84,7 +118,13 @@ export default function SupportPage() {
     setUploadingAttachment(true);
     try {
       const form = new FormData();
-      form.append("file", file);
+      if (!cryptoContext) throw new Error("Unlock support encryption before uploading.");
+      const encrypted = await encryptSupportAttachment(file, [
+        cryptoContext.ownPublicKey,
+        cryptoContext.adminPublicKey,
+      ]);
+      form.append("file", encrypted.encryptedFile, "encrypted.bin");
+      form.append("encrypted_metadata", encrypted.encryptedMetadata);
       const response = await fetchWithAuth(`/support/tickets/${ticketId}/attachments`, {
         method: "POST",
         body: form,
@@ -100,14 +140,30 @@ export default function SupportPage() {
     }
   };
 
-  const openAttachment = async (url: string, filename: string) => {
+  const openAttachment = async (
+    url: string,
+    filename: string,
+    isEncrypted = false,
+    encryptedMetadata?: string | null,
+  ) => {
     try {
+      if (!cryptoContext) throw new Error("Unlock support encryption before downloading.");
       const response = await fetchWithAuth(url);
       if (!response.ok) throw new Error(`Download failed (${response.status})`);
-      const objectUrl = URL.createObjectURL(await response.blob());
+      const downloaded = await response.blob();
+      const file =
+        isEncrypted && encryptedMetadata
+          ? await decryptSupportAttachment(
+              await downloaded.arrayBuffer(),
+              encryptedMetadata,
+              cryptoContext.privateKey,
+              cryptoContext.keyId,
+            )
+          : { blob: downloaded, filename, contentType: downloaded.type };
+      const objectUrl = URL.createObjectURL(file.blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = filename;
+      anchor.download = file.filename;
       anchor.click();
       URL.revokeObjectURL(objectUrl);
     } catch (error) {
@@ -119,13 +175,36 @@ export default function SupportPage() {
   const loadTicketDetail = async (ticketId: string) => {
     try {
       const res = await fetchWithAuth(`/support/tickets/${ticketId}`);
-      if (res.ok) {
-        const detail = (await res.json()) as TicketDetail;
-        setTicketDetails((current) => ({ ...current, [ticketId]: detail }));
-      }
+      if (!res.ok) throw new Error(`Ticket conversation could not be loaded (${res.status}).`);
+      const detail = (await res.json()) as TicketDetail;
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
+      const decryptedTicket = await decryptTicket(detail, cryptoContext.privateKey, cryptoContext.keyId);
+      const decryptedMessages = await Promise.all(
+        detail.messages.map(async (message) => {
+          if (!message.encrypted_payload) return message;
+          const content = await decryptSupportPayload<{ body: string }>(
+            message.encrypted_payload,
+            cryptoContext.privateKey,
+            cryptoContext.keyId,
+          );
+          return { ...message, ...content };
+        }),
+      );
+      setTicketDetails((current) => ({
+        ...current,
+        [ticketId]: { ...decryptedTicket, messages: decryptedMessages },
+      }));
+      setTicketDetailErrors((current) => {
+        const next = { ...current };
+        delete next[ticketId];
+        return next;
+      });
     } catch (err) {
       console.error("Failed to load ticket conversation", err);
-      toast.error("Could not load this ticket conversation.");
+      setTicketDetailErrors((current) => ({
+        ...current,
+        [ticketId]: "Could not load this ticket conversation. Try again.",
+      }));
     }
   };
 
@@ -135,12 +214,33 @@ export default function SupportPage() {
     try {
       const res = await fetchWithAuth(`/support/tickets/${ticketId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ body: replyDraft.trim() }),
+        body: JSON.stringify({
+          encrypted_payload: await encryptSupportPayload(
+            { body: replyDraft.trim() },
+            [cryptoContext!.ownPublicKey, cryptoContext!.adminPublicKey],
+          ),
+        }),
       });
       if (!res.ok) throw new Error(`Reply failed (${res.status})`);
       const detail = (await res.json()) as TicketDetail;
-      setTicketDetails((current) => ({ ...current, [ticketId]: detail }));
-      setTickets((current) => current.map((ticket) => (ticket.id === detail.id ? detail : ticket)));
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
+      const decryptedTicket = await decryptTicket(detail, cryptoContext.privateKey, cryptoContext.keyId);
+      const decryptedMessages = await Promise.all(
+        detail.messages.map(async (message) => {
+          if (!message.encrypted_payload) return message;
+          return {
+            ...message,
+            ...(await decryptSupportPayload<{ body: string }>(
+              message.encrypted_payload,
+              cryptoContext.privateKey,
+              cryptoContext.keyId,
+            )),
+          };
+        }),
+      );
+      const decryptedDetail = { ...decryptedTicket, messages: decryptedMessages };
+      setTicketDetails((current) => ({ ...current, [ticketId]: decryptedDetail }));
+      setTickets((current) => current.map((ticket) => (ticket.id === detail.id ? decryptedDetail : ticket)));
       setReplyDraft("");
       toast.success("Reply sent.");
     } catch (err) {
@@ -154,22 +254,30 @@ export default function SupportPage() {
   const loadTickets = async () => {
     try {
       const res = await fetchWithAuth("/support/tickets");
-      if (res.ok) {
-        const data = await res.json();
-        setTickets(data);
-      }
+      if (!res.ok) throw new Error(`Ticket history could not be loaded (${res.status}).`);
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
+      const rows = (await res.json()) as Ticket[];
+      setTickets(
+        await Promise.all(
+          rows.map((ticket) => decryptTicket(ticket, cryptoContext.privateKey, cryptoContext.keyId)),
+        ),
+      );
+      setTicketListError(null);
     } catch (err) {
       console.error(err);
+      setTicketListError("Your ticket history could not be loaded. Check your connection and retry.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
     queueMicrotask(() => void loadTickets());
-  }, []);
+  }, [cryptoContext, encryption.ready]);
 
   useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
     const ticketId = new URLSearchParams(window.location.search).get("ticket");
     if (ticketId) {
       queueMicrotask(() => {
@@ -177,7 +285,7 @@ export default function SupportPage() {
         void loadTicketDetail(ticketId);
       });
     }
-  }, []);
+  }, [cryptoContext, encryption.ready]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,7 +298,13 @@ export default function SupportPage() {
     try {
       const res = await fetchWithAuth("/support/tickets", {
         method: "POST",
-        body: JSON.stringify({ subject, description, category }),
+        body: JSON.stringify({
+          category,
+          encrypted_payload: await encryptSupportPayload(
+            { subject: subject.trim(), description: description.trim() },
+            [cryptoContext!.ownPublicKey, cryptoContext!.adminPublicKey],
+          ),
+        }),
       });
 
       if (res.ok) {
@@ -212,6 +326,8 @@ export default function SupportPage() {
       setSubmitting(false);
     }
   };
+
+  if (!encryption.ready || !cryptoContext) return encryption.panel;
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -356,6 +472,20 @@ export default function SupportPage() {
                 <div className="flex justify-center py-12">
                   <Loader2 className="animate-spin text-slate-500" size={24} />
                 </div>
+              ) : ticketListError ? (
+                <div
+                  role="alert"
+                  className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300"
+                >
+                  <p>{ticketListError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void loadTickets()}
+                    className="mt-3 underline"
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : tickets.length === 0 ? (
                 <div className="bg-foreground/[0.03] border-foreground/10 rounded-2xl border border-dashed p-8 text-center">
                   <HelpCircle className="text-muted-foreground mx-auto mb-3" size={32} />
@@ -426,6 +556,21 @@ export default function SupportPage() {
                           className="overflow-hidden"
                         >
                           <div className="text-muted-foreground border-foreground/5 bg-foreground/5 mt-2 space-y-4 border-t px-4 py-4 text-xs">
+                            {ticketDetailErrors[ticket.id] && (
+                              <div
+                                role="alert"
+                                className="flex items-center justify-between gap-3 text-red-400"
+                              >
+                                <span>{ticketDetailErrors[ticket.id]}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => void loadTicketDetail(ticket.id)}
+                                  className="underline"
+                                >
+                                  Retry
+                                </button>
+                              </div>
+                            )}
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <p className="text-foreground/70 font-semibold">
                                 Request AQ-{ticket.id.slice(0, 8).toUpperCase()}
@@ -445,6 +590,8 @@ export default function SupportPage() {
                                     void openAttachment(
                                       attachment.download_url,
                                       attachment.filename,
+                                      Boolean(attachment.is_encrypted),
+                                      attachment.encrypted_metadata,
                                     )
                                   }
                                   className="border-border bg-background/70 text-foreground hover:border-primary/40 flex max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs"
@@ -472,6 +619,9 @@ export default function SupportPage() {
                                   }}
                                 />
                               </label>
+                              <p className="text-muted-foreground text-[11px] leading-5">
+                                Attachments are encrypted before upload. AverQel cannot scan their contents for malware; download only files you trust.
+                              </p>
                             </div>
                             {(ticketDetails[ticket.id]?.messages ?? []).map((message) => (
                               <div
@@ -538,8 +688,9 @@ export default function SupportPage() {
               <h4 className="text-sm font-bold tracking-wider uppercase">Priority Support</h4>
             </div>
             <p className="text-muted-foreground text-xs leading-relaxed font-medium">
-              Our support team is available 24/7 for critical infrastructure issues. Non-critical
-              queries are typically resolved within 2-4 business hours.
+              Normal-priority tickets have an 8-hour first-response target and a 72-hour resolution
+              target. These are elapsed-time targets, not guarantees; waiting for your reply does not
+              pause the resolution clock.
             </p>
           </div>
         </div>

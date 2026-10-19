@@ -67,6 +67,8 @@ class AuthContext:
     permissions: frozenset[str] = frozenset()
     auth_type: str = "jwt"
     session_id: uuid.UUID | None = None
+    session_created_at: datetime | None = None
+    mfa_verified_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +431,8 @@ def build_auth_context_from_jwt(
             status_code=401,
         )
 
+    session_created_at: datetime | None = None
+    mfa_verified_at: datetime | None = None
     if session_id is not None:
         from app.auth.models.auth_session import AuthSession  # noqa: PLC0415
 
@@ -449,6 +453,8 @@ def build_auth_context_from_jwt(
                 message="This account session has been revoked. Please sign in again.",
                 status_code=401,
             )
+        session_created_at = session.created_at
+        mfa_verified_at = session.mfa_verified_at
 
     token_roles = _normalize_roles(claims.get("roles"))
     db_roles = _load_live_role_names(db=db, tenant_id=tenant_id, user_id=user_id)
@@ -480,6 +486,8 @@ def build_auth_context_from_jwt(
         token_id=token_id,
         auth_type="jwt",
         session_id=session_id,
+        session_created_at=session_created_at,
+        mfa_verified_at=mfa_verified_at,
     )
 
 

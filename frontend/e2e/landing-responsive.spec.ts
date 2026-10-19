@@ -36,13 +36,19 @@ test("landing page cards stay readable across phone, tablet, and desktop widths"
               const x = (pixel / 4) % canvas.width;
               if (x < canvas.width / 2) hasLeftParticles = true;
               else hasRightParticles = true;
-              if (hasLeftParticles && hasRightParticles) return true;
             }
 
-            return false;
+            return {
+              hasLeftParticles,
+              hasRightParticles,
+              bitmapWidth: canvas.width,
+              bitmapHeight: canvas.height,
+              parentWidth: element.parentElement?.clientWidth ?? 0,
+              parentHeight: element.parentElement?.clientHeight ?? 0,
+            };
           }),
         )
-        .toBe(true);
+        .toMatchObject({ hasLeftParticles: true, hasRightParticles: true });
     }
     const heroBackground = await hero.evaluate((element) => {
       const heroBox = element.getBoundingClientRect();
@@ -178,17 +184,14 @@ test("contact form uses rounded accessible validation hints and sends valid inpu
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ challenge_id: "contact-challenge-e2e" }),
+      body: '{"challenge_id":"contact-e2e-challenge"}',
     }),
   );
   await page.route("**/api/v1/contact/verification/confirm", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        verified: true,
-        verification_token: "contact-verification-token-e2e",
-      }),
+      body: '{"verified":true,"verification_token":"contact-e2e-token"}',
     }),
   );
   await page.route("**/api/v1/contact", async (route) => {
@@ -197,12 +200,14 @@ test("contact form uses rounded accessible validation hints and sends valid inpu
   });
 
   await page.goto("/");
-  const emailInput = page.getByLabel("Email for my reply");
-  await emailInput.fill("ada@example.com");
+  await page.getByLabel("Email for my reply").fill("ada@example.com");
   await page.getByRole("button", { name: "Email me a code" }).click();
+  await expect(page.getByText("A code was sent. Check your inbox and spam folder.")).toBeVisible();
   await page.getByLabel("Verification code").fill("123456");
   await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page.getByText("Email verified. You can now write and send your message.")).toBeVisible();
+  await expect(
+    page.getByText("Email verified. You can now write and send your message."),
+  ).toBeVisible();
 
   const submit = page.getByRole("button", { name: "Send message" });
   await expect(submit).toBeEnabled();
@@ -236,7 +241,7 @@ test("contact form uses rounded accessible validation hints and sends valid inpu
     subject: "Product question",
     message: "How can I use AverQel with my documents?",
     website: "",
-    verification_token: "contact-verification-token-e2e",
+    verification_token: "contact-e2e-token",
   });
 });
 

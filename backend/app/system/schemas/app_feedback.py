@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.system.schemas.support_encryption import SupportPublicKeyResponse
+
 
 class FeedbackCampaignBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
@@ -46,12 +48,18 @@ FeedbackStatus = Literal["new", "triaged", "planned", "in_progress", "completed"
 
 class AppFeedbackCreate(BaseModel):
     campaign_id: uuid.UUID | None = None
-    subject: str = Field(..., min_length=1, max_length=255)
-    content: str = Field(..., min_length=1, max_length=20_000)
+    encrypted_payload: str = Field(..., min_length=100, max_length=150_000)
     category: FeedbackCategory = "suggestion"
 
+    model_config = ConfigDict(extra="forbid")
 
-class AppFeedbackResponse(AppFeedbackCreate):
+
+class AppFeedbackResponse(BaseModel):
+    campaign_id: uuid.UUID | None = None
+    subject: str = "[Encrypted feedback]"
+    content: str = "[Encrypted]"
+    encrypted_payload: str | None = None
+    category: FeedbackCategory = "suggestion"
     id: uuid.UUID
     user_id: uuid.UUID
     email: str | None = None
@@ -67,7 +75,9 @@ class AppFeedbackUpdate(BaseModel):
 
 
 class AppFeedbackMessageCreate(BaseModel):
-    body: str = Field(..., min_length=1, max_length=10_000)
+    encrypted_payload: str = Field(..., min_length=100, max_length=150_000)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class AdminFeedbackMessageCreate(AppFeedbackMessageCreate):
@@ -81,6 +91,7 @@ class AppFeedbackMessageResponse(BaseModel):
     author_role: str
     kind: str
     body: str
+    encrypted_payload: str | None = None
     is_internal: bool
     created_at: datetime
 
@@ -98,6 +109,7 @@ class AdminAppFeedbackResponse(BaseModel):
     campaign_id: uuid.UUID | None
     subject: str
     content: str
+    encrypted_payload: str | None = None
     category: FeedbackCategory
     created_at: datetime
     status: FeedbackStatus
@@ -112,6 +124,7 @@ class AdminAppFeedbackMessageResponse(BaseModel):
     author_role: str
     kind: str
     body: str
+    encrypted_payload: str | None = None
     is_internal: bool
     created_at: datetime
 
@@ -120,3 +133,4 @@ class AdminAppFeedbackMessageResponse(BaseModel):
 
 class AdminAppFeedbackDetailResponse(AdminAppFeedbackResponse):
     messages: list[AdminAppFeedbackMessageResponse]
+    recipient_public_key: SupportPublicKeyResponse | None = None

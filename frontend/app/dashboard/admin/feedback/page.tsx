@@ -19,6 +19,13 @@ import {
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { fetchWithAuth } from "@/lib/api";
+import { useSupportEncryption } from "@/app/dashboard/support/SupportEncryptionGate";
+import SupportEncryptionMigration from "@/app/dashboard/admin/SupportEncryptionMigration";
+import {
+  decryptSupportPayload,
+  encryptSupportPayload,
+  SupportPublicKey,
+} from "@/lib/supportEncryption";
 
 interface Submission {
   id: string;
@@ -28,14 +35,46 @@ interface Submission {
   created_at: string;
   status: string;
   updated_at?: string;
+  encrypted_payload?: string | null;
+  recipient_public_key?: SupportPublicKey | null;
   messages?: Array<{
     id: string;
     author_role: string;
     kind: string;
     body: string;
+    encrypted_payload?: string | null;
     is_internal: boolean;
     created_at: string;
   }>;
+}
+
+async function decryptSubmission(
+  item: Submission,
+  privateKey: CryptoKey,
+  keyId: string,
+): Promise<Submission> {
+  const content = item.encrypted_payload
+    ? await decryptSupportPayload<{ subject: string; content: string }>(
+        item.encrypted_payload,
+        privateKey,
+        keyId,
+      )
+    : null;
+  const messages = await Promise.all(
+    (item.messages ?? []).map(async (message) =>
+      message.encrypted_payload
+        ? {
+            ...message,
+            ...(await decryptSupportPayload<{ body: string }>(
+              message.encrypted_payload,
+              privateKey,
+              keyId,
+            )),
+          }
+        : message,
+    ),
+  );
+  return { ...item, ...(content ?? {}), messages };
 }
 
 interface Campaign {
@@ -61,6 +100,8 @@ function FeedbackFilterSelect({
 }
 
 export default function AdminFeedbackPage() {
+  const encryption = useSupportEncryption("admin");
+  const cryptoContext = encryption.context;
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,11 +121,6 @@ export default function AdminFeedbackPage() {
   const [refreshing, setRefreshing] = useState(false);
   const detailRequest = useRef(0);
 
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("submission");
-    if (id) void loadDetail(id);
-  }, []);
-
   const fetchData = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setRefreshing(true);
     try {
@@ -96,11 +132,15 @@ export default function AdminFeedbackPage() {
       if (!subRes.ok) {
         const reason =
           subRes.status === 403
-            ? "Your account is not assigned the feedback manager role."
+            ? "Your account cannot review feedback. Use an allowlisted platform-administrator account."
             : `Could not load feedback submissions (${subRes.status}).`;
         throw new Error(reason);
       }
-      const queueRows = (await subRes.json()) as Submission[];
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
+      const rows = (await subRes.json()) as Submission[];
+      const queueRows = await Promise.all(
+        rows.map((row) => decryptSubmission(row, cryptoContext.privateKey, cryptoContext.keyId)),
+      );
       setSubmissions((current) =>
         queueRows.map((row) => {
           const loadedDetail = current.find((item) => item.id === row.id);
@@ -116,17 +156,18 @@ export default function AdminFeedbackPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [cryptoContext]);
 
   useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
     queueMicrotask(() => void fetchData());
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void fetchData({ silent: true });
     }, 30_000);
     return () => window.clearInterval(timer);
-  }, [fetchData]);
+  }, [fetchData, encryption.ready, cryptoContext]);
 
-  async function loadDetail(id: string) {
+  const loadDetail = useCallback(async (id: string) => {
     setSelectedId(id);
     setThreadError(null);
     setLoadingThread(true);
@@ -136,7 +177,13 @@ export default function AdminFeedbackPage() {
       if (!res.ok) throw new Error(`Could not load feedback (${res.status})`);
       const detail = (await res.json()) as Submission;
       if (requestId === detailRequest.current) {
-        setSubmissions((current) => [detail, ...current.filter((item) => item.id !== id)]);
+        if (!cryptoContext) throw new Error("Support encryption is locked.");
+        const decrypted = await decryptSubmission(
+          detail,
+          cryptoContext.privateKey,
+          cryptoContext.keyId,
+        );
+        setSubmissions((current) => [decrypted, ...current.filter((item) => item.id !== id)]);
       }
     } catch (err) {
       console.error(err);
@@ -147,7 +194,13 @@ export default function AdminFeedbackPage() {
     } finally {
       if (requestId === detailRequest.current) setLoadingThread(false);
     }
-  }
+  }, [cryptoContext]);
+
+  useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
+    const id = new URLSearchParams(window.location.search).get("submission");
+    if (id) queueMicrotask(() => void loadDetail(id));
+  }, [encryption.ready, cryptoContext, loadDetail]);
 
   async function updateStatus(item: Submission, status: string) {
     setSaving(true);
@@ -170,14 +223,31 @@ export default function AdminFeedbackPage() {
 
   async function sendReply() {
     if (!selectedId || !reply.trim()) return;
+    if (!cryptoContext) return;
     setSaving(true);
     try {
+      const selected = submissions.find((item) => item.id === selectedId);
+      if (!selected) throw new Error("Feedback details are not loaded.");
+      const recipients =
+        visibility === "internal"
+          ? [cryptoContext.ownPublicKey]
+          : selected.recipient_public_key
+            ? [cryptoContext.ownPublicKey, selected.recipient_public_key]
+            : null;
+      if (!recipients) throw new Error("The user has not initialized support encryption.");
       const res = await fetchWithAuth(`/app-feedback/admin/submissions/${selectedId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ body: reply.trim(), visibility }),
+        body: JSON.stringify({
+          encrypted_payload: await encryptSupportPayload({ body: reply.trim() }, recipients),
+          visibility,
+        }),
       });
       if (!res.ok) throw new Error(`Reply failed (${res.status})`);
-      const detail = (await res.json()) as Submission;
+      const detail = await decryptSubmission(
+        (await res.json()) as Submission,
+        cryptoContext.privateKey,
+        cryptoContext.keyId,
+      );
       setSubmissions((current) => current.map((item) => (item.id === detail.id ? detail : item)));
       setReply("");
       toast.success(visibility === "public" ? "Reply sent to the user." : "Internal note saved.");
@@ -233,6 +303,8 @@ export default function AdminFeedbackPage() {
     }
   };
 
+  if (!encryption.ready || !cryptoContext) return encryption.panel;
+
   if (loading) {
     return (
       <div className="dashboard-theme-scope space-y-8">
@@ -273,10 +345,12 @@ export default function AdminFeedbackPage() {
         }
       />
 
+      <SupportEncryptionMigration mode="feedback" context={cryptoContext} />
+
       <aside className="border-border bg-surface-1 text-muted-foreground rounded-2xl border px-4 py-3 text-sm">
-        Feedback contains text submitted by users and is visible to accounts assigned the Feedback
-        Manager role. Replies are delivered through the user&apos;s in-app thread; this staff view
-        does not show submitter email addresses or user IDs.
+        New and migrated feedback is decrypted in this browser for the submitter and the
+        allowlisted platform administrator. Other users and legacy manager roles cannot read it.
+        Replies stay in the encrypted in-app thread.
       </aside>
 
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-4">

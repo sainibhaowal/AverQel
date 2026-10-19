@@ -73,6 +73,8 @@ class LoginResult:
     user: User
     roles: list[str]
     requires_2fa: bool = False
+    mfa_verified: bool = False
+    mfa_method: str | None = None
     # Populated when requires_2fa is False:
     access_token: str = ""
     refresh_token: str = ""
@@ -157,6 +159,7 @@ class AuthService:
         self.tenants = TenantsRepository(db)
         self.refresh_tokens = RefreshTokensRepository(db)
         self.revoked_access_tokens = RevokedAccessTokensRepository(db)
+        self.audit = AuditService(db)
 
     def _create_auth_session(
         self,
@@ -167,6 +170,7 @@ class AuthService:
         device_label: str | None = None,
         user_agent: str | None = None,
         ip_hash: str | None = None,
+        mfa_verified: bool = False,
     ) -> AuthSession:
         set_db_tenant_context(self.db, tenant_id)
         session = AuthSession(
@@ -178,6 +182,7 @@ class AuthService:
             or "Browser",
             user_agent=user_agent[:512] if user_agent else None,
             ip_hash=ip_hash,
+            mfa_verified_at=datetime.now(tz=UTC) if mfa_verified else None,
         )
         self.db.add(session)
         self.db.flush()
@@ -213,6 +218,15 @@ class AuthService:
             user = self.users.get_by_email(resolved_tenant_id, normalized_email)
 
         if user is None or resolved_tenant_id is None:
+            self.audit.write_event(
+                tenant_id=None,
+                action="auth.login.failed",
+                resource_type="auth",
+                actor_user_id=None,
+                status="failure",
+                details={"auth_method": "password", "failure_reason": "invalid_credentials"},
+            )
+            self.db.commit()
             raise ApiError(
                 code="INVALID_CREDENTIALS",
                 message="Invalid email or password.",
@@ -221,15 +235,47 @@ class AuthService:
 
         self._ensure_bootstrap_admin_role(user=user)
 
-        self._ensure_user_can_authenticate(user=user)
+        try:
+            self._ensure_user_can_authenticate(user=user)
+        except ApiError as exc:
+            self._record_auth_failure(
+                user=user, auth_method="password", failure_reason=exc.code.lower()
+            )
+            raise
 
         if not verify_password(password, user.password_hash):
+            previous_locked_until = user.locked_until
             self.users.register_failed_login(
                 tenant_id=resolved_tenant_id,
                 user=user,
                 max_failed_attempts=self.settings.auth_max_failed_attempts,
                 lockout_minutes=self.settings.auth_lockout_minutes,
             )
+            self.audit.write_event(
+                tenant_id=resolved_tenant_id,
+                action="auth.login.failed",
+                resource_type="auth",
+                actor_user_id=user.id,
+                status="failure",
+                details={"auth_method": "password", "failure_reason": "invalid_credentials"},
+            )
+            now = datetime.now(tz=UTC)
+            if (
+                user.locked_until is not None
+                and user.locked_until > now
+                and (previous_locked_until is None or previous_locked_until <= now)
+            ):
+                self.audit.write_event(
+                    tenant_id=resolved_tenant_id,
+                    action="auth.login.lockout",
+                    resource_type="auth",
+                    actor_user_id=user.id,
+                    status="locked",
+                    details={
+                        "auth_method": "password",
+                        "failure_reason": "maximum_failed_attempts",
+                    },
+                )
             self.db.commit()
             raise ApiError(
                 code="INVALID_CREDENTIALS",
@@ -242,13 +288,16 @@ class AuthService:
             tenant_id=resolved_tenant_id,
         )
         if not role_names:
+            self._record_auth_failure(
+                user=user,
+                auth_method="password",
+                failure_reason="role_assignment_required",
+            )
             raise ApiError(
                 code="ROLE_ASSIGNMENT_REQUIRED",
                 message="User has no assigned roles.",
                 status_code=403,
             )
-
-        self.users.register_successful_login(tenant_id=resolved_tenant_id, user=user)
 
         # If 2FA is enabled, return a short-lived pending token instead of full tokens.
         if user.totp_enabled:
@@ -257,6 +306,7 @@ class AuthService:
                 tenant_id=resolved_tenant_id,
                 device_id=device_id,
                 device_label=device_label,
+                auth_method="password",
             )
             self.db.commit()
             return LoginResult(
@@ -266,6 +316,7 @@ class AuthService:
                 pending_token=pending_token,
             )
 
+        self.users.register_successful_login(tenant_id=resolved_tenant_id, user=user)
         session = self._create_auth_session(
             tenant_id=resolved_tenant_id,
             user_id=user.id,
@@ -273,6 +324,7 @@ class AuthService:
             device_label=device_label,
             user_agent=user_agent,
             ip_hash=ip_hash,
+            mfa_verified=False,
         )
         access_token = create_access_token(
             user_id=user.id,
@@ -314,6 +366,9 @@ class AuthService:
         tenant_id: uuid.UUID | None = None,
         email: str,
         password: str,
+        registration_method: str = "password",
+        email_verified: bool = False,
+        provider: str | None = None,
     ) -> User:
         normalized_email = email.strip().lower()
         if not normalized_email or "@" not in normalized_email:
@@ -386,6 +441,31 @@ class AuthService:
             requested_plan=resolve_storage_plan(initial_roles),
         )
 
+        registration_details: dict[str, object] = {
+            "registration_method": registration_method,
+            "email_verified": bool(email_verified),
+        }
+        if provider:
+            registration_details["provider"] = provider.strip().lower()[:64]
+        self.audit.write_event(
+            tenant_id=user.tenant_id,
+            action="auth.register",
+            resource_type="auth",
+            actor_user_id=user.id,
+            details=registration_details,
+        )
+        if email_verified:
+            self.audit.write_event(
+                tenant_id=user.tenant_id,
+                action="auth.email_verified",
+                resource_type="auth",
+                actor_user_id=user.id,
+                details={
+                    "verification_method": registration_method,
+                    **({"provider": provider.strip().lower()[:64]} if provider else {}),
+                },
+            )
+
         self.db.commit()
         return user
 
@@ -412,21 +492,32 @@ class AuthService:
     ) -> LoginResult:
         """Issue the same session/2FA result as password login for a verified identity."""
         self._ensure_bootstrap_admin_role(user=user)
-        self._ensure_user_can_authenticate(user=user)
+        try:
+            self._ensure_user_can_authenticate(user=user)
+        except ApiError as exc:
+            self._record_auth_failure(
+                user=user, auth_method="oauth", failure_reason=exc.code.lower()
+            )
+            raise
         role_names = self._effective_role_names_for_user(user=user, tenant_id=user.tenant_id)
         if not role_names:
+            self._record_auth_failure(
+                user=user,
+                auth_method="oauth",
+                failure_reason="role_assignment_required",  # gitleaks:allow -- static audit code
+            )
             raise ApiError(
                 code="ROLE_ASSIGNMENT_REQUIRED",
                 message="User has no assigned roles.",
                 status_code=403,
             )
-        self.users.register_successful_login(tenant_id=user.tenant_id, user=user)
         if user.totp_enabled:
             pending_token = self._mint_pending_2fa_token(
                 user_id=user.id,
                 tenant_id=user.tenant_id,
                 device_id=device_id,
                 device_label=device_label or _device_label_from_user_agent(user_agent),
+                auth_method="oauth",
             )
             self.db.commit()
             return LoginResult(
@@ -436,6 +527,7 @@ class AuthService:
                 pending_token=pending_token,
             )
 
+        self.users.register_successful_login(tenant_id=user.tenant_id, user=user)
         session = self._create_auth_session(
             tenant_id=user.tenant_id,
             user_id=user.id,
@@ -443,6 +535,7 @@ class AuthService:
             device_label=device_label,
             user_agent=user_agent,
             ip_hash=ip_hash,
+            mfa_verified=False,
         )
         access_token = create_access_token(
             user_id=user.id,
@@ -1201,6 +1294,7 @@ class AuthService:
         tenant_id: uuid.UUID,
         device_id: str | None = None,
         device_label: str | None = None,
+        auth_method: str = "password",
     ) -> str:
         import jwt as pyjwt  # noqa: PLC0415
 
@@ -1214,6 +1308,7 @@ class AuthService:
             "exp": now + timedelta(minutes=5),
             "iss": self.settings.jwt_issuer,
             "aud": self.settings.jwt_audience,
+            "auth_method": auth_method,
         }
         if device_id:
             payload["device_id"] = device_id
@@ -1290,23 +1385,36 @@ class AuthService:
             )
 
         totp = pyotp.TOTP(self._decrypt_totp_secret(user=user))
+        mfa_method = "totp"
         if not totp.verify(code, valid_window=1):
             # Try backup codes
             if not self._use_backup_code(user, code):
+                self._record_auth_failure(
+                    user=user,
+                    auth_method=str(claims.get("auth_method") or "password"),
+                    failure_reason="invalid_second_factor",
+                )
                 raise ApiError(
                     code="INVALID_TOTP_CODE",
                     message="Invalid two-factor authentication code.",
                     status_code=401,
                 )
+            mfa_method = "backup_code"
 
         role_names = self.roles.get_role_names_for_user(tenant_id, user.id)
         if not role_names:
+            self._record_auth_failure(
+                user=user,
+                auth_method=str(claims.get("auth_method") or "password"),
+                failure_reason="role_assignment_required",
+            )
             raise ApiError(
                 code="ROLE_ASSIGNMENT_REQUIRED",
                 message="User has no assigned roles.",
                 status_code=403,
             )
 
+        self.users.register_successful_login(tenant_id=tenant_id, user=user)
         session = self._create_auth_session(
             tenant_id=tenant_id,
             user_id=user.id,
@@ -1314,6 +1422,7 @@ class AuthService:
             device_label=device_label,
             user_agent=user_agent,
             ip_hash=ip_hash,
+            mfa_verified=True,
         )
         access_token = create_access_token(
             user_id=user.id,
@@ -1347,7 +1456,29 @@ class AuthService:
             access_token=access_token,
             refresh_token=raw_refresh_token,
             expires_in=self.settings.jwt_access_ttl_minutes * 60,
+            mfa_verified=True,
+            mfa_method=mfa_method,
         )
+
+    def _record_auth_failure(
+        self,
+        *,
+        user: User,
+        auth_method: str,
+        failure_reason: str,
+    ) -> None:
+        self.audit.write_event(
+            tenant_id=user.tenant_id,
+            action="auth.login.failed",
+            resource_type="auth",
+            actor_user_id=user.id,
+            status="failure",
+            details={
+                "auth_method": auth_method,
+                "failure_reason": failure_reason[:64],
+            },
+        )
+        self.db.commit()
 
     # ------------------------------------------------------------------
     # 2FA: setup / confirm / disable
@@ -1415,6 +1546,22 @@ class AuthService:
         user.totp_backup_codes = json.dumps(hashed_codes)
         user.totp_enabled = True
         user.updated_at = datetime.now(tz=UTC)
+        if auth.session_id is not None:
+            set_db_tenant_context(self.db, auth.tenant_id)
+            session = (
+                self.db.query(AuthSession)
+                .filter(
+                    AuthSession.id == auth.session_id,
+                    AuthSession.tenant_id == auth.tenant_id,
+                    AuthSession.user_id == auth.user_id,
+                    AuthSession.revoked_at.is_(None),
+                )
+                .with_for_update()
+                .first()
+            )
+            if session is not None:
+                # The current session has just completed a fresh TOTP challenge.
+                session.mfa_verified_at = datetime.now(tz=UTC)
         self.db.commit()
 
         return raw_codes
@@ -1424,6 +1571,15 @@ class AuthService:
         user = self.users.get_by_id(auth.tenant_id, auth.user_id)
         if user is None:
             raise ApiError(code="USER_NOT_FOUND", message="User not found.", status_code=404)
+
+        if self.settings.platform_admin_mfa_required and self._is_bootstrap_super_admin_email(
+            user.email
+        ):
+            raise ApiError(
+                code="ADMIN_MFA_REQUIRED",
+                message="Two-factor authentication cannot be disabled for the platform administrator.",
+                status_code=403,
+            )
 
         if not user.totp_enabled:
             raise ApiError(

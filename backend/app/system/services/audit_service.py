@@ -69,7 +69,7 @@ class AuditService:
     def write_event(
         self,
         *,
-        tenant_id: uuid.UUID,
+        tenant_id: uuid.UUID | None,
         action: str,
         resource_type: str,
         actor_user_id: uuid.UUID | None,
@@ -150,7 +150,52 @@ class AuditService:
             next_cursor = f"{last.created_at.isoformat()}|{last.id}"
         return AuditPage(items=page_rows, next_cursor=next_cursor, has_more=has_more)
 
+    def list_global_events(
+        self,
+        *,
+        limit: int,
+        cursor: str | None,
+        action: str | None,
+        tenant_id: uuid.UUID | None = None,
+        account_user_id: uuid.UUID | None = None,
+        security_only: bool = False,
+    ) -> AuditPage:
+        safe_limit = max(1, min(limit, 200))
+        cursor_created_at: datetime | None = None
+        cursor_id: uuid.UUID | None = None
+        if cursor:
+            try:
+                parts = cursor.split("|", maxsplit=1)
+                if len(parts) == 2:
+                    cursor_created_at = datetime.fromisoformat(parts[0])
+                    cursor_id = uuid.UUID(parts[1])
+            except (ValueError, TypeError):
+                cursor_created_at = None
+                cursor_id = None
+
+        rows = self.repo.list_page_global(
+            tenant_id=tenant_id,
+            limit=safe_limit + 1,
+            cursor_created_at=cursor_created_at,
+            cursor_id=cursor_id,
+            action=action,
+            account_user_id=account_user_id,
+            security_only=security_only,
+        )
+        has_more = len(rows) > safe_limit
+        page_rows = rows[:safe_limit]
+        next_cursor: str | None = None
+        if has_more and page_rows:
+            last = page_rows[-1]
+            next_cursor = f"{last.created_at.isoformat()}|{last.id}"
+        return AuditPage(items=page_rows, next_cursor=next_cursor, has_more=has_more)
+
     def purge_old_events(self, *, tenant_id: uuid.UUID, retention_days: int) -> int:
         safe_retention_days = max(0, retention_days)
         cutoff = datetime.now(tz=UTC) - timedelta(days=safe_retention_days)
         return self.repo.delete_older_than(tenant_id=tenant_id, cutoff=cutoff)
+
+    def purge_platform_events(self, *, retention_days: int) -> int:
+        safe_retention_days = max(0, retention_days)
+        cutoff = datetime.now(tz=UTC) - timedelta(days=safe_retention_days)
+        return self.repo.delete_platform_events_older_than(cutoff=cutoff)

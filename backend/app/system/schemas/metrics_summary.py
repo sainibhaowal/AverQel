@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -18,5 +21,9 @@ class MetricsSummaryResponse(BaseModel):
     deepspace_result_reference_events_total: int = 0
     deepspace_execution_batches_total: int = 0
     deepspace_canary_mismatches_total: int = 0
+    metrics_scope: Literal["service-wide"] = "service-wide"
+    metrics_complete: bool = True
+    metrics_started_at: datetime
+    snapshot_at: datetime
 
     model_config = ConfigDict(extra="forbid")

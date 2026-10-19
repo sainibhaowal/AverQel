@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { fetchWithAuth } from "@/lib/api";
+import { useSupportEncryption } from "@/app/dashboard/support/SupportEncryptionGate";
+import { decryptSupportPayload, encryptSupportPayload } from "@/lib/supportEncryption";
 
 interface Campaign {
   id: string;
@@ -54,6 +56,7 @@ interface FeedbackMessage {
   author_role: string;
   kind: string;
   body: string;
+  encrypted_payload?: string | null;
   created_at: string;
 }
 
@@ -65,7 +68,37 @@ interface FeedbackSubmission {
   status: string;
   created_at: string;
   updated_at: string;
+  encrypted_payload?: string | null;
   messages: FeedbackMessage[];
+}
+
+async function decryptFeedback(
+  item: FeedbackSubmission,
+  privateKey: CryptoKey,
+  keyId: string,
+): Promise<FeedbackSubmission> {
+  const content = item.encrypted_payload
+    ? await decryptSupportPayload<{ subject: string; content: string }>(
+        item.encrypted_payload,
+        privateKey,
+        keyId,
+      )
+    : null;
+  const messages = await Promise.all(
+    (item.messages ?? []).map(async (message) =>
+      message.encrypted_payload
+        ? {
+            ...message,
+            ...(await decryptSupportPayload<{ body: string }>(
+              message.encrypted_payload,
+              privateKey,
+              keyId,
+            )),
+          }
+        : message,
+    ),
+  );
+  return { ...item, ...(content ?? {}), messages };
 }
 
 const categories: Array<{
@@ -154,9 +187,12 @@ const categories: Array<{
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 
 export default function FeedbackPage() {
+  const encryption = useSupportEncryption("user");
+  const cryptoContext = encryption.context;
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [campaignError, setCampaignError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [feedbackHistoryError, setFeedbackHistoryError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -191,9 +227,17 @@ export default function FeedbackPage() {
     try {
       const res = await fetchWithAuth("/app-feedback/mine");
       if (!res.ok) throw new Error(`Failed to load feedback (${res.status})`);
-      setMyFeedback((await res.json()) as FeedbackSubmission[]);
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
+      const rows = (await res.json()) as FeedbackSubmission[];
+      setMyFeedback(
+        await Promise.all(rows.map((item) => decryptFeedback(item, cryptoContext.privateKey, cryptoContext.keyId))),
+      );
+      setFeedbackHistoryError(null);
     } catch (err) {
       console.error("Failed to fetch submitted feedback", err);
+      setFeedbackHistoryError(
+        "Your feedback history could not be loaded. Check your connection and retry.",
+      );
     }
   }
 
@@ -202,7 +246,9 @@ export default function FeedbackPage() {
       const res = await fetchWithAuth(`/app-feedback/mine/${id}`);
       if (!res.ok) throw new Error(`Failed to load feedback thread (${res.status})`);
       const detail = (await res.json()) as FeedbackSubmission;
-      setFeedbackDetails((current) => ({ ...current, [id]: detail }));
+      if (!cryptoContext) throw new Error("Support encryption is locked.");
+      const decrypted = await decryptFeedback(detail, cryptoContext.privateKey, cryptoContext.keyId);
+      setFeedbackDetails((current) => ({ ...current, [id]: decrypted }));
     } catch (err) {
       console.error(err);
       toast.error("Could not load this feedback conversation.");
@@ -211,14 +257,24 @@ export default function FeedbackPage() {
 
   async function sendFeedbackReply(id: string) {
     if (!replyDraft.trim()) return;
+    if (!cryptoContext) return;
     setSendingReply(true);
     try {
       const res = await fetchWithAuth(`/app-feedback/mine/${id}/messages`, {
         method: "POST",
-        body: JSON.stringify({ body: replyDraft.trim() }),
+        body: JSON.stringify({
+          encrypted_payload: await encryptSupportPayload(
+            { body: replyDraft.trim() },
+            [cryptoContext.ownPublicKey, cryptoContext.adminPublicKey],
+          ),
+        }),
       });
       if (!res.ok) throw new Error(`Reply failed (${res.status})`);
-      const detail = (await res.json()) as FeedbackSubmission;
+      const detail = await decryptFeedback(
+        (await res.json()) as FeedbackSubmission,
+        cryptoContext.privateKey,
+        cryptoContext.keyId,
+      );
       setFeedbackDetails((current) => ({ ...current, [id]: detail }));
       setMyFeedback((current) =>
         current.map((item) =>
@@ -236,13 +292,15 @@ export default function FeedbackPage() {
   }
 
   useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
     queueMicrotask(() => {
       void fetchCampaigns();
       void fetchMyFeedback();
     });
-  }, []);
+  }, [encryption.ready, cryptoContext]);
 
   useEffect(() => {
+    if (!encryption.ready || !cryptoContext) return;
     const feedbackId = new URLSearchParams(window.location.search).get("feedback");
     if (feedbackId) {
       queueMicrotask(() => {
@@ -250,22 +308,31 @@ export default function FeedbackPage() {
         void loadFeedbackDetail(feedbackId);
       });
     }
-  }, []);
+  }, [encryption.ready, cryptoContext]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!cryptoContext) return;
     setSubmitting(true);
     try {
       const res = await fetchWithAuth("/app-feedback/submit", {
         method: "POST",
         body: JSON.stringify({
-          ...formData,
+          category: formData.category,
           campaign_id: selectedCampaign?.id || null,
+          encrypted_payload: await encryptSupportPayload(
+            { subject: formData.subject.trim(), content: formData.content.trim() },
+            [cryptoContext.ownPublicKey, cryptoContext.adminPublicKey],
+          ),
         }),
       });
 
       if (res.ok) {
-        const created = (await res.json()) as FeedbackSubmission;
+        const created = await decryptFeedback(
+          (await res.json()) as FeedbackSubmission,
+          cryptoContext.privateKey,
+          cryptoContext.keyId,
+        );
         setSuccess(true);
         setFormData({ subject: "", content: "", category: "suggestion" });
         setSelectedCampaign(null);
@@ -283,6 +350,8 @@ export default function FeedbackPage() {
       setSubmitting(false);
     }
   };
+
+  if (!encryption.ready || !cryptoContext) return encryption.panel;
 
   return (
     <div className="w-full space-y-10">
@@ -497,7 +566,21 @@ export default function FeedbackPage() {
             {myFeedback.length} submissions
           </span>
         </div>
-        {myFeedback.length === 0 ? (
+        {feedbackHistoryError ? (
+          <div
+            role="alert"
+            className="border-red-500/30 bg-red-500/10 text-red-300 rounded-xl border px-4 py-4 text-sm"
+          >
+            <p>{feedbackHistoryError}</p>
+            <button
+              type="button"
+              onClick={() => void fetchMyFeedback()}
+              className="mt-2 underline"
+            >
+              Retry
+            </button>
+          </div>
+        ) : myFeedback.length === 0 ? (
           <div className="border-foreground/10 text-muted-foreground rounded-xl border border-dashed px-4 py-8 text-center text-sm">
             Your submitted feedback and team replies will appear here.
           </div>

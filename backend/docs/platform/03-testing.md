@@ -83,6 +83,22 @@ regression set before a full suite:
   tests/unit/test_provider_selection_service.py
 ```
 
+For administrator MFA, account security history, user erasure, delayed solo-owner
+tenant purge, and support/feedback retention, run the isolated regression set:
+
+```bash
+./backend/scripts/test-isolated.sh -q \
+  tests/integration/test_platform_admin_mfa_security_history.py \
+  tests/integration/test_admin_user_management.py \
+  tests/integration/test_audit_logs_endpoint.py \
+  tests/integration/test_auth_flow.py \
+  tests/integration/test_deletion_workflow.py \
+  tests/integration/test_support_notifications_api.py
+```
+
+The managed-backup pruner has a database-free unit test at
+`tests/unit/test_backup_retention.py`.
+
 Coverage is expected to grow through behavior-level tests. Do not exclude
 uncovered application code or add tests that only execute lines without
 asserting behavior. New or changed production paths must include focused

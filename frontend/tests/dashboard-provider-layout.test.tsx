@@ -1,10 +1,19 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
-import { vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, vi } from "vitest";
 
 import DashboardLayout from "../app/dashboard/layout";
 
 const routerState = vi.hoisted(() => ({ pathname: "/dashboard/settings/providers" }));
+const authState = vi.hoisted(() => ({
+  user: { email: "provider-layout@example.test", roles: ["admin"] as string[] },
+}));
+
+afterEach(() => {
+  cleanup();
+  routerState.pathname = "/dashboard/settings/providers";
+  authState.user = { email: "provider-layout@example.test", roles: ["admin"] };
+});
 
 vi.mock("next/navigation", () => ({
   usePathname: () => routerState.pathname,
@@ -19,7 +28,7 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/app/context/AuthContext", () => ({
   useAuth: () => ({
-    user: { email: "provider-layout@example.test", roles: ["admin"] },
+    user: authState.user,
     logout: vi.fn(),
     loading: false,
     userDisabled: false,
@@ -91,5 +100,24 @@ describe("dashboard provider route layout", () => {
         value: previousWidth,
       });
     }
+  });
+
+  it("keeps legacy feedback managers out of the admin feedback queue", () => {
+    authState.user = {
+      email: "legacy-feedback-manager@example.test",
+      roles: ["feedback_manager"],
+    };
+    routerState.pathname = "/dashboard/admin/feedback";
+
+    render(
+      <DashboardLayout>
+        <div data-testid="feedback-route-content" />
+      </DashboardLayout>,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Admin Console Restricted" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Feedback Management" })).not.toBeInTheDocument();
   });
 });

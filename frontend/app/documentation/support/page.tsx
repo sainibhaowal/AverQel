@@ -18,7 +18,7 @@ export default function SupportDocsPage() {
           },
           {
             title: "Attach a file",
-            body: "The current interface accepts PDF, PNG, JPEG, and UTF-8 text attachments up to 5 MiB, subject to validation, malware scanning, and available storage.",
+            body: "The current interface accepts attachments up to 5 MiB and encrypts them in your browser before upload. The server cannot scan encrypted files for malware, so open only files you trust.",
           },
           {
             title: "Understand status",
@@ -43,11 +43,19 @@ export default function SupportDocsPage() {
       </DocsSection>
       <DocsSection title="Who can read support content">
         <p>
-          Your ticket, replies, and attachments are visible to you and explicitly assigned Support
-          Managers. Support Managers can read tickets across workspaces and must also be in the
-          deployment&apos;s platform-admin allowlist. They may record internal notes that are not
-          shown in your user view. Support content is not end-to-end encrypted and privileged reads
-          are audited. Do not submit information support does not need.
+          New and migrated ticket text, replies, and attachments are encrypted in your browser for
+          your account and the allowlisted platform administrator, who can decrypt them to provide
+          support. Internal notes are encrypted only for the administrator and are not shown in your
+          view. Legacy Support Manager assignments do not grant queue access. Your encryption
+          passphrase is not sent to the server; losing it can make your messages unreadable. Older
+          records stay plaintext until the administrator runs the migration in Support Management,
+          and older backups may retain plaintext until expiry. Account IDs, email needed to route
+          support, ticket status, category, timestamps, and attachment sizes remain visible to the
+          service. A compromised live server could change the browser code or keys, and decrypted
+          content is visible on your device. Resolved or closed tickets and their attachments are
+          automatically deleted after 365 days by default; unresolved tickets remain available
+          until resolved or closed. Privileged reads are audited. Do not submit information support
+          does not need.
         </p>
       </DocsSection>
       <DocsSection title="Response targets and email">

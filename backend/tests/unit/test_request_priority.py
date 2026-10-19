@@ -11,3 +11,8 @@ def test_dashboard_reads_are_not_background_work() -> None:
 def test_expensive_list_endpoints_remain_background_work() -> None:
     assert resolve_request_priority("/api/v1/documents") == "BACKGROUND"
     assert resolve_request_priority("/api/v1/metrics") == "BACKGROUND"
+
+
+def test_live_admin_metrics_summary_remains_interactive() -> None:
+    assert resolve_request_priority("/api/v1/metrics/summary") == "INTERACTIVE"
+    assert resolve_request_priority("/api/v1/metrics/summary/stream") == "INTERACTIVE"

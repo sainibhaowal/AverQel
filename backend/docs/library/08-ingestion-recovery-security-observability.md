@@ -80,11 +80,20 @@ for status, active jobs, failures, quarantine, indexed documents, total
 documents, and storage bytes. `GET /api/v1/documents/duplicates` returns
 duplicate-group information without exposing another tenant's content.
 
-The global JSON admin metrics endpoint is restricted to allowlisted platform
-administrators. The raw Prometheus endpoint is unauthenticated inside the API
-process, so deployment routing must keep it internal: the production Caddy
-gateway returns 403 for the public metrics route and the API port is only
-exposed on the Docker network. Development binds the API port to loopback.
+The global JSON admin metrics endpoint and its live SSE stream are restricted
+to allowlisted platform administrators. API and instrumented worker processes
+write service-wide counters to Redis; snapshots identify their tracking start
+time and whether all observed writes succeeded. A missing Redis counter or
+invalid stored value is unavailable, not zero. The database-operation total
+covers explicitly instrumented repository operations rather than every SQL
+statement. Totals are cumulative and reset if the Redis metrics hash is lost or
+cleared. The authenticated summary and live stream use interactive request
+priority so operators can still inspect telemetry during system pressure; the
+raw Prometheus endpoint remains background priority and is unauthenticated
+inside the API process, so deployment routing must keep it internal: the
+production Caddy gateway returns 403 for the public metrics route and the API
+port is only exposed on the Docker network. Development binds the API port to
+loopback.
 Metrics may contain low-cardinality operational labels, but must not contain
 prompts, answers, extracted text, filenames, secrets, or raw provider
 reasoning.
