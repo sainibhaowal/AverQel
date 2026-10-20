@@ -643,9 +643,8 @@ html:not(.dark) .welcome-flow-dialog .bg-slate-800 {
     transparent 100%
   );
   background-size: 240% 100%;
-  animation:
-    border-trace 7.5s linear infinite,
-    border-trace-pulse 6.5s ease-in-out infinite;
+  background-position: 50% 50%;
+  animation: none;
   opacity: 0.28;
   pointer-events: none;
   z-index: 1;
@@ -665,6 +664,21 @@ html:not(.dark) .welcome-flow-dialog .bg-slate-800 {
 
   ):hover::after {
   opacity: 0.82;
+}
+
+:is(
+    .theme-panel,
+    .theme-panel-muted,
+    .theme-panel-strong,
+    .theme-card,
+    .glass-card,
+    .card-default,
+    .card-elevated,
+    .card-accent,
+    .card-danger,
+    .matte-panel
+  ):is(:hover, :focus-within)::after {
+  animation: border-trace 1.8s linear 1 forwards;
 }
 
 .landing-cyber .landing-trace-frame::after {

@@ -58,11 +58,7 @@ import type {
   StructuredBlock,
 } from "../_lib/deepspace-stream";
 import type { GalleryAssetRef, GalleryAssetRetention } from "../../query/_components/GalleryBlock";
-import {
-  calculateLiveTokensPerSecond,
-  estimateLiveOutputTokens,
-  mergeOutputTokenEstimate,
-} from "../_lib/live-token-metrics";
+import { estimateLiveOutputTokens, mergeOutputTokenEstimate } from "../_lib/live-token-metrics";
 
 import DeepSpaceComposer, { type DeepSpaceRuntimePhase } from "./DeepSpaceComposer";
 import type { DeepSpaceAgentNotePreview } from "./DeepSpaceEditor";
@@ -364,14 +360,6 @@ export default function DeepSpaceChatClient({
     scrollTop: number;
     viewportHeight: number;
   } | null>(null);
-  const [liveMetricsNow, setLiveMetricsNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!state.isStreaming) return;
-    const interval = window.setInterval(() => setLiveMetricsNow(Date.now()), 250);
-    return () => window.clearInterval(interval);
-  }, [state.isStreaming]);
-
   useEffect(() => {
     let active = true;
     const loadSummary = async () => {
@@ -3121,13 +3109,6 @@ export default function DeepSpaceChatClient({
     : latestAssistant?.createdAt
       ? Date.parse(latestAssistant.createdAt)
       : NaN;
-  const liveTokensPerSecond = state.isStreaming
-    ? calculateLiveTokensPerSecond(
-        streamedOutputTokens,
-        Number.isFinite(startedAtMs) ? startedAtMs : null,
-        liveMetricsNow,
-      )
-    : null;
   const liveContextUsedTokens =
     contextUsedTokens === null
       ? draftTokens || null
@@ -3414,7 +3395,8 @@ export default function DeepSpaceChatClient({
               requestOutputTokens={requestOutputTokens}
               requestInputTokensSource={requestInputTokensSource}
               requestOutputTokensSource={requestOutputTokensSource}
-              liveTokensPerSecond={liveTokensPerSecond}
+              liveOutputTokens={streamedOutputTokens}
+              liveOutputStartedAtMs={Number.isFinite(startedAtMs) ? startedAtMs : null}
               reservedOutputTokens={reservedOutputTokens}
               maxOutputTokens={maxOutputTokens}
               contextStatus={contextStatus}
