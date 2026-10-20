@@ -8,7 +8,6 @@ import {
   MessageSquare,
   Search,
   Loader2,
-  User,
   CheckCircle2,
   Clock,
   ChevronRight,
@@ -634,20 +633,11 @@ function SupportContent() {
         <div className="theme-panel flex flex-1 flex-col overflow-hidden rounded-[2rem] border-white/10">
           {selectedUser ? (
             <>
-              <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.02] p-8">
-                <div className="flex items-center gap-4">
-                  <div className="text-primary flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
-                    <User size={28} />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white">{selectedUser.email}</h3>
-                    <p className="text-xs text-slate-500">User ID: {selectedUser.user_id}</p>
-                  </div>
-                </div>
-
-                <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-400">
-                  {selectedUser.ticket_count} total requests
-                </span>
+              <div className="border-border bg-card border-b p-8">
+                <h3 className="text-foreground text-lg font-bold">Support history</h3>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Tickets for the selected user.
+                </p>
               </div>
 
               <div className="flex-1 space-y-6 overflow-y-auto p-8">
