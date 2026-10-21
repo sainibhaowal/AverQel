@@ -11,19 +11,15 @@ test("login page uses the selected icon, colored wordmark, and requested tagline
     "href",
     "/brand/AverQel_Text.svg",
   );
-  await expect(page.locator(".login-exact-wordmark-rgb")).toBeVisible();
-  await expect(page.locator(".login-exact-wordmark-rgb")).toHaveCSS(
+  await expect(page.locator(".login-exact-letter-rgb")).toBeVisible();
+  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS(
     "animation-name",
-    "login-brand-rgb",
+    "login-letter-rgb-sweep",
   );
-  const rgbLayerStyles = await page
-    .locator(".login-exact-wordmark-rgb")
-    .evaluate((element) => {
-      const styles = window.getComputedStyle(element);
-      return { backgroundImage: styles.backgroundImage, maskImage: styles.maskImage };
-    });
-  expect(rgbLayerStyles.backgroundImage).toContain("linear-gradient");
-  expect(rgbLayerStyles.maskImage).toContain("/brand/AverQel_Text.svg");
+  await expect(page.locator(".login-brand-wordmark .averqel-wordmark__svg")).toHaveCSS(
+    "animation-name",
+    "none",
+  );
 
   const tagline = page.getByText("INTELLIGENCE ALL YOU NEED");
   await expect(tagline).toBeVisible();
@@ -40,10 +36,14 @@ test("signup page uses the same icon, colored wordmark, and tagline", async ({ p
     "href",
     "/brand/AverQel_Text.svg",
   );
-  await expect(page.locator(".login-exact-wordmark-rgb")).toBeVisible();
-  await expect(page.locator(".login-exact-wordmark-rgb")).toHaveCSS(
+  await expect(page.locator(".login-exact-letter-rgb")).toBeVisible();
+  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS(
     "animation-name",
-    "login-brand-rgb",
+    "login-letter-rgb-sweep",
+  );
+  await expect(page.locator(".login-brand-wordmark .averqel-wordmark__svg")).toHaveCSS(
+    "animation-name",
+    "none",
   );
   await expect(page.getByText("INTELLIGENCE ALL YOU NEED")).toBeVisible();
 });
@@ -52,8 +52,8 @@ test("login wordmark keeps a static RGB treatment for reduced motion", async ({ 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/auth/login");
 
-  await expect(page.locator(".login-exact-wordmark-rgb")).toHaveCSS("animation-name", "none");
-  await expect(page.locator(".login-exact-wordmark-rgb")).toHaveCSS(
+  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS("animation-name", "none");
+  await expect(page.locator(".login-exact-letter-rgb")).toHaveCSS(
     "background-position",
     "50% 50%",
   );

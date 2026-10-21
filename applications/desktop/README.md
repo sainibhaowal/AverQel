@@ -48,10 +48,9 @@ from the AverQel source and shared frontend.
 
 ### AverQel product mark
 
-The shared web product mark is `frontend/public/brand/AverQel_Icon.svg`. The
-frontend uses it on the landing, authentication, onboarding, dashboard, and
-other web surfaces. Desktop package icons use the icon-only source
-`frontend/public/AverQel Logo/AverQel_Icon.svg` in
+The shared web product mark is `frontend/public/AverQel Logo/AverQel_Icon.svg`.
+The frontend uses it on the landing, authentication, onboarding, dashboard,
+and other web surfaces. Desktop package icons use the same icon-only source in
 `applications/desktop/assets/icon.png`, `icon.ico`, and `icon.icns`. Linux and
 the Electron window use the PNG, Windows and its NSIS installer use the ICO,
 and macOS uses the ICNS.

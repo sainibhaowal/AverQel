@@ -284,12 +284,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div
         className="relative flex h-18 items-center justify-center px-4 pt-2"
       >
-        <AverQelLogo
-          size="footer"
-          iconSrc="/AverQel%20Logo/AverQel_Icon.svg"
-          showWordmark={false}
-          disableAnimation
-        />
+        <div
+          className={
+            sidebarOpen || isMobile
+              ? "dashboard-sidebar-brand-lockup dashboard-sidebar-brand-lockup--expanded"
+              : "dashboard-sidebar-brand-lockup"
+          }
+        >
+          <AverQelLogo
+            size="footer"
+            iconSrc="/AverQel%20Logo/AverQel_Icon.svg"
+            showWordmark={sidebarOpen || isMobile}
+            disableAnimation
+          />
+        </div>
         {(sidebarOpen || isMobile) && isMobile && (
           <button
             onClick={() => setMobileMenuOpen(false)}

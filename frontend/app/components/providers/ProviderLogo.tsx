@@ -31,7 +31,7 @@ export const providerLogoRegistry: Record<string, ProviderLogoDefinition> = {
   openrouter: { kind: "asset", src: "/providers/openrouter-color.svg", appearance: "brand" },
   "sentence-transformers": {
     kind: "asset",
-    src: "/brand/AverQel_Icon.svg",
+    src: "/AverQel%20Logo/AverQel_Icon.svg",
     appearance: "brand",
   },
   searxng: { kind: "asset", src: "/providers/searxng-color.svg", appearance: "brand" },

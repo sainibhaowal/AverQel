@@ -87,8 +87,12 @@ describe("dashboard provider route layout", () => {
       const navLogo = screen.getByTestId("averqel-nav-logo");
       expect(navLogo).toHaveAttribute("data-size", "footer");
       expect(navLogo).toHaveAttribute("data-icon-src", "/AverQel%20Logo/AverQel_Icon.svg");
-      expect(navLogo).toHaveAttribute("data-show-wordmark", "false");
-      expect(navLogo.parentElement).toHaveClass("justify-center");
+      expect(navLogo).toHaveAttribute("data-show-wordmark", "true");
+      expect(navLogo.parentElement).toHaveClass(
+        "dashboard-sidebar-brand-lockup",
+        "dashboard-sidebar-brand-lockup--expanded",
+      );
+      expect(navLogo.parentElement?.parentElement).toHaveClass("justify-center");
 
       const routeContent = screen.getByTestId("provider-route-content");
       expect(routeContent.parentElement).toHaveClass("flex", "min-h-0", "flex-1", "flex-col");
@@ -121,7 +125,9 @@ describe("dashboard provider route layout", () => {
       const navLogo = screen.getByTestId("averqel-nav-logo");
       expect(navLogo).toHaveAttribute("data-icon-src", "/AverQel%20Logo/AverQel_Icon.svg");
       expect(navLogo).toHaveAttribute("data-show-wordmark", "false");
-      expect(navLogo.parentElement).toHaveClass("justify-center");
+      expect(navLogo.parentElement).toHaveClass("dashboard-sidebar-brand-lockup");
+      expect(navLogo.parentElement).not.toHaveClass("dashboard-sidebar-brand-lockup--expanded");
+      expect(navLogo.parentElement?.parentElement).toHaveClass("justify-center");
     } finally {
       Object.defineProperty(window, "innerWidth", {
         configurable: true,
@@ -130,7 +136,7 @@ describe("dashboard provider route layout", () => {
     }
   });
 
-  it("uses the exact centered icon in the mobile dashboard drawer", () => {
+  it("uses the centered AverQel lockup in the mobile dashboard drawer", () => {
     const previousWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
 
@@ -145,8 +151,12 @@ describe("dashboard provider route layout", () => {
 
       const navLogo = screen.getByTestId("averqel-nav-logo");
       expect(navLogo).toHaveAttribute("data-icon-src", "/AverQel%20Logo/AverQel_Icon.svg");
-      expect(navLogo).toHaveAttribute("data-show-wordmark", "false");
-      expect(navLogo.parentElement).toHaveClass("justify-center");
+      expect(navLogo).toHaveAttribute("data-show-wordmark", "true");
+      expect(navLogo.parentElement).toHaveClass(
+        "dashboard-sidebar-brand-lockup",
+        "dashboard-sidebar-brand-lockup--expanded",
+      );
+      expect(navLogo.parentElement?.parentElement).toHaveClass("justify-center");
     } finally {
       Object.defineProperty(window, "innerWidth", {
         configurable: true,
