@@ -48,6 +48,7 @@ vi.mock("@/app/components/layout/NotificationCenter", () => ({ default: () => nu
 vi.mock("@/app/components/ui/AverQelLogo", () => ({
   default: (props: {
     size?: string;
+    iconSrc?: string;
     showWordmark?: boolean;
     animateWordmark?: boolean;
     wordmarkVisible?: boolean;
@@ -55,6 +56,7 @@ vi.mock("@/app/components/ui/AverQelLogo", () => ({
     <span
       data-testid="averqel-nav-logo"
       data-size={props.size}
+      data-icon-src={props.iconSrc}
       data-show-wordmark={String(props.showWordmark)}
       data-animate-wordmark={String(props.animateWordmark)}
       data-wordmark-visible={String(props.wordmarkVisible)}
@@ -84,8 +86,9 @@ describe("dashboard provider route layout", () => {
       expect(screen.getByTestId("beta-notice")).toBeInTheDocument();
       const navLogo = screen.getByTestId("averqel-nav-logo");
       expect(navLogo).toHaveAttribute("data-size", "footer");
-      expect(navLogo).toHaveAttribute("data-show-wordmark", "true");
-      expect(navLogo).toHaveAttribute("data-wordmark-visible", "true");
+      expect(navLogo).toHaveAttribute("data-icon-src", "/AverQel%20Logo/AverQel_Icon.svg");
+      expect(navLogo).toHaveAttribute("data-show-wordmark", "false");
+      expect(navLogo.parentElement).toHaveClass("justify-center");
 
       const routeContent = screen.getByTestId("provider-route-content");
       expect(routeContent.parentElement).toHaveClass("flex", "min-h-0", "flex-1", "flex-col");
@@ -116,8 +119,34 @@ describe("dashboard provider route layout", () => {
       fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
 
       const navLogo = screen.getByTestId("averqel-nav-logo");
-      expect(navLogo.parentElement?.parentElement).toHaveClass("justify-center", "px-0");
-      expect(navLogo.parentElement).not.toHaveClass("translate-x-0.5");
+      expect(navLogo).toHaveAttribute("data-icon-src", "/AverQel%20Logo/AverQel_Icon.svg");
+      expect(navLogo).toHaveAttribute("data-show-wordmark", "false");
+      expect(navLogo.parentElement).toHaveClass("justify-center");
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: previousWidth,
+      });
+    }
+  });
+
+  it("uses the exact centered icon in the mobile dashboard drawer", () => {
+    const previousWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+
+    try {
+      render(
+        <DashboardLayout>
+          <div data-testid="provider-route-content" />
+        </DashboardLayout>,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Open menu" }));
+
+      const navLogo = screen.getByTestId("averqel-nav-logo");
+      expect(navLogo).toHaveAttribute("data-icon-src", "/AverQel%20Logo/AverQel_Icon.svg");
+      expect(navLogo).toHaveAttribute("data-show-wordmark", "false");
+      expect(navLogo.parentElement).toHaveClass("justify-center");
     } finally {
       Object.defineProperty(window, "innerWidth", {
         configurable: true,

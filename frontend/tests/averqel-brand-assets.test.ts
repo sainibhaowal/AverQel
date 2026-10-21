@@ -6,14 +6,18 @@ const publicRoot = resolve(process.cwd(), "public");
 
 it("keeps the requested AverQel icon as the shared web brand asset", () => {
   const icon = readFileSync(resolve(publicRoot, "brand/AverQel_Icon.svg"), "utf8");
+  const exactNavIcon = resolve(publicRoot, "AverQel Logo/AverQel_Icon.svg");
   const logoComponent = readFileSync(
     resolve(process.cwd(), "app/components/ui/AverQelLogo.tsx"),
     "utf8",
   );
   const layout = readFileSync(resolve(process.cwd(), "app/layout.tsx"), "utf8");
+  const dashboardLayout = readFileSync(resolve(process.cwd(), "app/dashboard/layout.tsx"), "utf8");
 
   expect(icon).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
   expect(icon).toContain('viewBox="0 0 1202 675"');
+  expect(existsSync(exactNavIcon)).toBe(true);
+  expect(dashboardLayout).toContain('iconSrc="/AverQel%20Logo/AverQel_Icon.svg"');
   expect(logoComponent).toContain('"/AverQel%20Logo/AverQel_Icon.svg"');
   expect(layout).toContain('icon: "/brand/AverQel_Icon.svg"');
 });

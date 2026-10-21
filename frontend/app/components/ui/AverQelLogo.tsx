@@ -8,6 +8,7 @@ import animationStyles from "./AverQelLogo.module.css";
 
 interface AverQelLogoProps {
   size?: "hero" | "nav" | "footer";
+  iconSrc?: string;
   showWordmark?: boolean;
   disableAnimation?: boolean;
   animateMark?: boolean;
@@ -44,6 +45,7 @@ const sizeMap = {
 
 export default function AverQelLogo({
   size = "hero",
+  iconSrc,
   showWordmark = true,
   disableAnimation = false,
   animateMark = false,
@@ -57,11 +59,12 @@ export default function AverQelLogo({
   const keepWordmarkMounted = showWordmark || animateWordmark;
   const canAnimateWordmark = animateWordmark;
   const markSource =
-    size === "nav"
+    iconSrc ??
+    (size === "nav"
       ? "/AverQel%20Logo/AverQel_Icon.svg"
       : animateMark
         ? "/brand/AverQel_Connection_Icon.svg"
-        : "/brand/AverQel_Icon.svg";
+        : "/brand/AverQel_Icon.svg");
 
   return (
     <motion.div
