@@ -284,7 +284,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div
         className={`flex h-18 items-center px-4 pt-2 ${!sidebarOpen && !isMobile ? "justify-center px-0" : "justify-between"}`}
       >
-        <div className={!sidebarOpen && !isMobile ? "translate-x-0.5" : ""}>
+        <div>
           <AverQelLogo
             size="footer"
             showWordmark

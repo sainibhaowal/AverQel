@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 import DashboardLayout from "../app/dashboard/layout";
@@ -94,6 +94,30 @@ describe("dashboard provider route layout", () => {
         "min-h-0",
         "flex-col",
       );
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: previousWidth,
+      });
+    }
+  });
+
+  it("centers the logo on the collapsed desktop sidebar rail", () => {
+    const previousWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+
+    try {
+      render(
+        <DashboardLayout>
+          <div data-testid="provider-route-content" />
+        </DashboardLayout>,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+
+      const navLogo = screen.getByTestId("averqel-nav-logo");
+      expect(navLogo.parentElement?.parentElement).toHaveClass("justify-center", "px-0");
+      expect(navLogo.parentElement).not.toHaveClass("translate-x-0.5");
     } finally {
       Object.defineProperty(window, "innerWidth", {
         configurable: true,
