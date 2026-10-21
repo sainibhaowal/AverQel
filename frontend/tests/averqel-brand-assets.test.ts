@@ -40,6 +40,14 @@ it("uses the supplied AverQel text logo throughout the shared wordmark component
   );
   const dashboardLayout = readFileSync(resolve(process.cwd(), "app/dashboard/layout.tsx"), "utf8");
   const loginPage = readFileSync(resolve(process.cwd(), "app/auth/login/page.tsx"), "utf8");
+  const heroSection = readFileSync(
+    resolve(process.cwd(), "app/components/marketing/HeroSection.tsx"),
+    "utf8",
+  );
+  const mobileNav = readFileSync(
+    resolve(process.cwd(), "app/components/marketing/MobileNav.tsx"),
+    "utf8",
+  );
   const exactBrand = readFileSync(
     resolve(process.cwd(), "app/components/ui/AverQelExactBrand.tsx"),
     "utf8",
@@ -63,6 +71,8 @@ it("uses the supplied AverQel text logo throughout the shared wordmark component
   expect(titleBar).toContain('import AverQelWordmark from "@/app/components/ui/AverQelWordmark"');
   expect(titleBar).toContain('src="/AverQel%20Logo/AverQel_Icon.svg"');
   expect(titleBar).toContain('<AverQelWordmark size="footer" />');
+  expect(heroSection).toContain('<AverQelLogo size="nav" showWordmark={false} />');
+  expect(mobileNav).toContain('<AverQelLogo size="nav" showWordmark={false} />');
   expect(docsShell).toContain('import AverQelLogo from "../../components/ui/AverQelLogo"');
   expect(docsShell).not.toContain("AverQel OS");
   expect(deepSpaceMark).toContain(

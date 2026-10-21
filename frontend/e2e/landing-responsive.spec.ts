@@ -12,6 +12,14 @@ test("landing page cards stay readable across phone, tablet, and desktop widths"
     await page.setViewportSize({ width, height: 900 });
     if (width === 390) await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    const navigationBrand = page
+      .getByRole("navigation", { name: "Main navigation" })
+      .locator('a[href="/"]');
+    await expect(navigationBrand.locator(".averqel-logo__mark-image")).toHaveAttribute(
+      "alt",
+      "AverQel",
+    );
+    await expect(navigationBrand.locator(".averqel-logo__wordmark")).toHaveCount(0);
     await expect(page.getByText("Wherever you need it.", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Into the Unknown", { exact: true })).toHaveCount(0);
     const hero = page.locator("main > div.relative > section").first();
