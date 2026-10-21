@@ -82,7 +82,7 @@ export default function HeroSection() {
       <motion.div style={style} className={styles.heroInner}>
         <nav className={styles.heroNav} aria-label="Main navigation">
           <Link href="/" className="group inline-flex items-center gap-3">
-            <AverQelLogo size="nav" animateMark />
+            <AverQelLogo size="nav" animateMark showWordmark={false} />
           </Link>
 
           <div className={styles.heroNavLinks}>

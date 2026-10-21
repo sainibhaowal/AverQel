@@ -282,21 +282,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const renderSidebarContent = () => (
     <>
       <div
-        className={`flex h-18 items-center px-4 pt-2 ${!sidebarOpen && !isMobile ? "justify-center px-0" : "justify-between"}`}
+        className="relative flex h-18 items-center justify-center px-4 pt-2"
       >
-        <div className={!sidebarOpen && !isMobile ? "translate-x-0.5" : ""}>
-          <AverQelLogo
-            size="footer"
-            showWordmark
-            disableAnimation
-            animateWordmark={!isMobile}
-            wordmarkVisible={sidebarOpen || isMobile}
-          />
-        </div>
+        <AverQelLogo
+          size="footer"
+          iconSrc="/AverQel%20Logo/AverQel_Icon.svg"
+          showWordmark={false}
+          disableAnimation
+        />
         {(sidebarOpen || isMobile) && isMobile && (
           <button
             onClick={() => setMobileMenuOpen(false)}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="text-muted-foreground hover:text-foreground absolute top-1/2 right-4 -translate-y-1/2 transition-colors"
           >
             <X size={20} />
           </button>

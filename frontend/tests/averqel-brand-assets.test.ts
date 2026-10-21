@@ -6,14 +6,18 @@ const publicRoot = resolve(process.cwd(), "public");
 
 it("keeps the requested AverQel icon as the shared web brand asset", () => {
   const icon = readFileSync(resolve(publicRoot, "brand/AverQel_Icon.svg"), "utf8");
+  const exactNavIcon = resolve(publicRoot, "AverQel Logo/AverQel_Icon.svg");
   const logoComponent = readFileSync(
     resolve(process.cwd(), "app/components/ui/AverQelLogo.tsx"),
     "utf8",
   );
   const layout = readFileSync(resolve(process.cwd(), "app/layout.tsx"), "utf8");
+  const dashboardLayout = readFileSync(resolve(process.cwd(), "app/dashboard/layout.tsx"), "utf8");
 
   expect(icon).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
   expect(icon).toContain('viewBox="0 0 1202 675"');
+  expect(existsSync(exactNavIcon)).toBe(true);
+  expect(dashboardLayout).toContain('iconSrc="/AverQel%20Logo/AverQel_Icon.svg"');
   expect(logoComponent).toContain('"/AverQel%20Logo/AverQel_Icon.svg"');
   expect(layout).toContain('icon: "/brand/AverQel_Icon.svg"');
 });
@@ -30,6 +34,14 @@ it("uses the supplied AverQel text logo throughout the shared wordmark component
     "utf8",
   );
   const titleBar = readFileSync(resolve(process.cwd(), "components/layout/TitleBar.tsx"), "utf8");
+  const heroSection = readFileSync(
+    resolve(process.cwd(), "app/components/marketing/HeroSection.tsx"),
+    "utf8",
+  );
+  const mobileNav = readFileSync(
+    resolve(process.cwd(), "app/components/marketing/MobileNav.tsx"),
+    "utf8",
+  );
   const docsShell = readFileSync(
     resolve(process.cwd(), "app/documentation/_components/DocsShell.tsx"),
     "utf8",
@@ -61,7 +73,14 @@ it("uses the supplied AverQel text logo throughout the shared wordmark component
   expect(logoComponent).toContain("markWidth: 92");
   expect(logoComponent).toContain('gap: "0rem"');
   expect(titleBar).toContain('import AverQelWordmark from "@/app/components/ui/AverQelWordmark"');
+  expect(titleBar).toContain('src="/AverQel%20Logo/AverQel_Icon.svg"');
   expect(titleBar).toContain('<AverQelWordmark size="footer" />');
+  expect(heroSection).toContain(
+    '<AverQelLogo size="nav" animateMark showWordmark={false} />',
+  );
+  expect(mobileNav).toContain(
+    '<AverQelLogo size="nav" animateMark showWordmark={false} />',
+  );
   expect(docsShell).toContain('import AverQelLogo from "../../components/ui/AverQelLogo"');
   expect(docsShell).not.toContain("AverQel OS");
   expect(deepSpaceMark).toContain(
@@ -74,9 +93,17 @@ it("uses the supplied AverQel text logo throughout the shared wordmark component
   expect(exactBrand).toContain('import AverQelWordmark from "./AverQelWordmark"');
   expect(exactBrand).toContain('<AverQelWordmark size="hero"');
   expect(exactBrand).toContain('className="login-brand-wordmark"');
+  expect(exactBrand).toContain('className="login-exact-wordmark-rgb"');
+  expect(exactBrand).not.toContain("login-exact-logo--aver");
+  expect(exactBrand).not.toContain("login-exact-logo--el");
   expect(exactBrand).toContain("INTELLIGENCE ALL YOU NEED");
   expect(loginPage).not.toContain('<AverQelLogo size="hero" />');
   expect(globalStyles).toContain(".dark .averqel-wordmark__svg");
+  const rgbOverlay = globalStyles.match(/\.login-exact-wordmark-rgb\s*\{([^}]*)\}/)?.[1] ?? "";
+  expect(rgbOverlay).toContain("inset: 0;");
+  expect(rgbOverlay).toContain('mask-image: url("/brand/AverQel_Text.svg");');
+  expect(rgbOverlay).not.toContain("clip-path");
+  expect(globalStyles).toMatch(/\.login-exact-wordmark-rgb\s*\{[^}]*animation:\s*none;/);
   expect(qelConnectMark).toContain("qel-connect-mark");
   expect(globalStyles).toContain(".qel-connect-mark");
   expect(globalStyles).toContain("filter: brightness(0.62) saturate(1.2) contrast(1.18);");

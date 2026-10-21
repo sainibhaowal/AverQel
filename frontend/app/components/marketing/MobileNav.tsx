@@ -115,7 +115,7 @@ export default function MobileNav() {
             >
               <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3.5 sm:px-6 sm:py-4">
                 <div className="flex min-w-0 items-center gap-3">
-                  <AverQelLogo size="nav" animateMark />
+                  <AverQelLogo size="nav" animateMark showWordmark={false} />
                   <span className="hidden h-7 w-px bg-white/10 sm:block" aria-hidden="true" />
                   <span className="hidden font-mono text-[0.6rem] font-bold tracking-[0.18em] text-slate-500 uppercase sm:inline">
                     Workspace navigation

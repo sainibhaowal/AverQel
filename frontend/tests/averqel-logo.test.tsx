@@ -28,6 +28,31 @@ it("keeps the nav icon and wordmark as a close, vertically aligned lockup", () =
   expect(lockup.querySelector(".averqel-wordmark__svg")).toHaveAttribute("height", "29");
 });
 
+it("supports the icon-only logo used in the navigation bars", () => {
+  render(<AverQelLogo size="nav" showWordmark={false} />);
+
+  const lockup = document.querySelector<HTMLElement>("[data-brand-lockup]");
+  expect(lockup).not.toBeNull();
+  if (!lockup) return;
+
+  expect(lockup.querySelector("img")).toHaveAttribute("alt", "AverQel");
+  expect(lockup.querySelector(".averqel-logo__wordmark")).not.toBeInTheDocument();
+});
+
+it("allows a navigation surface to select the exact AverQel icon asset", () => {
+  render(
+    <AverQelLogo
+      size="footer"
+      iconSrc="/AverQel%20Logo/AverQel_Icon.svg"
+      showWordmark={false}
+    />,
+  );
+
+  const icon = document.querySelector<HTMLImageElement>("[data-brand-lockup] img");
+  expect(icon).toHaveAttribute("src", "/AverQel%20Logo/AverQel_Icon.svg");
+  expect(icon).toHaveAttribute("alt", "AverQel");
+});
+
 it("uses the same tight canvas overlap for the compact footer lockup", () => {
   render(<AverQelLogo size="footer" />);
 
