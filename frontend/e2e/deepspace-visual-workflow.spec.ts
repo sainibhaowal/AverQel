@@ -440,6 +440,7 @@ test.describe("DeepSpace visual workflow", () => {
     browser,
   }) => {
     test.setTimeout(240_000);
+    await authenticatedPage.setViewportSize({ width: 1440, height: 900 });
     const state = makeVisualState();
     await installVisualApi(authenticatedPage, state);
     await authenticatedPage.goto("/dashboard/deepspace", { waitUntil: "domcontentloaded" });
