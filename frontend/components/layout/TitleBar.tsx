@@ -60,7 +60,7 @@ export default function TitleBar() {
         style={{ zIndex: 10 }}
       >
         <Image
-          src="/brand/AverQel_Icon.svg"
+          src="/AverQel%20Logo/AverQel_Icon.svg"
           alt="AverQel logo"
           width={50}
           height={26}

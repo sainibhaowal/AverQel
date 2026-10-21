@@ -61,6 +61,7 @@ it("uses the supplied AverQel text logo throughout the shared wordmark component
   expect(logoComponent).toContain("markWidth: 92");
   expect(logoComponent).toContain('gap: "0rem"');
   expect(titleBar).toContain('import AverQelWordmark from "@/app/components/ui/AverQelWordmark"');
+  expect(titleBar).toContain('src="/AverQel%20Logo/AverQel_Icon.svg"');
   expect(titleBar).toContain('<AverQelWordmark size="footer" />');
   expect(docsShell).toContain('import AverQelLogo from "../../components/ui/AverQelLogo"');
   expect(docsShell).not.toContain("AverQel OS");
