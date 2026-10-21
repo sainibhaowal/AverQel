@@ -1,7 +1,7 @@
 import Image from "next/image";
 import AverQelWordmark from "./AverQelWordmark";
 
-/** Shared icon, RGB wordmark treatment, and tagline used by login and signup. */
+/** Shared AverQel icon and animated RGB wordmark used by login and signup. */
 export default function AverQelExactBrand() {
   return (
     <>
@@ -18,14 +18,7 @@ export default function AverQelExactBrand() {
       </span>
       <span className="login-exact-wordmark-wrap">
         <AverQelWordmark size="hero" className="login-brand-wordmark" />
-        <span
-          aria-hidden="true"
-          className="login-exact-logo--animated login-exact-logo--aver"
-        />
-        <span
-          aria-hidden="true"
-          className="login-exact-logo--animated login-exact-logo--el"
-        />
+        <span aria-hidden="true" className="login-exact-wordmark-rgb" />
       </span>
       <span className="login-brand-tagline">INTELLIGENCE ALL YOU NEED</span>
     </>

@@ -1062,7 +1062,7 @@ html:not(.dark) .library-preview-canvas {
   isolation: isolate;
 }
 
-.login-exact-logo--animated {
+.login-exact-wordmark-rgb {
   position: absolute;
   z-index: 1;
   inset: 0;
@@ -1089,15 +1089,8 @@ html:not(.dark) .library-preview-canvas {
   -webkit-mask-size: 100% 100%;
   mask-mode: alpha;
   mask-size: 100% 100%;
+  transform: translateY(1px);
   will-change: background-position;
-}
-
-.login-exact-logo--aver {
-  clip-path: inset(0 42.1% 0 0);
-}
-
-.login-exact-logo--el {
-  clip-path: inset(0 0 0 72.7%);
 }
 
 @keyframes login-brand-rgb {
@@ -1190,7 +1183,7 @@ html:not(.dark) .library-preview-canvas {
     filter: none;
   }
 
-  .login-exact-logo--animated {
+  .login-exact-wordmark-rgb {
     animation: none;
     background-position: 50% 50%;
   }
