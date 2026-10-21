@@ -929,6 +929,58 @@
   padding-top: 0;
 }
 
+.providerCatalog {
+  margin-top: clamp(2rem, 4vw, 3rem);
+}
+
+.providerCatalogHeader {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.providerCatalogHeading {
+  margin: 0;
+  color: #e2e8f0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.providerCatalogNote {
+  margin: 0;
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.providerCatalogList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+  gap: 0.9rem 1.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.providerCatalogItem {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.providerCatalogLogo {
+  width: 1.65rem;
+  height: 1.65rem;
+  flex: 0 0 auto;
+}
+
 .ctaSection {
   padding: clamp(2.5rem, 6vw, 5.5rem) clamp(1rem, 3.5vw, 3.5rem);
 }

@@ -11,14 +11,13 @@ test("login page uses the selected icon, colored wordmark, and requested tagline
     "href",
     "/brand/AverQel_Text.svg",
   );
-  await expect(page.locator(".login-exact-logo--aver")).toBeVisible();
-  await expect(page.locator(".login-exact-logo--el")).toBeVisible();
-  await expect(page.locator(".login-exact-logo--aver")).toHaveCSS(
+  await expect(page.locator(".login-exact-wordmark-rgb")).toBeVisible();
+  await expect(page.locator(".login-exact-wordmark-rgb")).toHaveCSS(
     "animation-name",
     "login-brand-rgb",
   );
   const rgbLayerStyles = await page
-    .locator(".login-exact-logo--aver")
+    .locator(".login-exact-wordmark-rgb")
     .evaluate((element) => {
       const styles = window.getComputedStyle(element);
       return { backgroundImage: styles.backgroundImage, maskImage: styles.maskImage };
@@ -41,9 +40,8 @@ test("signup page uses the same icon, colored wordmark, and tagline", async ({ p
     "href",
     "/brand/AverQel_Text.svg",
   );
-  await expect(page.locator(".login-exact-logo--aver")).toBeVisible();
-  await expect(page.locator(".login-exact-logo--el")).toBeVisible();
-  await expect(page.locator(".login-exact-logo--el")).toHaveCSS(
+  await expect(page.locator(".login-exact-wordmark-rgb")).toBeVisible();
+  await expect(page.locator(".login-exact-wordmark-rgb")).toHaveCSS(
     "animation-name",
     "login-brand-rgb",
   );
@@ -54,8 +52,8 @@ test("login wordmark keeps a static RGB treatment for reduced motion", async ({ 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/auth/login");
 
-  await expect(page.locator(".login-exact-logo--aver")).toHaveCSS("animation-name", "none");
-  await expect(page.locator(".login-exact-logo--aver")).toHaveCSS(
+  await expect(page.locator(".login-exact-wordmark-rgb")).toHaveCSS("animation-name", "none");
+  await expect(page.locator(".login-exact-wordmark-rgb")).toHaveCSS(
     "background-position",
     "50% 50%",
   );
