@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.system.schemas.conversation import ConversationParticipantResponse
+
 SupportCategory = Literal[
     "complaint",
     "feedback",
@@ -96,6 +98,7 @@ class SupportTicketMessageResponse(BaseModel):
     encrypted_payload: str | None = None
     is_internal: bool
     created_at: datetime
+    author_ref: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -117,6 +120,7 @@ class SupportTicketAttachmentResponse(BaseModel):
 class SupportTicketDetailResponse(SupportTicketResponse):
     user_email: str | None = None
     messages: list[SupportTicketMessageResponse]
+    participants: list[ConversationParticipantResponse] = Field(default_factory=list)
     attachments: list[SupportTicketAttachmentResponse] = Field(default_factory=list)
 
 
@@ -124,8 +128,17 @@ class AdminSupportQueueItem(SupportTicketResponse):
     user_email: str
 
 
+class AdminSupportQueueUserProfile(BaseModel):
+    user_id: uuid.UUID
+    display_name: str | None = None
+    avatar: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AdminSupportQueueResponse(BaseModel):
     items: list[AdminSupportQueueItem]
+    users: list[AdminSupportQueueUserProfile] = Field(default_factory=list)
     total: int
     open_count: int
     overdue_count: int

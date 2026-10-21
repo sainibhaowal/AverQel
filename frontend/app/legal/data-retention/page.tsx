@@ -47,20 +47,6 @@ export default function DataRetentionPage() {
         </p>
       </PolicySection>
 
-      <PolicySection title="Public contact messages">
-        <p>
-          The landing-page contact form first emails a one-time code to the address entered, then
-          forwards the verified address, name, subject, and message to the configured SMTP mail
-          service. Direct email to the configured contact address may be forwarded by a signed
-          Resend webhook to the private inbox. AverQel does not persist verification codes or
-          message contents in its application database or application logs. Verification challenge
-          fingerprints expire from Redis after 10 minutes and single-use token fingerprints after 30
-          minutes. Contact rate-limit fingerprints expire after one hour. Resend and the receiving
-          mailbox may retain verification and contact messages under their own retention rules; the
-          mailbox owner is responsible for deleting them. Email is not end-to-end encrypted.
-        </p>
-      </PolicySection>
-
       <PolicySection title="Workspace content retention">
         <p>
           Workspace storage settings provide Off, 30, 60, and 90-day options for eligible inactive
@@ -111,10 +97,9 @@ export default function DataRetentionPage() {
         <p>
           Use the in-app Trust &amp; Privacy settings or Support Centre to request an export or
           deletion. The Support Centre requires an account; visitors can use the public contact form
-          at the bottom of the landing page. The hosted service is operated by Ravinder Singh —
-          Independent Developer, AverQel Independent Project. This source does not publish a direct
-          email address; the form is available only when the deployment has configured its SMTP mail
-          service.
+          at the bottom of the landing page. The hosted service is operated by AverQel Independent
+          Project. This source does not publish a direct email address; the form is available only
+          when the deployment has configured its SMTP mail service.
         </p>
       </PolicySection>
     </PolicyLayout>

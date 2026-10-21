@@ -1,12 +1,12 @@
 # 02. Production end-to-end verification report
 
-> **Current gate (2026-10-05):** Despite this historical file name, the
-> results below are not current production certification. The source migration
-> graph has head `20261012_0012`; the latest recorded Docker database check is
-> `20261012_0011` from 2026-10-03. No evidence in this checkout confirms that
-> `0012` is applied to staging/production or that the updated application has
-> been deployed and smoke-tested there. Record those target-specific results
-> before release.
+> **Historical gate snapshot (2026-10-05):** The results below are not current
+> production certification. At that time, the source migration graph had head
+> `20261012_0012`; the latest recorded Docker database check was `20261012_0011`
+> from 2026-10-03. Those observations do not establish current staging or
+> production state. See the [current worktree and release index](03-current-worktree-change-index.md)
+> for the latest recorded source status, and record target-specific migration
+> and deployment results before release.
 
 This report records the reproducible checks for the six advanced capabilities.
 No provider secret or temporary API key is stored in the repository.

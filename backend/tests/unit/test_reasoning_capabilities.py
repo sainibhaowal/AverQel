@@ -16,10 +16,12 @@ from app.providers.services.anthropic_provider import AnthropicProvider
 from app.providers.services.google_provider import GoogleProvider
 from app.providers.services.openai_compatible import OpenAICompatibleProvider
 from app.providers.services.reasoning_capabilities import (
+    is_deepseek_v4_model,
     merge_reasoning_capabilities,
     model_supports_reasoning,
     resolve_reasoning_profile,
     supports_required_tool_choice,
+    uses_deepseek_reasoning_protocol,
 )
 from app.providers.services.types import (
     ChatGenerateRequest,
@@ -51,6 +53,15 @@ def test_reasoning_capabilities_cover_supported_providers() -> None:
     assert not model_supports_reasoning("openai", "gpt-4o-mini")
     assert not model_supports_reasoning("google", "gemini-1.5-flash")
     assert not model_supports_reasoning("deepseek", "deepseek-chat")
+
+
+def test_deepseek_protocol_detection_covers_direct_and_gateway_routes() -> None:
+    assert uses_deepseek_reasoning_protocol("deepseek", "reasoner")
+    assert uses_deepseek_reasoning_protocol("openrouter", "deepseek/deepseek-chat")
+    assert uses_deepseek_reasoning_protocol("custom", "DeepSeek-V4-Flash")
+    assert not uses_deepseek_reasoning_protocol("openai", "gpt-5")
+    assert is_deepseek_v4_model("deepseek/deepseek-v4-flash")
+    assert not is_deepseek_v4_model("deepseek-reasoner")
 
 
 def test_nvidia_nim_nemotron_profiles_expose_only_documented_levels() -> None:

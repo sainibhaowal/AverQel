@@ -7,7 +7,6 @@ import {
   ChevronRight,
   ExternalLink,
   FileText,
-  Loader2,
   Maximize2,
   Minimize2,
   Shield,
@@ -23,6 +22,7 @@ import {
 } from "react";
 
 import { fetchWithAuth } from "@/lib/api";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import {
   libraryFileKind,
   libraryFileSupportsServerPagePreview,
@@ -57,12 +57,7 @@ function safePageNumber(value?: number): number {
 }
 
 function LoadingPreview({ label }: { label: string }) {
-  return (
-    <div role="status" className="flex h-full min-h-56 flex-col items-center justify-center gap-3">
-      <Loader2 size={30} className="text-primary animate-spin" />
-      <p className="text-muted-foreground text-xs tracking-widest uppercase italic">{label}</p>
-    </div>
-  );
+  return <AverQelLoading label={label} size="section" className="h-full min-h-56" />;
 }
 
 interface PDFPreviewModalProps {
@@ -412,7 +407,9 @@ export default function PDFPreviewModal({
                   </button>
                   <span className="text-foreground/65 font-semibold">
                     Page {currentPage}
-                    {pageLoading ? " · Loading" : ""}
+                    {pageLoading ? (
+                      <AverQelLoading size="inline" label="Loading next preview page" />
+                    ) : null}
                   </span>
                   <button
                     type="button"

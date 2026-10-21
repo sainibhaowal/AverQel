@@ -63,7 +63,7 @@ async function waitForTitlebar(dom: JSDOM): Promise<HTMLElement> {
 
 describe("frameless Electron shell", () => {
   it("shows only minimize, maximize, and close controls in the top strip", async () => {
-    const { dom, invoke } = bootPreload("https://averqel.com/dashboard");
+    const { dom, exposed, invoke } = bootPreload("https://averqel.com/dashboard");
     const titlebar = await waitForTitlebar(dom);
     const buttons = titlebar.querySelectorAll<HTMLButtonElement>("button");
 
@@ -72,22 +72,20 @@ describe("frameless Electron shell", () => {
       "Maximize window",
       "Close window",
     ]);
-    const brand = titlebar.querySelector<HTMLElement>('[role="img"]');
-    expect(brand).toHaveAttribute("aria-label", "AverQel");
-    expect(brand).toHaveStyle({ gap: "6px" });
-    const icon = titlebar.querySelector<HTMLImageElement>('img[alt="AverQel icon"]');
-    expect(icon).toHaveAttribute("src", "https://averqel.com/brand/AverQel_Icon.svg");
-    expect(icon).toHaveAttribute("width", "38");
-    const wordmark = titlebar.querySelector<HTMLImageElement>('img[alt="AverQel"]');
-    expect(wordmark).toHaveAttribute("src", "https://averqel.com/brand/AverQel_Text.svg");
-    expect(wordmark).toHaveAttribute("width", "124");
-    expect(
-      dom.window.document.getElementById("averqel-electron-shell-style")?.textContent,
-    ).toContain("transform: translateY(1px)");
+    expect(titlebar.querySelector('[role="img"]')).not.toBeInTheDocument();
+    expect(titlebar.querySelectorAll("img")).toHaveLength(0);
+    const shellStyle = dom.window.document.getElementById(
+      "averqel-electron-shell-style",
+    )?.textContent;
+    expect(shellStyle).toContain("html, body");
+    expect(shellStyle).toContain("overflow: hidden !important");
+    expect(shellStyle).toContain("overflow-y: auto !important");
+    expect(shellStyle).not.toContain("averqel-electron-wordmark");
     expect(
       dom.window.document.documentElement.style.getPropertyValue("--averqel-desktop-chrome-height"),
     ).toBe("40px");
     expect(invoke).toHaveBeenCalledWith("window:is-maximized");
+    expect(exposed.electron).not.toHaveProperty("workspace");
     buttons[0]?.click();
     buttons[1]?.click();
     buttons[2]?.click();
@@ -96,43 +94,21 @@ describe("frameless Electron shell", () => {
       expect(invoke).toHaveBeenCalledWith("window:toggle-maximize");
       expect(invoke).toHaveBeenCalledWith("window:close");
     });
-    dom.window.close();
-  });
-
-  it("puts the AverQel return control in the NeoSIS page, outside the window controls", async () => {
-    const { dom, invoke } = bootPreload("http://127.0.0.1:43127/?token=test-token");
-    const titlebar = await waitForTitlebar(dom);
-    const button = dom.window.document.querySelector<HTMLButtonElement>(
-      "#averqel-electron-neosis-return-strip button",
-    );
-
-    expect(button?.getAttribute("aria-label")).toBe("Return to AverQel dashboard");
-    expect(titlebar.querySelectorAll("button")).toHaveLength(3);
-    expect(titlebar.querySelector('img[alt="AverQel icon"]')).toHaveAttribute(
-      "src",
-      "http://127.0.0.1:43127/brand/AverQel_Icon.svg",
-    );
-    expect(titlebar.querySelector('img[alt="AverQel"]')).toHaveAttribute(
-      "src",
-      "http://127.0.0.1:43127/brand/AverQel_Text.svg",
-    );
-    const wordmark = titlebar.querySelector<HTMLImageElement>('img[alt="AverQel"]');
-    wordmark?.dispatchEvent(new dom.window.Event("error"));
-    expect(wordmark).toHaveAttribute("src", "https://averqel.com/brand/AverQel_Text.svg");
-    button?.click();
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith("workspace:open-averqel"));
-    dom.window.close();
-  });
-
-  it("exposes the packaged NeoSIS availability check through the preload bridge", async () => {
-    const { dom, exposed, invoke } = bootPreload("https://averqel.com/");
-    const electron = exposed.electron as {
-      workspace: { neosisAvailable: () => Promise<boolean> };
+    const legacyBridge = exposed.electron as {
+      window: { hide: () => Promise<unknown> };
     };
+    await legacyBridge.window.hide();
+    expect(invoke).toHaveBeenLastCalledWith("window:close");
+    dom.window.close();
+  });
 
-    await electron.workspace.neosisAvailable();
+  it("does not add secondary workspace chrome to the AverQel window", async () => {
+    const { dom } = bootPreload("https://averqel.com/");
+    await waitForTitlebar(dom);
 
-    expect(invoke).toHaveBeenCalledWith("workspace:neosis-available");
+    expect(
+      dom.window.document.getElementById("averqel-electron-neosis-return-strip"),
+    ).not.toBeInTheDocument();
     dom.window.close();
   });
 });

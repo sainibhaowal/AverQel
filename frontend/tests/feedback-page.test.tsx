@@ -9,6 +9,12 @@ vi.mock("../lib/api", () => ({
   fetchWithAuth: (...args: unknown[]) => fetchWithAuthMock(...args),
 }));
 
+vi.mock("@/app/context/AuthContext", () => ({
+  useAuth: () => ({
+    user: { id: "user-id", email: "user@example.test", roles: ["user"] },
+  }),
+}));
+
 vi.mock("@/app/dashboard/support/SupportEncryptionGate", () => ({
   useSupportEncryption: () => ({
     ready: true,
@@ -41,6 +47,16 @@ describe("feedback page navigation", () => {
     await waitFor(() => expect(fetchWithAuthMock).toHaveBeenCalledTimes(2));
   });
 
+  it("shows a clearly styled empty state when there are no active campaigns", async () => {
+    render(<FeedbackPage />);
+
+    const emptyStateCopy = await screen.findByText(
+      "No campaigns are active right now. You can still submit feedback using the form.",
+    );
+
+    expect(emptyStateCopy.parentElement).toHaveClass("feedback-campaigns-empty");
+  });
+
   it("shows a retryable error instead of an empty history when loading fails", async () => {
     fetchWithAuthMock.mockImplementation(async (url: string) =>
       url.endsWith("/campaigns")
@@ -53,12 +69,16 @@ describe("feedback page navigation", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Your feedback history could not be loaded.",
     );
-    expect(screen.queryByText("Your submitted feedback and team replies will appear here.")).toBeNull();
+    expect(
+      screen.queryByText("Your submitted feedback and team replies will appear here."),
+    ).toBeNull();
 
     fetchWithAuthMock.mockImplementation(async () => ({ ok: true, json: async () => [] }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(screen.getByText("Your submitted feedback and team replies will appear here.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Your submitted feedback and team replies will appear here."),
+    ).toBeInTheDocument();
   });
 });

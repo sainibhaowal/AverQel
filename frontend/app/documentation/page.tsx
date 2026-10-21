@@ -34,7 +34,7 @@ const descriptions: Record<string, string> = {
   "AI providers":
     "Configure supported model providers and understand which features depend on each provider.",
   "MCP connectors":
-    "Use the curated MCP marketplace or browse the live Composio app catalog, then control DeepSpace tool permissions and approvals.",
+    "Browse Composio's live app catalog, connect your own accounts, and control DeepSpace tool permissions and approvals.",
   "Profile & sessions":
     "Account security, password and two-factor settings, and session management.",
   "Plans, storage & settings":

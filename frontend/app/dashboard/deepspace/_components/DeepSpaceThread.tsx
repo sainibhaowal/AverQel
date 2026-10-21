@@ -829,20 +829,22 @@ const MessageBubble = memo(
               ) : null}
 
               {pendingApproval && pendingApprovalId && onResolveApproval ? (
-                <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 mb-5 rounded-2xl border border-amber-400/25 bg-amber-400/[0.07] p-4 shadow-[0_12px_40px_-24px_rgba(251,191,36,0.8)] motion-safe:duration-300 motion-safe:ease-out">
+                <div className="deepspace-mcp-approval motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 mb-5 rounded-2xl border border-amber-400/25 bg-amber-400/[0.07] p-4 shadow-[0_12px_40px_-24px_rgba(251,191,36,0.8)] motion-safe:duration-300 motion-safe:ease-out">
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 rounded-lg border border-amber-300/20 bg-amber-300/10 p-2 text-amber-200">
+                    <div className="deepspace-mcp-approval-icon mt-0.5 rounded-lg border border-amber-300/20 bg-amber-300/10 p-2 text-amber-200">
                       <ShieldCheck size={16} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-amber-100">Approval required</div>
-                      <p className="mt-1 text-xs leading-5 text-amber-100/70">
+                      <div className="deepspace-mcp-approval-title text-sm font-semibold text-amber-100">
+                        Approval required
+                      </div>
+                      <p className="deepspace-mcp-approval-message mt-1 text-xs leading-5 text-amber-100/70">
                         {String(
                           pendingApprovalData.message ??
                             "A connected MCP action needs your approval.",
                         )}
                       </p>
-                      <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold tracking-[0.14em] text-amber-100/60 uppercase">
+                      <div className="deepspace-mcp-approval-metadata mt-2 flex flex-wrap gap-2 text-[10px] font-semibold tracking-[0.14em] text-amber-100/60 uppercase">
                         <span>{String(pendingApprovalData.mcp_server ?? "Connected MCP")}</span>
                         <span>•</span>
                         <span>
@@ -854,7 +856,7 @@ const MessageBubble = memo(
                         <span>{String(pendingApprovalData.risk_level ?? "protected")}</span>
                       </div>
                       {pendingApprovalData.tool_input ? (
-                        <pre className="mt-3 max-h-36 overflow-auto rounded-lg border border-white/10 bg-black/20 p-2 text-[10px] leading-5 whitespace-pre-wrap text-amber-50/65">
+                        <pre className="deepspace-mcp-approval-input mt-3 max-h-36 overflow-auto rounded-lg border border-white/10 bg-black/20 p-2 text-[10px] leading-5 whitespace-pre-wrap text-amber-50/65">
                           {JSON.stringify(pendingApprovalData.tool_input, null, 2)}
                         </pre>
                       ) : null}
@@ -870,7 +872,7 @@ const MessageBubble = memo(
                               setApprovalBusy(false);
                             }
                           }}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/25 disabled:cursor-wait disabled:opacity-50"
+                          className="deepspace-mcp-approval-approve inline-flex items-center gap-1.5 rounded-lg bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/25 disabled:cursor-wait disabled:opacity-50"
                         >
                           <Check size={13} /> Approve
                         </button>
@@ -885,7 +887,7 @@ const MessageBubble = memo(
                               setApprovalBusy(false);
                             }
                           }}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/65 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-50"
+                          className="deepspace-mcp-approval-deny inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-white/65 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-50"
                         >
                           <X size={13} /> Deny
                         </button>

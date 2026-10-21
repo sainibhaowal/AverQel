@@ -75,6 +75,7 @@ class FeedbackRecordEncryptionMigration(SupportRecordEncryptionMigration):
 class LegacySupportRecord(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
+    user_key_initialized: bool = True
 
 
 class LegacySupportRecordPage(BaseModel):
@@ -85,6 +86,7 @@ class LegacySupportRecordPage(BaseModel):
 class LegacyFeedbackRecord(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
+    user_key_initialized: bool = True
 
 
 class LegacyFeedbackRecordPage(BaseModel):

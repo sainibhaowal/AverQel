@@ -33,12 +33,12 @@ const stages = [
     step: "01",
     title: "Choose a provider and add your source material",
     description:
-      "Start with a cloud or local AI provider, then upload supported documents into the Documents Hub. Connected apps are optional and are authorized separately through the MCP marketplace.",
+      "Start with a cloud or local AI provider, then upload supported documents into the Documents Hub. External apps are optional: add your own Composio project key, then authorize each app through the MCP marketplace when required.",
     icon: Upload,
     accent: "blue",
     details: [
       { icon: FileText, text: "Documents Hub for supported files and source inspection" },
-      { icon: Layers, text: "Optional supported app connections through OAuth" },
+      { icon: Layers, text: "Optional Composio apps connected from the live MCP catalog" },
       { icon: BarChart3, text: "Provider, connection, and processing status stay visible" },
     ],
   },

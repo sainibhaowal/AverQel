@@ -13,9 +13,15 @@ implemented, what DeepSpace used, and which boundaries were intentional.
 Check the current source and the [release index](../../release/03-current-worktree-change-index.md)
 before using this snapshot to make a release decision.
 
-## 1. Product contract
+## 1. Product contract in the September 2026 snapshot
 
-AverQel currently uses a curated, approved remote MCP catalog.
+The description in this section records the implementation as inspected on
+2026-09-23. It is a historical account of the former curated catalog and
+OAuth-token flow, not the current Marketplace contract. Current Composio
+behavior is documented in the [Composio guide](03-composio-hosted-mcp.md) and
+the [current MCP contract](../06-mcp-connections.md).
+
+At that snapshot, AverQel used a curated, approved remote MCP catalog.
 
 The supported user flow is:
 
@@ -194,6 +200,16 @@ running Alembic against the selected database.
 4. The model requests one bounded schema only when needed.
 5. The private bridge retains the exact server/tool binding and catalog revision.
 
+Tool catalog revisions change only when the normalized tool definitions change,
+not on every routine refresh. If a catalog changes during a run, DeepSpace
+reloads that account's current cached definitions and reruns policy and schema
+validation before execution. Removed tools are not executed; the broker directs
+the model to search again. Pending approvals are tied to the revision they
+showed and expire if the tool definition changes before the user resumes them.
+Every tool search refreshes its view from the latest persisted catalog, and
+schema lookup reloads the selected server. Aged catalogs refresh asynchronously;
+the last known catalog remains available until a provider refresh succeeds.
+
 ### Execute
 
 1. The model sends an exact broker tool reference and arguments.
@@ -250,10 +266,9 @@ These are intentionally not part of the current release:
 - SSH or arbitrary local-process execution;
 - vendor repository cloning or package execution;
 - arbitrary VPS command execution;
-- provider credentials exposed to ordinary users or shared across their
-  connected accounts. The later Composio integration uses one administrator-
-  managed project key server-side while keeping each hosted session bound to
-  one tenant and user;
+- provider credentials shared across users. Each Composio user supplies a
+  project key that is encrypted and scoped to that tenant/account, while every
+  hosted app session remains bound to one tenant, user, and server;
 - side-effecting calls that bypass policy or approval;
 - a claim that every external provider is live without provider credentials and
   a provider-specific smoke test.

@@ -15,6 +15,7 @@ from app.auth.dependencies import AuthContext, get_auth_context
 from app.auth.rbac import require_permissions
 from app.core.config import get_settings
 from app.deepspace.models.mission_snapshot import DeepSpaceMissionSnapshot
+from app.integrations.catalog.mcp_official_providers import CURATED_MCP_CATALOG_SOURCE
 from app.integrations.models.mcp_connection_policy import MCPConnectionPolicy
 from app.integrations.models.mcp_server import (
     MCPOAuthToken,
@@ -28,6 +29,7 @@ from app.integrations.schemas.mcp import (
     MCPComposioAuthCompleteRead,
     MCPComposioAuthCompleteRequest,
     MCPComposioConnectResponse,
+    MCPComposioCredentialWrite,
     MCPComposioStatusRead,
     MCPComposioToolkitDetailRead,
     MCPComposioToolkitPageRead,
@@ -52,6 +54,7 @@ from app.integrations.schemas.mcp import (
 from app.integrations.services.composio_service import (
     ComposioConfigurationError,
     ComposioService,
+    composio_callback_url,
     is_composio_server,
 )
 from app.integrations.services.mcp_endpoint_security import (
@@ -106,7 +109,10 @@ def _composio_error(exc: ComposioConfigurationError) -> HTTPException:
     message = str(exc)
     status_code = (
         status.HTTP_409_CONFLICT
-        if "key" in message.casefold() or "verif" in message.casefold()
+        if any(
+            marker in message.casefold()
+            for marker in ("key", "verif", "matching", "does not match")
+        )
         else status.HTTP_400_BAD_REQUEST
     )
     return HTTPException(status_code=status_code, detail=message)
@@ -118,18 +124,52 @@ def composio_status(
     auth: AuthContext = Depends(get_auth_context),
 ) -> MCPComposioStatusRead:
     settings = get_settings()
-    origin = (settings.averqel_public_origin or "").strip().rstrip("/")
-    callback_url = (
-        f"{origin}/dashboard/mcp/composio/callback" if origin.startswith("https://") else None
-    )
     return MCPComposioStatusRead(
         configured=_composio_service(session).credential_exists(
             tenant_id=auth.tenant_id,
             user_id=auth.user_id,
         ),
-        callback_verifier_enabled=settings.composio_callback_verifier_enabled,
-        callback_verifier_url=callback_url,
+        oauth_callback_ready=(
+            composio_callback_url(settings.averqel_public_origin, "callback-check") is not None
+        ),
     )
+
+
+@router.put("/composio/credential", response_model=MCPComposioStatusRead)
+def save_composio_credential(
+    payload: MCPComposioCredentialWrite,
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> MCPComposioStatusRead:
+    """Validate and save the authenticated user's encrypted Composio project key."""
+    settings = get_settings()
+    service = _composio_service(session)
+    try:
+        service.configure_key(
+            tenant_id=auth.tenant_id,
+            user_id=auth.user_id,
+            api_key=payload.api_key.get_secret_value(),
+        )
+    except ComposioConfigurationError as exc:
+        raise _composio_error(exc) from exc
+    session.commit()
+    return MCPComposioStatusRead(
+        configured=True,
+        oauth_callback_ready=(
+            composio_callback_url(settings.averqel_public_origin, "callback-check") is not None
+        ),
+    )
+
+
+@router.delete("/composio/credential", status_code=status.HTTP_204_NO_CONTENT)
+def delete_composio_credential(
+    session: Session = Depends(get_db),
+    auth: AuthContext = Depends(get_auth_context),
+) -> Response:
+    """Remove only the authenticated user's key and hosted Composio sessions."""
+    _composio_service(session).remove_key(tenant_id=auth.tenant_id, user_id=auth.user_id)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/composio/toolkits", response_model=MCPComposioToolkitPageRead)
@@ -187,10 +227,7 @@ def connect_composio_toolkit(
     auth: AuthContext = Depends(get_auth_context),
 ) -> MCPComposioConnectResponse:
     settings = get_settings()
-    origin = (settings.averqel_public_origin or "").strip().rstrip("/")
-    callback_url = (
-        f"{origin}/dashboard/mcp/composio/callback" if origin.startswith("https://") else None
-    )
+    callback_url = composio_callback_url(settings.averqel_public_origin, toolkit_slug)
     try:
         result = _composio_service(session).start_connection(
             tenant_id=auth.tenant_id,
@@ -248,16 +285,20 @@ def complete_composio_oauth(
         server = _composio_service(session).complete_auth(
             tenant_id=auth.tenant_id,
             user_id=auth.user_id,
-            session_uri=payload.session_uri.get_secret_value(),
+            toolkit_slug=payload.toolkit_slug,
+            connected_account_id=payload.connected_account_id,
+            status=payload.status,
         )
     except ComposioConfigurationError as exc:
         raise _composio_error(exc) from exc
-    try:
-        refresh_server_catalog.delay(str(server.id), str(server.tenant_id))
-    except Exception:  # noqa: BLE001
-        logger.warning("Composio MCP catalog refresh could not be queued for %s", server.id)
-    _publish_mcp_event(auth, "mcp.server.connecting", server.id)
-    return MCPComposioAuthCompleteRead(status="connecting", server_id=server.id)
+    if server.status == "connecting":
+        try:
+            refresh_server_catalog.delay(str(server.id), str(server.tenant_id))
+        except Exception:  # noqa: BLE001
+            logger.warning("Composio MCP catalog refresh could not be queued for %s", server.id)
+        _publish_mcp_event(auth, "mcp.server.connecting", server.id)
+        return MCPComposioAuthCompleteRead(status="connecting", server_id=server.id)
+    return MCPComposioAuthCompleteRead(status="failed", server_id=server.id)
 
 
 def _marketplace_capabilities(entry: MCPRegistryEntry) -> list[str]:
@@ -654,12 +695,10 @@ def _tool_mode(policy: MCPConnectionPolicy | None, tool_name: str) -> str:
 
 
 def _marketplace_connectability(entry: MCPRegistryEntry) -> tuple[bool, str | None]:
-    """Keep legacy approved entries working while gating curated OAuth profiles.
+    """Keep approved public entries connectable when their auth setup is ready.
 
-    A curated provider remains visible before its provider-specific OAuth flow
-    exists, but it must never fall back to generic discovery/registration.
-    Entries without this explicit metadata preserve the existing approved-entry
-    behavior until they are migrated to an explicit readiness state.
+    Bundled native connectors are handled through their dedicated flow and
+    filtered out of the public marketplace endpoints.
     """
     if entry.trust_status != "approved":
         return False, "This provider has not been approved by AverQel."
@@ -1079,6 +1118,10 @@ def connect_marketplace_entry(
     entry = session.get(MCPRegistryEntry, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="MCP marketplace entry not found")
+    if entry.source == CURATED_MCP_CATALOG_SOURCE:
+        raise HTTPException(
+            status_code=404, detail="This native connector is no longer in Marketplace"
+        )
     if entry.trust_status != "approved":
         raise HTTPException(
             status_code=403, detail="Only AverQel-approved MCP entries can be connected"
@@ -1341,6 +1384,7 @@ def catalog(session: Session = Depends(get_db), auth: AuthContext = Depends(get_
             .where(
                 MCPRegistryEntry.remote_url.is_not(None),
                 MCPRegistryEntry.trust_status == "approved",
+                MCPRegistryEntry.source != CURATED_MCP_CATALOG_SOURCE,
             )
             .order_by(MCPRegistryEntry.display_name)
         )
@@ -1361,6 +1405,7 @@ def marketplace_facets(
             select(MCPRegistryEntry).where(
                 MCPRegistryEntry.remote_url.is_not(None),
                 MCPRegistryEntry.trust_status == "approved",
+                MCPRegistryEntry.source != CURATED_MCP_CATALOG_SOURCE,
             )
         )
         .scalars()
@@ -1397,6 +1442,7 @@ def marketplace_detail(
             MCPRegistryEntry.id == entry_id,
             MCPRegistryEntry.remote_url.is_not(None),
             MCPRegistryEntry.trust_status == "approved",
+            MCPRegistryEntry.source != CURATED_MCP_CATALOG_SOURCE,
         )
     ).scalar_one_or_none()
     if entry is None:
@@ -1426,6 +1472,7 @@ def marketplace(
     query = select(MCPRegistryEntry).where(
         MCPRegistryEntry.remote_url.is_not(None),
         MCPRegistryEntry.trust_status == "approved",
+        MCPRegistryEntry.source != CURATED_MCP_CATALOG_SOURCE,
     )
     if q:
         query = query.where(

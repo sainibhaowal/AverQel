@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Crown, HardDrive, Loader2, ShieldCheck } from "lucide-react";
+import { AlertCircle, CheckCircle2, Crown, HardDrive, ShieldCheck } from "lucide-react";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { useAuth } from "@/app/context/AuthContext";
 import { fetchWithAuth } from "@/lib/api";
 import { hasAdminRole } from "@/lib/roles";
@@ -103,8 +104,8 @@ export default function PlanPage() {
       />
 
       {loading && (
-        <div className="settings-featured text-muted-foreground flex items-center gap-3 p-7 text-sm">
-          <Loader2 className="animate-spin" size={18} /> Loading plan and storage information…
+        <div className="settings-featured rounded-2xl">
+          <AverQelLoading label="Loading plan and storage information…" size="section" />
         </div>
       )}
 

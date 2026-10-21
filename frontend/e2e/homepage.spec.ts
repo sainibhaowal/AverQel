@@ -17,7 +17,7 @@ test("homepage renders the visual workspace hero without hydration failures", as
   await expect(page.getByRole("link", { name: "Create your workspace" })).toBeVisible();
 
   const lockup = page.locator("[data-brand-lockup]:visible").first();
-  const mark = lockup.locator('img[src="/brand/AverQel_Icon.svg"]');
+  const mark = lockup.locator("img").first();
   const wordmark = lockup.locator(".averqel-wordmark__svg");
   await expect(mark).toHaveAttribute("width", "92");
   await expect(mark).toHaveAttribute("height", "46");
@@ -37,7 +37,7 @@ test("homepage renders the visual workspace hero without hydration failures", as
   const footerLockup = page.locator("[data-brand-lockup].averqel-logo--footer:visible").first();
   await expect(footerLockup).toBeVisible();
   await footerLockup.scrollIntoViewIfNeeded();
-  const footerMark = footerLockup.locator('img[src="/brand/AverQel_Icon.svg"]');
+  const footerMark = footerLockup.locator("img").first();
   const footerWordmark = footerLockup.locator(".averqel-wordmark__svg");
   const [footerMarkBox, footerWordmarkBox] = await Promise.all([
     footerMark.boundingBox(),

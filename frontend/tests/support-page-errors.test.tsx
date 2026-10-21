@@ -80,6 +80,7 @@ describe("admin support selected user", () => {
         open_count: 1,
         overdue_count: 0,
         total: 1,
+        users: [{ user_id: "user-1", display_name: "Rav Singh", avatar: null }],
         items: [
           {
             id: "ticket-1",

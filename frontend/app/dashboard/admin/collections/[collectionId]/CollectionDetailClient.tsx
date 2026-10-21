@@ -27,6 +27,7 @@ import {
   Search,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 const DEFAULT_AVATAR_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23f59e0b"/><stop offset="100%" stop-color="%2310b981"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23g)"/><path d="M50 30a15 15 0 1 0 0 30 15 15 0 0 0 0-30zM50 67c-18 0-32 10-32 20v3h64v-3c0-10-14-20-32-20z" fill="%230f172a"/></svg>`;
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
@@ -1632,7 +1633,11 @@ export default function AdminCollectionDetailPage({
               disabled={loadingOlderChats}
               className="mx-auto block cursor-pointer rounded-full border border-emerald-500/20 px-3 py-1.5 text-[10px] font-bold text-emerald-500 transition hover:bg-emerald-500/10 disabled:cursor-wait disabled:opacity-60"
             >
-              {loadingOlderChats ? "Loading older messages…" : "Load older messages"}
+              {loadingOlderChats ? (
+                <AverQelLoading size="inline" label="Loading older messages" />
+              ) : (
+                "Load older messages"
+              )}
             </button>
           )}
 

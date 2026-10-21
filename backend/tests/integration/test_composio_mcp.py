@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import anyio
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,10 +16,12 @@ from app.auth.dependencies import create_access_token
 from app.core.config import get_settings
 from app.deepspace.services.mcp_bridge import DeepSpaceMCPBridge
 from app.deepspace.services.mcp_tool_broker import MCPToolBroker
+from app.integrations.catalog.mcp_official_providers import CURATED_MCP_CATALOG_SOURCE
 from app.integrations.models.composio_credential import ComposioCredential
 from app.integrations.models.mcp_connection_policy import MCPConnectionPolicy
-from app.integrations.models.mcp_server import MCPServer
+from app.integrations.models.mcp_server import MCPRegistryEntry, MCPServer
 from app.integrations.services.composio_service import (
+    ComposioConfigurationError,
     ComposioService,
     composio_user_id,
 )
@@ -40,9 +43,11 @@ def _headers(seeded: SeededUser, *, role: str = "user") -> dict[str, str]:
     }
 
 
-def test_composio_status_is_user_visible_but_key_management_is_admin_only(
+def test_composio_key_is_user_managed_encrypted_and_isolated(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    db_session: Session,
+    monkeypatch,
 ) -> None:
     user = seed_user(
         "tenant-composio-status",
@@ -50,30 +55,12 @@ def test_composio_status_is_user_visible_but_key_management_is_admin_only(
         "StrongPass!1234",
         ("user",),
     )
-
-    status_response = client.get("/api/v1/mcp/composio/status", headers=_headers(user))
-    key_response = client.get("/api/v1/admin/providers/composio", headers=_headers(user))
-
-    assert status_response.status_code == 200
-    assert status_response.json()["configured"] is False
-    assert "api_key" not in status_response.text
-    assert key_response.status_code == 403
-
-
-def test_allowlisted_admin_can_store_encrypted_composio_key_without_returning_it(
-    client: TestClient,
-    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
-    db_session: Session,
-    monkeypatch,
-) -> None:
-    admin = seed_user(
-        "tenant-composio-key-admin",
-        "composio-admin@example.com",
+    other_user = seed_user(
+        "tenant-composio-other-credential",
+        "composio-other@example.com",
         "StrongPass!1234",
-        ("admin",),
+        ("user",),
     )
-    settings = get_settings()
-    settings.bootstrap_super_admin_emails = [admin.email]
     monkeypatch.setattr(
         "app.integrations.services.composio_service._sdk",
         lambda _api_key: SimpleNamespace(
@@ -84,43 +71,193 @@ def test_allowlisted_admin_can_store_encrypted_composio_key_without_returning_it
     )
     project_key = "composio-test-project-key-123"
 
+    status_response = client.get("/api/v1/mcp/composio/status", headers=_headers(user))
+    assert status_response.status_code == 200
+    assert status_response.json()["configured"] is False
+    assert "api_key" not in status_response.text
+
     response = client.put(
-        "/api/v1/admin/providers/composio",
-        headers=_headers(admin, role="admin"),
+        "/api/v1/mcp/composio/credential",
+        headers=_headers(user),
         json={"api_key": project_key},
     )
 
     assert response.status_code == 200
     assert response.json()["configured"] is True
     assert project_key not in response.text
-    set_db_tenant_context(db_session, "bypass")
+    set_db_tenant_context(db_session, user.tenant_id)
+    set_db_user_context(db_session, user.user_id)
     credential = db_session.execute(
-        select(ComposioCredential).where(ComposioCredential.id == 1)
+        select(ComposioCredential).where(
+            ComposioCredential.tenant_id == user.tenant_id,
+            ComposioCredential.user_id == user.user_id,
+        )
     ).scalar_one()
     assert project_key.encode() not in credential.secret_ciphertext
     assert credential.secret_nonce
     assert credential.secret_kid
 
-    read_response = client.get(
-        "/api/v1/admin/providers/composio",
-        headers=_headers(admin, role="admin"),
+    other_status = client.get("/api/v1/mcp/composio/status", headers=_headers(other_user))
+    assert other_status.status_code == 200
+    assert other_status.json()["configured"] is False
+    with pytest.raises(ComposioConfigurationError, match="Add your Composio project API key"):
+        ComposioService(db_session, get_settings())._api_key(
+            tenant_id=other_user.tenant_id,
+            user_id=other_user.user_id,
+        )
+
+    own_server = MCPServer(
+        tenant_id=user.tenant_id,
+        user_id=user.user_id,
+        provider_slug="composio:own_app",
+        name="Own app",
+        transport="streamable_http",
+        config={"composio_session_ciphertext": "own-session"},
+        account_identity={},
+        enabled=True,
+        status="connected",
     )
-    assert read_response.status_code == 200
-    assert read_response.json()["configured"] is True
-    assert project_key not in read_response.text
+    set_db_tenant_context(db_session, user.tenant_id)
+    set_db_user_context(db_session, user.user_id)
+    db_session.add(own_server)
+    db_session.commit()
+    other_server = MCPServer(
+        tenant_id=other_user.tenant_id,
+        user_id=other_user.user_id,
+        provider_slug="composio:other_app",
+        name="Other user's app",
+        transport="streamable_http",
+        config={"composio_session_ciphertext": "other-session"},
+        account_identity={},
+        enabled=True,
+        status="connected",
+    )
+    set_db_tenant_context(db_session, other_user.tenant_id)
+    set_db_user_context(db_session, other_user.user_id)
+    db_session.add(other_server)
+    db_session.commit()
 
     remove_response = client.delete(
-        "/api/v1/admin/providers/composio",
-        headers=_headers(admin, role="admin"),
+        "/api/v1/mcp/composio/credential",
+        headers=_headers(user),
     )
     assert remove_response.status_code == 204
-    set_db_tenant_context(db_session, "bypass")
+    set_db_tenant_context(db_session, user.tenant_id)
+    set_db_user_context(db_session, user.user_id)
     assert (
         db_session.execute(
-            select(ComposioCredential).where(ComposioCredential.id == 1)
+            select(ComposioCredential).where(
+                ComposioCredential.tenant_id == user.tenant_id,
+                ComposioCredential.user_id == user.user_id,
+            )
         ).scalar_one_or_none()
         is None
     )
+    own_server = db_session.get(MCPServer, own_server.id)
+    assert own_server is not None
+    db_session.refresh(own_server)
+    assert own_server.enabled is False
+    assert own_server.status == "disconnected"
+    assert "composio_session_ciphertext" not in own_server.config
+    set_db_tenant_context(db_session, other_user.tenant_id)
+    set_db_user_context(db_session, other_user.user_id)
+    other_server = db_session.get(MCPServer, other_server.id)
+    assert other_server is not None
+    db_session.refresh(other_server)
+    assert other_server.enabled is True
+    assert other_server.status == "connected"
+    assert other_server.config["composio_session_ciphertext"] == "other-session"
+    assert client.get("/api/v1/admin/providers/composio", headers=_headers(user)).status_code == 404
+
+
+def test_composio_toolkit_details_accepts_leading_underscore_slug(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    monkeypatch,
+) -> None:
+    user = seed_user(
+        "tenant-composio-leading-underscore",
+        "composio-leading-underscore@example.com",
+        "StrongPass!1234",
+        ("user",),
+    )
+    toolkit_lookups: list[str] = []
+    tool_list_calls: list[dict[str, object]] = []
+
+    def get_toolkit(slug: str) -> dict[str, object]:
+        toolkit_lookups.append(slug)
+        return {
+            "slug": slug,
+            "name": "1Password",
+            "meta": {"description": "Password manager", "tools_count": 1},
+        }
+
+    def list_tools(**kwargs):
+        tool_list_calls.append(kwargs)
+        return {
+            "items": [
+                {
+                    "slug": "_1PASSWORD_LIST_ITEMS",
+                    "description": "List vault items",
+                    "input_parameters": {},
+                }
+            ],
+            "next_cursor": None,
+        }
+
+    sdk = SimpleNamespace(
+        toolkits=SimpleNamespace(get=get_toolkit),
+        _client=SimpleNamespace(tools=SimpleNamespace(list=list_tools)),
+    )
+    monkeypatch.setattr(ComposioService, "_client", lambda *_args, **_kwargs: sdk)
+
+    response = client.get(
+        "/api/v1/mcp/composio/toolkits/_1password",
+        headers=_headers(user),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["slug"] == "_1password"
+    assert payload["logo_url"] == "https://logos.composio.dev/api/_1password"
+    assert payload["tools"][0]["name"] == "_1PASSWORD_LIST_ITEMS"
+    assert toolkit_lookups == ["_1password"]
+    assert tool_list_calls[0]["toolkit_slug"] == "_1password"
+
+
+def test_marketplace_hides_the_bundled_native_connectors(
+    client: TestClient,
+    seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
+    db_session: Session,
+) -> None:
+    user = seed_user(
+        "tenant-composio-marketplace",
+        "composio-marketplace@example.com",
+        "StrongPass!1234",
+        ("user",),
+    )
+    entry = MCPRegistryEntry(
+        source=CURATED_MCP_CATALOG_SOURCE,
+        server_name="google-gmail",
+        provider_slug="google-gmail",
+        publisher_type="official",
+        display_name="Google Gmail",
+        publisher="Google",
+        remote_url="https://gmail.example/mcp",
+        transport="streamable_http",
+        trust_status="approved",
+    )
+    db_session.add(entry)
+    db_session.commit()
+
+    marketplace = client.get("/api/v1/mcp/marketplace", headers=_headers(user))
+    detail = client.get(f"/api/v1/mcp/marketplace/{entry.id}", headers=_headers(user))
+    connect = client.post(f"/api/v1/mcp/marketplace/{entry.id}/connect", headers=_headers(user))
+
+    assert marketplace.status_code == 200
+    assert all(item["id"] != str(entry.id) for item in marketplace.json()["items"])
+    assert detail.status_code == 404
+    assert connect.status_code == 404
 
 
 def test_composio_oauth_uses_user_identity_encrypted_session_and_mcp_approval_policy(
@@ -142,10 +279,11 @@ def test_composio_oauth_uses_user_identity_encrypted_session_and_mcp_approval_po
         ("user",),
     )
     settings = get_settings()
-    settings.composio_callback_verifier_enabled = True
     settings.averqel_public_origin = "https://averqel.example"
     created_sessions: list[dict[str, object]] = []
     expected_identity = composio_user_id(owner.tenant_id, owner.user_id)
+    resolved_account_owner = expected_identity
+    connection_lookups: list[tuple[str, float]] = []
 
     class FakeSession:
         session_id = "hosted-session-secret"
@@ -153,23 +291,26 @@ def test_composio_oauth_uses_user_identity_encrypted_session_and_mcp_approval_po
         @staticmethod
         def authorize(toolkit_slug: str, *, callback_url: str):
             assert toolkit_slug == "gmail"
-            assert callback_url == "https://averqel.example/dashboard/mcp/composio/callback"
+            assert callback_url == (
+                "https://averqel.example/dashboard/mcp/composio/callback?toolkit_slug=gmail"
+            )
             return SimpleNamespace(
-                redirect_url="https://connect.composio.dev/oauth/start?state=single-use"
+                id="ca_example_123",
+                redirect_url="https://connect.composio.dev/oauth/start?state=single-use",
             )
 
     def create_session(**kwargs):
         created_sessions.append(kwargs)
         return FakeSession()
 
-    def complete_auth(*, user_id: str, session_uri: str):
-        assert (
-            session_uri
-            == "https://backend.composio.dev/api/v3.1/connected_accounts/complete?state=once"
+    def wait_for_connection(account_id: str, *, timeout: float):
+        connection_lookups.append((account_id, timeout))
+        return SimpleNamespace(
+            id=account_id,
+            toolkit=SimpleNamespace(slug="gmail"),
+            status="ACTIVE",
+            user_id=resolved_account_owner,
         )
-        if user_id != expected_identity:
-            raise ValueError("session owner mismatch")
-        return SimpleNamespace(toolkit_slug="gmail", connected_account_id="ca_example_123")
 
     sdk = SimpleNamespace(
         toolkits=SimpleNamespace(
@@ -185,7 +326,7 @@ def test_composio_oauth_uses_user_identity_encrypted_session_and_mcp_approval_po
             }
         ),
         sessions=SimpleNamespace(create=create_session),
-        connected_accounts=SimpleNamespace(complete_auth=complete_auth),
+        connected_accounts=SimpleNamespace(wait_for_connection=wait_for_connection),
     )
     monkeypatch.setattr(ComposioService, "_client", lambda *_args, **_kwargs: sdk)
     monkeypatch.setattr("app.integrations.api.mcp._publish_mcp_event", lambda *_args: None)
@@ -222,6 +363,7 @@ def test_composio_oauth_uses_user_identity_encrypted_session_and_mcp_approval_po
     ).scalar_one()
     assert "hosted-session-secret" not in str(server.config)
     assert server.config["composio_session_ciphertext"]
+    assert server.config["composio_pending_connected_account_id"] == "ca_example_123"
     assert (
         ComposioService(db_session, settings)._decrypt_session_id(
             server.config,
@@ -239,23 +381,67 @@ def test_composio_oauth_uses_user_identity_encrypted_session_and_mcp_approval_po
         "external_message": "needs_approval",
     }
 
-    session_uri = "https://backend.composio.dev/api/v3.1/connected_accounts/complete?state=once"
+    callback_url = "/api/v1/mcp/composio/oauth/complete"
+    callback_headers = _headers(owner)
+    forged_callback = client.post(
+        callback_url,
+        headers=callback_headers,
+        json={
+            "toolkit_slug": "gmail",
+            "connected_account_id": "ca_forged_456",
+            "status": "success",
+        },
+    )
+    assert forged_callback.status_code == 409
+    assert connection_lookups == []
+
+    resolved_account_owner = composio_user_id(other_user.tenant_id, other_user.user_id)
     callback_response = client.post(
-        "/api/v1/mcp/composio/oauth/complete",
-        headers=_headers(owner),
-        json={"session_uri": session_uri},
+        callback_url,
+        headers=callback_headers,
+        json={
+            "toolkit_slug": "gmail",
+            "connected_account_id": "ca_example_123",
+            "status": "success",
+        },
+    )
+    assert callback_response.status_code == 409
+    assert connection_lookups == [("ca_example_123", 5)]
+
+    resolved_account_owner = expected_identity
+    callback_response = client.post(
+        callback_url,
+        headers=callback_headers,
+        json={
+            "toolkit_slug": "gmail",
+            "connected_account_id": "ca_example_123",
+            "status": "success",
+        },
     )
     assert callback_response.status_code == 200
     assert callback_response.json() == {"status": "connecting", "server_id": server_id}
-    assert session_uri not in callback_response.text
+    assert connection_lookups == [("ca_example_123", 5), ("ca_example_123", 5)]
 
     wrong_owner_response = client.post(
-        "/api/v1/mcp/composio/oauth/complete",
+        callback_url,
         headers=_headers(other_user),
-        json={"session_uri": session_uri},
+        json={
+            "toolkit_slug": "gmail",
+            "connected_account_id": "ca_example_123",
+            "status": "success",
+        },
     )
     assert wrong_owner_response.status_code == 409
-    assert session_uri not in wrong_owner_response.text
+    replay_response = client.post(
+        callback_url,
+        headers=callback_headers,
+        json={
+            "toolkit_slug": "gmail",
+            "connected_account_id": "ca_example_123",
+            "status": "success",
+        },
+    )
+    assert replay_response.status_code == 409
 
 
 def test_composio_no_auth_toolkit_installs_without_oauth_or_public_origin(
@@ -270,7 +456,6 @@ def test_composio_no_auth_toolkit_installs_without_oauth_or_public_origin(
         ("user",),
     )
     settings = get_settings()
-    settings.composio_callback_verifier_enabled = False
     settings.averqel_public_origin = None
     refreshes: list[tuple[str, str]] = []
 

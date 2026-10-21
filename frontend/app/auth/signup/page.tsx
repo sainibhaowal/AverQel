@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AverQelExactBrand from "@/app/components/ui/AverQelExactBrand";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { getApiBaseUrl } from "../../../lib/api";
 
 function getPasswordStrength(pw: string): {
@@ -218,7 +219,7 @@ export default function SignupPage() {
             )}
 
             <button type="submit" disabled={loading} className="btn-primary mt-2 w-full py-3.5">
-              {loading ? "Creating..." : "Sign Up"}
+              {loading ? <AverQelLoading size="inline" label="Creating account" /> : "Sign Up"}
             </button>
           </form>
 

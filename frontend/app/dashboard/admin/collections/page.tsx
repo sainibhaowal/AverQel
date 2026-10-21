@@ -33,6 +33,7 @@ import { getUnreadCount, incrementUnreadCount, saveLocalMessage } from "@/lib/lo
 import { deriveKey, decryptMessage } from "@/lib/crypto";
 import { averqelConfirm } from "@/app/components/ui/AverQelDialogHost";
 import QelConnectMark from "@/app/components/ui/QelConnectMark";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 interface Collection {
   id: string;
@@ -779,7 +780,7 @@ export default function AdminCollectionsPage() {
           </div>
 
           {/* Sidebar Chat List Tiles (Scrollable) */}
-          <div className="divide-foreground/5 flex-1 space-y-1.5 divide-y overflow-y-auto p-2 [scrollbar-width:none] dark:divide-white/5 [&::-webkit-scrollbar]:hidden">
+          <div className="divide-foreground/5 relative flex-1 space-y-1.5 divide-y overflow-y-auto p-2 [scrollbar-width:none] dark:divide-white/5 [&::-webkit-scrollbar]:hidden">
             {/* Inline Pending Invitations Segment */}
             {invitations.length > 0 && (
               <div className="space-y-2 rounded-xl border border-amber-500/10 bg-amber-500/5 p-3">
@@ -818,9 +819,11 @@ export default function AdminCollectionsPage() {
 
             {/* Normal Chats styled as premium obsidian glass cards */}
             {loading ? (
-              <div className="animate-pulse p-4 text-center text-xs text-slate-500">
-                Loading tiles...
-              </div>
+              <AverQelLoading
+                label="Loading workspace tiles…"
+                size="section"
+                className="pointer-events-none absolute inset-0 z-10 min-h-0"
+              />
             ) : filteredCollections.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-500">No active bridges found.</div>
             ) : (

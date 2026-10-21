@@ -15,7 +15,7 @@ export default function DeepSpaceDocsPage() {
           },
           {
             title: "Research & tools",
-            body: "Configured web research, approved MCP tools, and other enabled capabilities can extend a conversation. Provider choice, policy, approvals, and service availability determine which actions can run.",
+            body: "Configured web research, connected Composio MCP apps, and other enabled capabilities can extend a conversation. Provider choice, account ownership, tool policy, approvals, and service availability determine which actions can run.",
           },
           {
             title: "Working Library & notes",

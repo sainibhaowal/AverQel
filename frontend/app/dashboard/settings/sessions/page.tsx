@@ -5,6 +5,7 @@ import { LogOut, MonitorSmartphone, RefreshCw } from "lucide-react";
 import toast from "react-hot-toast";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { fetchWithAuth } from "@/lib/api";
 
 const PAGE_SIZE = 25;
@@ -140,9 +141,7 @@ export default function SessionsPage() {
 
       <section className="space-y-3" aria-label="Signed-in sessions" aria-busy={loading}>
         {loading ? (
-          <p className="py-12 text-center text-sm text-slate-500" role="status">
-            Loading sessions…
-          </p>
+          <AverQelLoading label="Loading sessions…" size="section" className="w-full" />
         ) : sessions.length === 0 ? (
           <p className="py-12 text-center text-sm text-slate-500">No linked sessions found.</p>
         ) : (
@@ -196,7 +195,11 @@ export default function SessionsPage() {
             disabled={loadingMore}
             className="w-full rounded-xl border border-cyan-300/60 px-4 py-3 text-sm font-semibold text-cyan-800 disabled:opacity-50 dark:text-cyan-200"
           >
-            {loadingMore ? "Loading…" : "Load more sessions"}
+            {loadingMore ? (
+              <AverQelLoading size="inline" label="Loading more sessions" />
+            ) : (
+              "Load more sessions"
+            )}
           </button>
         )}
       </section>

@@ -1,8 +1,9 @@
 # 03. Current worktree change and release index
 
-**Reviewed:** 2026-10-05. This index points reviewers to current implementation
+**Reviewed:** 2026-10-20. This index points reviewers to current implementation
 contracts and separates source-code state from database and deployment state.
-It is not a production certification.
+The inspected checkout contains uncommitted changes. This index is not a
+production certification.
 
 ## Product areas and implementation guides
 
@@ -36,6 +37,27 @@ It is not a production certification.
 - Research, sandbox, artifacts, schedules, MCP, and voice are indexed in
   [`../README.md`](../README.md) under Capabilities and DeepSpace.
 
+### Electron desktop
+
+- Packaging targets, app-icon sizing, local setup, and window behavior:
+  [`../../../applications/desktop/README.md`](../../../applications/desktop/README.md).
+- The current shell has no notification-area tray icon. Closing the window
+  exits AverQel; minimizing leaves it in the taskbar. A second launch focuses
+  the existing window instead of creating another process.
+
+### MCP and Composio
+
+- Current hosted app catalog, user-owned project keys, callback, data handling,
+  and troubleshooting:
+  [`../capabilities/mcp/03-composio-hosted-mcp.md`](../capabilities/mcp/03-composio-hosted-mcp.md).
+- Shared MCP runtime, broker, ownership, policy, and approval contract:
+  [`../capabilities/06-mcp-connections.md`](../capabilities/06-mcp-connections.md).
+- The current Marketplace uses Composio's live catalog. Each user supplies an
+  encrypted project key scoped to their tenant/account; the running backend
+  decrypts it for Composio requests. OAuth apps require the configured public
+  callback origin. Source implementation does not establish live deployment
+  readiness.
+
 Documents Hub owns source files; Query retrieves evidence from eligible
 sources; DeepSpace has a separate working Library for conversation files and
 outputs. Do not use “Library” without naming which product area it belongs to.
@@ -51,14 +73,19 @@ outputs. Do not use “Library” without naming which product area it belongs t
 - Feedback, ticket conversations, attachments, notification preferences,
   email outbox, and rollout evidence:
   [`../platform/05-feedback-support-notifications.md`](../platform/05-feedback-support-notifications.md).
+- Six platform-admin modules, access requirements, UTC timestamps, audit
+  outcomes, short identifiers, and encryption boundaries:
+  [`../platform/06-platform-administration.md`](../platform/06-platform-administration.md).
 
 Collections are experimental beta in this repository. Their current chat
 encryption is not zero-knowledge or server-blind end-to-end encryption. The
 collection moderation queue is tenant-scoped report triage for users assigned
 the `collection_moderator` role; its response schema does not include chat
 message bodies. New and migrated support and feedback content is encrypted in
-the browser for the submitter and allowlisted platform administrator. A browser
-migration handles existing plaintext rows and support attachments; users must
+the browser for the submitter and the single platform-key owner. Other allowlisted
+administrators cannot unlock that key, so the current queue UI cannot open for
+them. A browser migration handles existing plaintext rows and support
+attachments; users must
 initialize their key first, and old backup snapshots retain plaintext until
 expiry. Metadata remains service-visible, encrypted attachments cannot be
 server-scanned, and a compromised live server can replace browser code or
@@ -66,10 +93,23 @@ recipient keys. Legacy support and feedback manager roles do not grant access
 to either platform queue, and the platform staff-role assignment endpoint has
 been removed.
 
+The platform key is tied to its creator's account. The current product has no
+transfer or recovery flow; keep the key-owner account active and protect its
+passphrase. Erasing that account removes its stored key backup and can make
+existing platform-key copies unreadable in AverQel.
+
+Users create their support/feedback key once. Its private key is unlocked in
+browser memory across those two pages and locks after four hours of inactivity,
+on sign-out, login-session expiry, reload, or tab close. This is distinct from
+TOTP MFA. The four-hour period is an idle timeout, not a fixed 12-hour session.
+
 ### Identity, settings, and storage
 
 - OAuth and authentication:
   [`../platform/02-auth-oauth-login.md`](../platform/02-auth-oauth-login.md).
+- Platform-admin route access, six admin modules, audit display, and encryption
+  distinctions:
+  [`../platform/06-platform-administration.md`](../platform/06-platform-administration.md).
 - Tenant storage plans:
   [`../deepspace/06-deepspace-plan-storage.md`](../deepspace/06-deepspace-plan-storage.md).
 - Retention and recovery:
@@ -78,22 +118,35 @@ been removed.
 
 ## Migration and environment status
 
-The checked source migration graph has a single head, `20261012_0012`. This
-was verified with `backend/.venv/bin/alembic heads` on 2026-10-05. The latest
-recorded Docker database observation is head `20261012_0011`, dated
-2026-10-03 in the rollout record in
-[`../platform/05-feedback-support-notifications.md`](../platform/05-feedback-support-notifications.md).
-That historical observation is not evidence that the target staging or
-production database has applied `0012`.
+The checked source migration graph has a single head, `20261019_0004`. This
+was verified with `cd backend && .venv/bin/alembic heads` on 2026-10-20.
+That command reads the source migration graph; it does not inspect a database.
+The latest recorded Docker database observation in this repository is the
+historical head `20261012_0011` from 2026-10-03, which predates the current
+Composio migrations and is not evidence of any current development, staging,
+or production database state. No current target database migration state is
+recorded here.
 
-The `0012` collection-moderation audit migration and the corresponding updated
-application must be applied and deployed through the normal release procedure.
-Then smoke-test report submission, tenant-scoped moderator listing, status and
-note history, unauthorized-role denial, and existing account/collection
-deletion in staging. Record the actual target, release commit, migration head,
-and results. Do not infer deployment from the source migration graph.
+Apply the source migrations to a disposable isolated database before release,
+then follow the documented staging migration and feature-smoke procedure for
+the actual target. Record the target, release commit, migration head, and
+results. Do not infer database or deployment state from the source migration
+graph.
 
 ## Verification evidence and limits
+
+- On 2026-10-20, desktop lifecycle tests passed (2/2), title-bar/preload tests
+  passed (3/3), and a Linux `.deb` was built and inspected locally. The package
+  was not installed. The full desktop suite reported 28 passes and one existing
+  brand-asset staging mismatch. The frontend production build stopped at
+  unrelated type errors in generated admin route references and
+  `app/dashboard/layout.tsx`; the package therefore used the existing
+  `frontend/out`. These checks do not establish installed-app or deployment
+  state.
+- On 2026-10-20, a documentation audit covered all 100 tracked and untracked
+  source Markdown files. All 273 local links and Markdown heading fragments
+  resolved, and `git diff --check -- '*.md' '*.MD'` passed. External URL
+  reachability was not checked.
 
 - On 2026-10-05, the documentation-focused frontend checks passed: Vitest
   reported 4 files and 10 tests passed; TypeScript, ESLint for the updated
@@ -109,9 +162,9 @@ and results. Do not infer deployment from the source migration graph.
   worker, and scheduler configuration. No paid-subscription lifecycle source
   exists; provider notifications are from explicit tests, not continuous
   monitoring.
-- The new `0012` migration, current source checkout, and target staging flow
-  still need their own migration and smoke-test evidence before deployment
-  readiness can be claimed.
+- The source graph currently includes Composio credential migrations through
+  `20261019_0004`; no target database or live Composio OAuth/tool flow was
+  inspected during this documentation pass.
 
 Use [`01-end-to-end-handoff.md`](01-end-to-end-handoff.md) for release gates
 and [`02-production-e2e-verification.md`](02-production-e2e-verification.md)

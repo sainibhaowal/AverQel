@@ -20,14 +20,17 @@ directory or imply that deployment-dependent services are active.
    work files and deliverables; it is separate from Documents Hub source files.
 5. **AI Providers** owns model-provider configuration, model assignments, and provider health.
    Providers are shared runtime dependencies for Query and DeepSpace.
-6. **MCP Servers** owns the approved marketplace, supported authorization flows, connection
-   health, tool policies, action approvals, and supported DeepSpace or conversation scopes.
+6. **MCP Servers** owns the Composio live app catalog, each user's Composio project key and
+   account-owned app sessions, tool policies, action approvals, and supported DeepSpace or
+   conversation scopes.
 7. **Workspace controls** groups user-facing profile, plan and storage, privacy, support, and
    feedback information. Administration-only interfaces are not part of public landing content.
 
-The hero may summarize the connected workspace and retain its existing runtime visualization.
-Product details below it must remain grouped under the relevant product section. The call to action
-and footer follow the product areas.
+The landing call-to-action orbit illustrates an example grounded-answer path: selected sources,
+selected model, optional approved tools, and an answer with citations. The illustration does not
+imply that every request uses sources or tools.
+Product details below the hero must remain grouped under the relevant product section. The call to
+action and footer follow the product areas.
 
 Landing cards summarize the main user-facing workflows; they are not a list of every API operation.
 Detailed behavior, permission requirements, and deployment gates belong in the linked product guides.
@@ -55,7 +58,7 @@ conversation history and DeepSpace agent runs and Library files.
 2. `frontend/app/components/marketing/ProductDomains.tsx` owns the ordered product sections and
    the feature cards within each section.
 3. `frontend/app/components/marketing/HeroSection.tsx` and `MobileNav.tsx` link to those sections;
-   the hero runtime visualization remains a separate, unchanged component.
+   the hero runtime visualization remains a separate canvas component.
 4. `frontend/app/components/layout/Footer.tsx` links to the same product sections and public help,
    account, and policy guides.
 5. Documentation links point to the corresponding guides under
@@ -66,9 +69,11 @@ conversation history and DeepSpace agent runs and Library files.
 1. Supported document types and processing behavior are determined by the ingestion extractors and
    deployment configuration. Do not present remote apps or MCP servers as document formats.
 2. Provider access depends on configured credentials, assignments, and service health.
-3. MCP connections originate from approved catalog entries and remain subject to ownership,
-   endpoint validation, tool policies, and action approval requirements. Do not promise arbitrary
-   endpoint registration.
+3. The MCP Marketplace displays Composio's live catalog; the catalog and its counts can change and
+   do not guarantee that every app is enabled for a user's project. Users supply their own
+   account-scoped Composio key. OAuth apps also require the deployment's public callback origin.
+   DeepSpace still checks connection ownership, current tool definitions, policy, and action
+   approvals. Do not promise arbitrary endpoint registration.
 4. DeepSpace schedules require the configured worker and scheduler services for recurring
    execution. Sandbox and voice capabilities can have separate deployment requirements.
 5. Qel Connect retains its experimental beta label until release status changes.

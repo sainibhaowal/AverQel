@@ -2,23 +2,23 @@
 
 ## 1. What it does
 
-1. Discovers approved MCP servers and tools.
-2. Connects through OAuth or supported transports.
-3. Encrypts credentials and enforces tenant/user ownership.
+1. Browses Composio's live app and tool catalog and discovers tools for connected apps.
+2. Uses each account's Composio project key to create its own hosted app sessions.
+3. Encrypts stored credentials and enforces tenant/user ownership.
 4. Requires policy and approval controls before side-effecting actions.
 5. Merges connected tools into the provider-independent DeepSpace loop.
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant UI as MCP marketplace
+    participant UI as MCP Marketplace
     participant API as Integration API
     participant Vault as Encrypted credential store
-    participant MCP as Approved MCP server
+    participant MCP as Composio hosted MCP app
     participant Agent as DeepSpace tool loop
-    User->>UI: Choose approved connector
-    UI->>API: Connect or authorize
-    API->>Vault: Store encrypted credential
+    User->>UI: Add own project key and choose app
+    UI->>API: Fetch catalog and connect app
+    API->>Vault: Store encrypted key and session reference
     Agent->>API: Discover allowed tools
     API->>MCP: Call approved tool
     MCP-->>API: Result
@@ -28,7 +28,7 @@ sequenceDiagram
 
 | Public use case | What the user gets | Required protection |
 | --- | --- | --- |
-| Connect a supported service | Discoverable tools in DeepSpace | OAuth or encrypted credentials |
+| Connect an app from the catalog | Discoverable tools in DeepSpace | User-owned encrypted Composio key and session |
 | Ask DeepSpace to read connected data | Provider-independent tool result | Tenant and user ownership checks |
 | Ask for a side-effecting action | Approval prompt before execution | Policy gate and audit event |
 
@@ -43,11 +43,13 @@ sequenceDiagram
 
 ## 3. Execution flow
 
-1. Users choose an approved catalog entry.
-2. OAuth or credentials are stored through the encrypted integration service.
-3. Tool discovery is filtered by connection and policy.
-4. DeepSpace requests approval before an action requiring it.
-5. The bridge records the result and audit event.
+1. Each user saves their own Composio project key under Providers → MCP.
+2. The Marketplace fetches Composio's live app catalog; the user selects an app.
+3. Composio authorization is completed when that app requires it.
+4. AverQel stores an encrypted hosted-session reference scoped to the user's tenant and account.
+5. Tool discovery is filtered by connection and policy.
+6. DeepSpace requests approval before a side-effecting action.
+7. The bridge records the result and audit event.
 
 ## 4.1 DeepSpace catalogue protection
 
@@ -91,21 +93,20 @@ result budgets are emitted in DeepSpace metrics for operational monitoring.
 
 ## 4. What users see
 
-1. Approved connectors appear in the MCP marketplace.
+1. Composio's current app catalog appears in the MCP Marketplace.
 2. Users can inspect tools, change policy, connect, refresh, or disconnect.
 3. Side-effecting calls display an approval prompt before execution.
 
 ## 5. Security and production state
 
-1. Arbitrary remote servers are rejected; only approved catalog entries can be
-   connected.
+1. Arbitrary user-entered endpoints are not supported. Marketplace apps come
+   from Composio's live catalog and availability depends on the user's project.
 2. Tenant/user ownership checks protect servers, tools, and tokens.
-3. No new connector is invented without a requested service and verified
-   catalog metadata.
-4. The repository implements a provider-independent runtime for approved MCP
-   catalog entries. Each deployment still needs valid provider credentials,
-   network policy, and provider-specific smoke tests before the connector can
-   be considered ready there.
+3. Each user must supply their own Composio key; there is no shared platform
+   key for the hosted app catalog.
+4. OAuth apps require the deployment's public AverQel callback origin. A
+   source-level implementation does not prove that the origin, provider
+   availability, migrations, or outbound network are ready in a deployment.
 
 ## 6. Verification
 
@@ -115,42 +116,36 @@ result budgets are emitted in DeepSpace metrics for operational monitoring.
 
 ## 7. Composio-hosted app catalog
 
-Composio is a separate, live app catalog exposed from the MCP Marketplace. It
-does not replace the six existing AverQel marketplace categories or their
-curated providers. Toolkit and tool metadata are fetched from the Composio API
-on demand, paginated, and refreshed by the user; the available app count can
-change over time. AverQel does not describe this dynamic third-party catalog as
-individually reviewed by AverQel.
+The Marketplace displays Composio's live app and tool catalog instead of
+AverQel's eight bundled Google, GitHub, Notion, and Slack connector cards. The
+catalog is fetched on demand and paginated; its total changes with Composio's
+catalog. Existing installed connections are retained, and this change does not
+delete their records. See the detailed [Composio setup and data-flow guide](mcp/03-composio-hosted-mcp.md).
 
-The platform administrator configures one Composio project API key through
-`PUT /api/v1/admin/providers/composio`. AverQel validates it, encrypts it with
-the connector secret keyring, and never returns it to a browser. It must have
-the Composio project permissions needed to list toolkits and tools, create and
-use sessions, and execute session-linked MCP tools. Users do not need to enter
-that platform key: Composio identities are derived from the user's AverQel
-tenant and account UUIDs, and each connected server is stored under that
-tenant/user pair.
+Each user enters their own Composio project API key under Providers → MCP.
+AverQel validates the key, encrypts it with the connector-secret backend, and
+binds its associated data and database row-level security to the user's tenant
+and account IDs. The authenticated account alone can read, replace, or remove
+its key through the MCP credential routes. The server decrypts the key for
+Composio requests; it is not end-to-end encrypted from the running server.
+There is no shared platform Composio key or admin key-management route.
 
-Before users can connect apps, the operator must set the Composio project
-callback verifier URL to the HTTPS callback shown in the marketplace and set
-`COMPOSIO_CALLBACK_VERIFIER_ENABLED=true` in the backend environment. The
-callback accepts the one-time Composio `session_uri`, removes it from browser
-history, and completes it under the currently authenticated AverQel account.
-Composio verifies that the callback session belongs to the same stable user
-identity. A different signed-in AverQel account cannot claim the connection.
+For OAuth apps, the deployment operator configures AverQel's public HTTPS
+origin (`AVERQEL_PUBLIC_ORIGIN`). Users do not configure a Composio callback
+verifier. Composio returns the browser to AverQel with the connected-account
+ID; AverQel checks it against the pending request stored for the signed-in
+user, then confirms the account is active and belongs to the requested toolkit
+through that user's own Composio key. A different AverQel account cannot claim
+the connection, and callback parameters alone are not accepted as proof.
 
-Each app receives its own hosted MCP session configured only for that app's
-toolkit. Its session identifier is encrypted with the configured
-connector-secret backend and tenant, user, and server identifiers as
-associated data. The Composio MCP endpoint must use the
-expected Composio host and approved HTTPS transport. Session headers remain
-server-side and are never returned to the browser or the model. Composio
-connection data, tool inputs, and results are processed by Composio and the
-connected app provider; consult their notices and the deployment's subprocessor
-disclosure before enabling the integration.
+Each app receives its own hosted MCP session for that toolkit. The session ID
+is encrypted with tenant, user, and server IDs as associated data. The MCP
+endpoint must use the expected Composio host and approved HTTPS transport;
+session headers stay server-side. Composio and the connected app provider
+process the authorization, tool inputs, and results.
 
-The standard MCP worker discovers the connected app's live tools, and the
-DeepSpace bridge exposes them only through its private broker. DeepSpace gets
+The standard MCP worker discovers each connected app's live tools, and the
+DeepSpace bridge exposes them through its private broker. DeepSpace gets
 bounded tool references and requests an individual schema when needed; it does
 not receive the complete Composio catalog or credentials. Reads may run under
 the new connection's default policy. Writes, deletions, and external messages
@@ -158,9 +153,9 @@ require the existing approval flow before execution, even when a user's tool
 mode is set to Always allow. Unknown tool names default to write risk. Users
 can lower the risk ceiling or block individual tools in the MCP Inspector.
 
-For setup, required callback configuration, provider data handling, and live
+For setup, required callback-origin configuration, provider data handling, and live
 deployment checks, see
 [`03-composio-hosted-mcp.md`](mcp/03-composio-hosted-mcp.md). A source-level
-implementation does not prove that a Composio key, callback verifier, database
+implementation does not prove that a Composio key, public callback route, database
 migration, network route, or live app authorization has been configured for a
 specific deployment.

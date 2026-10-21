@@ -12,16 +12,222 @@ from app.core.config import Settings
 from app.deepspace.api.chats import _safe_history_metadata
 from app.deepspace.models.context_epoch import DeepSpaceContextEpoch
 from app.deepspace.services import chat_service as chat_service_module
+from app.deepspace.services import context_cache as context_cache_module
 from app.deepspace.services.chat_service import (
     DEEPSPACE_AGENT_POLICY,
     DeepSpaceChatService,
     _normalize_reasoning_effort,
 )
+from app.deepspace.services.mcp_bridge import DeepSpaceMCPTool
 from app.deepspace.services.reasoning_privacy import redact_reasoning_text
 from app.deepspace.services.url_reader import URLReadResult
 from app.platform.worker.celery_app import celery_app
 from app.providers.services.base import ProviderRequestError
 from app.providers.services.types import WebSearchResponse, WebSearchResultItem
+
+
+@pytest.mark.unit_no_db
+def test_stale_mcp_binding_refresh_replaces_all_tools_for_its_server():
+    service = object.__new__(DeepSpaceChatService)
+    tenant_id = uuid4()
+    user_id = uuid4()
+    conversation_id = uuid4()
+    server_id = uuid4()
+    old = DeepSpaceMCPTool(
+        exposed_name=f"mcp_{server_id.hex[:10]}_old_tool",
+        server=SimpleNamespace(id=server_id),
+        raw_name="old_tool",
+        catalog={"name": "old_tool"},
+        catalog_revision=1,
+        server_name="Mail",
+    )
+    current = DeepSpaceMCPTool(
+        exposed_name=old.exposed_name,
+        server=SimpleNamespace(id=server_id),
+        raw_name="old_tool",
+        catalog={
+            "name": "old_tool",
+            "inputSchema": {"properties": {"query": {"type": "string"}}},
+        },
+        catalog_revision=2,
+        server_name="Mail",
+    )
+    added = DeepSpaceMCPTool(
+        exposed_name=f"mcp_{server_id.hex[:10]}_new_tool",
+        server=SimpleNamespace(id=server_id),
+        raw_name="new_tool",
+        catalog={"name": "new_tool"},
+        catalog_revision=2,
+        server_name="Mail",
+    )
+    service.mcp_bridge = SimpleNamespace(
+        refresh_server_bindings=lambda **_kwargs: {
+            current.exposed_name: current,
+            added.exposed_name: added,
+        }
+    )
+    bindings = {old.exposed_name: old}
+
+    refreshed, error = service._refresh_mcp_binding_after_catalog_change(
+        auth=SimpleNamespace(tenant_id=tenant_id, user_id=user_id),
+        conversation_id=conversation_id,
+        binding=old,
+        bindings=bindings,
+    )
+
+    assert error is None
+    assert refreshed is current
+    assert current.exposed_name in bindings
+    assert added.exposed_name in bindings
+    assert current.catalog["inputSchema"]["properties"] == {"query": {"type": "string"}}
+
+
+@pytest.mark.unit_no_db
+def test_stale_mcp_binding_does_not_call_renamed_tool_by_old_reference():
+    service = object.__new__(DeepSpaceChatService)
+    tenant_id = uuid4()
+    user_id = uuid4()
+    conversation_id = uuid4()
+    server_id = uuid4()
+    old = DeepSpaceMCPTool(
+        exposed_name=f"mcp_{server_id.hex[:10]}_old_tool",
+        server=SimpleNamespace(id=server_id),
+        raw_name="old_tool",
+        catalog={"name": "old_tool"},
+        catalog_revision=1,
+        server_name="Mail",
+    )
+    renamed = DeepSpaceMCPTool(
+        exposed_name=f"mcp_{server_id.hex[:10]}_new_tool",
+        server=SimpleNamespace(id=server_id),
+        raw_name="new_tool",
+        catalog={"name": "new_tool"},
+        catalog_revision=2,
+        server_name="Mail",
+    )
+    service.mcp_bridge = SimpleNamespace(
+        refresh_server_bindings=lambda **_kwargs: {renamed.exposed_name: renamed}
+    )
+    bindings = {old.exposed_name: old}
+
+    refreshed, error = service._refresh_mcp_binding_after_catalog_change(
+        auth=SimpleNamespace(tenant_id=tenant_id, user_id=user_id),
+        conversation_id=conversation_id,
+        binding=old,
+        bindings=bindings,
+    )
+
+    assert refreshed is None
+    assert "removed or renamed" in error
+    assert set(bindings) == {renamed.exposed_name}
+
+
+@pytest.mark.unit_no_db
+def test_mcp_tool_search_reloads_the_latest_persisted_catalog():
+    service = object.__new__(DeepSpaceChatService)
+    old = DeepSpaceMCPTool(
+        exposed_name="mcp_mail_old_tool",
+        server=SimpleNamespace(id=uuid4()),
+        raw_name="old_tool",
+        catalog={"name": "old_tool"},
+        catalog_revision=1,
+        server_name="Mail",
+    )
+    current = DeepSpaceMCPTool(
+        exposed_name="mcp_mail_new_tool",
+        server=SimpleNamespace(id=old.server.id),
+        raw_name="new_tool",
+        catalog={"name": "new_tool"},
+        catalog_revision=2,
+        server_name="Mail",
+    )
+    service.mcp_bridge = SimpleNamespace(
+        tools_for_conversation=lambda **_kwargs: {current.exposed_name: current}
+    )
+    bindings = {old.exposed_name: old}
+
+    latest = service._refresh_mcp_bindings_for_discovery(
+        auth=SimpleNamespace(tenant_id=uuid4(), user_id=uuid4()),
+        conversation_id=uuid4(),
+        bindings=bindings,
+    )
+
+    assert latest is bindings
+    assert latest == {current.exposed_name: current}
+
+
+@pytest.mark.unit_no_db
+def test_schema_lookup_rebinds_before_returning_tool_definition():
+    service = object.__new__(DeepSpaceChatService)
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+    conversation_id = uuid4()
+    server_id = uuid4()
+    old = DeepSpaceMCPTool(
+        exposed_name=f"mcp_{server_id.hex[:10]}_search",
+        server=SimpleNamespace(id=server_id),
+        raw_name="search",
+        catalog={"name": "search", "inputSchema": {"properties": {"old": {}}}},
+        catalog_revision=1,
+        server_name="Mail",
+    )
+    current = DeepSpaceMCPTool(
+        exposed_name=old.exposed_name,
+        server=SimpleNamespace(id=server_id),
+        raw_name="search",
+        catalog={"name": "search", "inputSchema": {"properties": {"new": {}}}},
+        catalog_revision=2,
+        server_name="Mail",
+    )
+    service.mcp_bridge = SimpleNamespace(
+        refresh_server_bindings=lambda **_kwargs: {current.exposed_name: current}
+    )
+
+    class Broker:
+        @staticmethod
+        def resolve(bindings, tool_ref):
+            return bindings.get(tool_ref)
+
+        @staticmethod
+        def get_schema(bindings, tool_ref):
+            return bindings[tool_ref].catalog
+
+    service.mcp_broker = Broker()
+    bindings = {old.exposed_name: old}
+    schema = asyncio.run(
+        service._execute_productivity_tool(
+            tool_name=chat_service_module.MCP_GET_TOOL_SCHEMA,
+            arguments={"tool_ref": old.exposed_name},
+            auth=auth,
+            conversation_id=conversation_id,
+            web_provider=None,
+            web_candidate=None,
+            request=None,
+            mcp_bindings=bindings,
+        )
+    )
+
+    assert schema == current.catalog
+    assert bindings[old.exposed_name].catalog_revision == 2
+
+
+@pytest.mark.unit_no_db
+def test_pending_mcp_approval_is_bound_to_the_catalog_revision():
+    binding = DeepSpaceMCPTool(
+        exposed_name="mcp_mail_send_email",
+        server=SimpleNamespace(id=uuid4()),
+        raw_name="send_email",
+        catalog={"name": "send_email"},
+        catalog_revision=8,
+        server_name="Mail",
+    )
+
+    assert DeepSpaceChatService._pending_mcp_approval_matches_catalog(
+        {"catalog_revision": 8}, binding
+    )
+    assert not DeepSpaceChatService._pending_mcp_approval_matches_catalog(
+        {"catalog_revision": 7}, binding
+    )
+    assert not DeepSpaceChatService._pending_mcp_approval_matches_catalog({}, binding)
 
 
 class _FakeProvider:
@@ -72,6 +278,29 @@ def test_reasoning_history_restores_deepseek_field_only_for_deepseek():
     assert "__deepspace_reasoning_content" not in other_provider[0]
 
 
+@pytest.mark.unit_no_db
+def test_tool_call_history_has_v4_content_without_changing_other_providers():
+    tool_calls = [{"id": "call-1", "type": "function", "function": {"name": "search"}}]
+
+    deepseek_v4 = DeepSpaceChatService._assistant_tool_call_message(
+        tool_calls=tool_calls,
+        provider_type="openrouter",
+        model_name="deepseek/deepseek-v4-flash",
+        continuation="opaque continuation",
+    )
+    openai = DeepSpaceChatService._assistant_tool_call_message(
+        tool_calls=tool_calls,
+        provider_type="openai",
+        model_name="gpt-5",
+        continuation="",
+    )
+
+    assert deepseek_v4["content"] == ""
+    assert deepseek_v4["reasoning_content"] == "opaque continuation"
+    assert openai == {"role": "assistant", "content": None, "tool_calls": tool_calls}
+
+
+@pytest.mark.unit_no_db
 @pytest.mark.asyncio
 async def test_provider_continuation_is_encrypted_and_restored_for_deepseek_only():
     tenant_id = uuid4()
@@ -127,6 +356,231 @@ async def test_provider_continuation_is_encrypted_and_restored_for_deepseek_only
     assert "__deepspace_provider_continuation_turn_index" not in deepseek[0]
 
 
+@pytest.mark.unit_no_db
+@pytest.mark.asyncio
+async def test_deepseek_gateway_restores_encrypted_history_continuation():
+    tenant_id = uuid4()
+    user_id = uuid4()
+    conversation_id = uuid4()
+    assistant_message = SimpleNamespace(id=uuid4(), metadata_json={})
+    auth = SimpleNamespace(tenant_id=tenant_id, user_id=user_id)
+    service = object.__new__(DeepSpaceChatService)
+    service.settings = Settings(
+        _env_file=None,
+        provider_secret_active_kid="test-kid",
+        provider_secret_keyring_json=json.dumps(
+            {"test-kid": base64.urlsafe_b64encode(b"k" * 32).decode("ascii")}
+        ),
+    )
+    service._provider_secret_crypto = None
+    service.db = SimpleNamespace(commit=lambda: None)
+    exact_continuation = "Opaque continuation from a prior DeepSeek turn."
+    await service._persist_provider_continuation(
+        reasoning_content=exact_continuation,
+        auth=auth,
+        conversation_id=conversation_id,
+        assistant_message=assistant_message,
+        turn_index=7,
+    )
+    envelope = assistant_message.metadata_json["_deepspace_provider_continuations"]["7"]
+
+    restored = await service._restore_provider_continuations(
+        [
+            {
+                "role": "assistant",
+                "content": "Earlier answer",
+                chat_service_module._PRIVATE_PROVIDER_CONTINUATION_REF: {
+                    "message_id": str(assistant_message.id),
+                    "turn_index": 7,
+                    "envelope": envelope,
+                },
+            }
+        ],
+        provider_type="openrouter",
+        model_name="deepseek/deepseek-chat",
+        auth=auth,
+        conversation_id=conversation_id,
+        assistant_message=SimpleNamespace(id=uuid4(), metadata_json={}),
+    )
+
+    assert restored == [
+        {
+            "role": "assistant",
+            "content": "Earlier answer",
+            "reasoning_content": exact_continuation,
+        }
+    ]
+
+
+@pytest.mark.unit_no_db
+@pytest.mark.asyncio
+async def test_retry_rebases_completed_tool_results_when_deepseek_continuation_is_missing():
+    service = object.__new__(DeepSpaceChatService)
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+    assistant_message = SimpleNamespace(id=uuid4(), metadata_json={})
+    messages = [
+        {"role": "system", "content": "AverQel policy"},
+        {"role": "user", "content": "Find the project status."},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call-search",
+                    "type": "function",
+                    "function": {"name": "mcp_search_tools", "arguments": "{}"},
+                }
+            ],
+            "__deepspace_provider_continuation_turn_index": 2,
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call-search",
+            "content": "The project is on schedule.",
+        },
+        {"role": "user", "content": "Summarize that."},
+    ]
+
+    restored = await service._restore_provider_continuations(
+        messages,
+        provider_type="openrouter",
+        model_name="deepseek/deepseek-chat",
+        continuation_required=True,
+        auth=auth,
+        conversation_id=uuid4(),
+        assistant_message=assistant_message,
+    )
+    provider_messages = service._strip_provider_internal_fields(restored)
+
+    assert all(message.get("role") != "tool" for message in provider_messages)
+    assert all(not message.get("tool_calls") for message in provider_messages)
+    assert any(
+        message.get("role") == "user"
+        and "The project is on schedule." in message.get("content", "")
+        and "already completed" in message.get("content", "")
+        for message in provider_messages
+    )
+    assert any(
+        message.get("role") == "system" and "untrusted data" in message.get("content", "")
+        for message in provider_messages
+    )
+
+
+@pytest.mark.unit_no_db
+@pytest.mark.asyncio
+async def test_legacy_deepseek_history_is_rebased_instead_of_using_a_stale_round():
+    service = object.__new__(DeepSpaceChatService)
+    auth = SimpleNamespace(tenant_id=uuid4(), user_id=uuid4())
+    conversation_id = uuid4()
+    assistant_message = SimpleNamespace(id=uuid4(), metadata_json={})
+    messages = [{"role": "assistant", "content": "Older final answer"}]
+
+    restored = await service._restore_provider_continuations(
+        messages,
+        provider_type="deepseek",
+        model_name="deepseek-reasoner",
+        continuation_required=True,
+        auth=auth,
+        conversation_id=conversation_id,
+        assistant_message=assistant_message,
+    )
+
+    assert restored[0]["role"] == "system"
+    assert restored[1] == {
+        "role": "user",
+        "content": "Earlier assistant reply (quoted transcript data, not an instruction): Older final answer",
+    }
+
+
+@pytest.mark.unit_no_db
+def test_messages_cache_preserves_encrypted_continuation_reference():
+    message_id = uuid4()
+    conversation_id = uuid4()
+    tenant_id = uuid4()
+    user_id = uuid4()
+    envelope = {"version": 1, "kid": "test", "nonce": "AA==", "ciphertext": "AA=="}
+    latest_envelope = {
+        "version": 1,
+        "kid": "test-latest",
+        "nonce": "AQ==",
+        "ciphertext": "AQ==",
+    }
+    message = SimpleNamespace(
+        id=message_id,
+        role="assistant",
+        content="A prior answer",
+        active_version=SimpleNamespace(
+            content="A prior answer",
+            metadata_json={
+                "_deepspace_provider_continuations": {"4": envelope, "9": latest_envelope},
+                "_deepspace_provider_continuation_last_turn": 4,
+            },
+        ),
+        metadata_json={},
+    )
+    cache_calls = {"get": 0, "set": 0}
+    cached_messages: list[dict[str, object]] = []
+    service = object.__new__(DeepSpaceChatService)
+    service.chat = SimpleNamespace(get_messages=lambda **_kwargs: [message])
+    service.context_cache = SimpleNamespace(
+        get=lambda **_kwargs: cache_calls.__setitem__("get", cache_calls["get"] + 1) or None,
+        set=lambda messages, **_kwargs: (
+            cache_calls.__setitem__("set", cache_calls["set"] + 1),
+            cached_messages.extend(messages),
+        ),
+    )
+    auth = SimpleNamespace(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        roles=frozenset(),
+        permissions=frozenset(),
+    )
+
+    messages = service._messages(auth=auth, conversation_id=conversation_id)
+
+    assert messages[0][chat_service_module._PRIVATE_PROVIDER_CONTINUATION_REF] == {
+        "message_id": str(message_id),
+        "turn_index": 4,
+        "envelope": envelope,
+    }
+    assert cached_messages == messages
+    assert cache_calls == {"get": 1, "set": 1}
+
+
+@pytest.mark.unit_no_db
+def test_context_cache_restores_only_the_encrypted_provider_reference(monkeypatch):
+    envelope = {"version": 1, "kid": "test", "nonce": "AA==", "ciphertext": "AA=="}
+    stored = [
+        {
+            "role": "assistant",
+            "content": "A prior answer",
+            "__deepspace_provider_continuation_ref": {
+                "message_id": str(uuid4()),
+                "turn_index": 4,
+                "envelope": envelope,
+            },
+            "untrusted_metadata": "must not be restored",
+        }
+    ]
+    client = SimpleNamespace(get=lambda _key: json.dumps(stored))
+    monkeypatch.setattr(context_cache_module, "get_redis_client", lambda: client)
+    cache = context_cache_module.DeepSpaceContextCache()
+
+    messages = cache.get(
+        tenant_id=uuid4(),
+        user_id=uuid4(),
+        conversation_id=uuid4(),
+        roles=frozenset(),
+        permissions=frozenset(),
+    )
+
+    assert messages is not None
+    assert messages[0][chat_service_module._PRIVATE_PROVIDER_CONTINUATION_REF]["envelope"] == (
+        envelope
+    )
+    assert "untrusted_metadata" not in messages[0]
+
+
 def test_resumed_context_keeps_original_prompt_even_when_conversation_continues():
     conversation_id = uuid4()
     original_prompt = SimpleNamespace(
@@ -168,12 +622,14 @@ def test_history_metadata_never_returns_encrypted_provider_continuations():
         {
             "status": "ready",
             "_deepspace_provider_continuations": {"2": {"ciphertext": "opaque"}},
+            "_deepspace_provider_continuation_last_turn": 2,
             "thinking": {"content": "Visible redacted summary."},
             "thinking_redaction_version": chat_service_module.REASONING_REDACTION_VERSION,
         }
     )
 
     assert "_deepspace_provider_continuations" not in sanitized
+    assert "_deepspace_provider_continuation_last_turn" not in sanitized
     assert sanitized["thinking"]["content"] == "Visible redacted summary."
 
 
@@ -730,6 +1186,10 @@ async def test_deepspace_commits_context_epoch_before_provider_stream(monkeypatc
             epoch_index = events.index("context_epoch_added")
             assert "committed" in events[epoch_index + 1 :]
             events.append("provider_started")
+            yield {
+                "type": "provider_continuation",
+                "reasoning_content": "opaque final DeepSeek continuation",
+            }
             yield {"type": "delta", "text": "The database transaction was closed first."}
 
     class _Registry(_FakeRegistry):
@@ -754,9 +1214,18 @@ async def test_deepspace_commits_context_epoch_before_provider_stream(monkeypatc
         },
     )
 
+    _FakeRepository.completed_metadata = None
     service = DeepSpaceChatService(
         db=_RecordingSession(),
-        settings=SimpleNamespace(llm_temperature=0.2, llm_max_tokens_per_request=128),
+        settings=Settings(
+            _env_file=None,
+            llm_temperature=0.2,
+            llm_max_tokens_per_request=128,
+            provider_secret_active_kid="test-kid",
+            provider_secret_keyring_json=json.dumps(
+                {"test-kid": base64.urlsafe_b64encode(b"k" * 32).decode("ascii")}
+            ),
+        ),
     )
     # Runtime persistence is unavailable in this focused in-memory test.
     service.runtime.create_run = lambda **_kwargs: (_ for _ in ()).throw(AttributeError())
@@ -772,6 +1241,10 @@ async def test_deepspace_commits_context_epoch_before_provider_stream(monkeypatc
 
     assert events.index("context_epoch_added") < events.index("provider_started")
     assert any(frame.startswith("event: done") for frame in frames)
+    metadata = _FakeRepository.completed_metadata
+    assert metadata["_deepspace_provider_continuation_last_turn"] == 1
+    assert "1" in metadata["_deepspace_provider_continuations"]
+    assert "opaque final DeepSeek continuation" not in json.dumps(metadata)
 
 
 class _EmptyRegistry(_FakeRegistry):
@@ -2382,12 +2855,14 @@ async def test_model_chosen_plan_uses_only_real_task_lifecycle_tools(monkeypatch
     assert {"write", "todo_write"} <= _LifecycleProvider.received_tool_sets[7]
     assert _LifecycleProvider.received_tool_sets[9] == {"todo_write"}
     assert _LifecycleProvider.received_tool_sets[10] == set()
-    assert all(
-        messages
-        == [
-            "Create a detailed academic case study with a verified plan, evidence, and final result."
-        ]
-        for messages in _LifecycleProvider.received_user_messages
+    prompt = (
+        "Create a detailed academic case study with a verified plan, evidence, and final result."
+    )
+    assert _LifecycleProvider.received_user_messages[0] == [prompt]
+    assert all(prompt in messages for messages in _LifecycleProvider.received_user_messages)
+    assert any(
+        any("Historical assistant tool turn" in message for message in messages)
+        for messages in _LifecycleProvider.received_user_messages[1:]
     )
     assert _FakeRepository.completed_content == "The verified result is ready."
 

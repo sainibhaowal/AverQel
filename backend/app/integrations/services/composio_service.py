@@ -9,7 +9,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 COMPOSIO_PROVIDER_PREFIX = "composio:"
 COMPOSIO_API_HOST = "backend.composio.dev"
-COMPOSIO_TOOLKIT_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,127}$")
+COMPOSIO_TOOLKIT_SLUG_PATTERN = re.compile(
+    r"^(?:[a-z0-9][a-z0-9_-]{0,127}|_[a-z0-9][a-z0-9_-]{0,126})$"
+)
 COMPOSIO_TOOL_PAGE_LIMIT = 100
 COMPOSIO_SCHEMA_FIELD_LIMIT = 100
 
@@ -51,6 +53,39 @@ def composio_provider_slug(toolkit_slug: str) -> str:
     return f"{COMPOSIO_PROVIDER_PREFIX}{toolkit_slug}"
 
 
+def composio_callback_url(public_origin: str | None, toolkit_slug: str) -> str | None:
+    """Build the user-facing OAuth redirect URL from AverQel's configured origin."""
+    origin = (public_origin or "").strip().rstrip("/")
+    try:
+        parsed = urlsplit(origin)
+        hostname = (parsed.hostname or "").lower()
+        local_http = parsed.scheme == "http" and hostname in {"localhost", "127.0.0.1", "::1"}
+        origin_port = parsed.port
+        if (
+            not origin
+            or (parsed.scheme != "https" and not local_http)
+            or not hostname
+            or parsed.username
+            or parsed.password
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or origin_port == 0
+        ):
+            return None
+        return urlunsplit(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                "/dashboard/mcp/composio/callback",
+                urlencode({"toolkit_slug": toolkit_slug}),
+                "",
+            )
+        )
+    except ValueError:
+        return None
+
+
 def is_composio_server(server: MCPServer) -> bool:
     return str(getattr(server, "provider_slug", None) or "").startswith(COMPOSIO_PROVIDER_PREFIX)
 
@@ -58,20 +93,17 @@ def is_composio_server(server: MCPServer) -> bool:
 def _credential_query(
     db: Session,
     *,
-    restore_tenant_id: uuid.UUID | None = None,
-    restore_user_id: uuid.UUID | None = None,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
 ) -> ComposioCredential | None:
-    # This singleton is only reachable through the platform-wide RLS bypass.
-    # Mutation endpoints also require the allowlisted platform-admin + MFA gate.
-    set_db_tenant_context(db, "bypass")
-    record = db.execute(
-        select(ComposioCredential).where(ComposioCredential.id == 1)
+    set_db_tenant_context(db, tenant_id)
+    set_db_user_context(db, user_id)
+    return db.execute(
+        select(ComposioCredential).where(
+            ComposioCredential.tenant_id == tenant_id,
+            ComposioCredential.user_id == user_id,
+        )
     ).scalar_one_or_none()
-    if restore_tenant_id is not None:
-        set_db_tenant_context(db, restore_tenant_id)
-    if restore_user_id is not None:
-        set_db_user_context(db, restore_user_id)
-    return record
 
 
 def _sdk(api_key: str) -> Any:
@@ -287,31 +319,18 @@ def classify_composio_tool(name: str, tool: dict[str, Any] | None = None) -> str
 
 
 class ComposioService:
-    """Use the platform key and tenant/user-bound hosted Composio sessions."""
+    """Use user-owned Composio keys and tenant/user-bound hosted sessions."""
 
     def __init__(self, db: Session, settings: Settings) -> None:
         self.db = db
         self.settings = settings
         self.crypto = ConnectorSecretCrypto(settings)
 
-    def credential_exists(
-        self, *, tenant_id: uuid.UUID | None = None, user_id: uuid.UUID | None = None
-    ) -> bool:
-        return (
-            _credential_query(
-                self.db,
-                restore_tenant_id=tenant_id,
-                restore_user_id=user_id,
-            )
-            is not None
-        )
+    def credential_exists(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        return _credential_query(self.db, tenant_id=tenant_id, user_id=user_id) is not None
 
     def _api_key(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> str:
-        record = _credential_query(
-            self.db,
-            restore_tenant_id=tenant_id,
-            restore_user_id=user_id,
-        )
+        record = _credential_query(self.db, tenant_id=tenant_id, user_id=user_id)
         if record is None:
             raise ComposioConfigurationError("Add your Composio project API key to continue.")
         try:
@@ -319,11 +338,11 @@ class ComposioService:
                 ciphertext=record.secret_ciphertext,
                 nonce=record.secret_nonce,
                 kid=record.secret_kid,
-                aad=b"composio:platform",
+                aad=self._credential_aad(tenant_id=tenant_id, user_id=user_id),
             )
             value = plaintext.decode("utf-8")
         except Exception as exc:  # noqa: BLE001
-            logger.error("Composio platform credential decryption failed")
+            logger.error("Composio user credential decryption failed")
             raise ComposioConfigurationError("The saved Composio key could not be opened.") from exc
         if not value:
             raise ComposioConfigurationError("The saved Composio key is empty.")
@@ -331,6 +350,10 @@ class ComposioService:
 
     def _client(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> Any:
         return _sdk(self._api_key(tenant_id=tenant_id, user_id=user_id))
+
+    @staticmethod
+    def _credential_aad(*, tenant_id: uuid.UUID, user_id: uuid.UUID) -> bytes:
+        return f"composio:{tenant_id}:{user_id}".encode()
 
     @staticmethod
     def _session_aad(*, tenant_id: uuid.UUID, user_id: uuid.UUID, server_id: uuid.UUID) -> bytes:
@@ -399,7 +422,7 @@ class ComposioService:
             ) from exc
         return session_id or None
 
-    def configure_key(self, *, api_key: str) -> None:
+    def configure_key(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, api_key: str) -> None:
         normalized = api_key.strip()
         if (
             len(normalized) < 12
@@ -415,7 +438,7 @@ class ComposioService:
                 "Composio rejected the API key or is temporarily unavailable."
             ) from exc
 
-        existing = _credential_query(self.db)
+        existing = _credential_query(self.db, tenant_id=tenant_id, user_id=user_id)
         had_existing = existing is not None
         old_key = None
         if existing is not None:
@@ -424,15 +447,18 @@ class ComposioService:
                     ciphertext=existing.secret_ciphertext,
                     nonce=existing.secret_nonce,
                     kid=existing.secret_kid,
-                    aad=b"composio:platform",
+                    aad=self._credential_aad(tenant_id=tenant_id, user_id=user_id),
                 ).decode("utf-8")
             except Exception:
                 old_key = None
 
-        encrypted = self.crypto.encrypt(normalized, aad=b"composio:platform")
+        encrypted = self.crypto.encrypt(
+            normalized, aad=self._credential_aad(tenant_id=tenant_id, user_id=user_id)
+        )
         if existing is None:
             existing = ComposioCredential(
-                id=1,
+                tenant_id=tenant_id,
+                user_id=user_id,
                 secret_ciphertext=encrypted.ciphertext,
                 secret_nonce=encrypted.nonce,
                 secret_kid=encrypted.kid,
@@ -443,17 +469,17 @@ class ComposioService:
             existing.secret_nonce = encrypted.nonce
             existing.secret_kid = encrypted.kid
         if had_existing and (old_key is None or not hmac.compare_digest(old_key, normalized)):
-            self._disable_all_sessions()
-        # Flush while the platform bypass transaction context is active. The
-        # admin route switches back to the caller's tenant scope before it
-        # writes the audit event; deferred ORM writes would then fail RLS.
+            self._disable_owner_sessions(tenant_id=tenant_id, user_id=user_id)
         self.db.flush()
 
-    def _disable_all_sessions(self) -> None:
-        set_db_tenant_context(self.db, "bypass")
+    def _disable_owner_sessions(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        set_db_tenant_context(self.db, tenant_id)
+        set_db_user_context(self.db, user_id)
         servers = (
             self.db.execute(
                 select(MCPServer).where(
+                    MCPServer.tenant_id == tenant_id,
+                    MCPServer.user_id == user_id,
                     MCPServer.provider_slug.like(f"{COMPOSIO_PROVIDER_PREFIX}%"),
                 )
             )
@@ -468,6 +494,7 @@ class ComposioService:
                 "composio_session_nonce",
                 "composio_session_kid",
                 "composio_connected_account_id",
+                "composio_pending_connected_account_id",
                 "mcp_tools_cache",
                 "mcp_catalog_tool_count",
                 "mcp_catalog_last_sync_at",
@@ -478,13 +505,11 @@ class ComposioService:
             server.status = "disconnected"
             server.last_error = None
 
-    def remove_key(self) -> None:
-        record = _credential_query(self.db)
+    def remove_key(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
+        record = _credential_query(self.db, tenant_id=tenant_id, user_id=user_id)
         if record is not None:
             self.db.delete(record)
-        self._disable_all_sessions()
-        # The singleton and cross-tenant session cleanup are platform-scoped.
-        # Persist them before the route restores its tenant scope for auditing.
+        self._disable_owner_sessions(tenant_id=tenant_id, user_id=user_id)
         self.db.flush()
 
     def list_toolkits(
@@ -536,6 +561,7 @@ class ComposioService:
         meta = raw.get("meta") if isinstance(raw.get("meta"), dict) else _dump(_field(item, "meta"))
         if not isinstance(meta, dict):
             meta = {}
+        slug = str(raw.get("slug") or _field(item, "slug") or "")
         categories = meta.get("categories") or []
         normalized_categories: list[str] = []
         for category in categories:
@@ -555,11 +581,28 @@ class ComposioService:
                 if isinstance(name, str) and name.strip():
                     normalized_schemes.append(name.strip())
         return {
-            "slug": str(raw.get("slug") or _field(item, "slug") or ""),
+            "slug": slug,
             "name": str(raw.get("name") or _field(item, "name") or ""),
             "description": str(meta.get("description") or ""),
-            "logo_url": meta.get("logo") if isinstance(meta.get("logo"), str) else None,
+            # Toolkit metadata can point to app-owned image hosts, and some
+            # of those URLs are stale. Use Composio's maintained toolkit logo
+            # CDN with the catalog slug instead of exposing arbitrary hosts.
+            "logo_url": (
+                f"https://logos.composio.dev/api/{slug}"
+                if COMPOSIO_TOOLKIT_SLUG_PATTERN.fullmatch(slug)
+                else None
+            ),
             "app_url": meta.get("app_url") if isinstance(meta.get("app_url"), str) else None,
+            "auth_guide_url": (
+                raw.get("auth_guide_url") if isinstance(raw.get("auth_guide_url"), str) else None
+            ),
+            "version": meta.get("version") if isinstance(meta.get("version"), str) else None,
+            "created_at": (
+                meta.get("created_at") if isinstance(meta.get("created_at"), str) else None
+            ),
+            "updated_at": (
+                meta.get("updated_at") if isinstance(meta.get("updated_at"), str) else None
+            ),
             "categories": normalized_categories,
             "tool_count": int(meta.get("tools_count") or 0),
             "auth_schemes": normalized_schemes,
@@ -637,20 +680,26 @@ class ComposioService:
             raise ComposioConfigurationError("Composio did not return this app's metadata.")
         authorization_required = not details["no_auth"]
         if authorization_required:
-            if not self.settings.composio_callback_verifier_enabled:
-                raise ComposioConfigurationError(
-                    "Composio OAuth identity verification is not enabled for this deployment."
-                )
             parsed_callback_url = urlsplit(callback_url or "")
+            callback_hostname = (parsed_callback_url.hostname or "").lower()
+            callback_port = parsed_callback_url.port
+            local_http = parsed_callback_url.scheme == "http" and callback_hostname in {
+                "localhost",
+                "127.0.0.1",
+                "::1",
+            }
+            callback_toolkits = parse_qs(parsed_callback_url.query).get("toolkit_slug", [])
             if (
-                parsed_callback_url.scheme != "https"
-                or not parsed_callback_url.hostname
+                (parsed_callback_url.scheme != "https" and not local_http)
+                or not callback_hostname
                 or parsed_callback_url.username
                 or parsed_callback_url.password
-                or parsed_callback_url.port not in (None, 443)
+                or callback_port == 0
+                or parsed_callback_url.path != "/dashboard/mcp/composio/callback"
+                or callback_toolkits != [toolkit_slug]
             ):
                 raise ComposioConfigurationError(
-                    "Set the public HTTPS origin before connecting this Composio app."
+                    "Set AverQel's public HTTPS URL before connecting this Composio app."
                 )
 
         provider_slug = composio_provider_slug(toolkit_slug)
@@ -693,9 +742,15 @@ class ComposioService:
                     mcp=True,
                 )
             authorization_url = None
+            pending_account_id = None
             if authorization_required:
                 request = session.authorize(toolkit_slug, callback_url=callback_url)
                 authorization_url = str(request.redirect_url)
+                pending_account_id = str(_field(request, "id", "") or "").strip()
+                if not pending_account_id or len(pending_account_id) > 256:
+                    raise ComposioConfigurationError(
+                        "Composio did not return a valid connection request."
+                    )
                 parsed_authorization_url = urlsplit(authorization_url)
                 authorization_host = (parsed_authorization_url.hostname or "").lower()
                 if (
@@ -753,6 +808,12 @@ class ComposioService:
                 "categories": details["categories"],
             }
         )
+        if pending_account_id:
+            # Bind the redirect to the exact owner-scoped request created above.
+            # A callback query value alone is never accepted as proof of ownership.
+            config["composio_pending_connected_account_id"] = pending_account_id
+        else:
+            config.pop("composio_pending_connected_account_id", None)
         server.name = details["name"]
         server.transport = "streamable_http"
         server.enabled = True
@@ -776,53 +837,40 @@ class ComposioService:
             raise ComposioConfigurationError("The Composio app identifier is invalid.")
 
     def complete_auth(
-        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, session_uri: str
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        toolkit_slug: str,
+        connected_account_id: str,
+        status: str,
     ) -> MCPServer:
-        if not self.settings.composio_callback_verifier_enabled:
-            raise ComposioConfigurationError("Composio OAuth verification is not enabled.")
-        parsed_session_uri = urlsplit(session_uri)
-        if (
-            len(session_uri) > 4096
-            or parsed_session_uri.scheme != "https"
-            or (parsed_session_uri.hostname or "").lower() != COMPOSIO_API_HOST
-            or parsed_session_uri.username
-            or parsed_session_uri.password
-            or parsed_session_uri.port not in (None, 443)
-        ):
-            raise ComposioConfigurationError("The Composio authorization response is invalid.")
-        client = self._client(tenant_id=tenant_id, user_id=user_id)
-        try:
-            result = client.connected_accounts.complete_auth(
-                user_id=composio_user_id(tenant_id, user_id),
-                session_uri=session_uri,
-            )
-        except Exception as exc:  # noqa: BLE001
-            # Completion errors must never return the single-use session URI.
-            raise ComposioConfigurationError(
-                "Composio could not verify this authorization. Return to the same signed-in AverQel account and retry."
-            ) from exc
-        toolkit_slug = str(_field(result, "toolkit_slug", "") or "").strip().lower()
-        account_id = str(_field(result, "connected_account_id", "") or "").strip()
+        """Verify a standard Composio redirect against its owner-scoped pending request."""
         self._validate_slug(toolkit_slug)
-        if not account_id:
-            raise ComposioConfigurationError("Composio did not return a connected account.")
-
+        account_id = connected_account_id.strip()
+        if not account_id or len(account_id) > 256 or any(ord(char) < 33 for char in account_id):
+            raise ComposioConfigurationError("The Composio authorization response is invalid.")
+        if status not in {"success", "failed"}:
+            raise ComposioConfigurationError("The Composio authorization response is invalid.")
         set_db_tenant_context(self.db, tenant_id)
         set_db_user_context(self.db, user_id)
         server = self.db.execute(
-            select(MCPServer).where(
+            select(MCPServer)
+            .where(
                 MCPServer.tenant_id == tenant_id,
                 MCPServer.user_id == user_id,
                 MCPServer.provider_slug == composio_provider_slug(toolkit_slug),
                 MCPServer.status == "needs_auth",
             )
+            .with_for_update()
         ).scalar_one_or_none()
         if server is None:
             raise ComposioConfigurationError("No matching Composio app connection was started.")
         config = dict(server.config or {})
         if (
-            not config.get("composio_session_ciphertext")
+            config.get("composio_pending_connected_account_id") != account_id
             or config.get("composio_toolkit_slug") != toolkit_slug
+            or not config.get("composio_session_ciphertext")
             or not self._decrypt_session_id(
                 config,
                 tenant_id=tenant_id,
@@ -831,8 +879,47 @@ class ComposioService:
             )
         ):
             raise ComposioConfigurationError("The Composio session does not match this app.")
+
+        if status == "failed":
+            config.pop("composio_pending_connected_account_id", None)
+            server.config = config
+            server.status = "disconnected"
+            server.enabled = False
+            server.last_error = None
+            self.db.commit()
+            set_db_tenant_context(self.db, tenant_id)
+            set_db_user_context(self.db, user_id)
+            self.db.refresh(server)
+            return server
+
+        expected_composio_user_id = composio_user_id(tenant_id, user_id)
+        client = self._client(tenant_id=tenant_id, user_id=user_id)
+        try:
+            account = client.connected_accounts.wait_for_connection(account_id, timeout=5)
+        except Exception as exc:  # noqa: BLE001
+            raise ComposioConfigurationError(
+                "Composio could not verify this connection. Return to the same signed-in AverQel account and retry."
+            ) from exc
+        account_toolkit = _field(account, "toolkit")
+        returned_toolkit_slug = str(_field(account_toolkit, "slug", "") or "").strip().lower()
+        returned_account_id = str(_field(account, "id", "") or "").strip()
+        returned_user_id = str(_field(account, "user_id", "") or "").strip()
+        if (
+            returned_account_id != account_id
+            or returned_toolkit_slug != toolkit_slug
+            or str(_field(account, "status", "")).upper() != "ACTIVE"
+            or (
+                returned_user_id
+                and not hmac.compare_digest(returned_user_id, expected_composio_user_id)
+            )
+        ):
+            raise ComposioConfigurationError(
+                "The Composio account does not match this AverQel user and app."
+            )
+
         server.account_identity = {"account_id": account_id, "identity_source": "composio"}
         config["composio_connected_account_id"] = account_id
+        config.pop("composio_pending_connected_account_id", None)
         server.config = config
         server.status = "connecting"
         server.last_error = None

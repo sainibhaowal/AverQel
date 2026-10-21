@@ -98,6 +98,21 @@ class AdminUserListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class PlatformAdminAccessResponse(BaseModel):
+    allowed: bool
+    reason: (
+        Literal[
+            "ADMIN_ROLE_REQUIRED",
+            "PLATFORM_ADMIN_ALLOWLIST_REQUIRED",
+            "ADMIN_MFA_SETUP_REQUIRED",
+            "ADMIN_MFA_REQUIRED",
+        ]
+        | None
+    ) = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class AdminUserDetailResponse(BaseModel):
     user: AdminUserSummaryResponse
 

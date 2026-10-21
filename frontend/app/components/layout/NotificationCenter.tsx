@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { fetchWithAuth } from "@/lib/api";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 
 type NotificationItem = {
@@ -538,9 +539,11 @@ export default function NotificationCenter() {
                 </div>
               </div>
               {loading ? (
-                <div className="theme-panel-muted text-muted-foreground animate-pulse rounded-2xl px-4 py-16 text-center text-sm">
-                  Loading notifications...
-                </div>
+                <AverQelLoading
+                  label="Loading notifications…"
+                  size="compact"
+                  className="theme-panel-muted rounded-2xl px-4 py-8"
+                />
               ) : notifications.length === 0 ? (
                 <div className="theme-panel-muted text-muted-foreground rounded-2xl border border-white/5 bg-white/[0.01] px-4 py-16 text-center text-sm">
                   {failedFeeds.length > 0
@@ -623,7 +626,11 @@ export default function NotificationCenter() {
                   disabled={loadingOlder}
                   className="theme-chip text-foreground/70 mt-4 h-9 w-full rounded-xl text-xs font-semibold disabled:opacity-50"
                 >
-                  {loadingOlder ? "Loading older notifications…" : "Load older notifications"}
+                  {loadingOlder ? (
+                    <AverQelLoading size="inline" label="Loading older notifications" />
+                  ) : (
+                    "Load older notifications"
+                  )}
                 </button>
               ) : null}
             </div>

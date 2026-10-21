@@ -19,6 +19,7 @@ import { useAuth } from "@/app/context/AuthContext";
 import { hasAdminRole } from "@/lib/roles";
 
 import ChatSidebar from "@/app/components/dashboard/ChatSidebar";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { fetchWithAuth } from "@/lib/api";
 import { useRealtimeEvents } from "@/lib/realtime";
 import { saveMCPActiveContext } from "@/lib/mcp-context";
@@ -3271,27 +3272,21 @@ export default function DeepSpaceChatClient({
               isMobileStacked ? "pb-24 sm:pr-12 sm:pl-4" : "sm:pr-12 sm:pl-4"
             }`}
           >
-            {isConversationSwitching ? (
+            {isConversationSwitching && selectedConversationLoadFailed ? (
               <div
                 className="sticky top-2 z-30 mx-auto mb-3 flex w-fit max-w-[min(36rem,100%)] items-center gap-3 rounded-xl border border-cyan-200/70 bg-white/95 px-4 py-2 text-sm text-slate-700 shadow-lg dark:border-cyan-900 dark:bg-slate-950/95 dark:text-slate-200"
-                role={selectedConversationLoadFailed ? "alert" : "status"}
+                role="alert"
               >
-                {selectedConversationLoadFailed ? (
-                  <>
-                    <span>Could not load this conversation. Your other chats are still saved.</span>
-                    <button
-                      type="button"
-                      className="shrink-0 font-semibold text-cyan-800 underline underline-offset-2 dark:text-cyan-200"
-                      onClick={() => {
-                        if (activeConversationId) void loadConversation(activeConversationId);
-                      }}
-                    >
-                      Try again
-                    </button>
-                  </>
-                ) : (
-                  <span>Loading selected conversation…</span>
-                )}
+                <span>Could not load this conversation. Your other chats are still saved.</span>
+                <button
+                  type="button"
+                  className="shrink-0 font-semibold text-cyan-800 underline underline-offset-2 dark:text-cyan-200"
+                  onClick={() => {
+                    if (activeConversationId) void loadConversation(activeConversationId);
+                  }}
+                >
+                  Try again
+                </button>
               </div>
             ) : null}
             {operationalSummary && !isConversationSwitching && (
@@ -3435,6 +3430,15 @@ export default function DeepSpaceChatClient({
             />
           </div>
         </div>
+        {isConversationSwitching && !selectedConversationLoadFailed ? (
+          <div className="bg-background/60 absolute inset-0 z-40 grid place-items-center backdrop-blur-sm">
+            <AverQelLoading
+              label="Loading selected conversation…"
+              size="section"
+              className="h-full w-full"
+            />
+          </div>
+        ) : null}
       </div>
 
       <AnimatePresence>

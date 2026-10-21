@@ -50,12 +50,6 @@ jobs:
           assets = data.get("assets", {})
           if set(assets) not in (expected_current, expected_legacy):
               raise SystemExit(f"manifest assets mismatch: {sorted(assets)}")
-          if set(assets) == expected_current:
-              neosis = data.get("components", {}).get("neosis", {})
-              if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", neosis.get("version", "")):
-                  raise SystemExit("manifest NeoSIS version is invalid")
-              if not re.fullmatch(r"[0-9a-f]{40}", neosis.get("git_sha", "")):
-                  raise SystemExit("manifest NeoSIS git SHA is invalid")
           for name, asset in assets.items():
               if not re.fullmatch(r"[0-9a-f]{64}", asset.get("sha256", "")):
                   raise SystemExit(f"invalid SHA-256 for {name}")

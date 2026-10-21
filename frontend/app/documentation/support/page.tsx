@@ -44,18 +44,37 @@ export default function SupportDocsPage() {
       <DocsSection title="Who can read support content">
         <p>
           New and migrated ticket text, replies, and attachments are encrypted in your browser for
-          your account and the allowlisted platform administrator, who can decrypt them to provide
-          support. Internal notes are encrypted only for the administrator and are not shown in your
-          view. Legacy Support Manager assignments do not grant queue access. Your encryption
-          passphrase is not sent to the server; losing it can make your messages unreadable. Older
-          records stay plaintext until the administrator runs the migration in Support Management,
-          and older backups may retain plaintext until expiry. Account IDs, email needed to route
-          support, ticket status, category, timestamps, and attachment sizes remain visible to the
-          service. A compromised live server could change the browser code or keys, and decrypted
-          content is visible on your device. Resolved or closed tickets and their attachments are
-          automatically deleted after 365 days by default; unresolved tickets remain available
-          until resolved or closed. Privileged reads are audited. Do not submit information support
-          does not need.
+          your account and the platform-key owner, who can decrypt them to provide support. This is
+          the administrator account that initialized the shared key; other allowlisted
+          administrators cannot unlock the key or decrypt message bodies. Internal notes are
+          encrypted only for that key owner and are not shown in your view. The first time you use
+          Support or Feedback, create your own encryption key with a passphrase of at least 14
+          characters; you do this once for your account, not for every ticket. The passphrase is not
+          sent to the server, and losing it can make your encrypted copy unreadable. If an
+          administrator is migrating older tickets, your key must exist first; records without it
+          are skipped until you finish setup, and the administrator can then retry. The app decrypts
+          messages in your browser after you unlock your key; there is no separate decrypt button.
+          Legacy Support Manager assignments do not grant queue access. Older records stay plaintext
+          until the administrator runs the migration in Support Management, and older backups may
+          retain plaintext until expiry. Account IDs, email needed to route support, ticket status,
+          category, timestamps, and attachment sizes remain visible to the service. After you unlock
+          your key, it stays in browser memory across Support and Feedback navigation and locks
+          after four hours without activity, sign-out, or login-session expiry. Reloading or closing
+          the tab clears the in-memory unlock, so you may need to enter your passphrase again. A
+          compromised live server could change the browser code or keys, and decrypted content is
+          visible on your device. Replies show profile photos when participants have added one, with
+          initials shown when no photo is available. Resolved or closed tickets and their
+          attachments are automatically deleted after 365 days by default; unresolved tickets remain
+          available until resolved or closed. Privileged reads are audited. Do not submit
+          information support does not need.
+        </p>
+        <p>
+          This encryption passphrase is not two-factor authentication. It unlocks your message key;
+          it does not sign you in, and you do not enter it for every ticket or reply. The
+          platform-key owner must initialize the shared support key before encrypted forms can work.
+          If the form reports that support encryption is unavailable (HTTP 503), contact the
+          platform administrator so they can finish that one-time setup. If your own key is not set
+          up yet, the page asks you to create it. Save the passphrase: AverQel cannot recover it.
         </p>
       </DocsSection>
       <DocsSection title="Response targets and email">

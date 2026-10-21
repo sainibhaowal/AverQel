@@ -12,8 +12,22 @@ import {
 import type { SupportEncryptionContext } from "@/app/dashboard/support/SupportEncryptionGate";
 
 type MigrationMode = "support" | "feedback";
-type LegacyRecord = { id: string; user_id: string };
+type LegacyRecord = {
+  id: string;
+  user_id: string;
+  user_key_initialized?: boolean;
+};
 type LegacyPage = { items: LegacyRecord[]; total: number };
+class MigrationRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "MigrationRequestError";
+  }
+}
+
 type LegacyMessage = {
   id: string;
   body: string;
@@ -25,7 +39,10 @@ type LegacyMessage = {
 async function responseJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail ?? `Request failed (${response.status})`);
+    throw new MigrationRequestError(
+      body?.detail ?? `Request failed (${response.status})`,
+      response.status,
+    );
   }
   return (await response.json()) as T;
 }
@@ -33,13 +50,29 @@ async function responseJson<T>(response: Response): Promise<T> {
 async function requireOk(response: Response): Promise<void> {
   if (response.ok) return;
   const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-  throw new Error(body?.detail ?? `Request failed (${response.status})`);
+  throw new MigrationRequestError(
+    body?.detail ?? `Request failed (${response.status})`,
+    response.status,
+  );
 }
 
-async function getUserPublicKey(userId: string): Promise<SupportPublicKey> {
-  return responseJson<SupportPublicKey>(
-    await fetchWithAuth(`/support/encryption/users/${userId}/public-key`),
-  );
+async function getUserPublicKey(userId: string): Promise<SupportPublicKey | null> {
+  try {
+    return await responseJson<SupportPublicKey>(
+      await fetchWithAuth(`/support/encryption/users/${userId}/public-key`),
+    );
+  } catch (error) {
+    // A user may have set up their key after the legacy-record list was loaded.
+    // Treat the endpoint's documented missing-key conflict as a skip, not a failed migration.
+    if (
+      error instanceof MigrationRequestError &&
+      error.status === 409 &&
+      error.message === "The user has not initialized support encryption"
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 async function legacyRecords(mode: MigrationMode): Promise<LegacyRecord[]> {
@@ -138,7 +171,7 @@ async function migrateSupportRecord(
 async function migrateFeedbackRecord(
   record: LegacyRecord,
   context: SupportEncryptionContext,
-): Promise<void> {
+): Promise<boolean> {
   const detail = await responseJson<{
     id: string;
     subject: string;
@@ -147,7 +180,7 @@ async function migrateFeedbackRecord(
     recipient_public_key?: SupportPublicKey | null;
     messages: LegacyMessage[];
   }>(await fetchWithAuth(`/app-feedback/admin/submissions/${record.id}`));
-  if (!detail.recipient_public_key) throw new Error("The user has not set up an encryption key yet.");
+  if (!detail.recipient_public_key) return false;
   const recipients = [context.ownPublicKey, detail.recipient_public_key];
   const pendingMessages = detail.messages.filter(
     (message) => !message.encrypted_payload && message.author_role !== "system",
@@ -180,6 +213,7 @@ async function migrateFeedbackRecord(
       }),
     );
   }
+  return true;
 }
 
 export default function SupportEncryptionMigration({
@@ -197,17 +231,43 @@ export default function SupportEncryptionMigration({
     setWorking(true);
     setProgress(null);
     let migrated = 0;
+    let skipped = 0;
     const failures: string[] = [];
+    const userPublicKeys = new Map<string, Promise<SupportPublicKey | null>>();
+    async function getCachedUserPublicKey(userId: string): Promise<SupportPublicKey | null> {
+      let request = userPublicKeys.get(userId);
+      if (!request) {
+        request = getUserPublicKey(userId);
+        userPublicKeys.set(userId, request);
+      }
+      try {
+        return await request;
+      } catch (error) {
+        if (userPublicKeys.get(userId) === request) userPublicKeys.delete(userId);
+        throw error;
+      }
+    }
     try {
       const records = await legacyRecords(mode);
       setProgress({ current: 0, total: records.length });
       for (const [index, record] of records.entries()) {
         try {
-          const userKey = await getUserPublicKey(record.user_id);
+          if (record.user_key_initialized === false) {
+            skipped += 1;
+            continue;
+          }
           if (mode === "support") {
+            const userKey = await getCachedUserPublicKey(record.user_id);
+            if (!userKey) {
+              skipped += 1;
+              continue;
+            }
             await migrateSupportRecord(record, context, userKey);
           } else {
-            await migrateFeedbackRecord(record, context);
+            if (!(await migrateFeedbackRecord(record, context))) {
+              skipped += 1;
+              continue;
+            }
           }
           migrated += 1;
         } catch (error) {
@@ -216,12 +276,17 @@ export default function SupportEncryptionMigration({
           setProgress({ current: index + 1, total: records.length });
         }
       }
+      const skippedMessage = skipped
+        ? `${skipped} skipped because the owner has not created an encryption key. Ask them to open ${mode === "support" ? "Support" : "Feedback"}, create their key, then retry.`
+        : "";
       if (failures.length) {
         const uniqueFailures = [...new Set(failures)];
         toast.error(
-          `${migrated} encrypted. ${failures.length} need attention: ${uniqueFailures.slice(0, 2).join("; ")}`,
-          { duration: 8000 },
+          `${migrated} encrypted. ${skippedMessage ? `${skippedMessage} ` : ""}${failures.length} need attention: ${uniqueFailures.slice(0, 2).join("; ")}`,
+          { duration: 10000 },
         );
+      } else if (skipped) {
+        toast(`${migrated} encrypted. ${skippedMessage}`, { duration: 10000 });
       } else {
         toast.success(
           records.length
@@ -239,23 +304,27 @@ export default function SupportEncryptionMigration({
   const label = mode === "support" ? "support tickets" : "feedback records";
 
   return (
-    <section className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-sm text-slate-200">
+    <section className="text-foreground mt-4 rounded-xl border border-emerald-700/25 bg-emerald-50 p-4 text-sm dark:border-emerald-400/20 dark:bg-emerald-400/5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-start gap-3">
-          <ShieldCheck size={19} className="mt-0.5 shrink-0 text-emerald-400" />
+          <ShieldCheck
+            size={19}
+            className="mt-0.5 shrink-0 text-emerald-800 dark:text-emerald-300"
+          />
           <div>
             <h2 className="font-semibold">Encrypt existing {label}</h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">
+            <p className="text-muted-foreground mt-1 max-w-3xl text-xs leading-5">
               Legacy text is encrypted in this browser and the database fields are replaced after
-              successful validation. Users who have not set up an encryption key are skipped and
-              can be migrated after they open Support or Feedback once.
+              successful validation. Each user must create their own passphrase-protected key by
+              opening Support or Feedback once. Records for users without a key are skipped and can
+              be migrated after setup; an administrator cannot create a user&apos;s key for them.
               {mode === "support" &&
                 " Encrypted attachments cannot be scanned by the server; only download files you trust."}
             </p>
           </div>
         </div>
         <button
-          className="flex items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2 text-xs font-semibold text-slate-950 disabled:opacity-60"
+          className="bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-colors disabled:opacity-60"
           disabled={working}
           onClick={() => void startMigration()}
           type="button"

@@ -85,6 +85,37 @@ _MCP_RISK_RANK: dict[str, int] = {
 }
 _MCP_RISK_LABELS = set(_MCP_RISK_RANK)
 MAX_TOOL_CATALOG_PAGES = 1_000
+MCP_CATALOG_CHANGED_REASON = "MCP tool catalog changed; refresh the tool list."
+
+
+def mcp_tool_catalog_fingerprint(tools: Any) -> str:
+    """Hash tool definitions independent of catalog ordering and JSON key order."""
+    items = tools if isinstance(tools, list) else []
+    canonical_items = [
+        json.dumps(item, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
+        for item in items
+        if isinstance(item, dict)
+    ]
+    canonical_items.sort()
+    encoded = json.dumps(canonical_items, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def next_mcp_tool_catalog_revision(
+    current_revision: Any,
+    previous_tools: Any,
+    refreshed_tools: Any,
+) -> int:
+    """Advance the catalog revision only when its tool definitions changed."""
+    try:
+        revision = max(0, int(current_revision or 0))
+    except (TypeError, ValueError):
+        revision = 0
+    if mcp_tool_catalog_fingerprint(previous_tools) != mcp_tool_catalog_fingerprint(
+        refreshed_tools
+    ):
+        revision += 1
+    return revision
 
 
 def _safe_remote_detail(value: Any, *, limit: int = 500) -> str:
@@ -1023,9 +1054,7 @@ def evaluate_mcp_tool_policy(
     if expected_catalog_revision is not None and int(server.catalog_revision or 0) != int(
         expected_catalog_revision
     ):
-        return MCPToolPolicyDecision(
-            False, reason="MCP tool catalog changed; refresh the tool list."
-        )
+        return MCPToolPolicyDecision(False, reason=MCP_CATALOG_CHANGED_REASON)
 
     policy = db.execute(
         select(MCPConnectionPolicy).where(

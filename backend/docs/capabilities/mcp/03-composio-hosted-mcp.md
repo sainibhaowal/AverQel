@@ -1,188 +1,80 @@
 # Composio hosted MCP apps
 
-**Status:** implemented in source; a deployment still needs administrator
-configuration and a live provider smoke test.
+**Status:** implemented locally; live OAuth and tool execution still require a user-owned Composio project key and provider smoke testing.
 
-This document covers the optional Composio app catalog, available from the
-Providers screen's **MCP Apps** shortcut or Dashboard → MCP Marketplace →
-**Composio Apps**. It is separate from the existing AverQel MCP
-marketplace and its six curated categories. It does not replace existing
-providers.
+This guide describes the Composio app catalog in Dashboard → MCP Marketplace and the **MCP** section under Providers. The marketplace uses Composio's live toolkit catalog. It no longer lists AverQel's eight bundled Google, GitHub, Notion, and Slack connector cards. Existing installed connections are retained; this change does not delete their records or revoke their provider accounts.
 
-Composio maintains the remote native toolkit catalog. AverQel reads that live
-catalog through the pinned Python SDK (`composio==0.28.0`) and paginates both
-toolkits and tools. The displayed total comes from Composio's API; users can
-search and load every returned page. Catalog contents and counts can change;
-there is no fixed 250-app promise. Catalog entries are supplied by Composio and are not
-individually represented as AverQel-reviewed providers.
+Composio's catalog is dynamic. AverQel fetches and paginates toolkit and tool metadata from the Composio API. The count shown is the count reported by that API at request time; it can change, so documentation does not promise a fixed number of apps. Composio catalog entries are not represented as individually reviewed AverQel providers. Cards load app icons from Composio's maintained logo CDN using each validated toolkit slug. This avoids stale app-owned image URLs in toolkit metadata. If a CDN image is missing or fails to load, the card uses a neutral local fallback. On wide screens, the responsive catalog displays up to five cards per row.
 
-## 1. Deployment prerequisites
+## 1. User setup
 
-1. Create a Composio project for the AverQel deployment and a project API key.
-   The key must permit toolkit/tool catalog reads, session management, and
-   session-linked tool execution. Composio scoped keys may require both
-   **Session management** and **Session tool execution** permissions. See
-   [Composio API key permissions](https://docs.composio.dev/docs/configuring-sessions#api-key-permissions).
-2. Configure AverQel's connector-secret encryption backend and active key. The
-   same configured backend protects the Composio project key and hosted session
-   identifiers. Keep encryption keys outside source control and retain old key
-   IDs during the supported rotation window.
-3. For OAuth apps, set `AVERQEL_PUBLIC_ORIGIN` to the deployment's canonical
-   HTTPS origin. Toolkits Composio marks as requiring no account authorization
-   can be added without this callback setup.
-4. For OAuth apps, in the Composio project dashboard, set the callback verifier URL to the
-   callback displayed in the Composio Apps tab:
-   `https://<averqel-host>/dashboard/mcp/composio/callback`.
-5. For OAuth apps, set `COMPOSIO_CALLBACK_VERIFIER_ENABLED=true` in the AverQel backend
-   environment only after the Composio callback verifier is configured and
-   reachable. Restart/redeploy the backend through the deployment's normal
-   change process so the setting is loaded.
-6. Apply the Alembic migration that creates the platform-scoped encrypted
-   `composio_credentials` singleton.
-7. Sign in as the allowlisted platform administrator with required MFA and
-   open Providers → **MCP Apps** (or MCP Marketplace → **Composio Apps**) to
-   save the project API key. AverQel verifies that
-   the key can read the catalog before saving it. The key is never returned to
-   the frontend.
+1. Create or select your own Composio project and copy its project API key.
+2. In AverQel, open **Providers → MCP**, choose **+** to browse provider families, then select **Composio**. Enter the key in its setup panel and choose **Validate and save**. AverQel validates catalog access before storing it.
+3. Open **MCP Marketplace**, search or browse the live catalog, and choose **View details** to inspect the description, app/authentication links, categories, authentication methods, catalog version, and available tools with their descriptions and input fields. Tool results load in pages; choose **Load more tools** when shown.
+4. Choose **Connect**. For an OAuth app, complete that app's consent flow in Composio. Each app authorization is associated with your AverQel account; each user must authorize their own external app account.
+5. After connection, the MCP worker discovers the app's tools. Use DeepSpace to call them under the same MCP policy and approval flow as other connections.
 
-The exact callback verifier setup is specific to Composio's hosted Connect
-flow. The URL passed to `session.authorize` is not a substitute for setting the
-project-level callback verifier. See
-[Composio connected-account callback verification](https://docs.composio.dev/reference/api-reference/connected-accounts)
-and [sessions over MCP](https://docs.composio.dev/docs/sessions-via-mcp).
+A Composio project key is a secret. AverQel encrypts it with the configured connector-secret backend and binds the encryption associated data to the tenant and user IDs. The database row is keyed by tenant and user and has row-level security requiring both IDs. Credential reads, replacement, and removal are performed in the authenticated user's scope. The key is never returned to the browser. The running AverQel server decrypts it when making Composio requests, so this is not end-to-end encryption from the server.
 
-## 2. User connection flow
+This per-user setup gives each person control over the Composio project and
+external accounts used by their tools, and prevents another AverQel account
+from using the same stored credential or claiming the resulting sessions. The
+encryption protects the credential while stored; it does not hide requests or
+results from AverQel's running backend, Composio, or the connected app provider.
 
-1. An authenticated user opens Providers → **MCP Apps** or **Composio Apps** in
-   MCP Marketplace. Existing
-   marketplace categories and installed MCP connections remain available in
-   their existing tabs.
-2. The browser asks AverQel for the current toolkit page and uses Composio's
-   search, category, and cursor APIs. The backend returns public app/tool
-   metadata only.
-3. The user can inspect tool names, descriptions, risk labels, and input fields
-   before starting a connection. Toolkit details are cursor-paginated; use
-   **Load more tools** when a toolkit has more than one page.
-4. On Connect, AverQel creates a Composio session for one toolkit and for the
-   stable identity `averqel:<tenant UUID>:<user UUID>`. For apps that require
-   authorization, the browser is sent to Composio's HTTPS hosted authorization
-   flow. The Composio project API key stays on the server.
-5. Composio redirects OAuth apps to the configured verifier with a one-time `session_uri`.
-   The callback page removes it from the browser URL and submits it through the
-   authenticated API. Composio verifies the session against the same stable
-   AverQel user ID. An authorization started by one AverQel account cannot be
-   completed while signed in as another.
-6. Toolkits marked as not requiring authorization skip OAuth and queue catalog
-   discovery immediately. After OAuth verification, AverQel stores the
-   connection under the user's tenant and account and queues the same catalog
-   refresh. The installed connection then appears in DeepSpace through the
-   existing MCP bridge and broker.
+Replacing a key disables and clears hosted sessions belonging to that same AverQel account, which must then reconnect. Removing a key deletes only that user's stored key and disables only that user's Composio sessions. Deleting the AverQel account cascades to its credential row. No user can use another user's Composio key through AverQel.
 
-Composio's catalog contains different authentication schemes. Many apps use
-hosted OAuth; some can require additional provider-specific setup, or may not
-support a user-facing OAuth flow. The marketplace shows the schemes Composio
-returns, and a failed/unsupported authorization is reported without exposing
-provider credentials. Do not promise one-click OAuth for every toolkit.
+## 2. OAuth redirect and identity verification
 
-## 3. API and storage boundaries
+The server operator must configure the existing connector-secret encryption backend and retain active/previous key IDs according to the secret-rotation policy. Do not put user project keys into source control or a shared server environment variable.
 
-| Route or record | Purpose and access |
+OAuth apps require `AVERQEL_PUBLIC_ORIGIN` to contain the canonical public HTTPS origin. Local development may use an HTTP localhost origin. Users do not configure a shared AverQel Composio key or register a callback verifier in their Composio project. Once a key is saved, the Marketplace starts the OAuth flow and returns the user to AverQel.
+
+The browser callback includes Composio's status and connected-account ID. These query values are untrusted. Before enabling the app, AverQel requires all of the following:
+
+- the callback is authenticated as the same AverQel account that started the connection;
+- the connected-account ID exactly matches the pending request saved on that account's app row;
+- Composio reports that the pending account is active and belongs to the requested toolkit;
+- if Composio returns its external user ID, it matches the tenant/user-derived identity used to create the request.
+
+The pending request is single-use in AverQel: success clears it, and replay or a callback from another account is rejected. OAuth still requires a working public callback URL. Composio toolkits marked as requiring no account authorization can be added without OAuth. See [Composio's callback and connected-account guidance](https://docs.composio.dev/docs/authentication/manually-authenticating) and [Python ConnectedAccounts reference](https://docs.composio.dev/reference/sdk-reference/python/connected-accounts).
+
+## 3. API and data ownership
+
+| Interface or data | Purpose and boundary |
 | --- | --- |
-| `GET /api/v1/mcp/composio/status` | Authenticated catalog setup and callback status; contains no secret. |
-| `GET /api/v1/mcp/composio/toolkits` | Live, paginated Composio toolkit metadata. |
-| `GET /api/v1/mcp/composio/toolkits/{slug}` | Live, paginated tool metadata and bounded input schemas. |
-| `POST /api/v1/mcp/composio/toolkits/{slug}/connect` | Starts a toolkit-limited authorization session for the caller. |
-| `POST /api/v1/mcp/composio/oauth/complete` | Completes the one-time callback for the authenticated caller. |
-| `GET/PUT/DELETE /api/v1/admin/providers/composio` | Allowlisted platform-admin and MFA-protected key status, set, and removal. Mutations are audited. |
-| `composio_credentials` | One platform-level project key, encrypted with the configured connector-secret backend and `composio:platform` associated data. RLS permits access only under the platform bypass context used by the service. |
-| `mcp_servers` | One user's provider state; the hosted session ID is encrypted with tenant, user, and server IDs as associated data. Public DTOs omit session and header credentials. |
+| `GET /api/v1/mcp/composio/status` | Reports whether the signed-in user's key exists and whether an OAuth callback origin is available. It never returns the key. |
+| `PUT /api/v1/mcp/composio/credential` | Validates and stores the signed-in user's encrypted key. Requires normal authenticated access, not platform-admin access. |
+| `DELETE /api/v1/mcp/composio/credential` | Removes only the signed-in user's key and invalidates that user's Composio sessions. |
+| `GET /api/v1/mcp/composio/toolkits` and `/toolkits/{slug}` | Fetch paginated live app metadata (logo, app/auth-guide URLs, categories, authentication methods and catalog version/timestamps) and tool descriptions/input schemas using the authenticated user's key. The API does not provide a per-app author or separate public MCP endpoint for every toolkit. |
+| `POST /api/v1/mcp/composio/toolkits/{slug}/connect` and `/oauth/complete` | Starts or completes a user-owned Composio hosted session. |
+| `composio_credentials` | Composite tenant/user key; encrypted ciphertext, nonce, key ID, and owner-only row-level security. |
+| `composio_legacy_platform_credentials` | Created only when upgrading an installation with the former platform-wide singleton key table. Preserves that encrypted record under its prior platform-admin-only policy; the user-owned Composio integration does not read or assign it to any account. |
+| `mcp_servers` Composio rows | One server record per tenant, user, and toolkit. The hosted session ID is encrypted with tenant, user, and server IDs as associated data. |
 
-The user ID sent to Composio is a derived AverQel UUID identity, not the user's
-email address. The platform key is shared as a server-side integration
-credential, while Composio connections and AverQel server records remain
-scoped to the authenticated user and tenant. A change to or removal of the
-platform key disconnects existing Composio sessions and clears their cached
-catalogs so those accounts must reconnect.
+The former `/api/v1/admin/providers/composio` routes are removed. An administrator does not configure a shared key for users.
 
-## 4. DeepSpace execution and approval
+Composio toolkit slugs are opaque identifiers and must be preserved exactly, including a leading underscore where present (for example, `_1password`). AverQel uses the same slug for details, connection, tool discovery, and the Composio logo CDN.
 
-The connected Composio MCP endpoint is created with the Composio direct-tools
-preset and only the selected toolkit. The regular MCP worker discovers its live
-tool catalog. DeepSpace does not receive the entire catalog in its initial
-prompt: its existing broker returns bounded references, retrieves one schema
-when requested, validates the selected binding and arguments, and routes
-execution through the existing MCP policy evaluator and approval card.
+## 4. DeepSpace tools and approvals
 
-New Composio policies allow reads under the existing read policy. Tool risk is
-classified from Composio labels and action names; unknown actions default to
-`write`. Writes, deletes, and external messages require user approval before
-the remote call. Setting a side-effecting tool to **Always allow** does not
-remove the runtime's mandatory approval requirement. Users can lower a risk
-ceiling or block individual actions. Risk labels are conservative heuristics,
-not a guarantee that a third-party tool is safe; users should inspect the
-provider, requested account scopes, arguments, and approval details.
+Composio tools run through the existing MCP runtime and DeepSpace broker. The broker checks the connection owner, tool catalog, policy, and action risk before execution. Reads can run according to the user's saved policy. Writes, deletions, and external messages require an explicit approval card; changing a tool's normal mode cannot bypass the side-effect approval check. The model receives bounded tool references rather than the complete app catalog or any credential.
 
-The MCP client validates the Composio endpoint as HTTPS, requires the expected
-Composio host, rejects redirects and restricted IP destinations, and forwards
-only the session headers returned by the Composio SDK. The session ID and
-authorization headers are server-side only. API responses, browser state,
-audit descriptions, and model tool references must not contain the platform
-key, session URI, session ID, OAuth tokens, or Composio session headers.
+A successful Composio catalog response does not guarantee that every app has OAuth, is enabled for every Composio project, or will accept a requested action. Users must review the requested scopes and the tool's approval card before authorizing or approving an action.
 
-## 5. Data processing and privacy
+## 5. Data handling and privacy
 
-Using a Composio app sends the selected tool's inputs and outputs through
-Composio's hosted service and to the connected app provider. Composio manages
-the provider authentication and connected-account token lifecycle for this
-integration; AverQel receives a verified connected-account identifier and an
-encrypted hosted-session identifier, not the provider password or OAuth token.
-Users must review the scopes shown by the provider and the current Composio and
-connected-provider privacy terms before authorizing an app. The service
-operator must list Composio and the actual connected suppliers in the hosted
-deployment's subprocessor disclosure and set retention/transfer terms with
-those suppliers. Do not describe this flow as end-to-end encrypted from
-Composio or the connected app provider.
+AverQel uses the project key from the currently authenticated user to call Composio. The key remains encrypted in the database but is readable by the running backend during those calls. Composio processes authorization and tool requests; the connected app provider processes the resulting actions and data. This is not end-to-end encryption from AverQel's server, Composio, or the connected provider.
 
-The current integration does not create a second AverQel copy of provider
-OAuth tokens. Disconnecting or deleting an AverQel user removes the local MCP
-server and encrypted local session identifier through existing account cleanup;
-the operator must confirm that the Composio connected account is revoked or
-deleted as part of that user's vendor-side data-retention process. The source
-does not assert that Composio has deleted remote data or backups.
+The integration stores an encrypted Composio hosted-session identifier in AverQel and does not store the provider password or provider OAuth token in the local MCP credential table. Disconnecting an app removes its local session data; users should also revoke access in Composio or the connected provider when they want the remote authorization removed. Do not claim that AverQel has deleted data held by Composio or a connected provider.
 
-## 6. Operating and troubleshooting
+## 6. Troubleshooting
 
-- **Catalog unavailable:** verify project key validity, Composio API
-  availability, outbound HTTPS/DNS, and catalog-read permission. Key errors are
-  deliberately redacted in API responses.
-- **OAuth Connect disabled:** confirm `COMPOSIO_CALLBACK_VERIFIER_ENABLED=true`,
-  the HTTPS public origin, and the exact verifier URL in the Composio project.
-- **Callback rejected:** return to the AverQel account that began Connect. The
-  one-time callback may be expired or already used; restart authorization.
-- **Connected but no tools:** inspect the MCP connection status, worker
-  availability, catalog refresh event, Composio toolkit permissions, and
-  session tool-execution permission.
-- **Key rotation/removal:** the API disables all Composio server records,
-  removes encrypted hosted-session identifiers and tool caches, and asks users
-  to reconnect after the replacement key is saved.
-- **Live readiness:** mocked tests verify local behavior but do not prove the
-  deployment key, verifier, OAuth consent, vendor scopes, or remote tool calls.
-  Run one provider-authorized read and one approval-gated side effect in a
-  disposable Composio project before production enablement.
-
-## 7. Source and tests
-
-- `backend/app/integrations/services/composio_service.py`
-- `backend/app/integrations/api/mcp.py`
-- `backend/app/integrations/services/mcp_runtime.py`
-- `backend/app/integrations/workers/tasks_mcp.py`
-- `backend/app/deepspace/services/mcp_tool_broker.py`
-- `backend/app/deepspace/services/mcp_bridge.py`
-- `frontend/app/dashboard/mcp/_components/MCPComposioPanel.tsx`
-- `frontend/app/dashboard/mcp/composio/callback/`
-- Focused tests: `backend/tests/unit/test_composio_service.py`,
-  `backend/tests/integration/test_composio_mcp.py`, and
-  `frontend/tests/mcp-composio-panel.test.tsx`.
-
-Run database-backed tests only with `./backend/scripts/test-isolated.sh` as
-described in [`../../platform/03-testing.md`](../../platform/03-testing.md).
+- **Marketplace asks for a key:** open **Providers → MCP** and add your own Composio project API key. No platform-admin allowlist or admin key setup is required.
+- **Composio status returns HTTP 500:** check the API log and database migration head. Revision `20261019_0004` repairs databases where the old platform-only credential table was recorded as the account-scoped migration. It preserves the old table and creates the per-user table; do not delete or manually reshape the credential table.
+- **Key validation fails:** confirm the key belongs to your Composio project, has catalog/session permissions, and that outbound HTTPS/DNS is available. Provider exception details are redacted from the response.
+- **OAuth Connect is disabled:** configure the deployment's public HTTPS origin (`AVERQEL_PUBLIC_ORIGIN`). Local development can use an HTTP localhost origin. No Composio project callback-verifier setup is required.
+- **Callback is rejected:** return to the AverQel account that started authorization and restart the app connection. AverQel accepts only the pending Composio account ID saved for that user's selected app.
+- **Connected app has no tools:** inspect its Installed connection status, then refresh its catalog. Check worker health and the Composio project's session/tool permissions.
+- **Key replaced or removed:** only that account's Composio sessions are disabled. Reconnect its apps after a replacement key is saved.
+- **Live readiness:** isolated tests verify application behavior, not a real Composio key, vendor consent screen, public callback route, or remote action. Perform a live test with a disposable Composio project before enabling use for customers.

@@ -21,151 +21,98 @@ vi.mock("lucide-react", async () => {
   return actual;
 });
 
+function jsonResponse(payload: unknown) {
+  return { ok: true, status: 200, json: async () => payload };
+}
+
+function installApiFixtures({ configured = true } = {}) {
+  fetchWithAuthMock.mockImplementation(async (path: string) => {
+    if (path === "/mcp/servers") {
+      return jsonResponse([
+        {
+          id: "installed-1",
+          name: "Installed Composio App",
+          status: "connected",
+          transport: "streamable_http",
+          provider_slug: "composio:google_calendar",
+          config: {
+            oauth_mode: "mcp_oauth",
+            mcp_catalog_tool_count: 2,
+            mcp_catalog_last_sync_at: "2026-07-18T09:58:00Z",
+          },
+          account_identity: { email: "owner@example.com" },
+          last_error: null,
+        },
+      ]);
+    }
+    if (path === "/mcp/composio/status") {
+      return jsonResponse({
+        configured,
+        oauth_callback_ready: true,
+      });
+    }
+    if (path.startsWith("/mcp/composio/toolkits?")) {
+      return jsonResponse({
+        items: [
+          {
+            slug: "google_calendar",
+            name: "Google Calendar",
+            description: "Manage your calendar",
+            categories: ["Productivity"],
+            tool_count: 2,
+            auth_schemes: ["oauth2"],
+            no_auth: false,
+          },
+        ],
+        next_cursor: null,
+        current_page: 1,
+        total_items: 271,
+      });
+    }
+    return { ok: false, status: 404, json: async () => ({ detail: "Not found" }) };
+  });
+}
+
 describe("MCP dashboard", () => {
   beforeEach(() => {
     searchParamsMock.value = new URLSearchParams();
     routerMock.replace.mockReset();
     fetchWithAuthMock.mockReset();
-    fetchWithAuthMock
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          items: [
-            {
-              id: "registry-1",
-              name: "Example Remote MCP",
-              publisher: "Example Publisher",
-              description: "An approved official Google Workspace MCP application.",
-              transport: "streamable_http",
-              remote_url: "https://mcp.example.com/mcp",
-              categories: ["productivity", "files"],
-              official: true,
-              verified: true,
-              source: "official_registry",
-              oauth_requirements: { type: "oauth" },
-              package_metadata: { discovered_capabilities: ["search_files", "get_file"] },
-              action: "connect",
-              logo_url: null,
-              tool_count: 18,
-              last_catalog_sync_at: "2026-07-18T10:00:00Z",
-              verification_reason: "registry metadata",
-              last_seen_at: "2026-07-18T10:00:00Z",
-              capabilities: ["search_files", "get_file"],
-              tool_preview: [{ name: "search_files", description: "Search files" }],
-              catalog_status: "anonymous_catalog",
-              auth_type: "oauth",
-              trust_status: "approved",
-              publisher_type: "official",
-              badges: { official: true },
-              trusted_logo_key: "google",
-              supported_products: ["Google Workspace"],
-              tool_categories: ["Communication"],
-              risk_policy: {},
-              health: { status: "healthy", last_checked_at: "2026-07-18T10:00:00Z" },
-              requested_scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
-              connectable: true,
-            },
-            {
-              id: "registry-2",
-              name: "Example Setup MCP",
-              publisher: "Example Publisher",
-              description: "A registry MCP server requiring setup.",
-              transport: "streamable_http",
-              remote_url: "https://setup.example.com/mcp",
-              categories: ["communication"],
-              official: true,
-              verified: false,
-              source: "official_registry",
-              oauth_requirements: { type: "vendor_registration_required" },
-              package_metadata: { discovered_capabilities: ["list_channels"] },
-              action: "connect",
-              logo_url: null,
-              tool_count: 12,
-              last_catalog_sync_at: "2026-07-18T10:00:00Z",
-              verification_reason: "registry metadata only",
-              last_seen_at: "2026-07-18T10:00:00Z",
-              capabilities: ["list_channels"],
-              docs_url: "https://example.com/docs/mcp",
-              trust_status: "discovered",
-              connectable: false,
-              connectability_reason: "OAuth provider profile is not configured yet.",
-              publisher_type: "official",
-              badges: { official: true },
-              trusted_logo_key: "google-gmail",
-              supported_products: ["Google Workspace"],
-              tool_categories: ["Communication"],
-              risk_policy: {},
-              health: { status: "not_checked", last_checked_at: null },
-              requested_scopes: [],
-            },
-          ],
-          total: 1,
-          page: 1,
-          page_size: 24,
-          pages: 1,
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => [
-          {
-            id: "installed-1",
-            name: "Installed Remote MCP",
-            status: "connected",
-            transport: "streamable_http",
-            config: {
-              oauth_mode: "mcp_oauth",
-              mcp_tools_cache: [{ name: "search_files" }, { name: "get_file" }],
-              mcp_catalog_tool_count: 2,
-              mcp_catalog_last_sync_at: "2026-07-18T09:58:00Z",
-            },
-            last_error: null,
-          },
-        ],
-      });
-    fetchWithAuthMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        categories: ["Productivity"],
-        transports: ["streamable_http"],
-        auth_types: ["oauth"],
-        trust_statuses: ["approved"],
-      }),
-    });
+    installApiFixtures();
   });
 
-  it("renders the marketplace controls, cards, route link, and installed status", async () => {
+  it("shows Composio as Marketplace and keeps installed connections", async () => {
     render(<MCPDashboard />);
 
-    expect(await screen.findByText("MCP Marketplace")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Go back" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /more filters/i }));
-    expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Productivity" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Verified" })).toBeInTheDocument();
-    expect(screen.getByText("Example Remote MCP")).toBeInTheDocument();
-    expect(screen.getAllByText("Official")).toHaveLength(3);
-    expect(screen.getAllByText("Verified")).toHaveLength(2);
-    expect(screen.getByText("18 tools")).toBeInTheDocument();
-    expect(screen.getByText("search_files")).toBeInTheDocument();
-    expect(screen.queryByText("Sync registry")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Setup pending" })).toBeDisabled();
-    expect(screen.getByText("OAuth provider profile is not configured yet.")).toBeInTheDocument();
-
-    const detailLinks = screen.getAllByRole("link", { name: "View details" });
-    expect(detailLinks).toHaveLength(2);
-    expect(detailLinks[0]).toHaveAttribute("href", "/dashboard/mcp/providers/registry-1");
+    expect(
+      await screen.findByRole("heading", { name: "Connect apps to DeepSpace" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Google Calendar" })).toBeInTheDocument();
+    expect(screen.getByText("271 Composio apps available")).toBeInTheDocument();
+    expect(screen.queryByText("Google Gmail")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Composio Apps" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /installed \(1\)/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("connected")).toBeInTheDocument();
-      expect(screen.getByText(/Remote HTTP · OAuth · 2 tools/i)).toBeInTheDocument();
-      expect(screen.getByText(/Last refreshed/i)).toBeInTheDocument();
-    });
+    expect(await screen.findByText("Installed Composio App")).toBeInTheDocument();
+    expect(screen.getByText(/Remote HTTP · OAuth · 2 tools/i)).toBeInTheDocument();
   });
 
-  it("handles a successful OAuth return and opens installed connections", async () => {
+  it("opens the same Composio Marketplace for the old Composio tab link and points to Providers when no key exists", async () => {
+    searchParamsMock.value = new URLSearchParams("tab=composio");
+    installApiFixtures({ configured: false });
+
+    render(<MCPDashboard />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Add your Composio key to browse apps" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Providers → MCP" })).toHaveAttribute(
+      "href",
+      "/dashboard/settings/providers?tab=mcp",
+    );
+  });
+
+  it("handles a successful OAuth return and opens the connected server", async () => {
     searchParamsMock.value = new URLSearchParams("mcp_status=connected&server_id=server-1");
     render(<MCPDashboard />);
     await waitFor(() =>
@@ -175,48 +122,4 @@ describe("MCP dashboard", () => {
     );
   });
 
-  it("opens Composio Apps when linked from Providers", async () => {
-    searchParamsMock.value = new URLSearchParams("tab=composio");
-    fetchWithAuthMock.mockReset();
-    fetchWithAuthMock.mockImplementation(async (path: string) => {
-      if (path.startsWith("/mcp/marketplace?")) {
-        return {
-          ok: true,
-          json: async () => ({ items: [], total: 0, page: 1, page_size: 24, pages: 1 }),
-        };
-      }
-      if (path === "/mcp/servers") return { ok: true, json: async () => [] };
-      if (path === "/mcp/marketplace/facets") {
-        return {
-          ok: true,
-          json: async () => ({
-            categories: [],
-            transports: [],
-            auth_types: [],
-            trust_statuses: [],
-          }),
-        };
-      }
-      if (path === "/mcp/composio/status") {
-        return {
-          ok: true,
-          json: async () => ({
-            configured: false,
-            callback_verifier_enabled: false,
-            callback_verifier_url: null,
-          }),
-        };
-      }
-      return { ok: false, status: 403, json: async () => ({ detail: "Not a platform admin" }) };
-    });
-
-    render(<MCPDashboard />);
-
-    expect(
-      await screen.findByRole("heading", { name: "Connect apps to DeepSpace" }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText("Composio has not been configured by the AverQel administrator yet."),
-    ).toBeInTheDocument();
-  });
 });

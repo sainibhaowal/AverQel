@@ -40,7 +40,6 @@ vi.mock("@/app/components/ui/AverQelLogo", () => ({
 vi.mock("@/app/components/ui/DeepSpaceMark", () => ({
   default: () => <span>DeepSpace mark</span>,
 }));
-vi.mock("@/app/components/ui/NeoSISMark", () => ({ default: () => <span>NeoSIS mark</span> }));
 vi.mock("../app/components/onboarding/QuickProviderSetup", () => ({
   default: ({ onOpenSettings }: { onOpenSettings: () => void }) => (
     <div>
@@ -73,7 +72,7 @@ describe("first-run welcome flow", () => {
       .mockResolvedValueOnce(successResponse({ display_name: "Ravi", avatar: null }))
       .mockResolvedValueOnce(successResponse({ onboarding_completed: true }));
 
-    render(<WelcomeFlow neosisAvailable={false} />);
+    render(<WelcomeFlow />);
     expect(await screen.findByRole("dialog", { name: /Welcome/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(
@@ -104,7 +103,7 @@ describe("first-run welcome flow", () => {
 
   it("can skip the welcome slides and persists completion", async () => {
     mocks.fetchWithAuth.mockResolvedValueOnce(successResponse({ onboarding_completed: true }));
-    render(<WelcomeFlow neosisAvailable={false} />);
+    render(<WelcomeFlow />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Skip setup" }));
 
@@ -117,12 +116,12 @@ describe("first-run welcome flow", () => {
 
   it("does not show onboarding to accounts that already completed it", () => {
     mocks.user.onboarding_completed = true;
-    render(<WelcomeFlow neosisAvailable={false} />);
+    render(<WelcomeFlow />);
     expect(screen.queryByRole("dialog", { name: /Welcome/ })).not.toBeInTheDocument();
   });
 
   it("records a light-theme selection while keeping the welcome dialog open", async () => {
-    render(<WelcomeFlow neosisAvailable={false} />);
+    render(<WelcomeFlow />);
 
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(

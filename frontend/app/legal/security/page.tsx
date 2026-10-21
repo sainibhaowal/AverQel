@@ -52,9 +52,12 @@ export default function SecurityPage() {
           New and migrated support and feedback content is encrypted in the browser before upload;
           private keys are protected by a passphrase that is not sent to the server. The server
           retains routing metadata, and the platform administrator is an intended recipient who can
-          decrypt the content. Older records remain plaintext until the administrator runs the
-          migration in each management page. Older backups can retain plaintext until they expire.
-          Encrypted attachments cannot be malware-scanned by the server.
+          decrypt the content. Unlocked keys stay in browser memory across Support and Feedback
+          navigation and lock after four hours without activity, sign-out, or login-session expiry;
+          reloading or closing the tab clears the in-memory unlock. Older records remain plaintext
+          until the administrator runs the migration in each management page. Older backups can
+          retain plaintext until they expire. Encrypted attachments cannot be malware-scanned by the
+          server.
         </p>
         <p>
           This protection does not cover the whole product. A compromised live server could serve
@@ -70,9 +73,8 @@ export default function SecurityPage() {
           Use Support Centre in the application to report a suspected issue. Do not include
           passwords, API keys, recovery codes, or unrelated user content. Support is encrypted for
           you and the allowlisted platform administrator after key setup and legacy migration. The
-          hosted service is operated by Ravinder Singh — Independent Developer, AverQel Independent
-          Project. The current source does not specify a public security contact for people who
-          cannot sign in.
+          hosted service is operated by AverQel Independent Project. The current source does not
+          specify a public security contact for people who cannot sign in.
         </p>
       </PolicySection>
     </PolicyLayout>

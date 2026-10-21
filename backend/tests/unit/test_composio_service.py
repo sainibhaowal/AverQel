@@ -10,6 +10,7 @@ from app.integrations.services.composio_service import (
     ComposioConfigurationError,
     ComposioService,
     classify_composio_tool,
+    composio_callback_url,
     composio_provider_slug,
     composio_user_id,
 )
@@ -23,7 +24,7 @@ def test_pinned_composio_sdk_exposes_catalog_oauth_and_hosted_mcp_contract() -> 
 
     assert SESSION_PRESET_DIRECT_TOOLS == "direct_tools"
     assert callable(client.sessions.create)
-    assert callable(client.connected_accounts.complete_auth)
+    assert callable(client.connected_accounts.wait_for_connection)
     assert callable(client.toolkits.get)
     assert callable(client.use)
     assert {"type", "search", "cursor", "limit"}.issubset(
@@ -44,6 +45,28 @@ def test_composio_identity_is_tenant_and_user_scoped() -> None:
     assert composio_user_id(tenant_id, user_id) != composio_user_id(
         uuid.UUID("0199b8e1-1f23-7a02-8b2e-89a6ed40c003"), user_id
     )
+    assert ComposioService._credential_aad(
+        tenant_id=tenant_id,
+        user_id=user_id,
+    ) != ComposioService._credential_aad(
+        tenant_id=tenant_id,
+        user_id=uuid.UUID("0199b8e1-1f23-7a02-8b2e-89a6ed40c003"),
+    )
+
+
+@pytest.mark.unit_no_db
+def test_composio_callback_url_requires_trusted_origin_and_binds_toolkit() -> None:
+    assert composio_callback_url("https://averqel.example", "google_calendar") == (
+        "https://averqel.example/dashboard/mcp/composio/callback?toolkit_slug=google_calendar"
+    )
+    assert composio_callback_url("http://localhost:3000", "gmail") == (
+        "http://localhost:3000/dashboard/mcp/composio/callback?toolkit_slug=gmail"
+    )
+    assert composio_callback_url("https://averqel.example:8443", "gmail") == (
+        "https://averqel.example:8443/dashboard/mcp/composio/callback?toolkit_slug=gmail"
+    )
+    assert composio_callback_url("http://averqel.example", "gmail") is None
+    assert composio_callback_url("https://user:password@averqel.example", "gmail") is None
 
 
 @pytest.mark.unit_no_db
@@ -117,9 +140,14 @@ def test_composio_catalog_preserves_live_pagination_and_search(monkeypatch, sett
                         "name": "Google Gmail",
                         "meta": {
                             "description": "Email",
+                            "logo": "https://mail.google.com/stale-logo.png",
+                            "app_url": "https://mail.google.com",
+                            "version": "20261001_00",
+                            "updated_at": "2026-10-01T12:00:00Z",
                             "categories": [{"name": "Communication"}],
                             "tools_count": 12,
                         },
+                        "auth_guide_url": "https://composio.dev/auth/gmail",
                         "auth_schemes": ["OAUTH2"],
                     }
                 ],
@@ -155,6 +183,39 @@ def test_composio_catalog_preserves_live_pagination_and_search(monkeypatch, sett
     assert result["current_page"] == 2
     assert result["next_cursor"] == "next-page-token"
     assert result["items"][0]["auth_schemes"] == ["OAUTH2"]
+    assert result["items"][0]["logo_url"] == "https://logos.composio.dev/api/gmail"
+    assert result["items"][0]["app_url"] == "https://mail.google.com"
+    assert result["items"][0]["auth_guide_url"] == "https://composio.dev/auth/gmail"
+    assert result["items"][0]["version"] == "20261001_00"
+    assert result["items"][0]["updated_at"] == "2026-10-01T12:00:00Z"
+
+
+@pytest.mark.unit_no_db
+def test_composio_logo_url_is_only_derived_for_valid_toolkit_slugs() -> None:
+    assert ComposioService._normalize_toolkit({"slug": "active_campaign"})["logo_url"] == (
+        "https://logos.composio.dev/api/active_campaign"
+    )
+    assert ComposioService._normalize_toolkit({"slug": "_1password"})["logo_url"] == (
+        "https://logos.composio.dev/api/_1password"
+    )
+    assert ComposioService._normalize_toolkit({"slug": "_21risk"})["logo_url"] == (
+        "https://logos.composio.dev/api/_21risk"
+    )
+    assert (
+        ComposioService._normalize_toolkit({"slug": "https://attacker.example"})["logo_url"] is None
+    )
+
+
+@pytest.mark.unit_no_db
+@pytest.mark.parametrize("slug", ["_1password", "_21risk", "1password", "21risk"])
+def test_composio_slug_validation_accepts_catalog_slugs(slug: str) -> None:
+    ComposioService._validate_slug(slug)
+
+
+@pytest.mark.unit_no_db
+def test_composio_slug_validation_still_rejects_path_syntax() -> None:
+    with pytest.raises(ComposioConfigurationError, match="identifier is invalid"):
+        ComposioService._validate_slug("../1password")
 
 
 @pytest.mark.unit_no_db
@@ -209,6 +270,50 @@ def test_composio_tool_detail_preserves_cursor_and_normalizes_schema(monkeypatch
     assert result["tools_next_cursor"] == "tool-page-two"
     assert result["tools"][0]["risk_labels"] == ["read"]
     assert result["tools"][0]["input_schema"]["required"] == ["message_id"]
+
+
+@pytest.mark.unit_no_db
+def test_composio_toolkit_details_preserves_leading_underscore_slug(monkeypatch, settings) -> None:
+    service = ComposioService(None, settings)  # type: ignore[arg-type]
+    toolkit_lookups: list[str] = []
+    tool_list_calls: list[dict[str, object]] = []
+
+    def get_toolkit(slug: str) -> dict[str, object]:
+        toolkit_lookups.append(slug)
+        return {"slug": slug, "name": "1Password", "meta": {"tools_count": 1}}
+
+    class Tools:
+        @staticmethod
+        def list(**kwargs):
+            tool_list_calls.append(kwargs)
+            return {
+                "items": [
+                    {
+                        "slug": "_1PASSWORD_LIST_ITEMS",
+                        "description": "List vault items",
+                        "input_parameters": {},
+                    }
+                ],
+                "next_cursor": None,
+            }
+
+    sdk = SimpleNamespace(
+        toolkits=SimpleNamespace(get=get_toolkit),
+        _client=SimpleNamespace(tools=Tools()),
+    )
+    monkeypatch.setattr(service, "_client", lambda **_kwargs: sdk)
+
+    result = service.toolkit_details(
+        tenant_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        toolkit_slug="_1password",
+    )
+
+    assert toolkit_lookups == ["_1password"]
+    assert tool_list_calls[0]["toolkit_slug"] == "_1password"
+    assert result["slug"] == "_1password"
+    assert result["logo_url"] == "https://logos.composio.dev/api/_1password"
+    assert result["tools"][0]["name"] == "_1PASSWORD_LIST_ITEMS"
 
 
 @pytest.mark.unit_no_db

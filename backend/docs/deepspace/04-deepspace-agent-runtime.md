@@ -131,25 +131,35 @@ turn from only its final answer.
 
 ### Provider continuation and task resume
 
-Some providers, including DeepSeek when thinking is enabled with tools, require
-the exact `reasoning_content` returned with an assistant tool call to be sent
-back with the matching tool result. DeepSpace captures that protocol field
-separately from the redacted thinking shown in activity. It encrypts the
-continuation with the configured provider-secret crypto backend and binds it
-to the tenant, user, conversation, assistant message, and model turn. History
-and activity API responses remove the private continuation field. If encryption
-is unavailable, DeepSpace stops before executing the tool and reports a
-continuation persistence error rather than saving the value as plaintext.
+DeepSeek requires the exact `reasoning_content` returned by a thinking-mode
+assistant turn to be sent on its follow-up request, including when the model is
+served through an OpenAI-compatible gateway. DeepSpace captures the protocol
+field separately from the redacted thinking shown in activity. It encrypts
+each continuation with the configured provider-secret crypto backend and
+binds it to the tenant, user, conversation, assistant message, and model turn.
+History and activity API responses never return the encrypted continuation.
+If encryption is unavailable, DeepSpace stops before executing a tool rather
+than storing the continuation as plaintext.
+For DeepSeek V4, the adapter also omits `tool_choice` while thinking is on and
+sends non-null assistant content on tool-call messages, as required by the
+[DeepSeek thinking-mode](https://api-docs.deepseek.com/guides/thinking_mode/)
+and [V4 integration guidance](https://api-docs.deepseek.com/quick_start/agent_integrations/oh_my_pi/).
 
-Tool, clarification, approval, and failed-run resumes rebuild the matching
-assistant tool call and restore its continuation for the selected DeepSeek
-provider. A failed-turn retry is anchored to the original saved user prompt;
+DeepSpace restores continuations for later conversation turns, tool follow-up,
+clarification, approval, and queue retry. The short-lived history cache keeps
+only message text and the encrypted continuation reference needed to restore
+it; it never stores plaintext reasoning. If an older checkpoint or a gateway
+response has no continuation, DeepSpace rebases the
+affected assistant/tool exchange as quoted historical context, includes any
+saved successful tool result, and tells the model not to repeat completed
+actions. Queue retry continues from those saved results and does not rerun a
+completed external action. This recovery applies only to DeepSeek-protocol
+requests; other providers do not receive DeepSeek's private field.
+
+A failed-turn retry remains anchored to the original saved user prompt;
 clarification and approval resumes include that prompt even if it is older than
 the normal 20-message history window. Context compaction protects the original
-task and the current clarification answer. Checkpoints created before exact
-continuations were saved may not contain enough data to reconstruct a provider
-request; in that case the provider's rejection is shown as a request error and
-the saved prompt can be used to start a fresh attempt.
+task and the current clarification answer.
 
 ## Productivity tools
 
@@ -213,7 +223,8 @@ is exposed to DeepSpace only when all of the following are true:
 
 - the MCP server belongs to the authenticated tenant and user;
 - the server is enabled, connected, backed by an approved provider, and has a
-  fresh discovered catalog;
+  discovered catalog. If its cached catalog is old, the last known catalog
+  remains available while a background refresh is requested;
 - the server policy is enabled and explicitly attached to the current
   conversation.
 
@@ -242,12 +253,28 @@ searchable from their discovered names, descriptions, and parameter names as
 soon as their normal catalog refresh succeeds. The model never receives the
 full catalogue, raw server configuration, credentials, or transport details.
 
-The backend still uses the original exact catalog for execution validation.
-Before every remote call, the existing tenant/user ownership lookup,
-connection status, catalog revision, policy, risk classification, approval
-gate, audit event, and MCP transport path run unchanged. Successful model
-output is bounded by `DEEPSPACE_MCP_MAX_RESULT_CHARS` so a large remote page
-cannot refill the conversation context unexpectedly.
+Catalog refreshes advance the tool revision only when the normalized tool
+definitions actually change; harmless refreshes and tool ordering changes do
+not invalidate an in-progress run. If a real change happens while DeepSpace is
+working, the bridge reloads that server's current cached tools by its
+tenant/user-owned server ID, then checks the current schema, policy, risk, and
+approval before execution. A removed or renamed tool is not called; DeepSpace
+is told to search again and load its current schema. An approval is bound to
+the catalog revision shown in its request. If that revision changes while the
+approval is pending, the old approval expires and the action does not run.
+
+Catalog discovery remains asynchronous so routine MCP calls do not wait for a
+remote catalog request. During refresh, DeepSpace can use the last known
+catalog; each tool search reloads the latest catalog persisted by a completed
+refresh, and schema lookup reloads the selected server before returning its
+schema. An aged catalog queues a background refresh without blocking the
+request. The revision and execution checks prevent an old binding from being
+executed after a newer catalog has been committed. Until that refresh completes,
+the last known catalog may be shown; a remote provider changing its catalog is
+not visible until the provider responds successfully. Successful model output
+is bounded by `DEEPSPACE_MCP_MAX_RESULT_CHARS` so a large remote page cannot
+refill the conversation context unexpectedly. These rules live in the shared
+MCP broker and apply to every tool-capable model provider.
 
 The runtime settings are:
 
@@ -422,7 +449,12 @@ operating-system storage behavior. It adds only the DeepSpace adapter and the
 approval/resume path described above; the existing MCP transport and security
 boundary remain unchanged.
 
-### OAuth continuity
+### Legacy provider-profile OAuth continuity
+
+This token-refresh path applies to existing provider-profile OAuth connections
+that remain installed; it is separate from new Composio-hosted Marketplace
+connections, which use each account's Composio key and encrypted hosted-session
+reference as described below.
 
 MCP OAuth tokens are stored encrypted in `mcp_oauth_tokens`. Each worker
 restores the persisted expiry before opening a session, so the MCP SDK can
@@ -448,20 +480,20 @@ user's encrypted MCP connection. Tenant and user ownership are still checked
 on every discovery and tool call; a different provider email never grants
 cross-user access.
 
-Composio-hosted MCP apps use the separate live Composio catalog in the MCP
-Marketplace. The operator configures one encrypted platform project key;
-Composio users are derived from the current tenant and account UUIDs. The
-connected app's session ID is protected with the configured connector-secret
-backend and tenant/user/server associated data. Composio verifies the
-one-time OAuth callback against that same user identity. Composio manages the
-connected app's OAuth tokens; selected tool inputs and results pass through
-Composio and the app provider. These requests are not end-to-end encrypted
-from those providers.
+Composio-hosted MCP apps use the live Composio catalog in the MCP Marketplace.
+Each user enters their own encrypted project key under Providers → MCP. The
+key row and encryption associated data are scoped to that tenant and account;
+the running backend decrypts it to call Composio. App identities are derived
+from the current tenant and account UUIDs, and each connected app's session ID
+is encrypted with tenant/user/server associated data. Composio verifies the
+one-time OAuth callback against that same user identity. Composio and the app
+provider process tool inputs and results, so those requests are not
+end-to-end encrypted from the server or those providers.
 
 For Composio, newly connected policies permit reads under the saved policy and
 require approval before writes, deletions, or external messages. A per-tool
 Always allow setting cannot bypass the runtime's side-effect approval check.
-The connector catalog, administrator setup, callback prerequisites, and
+The connector catalog, user setup, callback prerequisites, and
 privacy boundaries are documented in
 [`../capabilities/mcp/03-composio-hosted-mcp.md`](../capabilities/mcp/03-composio-hosted-mcp.md).
 

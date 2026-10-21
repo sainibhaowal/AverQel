@@ -207,8 +207,7 @@ class MCPMarketplaceFacetsRead(BaseModel):
 
 class MCPComposioStatusRead(BaseModel):
     configured: bool
-    callback_verifier_enabled: bool
-    callback_verifier_url: str | None = None
+    oauth_callback_ready: bool
 
 
 class MCPComposioCredentialWrite(BaseModel):
@@ -221,6 +220,10 @@ class MCPComposioToolkitRead(BaseModel):
     description: str = ""
     logo_url: str | None = None
     app_url: str | None = None
+    auth_guide_url: str | None = None
+    version: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
     categories: list[str] = Field(default_factory=list)
     tool_count: int = 0
     auth_schemes: list[str] = Field(default_factory=list)
@@ -256,11 +259,13 @@ class MCPComposioConnectResponse(BaseModel):
 
 
 class MCPComposioAuthCompleteRequest(BaseModel):
-    session_uri: SecretStr = Field(min_length=1, max_length=4096)
+    toolkit_slug: str = Field(min_length=1, max_length=128)
+    connected_account_id: str = Field(min_length=1, max_length=256)
+    status: Literal["success", "failed"]
 
 
 class MCPComposioAuthCompleteRead(BaseModel):
-    status: Literal["connecting"]
+    status: Literal["connecting", "failed"]
     server_id: uuid.UUID
 
 

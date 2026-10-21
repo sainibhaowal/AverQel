@@ -5,7 +5,7 @@
 @import "./dashboard/deepspace/animations.css";
 
 html {
-  font-size: clamp(11.5px, 0.2vw + 10.5px, 12px);
+  font-size: 100%;
   -webkit-text-size-adjust: 100%;
   scrollbar-gutter: stable both-edges;
 }
@@ -30,12 +30,6 @@ textarea,
 select,
 button {
   font: inherit;
-}
-
-@media (max-width: 640px) {
-  html {
-    font-size: 11px;
-  }
 }
 
 :root {
@@ -958,7 +952,7 @@ html:not(.dark) .library-preview-canvas {
 
 /* Marketing headings use a slow, restrained color travel to keep the product story alive. */
 .landing-animated-gradient-text {
-  animation: landing-gradient-travel 12s ease-in-out infinite alternate;
+  animation: landing-gradient-travel 6s ease-in-out infinite alternate;
   will-change: background-position;
 }
 
@@ -1041,8 +1035,8 @@ html:not(.dark) .library-preview-canvas {
   filter: none;
 }
 
-/* Auth entry screens use the supplied complete logo artwork. Keep the tagline
- * aligned with the wordmark after the asset's transparent lower canvas. */
+/* Auth entry screens pair the selected icon with the supplied colored
+ * wordmark. Keep both and the tagline centered as a single brand lockup. */
 .login-brand-lockup {
   display: inline-flex;
   max-width: min(296px, 82vw);
@@ -1051,11 +1045,17 @@ html:not(.dark) .library-preview-canvas {
   line-height: 1;
 }
 
+.login-brand-wordmark {
+  width: min(266px, 82vw);
+  justify-content: center;
+  margin-top: 0.15rem;
+}
+
 .login-exact-logo-wrap {
   position: relative;
   display: block;
   width: min(296px, 82vw);
-  aspect-ratio: 1448 / 1086;
+  aspect-ratio: 1202 / 675;
   isolation: isolate;
 }
 
@@ -1068,45 +1068,6 @@ html:not(.dark) .library-preview-canvas {
   object-fit: contain;
 }
 
-.login-exact-logo--animated {
-  position: absolute;
-  inset: 0;
-  display: block;
-  z-index: 1;
-  pointer-events: none;
-  clip-path: polygon(0 72%, 56% 72%, 56% 93%, 0 93%);
-  background-image: linear-gradient(
-    90deg,
-    #ff1744 0%,
-    #ff8a00 16%,
-    #ffe600 30%,
-    #00f58b 46%,
-    #00c8ff 62%,
-    #574bff 78%,
-    #f000ff 92%,
-    #ff1744 100%
-  );
-  background-position: 0% 0;
-  background-size: 200% 100%;
-  background-repeat: repeat-x;
-  -webkit-mask-image: url("/brand/AverQel_Exact_Logo.svg");
-  mask-image: url("/brand/AverQel_Exact_Logo.svg");
-  -webkit-mask-mode: alpha;
-  mask-mode: alpha;
-  -webkit-mask-position: 0 0;
-  mask-position: 0 0;
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  will-change: background-position;
-  animation: login-logo-rgb-gradient-sweep 5.6s linear infinite;
-}
-
-.login-exact-logo--el {
-  clip-path: polygon(70% 72%, 100% 72%, 100% 93%, 70% 93%);
-}
-
 .login-brand-tagline {
   color: var(--text-muted);
   font-size: 0.85rem;
@@ -1116,18 +1077,6 @@ html:not(.dark) .library-preview-canvas {
   text-align: center;
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-/* The exact artwork remains underneath this full RGB plane. The clip paths
- * stop at the Q so its original cyan and violet colors are never replaced. */
-@keyframes login-logo-rgb-gradient-sweep {
-  from {
-    background-position: 0% 0;
-  }
-
-  to {
-    background-position: 200% 0;
-  }
 }
 
 @keyframes averqel-q-color-sweep {
@@ -1186,20 +1135,15 @@ html:not(.dark) .library-preview-canvas {
     animation: none;
     filter: invert(1);
   }
-
-  .login-exact-logo--animated {
-    animation: none;
-    opacity: 0;
-  }
 }
 
 @keyframes landing-gradient-travel {
   from {
-    background-position: 0% 50%;
+    background-position: 100% 50%;
   }
 
   to {
-    background-position: 100% 50%;
+    background-position: 0% 50%;
   }
 }
 
@@ -5159,6 +5103,119 @@ html:not(.dark) .deepspace-model-provider-chevron {
   will-change: width;
 }
 
+/* Composio MCP marketplace light palette. Keep the cards crisp and readable,
+ * with a lively forest-green action color instead of the legacy sky-blue. */
+html:not(.dark) .mcp-theme-scope .mcp-marketplace-header .dashboard-section-header-accent {
+  background-color: #187750 !important;
+  box-shadow:
+    0 0 0 1px rgba(24, 119, 80, 0.2),
+    0 0 16px rgba(24, 119, 80, 0.18) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-marketplace-header svg.text-cyan-300 {
+  color: #176b4b !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel {
+  --composio-accent: #187750;
+  --composio-accent-hover: #125f41;
+  --composio-accent-ink: #155b40;
+  --composio-border: #cbd9ce;
+  --composio-surface-soft: #f4f8f4;
+  --composio-chip: #e9f1e9;
+  --composio-chip-ink: #385747;
+  color: #285247;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="text-cyan-100"],
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="text-cyan-200"],
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="text-cyan-300"],
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class*="text-cyan-100/"],
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class*="text-cyan-200/"] {
+  color: var(--composio-accent-ink) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-intro {
+  border-color: #bfd4c5 !important;
+  background: linear-gradient(125deg, #edf6ef, #f7faf6) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-app-card {
+  border-color: var(--composio-border) !important;
+  background: #ffffff !important;
+  box-shadow: 0 3px 12px rgba(35, 74, 51, 0.045);
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-app-card:hover {
+  border-color: #a9c8b2 !important;
+  box-shadow: 0 8px 20px rgba(35, 74, 51, 0.09);
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="border-white/5"],
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="border-white/10"],
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="border-white/15"],
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="border-white/20"] {
+  border-color: var(--composio-border) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="bg-white/[0.03]"],
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="bg-white/[0.04]"],
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel [class~="bg-white/5"] {
+  background-color: var(--composio-surface-soft) !important;
+}
+
+html:not(.dark)
+  .mcp-theme-scope
+  .mcp-composio-panel
+  [class~="hover:bg-white/5"]:hover:not(:disabled) {
+  background-color: #edf5ef !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-category-tag {
+  background: var(--composio-chip) !important;
+  color: var(--composio-chip-ink) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-auth-tag {
+  border: 1px solid #c5e1ce;
+  background: #e1f1e5 !important;
+  color: #155b40 !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-search {
+  border-color: #bfd1c3 !important;
+  background: #ffffff !important;
+  color: #183d31 !important;
+  box-shadow: inset 0 1px 2px rgba(31, 65, 43, 0.035);
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-search:focus {
+  border-color: var(--composio-accent) !important;
+  box-shadow: 0 0 0 3px rgba(24, 119, 80, 0.15);
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-panel .mcp-composio-connect-button {
+  border: 1px solid #176b4b !important;
+  background: var(--composio-accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 5px rgba(24, 119, 80, 0.16);
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-connect-button:hover:not(:disabled) {
+  border-color: var(--composio-accent-hover) !important;
+  background: var(--composio-accent-hover) !important;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-connect-button:focus-visible {
+  outline: 3px solid rgba(24, 119, 80, 0.24);
+  outline-offset: 2px;
+}
+
+html:not(.dark) .mcp-theme-scope .mcp-composio-details-dialog {
+  border-color: #b9d1c0 !important;
+  background: #ffffff !important;
+}
+
 html:not(.dark) .dashboard-user-avatar {
   border-color: rgba(14, 116, 144, 0.42) !important;
   background:
@@ -5211,4 +5268,718 @@ html:not(.dark) .deepspace-theme-scope .deepspace-markdown-blockquote {
 
 html:not(.dark) .deepspace-theme-scope .deepspace-markdown-blockquote p {
   color: #244c63 !important;
+}
+
+/* MCP approvals use dark-theme amber utilities in shared chat markup. Replace
+ * those pale labels only in light mode so each decision remains easy to read. */
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval {
+  border-color: #ddc778 !important;
+  background: linear-gradient(135deg, #fff8e7, #fffdf7) !important;
+  color: #5c4a2c;
+  box-shadow: 0 10px 28px -24px rgba(120, 82, 15, 0.45) !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval-icon {
+  border-color: #e2ca78 !important;
+  background: #fff0c2 !important;
+  color: #805608 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval-title {
+  color: #704b0b !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval-message {
+  color: #5c4c32 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval-metadata {
+  color: #765b1b !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval-input {
+  border-color: #c9d8ce !important;
+  background: #ffffff !important;
+  color: #385247 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval-approve {
+  border: 1px solid #176846 !important;
+  background: #187750 !important;
+  color: #ffffff !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval-approve:hover:not(:disabled) {
+  border-color: #125f41 !important;
+  background: #125f41 !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval-deny {
+  border-color: #bdcbbf !important;
+  background: #f8fbf8 !important;
+  color: #314b3d !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval-deny:hover:not(:disabled) {
+  background: #edf3ee !important;
+}
+
+html:not(.dark) .deepspace-theme-scope .deepspace-mcp-approval button:focus-visible {
+  outline: 3px solid rgba(24, 119, 80, 0.25);
+  outline-offset: 2px;
+}
+
+/* Shared AverQel loading animation. Every colored brand path moves into place
+ * while a fine orbit and soft halo keep the wait state active without glare. */
+.averqel-loading {
+  --averqel-loader-accent: #17764e;
+  --averqel-loader-secondary: #8257d7;
+  --averqel-loader-label: var(--muted-foreground, #64748b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  box-sizing: border-box;
+  color: var(--averqel-loader-label);
+}
+
+html.dark .averqel-loading {
+  --averqel-loader-accent: #69d5a4;
+  --averqel-loader-secondary: #ad8af3;
+  --averqel-loader-label: rgba(229, 241, 235, 0.76);
+}
+
+.averqel-loading--page,
+.averqel-loading--section {
+  flex-direction: column;
+  padding: 2rem;
+  text-align: center;
+}
+
+.averqel-loading--page {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
+  background: color-mix(in srgb, var(--background, #0b0f0c) 82%, transparent);
+  backdrop-filter: blur(0.4rem);
+}
+
+.averqel-loading--section {
+  align-self: stretch;
+  width: 100%;
+  min-height: 18rem;
+}
+
+.averqel-loading--compact {
+  min-height: 2.5rem;
+  flex-direction: row;
+  gap: 0.8rem;
+}
+
+.averqel-loading--inline {
+  display: inline-flex;
+  width: 1.35rem;
+  height: 1.35rem;
+  min-height: 0;
+  flex: none;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.averqel-loading__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.averqel-loading__visual {
+  position: relative;
+  display: grid;
+  width: 7.25rem;
+  height: 7.25rem;
+  flex: none;
+  place-items: center;
+  isolation: isolate;
+}
+
+.averqel-loading--page .averqel-loading__visual {
+  width: 8.25rem;
+  height: 8.25rem;
+}
+
+.averqel-loading--compact .averqel-loading__visual {
+  width: 2.35rem;
+  height: 2.35rem;
+}
+
+.averqel-loading--inline .averqel-loading__visual {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.averqel-loading__wordmark {
+  display: none;
+  width: 12rem;
+  height: 2.25rem;
+  overflow: visible;
+}
+
+.averqel-loading--page .averqel-loading__wordmark {
+  display: block;
+  width: 14rem;
+  height: 2.6rem;
+}
+
+html.dark .averqel-loading__wordmark-piece--1 {
+  filter: brightness(0) invert(1);
+}
+
+.averqel-loading__halo {
+  position: absolute;
+  z-index: -1;
+  inset: 20%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--averqel-loader-accent) 20%, transparent),
+    color-mix(in srgb, var(--averqel-loader-secondary) 10%, transparent) 48%,
+    transparent 76%
+  );
+  filter: blur(0.35rem);
+  animation: averqel-loader-halo 2.8s ease-in-out infinite;
+}
+
+.averqel-loading__logo {
+  width: 86%;
+  height: 86%;
+  overflow: visible;
+  filter: drop-shadow(
+    0 0.35rem 0.85rem color-mix(in srgb, var(--averqel-loader-accent) 20%, transparent)
+  );
+}
+
+.averqel-loading__piece {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: averqel-loader-piece 2.8s cubic-bezier(0.3, 0.7, 0.2, 1) infinite;
+  animation-delay: var(--averqel-piece-delay);
+}
+
+.averqel-loading__orbit {
+  position: absolute;
+  inset: 0.14rem;
+  border: 1px solid color-mix(in srgb, var(--averqel-loader-accent) 24%, transparent);
+  border-top-color: var(--averqel-loader-accent);
+  border-right-color: color-mix(in srgb, var(--averqel-loader-secondary) 72%, transparent);
+  border-radius: 50%;
+  animation: averqel-loader-orbit 3.4s linear infinite;
+}
+
+.averqel-loading__orbit-dot {
+  position: absolute;
+  top: -0.22rem;
+  left: 50%;
+  width: 0.42rem;
+  height: 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--averqel-loader-secondary) 74%, white);
+  border-radius: 50%;
+  background: var(--averqel-loader-secondary);
+  box-shadow: 0 0 0.65rem color-mix(in srgb, var(--averqel-loader-secondary) 36%, transparent);
+  transform: translateX(-50%);
+}
+
+.averqel-loading--compact .averqel-loading__orbit {
+  inset: 0.03rem;
+}
+
+.averqel-loading--compact .averqel-loading__orbit-dot {
+  width: 0.32rem;
+  height: 0.32rem;
+  top: -0.16rem;
+}
+
+.averqel-loading__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  border: 0;
+}
+
+@keyframes averqel-loader-piece {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: translate(var(--averqel-piece-x), var(--averqel-piece-y))
+      rotate(var(--averqel-piece-turn)) scale(0.94);
+  }
+
+  46%,
+  72% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0) scale(1);
+  }
+}
+
+@keyframes averqel-loader-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes averqel-loader-halo {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.9);
+  }
+
+  50% {
+    opacity: 0.95;
+    transform: scale(1.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .averqel-loading__piece,
+  .averqel-loading__orbit,
+  .averqel-loading__halo {
+    animation: none;
+  }
+
+  .averqel-loading__piece {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Data deletion light mode: keep account details crisp and destructive
+ * controls unmistakable while leaving the shared dark theme untouched. */
+html:not(.dark) .deletion-theme-scope {
+  color: #173b35;
+}
+
+html:not(.dark) .deletion-theme-scope .glass-card {
+  border-color: #bad2c5 !important;
+  background: #ffffff !important;
+  box-shadow:
+    0 10px 24px rgba(27, 76, 57, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96) !important;
+}
+
+html:not(.dark) .deletion-theme-scope .theme-panel-muted {
+  border-color: #bfd7ca !important;
+  background: #eff6f1 !important;
+  box-shadow: 0 3px 10px rgba(27, 76, 57, 0.045) !important;
+}
+
+html:not(.dark) .deletion-theme-scope .text-foreground {
+  color: #173b35 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .text-muted-foreground,
+html:not(.dark) .deletion-theme-scope [class~="text-slate-300"],
+html:not(.dark) .deletion-theme-scope [class~="text-slate-400"] {
+  color: #49675c !important;
+}
+
+html:not(.dark) .deletion-theme-scope [class~="text-amber-300"] {
+  color: #78520e !important;
+}
+
+html:not(.dark) .deletion-theme-scope [class~="text-red-400"] {
+  color: #c43d4e !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-account-option {
+  border-color: #bfd7ca !important;
+  background: #f5f9f6 !important;
+  box-shadow: 0 2px 7px rgba(27, 76, 57, 0.035) !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-account-option:hover {
+  border-color: #4e9a78 !important;
+  background: #edf6f0 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-account-option-selected {
+  border-color: #16805a !important;
+  background: #dcefe3 !important;
+  box-shadow: inset 0 0 0 1px rgba(22, 128, 90, 0.12) !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-account-option-selected:hover {
+  background: #d6ecdf !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-account-status-active {
+  border: 1px solid #a9d4bc;
+  background: #dff1e6;
+  color: #17613f !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-account-status-disabled {
+  border: 1px solid #d7c9a8;
+  background: #f5efdf;
+  color: #70531b !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-warning-note {
+  border-color: #dfc88e !important;
+  background: #fff8e8 !important;
+  color: #604d27 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-selected-account {
+  border-color: #a9cfb9 !important;
+  background: #eaf5ed !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-tenant-target {
+  border-color: #bfd7ca !important;
+  background: #f0f6f1 !important;
+  color: #36594b !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-form-label {
+  color: #385d4e !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-confirmation-input {
+  border-color: #a9cbb9 !important;
+  background: #fbfdfb !important;
+  color: #173b35 !important;
+  box-shadow: inset 0 1px 2px rgba(27, 76, 57, 0.045);
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-confirmation-input::placeholder {
+  color: #637d70 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-confirmation-input:focus {
+  border-color: #16805a !important;
+  outline: 3px solid rgba(22, 128, 90, 0.16);
+  outline-offset: 1px;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-confirmation-input:disabled {
+  border-color: #cbd9d0 !important;
+  background: #eaf0ec !important;
+  color: #5b7166 !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-danger-action {
+  border: 1px solid #a92f43;
+  background: #b8384c !important;
+  color: #ffffff !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-danger-action:hover:not(:disabled) {
+  border-color: #96283b;
+  background: #a92f43 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-danger-action:disabled {
+  border-color: #d7aeb5 !important;
+  background: #f3e1e4 !important;
+  color: #793743 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-approve-action {
+  border-color: #d6bd7e !important;
+  background: #fbf4df;
+  color: #624a17 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-secondary-danger-action {
+  border-color: #dcb0b8 !important;
+  background: #fbf0f1;
+  color: #8a3443 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-neutral-action {
+  border-color: #bfd2c7 !important;
+  background: #f1f6f2;
+  color: #36594b !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-retry-action {
+  border-color: #d6bd7e !important;
+  background: #fbf4df;
+  color: #624a17 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-approve-action:disabled,
+html:not(.dark) .deletion-theme-scope .deletion-secondary-danger-action:disabled,
+html:not(.dark) .deletion-theme-scope .deletion-neutral-action:disabled,
+html:not(.dark) .deletion-theme-scope .deletion-retry-action:disabled {
+  opacity: 1 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-approve-action:disabled,
+html:not(.dark) .deletion-theme-scope .deletion-retry-action:disabled {
+  border-color: #d7c99f !important;
+  background: #f2ecd9 !important;
+  color: #6e5c32 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-secondary-danger-action:disabled {
+  border-color: #d7bbc0 !important;
+  background: #f1e5e7 !important;
+  color: #764751 !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-neutral-action:disabled {
+  border-color: #cad7cf !important;
+  background: #e8efea !important;
+  color: #566a5e !important;
+}
+
+html:not(.dark) .deletion-theme-scope .deletion-refresh-action:disabled {
+  border-color: #c5d8cd !important;
+  background: #e8f1eb !important;
+  color: #536b5d !important;
+  opacity: 1 !important;
+}
+
+html:not(.dark) .deletion-theme-scope button:focus-visible,
+html:not(.dark) .deletion-theme-scope input:focus-visible,
+html:not(.dark) .deletion-theme-scope select:focus-visible {
+  outline: 3px solid rgba(22, 128, 90, 0.35);
+  outline-offset: 2px;
+}
+
+/* Support and feedback: give light-theme text, controls, and conversation
+ * cards enough contrast without changing the shared dark palette. */
+html:not(.dark) .support-page-theme,
+html:not(.dark) .feedback-page-theme {
+  --text-muted: #496457;
+}
+
+html:not(.dark) .support-page-theme .text-muted-foreground,
+html:not(.dark) .feedback-page-theme .text-muted-foreground,
+html:not(.dark) .support-page-theme [class*="text-muted-foreground/"],
+html:not(.dark) .feedback-page-theme [class*="text-muted-foreground/"],
+html:not(.dark) .support-page-theme [class*="text-foreground/"],
+html:not(.dark) .feedback-page-theme [class*="text-foreground/"] {
+  color: #496457 !important;
+}
+
+html:not(.dark) .support-page-theme .theme-panel,
+html:not(.dark) .feedback-page-theme .theme-panel {
+  border-color: #829b8b !important;
+  background: linear-gradient(145deg, #ffffff 0%, #f7faf7 100%) !important;
+  box-shadow:
+    0 12px 28px rgba(29, 74, 49, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98) !important;
+}
+
+html:not(.dark) .support-page-theme .theme-panel-muted,
+html:not(.dark) .feedback-page-theme .theme-panel-muted {
+  border-color: #9aad9f !important;
+  background: #f0f6f1 !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-campaigns-empty {
+  border-color: #619477 !important;
+  background: linear-gradient(115deg, #e4f2e8 0%, #edf5ed 100%) !important;
+  box-shadow: 0 6px 18px rgba(34, 91, 59, 0.1) !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-campaigns-empty p {
+  color: #315844 !important;
+}
+
+html:not(.dark) .support-page-theme .support-form-control,
+html:not(.dark) .feedback-page-theme .feedback-form-control,
+html:not(.dark) .feedback-page-theme .feedback-reply-input {
+  border-color: #829b8b !important;
+  background: #ffffff !important;
+  color: #173b35 !important;
+  box-shadow: inset 0 1px 2px rgba(29, 74, 49, 0.04);
+}
+
+html:not(.dark) .support-page-theme .support-form-control::placeholder,
+html:not(.dark) .feedback-page-theme .feedback-form-control::placeholder,
+html:not(.dark) .feedback-page-theme .feedback-reply-input::placeholder {
+  color: #62776b !important;
+  opacity: 1;
+}
+
+html:not(.dark) .support-page-theme .support-form-control:focus,
+html:not(.dark) .feedback-page-theme .feedback-form-control:focus,
+html:not(.dark) .feedback-page-theme .feedback-reply-input:focus,
+html:not(.dark) .support-page-theme button[aria-haspopup="listbox"]:focus-visible {
+  border-color: #147451 !important;
+  outline: 3px solid rgba(20, 116, 81, 0.18);
+  outline-offset: 1px;
+}
+
+html:not(.dark) .support-page-theme button[aria-haspopup="listbox"] {
+  border-color: #829b8b !important;
+  background: #ffffff !important;
+  color: #173b35 !important;
+}
+
+html:not(.dark) .support-page-theme .support-ticket-card,
+html:not(.dark) .feedback-page-theme .feedback-campaign-card:not(.feedback-campaign-card-selected),
+html:not(.dark) .feedback-page-theme .feedback-submission-card {
+  border-color: #9aad9f !important;
+  background: #ffffff !important;
+  color: #173b35;
+  box-shadow: 0 3px 10px rgba(29, 74, 49, 0.045);
+}
+
+html:not(.dark) .support-page-theme .support-ticket-card:hover,
+html:not(.dark)
+  .feedback-page-theme
+  .feedback-campaign-card:hover:not(.feedback-campaign-card-selected),
+html:not(.dark) .feedback-page-theme .feedback-submission-card:hover {
+  border-color: #6e9c80 !important;
+  background: #f3f8f4 !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-campaign-card-selected {
+  border-color: #368462 !important;
+  background: #e1f0e6 !important;
+  color: #174b35;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-campaign-card-selected:hover {
+  background: #dceee3 !important;
+}
+
+html:not(.dark) .support-page-theme .support-ticket-thread,
+html:not(.dark) .feedback-page-theme .feedback-thread {
+  border-color: #a1b5a7 !important;
+  background: #f1f6f2 !important;
+}
+
+html:not(.dark) .support-page-theme .support-ticket-thread .support-form-control,
+html:not(.dark) .feedback-page-theme .feedback-thread .feedback-reply-input {
+  background: #ffffff !important;
+}
+
+html:not(.dark) .support-page-theme .support-priority-card {
+  border-color: #6e9c80 !important;
+  background: linear-gradient(135deg, #e5f2e9, #dceee3) !important;
+}
+
+html:not(.dark) .support-page-theme .support-priority-card .text-primary {
+  color: #176b4b !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-category-option {
+  border-color: #829b8b !important;
+  background: #ffffff !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-category-option:hover {
+  border-color: #5e9a76 !important;
+  background: #f1f7f3 !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-category-option-selected {
+  border-color: #368462 !important;
+  background: #e1f0e6 !important;
+  color: #174b35 !important;
+  box-shadow: inset 0 0 0 1px rgba(54, 132, 98, 0.12) !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-category-option-selected .text-primary {
+  color: #176b4b !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-message-card {
+  border-color: #9aad9f !important;
+  background: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(29, 74, 49, 0.05) !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-status-new {
+  border-color: #a8c7b4 !important;
+  background: #e7f1ea !important;
+  color: #315a43 !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-status-triaged {
+  border-color: #b9add8 !important;
+  background: #f0edf8 !important;
+  color: #4d3f76 !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-status-planned {
+  border-color: #b9b4d7 !important;
+  background: #eeedf7 !important;
+  color: #46416e !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-status-in-progress {
+  border-color: #d5bd83 !important;
+  background: #f8f0dd !important;
+  color: #6d501b !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-status-completed {
+  border-color: #91bda1 !important;
+  background: #e3f1e7 !important;
+  color: #205b3c !important;
+}
+
+html:not(.dark) .feedback-page-theme .feedback-status-declined {
+  border-color: #d3a1a5 !important;
+  background: #f8e9e9 !important;
+  color: #812f39 !important;
+}
+
+html:not(.dark) .support-page-theme .support-reply-button:disabled,
+html:not(.dark) .feedback-page-theme .feedback-reply-button:disabled {
+  border: 1px solid #829b8b !important;
+  background: #dfeae2 !important;
+  color: #435c4d !important;
+  cursor: not-allowed;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) .support-page-theme .support-submit-button:disabled,
+html:not(.dark) .feedback-page-theme .feedback-submit-button:disabled {
+  border: 1px solid #477a5d !important;
+  background: #477a5d !important;
+  color: #ffffff !important;
+  cursor: progress;
+  opacity: 1 !important;
+}
+
+html:not(.dark) .support-page-theme .bg-primary,
+html:not(.dark) .feedback-page-theme .bg-primary {
+  background-color: #17764f !important;
+  color: #ffffff !important;
+}
+
+html:not(.dark) .support-page-theme .bg-primary:hover:not(:disabled),
+html:not(.dark) .feedback-page-theme .bg-primary:hover:not(:disabled) {
+  background-color: #12633f !important;
+}
+
+html:not(.dark) .support-page-theme button:focus-visible,
+html:not(.dark) .feedback-page-theme button:focus-visible,
+html:not(.dark) .support-page-theme textarea:focus-visible,
+html:not(.dark) .feedback-page-theme textarea:focus-visible,
+html:not(.dark) .support-page-theme input:focus-visible,
+html:not(.dark) .feedback-page-theme input:focus-visible {
+  outline: 3px solid rgba(20, 116, 81, 0.35);
+  outline-offset: 2px;
 }

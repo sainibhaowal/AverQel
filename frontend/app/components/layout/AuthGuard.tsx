@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -15,11 +16,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [user, loading, router]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-[100svh] items-center justify-center bg-[#050508]">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-500/20 border-t-blue-500" />
-      </div>
-    );
+    return <AverQelLoading label="Checking your session…" size="page" />;
   }
 
   if (!user) {

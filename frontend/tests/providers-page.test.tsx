@@ -2,6 +2,12 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { vi } from "vitest";
 import { listProviders, refreshProviderModels, type ProviderConfig } from "@/lib/providers-api";
 
+const composioApi = vi.hoisted(() => ({
+  getComposioStatus: vi.fn(),
+  saveComposioApiKey: vi.fn(),
+  removeComposioApiKey: vi.fn(),
+}));
+
 import ProvidersSettingsPage from "../app/dashboard/settings/providers/page";
 
 vi.mock("@/lib/providers-api", () => ({
@@ -154,6 +160,8 @@ vi.mock("react-hot-toast", () => ({
   },
 }));
 
+vi.mock("@/lib/mcp-api", () => composioApi);
+
 describe("providers settings page", () => {
   it("renders the providers workspace shell", async () => {
     render(<ProvidersSettingsPage />);
@@ -163,10 +171,30 @@ describe("providers settings page", () => {
       screen.getByText(/manage foundation models and runtime connectivity/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to settings/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /mcp apps/i })).toHaveAttribute(
-      "href",
-      "/dashboard/mcp?tab=composio",
+    expect(screen.getByRole("button", { name: "MCP" })).toBeInTheDocument();
+  });
+
+  it("lets each user validate and save their own Composio key under Providers", async () => {
+    composioApi.getComposioStatus.mockResolvedValue({
+      configured: false,
+      oauth_callback_ready: true,
+    });
+    composioApi.saveComposioApiKey.mockResolvedValue({
+      configured: true,
+      oauth_callback_ready: true,
+    });
+    render(<ProvidersSettingsPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "MCP" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Select Composio MCP provider" }));
+    const input = await screen.findByLabelText("Your Composio project API key");
+    fireEvent.change(input, { target: { value: "user-project-api-key-123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Validate and save" }));
+
+    await waitFor(() =>
+      expect(composioApi.saveComposioApiKey).toHaveBeenCalledWith("user-project-api-key-123"),
     );
+    expect(await screen.findByText("Your Composio key is saved securely.")).toBeInTheDocument();
   });
 
   it("clears the loading state after providers resolve", async () => {

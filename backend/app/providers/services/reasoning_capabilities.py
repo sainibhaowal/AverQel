@@ -236,6 +236,22 @@ _REASONING_REQUEST_CONTROLS: Final[frozenset[str]] = frozenset(
 )
 
 
+def uses_deepseek_reasoning_protocol(provider_type: str, model_name: str) -> bool:
+    """Identify DeepSeek even when it is routed through a compatible gateway."""
+
+    return (
+        str(provider_type or "").strip().casefold() == "deepseek"
+        or "deepseek" in str(model_name or "").casefold()
+    )
+
+
+def is_deepseek_v4_model(model_name: str) -> bool:
+    """DeepSeek V4 requires non-null assistant content on tool-call messages."""
+
+    normalized = str(model_name or "").casefold()
+    return "deepseek-v4" in normalized or "deepseek_v4" in normalized
+
+
 def normalize_reasoning_effort_value(value: object) -> str | None:
     """Normalize a provider-advertised option into a safe UI/API identifier.
 

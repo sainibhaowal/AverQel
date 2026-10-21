@@ -102,11 +102,11 @@ const surfaces = [
     icon: Cable,
     accent: "amber",
     description:
-      "Authorize supported remote apps through OAuth. Each external tool is checked for ownership, connection health, catalog freshness, policy, and approval before use.",
+      "Browse Composio's live app catalog with your own project key, connect the apps you choose, and use their tools in DeepSpace under account ownership and approval checks.",
     bullets: [
-      "Reviewed connections such as GitHub, Drive, Gmail, Calendar, Chat, and People",
-      "Per-tool permissions, read-only mode, risk limits, and approvals",
-      "Connection status and health are visible, not assumed",
+      "Live app and tool catalog supplied by Composio",
+      "Account-scoped project key and app sessions",
+      "Approval before writes, deletions, and external messages",
     ],
   },
   {

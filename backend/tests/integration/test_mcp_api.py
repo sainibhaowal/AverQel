@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import create_access_token
@@ -89,7 +89,7 @@ def test_legacy_catalog_import_route_is_removed(
     assert response.status_code == 404
 
 
-def test_curated_provider_is_visible_but_requires_provider_oauth_configuration(
+def test_curated_provider_is_hidden_from_marketplace(
     client: TestClient,
     seed_user: Callable[[str, str, str, tuple[str, ...]], SeededUser],
     db_session: Session,
@@ -109,31 +109,7 @@ def test_curated_provider_is_visible_but_requires_provider_oauth_configuration(
         response = client.get("/api/v1/mcp/marketplace?page=1", headers=_auth_headers(seeded))
 
         assert response.status_code == 200
-        gmail = next(
-            item for item in response.json()["items"] if item["provider_slug"] == "google-gmail"
-        )
-        assert gmail["official"] is True
-        assert gmail["connectable"] is False
-        assert gmail["requested_scopes"] == [
-            "https://www.googleapis.com/auth/gmail.readonly",
-            "https://www.googleapis.com/auth/gmail.compose",
-        ]
-        assert gmail["tools"] == gmail["tool_preview"]
-        assert "client_secret" not in str(gmail["oauth_requirements"])
-        assert "client_secret" not in str(gmail["package_metadata"])
-        assert gmail["health"] == {
-            "status": "not_checked",
-            "last_checked_at": None,
-            "detail": "Live health is checked only after user authentication.",
-        }
-
-        connect_response = client.post(
-            f"/api/v1/mcp/marketplace/{gmail['id']}/connect",
-            headers=_auth_headers(seeded),
-        )
-
-        assert connect_response.status_code == 409
-        assert "MCP_GOOGLE_OAUTH_CLIENT_ID" in str(connect_response.json())
+        assert all(item["provider_slug"] != "google-gmail" for item in response.json()["items"])
     finally:
         db_session.execute(
             delete(MCPRegistryEntry).where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
@@ -154,14 +130,22 @@ def test_marketplace_connect_rebinds_tenant_context_after_oauth_commit(
         "StrongPass!1234",
         ("admin",),
     )
-    db_session.execute(
-        delete(MCPRegistryEntry).where(MCPRegistryEntry.source == CURATED_MCP_CATALOG_SOURCE)
+    entry = MCPRegistryEntry(
+        source="averqel-reviewed-community",
+        server_name="context-test-mcp",
+        provider_slug="context-test-mcp",
+        publisher_type="community",
+        display_name="Context Test MCP",
+        publisher="AverQel Test Fixtures",
+        remote_url="https://context.example/mcp",
+        transport="streamable_http",
+        trust_status="approved",
+        oauth_requirements={"type": "oauth"},
+        raw_metadata={"catalog": {"connection_ready": True}},
     )
-    MCPCatalogService(db_session).sync_official_providers()
+    db_session.add(entry)
     db_session.commit()
     settings = get_settings()
-    settings.mcp_google_oauth_client_id = "mcp-google-client-id"
-    settings.mcp_google_oauth_client_secret = "mcp-google-client-secret"
     settings.mcp_oauth_redirect_uri = "https://averqel.example/api/v1/mcp/oauth/callback"
 
     def fake_start(self, *, server, user_id):
@@ -174,9 +158,6 @@ def test_marketplace_connect_rebinds_tenant_context_after_oauth_commit(
         lambda _host, _port: ("8.8.8.8",),
     )
 
-    entry = db_session.execute(
-        select(MCPRegistryEntry).where(MCPRegistryEntry.provider_slug == "google-gmail")
-    ).scalar_one()
     response = client.post(
         f"/api/v1/mcp/marketplace/{entry.id}/connect",
         headers=_auth_headers(seeded),
@@ -185,4 +166,4 @@ def test_marketplace_connect_rebinds_tenant_context_after_oauth_commit(
     assert response.status_code == 201
     payload = response.json()
     assert payload["authorization_url"].startswith("https://accounts.google.com/")
-    assert payload["server"]["provider_slug"] == "google-gmail"
+    assert payload["server"]["provider_slug"] == "context-test-mcp"

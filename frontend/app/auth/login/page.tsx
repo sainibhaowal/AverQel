@@ -6,6 +6,7 @@ import { Github } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AverQelExactBrand from "@/app/components/ui/AverQelExactBrand";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { useAuth } from "../../context/AuthContext";
 import { getApiBaseUrl, isDesktopEnvironment } from "../../../lib/api";
 import { getAuthSessionDevice } from "@/lib/auth-session-device";
@@ -570,7 +571,7 @@ export default function LoginPage() {
                 </div>
 
                 <button type="submit" disabled={loading} className="btn-primary mt-2 w-full py-3.5">
-                  {loading ? "Logging in..." : "Log In"}
+                  {loading ? <AverQelLoading size="inline" label="Signing in" /> : "Log In"}
                 </button>
               </form>
 

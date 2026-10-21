@@ -1,99 +1,45 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
-import { PlugZap, Search } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { PlugZap } from "lucide-react";
 
 import {
-  connectMarketplaceEntry,
   deleteMCPServer,
-  getMarketplace,
-  getMarketplaceFacets,
   listMCPServers,
   refreshMCPServer,
-  startMCPServerOAuth,
   type MCPConnection,
-  type MCPMarketplaceFacets,
-  type MCPMarketplaceEntry,
-  type MarketplaceQuery,
 } from "@/lib/mcp-api";
-
-import MCPMarketplaceCard from "./_components/MCPMarketplaceCard";
 import MCPHealthStatus from "./_components/MCPHealthStatus";
-import MCPFilterSelect from "./_components/MCPFilterSelect";
 import MCPComposioPanel from "./_components/MCPComposioPanel";
+import MCPLoadingIndicator from "./_components/MCPLoadingIndicator";
 import { readMCPActiveContext } from "@/lib/mcp-context";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
 import { useRealtimeEvents } from "@/lib/realtime";
 import { averqelConfirm } from "@/app/components/ui/AverQelDialogHost";
 
-const FALLBACK_CATEGORIES = [
-  "Productivity",
-  "Development",
-  "Communication",
-  "Files",
-  "Knowledge",
-  "Finance",
-  "Marketing",
-];
-
 export default function MCPDashboard() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [tab, setTab] = useState<"marketplace" | "composio" | "installed">(() =>
-    searchParams.get("tab") === "composio" ? "composio" : "marketplace",
+  const [tab, setTab] = useState<"marketplace" | "installed">(() =>
+    searchParams.get("tab") === "installed" ? "installed" : "marketplace",
   );
-  const [q, setQ] = useState("");
-  const [category, setCategory] = useState("");
-  const [transport, setTransport] = useState("");
-  const [official, setOfficial] = useState<boolean | null>(null);
-  const [verified, setVerified] = useState<boolean | null>(null);
-  const [authType, setAuthType] = useState("");
-  const [trustStatus, setTrustStatus] = useState("");
-  const [sort, setSort] = useState<NonNullable<MarketplaceQuery["sort"]>>("default");
-  const [facets, setFacets] = useState<MCPMarketplaceFacets>({
-    categories: [],
-    transports: [],
-    auth_types: [],
-    trust_statuses: [],
-  });
-  const [items, setItems] = useState<MCPMarketplaceEntry[]>([]);
   const [installed, setInstalled] = useState<MCPConnection[]>([]);
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
-  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [clientReady, setClientReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [callbackMessage, setCallbackMessage] = useState<string | null>(null);
 
-  const query = useMemo(
-    () => ({ q, category, transport, official, verified, authType, trustStatus, sort, page }),
-    [q, category, transport, official, verified, authType, trustStatus, sort, page],
-  );
-
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
-      const [marketplace, servers, facetData] = await Promise.all([
-        getMarketplace(query),
-        listMCPServers(),
-        getMarketplaceFacets().catch(() => null),
-      ]);
-      setItems(marketplace.items || []);
-      setTotal(marketplace.total || 0);
-      setPages(Math.max(1, marketplace.pages || 1));
-      setInstalled(servers || []);
-      if (facetData) setFacets(facetData);
+      setInstalled(await listMCPServers());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "MCP marketplace unavailable");
+      setError(reason instanceof Error ? reason.message : "MCP connections could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, []);
 
   useEffect(() => {
     queueMicrotask(() => void load());
@@ -131,38 +77,21 @@ export default function MCPDashboard() {
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }, [router, searchParams]);
 
-  const connect = async (entry: MCPMarketplaceEntry) => {
-    setError(null);
-    try {
-      const result = await connectMarketplaceEntry(entry.id);
-      if (result.authorization_url) window.location.assign(result.authorization_url);
-      else {
-        setTab("installed");
-        await load();
-      }
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : `Unable to connect ${entry.name}`);
-    }
-  };
-
-  const clearFilters = () => {
-    setPage(1);
-    setCategory("");
-    setTransport("");
-    setOfficial(null);
-    setVerified(null);
-    setAuthType("");
-    setTrustStatus("");
-    setSort("default");
-  };
-  const categories = facets.categories.length ? facets.categories : FALLBACK_CATEGORIES;
+  const connectedSlugs = installed
+    .filter((server) => server.status === "connected")
+    .map((server) => server.provider_slug || "")
+    .filter(Boolean);
+  const connectingSlugs = installed
+    .filter((server) => server.status === "connecting")
+    .map((server) => server.provider_slug || "")
+    .filter(Boolean);
 
   return (
     <main className="mcp-theme-scope w-full min-w-0 space-y-8 pb-10">
-      <header className="space-y-5">
+      <header className="mcp-marketplace-header">
         <DashboardSectionHeader
           title="MCP Marketplace"
-          subtitle="APPROVED CONNECTORS AND DEEPSPACE TOOLS"
+          subtitle="COMPOSIO CURATED APPS AND YOUR MCP CONNECTIONS"
           icon={PlugZap}
           accentClassName="bg-cyan-400 text-cyan-300"
           accentGlowClassName="shadow-[0_0_18px_rgba(34,211,238,0.35)]"
@@ -170,6 +99,7 @@ export default function MCPDashboard() {
             <div className="mcp-marketplace-actions flex flex-wrap gap-2">
               <button
                 type="button"
+                aria-current={tab === "marketplace" ? "page" : undefined}
                 className={`rounded px-3 py-2 text-sm ${tab === "marketplace" ? "bg-white/15 text-white" : "border border-white/10 text-slate-300"}`}
                 onClick={() => setTab("marketplace")}
               >
@@ -177,13 +107,7 @@ export default function MCPDashboard() {
               </button>
               <button
                 type="button"
-                className={`rounded px-3 py-2 text-sm ${tab === "composio" ? "bg-white/15 text-white" : "border border-white/10 text-slate-300"}`}
-                onClick={() => setTab("composio")}
-              >
-                Composio Apps
-              </button>
-              <button
-                type="button"
+                aria-current={tab === "installed" ? "page" : undefined}
                 className={`rounded px-3 py-2 text-sm ${tab === "installed" ? "bg-white/15 text-white" : "border border-white/10 text-slate-300"}`}
                 onClick={() => setTab("installed")}
               >
@@ -192,126 +116,6 @@ export default function MCPDashboard() {
             </div>
           }
         />
-        {tab === "marketplace" && (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-3">
-              <label className="mcp-marketplace-search">
-                <Search className="mcp-marketplace-search-icon" aria-hidden="true" />
-                <input
-                  className="mcp-marketplace-search-input"
-                  aria-label="Search providers and tools"
-                  placeholder="Search providers and tools"
-                  value={q}
-                  onChange={(event) => {
-                    setPage(1);
-                    setQ(event.target.value);
-                  }}
-                />
-              </label>
-              <MCPFilterSelect
-                label="All transports"
-                value={transport}
-                options={[
-                  { value: "", label: "All transports" },
-                  ...facets.transports.map((item) => ({
-                    value: item,
-                    label: transportLabel(item),
-                  })),
-                ]}
-                onChange={(value) => {
-                  setPage(1);
-                  setTransport(value);
-                }}
-              />
-              <MCPFilterSelect
-                label="Filter by"
-                value={authType ? `auth:${authType}` : trustStatus ? `trust:${trustStatus}` : ""}
-                options={[
-                  { value: "", label: "Filter by" },
-                  ...facets.auth_types.map((item) => ({ value: `auth:${item}`, label: item })),
-                  ...facets.trust_statuses.map((item) => ({ value: `trust:${item}`, label: item })),
-                ]}
-                onChange={(value) => {
-                  setPage(1);
-                  setAuthType(value.startsWith("auth:") ? value.slice(5) : "");
-                  setTrustStatus(value.startsWith("trust:") ? value.slice(6) : "");
-                }}
-              />
-              <MCPFilterSelect
-                label="Sort by"
-                value={sort}
-                options={[
-                  { value: "default", label: "Sort by" },
-                  { value: "popular", label: "Popular" },
-                  { value: "trending", label: "Trending" },
-                  { value: "new", label: "New" },
-                  { value: "alphabetical", label: "Alphabetical" },
-                ]}
-                onChange={(value) => {
-                  setPage(1);
-                  setSort(value as NonNullable<MarketplaceQuery["sort"]>);
-                }}
-              />
-              <Chip
-                label="Verified"
-                active={verified === true}
-                onClick={() => {
-                  setPage(1);
-                  setVerified(verified === true ? null : true);
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded border border-white/10 px-3 py-2 text-left text-xs text-slate-400 hover:bg-white/[0.03]"
-              onClick={() => setFiltersOpen((open) => !open)}
-            >
-              <span>{filtersOpen ? "▾" : "▸"}</span>More filters
-            </button>
-            {filtersOpen && (
-              <div className="space-y-3 rounded border border-white/10 p-3">
-                <div className="flex flex-wrap gap-2">
-                  <Chip
-                    label="All"
-                    active={!category}
-                    onClick={() => {
-                      setPage(1);
-                      setCategory("");
-                    }}
-                  />
-                  {categories.map((item) => (
-                    <Chip
-                      key={item}
-                      label={item}
-                      active={category === item}
-                      onClick={() => {
-                        setPage(1);
-                        setCategory(item);
-                      }}
-                    />
-                  ))}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Chip
-                    label="Official"
-                    active={official === true}
-                    onClick={() => {
-                      setPage(1);
-                      setOfficial(official === true ? null : true);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-400"
-                    onClick={clearFilters}
-                  >
-                    Clear filters
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </header>
       {error && (
         <p
@@ -330,73 +134,26 @@ export default function MCPDashboard() {
         </p>
       )}
       {tab === "marketplace" ? (
-        <section className="space-y-6">
-          <p className="text-sm text-slate-400">
-            {total.toLocaleString("en-US")} approved connectors
-          </p>
-          {loading ? (
-            <p className="text-sm text-white/60">Loading marketplace…</p>
-          ) : items.length === 0 ? (
-            <p className="rounded-2xl border border-white/10 p-6 text-sm text-white/55">
-              No approved connectors match these filters.
-            </p>
-          ) : (
-            <div className="grid items-stretch gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {items.map((entry) => {
-                const connectedServer = installed.find(
-                  (server) =>
-                    server.registry_entry_id === entry.id ||
-                    (server.provider_slug && server.provider_slug === entry.provider_slug),
-                );
-                return (
-                  <MCPMarketplaceCard
-                    key={entry.id}
-                    entry={entry}
-                    connectedServer={connectedServer}
-                    onConnect={(value) => void connect(value)}
-                    onReconnect={(server) => {
-                      void startMCPServerOAuth(server.id)
-                        .then((result) => window.location.assign(result.authorization_url))
-                        .catch((reason) =>
-                          setError(
-                            reason instanceof Error
-                              ? reason.message
-                              : "Unable to reconnect provider.",
-                          ),
-                        );
-                    }}
-                  />
-                );
-              })}
-            </div>
-          )}
-          <Pagination
-            page={page}
-            hasNext={page < pages}
-            onPrevious={() => setPage(Math.max(1, page - 1))}
-            onNext={() => setPage(page + 1)}
-          />
-        </section>
-      ) : tab === "composio" ? (
         <MCPComposioPanel
-          connectedProviderSlugs={installed
-            .filter((server) => server.status === "connected")
-            .map((server) => server.provider_slug || "")
-            .filter(Boolean)}
-          connectingProviderSlugs={installed
-            .filter((server) => server.status === "connecting")
-            .map((server) => server.provider_slug || "")
-            .filter(Boolean)}
+          connectedProviderSlugs={connectedSlugs}
+          connectingProviderSlugs={connectingSlugs}
           onConnected={() => {
             setTab("installed");
             void load();
           }}
         />
+      ) : loading ? (
+        <MCPLoadingIndicator
+          label="Loading your MCP connections…"
+          size="large"
+          className="rounded-xl border border-white/10 bg-white/[0.02] p-4"
+        />
       ) : (
         <section className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
           {installed.length === 0 ? (
             <p className="rounded-2xl border border-white/10 p-6 text-sm text-white/55">
-              No MCP connections yet. Connect one from the marketplace.
+              No MCP connections yet. Browse Composio apps in Marketplace and connect one to
+              DeepSpace.
             </p>
           ) : (
             installed.map((server) => (
@@ -420,18 +177,6 @@ export default function MCPDashboard() {
         </section>
       )}
     </main>
-  );
-}
-
-function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      className={`rounded-full border px-3 py-1.5 text-xs transition ${active ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-100" : "border-white/10 bg-white/5 text-white/65 hover:bg-white/10"}`}
-      onClick={onClick}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -513,40 +258,6 @@ function InstalledCard({
         </button>
       </div>
     </article>
-  );
-}
-
-function Pagination({
-  page,
-  hasNext,
-  onPrevious,
-  onNext,
-}: {
-  page: number;
-  hasNext: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-end gap-2">
-      <button
-        type="button"
-        disabled={page <= 1}
-        onClick={onPrevious}
-        className="rounded border border-white/10 px-3 py-2 text-xs text-white/70 disabled:opacity-30"
-      >
-        Previous
-      </button>
-      <span className="text-xs text-white/45">Page {page}</span>
-      <button
-        type="button"
-        disabled={!hasNext}
-        onClick={onNext}
-        className="rounded border border-white/10 px-3 py-2 text-xs text-white/70 disabled:opacity-30"
-      >
-        Next
-      </button>
-    </div>
   );
 }
 

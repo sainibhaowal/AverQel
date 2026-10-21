@@ -1,17 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-  FileText,
-  FileCode,
-  ScanSearch,
-  Layers,
-  ArrowRight,
-  MessageSquareText,
-  Mail,
-  ContactRound,
-  CalendarDays,
-} from "lucide-react";
+import { FileText, ScanSearch, Layers, ArrowRight, Cable } from "lucide-react";
 import { useLandingSectionMotion } from "./landingMotion";
 import {
   landingContentClass,
@@ -25,39 +15,11 @@ import {
 
 const formats = [
   {
-    name: "GitHub",
-    description: "MCP · OAuth setup",
-    icon: FileCode,
-    color: "text-slate-200",
-    bg: "bg-slate-500/[0.08] border-slate-400/20",
-  },
-  {
-    name: "Google Drive",
-    description: "MCP · developer preview",
-    icon: FileText,
-    color: "text-blue-400",
-    bg: "bg-blue-500/[0.08] border-blue-400/20",
-  },
-  {
-    name: "Google Calendar",
-    description: "MCP · developer preview",
-    icon: CalendarDays,
-    color: "text-blue-300",
-    bg: "bg-blue-500/[0.08] border-blue-400/20",
-  },
-  {
-    name: "Google Chat",
-    description: "MCP · developer preview",
-    icon: MessageSquareText,
-    color: "text-indigo-300",
-    bg: "bg-indigo-500/[0.08] border-indigo-400/20",
-  },
-  {
-    name: "Google People",
-    description: "MCP · developer preview",
-    icon: ContactRound,
-    color: "text-emerald-300",
-    bg: "bg-emerald-500/[0.08] border-emerald-400/20",
+    name: "MCP Marketplace",
+    description: "Live Composio app catalog",
+    icon: Cable,
+    color: "text-amber-300",
+    bg: "bg-amber-500/[0.08] border-amber-400/20",
   },
   {
     name: "Web Search",
@@ -79,13 +41,6 @@ const formats = [
     icon: FileText,
     color: "text-blue-400",
     bg: "bg-blue-500/[0.08] border-blue-400/20",
-  },
-  {
-    name: "Gmail",
-    description: "MCP · developer preview",
-    icon: Mail,
-    color: "text-red-400",
-    bg: "bg-red-500/[0.08] border-red-400/20",
   },
 ];
 
@@ -124,9 +79,9 @@ export default function SupportedFormats() {
                 Bring supported sources into one searchable workspace
               </h2>
               <p className={landingSectionLeadClass}>
-                Start with supported files in Documents Hub, then connect a reviewed remote service
-                only when it is useful to your work. Remote access is never implied: it depends on
-                OAuth consent, connection health, selected scopes, and workspace policy.
+                Start with supported files in Documents Hub, then connect an external app when it is
+                useful to your work. The MCP Marketplace uses Composio&apos;s live catalog; each
+                user supplies a project key, and app authorization requirements depend on the app.
               </p>
             </div>
 

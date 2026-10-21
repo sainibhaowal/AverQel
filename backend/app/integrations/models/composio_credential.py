@@ -1,20 +1,29 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, LargeBinary, SmallInteger, String, func, text
+from sqlalchemy import DateTime, ForeignKey, LargeBinary, String, func, text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.platform.database.base import Base
 
 
 class ComposioCredential(Base):
-    """Encrypted platform Composio project key, configured by a platform admin."""
+    """Encrypted Composio project key owned by one AverQel account."""
 
     __tablename__ = "composio_credentials"
-    __table_args__ = (CheckConstraint("id = 1", name="ck_composio_credentials_singleton"),)
-
-    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
     secret_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     secret_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     secret_kid: Mapped[str] = mapped_column(String(128), nullable=False)

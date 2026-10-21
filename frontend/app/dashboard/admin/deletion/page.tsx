@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw, Search, Trash2, UserRound } from "lucide-react";
+import Link from "next/link";
 import toast from "react-hot-toast";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import { useAuth } from "@/app/context/AuthContext";
 import { fetchWithAuth } from "@/lib/api";
 import { hasAdminRole } from "@/lib/roles";
@@ -53,9 +55,24 @@ interface TenantPurgeRequest {
   requested_at: string;
 }
 
+interface PlatformAdminAccessResponse {
+  allowed: boolean;
+  reason?:
+    | "ADMIN_ROLE_REQUIRED"
+    | "PLATFORM_ADMIN_ALLOWLIST_REQUIRED"
+    | "ADMIN_MFA_SETUP_REQUIRED"
+    | "ADMIN_MFA_REQUIRED"
+    | null;
+}
+
+type PlatformAdminAccessState = "checking" | "allowed" | "denied" | "unavailable";
+
 export default function DeletionPage() {
   const { user } = useAuth();
   const isAdmin = hasAdminRole(user?.roles);
+  const [adminAccessState, setAdminAccessState] = useState<PlatformAdminAccessState>("checking");
+  const [adminAccessReason, setAdminAccessReason] = useState<string | null>(null);
+  const [adminAccessError, setAdminAccessError] = useState<string | null>(null);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -154,25 +171,65 @@ export default function DeletionPage() {
     }
   }, [selectedUser]);
 
+  const checkPlatformAdminAccess = useCallback(async () => {
+    setAdminAccessState("checking");
+    setAdminAccessReason(null);
+    setAdminAccessError(null);
+    try {
+      const response = (await fetchWithAuth("/admin/access")) as Response;
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          payload?.error?.message || `Could not verify platform admin access (${response.status}).`,
+        );
+      }
+      const payload = (await response.json()) as PlatformAdminAccessResponse;
+      if (payload.allowed) {
+        setAdminAccessState("allowed");
+        return true;
+      }
+      setAdminAccessReason(payload.reason ?? "FORBIDDEN");
+      setAdminAccessState("denied");
+      return false;
+    } catch (error) {
+      setAdminAccessError(
+        error instanceof Error ? error.message : "Could not verify platform admin access.",
+      );
+      setAdminAccessState("unavailable");
+      return false;
+    }
+  }, []);
+
+  const loadAuthorizedPageData = useCallback(async () => {
+    setLoading(true);
+    setLoadingCleanup(true);
+    const allowed = await checkPlatformAdminAccess();
+    if (!allowed) {
+      setLoading(false);
+      setLoadingCleanup(false);
+      return;
+    }
+    await Promise.all([loadUsers(), loadCleanupJobs()]);
+  }, [checkPlatformAdminAccess, loadCleanupJobs, loadUsers]);
+
   useEffect(() => {
     if (isAdmin) {
-      queueMicrotask(() => {
-        void loadUsers();
-        void loadCleanupJobs();
-      });
+      queueMicrotask(() => void loadAuthorizedPageData());
     } else {
       queueMicrotask(() => {
+        setAdminAccessState("denied");
+        setAdminAccessReason("ADMIN_ROLE_REQUIRED");
         setLoading(false);
         setLoadingCleanup(false);
       });
     }
-  }, [isAdmin, loadCleanupJobs, loadUsers]);
+  }, [isAdmin, loadAuthorizedPageData]);
 
   useEffect(() => {
-    if (isAdmin && selectedUser) {
+    if (adminAccessState === "allowed" && selectedUser) {
       queueMicrotask(() => void loadPurgeRequests());
     }
-  }, [isAdmin, loadPurgeRequests, selectedUser]);
+  }, [adminAccessState, loadPurgeRequests, selectedUser]);
 
   const eraseAccount = async () => {
     if (!selectedUser || confirmation.trim() !== expectedConfirmation) return;
@@ -276,7 +333,9 @@ export default function DeletionPage() {
       )) as Response;
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error?.message || `Could not ${action} purge (${response.status}).`);
+        throw new Error(
+          payload?.error?.message || `Could not ${action} purge (${response.status}).`,
+        );
       }
       toast.success(
         action === "cancel"
@@ -305,7 +364,7 @@ export default function DeletionPage() {
   };
 
   return (
-    <div className="dashboard-theme-scope w-full space-y-8">
+    <div className="dashboard-theme-scope deletion-theme-scope w-full space-y-8">
       <DashboardSectionHeader
         title="Data Deletion"
         subtitle="Erase One User Account and Its Owned Data"
@@ -319,6 +378,62 @@ export default function DeletionPage() {
       {!isAdmin ? (
         <section className="glass-card text-muted-foreground p-6 text-sm">
           This account-erasure workflow is available only to an authorized platform administrator.
+        </section>
+      ) : adminAccessState === "checking" ? (
+        <section className="glass-card p-6">
+          <AverQelLoading
+            label="Checking platform administrator access…"
+            size="compact"
+            className="justify-center"
+          />
+        </section>
+      ) : adminAccessState === "denied" ? (
+        <section className="glass-card space-y-3 p-6" role="status">
+          <h2 className="text-foreground text-sm font-semibold">
+            Platform administrator access required
+          </h2>
+          {adminAccessReason === "PLATFORM_ADMIN_ALLOWLIST_REQUIRED" ? (
+            <p className="text-muted-foreground text-sm leading-6">
+              This account has the admin role, but its email is not configured in the deployment’s
+              platform-admin allowlist. Ask the AverQel deployment operator to authorize this
+              account.
+            </p>
+          ) : adminAccessReason === "ADMIN_MFA_SETUP_REQUIRED" ? (
+            <div className="text-muted-foreground space-y-2 text-sm leading-6">
+              <p>Set up authenticator MFA before using platform administration.</p>
+              <Link
+                href="/dashboard/settings/profile"
+                className="text-primary inline-flex font-medium underline-offset-4 hover:underline"
+              >
+                Open account security settings
+              </Link>
+            </div>
+          ) : adminAccessReason === "ADMIN_MFA_REQUIRED" ? (
+            <p className="text-muted-foreground text-sm leading-6">
+              Sign out and sign in again, then complete the authenticator challenge to establish an
+              MFA-verified administrator session.
+            </p>
+          ) : (
+            <p className="text-muted-foreground text-sm leading-6">
+              This account is not authorized for platform-wide account deletion and cleanup.
+            </p>
+          )}
+        </section>
+      ) : adminAccessState === "unavailable" ? (
+        <section className="glass-card space-y-3 p-6" role="alert">
+          <h2 className="text-foreground text-sm font-semibold">
+            Could not check platform administrator access
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            {adminAccessError ?? "The access check could not be completed."}
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadAuthorizedPageData()}
+            className="theme-panel-muted text-foreground border-glass-border inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+          >
+            <RefreshCw size={14} /> Try again
+          </button>
         </section>
       ) : (
         <>
@@ -344,9 +459,11 @@ export default function DeletionPage() {
 
               <div className="max-h-[34rem] space-y-2 overflow-y-auto">
                 {loading ? (
-                  <div className="text-muted-foreground flex items-center justify-center gap-3 py-12 text-sm">
-                    <Loader2 size={16} className="animate-spin" /> Loading accounts…
-                  </div>
+                  <AverQelLoading
+                    label="Loading accounts…"
+                    size="compact"
+                    className="justify-center py-12"
+                  />
                 ) : visibleUsers.length ? (
                   visibleUsers.map((item) => (
                     <button
@@ -357,9 +474,9 @@ export default function DeletionPage() {
                         setPurgeRequests([]);
                         setConfirmation("");
                       }}
-                      className={`theme-panel-muted flex w-full items-start gap-3 rounded-xl border p-4 text-left transition ${
+                      className={`deletion-account-option theme-panel-muted flex w-full items-start gap-3 rounded-xl border p-4 text-left transition ${
                         item.user_id === selectedUserId
-                          ? "border-primary/50 bg-primary/10"
+                          ? "deletion-account-option-selected border-primary/50 bg-primary/10"
                           : "hover:border-glass-border border-transparent"
                       }`}
                     >
@@ -372,7 +489,13 @@ export default function DeletionPage() {
                           {item.tenant_name || item.tenant_id}
                         </span>
                       </span>
-                      <span className="text-muted-foreground shrink-0 text-[10px] uppercase">
+                      <span
+                        className={`deletion-account-status shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                          item.is_active
+                            ? "deletion-account-status-active"
+                            : "deletion-account-status-disabled"
+                        }`}
+                      >
                         {item.is_active ? "Active" : "Disabled"}
                       </span>
                     </button>
@@ -401,7 +524,7 @@ export default function DeletionPage() {
               </div>
 
               {selectedUser ? (
-                <div className="theme-panel-muted space-y-3 rounded-xl p-4">
+                <div className="deletion-selected-account theme-panel-muted space-y-3 rounded-xl p-4">
                   <div>
                     <p className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">
                       Selected account
@@ -433,15 +556,15 @@ export default function DeletionPage() {
                 </div>
               )}
 
-              <div className="text-muted-foreground rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 text-xs leading-5">
+              <div className="deletion-warning-note text-muted-foreground rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 text-xs leading-5">
                 Database records are removed in this operation. Stored files are queued for
                 background deletion and may take time to finish. Security audit events are retained
                 in a minimal, anonymized form; backups and copies held by external providers follow
-                their own retention and deletion controls. This action also requires an administrator
-                sign-in completed with MFA in the last 10 minutes.
+                their own retention and deletion controls. This action also requires an
+                administrator sign-in completed with MFA in the last 10 minutes.
               </div>
 
-              <label className="text-muted-foreground block text-xs font-semibold">
+              <label className="deletion-form-label text-muted-foreground block text-xs font-semibold">
                 Type{" "}
                 <span className="text-foreground font-mono">
                   {expectedConfirmation || "DELETE email"}
@@ -451,7 +574,7 @@ export default function DeletionPage() {
                   value={confirmation}
                   onChange={(event) => setConfirmation(event.target.value)}
                   disabled={!selectedUser || deleting}
-                  className="theme-panel-muted text-foreground border-glass-border focus:border-primary/50 mt-2 w-full rounded-xl border px-4 py-3 text-sm outline-none disabled:opacity-50"
+                  className="deletion-confirmation-input theme-panel-muted text-foreground border-glass-border focus:border-primary/50 mt-2 w-full rounded-xl border px-4 py-3 text-sm outline-none disabled:opacity-50"
                   autoComplete="off"
                 />
               </label>
@@ -465,7 +588,7 @@ export default function DeletionPage() {
                   deleting ||
                   loading
                 }
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="deletion-danger-action flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {deleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                 {deleting ? "Erasing account…" : "Erase account and owned data"}
@@ -474,9 +597,7 @@ export default function DeletionPage() {
           </div>
           <section className="glass-card space-y-5 p-5">
             <div>
-              <h2 className="text-foreground text-sm font-semibold">
-                Tenant-content purge
-              </h2>
+              <h2 className="text-foreground text-sm font-semibold">Tenant-content purge</h2>
               <p className="text-muted-foreground mt-1 text-sm leading-6">
                 This removes tenant content while retaining user accounts, provider settings,
                 support and feedback records, and audit records. Use account erasure above to delete
@@ -487,7 +608,7 @@ export default function DeletionPage() {
             </div>
             {selectedUser ? (
               <>
-                <p className="theme-panel-muted rounded-lg p-3 text-xs text-slate-300">
+                <p className="deletion-tenant-target theme-panel-muted rounded-lg p-3 text-xs text-slate-300">
                   Target account: <span className="font-semibold">{selectedUser.email}</span>
                   <br />
                   Isolated tenant: <span className="font-mono">{selectedUser.tenant_id}</span>
@@ -499,12 +620,14 @@ export default function DeletionPage() {
                   ) : null}
                 </p>
                 <div className="flex flex-wrap items-end gap-3">
-                  <label className="min-w-48 text-xs font-semibold text-slate-400">
+                  <label className="deletion-form-label min-w-48 text-xs font-semibold text-slate-400">
                     Reason
                     <select
                       value={purgeReason}
                       onChange={(event) =>
-                        setPurgeReason(event.target.value as "workspace_offboarding" | "security_incident")
+                        setPurgeReason(
+                          event.target.value as "workspace_offboarding" | "security_incident",
+                        )
                       }
                       className="theme-panel-muted text-foreground border-glass-border mt-1 w-full rounded-lg border px-3 py-2"
                     >
@@ -512,13 +635,13 @@ export default function DeletionPage() {
                       <option value="workspace_offboarding">Tenant-content offboarding</option>
                     </select>
                   </label>
-                  <label className="min-w-64 flex-1 text-xs font-semibold text-slate-400">
+                  <label className="deletion-form-label min-w-64 flex-1 text-xs font-semibold text-slate-400">
                     Type {expectedPurgeConfirmation || "DELETE tenant ID"}
                     <input
                       value={purgeConfirmation}
                       onChange={(event) => setPurgeConfirmation(event.target.value)}
                       disabled={selectedTenantAccountCount !== 1 || purgeActionId === "request"}
-                      className="theme-panel-muted text-foreground border-glass-border mt-1 w-full rounded-lg border px-3 py-2 font-mono text-xs"
+                      className="deletion-confirmation-input theme-panel-muted text-foreground border-glass-border mt-1 w-full rounded-lg border px-3 py-2 font-mono text-xs"
                     />
                   </label>
                   <button
@@ -529,7 +652,7 @@ export default function DeletionPage() {
                       purgeConfirmation.trim() !== expectedPurgeConfirmation ||
                       purgeActionId !== null
                     }
-                    className="rounded-lg bg-red-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    className="deletion-danger-action rounded-lg bg-red-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
                   >
                     {purgeActionId === "request" ? "Requesting…" : "Request tenant-content purge"}
                   </button>
@@ -541,7 +664,11 @@ export default function DeletionPage() {
             <div className="space-y-2">
               <h3 className="text-foreground text-xs font-semibold">Purge requests</h3>
               {loadingPurgeRequests ? (
-                <p className="text-muted-foreground text-xs">Loading requests…</p>
+                <AverQelLoading
+                  label="Loading requests…"
+                  size="compact"
+                  className="justify-start"
+                />
               ) : purgeRequests.length ? (
                 purgeRequests.map((request) => (
                   <div
@@ -565,7 +692,7 @@ export default function DeletionPage() {
                           type="button"
                           onClick={() => void updatePurgeRequest(request, "approve")}
                           disabled={purgeActionId === request.deletion_id}
-                          className="rounded-lg border border-amber-400/30 px-3 py-2 text-xs text-amber-200 disabled:opacity-50"
+                          className="deletion-approve-action rounded-lg border border-amber-400/30 px-3 py-2 text-xs text-amber-200 disabled:opacity-50"
                         >
                           Approve
                         </button>
@@ -575,7 +702,7 @@ export default function DeletionPage() {
                           type="button"
                           onClick={() => void updatePurgeRequest(request, "self-approve")}
                           disabled={purgeActionId === request.deletion_id}
-                          className="rounded-lg border border-red-400/30 px-3 py-2 text-xs text-red-200 disabled:opacity-50"
+                          className="deletion-secondary-danger-action rounded-lg border border-red-400/30 px-3 py-2 text-xs text-red-200 disabled:opacity-50"
                         >
                           Approve after delay
                         </button>
@@ -585,7 +712,7 @@ export default function DeletionPage() {
                           type="button"
                           onClick={() => void updatePurgeRequest(request, "cancel")}
                           disabled={purgeActionId === request.deletion_id}
-                          className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 disabled:opacity-50"
+                          className="deletion-neutral-action rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 disabled:opacity-50"
                         >
                           Cancel request
                         </button>
@@ -611,15 +738,17 @@ export default function DeletionPage() {
                 type="button"
                 onClick={() => void loadCleanupJobs()}
                 disabled={loadingCleanup}
-                className="theme-chip flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                className="deletion-refresh-action theme-chip flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold disabled:opacity-50"
               >
                 <RefreshCw size={14} className={loadingCleanup ? "animate-spin" : ""} /> Refresh
               </button>
             </div>
             {loadingCleanup ? (
-              <div className="text-muted-foreground flex items-center gap-2 py-4 text-sm">
-                <Loader2 size={15} className="animate-spin" /> Loading cleanup queue…
-              </div>
+              <AverQelLoading
+                label="Loading cleanup queue…"
+                size="compact"
+                className="justify-start py-4"
+              />
             ) : cleanupJobs.length ? (
               <div className="space-y-2">
                 {cleanupJobs.map((job) => (
@@ -642,7 +771,7 @@ export default function DeletionPage() {
                         type="button"
                         onClick={() => void retryCleanup(job)}
                         disabled={retryingJobId === job.id}
-                        className="rounded-lg border border-amber-400/30 px-3 py-2 text-xs font-semibold text-amber-300 transition hover:bg-amber-400/10 disabled:opacity-50"
+                        className="deletion-retry-action rounded-lg border border-amber-400/30 px-3 py-2 text-xs font-semibold text-amber-300 transition hover:bg-amber-400/10 disabled:opacity-50"
                       >
                         {retryingJobId === job.id ? "Queueing…" : "Retry cleanup"}
                       </button>

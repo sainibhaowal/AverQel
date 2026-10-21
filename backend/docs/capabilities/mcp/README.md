@@ -10,7 +10,10 @@ for the latest recorded migration and environment evidence.
 - [MCP architecture and implementation map](02-mcp-architecture-and-implementation-map.md)
 - [Composio hosted app catalog and operations](03-composio-hosted-mcp.md)
 
-These documents describe the implemented curated-catalog, tenant/user-scoped
-remote MCP runtime. They do not enable arbitrary endpoints, local process
-servers, global credentials, or side-effecting calls outside the existing
-approval and policy controls.
+The current Marketplace uses Composio's live app catalog with a project key
+owned by each AverQel account and tenant/user-scoped hosted app sessions. The
+dated architecture map describes the former bundled catalog and OAuth-token
+flow; use the current contract and Composio guide for present behavior. The
+runtime does not enable arbitrary endpoints, local process servers, or global
+credentials, and side-effecting calls remain subject to approval and policy
+controls.

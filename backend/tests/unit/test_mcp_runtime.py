@@ -13,7 +13,49 @@ from app.integrations.services.mcp_runtime import (
     MCPConnectorRuntime,
     UniversalMCPConnector,
     classify_mcp_error,
+    mcp_tool_catalog_fingerprint,
+    next_mcp_tool_catalog_revision,
 )
+
+
+def test_mcp_tool_catalog_fingerprint_ignores_order_but_detects_schema_changes() -> None:
+    first = [
+        {
+            "name": "search",
+            "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}}},
+        },
+        {"name": "read", "description": "Read one item"},
+    ]
+    reordered = [
+        {"description": "Read one item", "name": "read"},
+        {
+            "inputSchema": {"properties": {"q": {"type": "string"}}, "type": "object"},
+            "name": "search",
+        },
+    ]
+    changed = [
+        reordered[0],
+        {
+            "name": "search",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"q": {"type": "string"}, "limit": {"type": "integer"}},
+            },
+        },
+    ]
+
+    assert mcp_tool_catalog_fingerprint(first) == mcp_tool_catalog_fingerprint(reordered)
+    assert mcp_tool_catalog_fingerprint(first) != mcp_tool_catalog_fingerprint(changed)
+
+
+def test_catalog_revision_changes_only_when_tool_definitions_change() -> None:
+    current = [{"name": "search", "inputSchema": {"type": "object", "properties": {}}}]
+    reordered_keys = [{"inputSchema": {"properties": {}, "type": "object"}, "name": "search"}]
+    updated = [{"name": "search", "inputSchema": {"type": "object", "required": ["query"]}}]
+
+    assert next_mcp_tool_catalog_revision(12, current, reordered_keys) == 12
+    assert next_mcp_tool_catalog_revision(12, current, updated) == 13
+    assert next_mcp_tool_catalog_revision(None, [], []) == 0
 
 
 def test_build_mcp_runtime_parses_mcp_bundle() -> None:

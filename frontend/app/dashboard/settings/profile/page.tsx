@@ -28,6 +28,7 @@ import toast from "react-hot-toast";
 import { fetchWithAuth } from "@/lib/api";
 import { getRoleLabel } from "@/lib/roles";
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import ProfileIdentityEditor, {
   type ProfileIdentityDraft,
 } from "@/app/components/profile/ProfileIdentityEditor";
@@ -317,10 +318,7 @@ export default function ProfilePage() {
       <div className="dashboard-theme-scope w-full space-y-8">
         {profileHeader}
         <div className="flex min-h-[300px] items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="text-primary animate-spin" size={32} />
-            <p className="text-muted-foreground text-sm">Loading profile...</p>
-          </div>
+          <AverQelLoading label="Loading profile…" size="section" className="w-full" />
         </div>
       </div>
     );

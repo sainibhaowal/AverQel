@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -32,9 +32,9 @@ import { useTheme } from "../context/ThemeContext";
 import AuthGuard from "@/app/components/layout/AuthGuard";
 import NotificationCenter from "@/app/components/layout/NotificationCenter";
 import AverQelLogo from "@/app/components/ui/AverQelLogo";
+import AverQelLoading from "@/app/components/ui/AverQelLoading";
 import DeepSpaceMark from "@/app/components/ui/DeepSpaceMark";
 import QelConnectMark from "@/app/components/ui/QelConnectMark";
-import NeoSISMark from "@/app/components/ui/NeoSISMark";
 import AccountProfileMenu from "@/app/components/profile/AccountProfileMenu";
 import WelcomeFlow from "@/app/components/onboarding/WelcomeFlow";
 import { APP_VERSION } from "@/lib/release";
@@ -44,14 +44,12 @@ import BetaNoticeBanner from "@/app/components/dashboard/BetaNoticeBanner";
 import { hasAdminRole, hasNamedRole } from "@/lib/roles";
 import DisabledOverlay from "@/app/components/auth/DisabledOverlay";
 import CodexRuntimeBridge from "@/app/components/providers/CodexRuntimeBridge";
-import toast from "react-hot-toast";
 
 type NavLeaf = {
   name: string;
   href: string;
   icon: React.ReactNode;
   exact?: boolean;
-  action?: "open-neosis";
   isHeader?: false;
   admin?: boolean;
   requiresRole?: "collection_moderator";
@@ -148,8 +146,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [neosisAvailable, setNeosisAvailable] = useState(false);
-  const [neosisOpening, setNeosisOpening] = useState(false);
   const navContainerRef = useRef<HTMLDivElement>(null);
   const mainContentRef = useRef<HTMLDivElement>(null);
 
@@ -172,39 +168,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     (isModeratorStaffPage && hasModerationAccess) ||
     (isSupportStaffPage && hasAdminAccess);
 
-  useEffect(() => {
-    let active = true;
-    const checkAvailability = window.electron?.workspace.neosisAvailable;
-    if (!checkAvailability) return;
-
-    void checkAvailability()
-      .then((available) => {
-        if (active) setNeosisAvailable(available);
-      })
-      .catch(() => {
-        if (active) setNeosisAvailable(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const openNeosis = useCallback(async () => {
-    const openWorkspace = window.electron?.workspace.openNeosis;
-    if (!openWorkspace || neosisOpening) return;
-
-    setNeosisOpening(true);
-    try {
-      const result = await openWorkspace();
-      if (!result.ok) toast.error(result.error || "NeoSIS could not be opened.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "NeoSIS could not be opened.");
-    } finally {
-      setNeosisOpening(false);
-    }
-  }, [neosisOpening]);
-
   const navItems = useMemo(() => {
     const items = BASE_NAV_ITEMS.flatMap((item): NavItem[] => {
       if (item.admin && !hasAdminAccess) return [];
@@ -216,22 +179,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
       return [item];
     });
-    if (!neosisAvailable || !user) return items;
-
-    const deepSpaceIndex = items.findIndex((item) => !item.isHeader && item.name === "DeepSpace");
-    if (deepSpaceIndex < 0) return items;
-    items.splice(deepSpaceIndex + 1, 0, {
-      name: "NeoSIS",
-      href: "#neosis",
-      icon: <NeoSISMark size={18} />,
-      action: "open-neosis",
-    });
     return items;
-  }, [
-    hasAdminAccess,
-    neosisAvailable,
-    user,
-  ]);
+  }, [hasAdminAccess, user]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -258,16 +207,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const shouldShowDisabledOverlay = userDisabled;
 
-  if (authLoading) return null;
+  if (authLoading) return <AverQelLoading label="Preparing workspace" size="page" />;
 
   const NavLink = ({ item, onClick }: { item: NavLeaf; onClick?: () => void }) => {
     // Improved active check: exact match for home, startsWith for others but avoid overlaps
-    const isActive = item.action
-      ? false
-      : item.exact
-        ? pathname === item.href
-        : pathname.startsWith(item.href) &&
-          (item.href !== "/dashboard" || pathname === "/dashboard");
+    const isActive = item.exact
+      ? pathname === item.href
+      : pathname.startsWith(item.href) &&
+        (item.href !== "/dashboard" || pathname === "/dashboard");
 
     const className = `group sweeping-light-btn relative flex h-11 items-center overflow-hidden rounded-xl transition-all duration-200 ${
       isActive
@@ -318,26 +265,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       />
     ) : null;
 
-    if (item.action === "open-neosis") {
-      return (
-        <button
-          type="button"
-          data-active="false"
-          aria-label={neosisOpening ? "Opening NeoSIS" : "Open NeoSIS local workspace"}
-          aria-busy={neosisOpening}
-          title="Open NeoSIS local workspace"
-          disabled={neosisOpening}
-          onClick={() => {
-            onClick?.();
-            void openNeosis();
-          }}
-          className={className}
-        >
-          {contents}
-        </button>
-      );
-    }
-
     return (
       <Link
         href={item.href}
@@ -357,13 +284,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div
         className={`flex h-18 items-center px-4 pt-2 ${!sidebarOpen && !isMobile ? "justify-center px-0" : "justify-between"}`}
       >
-        <AverQelLogo
-          size="footer"
-          showWordmark
-          disableAnimation
-          animateWordmark={!isMobile}
-          wordmarkVisible={sidebarOpen || isMobile}
-        />
+        <div className={!sidebarOpen && !isMobile ? "translate-x-0.5" : ""}>
+          <AverQelLogo
+            size="footer"
+            showWordmark
+            disableAnimation
+            animateWordmark={!isMobile}
+            wordmarkVisible={sidebarOpen || isMobile}
+          />
+        </div>
         {(sidebarOpen || isMobile) && isMobile && (
           <button
             onClick={() => setMobileMenuOpen(false)}
@@ -545,42 +474,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Breadcrumbs />
               </div>
 
-              {isMobile && !isDeepSpaceRoute && (
-                <div className={isQueryRoute || neosisAvailable ? "" : "sm:hidden"}>
-                  <AverQelLogo size="footer" disableAnimation />
-                </div>
-              )}
             </div>
 
-            {isMobile && !isDeepSpaceRoute && !isQueryRoute && !neosisAvailable && (
-              <div className="pointer-events-none absolute top-1/2 left-1/2 z-10 hidden -translate-x-1/2 -translate-y-1/2 sm:block lg:hidden">
-                <AverQelLogo size="footer" disableAnimation />
-              </div>
-            )}
-
-            {/* Center portal target for workspace and DeepSpace layout controls */}
+            {/* Center portal target for DeepSpace layout controls */}
             <div
               id="header-layout-controls"
               className="mx-1 flex flex-1 items-center justify-center gap-2 sm:mx-4"
-            >
-              {user && neosisAvailable ? (
-                <button
-                  type="button"
-                  aria-label="Switch to NeoSIS workspace"
-                  aria-busy={neosisOpening}
-                  title="Open NeoSIS local workspace"
-                  disabled={neosisOpening}
-                  onClick={() => void openNeosis()}
-                  className="border-glass-border bg-muted/80 text-foreground/80 hover:border-primary/35 hover:text-foreground inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60"
-                >
-                  <NeoSISMark size={17} />
-                  <span>NeoSIS</span>
-                  <span className="text-muted-foreground text-[9px] font-bold tracking-[0.12em] uppercase">
-                    Local
-                  </span>
-                </button>
-              ) : null}
-            </div>
+            />
 
             <div className="relative z-10 flex items-center justify-end gap-1.5 md:gap-3">
               <div className="hidden sm:block">
@@ -646,7 +546,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </main>
         </div>
         <DisabledOverlay isVisible={shouldShowDisabledOverlay} />
-        <WelcomeFlow neosisAvailable={neosisAvailable} />
+        <WelcomeFlow />
       </div>
     </AuthGuard>
   );

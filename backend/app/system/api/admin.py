@@ -34,6 +34,7 @@ from app.auth.schemas.admin import (
     DataDeletionRequest,
     DataDeletionRequestResponse,
     DataDeletionStatusResponse,
+    PlatformAdminAccessResponse,
     StorageCleanupJobResponse,
     StorageCleanupListResponse,
     StorageCleanupRetryResponse,
@@ -50,14 +51,6 @@ from app.documents.models.data_deletion import DataDeletion
 from app.documents.repositories.documents import DocumentsRepository
 from app.documents.services.deletion_service import DeletionService
 from app.ingestion.models.ingestion_job import IngestionJob
-from app.integrations.schemas.mcp import (
-    MCPComposioCredentialWrite,
-    MCPComposioStatusRead,
-)
-from app.integrations.services.composio_service import (
-    ComposioConfigurationError,
-    ComposioService,
-)
 from app.platform.database.session import get_db, set_db_tenant_context
 from app.system.models.break_glass_grant import BreakGlassGrant
 from app.system.models.storage_cleanup import StorageCleanupJob
@@ -106,35 +99,44 @@ def _require_platform_admin(
     db: Session,
     settings: Settings,
 ) -> None:
+    denial = _platform_admin_access_denial(auth, db=db, settings=settings)
+    if denial is not None:
+        code, message = denial
+        if code in {"ADMIN_ROLE_REQUIRED", "PLATFORM_ADMIN_ALLOWLIST_REQUIRED"}:
+            code = "FORBIDDEN"
+            message = "Only platform admins can perform this operation."
+        raise ApiError(code=code, message=message, status_code=403)
+
+
+def _platform_admin_access_denial(
+    auth: AuthContext,
+    *,
+    db: Session,
+    settings: Settings,
+) -> tuple[str, str] | None:
     if not _has_admin_access(auth):
-        raise ApiError(
-            code="FORBIDDEN",
-            message="Only platform admins can perform this operation.",
-            status_code=403,
-        )
+        return ("ADMIN_ROLE_REQUIRED", "An administrator role is required for this operation.")
     user = UsersRepository(db).get_by_id(auth.tenant_id, auth.user_id)
     if user is None or not is_platform_admin_email(
         user.email,
         settings.bootstrap_super_admin_emails,
     ):
-        raise ApiError(
-            code="FORBIDDEN",
-            message="Only platform admins can perform this operation.",
-            status_code=403,
+        return (
+            "PLATFORM_ADMIN_ALLOWLIST_REQUIRED",
+            "This account is not configured as a platform administrator.",
         )
     if settings.platform_admin_mfa_required:
         if not user.totp_enabled:
-            raise ApiError(
-                code="ADMIN_MFA_SETUP_REQUIRED",
-                message="Set up an authenticator app in account security before using platform administration.",
-                status_code=403,
+            return (
+                "ADMIN_MFA_SETUP_REQUIRED",
+                "Set up an authenticator app in account security before using platform administration.",
             )
         if auth.auth_type != "jwt" or auth.session_id is None or auth.mfa_verified_at is None:
-            raise ApiError(
-                code="ADMIN_MFA_REQUIRED",
-                message="Sign in again and complete the authenticator challenge to use platform administration.",
-                status_code=403,
+            return (
+                "ADMIN_MFA_REQUIRED",
+                "Sign in again and complete the authenticator challenge to use platform administration.",
             )
+    return None
 
 
 def _require_recent_mfa_authentication(auth: AuthContext, settings: Settings) -> None:
@@ -229,106 +231,31 @@ def _require_break_glass_enabled(settings: Settings) -> None:
         )
 
 
+access_router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@access_router.get(
+    "/access",
+    response_model=PlatformAdminAccessResponse,
+)
+def get_platform_admin_access(
+    auth: AuthContext = Depends(get_auth_context),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> PlatformAdminAccessResponse:
+    """Report the current authenticated user's platform-admin access readiness."""
+    denial = _platform_admin_access_denial(auth, db=db, settings=settings)
+    return PlatformAdminAccessResponse(
+        allowed=denial is None,
+        reason=denial[0] if denial is not None else None,
+    )
+
+
 router = APIRouter(
     prefix="/admin",
     tags=["admin"],
     dependencies=[Depends(require_platform_admin_access)],
 )
-
-
-def _composio_admin_status(
-    db: Session,
-    settings: Settings,
-    *,
-    tenant_id: uuid.UUID,
-    user_id: uuid.UUID,
-) -> MCPComposioStatusRead:
-    origin = (settings.averqel_public_origin or "").strip().rstrip("/")
-    callback_url = (
-        f"{origin}/dashboard/mcp/composio/callback" if origin.startswith("https://") else None
-    )
-    return MCPComposioStatusRead(
-        configured=ComposioService(db, settings).credential_exists(
-            tenant_id=tenant_id,
-            user_id=user_id,
-        ),
-        callback_verifier_enabled=settings.composio_callback_verifier_enabled,
-        callback_verifier_url=callback_url,
-    )
-
-
-@router.get("/providers/composio", response_model=MCPComposioStatusRead)
-def get_composio_provider_status(
-    auth: AuthContext = Depends(get_auth_context),
-    settings: Settings = Depends(get_settings),
-    db: Session = Depends(get_db),
-) -> MCPComposioStatusRead:
-    result = _composio_admin_status(
-        db,
-        settings,
-        tenant_id=auth.tenant_id,
-        user_id=auth.user_id,
-    )
-    set_db_tenant_context(db, auth.tenant_id)
-    AuditService(db).write_admin_read_event(
-        tenant_id=auth.tenant_id,
-        actor_user_id=auth.user_id,
-        action="admin.composio_provider.read",
-        resource_type="integration_provider",
-        resource_id="composio",
-    )
-    return result
-
-
-@router.put("/providers/composio", response_model=MCPComposioStatusRead)
-def configure_composio_provider(
-    payload: MCPComposioCredentialWrite,
-    auth: AuthContext = Depends(get_auth_context),
-    settings: Settings = Depends(get_settings),
-    db: Session = Depends(get_db),
-) -> MCPComposioStatusRead:
-    try:
-        ComposioService(db, settings).configure_key(api_key=payload.api_key.get_secret_value())
-    except ComposioConfigurationError as exc:
-        raise ApiError(
-            code="COMPOSIO_CONFIGURATION_FAILED",
-            message=str(exc),
-            status_code=400,
-        ) from exc
-    set_db_tenant_context(db, auth.tenant_id)
-    AuditService(db).write_event(
-        tenant_id=auth.tenant_id,
-        actor_user_id=auth.user_id,
-        action="admin.composio_provider.configure",
-        resource_type="integration_provider",
-        resource_id="composio",
-        details={"credential": "rotated_or_created"},
-    )
-    db.commit()
-    return _composio_admin_status(
-        db,
-        settings,
-        tenant_id=auth.tenant_id,
-        user_id=auth.user_id,
-    )
-
-
-@router.delete("/providers/composio", status_code=204)
-def remove_composio_provider(
-    auth: AuthContext = Depends(get_auth_context),
-    settings: Settings = Depends(get_settings),
-    db: Session = Depends(get_db),
-) -> None:
-    ComposioService(db, settings).remove_key()
-    set_db_tenant_context(db, auth.tenant_id)
-    AuditService(db).write_event(
-        tenant_id=auth.tenant_id,
-        actor_user_id=auth.user_id,
-        action="admin.composio_provider.remove",
-        resource_type="integration_provider",
-        resource_id="composio",
-    )
-    db.commit()
 
 
 @router.get(

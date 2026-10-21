@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import DashboardSectionHeader from "@/app/components/ui/DashboardSectionHeader";
+import ProfileAvatar from "@/app/components/profile/ProfileAvatar";
 import RoundedSelect from "@/app/components/ui/RoundedSelect";
 import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
@@ -43,6 +44,7 @@ interface Ticket {
 
 interface TicketMessage {
   id: string;
+  author_ref?: string | null;
   author_role: string;
   kind: string;
   body: string;
@@ -50,8 +52,15 @@ interface TicketMessage {
   created_at: string;
 }
 
+interface ConversationParticipant {
+  ref: string;
+  display_name?: string | null;
+  avatar?: string | null;
+}
+
 interface TicketDetail extends Ticket {
   messages: TicketMessage[];
+  participants?: ConversationParticipant[];
   attachments?: Array<{
     id: string;
     filename: string;
@@ -92,7 +101,7 @@ const supportCategories = [
 ] as const;
 
 export default function SupportPage() {
-  const { userDisabled } = useAuth();
+  const { user, userDisabled } = useAuth();
   const encryption = useSupportEncryption("user");
   const cryptoContext = encryption.context;
   const [subject, setSubject] = useState("");
@@ -178,7 +187,11 @@ export default function SupportPage() {
       if (!res.ok) throw new Error(`Ticket conversation could not be loaded (${res.status}).`);
       const detail = (await res.json()) as TicketDetail;
       if (!cryptoContext) throw new Error("Support encryption is locked.");
-      const decryptedTicket = await decryptTicket(detail, cryptoContext.privateKey, cryptoContext.keyId);
+      const decryptedTicket = await decryptTicket(
+        detail,
+        cryptoContext.privateKey,
+        cryptoContext.keyId,
+      );
       const decryptedMessages = await Promise.all(
         detail.messages.map(async (message) => {
           if (!message.encrypted_payload) return message;
@@ -215,16 +228,20 @@ export default function SupportPage() {
       const res = await fetchWithAuth(`/support/tickets/${ticketId}/messages`, {
         method: "POST",
         body: JSON.stringify({
-          encrypted_payload: await encryptSupportPayload(
-            { body: replyDraft.trim() },
-            [cryptoContext!.ownPublicKey, cryptoContext!.adminPublicKey],
-          ),
+          encrypted_payload: await encryptSupportPayload({ body: replyDraft.trim() }, [
+            cryptoContext!.ownPublicKey,
+            cryptoContext!.adminPublicKey,
+          ]),
         }),
       });
       if (!res.ok) throw new Error(`Reply failed (${res.status})`);
       const detail = (await res.json()) as TicketDetail;
       if (!cryptoContext) throw new Error("Support encryption is locked.");
-      const decryptedTicket = await decryptTicket(detail, cryptoContext.privateKey, cryptoContext.keyId);
+      const decryptedTicket = await decryptTicket(
+        detail,
+        cryptoContext.privateKey,
+        cryptoContext.keyId,
+      );
       const decryptedMessages = await Promise.all(
         detail.messages.map(async (message) => {
           if (!message.encrypted_payload) return message;
@@ -240,7 +257,9 @@ export default function SupportPage() {
       );
       const decryptedDetail = { ...decryptedTicket, messages: decryptedMessages };
       setTicketDetails((current) => ({ ...current, [ticketId]: decryptedDetail }));
-      setTickets((current) => current.map((ticket) => (ticket.id === detail.id ? decryptedDetail : ticket)));
+      setTickets((current) =>
+        current.map((ticket) => (ticket.id === detail.id ? decryptedDetail : ticket)),
+      );
       setReplyDraft("");
       toast.success("Reply sent.");
     } catch (err) {
@@ -259,13 +278,17 @@ export default function SupportPage() {
       const rows = (await res.json()) as Ticket[];
       setTickets(
         await Promise.all(
-          rows.map((ticket) => decryptTicket(ticket, cryptoContext.privateKey, cryptoContext.keyId)),
+          rows.map((ticket) =>
+            decryptTicket(ticket, cryptoContext.privateKey, cryptoContext.keyId),
+          ),
         ),
       );
       setTicketListError(null);
     } catch (err) {
       console.error(err);
-      setTicketListError("Your ticket history could not be loaded. Check your connection and retry.");
+      setTicketListError(
+        "Your ticket history could not be loaded. Check your connection and retry.",
+      );
     } finally {
       setLoading(false);
     }
@@ -332,36 +355,36 @@ export default function SupportPage() {
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case "open":
-        return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+        return "border-teal-700/30 bg-teal-100 text-teal-950 dark:border-teal-400/25 dark:bg-teal-400/10 dark:text-teal-200";
       case "waiting_user":
-        return "bg-amber-500/10 text-amber-700 border-amber-500/30";
+        return "border-amber-700/30 bg-amber-100 text-amber-950 dark:border-amber-400/25 dark:bg-amber-400/10 dark:text-amber-200";
       case "in_progress":
-        return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
+        return "border-violet-700/30 bg-violet-100 text-violet-950 dark:border-violet-400/25 dark:bg-violet-400/10 dark:text-violet-200";
       case "resolved":
-        return "bg-green-500/10 text-green-400 border-green-500/20";
+        return "border-emerald-700/30 bg-emerald-100 text-emerald-950 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-200";
       case "closed":
-        return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+        return "border-border bg-surface-2 text-muted-foreground";
       default:
-        return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+        return "border-border bg-surface-2 text-muted-foreground";
     }
   };
 
   return (
-    <div className="dashboard-theme-scope w-full space-y-8 pb-12">
+    <div className="dashboard-theme-scope support-page-theme w-full space-y-8 pb-12">
       {userDisabled && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-4 rounded-[2rem] border border-amber-500/20 bg-amber-500/10 p-6"
+          className="flex items-center gap-4 rounded-[2rem] border border-amber-600/25 bg-amber-50 p-6 dark:border-amber-400/20 dark:bg-amber-400/10"
         >
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-500">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300">
             <AlertCircle size={24} />
           </div>
           <div>
-            <h4 className="text-xs font-bold tracking-wider text-amber-500 uppercase">
+            <h4 className="text-xs font-bold tracking-wider text-amber-900 uppercase dark:text-amber-200">
               Account Restricted
             </h4>
-            <p className="mt-1 text-sm text-amber-200/70">
+            <p className="mt-1 text-sm text-amber-900/80 dark:text-amber-100/80">
               Your account is currently disabled. Please use this form to submit a request for
               reactivation or inquiry.
             </p>
@@ -419,7 +442,7 @@ export default function SupportPage() {
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
                   placeholder="Summarize your issue..."
-                  className="border-foreground/10 bg-foreground/5 text-foreground focus:border-primary/40 focus:ring-primary/20 w-full rounded-xl border px-4 py-3 text-sm transition outline-none focus:ring-1"
+                  className="support-form-control border-foreground/10 bg-foreground/5 text-foreground focus:border-primary/40 focus:ring-primary/20 w-full rounded-xl border px-4 py-3 text-sm transition outline-none focus:ring-1"
                 />
               </div>
             </div>
@@ -435,7 +458,7 @@ export default function SupportPage() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Please provide as much detail as possible..."
                 rows={6}
-                className="border-foreground/10 bg-foreground/5 text-foreground focus:border-primary/40 focus:ring-primary/20 w-full resize-none rounded-2xl border px-4 py-4 text-sm transition outline-none focus:ring-1"
+                className="support-form-control border-foreground/10 bg-foreground/5 text-foreground focus:border-primary/40 focus:ring-primary/20 w-full resize-none rounded-2xl border px-4 py-4 text-sm transition outline-none focus:ring-1"
               />
             </div>
 
@@ -444,13 +467,9 @@ export default function SupportPage() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 disabled={submitting}
-                className="bg-primary hover:bg-primary/90 flex items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-bold text-white shadow-[0_8px_16px_rgba(var(--primary),0.25)] transition disabled:opacity-50"
+                className="support-submit-button bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-bold shadow-[0_8px_16px_rgba(var(--primary),0.25)] transition disabled:opacity-50"
               >
-                {submitting ? (
-                  <Loader2 className="animate-spin text-white" size={18} />
-                ) : (
-                  <Send className="text-white" size={18} />
-                )}
+                {submitting ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
                 Submit Ticket
               </motion.button>
             </div>
@@ -470,12 +489,12 @@ export default function SupportPage() {
             <div className="space-y-4">
               {loading ? (
                 <div className="flex justify-center py-12">
-                  <Loader2 className="animate-spin text-slate-500" size={24} />
+                  <Loader2 className="text-primary animate-spin" size={24} />
                 </div>
               ) : ticketListError ? (
                 <div
                   role="alert"
-                  className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-300"
+                  className="rounded-2xl border border-rose-500/30 bg-rose-50 p-5 text-sm text-rose-900 dark:border-rose-400/25 dark:bg-rose-400/10 dark:text-rose-200"
                 >
                   <p>{ticketListError}</p>
                   <button
@@ -495,7 +514,7 @@ export default function SupportPage() {
                 tickets.map((ticket) => (
                   <div
                     key={ticket.id}
-                    className="group border-foreground/10 bg-foreground/[0.03] hover:border-primary/20 overflow-hidden rounded-2xl border transition"
+                    className="support-ticket-card group border-foreground/10 bg-foreground/[0.03] hover:border-primary/20 overflow-hidden rounded-2xl border transition"
                   >
                     <button
                       onClick={() => {
@@ -509,13 +528,13 @@ export default function SupportPage() {
                         <span
                           className={`h-2 w-2 rounded-full ${
                             ticket.status === "open"
-                              ? "bg-blue-500"
+                              ? "bg-teal-600"
                               : ticket.status === "waiting_user"
                                 ? "bg-amber-500"
                                 : ticket.status === "in_progress"
-                                  ? "bg-yellow-500"
+                                  ? "bg-violet-600"
                                   : ticket.status === "resolved"
-                                    ? "bg-green-500"
+                                    ? "bg-emerald-600"
                                     : "bg-slate-500"
                           }`}
                         />
@@ -555,7 +574,7 @@ export default function SupportPage() {
                           transition={{ duration: 0.2, ease: "easeInOut" }}
                           className="overflow-hidden"
                         >
-                          <div className="text-muted-foreground border-foreground/5 bg-foreground/5 mt-2 space-y-4 border-t px-4 py-4 text-xs">
+                          <div className="support-ticket-thread text-muted-foreground border-foreground/5 bg-foreground/5 mt-2 space-y-4 border-t px-4 py-4 text-xs">
                             {ticketDetailErrors[ticket.id] && (
                               <div
                                 role="alert"
@@ -620,27 +639,49 @@ export default function SupportPage() {
                                 />
                               </label>
                               <p className="text-muted-foreground text-[11px] leading-5">
-                                Attachments are encrypted before upload. AverQel cannot scan their contents for malware; download only files you trust.
+                                Attachments are encrypted before upload. AverQel cannot scan their
+                                contents for malware; download only files you trust.
                               </p>
                             </div>
-                            {(ticketDetails[ticket.id]?.messages ?? []).map((message) => (
-                              <div
-                                key={message.id}
-                                className="border-foreground/10 bg-background/70 rounded-xl border p-3"
-                              >
-                                <div className="mb-1 flex justify-between gap-3 text-[10px]">
-                                  <span className="text-foreground font-semibold">
-                                    {message.kind === "status_changed"
-                                      ? "Status update"
-                                      : message.author_role === "admin"
-                                        ? "Support team"
-                                        : "You"}
-                                  </span>
-                                  <time>{new Date(message.created_at).toLocaleString()}</time>
-                                </div>
-                                <p className="whitespace-pre-wrap">{message.body}</p>
-                              </div>
-                            ))}
+                            {(ticketDetails[ticket.id]?.messages ?? []).map((message) => {
+                              const participant = ticketDetails[ticket.id]?.participants?.find(
+                                (candidate) => candidate.ref === message.author_ref,
+                              );
+                              const authorLabel =
+                                message.kind === "status_changed"
+                                  ? "Status update"
+                                  : message.author_role === "admin"
+                                    ? "Support team"
+                                    : "You";
+                              return (
+                                <article
+                                  key={message.id}
+                                  className="border-border bg-surface-1 text-foreground flex items-start gap-3 rounded-xl border p-3 shadow-sm"
+                                >
+                                  <ProfileAvatar
+                                    avatar={
+                                      participant?.avatar ??
+                                      (message.author_role === "user" ? user?.avatar : null)
+                                    }
+                                    displayName={
+                                      participant?.display_name ??
+                                      (message.author_role === "user" ? user?.display_name : null)
+                                    }
+                                    fallbackLabel={authorLabel}
+                                    className="h-9 w-9 rounded-xl"
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-muted-foreground mb-1 flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                                      <span className="text-foreground font-semibold">
+                                        {authorLabel}
+                                      </span>
+                                      <time>{new Date(message.created_at).toLocaleString()}</time>
+                                    </div>
+                                    <p className="whitespace-pre-wrap">{message.body}</p>
+                                  </div>
+                                </article>
+                              );
+                            })}
                             <form
                               onSubmit={(event) => {
                                 event.preventDefault();
@@ -659,13 +700,13 @@ export default function SupportPage() {
                                 maxLength={10_000}
                                 value={replyDraft}
                                 onChange={(event) => setReplyDraft(event.target.value)}
-                                className="border-foreground/10 bg-background text-foreground focus:border-primary/40 min-h-20 w-full rounded-xl border p-3 outline-none"
+                                className="support-form-control border-foreground/10 bg-background text-foreground focus:border-primary/40 min-h-20 w-full rounded-xl border p-3 outline-none"
                                 placeholder="Write a message to support…"
                               />
                               <div className="flex justify-end">
                                 <button
                                   disabled={sendingReply || !replyDraft.trim()}
-                                  className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-50"
+                                  className="support-reply-button bg-primary text-primary-foreground rounded-lg px-4 py-2 text-xs font-bold disabled:opacity-50"
                                 >
                                   {sendingReply ? "Sending…" : "Send reply"}
                                 </button>
@@ -682,15 +723,15 @@ export default function SupportPage() {
           </div>
 
           {/* Help Card */}
-          <div className="bg-primary/10 border-primary/20 rounded-[2rem] border p-6">
+          <div className="support-priority-card bg-primary/10 border-primary/20 rounded-[2rem] border p-6">
             <div className="text-primary mb-3 flex items-center gap-3">
               <ShieldCheck size={20} />
               <h4 className="text-sm font-bold tracking-wider uppercase">Priority Support</h4>
             </div>
             <p className="text-muted-foreground text-xs leading-relaxed font-medium">
               Normal-priority tickets have an 8-hour first-response target and a 72-hour resolution
-              target. These are elapsed-time targets, not guarantees; waiting for your reply does not
-              pause the resolution clock.
+              target. These are elapsed-time targets, not guarantees; waiting for your reply does
+              not pause the resolution clock.
             </p>
           </div>
         </div>

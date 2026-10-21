@@ -21,7 +21,7 @@ class DeepSpaceContextCache:
     """
 
     TTL_SECONDS = 60
-    POLICY_VERSION = "history-v1"
+    POLICY_VERSION = "history-v2"
 
     def _key(
         self,
@@ -39,21 +39,40 @@ class DeepSpaceContextCache:
         digest = hashlib.sha256(scope.encode()).hexdigest()[:16]
         return f"deepspace:history:{self.POLICY_VERSION}:{tenant_id}:{user_id}:{conversation_id}:{digest}"
 
-    def get(self, **scope: Any) -> list[dict[str, str]] | None:
+    def get(self, **scope: Any) -> list[dict[str, Any]] | None:
         try:
             raw = cast(Any, get_redis_client().get(self._key(**scope)))
             value = json.loads(raw) if raw else None
             if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
                 return None
-            return [
-                {"role": str(item.get("role", "")), "content": str(item.get("content", ""))}
-                for item in value
-            ]
+            messages: list[dict[str, Any]] = []
+            for item in value:
+                message: dict[str, Any] = {
+                    "role": str(item.get("role", "")),
+                    "content": str(item.get("content", "")),
+                }
+                # The only provider-private history cache field is an
+                # encrypted continuation reference. Keep its envelope intact
+                # for authenticated server-side restoration; never cache
+                # plaintext reasoning or arbitrary message metadata.
+                reference = item.get("__deepspace_provider_continuation_ref")
+                if isinstance(reference, dict):
+                    message["__deepspace_provider_continuation_ref"] = {
+                        "message_id": str(reference.get("message_id", ""))[:64],
+                        "turn_index": reference.get("turn_index"),
+                        "envelope": (
+                            dict(reference["envelope"])
+                            if isinstance(reference.get("envelope"), dict)
+                            else None
+                        ),
+                    }
+                messages.append(message)
+            return messages
         except Exception:  # noqa: BLE001
             logger.debug("DeepSpace context cache unavailable", exc_info=True)
             return None
 
-    def set(self, messages: list[dict[str, str]], **scope: Any) -> None:
+    def set(self, messages: list[dict[str, Any]], **scope: Any) -> None:
         try:
             get_redis_client().setex(
                 self._key(**scope), self.TTL_SECONDS, json.dumps(messages, separators=(",", ":"))

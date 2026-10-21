@@ -92,6 +92,14 @@ def test_schema_is_compact_and_result_is_bounded() -> None:
     assert len(json.dumps(oversized, separators=(",", ":"))) <= 2_000
 
 
+def test_missing_schema_reference_directs_the_model_to_refresh_its_search() -> None:
+    result = MCPToolBroker().get_schema({}, "stale-tool-ref")
+
+    assert result["status"] == "error"
+    assert "Search the connected tools again" in result["message"]
+    assert "current schema" in result["message"]
+
+
 def test_resolve_rejects_ambiguous_raw_name() -> None:
     broker = MCPToolBroker()
     first = _binding("read")

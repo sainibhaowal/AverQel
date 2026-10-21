@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -88,6 +88,35 @@ class DeepSpaceMCPBridge:
         # publish the same tool name while keeping the model-facing name small.
         return f"mcp_{server.id.hex[:10]}_{_safe_function_name(raw_name)}"[:64]
 
+    @classmethod
+    def _bindings_for_server(
+        cls,
+        server: MCPServer,
+        cached_tools: object,
+    ) -> dict[str, DeepSpaceMCPTool]:
+        if not isinstance(cached_tools, list):
+            return {}
+        server_tools = (
+            cached_tools if is_composio_server(server) else cached_tools[: cls.MAX_TOOLS_PER_SERVER]
+        )
+        bindings: dict[str, DeepSpaceMCPTool] = {}
+        for raw_tool in server_tools:
+            if not isinstance(raw_tool, dict):
+                continue
+            raw_name = str(raw_tool.get("name") or "").strip()
+            if not raw_name:
+                continue
+            exposed_name = cls._exposed_name(server, raw_name)
+            bindings[exposed_name] = DeepSpaceMCPTool(
+                exposed_name=exposed_name,
+                server=server,
+                raw_name=raw_name,
+                catalog=dict(raw_tool),
+                catalog_revision=int(server.catalog_revision or 0),
+                server_name=str(server.name),
+            )
+        return bindings
+
     def tools_for_conversation(
         self,
         *,
@@ -101,11 +130,20 @@ class DeepSpaceMCPBridge:
         servers = (
             self.db.execute(
                 select(MCPServer)
+                .join(
+                    MCPConnectionPolicy,
+                    and_(
+                        MCPConnectionPolicy.server_id == MCPServer.id,
+                        MCPConnectionPolicy.tenant_id == MCPServer.tenant_id,
+                        MCPConnectionPolicy.user_id == MCPServer.user_id,
+                    ),
+                )
                 .where(
                     MCPServer.tenant_id == auth.tenant_id,
                     MCPServer.user_id == auth.user_id,
                     MCPServer.enabled.is_(True),
                     MCPServer.status == "connected",
+                    MCPConnectionPolicy.default_enabled.is_(True),
                 )
                 .order_by(MCPServer.created_at.desc())
                 .limit(self.MAX_SERVERS)
@@ -133,6 +171,41 @@ class DeepSpaceMCPBridge:
                 # risk, and approval before every call.
                 _request_catalog_refresh(server, auth.tenant_id)
 
+            bindings.update(self._bindings_for_server(server, cached_tools))
+        return bindings
+
+    def refresh_server_bindings(
+        self,
+        *,
+        auth: AuthContext,
+        conversation_id: uuid.UUID,
+        binding: DeepSpaceMCPTool,
+    ) -> dict[str, DeepSpaceMCPTool] | None:
+        """Reload one server's current cached tools after a revision mismatch.
+
+        This stays database-local: it does not add remote catalog latency to an
+        ordinary call. The caller must still re-run policy and schema validation.
+        ``None`` means the refresh could not be read; an empty mapping means the
+        server/tool is no longer available to this account.
+        """
+        del conversation_id  # MCP accounts are user-scoped; policy is rechecked below.
+        try:
+            server = self.db.execute(
+                select(MCPServer)
+                .execution_options(populate_existing=True)
+                .where(
+                    MCPServer.id == binding.server.id,
+                    MCPServer.tenant_id == auth.tenant_id,
+                    MCPServer.user_id == auth.user_id,
+                    MCPServer.enabled.is_(True),
+                    MCPServer.status == "connected",
+                )
+            ).scalar_one_or_none()
+            if server is None:
+                return {}
+            provider_available, _reason = mcp_server_provider_available(self.db, server)
+            if not provider_available:
+                return {}
             policy = self.db.execute(
                 select(MCPConnectionPolicy).where(
                     MCPConnectionPolicy.server_id == server.id,
@@ -141,32 +214,19 @@ class DeepSpaceMCPBridge:
                 )
             ).scalar_one_or_none()
             if policy is None or not policy.default_enabled:
-                continue
-            # Composio toolkits are served from a paginated live catalog. Keep
-            # every discovered action searchable; the broker returns only a
-            # small page of references to DeepSpace. Retain the cap for
-            # arbitrary remote MCP servers to bound their per-turn surface.
-            server_tools = (
-                cached_tools
-                if is_composio_server(server)
-                else cached_tools[: self.MAX_TOOLS_PER_SERVER]
-            )
-            for raw_tool in server_tools:
-                if not isinstance(raw_tool, dict):
-                    continue
-                raw_name = str(raw_tool.get("name") or "").strip()
-                if not raw_name:
-                    continue
-                exposed_name = self._exposed_name(server, raw_name)
-                bindings[exposed_name] = DeepSpaceMCPTool(
-                    exposed_name=exposed_name,
-                    server=server,
-                    raw_name=raw_name,
-                    catalog=dict(raw_tool),
-                    catalog_revision=int(server.catalog_revision or 0),
-                    server_name=str(server.name),
-                )
-        return bindings
+                return {}
+        except SQLAlchemyError:
+            self.db.rollback()
+            logger.exception("MCP catalog rebind lookup failed for %s", binding.exposed_name)
+            return None
+
+        config = server.config if isinstance(server.config, dict) else {}
+        if not mcp_catalog_is_fresh(
+            server,
+            max_age_seconds=int(getattr(self.settings, "mcp_catalog_max_age_seconds", 3600)),
+        ):
+            _request_catalog_refresh(server, auth.tenant_id)
+        return self._bindings_for_server(server, config.get("mcp_tools_cache"))
 
     def policy_for_tool(
         self,
