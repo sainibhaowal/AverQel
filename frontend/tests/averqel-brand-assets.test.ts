@@ -74,9 +74,13 @@ it("uses the supplied AverQel text logo throughout the shared wordmark component
   expect(exactBrand).toContain('import AverQelWordmark from "./AverQelWordmark"');
   expect(exactBrand).toContain('<AverQelWordmark size="hero"');
   expect(exactBrand).toContain('className="login-brand-wordmark"');
+  expect(exactBrand).toContain('className="login-exact-logo--animated login-exact-logo--aver"');
+  expect(exactBrand).toContain('className="login-exact-logo--animated login-exact-logo--el"');
   expect(exactBrand).toContain("INTELLIGENCE ALL YOU NEED");
   expect(loginPage).not.toContain('<AverQelLogo size="hero" />');
   expect(globalStyles).toContain(".dark .averqel-wordmark__svg");
+  expect(globalStyles).toContain("@keyframes login-brand-rgb");
+  expect(globalStyles).toContain(".login-exact-logo--animated");
   expect(qelConnectMark).toContain("qel-connect-mark");
   expect(globalStyles).toContain(".qel-connect-mark");
   expect(globalStyles).toContain("filter: brightness(0.62) saturate(1.2) contrast(1.18);");

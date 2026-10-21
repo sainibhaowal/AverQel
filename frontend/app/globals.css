@@ -1046,9 +1046,68 @@ html:not(.dark) .library-preview-canvas {
 }
 
 .login-brand-wordmark {
-  width: min(266px, 82vw);
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   justify-content: center;
+}
+
+.login-exact-wordmark-wrap {
+  position: relative;
+  display: block;
+  width: min(266px, 82vw);
+  aspect-ratio: 1371 / 254;
   margin-top: 0.15rem;
+  isolation: isolate;
+}
+
+.login-exact-logo--animated {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    105deg,
+    #ff3158 0%,
+    #ff9f1c 16%,
+    #c8f000 32%,
+    #00d084 48%,
+    #00b5ff 64%,
+    #7457ff 80%,
+    #e83cff 92%,
+    #ff3158 100%
+  );
+  background-size: 300% 100%;
+  animation: login-brand-rgb 6s linear infinite;
+  -webkit-mask-image: url("/brand/AverQel_Text.svg");
+  mask-image: url("/brand/AverQel_Text.svg");
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-mode: alpha;
+  mask-size: 100% 100%;
+  will-change: background-position;
+}
+
+.login-exact-logo--aver {
+  clip-path: inset(0 42.1% 0 0);
+}
+
+.login-exact-logo--el {
+  clip-path: inset(0 0 0 72.7%);
+}
+
+@keyframes login-brand-rgb {
+  from {
+    background-position: 0 50%;
+  }
+
+  to {
+    background-position: 100% 50%;
+  }
 }
 
 .login-exact-logo-wrap {
@@ -1129,6 +1188,11 @@ html:not(.dark) .library-preview-canvas {
   .averqel-wordmark__svg {
     animation: none;
     filter: none;
+  }
+
+  .login-exact-logo--animated {
+    animation: none;
+    background-position: 50% 50%;
   }
 
   .dark .averqel-wordmark__svg {
