@@ -64,7 +64,7 @@ export default function AverQelLogo({
       ? "/AverQel%20Logo/AverQel_Icon.svg"
       : animateMark
         ? "/brand/AverQel_Connection_Icon.svg"
-        : "/brand/AverQel_Icon.svg");
+        : "/AverQel%20Logo/AverQel_Icon.svg");
 
   return (
     <motion.div

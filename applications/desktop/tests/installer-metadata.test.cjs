@@ -16,6 +16,7 @@ const frontendLayout = readFileSync(
   path.resolve(desktopRoot, "..", "..", "frontend", "app", "layout.tsx"),
   "utf8",
 );
+const frontendRoot = path.resolve(desktopRoot, "..", "..", "frontend");
 const frontendBrandRoot = path.resolve(desktopRoot, "..", "..", "frontend", "public", "brand");
 
 function readPngDimensions(buffer) {
@@ -86,10 +87,19 @@ test("stages both canonical SVG brand sources in the desktop package", () => {
     packageConfig.scripts["prepare:brand-assets"],
     "node scripts/prepare-brand-assets.mjs",
   );
-  for (const fileName of ["AverQel_Icon.svg", "AverQel_Text.svg"]) {
+  const brandSources = {
+    "AverQel_Icon.svg": path.join(
+      frontendRoot,
+      "public",
+      "AverQel Logo",
+      "AverQel_Icon.svg",
+    ),
+    "AverQel_Text.svg": path.join(frontendBrandRoot, "AverQel_Text.svg"),
+  };
+  for (const [fileName, source] of Object.entries(brandSources)) {
     assert.equal(
       sha256(readFileSync(path.join(desktopRoot, "assets", "brand", fileName))),
-      sha256(readFileSync(path.join(frontendBrandRoot, fileName))),
+      sha256(readFileSync(source)),
       `${fileName} must be copied from the canonical frontend brand source`,
     );
   }

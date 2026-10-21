@@ -18,21 +18,9 @@ test("homepage renders the visual workspace hero without hydration failures", as
 
   const lockup = page.locator("[data-brand-lockup]:visible").first();
   const mark = lockup.locator("img").first();
-  const wordmark = lockup.locator(".averqel-wordmark__svg");
   await expect(mark).toHaveAttribute("width", "92");
   await expect(mark).toHaveAttribute("height", "46");
-  await expect(wordmark).toHaveAttribute("width", "156");
-  await expect(wordmark).toHaveAttribute("height", "29");
-
-  const [markBox, wordmarkBox] = await Promise.all([mark.boundingBox(), wordmark.boundingBox()]);
-  expect(markBox).not.toBeNull();
-  expect(wordmarkBox).not.toBeNull();
-  if (markBox && wordmarkBox) {
-    const markCenter = markBox.y + markBox.height / 2;
-    const wordmarkCenter = wordmarkBox.y + wordmarkBox.height / 2;
-    expect(Math.abs(markCenter - wordmarkCenter)).toBeLessThan(3);
-    expect(wordmarkBox.x - (markBox.x + markBox.width)).toBeLessThanOrEqual(-12);
-  }
+  await expect(lockup.locator(".averqel-wordmark__svg")).toHaveCount(0);
 
   const footerLockup = page.locator("[data-brand-lockup].averqel-logo--footer:visible").first();
   await expect(footerLockup).toBeVisible();

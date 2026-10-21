@@ -5,15 +5,22 @@ import path from "node:path";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDirectory, "..");
 const workspaceRoot = path.resolve(desktopRoot, "..", "..");
-const sourceRoot = path.join(workspaceRoot, "frontend", "public", "brand");
 const targetRoot = path.join(desktopRoot, "assets", "brand");
-const brandAssets = ["AverQel_Icon.svg", "AverQel_Text.svg"];
+const brandAssets = [
+  {
+    source: path.join(workspaceRoot, "frontend", "public", "AverQel Logo", "AverQel_Icon.svg"),
+    target: "AverQel_Icon.svg",
+  },
+  {
+    source: path.join(workspaceRoot, "frontend", "public", "brand", "AverQel_Text.svg"),
+    target: "AverQel_Text.svg",
+  },
+];
 
 mkdirSync(targetRoot, { recursive: true });
 
-for (const fileName of brandAssets) {
-  const source = path.join(sourceRoot, fileName);
-  const target = path.join(targetRoot, fileName);
+for (const { source, target: targetFileName } of brandAssets) {
+  const target = path.join(targetRoot, targetFileName);
   if (!existsSync(source)) {
     throw new Error(`The canonical AverQel brand asset is missing: ${source}`);
   }

@@ -1008,6 +1008,13 @@ html:not(.dark) .library-preview-canvas {
   margin-left: -0.75rem;
 }
 
+/* The supplied icon and text canvases have different transparent margins.
+ * This small adjustment centers their visible combined lockup in the expanded
+ * dashboard sidebar without moving the collapsed icon-only mark. */
+.dashboard-sidebar-brand-lockup--expanded {
+  transform: translate(-14px, 0);
+}
+
 .averqel-wordmark--mobile {
   min-height: 22px;
 }
@@ -1053,47 +1060,46 @@ html:not(.dark) .library-preview-canvas {
   justify-content: center;
 }
 
-.login-exact-wordmark-wrap {
-  position: relative;
-  display: block;
-  width: min(266px, 82vw);
-  aspect-ratio: 1371 / 254;
-  margin-top: 0.15rem;
-  isolation: isolate;
+/* The supplied SVG keeps the Q in its approved cyan-to-pink gradient. */
+.login-brand-wordmark .averqel-wordmark__svg {
+  animation: none;
+  filter: none;
+  will-change: auto;
 }
 
-.login-exact-wordmark-rgb {
+/* The animation mask contains only AVER and EL, so the Q always retains the
+ * exact source-logo colors while the surrounding letters travel right to left. */
+.login-exact-letter-rgb {
   position: absolute;
   z-index: 1;
   inset: 0;
   pointer-events: none;
   background-image: linear-gradient(
-    105deg,
+    90deg,
     #ff3158 0%,
-    #ff9f1c 16%,
-    #c8f000 32%,
-    #00d084 48%,
-    #00b5ff 64%,
-    #7457ff 80%,
-    #e83cff 92%,
+    #ff9f1c 15%,
+    #d5f21f 30%,
+    #00d084 45%,
+    #00b5ff 60%,
+    #7457ff 75%,
+    #e83cff 88%,
     #ff3158 100%
   );
-  background-size: 300% 100%;
-  animation: login-brand-rgb 6s linear infinite;
-  -webkit-mask-image: url("/brand/AverQel_Text.svg");
-  mask-image: url("/brand/AverQel_Text.svg");
+  background-size: 260% 100%;
+  animation: login-letter-rgb-sweep 7s linear infinite;
+  -webkit-mask-image: url("/brand/AverQel_Animated_Letters.svg");
+  mask-image: url("/brand/AverQel_Animated_Letters.svg");
   -webkit-mask-position: center;
   mask-position: center;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   -webkit-mask-size: 100% 100%;
-  mask-mode: alpha;
   mask-size: 100% 100%;
-  transform: translateY(1px);
+  mask-mode: alpha;
   will-change: background-position;
 }
 
-@keyframes login-brand-rgb {
+@keyframes login-letter-rgb-sweep {
   from {
     background-position: 0 50%;
   }
@@ -1101,6 +1107,15 @@ html:not(.dark) .library-preview-canvas {
   to {
     background-position: 100% 50%;
   }
+}
+
+.login-exact-wordmark-wrap {
+  position: relative;
+  display: block;
+  width: min(266px, 82vw);
+  aspect-ratio: 1371 / 254;
+  margin-top: 0.15rem;
+  isolation: isolate;
 }
 
 .login-exact-logo-wrap {
@@ -1183,7 +1198,7 @@ html:not(.dark) .library-preview-canvas {
     filter: none;
   }
 
-  .login-exact-wordmark-rgb {
+  .login-exact-letter-rgb {
     animation: none;
     background-position: 50% 50%;
   }
